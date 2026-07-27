@@ -4,7 +4,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +86,7 @@ void main() {
             status: ShiftStatus.active,
             isUnassigned: false,
             assigneeNames: const ['Dr Alpha', 'Dr Beta'],
+            assigneeIds: const ['doc-a', 'doc-b'],
             assigneeCount: 2,
           ),
         ],

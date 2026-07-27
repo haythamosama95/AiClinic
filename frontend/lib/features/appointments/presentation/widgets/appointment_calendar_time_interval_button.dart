@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_slot_defaults.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 
 /// Popover control for the calendar time-slot grid interval.
@@ -61,7 +61,7 @@ class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<Appointm
               ),
               child: Text('Time interval', style: AppTypography.bodyStrong(context)),
             ),
-            for (final minutes in AppointmentCalendarDisplay.supportedTimeIntervalMinutes)
+            for (final minutes in supportedTimeIntervalMinutes)
               _IntervalOption(
                 minutes: minutes,
                 selected: minutes == selectedMinutes,

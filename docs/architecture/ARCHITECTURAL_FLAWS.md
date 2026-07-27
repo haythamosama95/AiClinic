@@ -27,6 +27,7 @@
 | H5 | `VisitDocumentationNotifier` (~1400 lines) | Monolithic notifier: draft, save, safety, attachments, completion | Hard to test and extend; regression risk on 014 changes | Split by concern (documentation save, safety CRUD, attachment queue) |
 | H6 | V1-8 installer | **Not built** — no MSI/MSIX, no automated backup scheduler | Tier 1/2 deployment remains manual Docker + dev docs | Prioritize V1-8 or document manual install as interim |
 | H7 | `backend/local/docker-compose.yml` | No service healthchecks; no observability stack | Silent partial failures hard to diagnose on clinic LAN | Add healthchecks; optional metrics in V1-8 |
+| H8 | `frontend/lib/features/appointments/{presentation/providers,data,domain} queue files vs router.dart:112 | Queue subsystem (~1,500 lines) implemented and tested but no page; docs claim built | Dead weight + previously an idle Realtime channel per client | Build AppointmentQueuePage or delete the subsystem; shell warm removed |
 
 ---
 
@@ -79,7 +80,7 @@ The following were corrected in this audit pass:
 | Severity | Count |
 | -------- | ----- |
 | Critical | 1 |
-| High | 7 |
+| High | 8 |
 | Medium | 9 |
 | Low | 6 |
-| **Total open** | **23** |
+| **Total open** | **24** |

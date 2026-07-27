@@ -3,7 +3,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_d
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +24,7 @@ void main() {
       status: ShiftStatus.active,
       isUnassigned: false,
       assigneeNames: const ['Dr Alpha', 'Dr Beta', 'Reception A'],
+      assigneeIds: const ['d1', 'd2'],
       assigneeCount: 3,
     );
 
@@ -59,6 +60,7 @@ void main() {
         status: ShiftStatus.unknown,
         isUnassigned: false,
         assigneeNames: const ['Dr Alpha'],
+        assigneeIds: const ['d1'],
         assigneeCount: 1,
       );
       final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
@@ -116,7 +118,7 @@ void main() {
       expect(presentation.entries.first.isPatientChoice, isFalse);
     });
 
-    test('BUG-005: duplicate doctor names are excluded from shift lookup', () {
+    test('duplicate doctor names are both returned when assignee ids differ', () {
       final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: 'UTC',
         shifts: [
@@ -128,8 +130,9 @@ void main() {
             endTime: '17:00',
             status: ShiftStatus.active,
             isUnassigned: false,
-            assigneeNames: const ['Dr Alpha'],
-            assigneeCount: 1,
+            assigneeNames: const ['Dr Alpha', 'Dr Alpha'],
+            assigneeIds: const ['d1', 'd2'],
+            assigneeCount: 2,
           ),
         ],
         doctors: const [
@@ -138,7 +141,9 @@ void main() {
         ],
       );
 
-      expect(lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 10)), isEmpty);
+      final onShift = lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 10));
+      expect(onShift, hasLength(2));
+      expect(onShift.map((doctor) => doctor.id), ['d1', 'd2']);
     });
   });
 }

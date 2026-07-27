@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/ui/components/app_select.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 
 /// Builds [AppSelectOption] rows with branch-availability highlighting.
 abstract final class AppointmentDoctorSelectItems {

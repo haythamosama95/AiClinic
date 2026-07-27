@@ -2,11 +2,11 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
 import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

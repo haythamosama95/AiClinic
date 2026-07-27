@@ -1,5 +1,5 @@
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/clinic-management/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/utils/working_schedule.dart';

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_status_filter.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_status_swatch.dart';
 
@@ -110,9 +111,9 @@ class _AppointmentCalendarColorLegendPanel extends StatelessWidget {
             ),
             child: Text('Appointment colors', style: AppTypography.bodyStrong(context)),
           ),
-          for (final status in AppointmentCalendarDisplay.calendarStatusLegend) ...[
+          for (final status in AppointmentCalendarStatusFilter.calendarStatusLegend) ...[
             _LegendRow(status: status),
-            if (status != AppointmentCalendarDisplay.calendarStatusLegend.last)
+            if (status != AppointmentCalendarStatusFilter.calendarStatusLegend.last)
               const SizedBox(height: AppSpacing.space1),
           ],
           const SizedBox(height: AppSpacing.space2),
@@ -137,7 +138,7 @@ class _LegendRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+    final style = AppointmentCalendarStatusTheme.statusStyle(status, brightness);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),

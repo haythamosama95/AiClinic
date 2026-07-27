@@ -37,6 +37,9 @@ class AppointmentListItem {
   final DateTime? checkedInAt;
   final DateTime? inProgressAt;
 
+  /// True when [type] or [status] could not be parsed from the wire payload.
+  bool get hasUnknownWireValues => type == AppointmentType.unknown || status == AppointmentStatus.unknown;
+
   static AppointmentListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final patientId = row['patient_id']?.toString();
@@ -54,13 +57,6 @@ class AppointmentListItem {
     final updatedAt = parseAppointmentDateTime(row['updated_at']);
     final checkedInAt = parseAppointmentDateTime(row['checked_in_at']);
     final inProgressAt = parseAppointmentDateTime(row['in_progress_at']);
-
-    if (type == AppointmentType.unknown) {
-      debugPrint('AppointmentListItem: unrecognized type "$typeRaw" for appointment $id');
-    }
-    if (status == AppointmentStatus.unknown) {
-      debugPrint('AppointmentListItem: unrecognized status "$statusRaw" for appointment $id');
-    }
 
     if (id == null ||
         id.isEmpty ||

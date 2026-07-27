@@ -14,6 +14,8 @@
 
 Each feature uses a layered layout with `data/`, `domain/`, and `presentation/` directories. The domain layer contains abstract repository interfaces (in `domain/repositories/`) and single-responsibility use cases (in `domain/usecases/`). Concrete repository implementations live in `data/` and are named with an `Impl` suffix. Presentation-layer notifiers depend on use cases, not repositories directly.
 
+A feature's `domain/` must not import another feature's `domain/`; shared value types belong in `core/domain/`.
+
 ```
 frontend/lib/
 ├── main.dart
@@ -34,6 +36,12 @@ frontend/lib/
 │   │   ├── deployment_profile.dart     # Strongly-typed profile (mode, URLs, device role)
 │   │   ├── supabase_config.dart        # SupabaseConfig + SupabaseBootstrap + JWT decode
 │   │   └── supabase_config_env_io.dart # Platform-specific env detection
+│   ├── domain/
+│   │   └── clinic/                     # Cross-feature clinic value types (branches, staff, working hours)
+│   │       ├── branch_list_item.dart
+│   │       ├── branch_working_schedule.dart
+│   │       ├── staff_list_item.dart
+│   │       └── clinic_domain.dart      # Barrel export
 │   ├── errors/
 │   │   ├── failures.dart               # Failure classes
 │   │   └── exceptions.dart             # Exception classes
@@ -239,7 +247,7 @@ The **target pattern** is presentation → use cases → repository interfaces �
 | ------- | ------- | ----- |
 | patients, settings, auth (sign-in) | Full use-case clean architecture | Reference implementation |
 | setup | Use cases + `SetupNotifier` | Atomic `bootstrap_finish_setup` |
-| appointments | Repositories + presentation notifiers | Realtime queue via `StreamProvider` |
+| appointments | Repositories + presentation notifiers | Realtime queue via `NotifierProvider` + manual Supabase channel (not currently rendered) |
 | visits | `application/` + `VisitDocumentationNotifier` | Notifier calls repository/persistence directly; orchestration-heavy |
 | billing, shifts | data/domain/application only | Presentation pending |
 
@@ -380,7 +388,7 @@ Navigation is router-based (GoRouter). Deep links are supported for future web d
 | ---------------------------------- | ----------------------------------------- |
 | `/appointments`                    | **Placeholder** — no hub page exists (`uiPendingPlaceholder` in `router.dart`) |
 | `/appointments/book`               | **Placeholder** — no booking form page exists yet, despite `create_appointment` RPC being complete |
-| `/appointments/queue`              | `AppointmentQueuePage` — today's queue (Realtime + manual refresh) — built |
+| `/appointments/queue`              | **Placeholder** — queue page not built; queue provider/domain implemented but not wired |
 | `/appointments/calendar`           | `AppointmentCalendarPage` — day/week calendar — built |
 | `/appointments/:appointmentId`     | `AppointmentDetailPage` — built |
 | `/appointments/schedule/:doctorId` | **Placeholder** — doctor schedule filter not built |

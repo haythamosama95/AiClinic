@@ -1,7 +1,7 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/clinic-management/domain/update_branch_input.dart';
 import 'package:flutter_test/flutter_test.dart';

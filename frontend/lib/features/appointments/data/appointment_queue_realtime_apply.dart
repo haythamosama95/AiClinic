@@ -1,3 +1,6 @@
+/// Unshipped: queue UI is not built (router.dart uses a placeholder for /appointments/queue).
+library;
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';

@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 
 /// Validates appointment slots against a branch [BranchWorkingSchedule].
 class AppointmentBranchWorkingHours {
@@ -45,16 +45,38 @@ class AppointmentBranchWorkingHours {
     return null;
   }
 
+  static const int endOfDayMinutes = 24 * 60;
+
+  /// Parses `H:mm`, `HH:mm`, or `HH:mm:ss` clock strings into minutes since midnight.
   static int? parseHm(String? value) {
     final text = value?.trim();
     if (text == null || text.isEmpty) {
       return null;
     }
-    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$').firstMatch(text);
-    if (match == null) {
+    final parts = text.split(':');
+    if (parts.length < 2 || parts.length > 3) {
       return null;
     }
-    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+    if (parts.length == 3) {
+      final second = int.tryParse(parts[2]);
+      if (second == null || second < 0 || second > 59) {
+        return null;
+      }
+    }
+    return hour * 60 + minute;
+  }
+
+  /// Treats a midnight (`00:00`) close time as end-of-day.
+  static int? normalizeCloseMinutes(int? minutes) {
+    if (minutes == null) {
+      return null;
+    }
+    return minutes == 0 ? endOfDayMinutes : minutes;
   }
 
   static String? validationMessage({
@@ -74,14 +96,15 @@ class AppointmentBranchWorkingHours {
     }
 
     final openMinutes = parseHm(dayHours.openTime);
-    final closeMinutes = parseHm(dayHours.closeTime);
+    final closeMinutes = normalizeCloseMinutes(parseHm(dayHours.closeTime));
     if (openMinutes == null || closeMinutes == null || openMinutes >= closeMinutes) {
       return 'Branch working hours are not configured for the selected day.';
     }
 
     final startMinutes = localStart.hour * 60 + localStart.minute;
     final endMinutes = localEnd.hour * 60 + localEnd.minute;
-    if (startMinutes < openMinutes || endMinutes > closeMinutes) {
+    // Half-open interval [open, close): reject starts at/after close or ends after close.
+    if (startMinutes < openMinutes || startMinutes >= closeMinutes || endMinutes > closeMinutes) {
       return 'Appointment must be within branch working hours (${dayHours.openTime}–${dayHours.closeTime}).';
     }
 

@@ -3,7 +3,8 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/ui/components/app_calendar.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_layout.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_geometry.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 
 /// Custom day/week column header aligned with the Syncfusion time grid.
@@ -22,15 +23,15 @@ class AppointmentCalendarViewHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final locale = Localizations.localeOf(context).languageCode == 'ar' ? 'ar-EG' : 'en-GB';
     final weekdayFormat = DateFormat.E(locale);
-    final days = AppointmentCalendarDisplay.visibleHeaderDays(mode, focusDate);
+    final days = AppointmentCalendarLayout.visibleHeaderDays(mode, focusDate);
     final today = DateTime.now();
 
     return SizedBox(
-      height: AppointmentCalendarDisplay.viewHeaderHeight,
+      height: AppointmentCalendarGeometry.viewHeaderHeight,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(width: AppointmentCalendarDisplay.timeLabelWidth),
+          const SizedBox(width: AppointmentCalendarGeometry.timeLabelWidth),
           for (var index = 0; index < days.length; index++)
             Expanded(
               child: AppCalendarDayColumnHeader(
@@ -39,8 +40,8 @@ class AppointmentCalendarViewHeader extends StatelessWidget {
                 weekday: weekdayFormat.format(days[index]),
                 isToday: _isSameDay(days[index], today),
                 isLast: index == days.length - 1,
-                badgeSize: AppointmentCalendarDisplay.viewHeaderBadgeSize,
-                verticalPadding: AppointmentCalendarDisplay.viewHeaderVerticalPadding,
+                badgeSize: AppointmentCalendarGeometry.viewHeaderBadgeSize,
+                verticalPadding: AppointmentCalendarGeometry.viewHeaderVerticalPadding,
               ),
             ),
         ],

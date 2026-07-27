@@ -1,5 +1,5 @@
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:flutter/foundation.dart';
 
 /// Branch row for administration list and pickers (V1-2).

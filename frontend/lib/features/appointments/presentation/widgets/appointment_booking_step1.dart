@@ -8,10 +8,11 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_selector.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
+// TODO: promote patient_picker.dart to a features/patients/presentation/widgets/ public barrel.
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_picker.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_form_layout.dart';
 

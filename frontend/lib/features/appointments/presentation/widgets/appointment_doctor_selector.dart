@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/components/app_form_field.dart';
 import 'package:ai_clinic/core/ui/components/app_select.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 
 /// Doctor picker for appointment booking with branch-availability highlighting.
 class AppointmentDoctorSelector extends StatelessWidget {

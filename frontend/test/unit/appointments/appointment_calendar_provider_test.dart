@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_slot_defaults.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -367,6 +370,45 @@ void main() {
       expect(client.rpcCallCounts['list_appointments'], 2);
     });
 
+    test('H4: drops stale refresh responses when periods change quickly', () async {
+      final client = OutOfOrderListAppointmentsRpcClient(delayedCallNumber: 2);
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  permissions: {'appointments.read'},
+                  activeBranchId: '00000000-0000-4000-8000-000000000001',
+                ),
+              ),
+            ),
+          ),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final initial = await readAfterInit(container);
+      final initialFocus = initial.focusDate;
+      expect(initial.items.single.patientName, 'Period-1');
+
+      final notifier = container.read(appointmentCalendarProvider.notifier);
+      unawaited(notifier.nextPeriod());
+      unawaited(notifier.nextPeriod());
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      final expectedFocus = appointmentCalendarNextFocus(
+        appointmentCalendarNextFocus(initialFocus, AppointmentCalendarMode.week),
+        AppointmentCalendarMode.week,
+      );
+      expect(state.focusDate, expectedFocus);
+      expect(state.items.single.patientName, 'Period-3');
+    });
+
     test('setTimeIntervalMinutes updates grid interval', () async {
       final container = createContainer(
         AuthSessionState(
@@ -380,7 +422,7 @@ void main() {
       addTearDown(container.dispose);
 
       final state = await readAfterInit(container);
-      expect(state.timeIntervalMinutes, AppointmentCalendarDisplay.defaultTimeIntervalMinutes);
+      expect(state.timeIntervalMinutes, defaultTimeIntervalMinutes);
 
       container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(15);
       expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 15);

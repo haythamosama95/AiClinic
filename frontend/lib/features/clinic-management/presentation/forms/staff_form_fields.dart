@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/constants/clinic_constants.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/staff_form_values.dart';
 

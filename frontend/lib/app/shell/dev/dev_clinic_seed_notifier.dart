@@ -19,7 +19,7 @@ import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/data/payment_repository.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 
@@ -103,7 +103,7 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
 
       ref.read(clinicSetupProvider.notifier).markSetupComplete();
       await ref.read(clinicSetupProvider.notifier).hydrateFromBackend();
-      invalidateAppointmentSurfaceProviders(ref);
+      invalidateAllAppointmentSurfaces(ref);
       state = const DevClinicSeedState();
       AppLog.info('dev_clinic_seed.completed');
       return true;

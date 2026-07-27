@@ -3,17 +3,20 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_slot_defaults.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
@@ -28,7 +31,7 @@ class AppointmentCalendarState {
     this.selectedBranchId,
     this.selectedDoctorId,
     this.selectedStatuses = const {},
-    this.timeIntervalMinutes = AppointmentCalendarDisplay.defaultTimeIntervalMinutes,
+    this.timeIntervalMinutes = defaultTimeIntervalMinutes,
     this.loading = false,
     this.error,
   });
@@ -80,6 +83,8 @@ class AppointmentCalendarState {
 const _sentinel = Object();
 
 class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
+  int _requestGeneration = 0;
+
   @override
   AppointmentCalendarState build() {
     final today = DateTime.now();
@@ -132,15 +137,24 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       state = state.copyWith(selectedBranchId: branchId);
     }
 
+    final generation = ++_requestGeneration;
     state = state.copyWith(loading: true, error: null);
     try {
       final bounds = appointmentCalendarFetchBounds(state.focusDate, state.mode);
       final items = await ref
           .read(appointmentRepositoryProvider)
           .listAppointments(branchId: branchId, from: bounds.$1, to: bounds.$2, doctorId: state.selectedDoctorId);
+      if (generation != _requestGeneration) {
+        return;
+      }
       state = state.copyWith(loading: false, items: items, error: null);
-    } catch (_) {
-      state = state.copyWith(loading: false, items: const [], error: 'Could not load appointments. Please retry.');
+    } catch (error, stack) {
+      AppLog.warning('appointments.calendar.refresh_failed reason=${error.runtimeType}');
+      AppLog.fine('appointments.calendar.refresh_failed.stack $stack');
+      if (generation != _requestGeneration) {
+        return;
+      }
+      state = state.copyWith(loading: false, error: 'Could not load appointments. Please retry.');
     }
   }
 
@@ -214,7 +228,7 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 
   void setTimeIntervalMinutes(int minutes) {
-    if (!AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(minutes) ||
+    if (!supportedTimeIntervalMinutes.contains(minutes) ||
         minutes == state.timeIntervalMinutes) {
       return;
     }
@@ -235,9 +249,14 @@ final appointmentCalendarProvider = NotifierProvider<AppointmentCalendarControll
 );
 
 /// Eagerly warms the calendar provider so appointment data is ready when the
-/// calendar page opens (mirrors [appointmentQueueShellWarmProvider]).
+/// calendar page opens.
 final appointmentCalendarShellWarmProvider = Provider<void>((ref) {
-  ref.watch(appointmentCalendarProvider);
+  ref.watch(clinicDataChangedProvider);
+  ref.listen<int>(clinicDataChangedProvider, (_, _) {
+    invalidateAllAppointmentSurfaces(ref);
+    ref.read(appointmentCalendarProvider);
+  });
+  ref.read(appointmentCalendarProvider);
 });
 
 final appointmentCalendarBranchesProvider = FutureProvider.autoDispose<List<BranchListItem>>((ref) async {

@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// cached state should refresh.
 ///
 /// This decouples the setup feature from the appointments feature: instead of
-/// the setup notifier calling `invalidateAppointmentSurfaceProviders(_ref)`
-/// directly (a cross-feature layering violation, review §6.2), it bumps this
-/// signal, and features that care listen and invalidate themselves.
+/// setup reaching into appointments presentation providers directly (a cross-feature
+/// layering violation), it bumps this signal, and features that care listen and
+/// invalidate themselves via [invalidateAllAppointmentSurfaces].
 final clinicDataChangedProvider = NotifierProvider<ClinicDataChangedNotifier, int>(ClinicDataChangedNotifier.new);
 
 class ClinicDataChangedNotifier extends Notifier<int> {

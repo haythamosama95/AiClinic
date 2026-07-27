@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -79,6 +79,60 @@ void main() {
       expect(
         AppointmentBranchWorkingHours.previousWorkingDay(schedule, DateTime(2026, 6, 9)),
         DateTime(2026, 6, 8), // Tuesday -> Monday
+      );
+    });
+
+    test('parseHm accepts HH:mm, HH:mm:ss, and single-digit hour formats', () {
+      const expected = 9 * 60;
+
+      expect(AppointmentBranchWorkingHours.parseHm('09:00'), expected);
+      expect(AppointmentBranchWorkingHours.parseHm('09:00:00'), expected);
+      expect(AppointmentBranchWorkingHours.parseHm('9:00'), expected);
+    });
+
+    test('treats 00:00 close time as end-of-day', () {
+      final midnightCloseSchedule = BranchWorkingSchedule(
+        BranchWeekday.values
+            .map(
+              (day) => BranchWorkingDayHours(
+                day: day,
+                isWorkingDay: day != BranchWeekday.sunday,
+                openTime: day == BranchWeekday.sunday ? null : '09:00',
+                closeTime: day == BranchWeekday.sunday ? null : '00:00',
+              ),
+            )
+            .toList(growable: false),
+      );
+      final start = DateTime(2026, 6, 4, 22, 0);
+
+      expect(
+        AppointmentBranchWorkingHours.isWithinWorkingHours(
+          schedule: midnightCloseSchedule,
+          startTime: start,
+          durationMinutes: 60,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects slot starting exactly at close (half-open interval)', () {
+      final start = DateTime(2026, 6, 4, 17, 0);
+
+      final message = AppointmentBranchWorkingHours.validationMessage(
+        schedule: schedule,
+        startTime: start,
+        durationMinutes: 30,
+      );
+
+      expect(message, isNotNull);
+    });
+
+    test('accepts slot ending exactly at close', () {
+      final start = DateTime(2026, 6, 4, 16, 30);
+
+      expect(
+        AppointmentBranchWorkingHours.isWithinWorkingHours(schedule: schedule, startTime: start, durationMinutes: 30),
+        isTrue,
       );
     });
   });

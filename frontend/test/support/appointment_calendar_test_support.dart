@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'appointment_rpc_test_client.dart';
@@ -69,6 +69,42 @@ class SlowAppointmentRpcTestClient extends AppointmentRpcTestClient {
       rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
       final payload = rpcResults[fn] ?? calendarListAppointmentsDefaultPayload();
       return _DelayedFakePostgrestRpc(payload, listDelay) as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc(fn, params: params, get: get);
+  }
+}
+
+/// Returns distinct rows per [list_appointments] call; delays one nominated call to test request sequencing.
+class OutOfOrderListAppointmentsRpcClient extends AppointmentRpcTestClient {
+  OutOfOrderListAppointmentsRpcClient({this.delayedCallNumber = 2, this.delay = const Duration(milliseconds: 200)});
+
+  final int delayedCallNumber;
+  final Duration delay;
+  var _listCalls = 0;
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'list_appointments') {
+      _listCalls += 1;
+      rpcLog.add(fn);
+      lastFunction = fn;
+      lastParams = params == null ? null : Map<String, dynamic>.from(params);
+      rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
+      final payload = {
+        'success': true,
+        'data': {
+          'items': [
+            appointmentRpcDefaultListItem(
+              patientName: 'Period-$_listCalls',
+              id: 'period-item-$_listCalls',
+            ),
+          ],
+        },
+      };
+      if (_listCalls == delayedCallNumber) {
+        return _DelayedFakePostgrestRpc(payload, delay) as PostgrestFilterBuilder<T>;
+      }
+      return FakePostgrestRpc(payload) as PostgrestFilterBuilder<T>;
     }
     return super.rpc(fn, params: params, get: get);
   }

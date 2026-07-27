@@ -1,13 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
 import 'package:ai_clinic/features/setup/domain/persist_clinic_setup_draft.dart';
@@ -114,14 +114,14 @@ class ClinicSetupOrchestrator {
 
   /// Signals that clinic-wide data changed so downstream features (appointments,
   /// etc.) refresh their cached state. Replaces direct
-  /// `invalidateAppointmentSurfaceProviders` calls from the notifier (review §6.2).
+  /// `invalidateAllAppointmentSurfaces` calls from the notifier (review §6.2).
   void notifyClinicDataChanged() {
     // Bump the decoupled signal so listening features invalidate themselves.
     _ref.read(clinicDataChangedProvider.notifier).bump();
     // Also invalidate the appointment surface providers directly during the
     // transition period so existing listeners that haven't migrated yet still
     // refresh. This is safe to remove once appointments listens to the signal.
-    invalidateAppointmentSurfaceProviders(_ref);
+    invalidateAllAppointmentSurfaces(_ref);
   }
 
   String? _currentOrganizationId() {

@@ -13,17 +13,19 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_shift_lookup_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_chip.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
@@ -58,16 +60,21 @@ class AppointmentDetailPage extends ConsumerWidget {
         }
         return _AppointmentDetailErrorView(
           appointmentId: appointmentId,
-          message: error.toString(),
+          message: appointmentMessageForError(error),
           onBack: () => _goBack(context),
-          onRetry: () => ref.invalidate(appointmentDetailProvider(appointmentId)),
+          onRetry: () => ref.refresh(appointmentDetailProvider(appointmentId)),
         );
       },
       data: (detail) => _AppointmentDetailContentView(
         detail: detail,
         preview: _preview,
         onBack: () => _goBack(context),
-        onChanged: () => _invalidateSurfaces(ref, detail),
+        onChanged: () => invalidateAppointmentAfterMutationFromWidget(
+          ref,
+          appointmentId: detail.id,
+          branchId: detail.branchId,
+          startTime: detail.startTime,
+        ),
       ),
     );
   }
@@ -78,21 +85,6 @@ class AppointmentDetailPage extends ConsumerWidget {
       return;
     }
     context.nav.goAppointmentsCalendar();
-  }
-
-  static void _invalidateSurfaces(WidgetRef ref, AppointmentDetail detail) {
-    ref.invalidate(appointmentDetailProvider(detail.id));
-    ref.invalidate(
-      appointmentDetailSiblingsProvider(
-        AppointmentDetailSiblingsQuery(branchId: detail.branchId, startTime: detail.startTime),
-      ),
-    );
-    ref.invalidate(
-      appointmentDetailShiftLookupProvider(
-        AppointmentDetailShiftQuery(branchId: detail.branchId, appointmentStart: detail.startTime),
-      ),
-    );
-    ref.invalidate(appointmentCalendarProvider);
   }
 }
 
@@ -116,13 +108,13 @@ class _AppointmentDetailContentView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brightness = Theme.of(context).brightness;
-    final statusColor = AppointmentCalendarDisplay.statusColor(detail.status, brightness);
+    final statusColor = AppointmentCalendarStatusTheme.statusColor(detail.status, brightness);
     final durationMinutes = detail.endTime.difference(detail.startTime).inMinutes;
 
     final siblingsQuery = AppointmentDetailSiblingsQuery(branchId: detail.branchId, startTime: detail.startTime);
-    final shiftQuery = AppointmentDetailShiftQuery(branchId: detail.branchId, appointmentStart: detail.startTime);
+    final shiftQuery = AppointmentShiftLookupQuery(branchId: detail.branchId, day: detail.startTime);
     final siblingsAsync = ref.watch(appointmentDetailSiblingsProvider(siblingsQuery));
-    final shiftAsync = ref.watch(appointmentDetailShiftLookupProvider(shiftQuery));
+    final shiftAsync = ref.watch(appointmentShiftLookupProvider(shiftQuery));
     final siblings = siblingsAsync.value ?? const <AppointmentListItem>[];
     final shiftLookup = shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
 
@@ -267,7 +259,7 @@ class _AppointmentHeroCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.space2),
-                      _StatusChip(status: detail.status, color: statusColor),
+                      AppointmentStatusChip(status: detail.status, textColor: statusColor),
                     ],
                   );
                 }
@@ -279,7 +271,7 @@ class _AppointmentHeroCard extends StatelessWidget {
                     const SizedBox(width: AppSpacing.space4),
                     Expanded(child: nameColumn),
                     const SizedBox(width: AppSpacing.space2),
-                    _StatusChip(status: detail.status, color: statusColor),
+                    AppointmentStatusChip(status: detail.status, textColor: statusColor),
                   ],
                 );
               },
@@ -489,37 +481,6 @@ class _HeroAuditItem extends StatelessWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status, required this.color});
-
-  final AppointmentStatus status;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final motionDuration = AppointmentStatusMotion.durationOf(context);
-
-    return AnimatedContainer(
-      duration: motionDuration,
-      curve: AppointmentStatusMotion.curve,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.45)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space1),
-        child: AnimatedDefaultTextStyle(
-          duration: motionDuration,
-          curve: AppointmentStatusMotion.curve,
-          style: AppTypography.caption(context).copyWith(color: color, fontWeight: FontWeight.w700),
-          child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-      ),
-    );
-  }
-}
-
 class _HeroFactChip extends StatelessWidget {
   const _HeroFactChip({required this.icon, required this.label});
 
@@ -682,7 +643,7 @@ class _AppointmentDetailLoadingView extends StatelessWidget {
               opacity: 0.65,
               child: _AppointmentHeroCard(
                 detail: _previewAsDetail(preview!),
-                statusColor: AppointmentCalendarDisplay.statusColor(preview!.status, Theme.of(context).brightness),
+                statusColor: AppointmentCalendarStatusTheme.statusColor(preview!.status, Theme.of(context).brightness),
                 dateLabel: DateFormat.yMMMEd().format(preview!.startTime.toLocal()),
                 timeLabel:
                     '${DateFormat.jm().format(preview!.startTime.toLocal())} – ${DateFormat.jm().format(preview!.endTime.toLocal())}',

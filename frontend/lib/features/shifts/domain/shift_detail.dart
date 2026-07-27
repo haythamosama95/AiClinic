@@ -78,6 +78,7 @@ class ShiftDetail {
       status: status,
       isUnassigned: isUnassigned,
       assigneeNames: [for (final a in assignments) a.displayName],
+      assigneeIds: [for (final a in assignments) a.staffMemberId],
       assigneeCount: assignments.length,
       notesPreview: _notesPreview(notes),
     );

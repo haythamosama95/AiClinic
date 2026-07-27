@@ -4,12 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_edit_policy.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 
 /// Header edit action for the appointment detail page.
 class AppointmentDetailEditButton extends ConsumerStatefulWidget {
@@ -34,13 +35,10 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
     if (_isLoading) {
       return 'Please wait for the current action to finish.';
     }
-    if (!_canCreateAppointments) {
-      return 'You do not have permission to manage appointments.';
-    }
-    if (!detail.status.isTerminal) {
-      return null;
-    }
-    return 'This appointment is ${detail.status.label.toLowerCase()} and cannot be edited.';
+    return AppointmentEditPolicy.editDisabledReasonForDetail(
+      canEdit: _canCreateAppointments,
+      status: detail.status,
+    );
   }
 
   String get _tooltip {
@@ -86,8 +84,12 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
       );
 
       if (updated == true && mounted) {
-        ref.invalidate(appointmentDetailProvider(detail.id));
-        ref.invalidate(appointmentCalendarProvider);
+        invalidateAppointmentAfterMutationFromWidget(
+          ref,
+          appointmentId: detail.id,
+          branchId: detail.branchId,
+          startTime: detail.startTime,
+        );
       }
     } finally {
       if (mounted) {

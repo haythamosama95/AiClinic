@@ -297,46 +297,5 @@ void main() {
       expect(state.comparisonUnavailable, isTrue);
       expect(state.comparisonItems, isNull);
     });
-
-    test('BUG-007: shell warm provider loads queue data for nav badge', () async {
-      const branchId = '00000000-0000-4000-8000-000000000001';
-      client.rpcResults['list_appointments'] = {
-        'success': true,
-        'data': {
-          'items': [
-            {
-              ...appointmentRpcDefaultListItem(id: 'checked-in-1', startLocal: DateTime.utc(2026, 6, 4, 10)),
-              'status': 'checked_in',
-              'checked_in_at': '2026-06-04T09:30:00.000Z',
-            },
-          ],
-        },
-      };
-
-      final authNotifier = _MutableAuthSessionNotifier(
-        AuthSessionState(
-          status: AuthSessionStatus.authenticated,
-          context: sampleAuthSessionContext(
-            permissions: {'appointments.read'},
-            activeBranchId: branchId,
-          ).copyWith(organizationId: '00000000-0000-4000-8000-000000000010', organizationTimezone: 'UTC'),
-        ),
-      );
-
-      final container = ProviderContainer(
-        overrides: [
-          authSessionProvider.overrideWith(() => authNotifier),
-          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
-          appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeAppointmentQueueRealtimeClient()),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      final _ = container.read(appointmentQueueShellWarmProvider);
-      await pumpEventQueue();
-
-      expect(client.rpcCallCounts['list_appointments'], greaterThanOrEqualTo(1));
-      expect(container.read(appointmentQueueCheckedInCountProvider), 1);
-    });
   });
 }

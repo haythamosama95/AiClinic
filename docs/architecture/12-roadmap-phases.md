@@ -168,6 +168,8 @@ Frontend deliverables:
 - Navigation and permission gates (`appointments.create` / `appointments.cancel`)
 - Dev seed helpers for appointments and doctors (local development only)
 
+**Queue page decision (2026-07):** Option A applied — shell warm removed so idle clients no longer open Realtime subscriptions. Option B deferred: build `AppointmentQueuePage` and wire `/appointments/queue` when queue UI is prioritized; otherwise delete the unshipped queue subsystem and keep only shift-doctor helpers used by the detail page.
+
 ### V1-5: Visits and Medical Records
 
 Required architecture docs:

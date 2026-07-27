@@ -1,9 +1,9 @@
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_layout.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -108,8 +108,8 @@ void main() {
     });
 
     test('snapTimeToSlot supports resize edge snapping', () {
-      expect(AppointmentCalendarDisplay.snapTimeToSlot(DateTime(2026, 6, 4, 10, 44)), DateTime(2026, 6, 4, 10, 30));
-      expect(AppointmentCalendarDisplay.snapTimeToSlot(DateTime(2026, 6, 4, 11, 1)), DateTime(2026, 6, 4, 11, 0));
+      expect(AppointmentCalendarLayout.snapTimeToSlot(DateTime(2026, 6, 4, 10, 44)), DateTime(2026, 6, 4, 10, 30));
+      expect(AppointmentCalendarLayout.snapTimeToSlot(DateTime(2026, 6, 4, 11, 1)), DateTime(2026, 6, 4, 11, 0));
     });
   });
 }

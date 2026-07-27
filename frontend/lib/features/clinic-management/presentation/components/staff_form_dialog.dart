@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_form_dialog_fields.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/staff_form_values.dart';
 

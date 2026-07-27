@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 
 /// Input for [manage_create_branch] RPC.
 class CreateBranchInput {

@@ -16,6 +16,7 @@ import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 
@@ -278,6 +279,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           clearError: true,
         ),
       );
+      invalidateAppointmentAfterVisitCompleted(ref, appointmentId: result.appointmentId);
       return result;
     } on RpcFailure {
       rethrow;

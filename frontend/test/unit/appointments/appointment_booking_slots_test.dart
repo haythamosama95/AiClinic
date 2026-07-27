@@ -1,9 +1,10 @@
+import 'package:ai_clinic/core/ui/models/booking_slot.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -40,7 +41,8 @@ void main() {
       );
 
       expect(slots, isNotEmpty);
-      expect(slots.first.status, AppointmentBookingSlotStatus.preferred);
+      expect(slots.first.status, BookingSlotStatus.preferred);
+      expect(slots.first.label, isEmpty);
     });
 
     test('marks slot alternate when only other doctors are free', () {
@@ -71,7 +73,7 @@ void main() {
       );
 
       final nineAm = slots.firstWhere((slot) => slot.start.hour == 9 && slot.start.minute == 0);
-      expect(nineAm.status, AppointmentBookingSlotStatus.alternate);
+      expect(nineAm.status, BookingSlotStatus.alternate);
       expect(nineAm.availableDoctorIds, contains('doc-2'));
     });
 
@@ -114,7 +116,7 @@ void main() {
       );
 
       final nineAm = slots.firstWhere((slot) => slot.start.hour == 9 && slot.start.minute == 0);
-      expect(nineAm.status, AppointmentBookingSlotStatus.locked);
+      expect(nineAm.status, BookingSlotStatus.locked);
     });
   });
 }

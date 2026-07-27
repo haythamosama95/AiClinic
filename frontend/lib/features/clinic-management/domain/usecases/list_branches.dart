@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
 
 class ListBranches {

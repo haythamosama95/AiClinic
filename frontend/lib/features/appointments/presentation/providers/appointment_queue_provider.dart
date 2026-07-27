@@ -1,23 +1,24 @@
+/// Unshipped: queue UI is not built (router.dart uses a placeholder for /appointments/queue).
+library;
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 
 @immutable
@@ -70,6 +71,8 @@ const _sentinel = Object();
 class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   AppointmentQueueRealtimeClient? _realtimeClient;
   bool _realtimeListening = false;
+  int _requestGeneration = 0;
+  bool _refreshInFlight = false;
 
   @override
   AppointmentQueueState build() {
@@ -127,16 +130,21 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
       return;
     }
 
-    if (state.items.isEmpty) {
-      state = state.copyWith(loading: true, error: null);
-    } else {
-      state = state.copyWith(error: null);
-    }
+    final generation = ++_requestGeneration;
+    _refreshInFlight = true;
     try {
+      if (state.items.isEmpty) {
+        state = state.copyWith(loading: true, error: null);
+      } else {
+        state = state.copyWith(error: null);
+      }
       final range = _todayRange;
       final repository = ref.read(appointmentRepositoryProvider);
       final items = await repository.listAppointments(branchId: branchId, from: range.from, to: range.to);
       final comparison = await _fetchComparisonItems(branchId: branchId, repository: repository);
+      if (generation != _requestGeneration) {
+        return;
+      }
       state = state.copyWith(
         loading: false,
         items: sortAppointmentsByStartTime(items),
@@ -145,9 +153,15 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
         comparisonUnavailable: comparison?.unavailable ?? false,
         error: null,
       );
-    } catch (error) {
+    } catch (error, stack) {
+      AppLog.warning('appointments.queue.refresh_failed reason=${error.runtimeType}');
+      AppLog.fine('appointments.queue.refresh_failed.stack $stack');
+      if (generation != _requestGeneration) {
+        return;
+      }
       state = state.copyWith(loading: false, error: 'Unable to load today\'s queue. Try again.');
-      debugPrint('AppointmentQueueController.refresh failed: $error');
+    } finally {
+      _refreshInFlight = false;
     }
   }
 
@@ -173,8 +187,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
         to: comparisonRange.to,
       );
       return (items: sortAppointmentsByStartTime(items), referenceNow: comparisonNow, unavailable: false);
-    } catch (error) {
-      debugPrint('AppointmentQueueController._fetchComparisonItems failed: $error');
+    } catch (error, stack) {
+      AppLog.warning('appointments.queue.comparison_fetch_failed reason=${error.runtimeType}');
+      AppLog.fine('appointments.queue.comparison_fetch_failed.stack $stack');
       return (items: <AppointmentListItem>[], referenceNow: DateTime.now(), unavailable: true);
     }
   }
@@ -194,8 +209,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
             return branch.workingSchedule!;
           }
         }
-      } catch (error) {
-        debugPrint('AppointmentQueueController._resolveBranchSchedule failed: $error');
+      } catch (error, stack) {
+        AppLog.warning('appointments.queue.branch_schedule_failed reason=${error.runtimeType}');
+        AppLog.fine('appointments.queue.branch_schedule_failed.stack $stack');
       }
     }
     return BranchWorkingSchedule.defaultSchedule();
@@ -278,6 +294,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
       state = state.copyWith(items: sortAppointmentsByStartTime(items));
       return;
     }
+    if (_refreshInFlight) {
+      return;
+    }
     unawaited(refresh());
   }
 }
@@ -285,23 +304,3 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 final appointmentQueueProvider = NotifierProvider<AppointmentQueueController, AppointmentQueueState>(
   AppointmentQueueController.new,
 );
-
-/// Checked-in patient count for the shell queue nav badge.
-final appointmentQueueCheckedInCountProvider = Provider<int>((ref) {
-  final items = ref.watch(appointmentQueueProvider).items;
-  return AppointmentQueueDisplay.partition(items).waiting.length;
-});
-
-/// Eagerly warms the queue provider so the nav badge reflects today's check-ins
-/// without requiring a visit to the queue page.
-final appointmentQueueShellWarmProvider = Provider<void>((ref) {
-  // Listen for clinic-data changes (org/branch/staff/service mutations from the
-  // setup orchestrator) and invalidate cached appointment surface state so the
-  // queue/calendar refresh without the setup feature importing appointments
-  // directly (review §6.2).
-  ref.watch(clinicDataChangedProvider);
-  ref.listen<int>(clinicDataChangedProvider, (_, _) {
-    invalidateAppointmentSurfaceProviders(ref);
-  });
-  ref.watch(appointmentQueueCheckedInCountProvider);
-});

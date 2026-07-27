@@ -3,12 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_status_action_result.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_status_service.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
@@ -17,7 +16,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_d
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_action.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_start_doctor_dialog.dart';
 
 /// Inline outlined action buttons for managing an appointment from the status journey card.
@@ -178,16 +177,11 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       shiftLookup: widget.shiftLookup,
       siblingAppointments: widget.siblingAppointments,
     )) {
-      final assigned = item.doctorId?.trim();
-      if (assigned != null && assigned.isNotEmpty) {
-        return assigned;
-      }
-      final options = AppointmentQueueStartDoctor.optionsForStart(
+      return AppointmentQueueStartDoctor.autoResolveDoctorId(
         item: item,
         siblingAppointments: widget.siblingAppointments,
         shiftLookup: widget.shiftLookup,
       );
-      return options.where((option) => !option.isBusy).firstOrNull?.id;
     }
 
     final options = AppointmentQueueStartDoctor.optionsForStart(
@@ -212,58 +206,39 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
 
     await _runAction('advance', () async {
-      try {
-        var workingDetail = detail;
-
-        if (target == AppointmentStatus.inProgress) {
-          final selectedDoctorId = await _resolveDoctorForStart();
-          if (!mounted || selectedDoctorId == null) {
-            return;
-          }
-
-          final assignedDoctorId = workingDetail.doctorId?.trim();
-          if (assignedDoctorId == null || assignedDoctorId.isEmpty || assignedDoctorId != selectedDoctorId) {
-            await ref
-                .read(appointmentRepositoryProvider)
-                .updateAppointment(
-                  appointmentId: workingDetail.id,
-                  patientId: workingDetail.patientId,
-                  doctorId: selectedDoctorId,
-                  startTime: workingDetail.startTime,
-                  endTime: workingDetail.endTime,
-                );
-          }
-        }
-
-        await ref
-            .read(appointmentRepositoryProvider)
-            .updateAppointmentStatus(appointmentId: workingDetail.id, newStatus: target);
-
-        if (!mounted) {
+      String? selectedDoctorId;
+      if (target == AppointmentStatus.inProgress) {
+        selectedDoctorId = await _resolveDoctorForStart();
+        if (!mounted || selectedDoctorId == null) {
           return;
         }
-        widget.onChanged();
-        appToast(
-          context,
-          AppToastInput(
-            message: '${workingDetail.patientName} is now ${target.label.toLowerCase()}.',
-            variant: AppToastVariant.success,
-          ),
-        );
-      } on RpcFailure catch (error) {
-        if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
-        }
-      } catch (_) {
-        if (mounted) {
+      }
+
+      final result = await ref.read(appointmentStatusServiceProvider).advanceStatus(
+            detail: detail,
+            target: target,
+            selectedDoctorId: selectedDoctorId,
+          );
+
+      if (!mounted) {
+        return;
+      }
+
+      switch (result) {
+        case AppointmentStatusActionSuccess(:final status):
+          widget.onChanged();
           appToast(
             context,
-            const AppToastInput(
-              message: 'Could not update the appointment status. Please try again.',
-              variant: AppToastVariant.danger,
+            AppToastInput(
+              message: '${detail.patientName} is now ${status.label.toLowerCase()}.',
+              variant: AppToastVariant.success,
             ),
           );
-        }
+        case AppointmentStatusActionFailed(:final userMessage, :final doctorWasReassigned):
+          if (doctorWasReassigned) {
+            widget.onChanged();
+          }
+          appToast(context, AppToastInput(message: userMessage, variant: AppToastVariant.danger));
       }
     });
   }
@@ -308,36 +283,26 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
 
     await _runAction('revert', () async {
-      try {
-        await ref
-            .read(appointmentRepositoryProvider)
-            .updateAppointmentStatus(appointmentId: detail.id, newStatus: target);
+      final result = await ref
+          .read(appointmentStatusServiceProvider)
+          .revertStatus(appointmentId: detail.id, target: target);
 
-        if (!mounted) {
-          return;
-        }
-        widget.onChanged();
-        appToast(
-          context,
-          AppToastInput(
-            message: '${detail.patientName} is back to ${target.label.toLowerCase()}.',
-            variant: AppToastVariant.success,
-          ),
-        );
-      } on RpcFailure catch (error) {
-        if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
-        }
-      } catch (_) {
-        if (mounted) {
+      if (!mounted) {
+        return;
+      }
+
+      switch (result) {
+        case AppointmentStatusActionSuccess(:final status):
+          widget.onChanged();
           appToast(
             context,
-            const AppToastInput(
-              message: 'Could not revert the appointment status. Please try again.',
-              variant: AppToastVariant.danger,
+            AppToastInput(
+              message: '${detail.patientName} is back to ${status.label.toLowerCase()}.',
+              variant: AppToastVariant.success,
             ),
           );
-        }
+        case AppointmentStatusActionFailed(:final userMessage, doctorWasReassigned: _):
+          appToast(context, AppToastInput(message: userMessage, variant: AppToastVariant.danger));
       }
     });
   }
@@ -347,41 +312,14 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
 
-    final reason = await AppointmentCancelDialog.show(context, appointment: _listItem);
-    if (!mounted || reason == null) {
-      return;
-    }
-
-    await _runAction('cancel', () async {
-      try {
-        await ref.read(appointmentRepositoryProvider).cancelAppointment(appointmentId: detail.id, reason: reason);
-        if (!mounted) {
-          return;
-        }
-        widget.onChanged();
-        appToast(
-          context,
-          AppToastInput(
-            message: '${detail.patientName}\'s appointment was cancelled.',
-            variant: AppToastVariant.success,
-          ),
-        );
-      } on RpcFailure catch (error) {
-        if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
-        }
-      } catch (_) {
-        if (mounted) {
-          appToast(
-            context,
-            const AppToastInput(
-              message: 'Could not cancel the appointment. Please try again.',
-              variant: AppToastVariant.danger,
-            ),
-          );
-        }
+    setState(() => _busyActionKey = 'cancel');
+    try {
+      await runAppointmentCancelFlow(context, ref, _listItem, onSuccess: widget.onChanged);
+    } finally {
+      if (mounted) {
+        setState(() => _busyActionKey = null);
       }
-    });
+    }
   }
 
   Future<void> _handleMarkNoShow() async {
@@ -419,30 +357,21 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
 
     await _runAction('no_show', () async {
-      try {
-        await ref.read(appointmentRepositoryProvider).markAppointmentNoShow(appointmentId: detail.id);
-        if (!mounted) {
-          return;
-        }
-        widget.onChanged();
-        appToast(
-          context,
-          AppToastInput(message: '${detail.patientName} was marked as a no-show.', variant: AppToastVariant.success),
-        );
-      } on RpcFailure catch (error) {
-        if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
-        }
-      } catch (_) {
-        if (mounted) {
+      final result = await ref.read(appointmentStatusServiceProvider).markNoShow(appointmentId: detail.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      switch (result) {
+        case AppointmentStatusActionSuccess():
+          widget.onChanged();
           appToast(
             context,
-            const AppToastInput(
-              message: 'Could not mark the appointment as a no-show. Please try again.',
-              variant: AppToastVariant.danger,
-            ),
+            AppToastInput(message: '${detail.patientName} was marked as a no-show.', variant: AppToastVariant.success),
           );
-        }
+        case AppointmentStatusActionFailed(:final userMessage, doctorWasReassigned: _):
+          appToast(context, AppToastInput(message: userMessage, variant: AppToastVariant.danger));
       }
     });
   }
@@ -450,7 +379,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final currentStatusColor = AppointmentCalendarDisplay.statusColor(detail.status, brightness);
+    final currentStatusColor = AppointmentCalendarStatusTheme.statusColor(detail.status, brightness);
 
     final specs = <_StatusActionSpec>[
       if (_revertTarget != null)
@@ -462,7 +391,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           isLoading: _busyActionKey == 'revert',
           onPressed: _handleRevertStatus,
           backgroundGradient: LinearGradient(
-            colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_revertTarget!, brightness)],
+            colors: [currentStatusColor, AppointmentCalendarStatusTheme.statusColor(_revertTarget!, brightness)],
           ),
         ),
       _StatusActionSpec(
@@ -475,7 +404,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         backgroundGradient: _forwardTarget == null
             ? null
             : LinearGradient(
-                colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_forwardTarget!, brightness)],
+                colors: [currentStatusColor, AppointmentCalendarStatusTheme.statusColor(_forwardTarget!, brightness)],
               ),
       ),
       _StatusActionSpec(

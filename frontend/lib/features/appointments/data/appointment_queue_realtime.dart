@@ -1,3 +1,6 @@
+/// Unshipped: queue UI is not built (router.dart uses a placeholder for /appointments/queue).
+library;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

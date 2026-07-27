@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/clinic-management/data/clinic_management_rpc_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/clinic-management/domain/update_staff_member_input.dart';
 

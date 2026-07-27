@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_status_style.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 
 /// Shared status fill styling for calendar tiles and the color legend.
 abstract final class AppointmentCalendarStatusSwatch {

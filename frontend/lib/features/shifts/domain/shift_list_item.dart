@@ -13,6 +13,7 @@ class ShiftListItem {
     required this.status,
     required this.isUnassigned,
     required this.assigneeNames,
+    required this.assigneeIds,
     required this.assigneeCount,
     this.notesPreview,
   });
@@ -25,6 +26,7 @@ class ShiftListItem {
   final ShiftStatus status;
   final bool isUnassigned;
   final List<String> assigneeNames;
+  final List<String> assigneeIds;
   final int assigneeCount;
   final String? notesPreview;
 
@@ -66,6 +68,16 @@ class ShiftListItem {
     ].where((name) => name.isNotEmpty).toList(growable: false);
   }
 
+  static List<String> _parseIdList(dynamic raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final id in raw)
+        if (id != null) id.toString().trim(),
+    ].where((id) => id.isNotEmpty).toList(growable: false);
+  }
+
   static ShiftListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final branchId = row['branch_id']?.toString();
@@ -75,6 +87,7 @@ class ShiftListItem {
     final status = ShiftStatus.tryParse(row['status']?.toString()) ?? ShiftStatus.unknown;
     final isUnassigned = row['is_unassigned'] == true;
     final assigneeNames = _parseAssigneeNames(row['assignee_names']);
+    final assigneeIds = _parseIdList(row['assignee_ids']);
     final assigneeCount = int.tryParse(row['assignee_count']?.toString() ?? '') ?? assigneeNames.length;
     final notesPreviewRaw = row['notes_preview']?.toString().trim();
     final notesPreview = notesPreviewRaw == null || notesPreviewRaw.isEmpty ? null : notesPreviewRaw;
@@ -100,6 +113,7 @@ class ShiftListItem {
       status: status,
       isUnassigned: isUnassigned,
       assigneeNames: assigneeNames,
+      assigneeIds: assigneeIds,
       assigneeCount: assigneeCount,
       notesPreview: notesPreview,
     );

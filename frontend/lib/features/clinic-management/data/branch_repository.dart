@@ -6,7 +6,7 @@ import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/clinic-management/data/clinic_management_rpc_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/update_branch_input.dart';

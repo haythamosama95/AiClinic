@@ -5,7 +5,7 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
@@ -172,7 +172,7 @@ class _TerminalTimelineOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = AppointmentCalendarDisplay.statusColor(status, Theme.of(context).brightness);
+    final statusColor = AppointmentCalendarStatusTheme.statusColor(status, Theme.of(context).brightness);
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return Stack(
@@ -358,7 +358,7 @@ class _HorizontalTimelineConnector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(fromStatus, Theme.of(context).brightness);
+    final statusColor = AppointmentCalendarStatusTheme.statusColor(fromStatus, Theme.of(context).brightness);
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return AnimatedContainer(
@@ -384,7 +384,7 @@ class _HorizontalTimelineNode extends StatelessWidget {
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
 
-    final statusColor = AppointmentCalendarDisplay.statusColor(status, Theme.of(context).brightness);
+    final statusColor = AppointmentCalendarStatusTheme.statusColor(status, Theme.of(context).brightness);
     final nodeColor = isSkipped
         ? statusColor.withValues(alpha: 0.35)
         : isCurrent || isCompleted
@@ -496,7 +496,7 @@ class _TimelineStepRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(status, Theme.of(context).brightness);
+    final statusColor = AppointmentCalendarStatusTheme.statusColor(status, Theme.of(context).brightness);
     final isCurrent = stepState == AppointmentTimelineStepState.current;
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
@@ -588,7 +588,7 @@ class _StatusStepCard extends StatelessWidget {
     final useAnimatedBorder = isCurrent && !isTerminalContext;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
     final brightness = Theme.of(context).brightness;
-    final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+    final style = AppointmentCalendarStatusTheme.statusStyle(status, brightness);
 
     final card = AnimatedContainer(
       duration: motionDuration,
@@ -774,7 +774,7 @@ BoxDecoration _statusStepCardDecoration({
 }) {
   final brightness = Theme.of(context).brightness;
   final colors = context.appColors;
-  final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+  final style = AppointmentCalendarStatusTheme.statusStyle(status, brightness);
   final isCurrent = stepState == AppointmentTimelineStepState.current;
   final isDark = brightness == Brightness.dark;
 

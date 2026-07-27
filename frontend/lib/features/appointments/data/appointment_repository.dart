@@ -31,7 +31,7 @@ class AppointmentRepository with AppRpcInvoker {
     final id = branchId.trim();
     if (id.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Branch id is required.'),
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'branch_id_required'),
       );
     }
 
@@ -82,7 +82,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Notes must be 2000 characters or fewer.',
+          errorMessage: 'notes_too_long',
         ),
       );
     }
@@ -92,7 +92,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Start time is required for appointments.',
+          errorMessage: 'start_time_required',
         ),
       );
     }
@@ -143,7 +143,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'End of range must be after the start.',
+          errorMessage: 'range_end_before_start',
         ),
       );
     }
@@ -161,7 +161,7 @@ class AppointmentRepository with AppRpcInvoker {
     final result = await invokeRpc('list_appointments', params);
     final rawItems = result.data?['items'];
     if (rawItems is! List) {
-      return const [];
+      throw StateError('List appointments returned an unexpected shape.');
     }
 
     return [
@@ -220,7 +220,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Notes must be 2000 characters or fewer.',
+          errorMessage: 'notes_too_long',
         ),
       );
     }
@@ -294,7 +294,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Cancel reason must be 2000 characters or fewer.',
+          errorMessage: 'cancel_reason_too_long',
         ),
       );
     }
@@ -319,7 +319,7 @@ class AppointmentRepository with AppRpcInvoker {
 
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
-      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+      throw RpcFailure(const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'field_required'));
     }
   }
 
@@ -339,7 +339,7 @@ class AppointmentRepository with AppRpcInvoker {
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Duration must be at least 5 minutes.',
+          errorMessage: 'duration_below_minimum',
         ),
       );
     }

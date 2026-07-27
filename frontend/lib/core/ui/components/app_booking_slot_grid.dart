@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
+import 'package:ai_clinic/core/ui/models/booking_slot.dart';
 
 /// Time slot grid with legend for appointment booking step 2.
 class AppBookingSlotGrid extends StatelessWidget {
@@ -20,10 +20,10 @@ class AppBookingSlotGrid extends StatelessWidget {
     super.key,
   });
 
-  final List<AppointmentBookingTimeSlot> slots;
+  final List<BookingTimeSlot> slots;
   final DateTime? selectedStart;
   final bool hasPreferredDoctor;
-  final ValueChanged<AppointmentBookingTimeSlot> onSlotSelected;
+  final ValueChanged<BookingTimeSlot> onSlotSelected;
   final String? errorText;
 
   @override
@@ -52,7 +52,7 @@ class AppBookingSlotGrid extends StatelessWidget {
                         slot: slot,
                         selected: selectedStart != null && slot.start == selectedStart,
                         hasPreferredDoctor: hasPreferredDoctor,
-                        onPressed: slot.status == AppointmentBookingSlotStatus.locked
+                        onPressed: slot.status == BookingSlotStatus.locked
                             ? null
                             : () => onSlotSelected(slot),
                       ),
@@ -81,7 +81,7 @@ class _SlotButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final AppointmentBookingTimeSlot slot;
+  final BookingTimeSlot slot;
   final bool selected;
   final bool hasPreferredDoctor;
   final VoidCallback? onPressed;
@@ -89,7 +89,7 @@ class _SlotButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final locked = slot.status == AppointmentBookingSlotStatus.locked;
+    final locked = slot.status == BookingSlotStatus.locked;
     final palette = _slotPalette(slot.status, colors, Theme.of(context).brightness);
 
     return AppPressable(
@@ -142,7 +142,7 @@ class _SlotButton extends StatelessWidget {
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-            if (!locked && hasPreferredDoctor && slot.status == AppointmentBookingSlotStatus.alternate) ...[
+            if (!locked && hasPreferredDoctor && slot.status == BookingSlotStatus.alternate) ...[
               const SizedBox(height: 2),
               Text(
                 'Other doctor',
@@ -151,7 +151,7 @@ class _SlotButton extends StatelessWidget {
                 ).copyWith(color: palette.foreground.withValues(alpha: 0.75), fontSize: 10, height: 1.1),
               ),
             ],
-            if (!locked && hasPreferredDoctor && slot.status == AppointmentBookingSlotStatus.preferred) ...[
+            if (!locked && hasPreferredDoctor && slot.status == BookingSlotStatus.preferred) ...[
               const SizedBox(height: 2),
               Text(
                 'Preferred',
@@ -175,28 +175,28 @@ class _SlotPalette {
   final Color foreground;
 }
 
-_SlotPalette _slotPalette(AppointmentBookingSlotStatus status, AppSemanticColors colors, Brightness brightness) {
+_SlotPalette _slotPalette(BookingSlotStatus status, AppSemanticColors colors, Brightness brightness) {
   return switch (status) {
-    AppointmentBookingSlotStatus.locked => _SlotPalette(
+    BookingSlotStatus.locked => _SlotPalette(
       background: colors.surfaceMuted,
       border: colors.borderSubtle,
       foreground: colors.textTertiary,
     ),
-    AppointmentBookingSlotStatus.available => _SlotPalette(
+    BookingSlotStatus.available => _SlotPalette(
       background: brightness == Brightness.dark
           ? AppColorPrimitives.teal800.withValues(alpha: 0.35)
           : AppColorPrimitives.teal50,
       border: brightness == Brightness.dark ? AppColorPrimitives.teal600 : AppColorPrimitives.teal300,
       foreground: brightness == Brightness.dark ? AppColorPrimitives.teal300 : AppColorPrimitives.teal800,
     ),
-    AppointmentBookingSlotStatus.preferred => _SlotPalette(
+    BookingSlotStatus.preferred => _SlotPalette(
       background: brightness == Brightness.dark
           ? AppColorPrimitives.teal700.withValues(alpha: 0.45)
           : AppColorPrimitives.teal50,
       border: AppColorPrimitives.teal400,
       foreground: brightness == Brightness.dark ? AppColorPrimitives.teal300 : AppColorPrimitives.teal800,
     ),
-    AppointmentBookingSlotStatus.alternate => _SlotPalette(
+    BookingSlotStatus.alternate => _SlotPalette(
       background: brightness == Brightness.dark
           ? AppColorPrimitives.violet700.withValues(alpha: 0.35)
           : AppColorPrimitives.violet50,

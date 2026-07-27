@@ -1,4 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 
 /// User-facing copy for appointment RPC failures (V1-4).
 String appointmentMessageForRpc(RpcFailure failure) {
@@ -21,13 +22,31 @@ String appointmentMessageForRpc(RpcFailure failure) {
     'RPC_NOT_APPLIED' =>
       'Appointment scheduling is not installed on this database. Ask your administrator to run Supabase migrations.',
     'FORBIDDEN' => 'You do not have permission to perform this action.',
+    'PERMISSION_DENIED' => 'You do not have permission to view this appointment.',
     'NOT_FOUND' => switch (failure.message.toLowerCase()) {
       final message when message.contains('patient') => 'Patient was not found.',
       final message when message.contains('appointment') => 'Appointment was not found.',
       _ => 'The requested record was not found.',
     },
     'INVALID_BRANCH' => 'The selected branch is not valid for this session.',
-    'INVALID_INPUT' => failure.message,
+    'INVALID_INPUT' => switch (failure.message) {
+      'branch_id_required' => 'Branch id is required.',
+      'notes_too_long' => 'Notes must be 2000 characters or fewer.',
+      'start_time_required' => 'Start time is required for appointments.',
+      'cancel_reason_too_long' => 'Cancel reason must be 2000 characters or fewer.',
+      'field_required' => 'A required field is missing.',
+      'duration_below_minimum' => 'Duration must be at least 5 minutes.',
+      'range_end_before_start' => 'End of range must be after the start.',
+      _ => failure.message,
+    },
     _ => failure.message,
   };
+}
+
+/// Single entry point for appointment error text shown in the UI.
+String appointmentMessageForError(Object error) {
+  if (error is RpcFailure) {
+    return appointmentMessageForRpc(error);
+  }
+  return UserErrorMapper.mapToUserMessage(error);
 }

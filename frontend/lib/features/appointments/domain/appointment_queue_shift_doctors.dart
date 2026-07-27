@@ -1,8 +1,9 @@
+import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter/foundation.dart';
@@ -46,20 +47,17 @@ class AppointmentQueueShiftDoctorLookup {
   const AppointmentQueueShiftDoctorLookup({
     required this.organizationTimezone,
     required this.shifts,
-    required this.doctorNamesByNormalizedName,
-    required this.doctorIdsByNormalizedName,
+    required this.doctorsById,
   });
 
   final String organizationTimezone;
   final List<ShiftListItem> shifts;
-  final Map<String, String> doctorNamesByNormalizedName;
-  final Map<String, String> doctorIdsByNormalizedName;
+  final Map<String, QueueShiftDoctor> doctorsById;
 
   static const empty = AppointmentQueueShiftDoctorLookup(
     organizationTimezone: 'UTC',
     shifts: [],
-    doctorNamesByNormalizedName: {},
-    doctorIdsByNormalizedName: {},
+    doctorsById: {},
   );
 
   factory AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors({
@@ -67,9 +65,7 @@ class AppointmentQueueShiftDoctorLookup {
     required List<ShiftListItem> shifts,
     required List<StaffListItem> doctors,
   }) {
-    final namesByKey = <String, String>{};
-    final idsByKey = <String, String>{};
-    final ambiguousKeys = <String>{};
+    final doctorsById = <String, QueueShiftDoctor>{};
     for (final doctor in doctors) {
       if (doctor.role != StaffRole.doctor) {
         continue;
@@ -78,18 +74,7 @@ class AppointmentQueueShiftDoctorLookup {
       if (name.isEmpty) {
         continue;
       }
-      final key = name.toLowerCase();
-      if (idsByKey.containsKey(key) && idsByKey[key] != doctor.id) {
-        ambiguousKeys.add(key);
-        continue;
-      }
-      namesByKey[key] = name;
-      idsByKey[key] = doctor.id;
-    }
-
-    for (final key in ambiguousKeys) {
-      namesByKey.remove(key);
-      idsByKey.remove(key);
+      doctorsById[doctor.id] = QueueShiftDoctor(id: doctor.id, name: name);
     }
 
     final staffedShifts = shifts.where(_isStaffedShift).toList(growable: false);
@@ -97,13 +82,12 @@ class AppointmentQueueShiftDoctorLookup {
     return AppointmentQueueShiftDoctorLookup(
       organizationTimezone: organizationTimezone,
       shifts: staffedShifts,
-      doctorNamesByNormalizedName: namesByKey,
-      doctorIdsByNormalizedName: idsByKey,
+      doctorsById: doctorsById,
     );
   }
 
   static bool _isStaffedShift(ShiftListItem shift) {
-    return shift.status != ShiftStatus.cancelled && !shift.isUnassigned && shift.assigneeNames.isNotEmpty;
+    return shift.status != ShiftStatus.cancelled && !shift.isUnassigned && shift.assigneeIds.isNotEmpty;
   }
 
   /// Doctors on shifts covering [referenceUtc] in organization local time.
@@ -111,64 +95,56 @@ class AppointmentQueueShiftDoctorLookup {
   /// Falls back to all staffed shifts on the same calendar day when none cover
   /// [referenceUtc], so the queue sidebar still lists today's shift doctors.
   List<QueueShiftDoctor> doctorsOnCurrentShiftAt(DateTime referenceUtc) {
-    final covering = _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: true);
-    final names = covering.isEmpty ? _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: false) : covering;
-    return _queueShiftDoctorsForNames(names);
+    final covering = _doctorsOnShiftAt(referenceUtc, requireCoveringInstant: true);
+    if (covering.isNotEmpty) {
+      return covering;
+    }
+    return _doctorsOnShiftAt(referenceUtc, requireCoveringInstant: false);
   }
 
   /// Doctors on an active shift covering [appointmentStartUtc] in org local time.
   List<QueueShiftDoctor> doctorsOnShiftAt(DateTime appointmentStartUtc) {
-    return _queueShiftDoctorsForNames(_doctorNamesOnShiftAt(appointmentStartUtc));
+    return _doctorsOnShiftAt(appointmentStartUtc);
   }
 
   /// Doctor names on an active shift covering [appointmentStartUtc] in org local time.
   List<String> doctorNamesOnShiftAt(DateTime appointmentStartUtc) {
-    return _doctorNamesOnShiftAt(appointmentStartUtc);
+    return _doctorsOnShiftAt(appointmentStartUtc).map((doctor) => doctor.name).toList(growable: false);
   }
 
-  List<QueueShiftDoctor> _queueShiftDoctorsForNames(List<String> names) {
-    final doctors = <QueueShiftDoctor>[];
-    for (final name in names) {
-      final id = _resolveDoctorId(name);
-      if (id == null) {
-        continue;
-      }
-      doctors.add(QueueShiftDoctor(id: id, name: name));
-    }
-    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return doctors;
-  }
-
-  List<String> _doctorNamesOnShiftAt(DateTime appointmentStartUtc, {bool requireCoveringInstant = true}) {
+  List<QueueShiftDoctor> _doctorsOnShiftAt(DateTime appointmentStartUtc, {bool requireCoveringInstant = true}) {
     ensureAppointmentTimezonesInitialized();
     final location = tz.getLocation(organizationTimezone);
     final localStart = tz.TZDateTime.from(appointmentStartUtc.toUtc(), location);
     final appointmentDay = DateTime(localStart.year, localStart.month, localStart.day);
     final appointmentMinutes = localStart.hour * 60 + localStart.minute;
 
-    final names = <String>{};
+    final doctors = <QueueShiftDoctor>[];
+    final seenIds = <String>{};
     for (final shift in shifts) {
       if (!_isSameCalendarDay(shift.shiftDate, appointmentDay)) {
         continue;
       }
-      final shiftStart = _parseClockMinutes(shift.startTime);
-      final shiftEnd = _parseClockMinutes(shift.endTime);
+      final shiftStart = AppointmentBranchWorkingHours.parseHm(shift.startTime);
+      final shiftEnd = AppointmentBranchWorkingHours.normalizeCloseMinutes(
+        AppointmentBranchWorkingHours.parseHm(shift.endTime),
+      );
       if (shiftStart == null || shiftEnd == null) {
         continue;
       }
       if (requireCoveringInstant && (appointmentMinutes < shiftStart || appointmentMinutes >= shiftEnd)) {
         continue;
       }
-      for (final assignee in shift.assigneeNames) {
-        final doctorName = _resolveDoctorName(assignee);
-        if (doctorName != null) {
-          names.add(doctorName);
+      for (final assigneeId in shift.assigneeIds) {
+        final doctor = doctorsById[assigneeId];
+        if (doctor != null && seenIds.add(doctor.id)) {
+          doctors.add(doctor);
         }
       }
     }
 
-    final sorted = names.toList(growable: false)..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return sorted;
+    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return doctors;
   }
 
   QueueAppointmentDoctorPresentation presentationFor(AppointmentListItem item) {
@@ -195,28 +171,7 @@ class AppointmentQueueShiftDoctorLookup {
 
   String summaryLabelFor(AppointmentListItem item) => presentationFor(item).displayNames;
 
-  String? _resolveDoctorName(String assigneeName) {
-    return doctorNamesByNormalizedName[assigneeName.trim().toLowerCase()];
-  }
-
-  String? _resolveDoctorId(String doctorName) {
-    return doctorIdsByNormalizedName[doctorName.trim().toLowerCase()];
-  }
-
   static bool _isSameCalendarDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  static int? _parseClockMinutes(String raw) {
-    final parts = raw.trim().split(':');
-    if (parts.length < 2) {
-      return null;
-    }
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      return null;
-    }
-    return hour * 60 + minute;
   }
 }

@@ -168,6 +168,26 @@ abstract final class AppointmentQueueStartDoctor {
     return null;
   }
 
+  /// Resolves the doctor id to use when starting without showing the picker.
+  ///
+  /// Returns the assigned doctor when present, otherwise the first free on-shift doctor.
+  static String? autoResolveDoctorId({
+    required AppointmentListItem item,
+    required Iterable<AppointmentListItem> siblingAppointments,
+    required AppointmentQueueShiftDoctorLookup shiftLookup,
+  }) {
+    final assigned = item.doctorId?.trim();
+    if (assigned != null && assigned.isNotEmpty) {
+      return assigned;
+    }
+    final options = optionsForStart(
+      item: item,
+      siblingAppointments: siblingAppointments,
+      shiftLookup: shiftLookup,
+    );
+    return options.where((option) => !option.isBusy).firstOrNull?.id;
+  }
+
   /// Whether the user must confirm a doctor in the picker before starting.
   static bool requiresDoctorPicker({
     required AppointmentListItem item,

@@ -1,11 +1,10 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/presentation/formatting/appointment_range_format.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
 
 /// Confirmed move times returned from [AppointmentRescheduleConfirmDialog].
 class AppointmentRescheduleConfirmResult {
@@ -150,7 +149,7 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
         const SizedBox(height: AppSpacing.space3),
         Text('From', style: AppTypography.caption(context).copyWith(color: colors.textSecondary)),
         Text(
-          _formatRange(widget.appointment.startTime, widget.appointment.endTime),
+          formatAppointmentRange(widget.appointment.startTime, widget.appointment.endTime),
           style: AppTypography.bodySm(context),
         ),
         const SizedBox(height: AppSpacing.space4),
@@ -245,12 +244,4 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
     );
   }
 
-  static String _formatRange(DateTime start, DateTime end) {
-    final localStart = start.toLocal();
-    final localEnd = end.toLocal();
-    final day = DateFormat.yMMMd().format(localStart);
-    final from = DateFormat.Hm().format(localStart);
-    final to = DateFormat.Hm().format(localEnd);
-    return '$day · $from – $to';
-  }
 }

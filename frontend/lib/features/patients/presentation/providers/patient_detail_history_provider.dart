@@ -1,10 +1,8 @@
-import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/application/patient_appointments_query.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_visit_document.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
@@ -63,24 +61,12 @@ final patientPastVisitsProvider = FutureProvider.autoDispose.family<List<VisitLi
 
 /// Upcoming appointments for a patient (`list_appointments` with `p_patient_id`).
 final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
-    .family<List<AppointmentListItem>, PatientDetailHistoryQuery>((ref, query) async {
-      final now = clock.now().toUtc();
-      final items = await ref
-          .read(appointmentRepositoryProvider)
-          .listAppointments(
-            branchId: query.branchId,
-            from: now,
-            to: now.add(const Duration(days: 365)),
-            patientId: query.patientId,
-            statuses: const [
-              AppointmentStatus.scheduled,
-              AppointmentStatus.confirmed,
-              AppointmentStatus.checkedIn,
-              AppointmentStatus.inProgress,
-            ],
-          );
-
-      return [...items]..sort((a, b) => a.startTime.compareTo(b.startTime));
+    .family<List<AppointmentListItem>, PatientDetailHistoryQuery>((ref, query) {
+      return ref.watch(
+        patientUpcomingAppointmentsForPatientProvider(
+          PatientUpcomingAppointmentsQuery(patientId: query.patientId, branchId: query.branchId),
+        ).future,
+      );
     });
 
 /// Visit attachments for a patient (`list_patient_visit_attachments`).

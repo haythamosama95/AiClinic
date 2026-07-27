@@ -5,43 +5,46 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_shift_doctor_resolution.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 
 @immutable
-class AppointmentDetailShiftQuery {
-  const AppointmentDetailShiftQuery({required this.branchId, required this.appointmentStart});
+class AppointmentShiftLookupQuery {
+  const AppointmentShiftLookupQuery({required this.branchId, this.day});
 
   final String branchId;
-  final DateTime appointmentStart;
+  final DateTime? day;
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-        other is AppointmentDetailShiftQuery &&
+        other is AppointmentShiftLookupQuery &&
             runtimeType == other.runtimeType &&
             branchId == other.branchId &&
-            appointmentStart == other.appointmentStart;
+            day == other.day;
   }
 
   @override
-  int get hashCode => Object.hash(branchId, appointmentStart);
+  int get hashCode => Object.hash(branchId, day);
 }
 
-/// Shift doctor lookup for a specific appointment branch and day.
-final appointmentDetailShiftLookupProvider = FutureProvider.autoDispose
-    .family<AppointmentQueueShiftDoctorLookup, AppointmentDetailShiftQuery>((ref, query) async {
+/// Shift doctor lookup for a branch and day (`day == null` means today in org timezone).
+final appointmentShiftLookupProvider = FutureProvider.autoDispose
+    .family<AppointmentQueueShiftDoctorLookup, AppointmentShiftLookupQuery>((ref, query) async {
       final branchId = query.branchId.trim();
       if (branchId.isEmpty) {
         return AppointmentQueueShiftDoctorLookup.empty;
       }
 
-      final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+      final timezone = effectiveOrganizationTimezone(
+        ref.watch(authSessionProvider.select((session) => session.context?.organizationTimezone)),
+      );
       ensureAppointmentTimezonesInitialized();
       final location = tz.getLocation(timezone);
-      final localStart = tz.TZDateTime.from(query.appointmentStart.toUtc(), location);
+      final source = query.day ?? DateTime.now().toUtc();
+      final localStart = tz.TZDateTime.from(source.toUtc(), location);
       final appointmentDay = DateTime(localStart.year, localStart.month, localStart.day);
 
       final shiftRepository = ref.read(shiftRepositoryProvider);
@@ -53,7 +56,7 @@ final appointmentDetailShiftLookupProvider = FutureProvider.autoDispose
       final branchStaff = await shiftRepository.listActiveStaffForBranch(branchId);
       final fallbackStaff = await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.active);
 
-      final doctors = resolveQueueShiftDoctors(branchStaff: branchStaff, shifts: shifts, fallbackStaff: fallbackStaff);
+      final doctors = resolveShiftDoctors(branchStaff: branchStaff, shifts: shifts, fallbackStaff: fallbackStaff);
 
       return AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: timezone,

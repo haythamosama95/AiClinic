@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_status_filter.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_status_swatch.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 
 /// Applied branch, doctor, and status filters for the appointment calendar.
 typedef AppointmentCalendarFilters = ({String? branchId, String? doctorId, Set<AppointmentStatus> statuses});
@@ -202,20 +203,20 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
 
   void _toggleStatus(AppointmentStatus status) {
     setState(() {
-      _draftStatuses = AppointmentCalendarDisplay.toggleStatusChip(status, _draftStatuses);
+      _draftStatuses = AppointmentCalendarStatusFilter.toggleStatusChip(status, _draftStatuses);
     });
   }
 
-  bool _isDefaultStatusFilter() => AppointmentCalendarDisplay.isDefaultStatusFilter(_draftStatuses);
+  bool _isDefaultStatusFilter() => AppointmentCalendarStatusFilter.isDefaultStatusFilter(_draftStatuses);
 
   String _statusSummary() {
     if (_isDefaultStatusFilter()) {
       return 'Hiding cancelled and no-show';
     }
 
-    final hiddenShown = _draftStatuses.where(AppointmentCalendarDisplay.isHiddenOnCalendar).toSet();
+    final hiddenShown = _draftStatuses.where(AppointmentCalendarStatusFilter.isHiddenOnCalendar).toSet();
     final workflowFiltered = _draftStatuses
-        .where((status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status))
+        .where((status) => !AppointmentCalendarStatusFilter.isHiddenOnCalendar(status))
         .toSet();
 
     final parts = <String>[];
@@ -241,9 +242,9 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
       return 'Cancelled and no-show stay off the calendar unless you include them below.';
     }
 
-    final hiddenShown = _draftStatuses.where(AppointmentCalendarDisplay.isHiddenOnCalendar).toSet();
+    final hiddenShown = _draftStatuses.where(AppointmentCalendarStatusFilter.isHiddenOnCalendar).toSet();
     final workflowFiltered = _draftStatuses
-        .where((status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status))
+        .where((status) => !AppointmentCalendarStatusFilter.isHiddenOnCalendar(status))
         .toSet();
 
     if (workflowFiltered.isNotEmpty) {
@@ -360,10 +361,10 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                       spacing: AppSpacing.space2,
                       runSpacing: AppSpacing.space2,
                       children: [
-                        for (final status in AppointmentCalendarDisplay.calendarStatusLegend)
+                        for (final status in AppointmentCalendarStatusFilter.calendarStatusLegend)
                           _StatusFilterChip(
                             status: status,
-                            selected: AppointmentCalendarDisplay.isStatusChipSelected(status, _draftStatuses),
+                            selected: AppointmentCalendarStatusFilter.isStatusChipSelected(status, _draftStatuses),
                             onToggle: () => _toggleStatus(status),
                           ),
                       ],
@@ -515,7 +516,7 @@ class _StatusFilterChipState extends State<_StatusFilterChip> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final brightness = Theme.of(context).brightness;
-    final style = AppointmentCalendarDisplay.statusStyle(widget.status, brightness);
+    final style = AppointmentCalendarStatusTheme.statusStyle(widget.status, brightness);
     final background = widget.selected
         ? Color.alphaBlend(style.gradientStart.withValues(alpha: 0.55), colors.surfaceDefault)
         : (_hovered ? colors.surfaceHover : colors.surfaceDefault);

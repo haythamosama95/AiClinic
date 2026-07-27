@@ -4,17 +4,21 @@ import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_step_panel.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_booking_service.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/core/ui/models/booking_slot.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_edit_policy.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
@@ -22,10 +26,10 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_confirmed_step.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step1.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step2.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_booking_patient.dart';
 
 /// Booking form opened from the calendar or the page header action.
 class AppointmentBookingSheet extends ConsumerStatefulWidget {
@@ -99,7 +103,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
   late DateTime _startTime;
   late DateTime _endTime;
   late String _selectedBranchId;
-  PatientListItem? _selectedPatient;
+  AppointmentBookingPatient? _selectedPatient;
   String? _selectedDoctorId;
 
   int _step = 0;
@@ -107,6 +111,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
   DateTime? _selectedSlotStart;
   List<AppointmentListItem> _branchAppointments = const [];
   bool _loadingBranchAppointments = false;
+  String? _branchAppointmentsError;
   int _branchAppointmentsRequestId = 0;
   DateTime? _loadedAppointmentsDay;
 
@@ -129,13 +134,17 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
   void _notifyPhaseChanged() => widget.onPhaseChanged?.call();
 
-  bool get _canEditSchedule => !_isEditMode || widget.existingAppointment!.status == AppointmentStatus.scheduled;
+  bool get _canEditSchedule =>
+      !_isEditMode || AppointmentEditPolicy.canEditSchedule(widget.existingAppointment!.status);
 
   bool get _canEditPatient => (!_isEditMode || _canEditSchedule) && !_isSaving;
 
   bool get _canEditDoctorAndNotes => !_isSaving;
 
-  bool get _skipsTimeStep => _isEditMode && !_canEditSchedule;
+  bool get _skipsTimeStep => AppointmentEditPolicy.skipsTimeStep(
+        isEditMode: _isEditMode,
+        status: widget.existingAppointment?.status ?? AppointmentStatus.scheduled,
+      );
 
   @override
   void initState() {
@@ -149,12 +158,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
     final existing = widget.existingAppointment;
     if (existing != null) {
-      _selectedPatient = PatientListItem(
-        id: existing.patientId,
-        fullName: existing.patientName,
-        registeringBranchId: existing.branchId,
-        registeringBranchName: widget.branchName?.trim().isNotEmpty == true ? widget.branchName!.trim() : 'Branch',
-      );
+      _selectedPatient = AppointmentBookingPatient.fromAppointmentDetail(existing, branchLabel: widget.branchName);
       if (existing.notes?.trim().isNotEmpty == true) {
         _notesController.text = existing.notes!.trim();
       }
@@ -212,7 +216,10 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     final range = AppointmentBookingSlots.dayFetchRange(normalizedDay);
 
     if (mounted && showLoadingSpinner) {
-      setState(() => _loadingBranchAppointments = true);
+      setState(() {
+        _loadingBranchAppointments = true;
+        _branchAppointmentsError = null;
+      });
     }
 
     try {
@@ -226,15 +233,17 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
         _branchAppointments = items;
         _loadedAppointmentsDay = normalizedDay;
         _loadingBranchAppointments = false;
+        _branchAppointmentsError = null;
       });
-    } catch (_) {
+    } catch (error, stack) {
+      AppLog.warning('appointments.booking_sheet.branch_appointments_failed reason=${error.runtimeType}');
+      AppLog.fine('appointments.booking_sheet.branch_appointments_failed.stack $stack');
       if (!mounted || requestId != _branchAppointmentsRequestId) {
         return;
       }
       setState(() {
-        _branchAppointments = const [];
-        _loadedAppointmentsDay = null;
         _loadingBranchAppointments = false;
+        _branchAppointmentsError = appointmentMessageForError(error);
       });
     }
   }
@@ -285,7 +294,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
   DateTime get _today => DateTime(clock.now().year, clock.now().month, clock.now().day);
 
-  List<AppointmentBookingTimeSlot> get _slotsForSelectedDay {
+  List<BookingTimeSlot> get _slotsForSelectedDay {
     final date = _selectedDate;
     final settings = _settings;
     if (date == null || settings == null) {
@@ -338,7 +347,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
     if (_selectedSlotStart != null) {
       final slot = _slotsForSelectedDay.where((item) => item.start == _selectedSlotStart).firstOrNull;
-      if (slot == null || slot.status == AppointmentBookingSlotStatus.locked) {
+      if (slot == null || slot.status == BookingSlotStatus.locked) {
         _timeError = 'This slot is no longer available.';
         valid = false;
       }
@@ -378,7 +387,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     _notifyPhaseChanged();
   }
 
-  void _applySelectedSlot(AppointmentBookingTimeSlot slot) {
+  void _applySelectedSlot(BookingTimeSlot slot) {
     setState(() {
       _selectedSlotStart = slot.start;
       _startTime = slot.start;
@@ -492,68 +501,48 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
       _conflictMessage = null;
     });
 
-    try {
-      if (_isEditMode) {
-        await ref
-            .read(appointmentRepositoryProvider)
-            .updateAppointment(
-              appointmentId: widget.existingAppointment!.id,
-              patientId: _selectedPatient!.id,
-              doctorId: doctorId,
-              branchId: _selectedBranchId,
-              startTime: _startTime,
-              durationMinutes: _durationMinutes,
-              notes: notes,
-            );
-      } else {
-        await ref
-            .read(appointmentRepositoryProvider)
-            .createAppointment(
-              branchId: _selectedBranchId,
-              patientId: _selectedPatient!.id,
-              doctorId: doctorId,
-              type: AppointmentType.planned,
-              startTime: _startTime,
-              durationMinutes: _durationMinutes,
-              notes: notes,
-            );
-      }
-    } on RpcFailure catch (error) {
-      if (!mounted) {
-        return;
-      }
-      if (error.code == 'SCHEDULE_CONFLICT') {
-        setState(() {
-          _isSaving = false;
-          _conflictMessage = appointmentMessageForRpc(error);
-        });
-        return;
-      }
-      setState(() {
-        _isSaving = false;
-        _formError = appointmentMessageForRpc(error);
-      });
-      return;
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isSaving = false;
-        _formError = UserErrorMapper.mapToUserMessage(error);
-      });
-      return;
-    }
+    final bookingService = ref.read(appointmentBookingServiceProvider);
+    final result = _isEditMode
+        ? await bookingService.updateAppointment(
+            appointmentId: widget.existingAppointment!.id,
+            patientId: _selectedPatient!.id,
+            doctorId: doctorId,
+            branchId: _selectedBranchId,
+            startTime: _startTime,
+            durationMinutes: _durationMinutes,
+            notes: notes,
+          )
+        : await bookingService.createAppointment(
+            branchId: _selectedBranchId,
+            patientId: _selectedPatient!.id,
+            doctorId: doctorId,
+            type: AppointmentType.planned,
+            startTime: _startTime,
+            durationMinutes: _durationMinutes,
+            notes: notes,
+          );
 
     if (!mounted) {
       return;
     }
 
-    setState(() {
-      _isSaving = false;
-      _bookingConfirmed = true;
-    });
-    _notifyPhaseChanged();
+    switch (result) {
+      case AppointmentBookingSuccess():
+        setState(() {
+          _isSaving = false;
+          _bookingConfirmed = true;
+        });
+        _notifyPhaseChanged();
+      case AppointmentBookingFailure(:final userMessage, :final isScheduleConflict):
+        setState(() {
+          _isSaving = false;
+          if (isScheduleConflict) {
+            _conflictMessage = userMessage;
+          } else {
+            _formError = userMessage;
+          }
+        });
+    }
   }
 
   String? _trimOrNull(String value) {
@@ -623,6 +612,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
       slots: _slotsForSelectedDay,
       loadingSlots: _loadingBranchAppointments,
       slotMinutes: _slotMinutes,
+      branchAppointmentsError: _branchAppointmentsError,
       dateError: _dateError,
       timeError: _timeError,
       onDateSelected: _onBookingDateSelected,
@@ -706,7 +696,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       branchesLoading: false,
                       branchesError: false,
                       doctors: widget.doctors,
-                      selectedPatient: _selectedPatient,
+                      selectedPatient: _selectedPatient?.toPatientListItem(registeringBranchId: _selectedBranchId),
                       selectedDoctorId: _selectedDoctorId,
                       canEdit: canEditPatient,
                       canEditDoctor: canEditDoctor,
@@ -715,7 +705,9 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       patientError: _patientError,
                       branchError: _branchError,
                       onPatientChanged: (patient) => setState(() {
-                        _selectedPatient = patient;
+                        _selectedPatient = patient == null
+                            ? null
+                            : AppointmentBookingPatient.fromPatientListItem(patient);
                         _patientError = null;
                         _formError = null;
                       }),
@@ -743,7 +735,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       branchesLoading: true,
                       branchesError: false,
                       doctors: widget.doctors,
-                      selectedPatient: _selectedPatient,
+                      selectedPatient: _selectedPatient?.toPatientListItem(registeringBranchId: _selectedBranchId),
                       selectedDoctorId: _selectedDoctorId,
                       canEdit: canEditPatient,
                       canEditDoctor: canEditDoctor,
@@ -752,7 +744,9 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       patientError: _patientError,
                       branchError: _branchError,
                       onPatientChanged: (patient) => setState(() {
-                        _selectedPatient = patient;
+                        _selectedPatient = patient == null
+                            ? null
+                            : AppointmentBookingPatient.fromPatientListItem(patient);
                         _patientError = null;
                       }),
                       onBranchChanged: (_) {},
@@ -773,7 +767,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       branchesLoading: false,
                       branchesError: true,
                       doctors: widget.doctors,
-                      selectedPatient: _selectedPatient,
+                      selectedPatient: _selectedPatient?.toPatientListItem(registeringBranchId: _selectedBranchId),
                       selectedDoctorId: _selectedDoctorId,
                       canEdit: canEditPatient,
                       canEditDoctor: canEditDoctor,
@@ -781,7 +775,11 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                       fallbackBranchName: widget.branchName,
                       patientError: _patientError,
                       branchError: _branchError,
-                      onPatientChanged: (patient) => setState(() => _selectedPatient = patient),
+                      onPatientChanged: (patient) => setState(
+                        () => _selectedPatient = patient == null
+                            ? null
+                            : AppointmentBookingPatient.fromPatientListItem(patient),
+                      ),
                       onBranchChanged: (_) {},
                       onDoctorChanged: (doctorId) => setState(() => _selectedDoctorId = doctorId),
                     ),

@@ -6,11 +6,12 @@ import 'package:ai_clinic/core/ui/components/app_menu.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_status_swatch.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_chip.dart';
 
 /// Appointment card rendered inside Syncfusion [SfCalendar.appointmentBuilder].
 ///
@@ -57,8 +58,8 @@ class AppointmentCalendarTile extends StatelessWidget {
     final brightness = Theme.of(context).brightness;
     final status = item?.status ?? AppointmentStatus.unknown;
     final style = isDimmed
-        ? AppointmentCalendarDisplay.filteredOutStyle(brightness)
-        : AppointmentCalendarDisplay.statusStyle(status, brightness);
+        ? AppointmentCalendarStatusTheme.filteredOutStyle(brightness)
+        : AppointmentCalendarStatusTheme.statusStyle(status, brightness);
     final textColor = style.text;
     final mutedTextColor = style.textMuted;
     final isCompact = bounds.height < _compactHeightThreshold;
@@ -70,7 +71,7 @@ class AppointmentCalendarTile extends StatelessWidget {
         width: bounds.width,
         height: bounds.height,
         child: Opacity(
-          opacity: isDimmed ? AppointmentCalendarDisplay.filteredOutOpacity : 1,
+          opacity: isDimmed ? AppointmentCalendarStatusTheme.filteredOutOpacity : 1,
           child: DecoratedBox(
             decoration: AppointmentCalendarStatusSwatch.decoration(style),
             child: ClipRRect(
@@ -235,7 +236,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.space2),
-        _StatusChip(status: _status, textColor: textColor),
+        AppointmentStatusChip(status: _status, textColor: textColor),
       ],
     );
   }
@@ -260,7 +261,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
         ),
         if (_showStatusInMediumStrip) ...[
           const SizedBox(width: AppSpacing.space2),
-          _StatusChip(status: _status, textColor: textColor, compact: true),
+          AppointmentStatusChip(status: _status, textColor: textColor, compact: true),
         ],
       ],
     );
@@ -342,65 +343,6 @@ class _LabeledStripSection extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status, required this.textColor, this.compact = false});
-
-  final AppointmentStatus status;
-  final Color textColor;
-  final bool compact;
-
-  static IconData _iconFor(AppointmentStatus status) {
-    return switch (status) {
-      AppointmentStatus.scheduled => Icons.event_outlined,
-      AppointmentStatus.confirmed => Icons.event_available_outlined,
-      AppointmentStatus.checkedIn => Icons.how_to_reg_outlined,
-      AppointmentStatus.inProgress => Icons.play_circle_outline,
-      AppointmentStatus.completed => Icons.check_circle_outline,
-      AppointmentStatus.cancelled => Icons.cancel_outlined,
-      AppointmentStatus.noShow => Icons.person_off_outlined,
-      AppointmentStatus.unknown => Icons.help_outline,
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final iconSize = compact ? 11.0 : 13.0;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: textColor.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: textColor.withValues(alpha: 0.24)),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? AppSpacing.space2 : AppSpacing.space3,
-          vertical: compact ? AppSpacing.space1 : AppSpacing.space2,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_iconFor(status), size: iconSize, color: textColor.withValues(alpha: 0.92)),
-            const SizedBox(width: AppSpacing.space1),
-            Text(
-              status.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.caption(context).copyWith(
-                color: textColor,
-                fontWeight: FontWeight.w600,
-                height: 1.1,
-                fontSize: compact ? 10 : null,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

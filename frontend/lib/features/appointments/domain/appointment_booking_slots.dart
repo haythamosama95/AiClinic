@@ -1,31 +1,10 @@
-import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
-
+import 'package:ai_clinic/core/ui/models/booking_slot.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_slot_defaults.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
-
-/// Availability state for a bookable time slot (web `SlotStatus`).
-enum AppointmentBookingSlotStatus { locked, available, preferred, alternate }
-
-/// A single selectable booking slot on step 2.
-@immutable
-class AppointmentBookingTimeSlot {
-  const AppointmentBookingTimeSlot({
-    required this.start,
-    required this.label,
-    required this.status,
-    required this.availableDoctorIds,
-  });
-
-  final DateTime start;
-  final String label;
-  final AppointmentBookingSlotStatus status;
-  final List<String> availableDoctorIds;
-}
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 
 /// Pure rules for day options and per-day slot availability in the booking dialog.
 class AppointmentBookingSlots {
@@ -42,7 +21,7 @@ class AppointmentBookingSlots {
     return AppointmentBranchWorkingHours.isWorkingDay(schedule, date);
   }
 
-  static List<AppointmentBookingTimeSlot> slotsForDay({
+  static List<BookingTimeSlot> slotsForDay({
     required BranchWorkingSchedule schedule,
     required DateTime date,
     required int slotMinutes,
@@ -68,8 +47,7 @@ class AppointmentBookingSlots {
     }
 
     final doctors = branchDoctors.where((doctor) => doctor.isActive).toList(growable: false);
-    final slots = <AppointmentBookingTimeSlot>[];
-    final timeLabel = DateFormat.jm();
+    final slots = <BookingTimeSlot>[];
 
     for (var startMinutes = openMinutes; startMinutes + durationMinutes <= closeMinutes; startMinutes += slotMinutes) {
       final start = DateTime(day.year, day.month, day.day, startMinutes ~/ 60, startMinutes % 60);
@@ -84,9 +62,9 @@ class AppointmentBookingSlots {
 
       final status = _resolveStatus(availableDoctorIds, preferredDoctorId);
       slots.add(
-        AppointmentBookingTimeSlot(
+        BookingTimeSlot(
           start: start,
-          label: timeLabel.format(start),
+          label: '',
           status: status,
           availableDoctorIds: availableDoctorIds,
         ),
@@ -96,8 +74,8 @@ class AppointmentBookingSlots {
     return slots;
   }
 
-  static String? resolveAssignedDoctorId({required AppointmentBookingTimeSlot slot, String? preferredDoctorId}) {
-    if (slot.status == AppointmentBookingSlotStatus.locked || slot.availableDoctorIds.isEmpty) {
+  static String? resolveAssignedDoctorId({required BookingTimeSlot slot, String? preferredDoctorId}) {
+    if (slot.status == BookingSlotStatus.locked || slot.availableDoctorIds.isEmpty) {
       return null;
     }
     final preferred = preferredDoctorId?.trim();
@@ -107,22 +85,22 @@ class AppointmentBookingSlots {
     return slot.availableDoctorIds.first;
   }
 
-  static int openSlotCount(List<AppointmentBookingTimeSlot> slots) {
-    return slots.where((slot) => slot.status != AppointmentBookingSlotStatus.locked).length;
+  static int openSlotCount(List<BookingTimeSlot> slots) {
+    return slots.where((slot) => slot.status != BookingSlotStatus.locked).length;
   }
 
-  static AppointmentBookingSlotStatus _resolveStatus(List<String> availableDoctorIds, String? preferredDoctorId) {
+  static BookingSlotStatus _resolveStatus(List<String> availableDoctorIds, String? preferredDoctorId) {
     if (availableDoctorIds.isEmpty) {
-      return AppointmentBookingSlotStatus.locked;
+      return BookingSlotStatus.locked;
     }
     final preferred = preferredDoctorId?.trim();
     if (preferred == null || preferred.isEmpty) {
-      return AppointmentBookingSlotStatus.available;
+      return BookingSlotStatus.available;
     }
     if (availableDoctorIds.contains(preferred)) {
-      return AppointmentBookingSlotStatus.preferred;
+      return BookingSlotStatus.preferred;
     }
-    return AppointmentBookingSlotStatus.alternate;
+    return BookingSlotStatus.alternate;
   }
 
   static bool _isDoctorFree({
@@ -172,9 +150,9 @@ class AppointmentBookingSlots {
   }
 
   static int defaultSlotMinutes(int? settingsDefault) {
-    final candidate = settingsDefault ?? AppointmentCalendarDisplay.defaultTimeIntervalMinutes;
-    return AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(candidate)
+    final candidate = settingsDefault ?? defaultTimeIntervalMinutes;
+    return supportedTimeIntervalMinutes.contains(candidate)
         ? candidate
-        : AppointmentCalendarDisplay.defaultTimeIntervalMinutes;
+        : defaultTimeIntervalMinutes;
   }
 }

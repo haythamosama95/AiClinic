@@ -1,4 +1,6 @@
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/core/domain/clinic/branch_working_schedule.dart';
+
+import 'appointment_branch_working_hours.dart';
 
 /// Client-side branch working-hours checks aligned with appointment calendar display.
 class AppointmentWorkingHours {
@@ -21,14 +23,17 @@ class AppointmentWorkingHours {
       return false;
     }
 
-    final openMinutes = _parseHm(dayHours.openTime);
-    final closeMinutes = _parseHm(dayHours.closeTime);
+    final openMinutes = AppointmentBranchWorkingHours.parseHm(dayHours.openTime);
+    final closeMinutes = AppointmentBranchWorkingHours.normalizeCloseMinutes(
+      AppointmentBranchWorkingHours.parseHm(dayHours.closeTime),
+    );
     if (openMinutes == null || closeMinutes == null) {
       return false;
     }
 
     // Treat 23:59 close as end-of-day so slots ending at midnight are not rejected.
-    final effectiveCloseMinutes = closeMinutes >= (23 * 60 + 59) ? 24 * 60 : closeMinutes;
+    final effectiveCloseMinutes =
+        closeMinutes >= (23 * 60 + 59) ? AppointmentBranchWorkingHours.endOfDayMinutes : closeMinutes;
     final midnightSentinelEnd = _isMidnightSentinelEnd(localStart, localEnd, closeMinutes);
     if (!midnightSentinelEnd &&
         (localStart.year != localEnd.year || localStart.month != localEnd.month || localStart.day != localEnd.day)) {
@@ -36,8 +41,9 @@ class AppointmentWorkingHours {
     }
 
     final startMinutes = localStart.hour * 60 + localStart.minute;
-    final endMinutes = midnightSentinelEnd ? 24 * 60 : localEnd.hour * 60 + localEnd.minute;
-    return startMinutes >= openMinutes && endMinutes <= effectiveCloseMinutes;
+    final endMinutes = midnightSentinelEnd ? AppointmentBranchWorkingHours.endOfDayMinutes : localEnd.hour * 60 + localEnd.minute;
+    // Half-open interval [open, close): reject starts at/after close or ends after close.
+    return startMinutes >= openMinutes && startMinutes < effectiveCloseMinutes && endMinutes <= effectiveCloseMinutes;
   }
 
   static BranchWorkingDayHours? _hoursForDay(BranchWorkingSchedule schedule, BranchWeekday weekday) {
@@ -72,15 +78,4 @@ class AppointmentWorkingHours {
     return localEnd.year == nextDay.year && localEnd.month == nextDay.month && localEnd.day == nextDay.day;
   }
 
-  static int? _parseHm(String? value) {
-    final text = value?.trim();
-    if (text == null || text.isEmpty) {
-      return null;
-    }
-    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(text);
-    if (match == null) {
-      return null;
-    }
-    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
-  }
 }

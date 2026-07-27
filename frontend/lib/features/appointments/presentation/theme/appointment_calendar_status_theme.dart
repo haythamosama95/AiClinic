@@ -195,3 +195,43 @@ abstract final class AppointmentCalendarStatusPalette {
     };
   }
 }
+
+/// Maps appointment statuses to calendar tile colors and styles.
+abstract final class AppointmentCalendarStatusTheme {
+  static AppointmentCalendarStatusStyle statusStyle(AppointmentStatus status, Brightness brightness) {
+    return AppointmentCalendarStatusPalette.styleFor(status, brightness);
+  }
+
+  static AppointmentCalendarStatusStyle filteredOutStyle(Brightness brightness) {
+    return AppointmentCalendarStatusPalette.filteredOutStyle(brightness);
+  }
+
+  /// Accent color for Syncfusion appointment fields and strip rails.
+  static Color statusColor(AppointmentStatus status, Brightness brightness) {
+    return statusStyle(status, brightness).accent;
+  }
+
+  /// Gray accent used for appointments excluded by the status filter.
+  static Color filteredOutStatusColor(Brightness brightness) {
+    return filteredOutStyle(brightness).accent;
+  }
+
+  /// Opacity applied to appointments excluded by the status filter.
+  static const double filteredOutOpacity = 0.4;
+
+  /// Calendar tile color respecting the optional status highlight filter.
+  static Color appointmentTileColor(
+    AppointmentStatus status,
+    Set<AppointmentStatus> highlightedStatuses,
+    Brightness brightness,
+  ) {
+    if (_isStatusHighlighted(status, highlightedStatuses)) {
+      return statusColor(status, brightness);
+    }
+    return filteredOutStatusColor(brightness);
+  }
+
+  static bool _isStatusHighlighted(AppointmentStatus status, Set<AppointmentStatus> highlightedStatuses) {
+    return highlightedStatuses.isEmpty || highlightedStatuses.contains(status);
+  }
+}

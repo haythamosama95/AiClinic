@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
+import 'package:ai_clinic/core/ui/components/app_alert.dart';
 import 'package:ai_clinic/core/ui/components/app_booking_day_picker.dart';
 import 'package:ai_clinic/core/ui/components/app_booking_slot_grid.dart';
 import 'package:ai_clinic/core/ui/components/app_date_picker.dart';
@@ -11,7 +12,9 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/core/ui/models/booking_slot.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
+import 'package:ai_clinic/features/appointments/presentation/formatting/appointment_slot_label.dart';
 
 /// Step 2 of the book-appointment dialog: day and time slot selection.
 class AppointmentBookingStep2 extends StatelessWidget {
@@ -28,6 +31,7 @@ class AppointmentBookingStep2 extends StatelessWidget {
     required this.slotMinutes,
     required this.onDateSelected,
     required this.onSlotSelected,
+    this.branchAppointmentsError,
     this.dateError,
     this.timeError,
     super.key,
@@ -40,17 +44,19 @@ class AppointmentBookingStep2 extends StatelessWidget {
   final DateTime today;
   final DateTime? selectedDate;
   final DateTime? selectedSlotStart;
-  final List<AppointmentBookingTimeSlot> slots;
+  final List<BookingTimeSlot> slots;
   final bool loadingSlots;
   final int slotMinutes;
   final ValueChanged<DateTime> onDateSelected;
-  final ValueChanged<AppointmentBookingTimeSlot> onSlotSelected;
+  final ValueChanged<BookingTimeSlot> onSlotSelected;
+  final String? branchAppointmentsError;
   final String? dateError;
   final String? timeError;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final displaySlots = withAppointmentSlotLabels(slots);
     final openCount = AppointmentBookingSlots.openSlotCount(slots);
 
     return Column(
@@ -86,6 +92,10 @@ class AppointmentBookingStep2 extends StatelessWidget {
                   '${_formatFullDate(selectedDate!)} · $slotMinutes-minute slots',
                   style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                 ),
+                if (branchAppointmentsError != null) ...[
+                  const SizedBox(height: AppSpacing.space3),
+                  AppAlert(title: branchAppointmentsError!, variant: AppAlertVariant.danger),
+                ],
                 const SizedBox(height: AppSpacing.space3),
                 if (loadingSlots)
                   const Padding(
@@ -93,12 +103,15 @@ class AppointmentBookingStep2 extends StatelessWidget {
                     child: Center(child: AppProgress(variant: ProgressVariant.circular, indeterminate: true)),
                   )
                 else
-                  AppBookingSlotGrid(
-                    slots: slots,
-                    selectedStart: selectedSlotStart,
-                    hasPreferredDoctor: hasPreferredDoctor,
-                    onSlotSelected: onSlotSelected,
-                    errorText: timeError,
+                  IgnorePointer(
+                    ignoring: branchAppointmentsError != null,
+                    child: AppBookingSlotGrid(
+                      slots: displaySlots,
+                      selectedStart: selectedSlotStart,
+                      hasPreferredDoctor: hasPreferredDoctor,
+                      onSlotSelected: onSlotSelected,
+                      errorText: timeError,
+                    ),
                   ),
               ],
             ),

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/core/domain/clinic/staff_list_item.dart';
 
 /// Resource id for appointments without an assigned doctor.
 const appointmentCalendarUnassignedResourceId = '__unassigned__';
@@ -79,7 +79,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
           notes: assignResources ? null : item.doctorDisplayName,
-          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses, brightness),
+          color: AppointmentCalendarStatusTheme.appointmentTileColor(item.status, highlightedStatuses, brightness),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
     ];
