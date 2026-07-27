@@ -1,7 +1,8 @@
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
-import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 class SearchPatients {
   const SearchPatients(this._repository);

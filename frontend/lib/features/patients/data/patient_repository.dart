@@ -10,9 +10,11 @@ import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
+import 'package:ai_clinic/features/patients/domain/patient_rpc_failure.dart' as patient_rpc;
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
-import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 /// Patient list/detail mutations via secured RPCs (V1-3).
 class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
@@ -24,7 +26,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260523140000_patient_management.sql';
+  String get migrationHint => '20260614150000_search_patients_list_filters.sql';
 
   @override
   String get rpcLogDomain => 'patients';
@@ -101,7 +103,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_exclude_patient_id': ?excludePatientId,
     });
 
-    return parseDuplicateCandidates(result.data?['candidates']);
+    return patient_rpc.parseDuplicateCandidates(result.data?['candidates']);
   }
 
   @override
@@ -176,22 +178,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   }
 
   /// Parses `candidates` from RPC success or `DUPLICATE_WARNING` error payloads.
-  static List<DuplicateCandidate> parseDuplicateCandidates(Object? raw) {
-    if (raw is! List) {
-      return const [];
-    }
-
-    final candidates = <DuplicateCandidate>[];
-    for (final entry in raw) {
-      if (entry is Map) {
-        final candidate = DuplicateCandidate.fromRow(Map<String, dynamic>.from(entry));
-        if (candidate != null) {
-          candidates.add(candidate);
-        }
-      }
-    }
-    return candidates;
-  }
+  static List<DuplicateCandidate> parseDuplicateCandidates(Object? raw) =>
+      patient_rpc.parseDuplicateCandidates(raw);
 }
 
 final patientRepositoryProvider = Provider<PatientRepository>((ref) {

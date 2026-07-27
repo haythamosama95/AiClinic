@@ -98,7 +98,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               extra: PatientDetailRouteExtra.fromExtra(state.extra),
             ),
           ),
-          GoRoute(path: '${AppRoutes.patients}/:patientId/edit', builder: shellPlaceholderPage),
 
           // Appointments (V1-4)
           GoRoute(path: AppRoutes.appointments, redirect: (_, _) => AppRoutes.appointmentsCalendar),

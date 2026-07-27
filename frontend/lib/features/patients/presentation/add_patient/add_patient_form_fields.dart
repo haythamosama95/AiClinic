@@ -21,7 +21,8 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_registration_form.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/providers/active_branch_name_provider.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 const _genderOptions = [PatientGender.male, PatientGender.female];
 
@@ -42,7 +43,7 @@ class AddPatientFormFields extends ConsumerStatefulWidget {
     required this.onFieldChange,
     this.autoFocus = false,
     this.branchName,
-    this.branchBannerLabel = 'Registering at ',
+    this.branchBannerLabel,
     this.identityPreviewSubtitle,
     this.fieldIdPrefix = 'add-patient',
     super.key,
@@ -57,7 +58,7 @@ class AddPatientFormFields extends ConsumerStatefulWidget {
   final VoidCallback onSubmit;
   final void Function(String key, Object? value) onFieldChange;
   final String? branchName;
-  final String branchBannerLabel;
+  final String? branchBannerLabel;
   final String? identityPreviewSubtitle;
   final String fieldIdPrefix;
 
@@ -105,7 +106,9 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
 
   @override
   Widget build(BuildContext context) {
-    final branchName = widget.branchName ?? ref.watch(activeBranchNameProvider).value ?? 'your active branch';
+    final l10n = context.l10n;
+    final branchName = widget.branchName ?? ref.watch(activeBranchNameProvider).value ?? l10n.yourActiveBranch;
+    final branchBannerLabel = widget.branchBannerLabel ?? l10n.registeringAt;
 
     return Form(
       child: Focus(
@@ -114,13 +117,13 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _BranchBanner(branchName: branchName, labelPrefix: widget.branchBannerLabel),
+            _BranchBanner(branchName: branchName, labelPrefix: branchBannerLabel),
             const SizedBox(height: AppSpacing.space6),
             _IdentityPreview(
               trimmedName: widget.trimmedName,
               showPreview: widget.showPreview,
               reducedMotion: widget.reducedMotion,
-              subtitle: widget.identityPreviewSubtitle ?? context.l10n.newRecordMrsAssignedOnSave,
+              subtitle: widget.identityPreviewSubtitle ?? l10n.newRecordMrsAssignedOnSave,
             ),
             const SizedBox(height: AppSpacing.space6),
             _PatientDetailsSection(
@@ -312,29 +315,32 @@ class _PatientDetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const AppSectionHeader(
-          title: 'Patient details',
-          description: 'Core information used to identify the patient and reach them for care.',
+        AppSectionHeader(
+          title: l10n.patientDetailsSectionTitle,
+          description: l10n.patientDetailsSectionDescription,
         ),
         const SizedBox(height: AppSpacing.space4),
-        _buildPatientDetailsFields(),
+        _buildPatientDetailsFields(context),
       ],
     );
   }
 
-  Widget _buildPatientDetailsFields() {
+  Widget _buildPatientDetailsFields(BuildContext context) {
+    final l10n = context.l10n;
     const fieldGap = SizedBox(height: AppSpacing.space4);
     const columnGap = SizedBox(width: AppSpacing.space4);
 
     final fullNameField = AppFormField(
       id: '$fieldIdPrefix-fullName',
-      label: 'Full name',
+      label: l10n.fullNameLabel,
       requiredMark: true,
-      hint: 'Legal name as it appears on government ID.',
+      hint: l10n.fullNameHint,
       error: errors.fullName,
       child: Focus(
         autofocus: autoFocus,
@@ -342,7 +348,7 @@ class _PatientDetailsSection extends StatelessWidget {
           id: '$fieldIdPrefix-fullName',
           initialValue: values.fullName,
           onChanged: (value) => onFieldChange('fullName', value),
-          placeholder: 'e.g. Sara Hassan Ibrahim',
+          placeholder: l10n.fullNamePlaceholder,
           invalid: errors.fullName != null,
         ),
       ),
@@ -350,14 +356,14 @@ class _PatientDetailsSection extends StatelessWidget {
 
     final dobField = AppFormField(
       id: '$fieldIdPrefix-dob',
-      label: 'Date of birth',
-      hint: 'Used with name for duplicate detection.',
+      label: l10n.dateOfBirthLabel,
+      hint: l10n.dateOfBirthHint,
       error: errors.dateOfBirth,
       child: AppDatePicker(
         id: '$fieldIdPrefix-dob',
         value: values.dateOfBirth,
         onChanged: (date) => onFieldChange('dateOfBirth', date == null ? null : normalizePatientDate(date)),
-        placeholder: 'Select date',
+        placeholder: l10n.selectDate,
         max: DateTime.now(),
         invalid: errors.dateOfBirth != null,
       ),
@@ -365,23 +371,25 @@ class _PatientDetailsSection extends StatelessWidget {
 
     final genderField = AppFormField(
       id: '$fieldIdPrefix-gender',
-      label: 'Gender',
-      hint: 'Optional. Shown on the patient profile.',
+      label: l10n.genderLabel,
+      hint: l10n.genderHint,
       error: errors.gender,
       child: AppSelect(
         id: '$fieldIdPrefix-gender',
         value: values.gender?.wireValue,
         onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
-        options: _genderOptions.map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label)).toList(),
-        placeholder: 'Select gender',
+        options: _genderOptions
+            .map((gender) => AppSelectOption(value: gender.wireValue, label: _genderLabel(l10n, gender)))
+            .toList(),
+        placeholder: l10n.selectGender,
         invalid: errors.gender != null,
       ),
     );
 
     final phoneField = AppFormField(
       id: '$fieldIdPrefix-phone',
-      label: 'Mobile number',
-      hint: 'Used for reminders and duplicate checks.',
+      label: l10n.mobileNumberLabel,
+      hint: l10n.mobileNumberHint,
       error: errors.phone,
       child: Directionality(
         textDirection: TextDirection.ltr,
@@ -396,17 +404,17 @@ class _PatientDetailsSection extends StatelessWidget {
 
     final maritalField = AppFormField(
       id: '$fieldIdPrefix-maritalStatus',
-      label: 'Marital state',
-      hint: 'Optional. Shown on the patient profile.',
+      label: l10n.maritalStateLabel,
+      hint: l10n.maritalStateHint,
       error: errors.maritalStatus,
       child: AppSelect(
         id: '$fieldIdPrefix-maritalStatus',
         value: values.maritalStatus?.wireValue,
         onChanged: (value) => onFieldChange('maritalStatus', PatientMaritalStatus.tryParse(value)),
         options: _maritalStatusOptions
-            .map((status) => AppSelectOption(value: status.wireValue, label: status.label))
+            .map((status) => AppSelectOption(value: status.wireValue, label: _maritalStatusLabel(l10n, status)))
             .toList(),
-        placeholder: 'Select marital state',
+        placeholder: l10n.selectMaritalState,
         invalid: errors.maritalStatus != null,
       ),
     );
@@ -453,25 +461,27 @@ class _ClinicalNotesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const AppSectionHeader(
-          title: 'Clinical notes',
-          description: 'Optional context visible to staff on the patient profile.',
+        AppSectionHeader(
+          title: l10n.clinicalNotesSectionTitle,
+          description: l10n.clinicalNotesSectionDescription,
         ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
           id: '$fieldIdPrefix-notes',
-          label: 'Notes',
-          helperText: 'Allergies, referral source, or front-desk remarks.',
+          label: l10n.notesLabel,
+          helperText: l10n.notesHelperText,
           error: errors.notes,
           child: AppTextarea(
             id: '$fieldIdPrefix-notes',
             initialValue: values.notes,
             onChanged: (value) => onFieldChange('notes', value),
-            placeholder: 'e.g. Referred by Dr. Nabil. Penicillin allergy noted verbally.',
+            placeholder: l10n.notesPlaceholder,
             rows: 3,
             autoGrow: true,
             maxLength: 500,
@@ -482,4 +492,23 @@ class _ClinicalNotesSection extends StatelessWidget {
       ],
     );
   }
+}
+
+String _genderLabel(AppLocalizations l10n, PatientGender gender) {
+  return switch (gender) {
+    PatientGender.male => l10n.genderMale,
+    PatientGender.female => l10n.genderFemale,
+    PatientGender.other => l10n.genderOther,
+    PatientGender.preferNotToSay => l10n.genderPreferNotToSay,
+    PatientGender.unknown => l10n.genderUnknown,
+  };
+}
+
+String _maritalStatusLabel(AppLocalizations l10n, PatientMaritalStatus status) {
+  return switch (status) {
+    PatientMaritalStatus.single => l10n.maritalStatusSingle,
+    PatientMaritalStatus.married => l10n.maritalStatusMarried,
+    PatientMaritalStatus.divorced => l10n.maritalStatusDivorced,
+    PatientMaritalStatus.widowed => l10n.maritalStatusWidowed,
+  };
 }

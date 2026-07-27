@@ -22,17 +22,10 @@ void main() {
       expect(AppRoutes.patientDetail(id), '/patients/$id');
     });
 
-    test('edit path nests under detail segment', () {
-      const id = 'patient-uuid-1';
-      expect(AppRoutes.patientEdit(id), '/patients/$id/edit');
-      expect(AppRoutes.patientEdit(id), startsWith(AppRoutes.patientDetail(id)));
-    });
-
     test('parameterized builders preserve opaque ids (slashes, spaces, unicode)', () {
       const weirdIds = ['../escape', '  spaced  ', 'patient/inner', 'مريض-١', ''];
       for (final id in weirdIds) {
         expect(AppRoutes.patientDetail(id), contains(id));
-        expect(AppRoutes.patientEdit(id), endsWith('/edit'));
       }
     });
 

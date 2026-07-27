@@ -4,24 +4,24 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/patients/domain/patient_visit_document.dart';
-import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_card.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
+import 'package:ai_clinic/features/visits/domain/patient_visit_document.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
+import 'package:ai_clinic/features/visits/presentation/utils/visit_presentation_formatting.dart';
 
 /// Document record card for the patient detail documents tab (web `DocumentCard`).
-class PatientDocumentCard extends ConsumerStatefulWidget {
-  const PatientDocumentCard({required this.document, super.key});
+class PatientVisitDocumentCard extends ConsumerStatefulWidget {
+  const PatientVisitDocumentCard({required this.document, super.key});
 
   final PatientVisitDocument document;
 
   @override
-  ConsumerState<PatientDocumentCard> createState() => _PatientDocumentCardState();
+  ConsumerState<PatientVisitDocumentCard> createState() => _PatientVisitDocumentCardState();
 }
 
-class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
+class _PatientVisitDocumentCardState extends ConsumerState<PatientVisitDocumentCard> {
   var _downloading = false;
 
   Future<void> _downloadFile() async {
@@ -130,7 +130,7 @@ class _FileTypeColumn extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space1),
         Text(
-          PatientPresentationFormatting.formatFileSize(sizeBytes),
+          VisitPresentationFormatting.formatFileSize(sizeBytes),
           style: AppTypography.caption(
             context,
           ).copyWith(color: colors.textTertiary, fontFeatures: const [FontFeature.tabularFigures()]),

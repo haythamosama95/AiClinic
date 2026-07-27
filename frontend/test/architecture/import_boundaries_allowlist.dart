@@ -118,20 +118,14 @@ const Map<String, String> importBoundaryAllowlist = {
       'Billing application reaches visits data directly until visit summary port exists',
   'lib/features/billing/presentation/providers/invoice_editor_notifier.dart|package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart':
       'Billing notifier reaches service-catalog data until shared application service exists',
-  'lib/features/patients/presentation/providers/patient_detail_history_provider.dart|package:ai_clinic/features/visits/data/visit_repository.dart':
-      'H3 — patient history should use visits application API, not repository',
-  'lib/features/patients/presentation/widgets/patient_document_card.dart|package:ai_clinic/features/visits/data/visit_attachment_service.dart':
-      'H3 — patient document card should use visits application API, not data service',
 
   // Rule 5 — features must not import other features presentation providers
   'lib/features/auth/presentation/widgets/clinic_setup_welcome_scope.dart|package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart':
       'Auth welcome scope couples to setup notifier until orchestration moves to app layer',
   'lib/features/patients/presentation/pages/patient_detail_page.dart|package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart':
       'Patients page couples to billing provider until patient-detail orchestration exists',
-  'lib/features/patients/presentation/widgets/patient_invoice_card.dart|package:ai_clinic/features/clinic-management/presentation/providers/clinic_setup_providers.dart':
-      'Patients invoice card couples to clinic-management providers until shared app providers exist',
+  'lib/features/billing/presentation/widgets/patient_invoice_card.dart|package:ai_clinic/features/clinic-management/presentation/providers/clinic_setup_providers.dart':
+      'Billing patient invoice card couples to clinic-management providers until shared app providers exist',
 
   // Rule 6 — data must not import presentation in the same feature
-  'lib/features/patients/data/patient_repository.dart|package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart':
-      'Patients data imports presentation filter model until filters move to domain',
 };

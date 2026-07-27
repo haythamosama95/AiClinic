@@ -733,6 +733,522 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Widowed'**
   String get maritalStatusWidowed;
+
+  /// No description provided for @patientTableColumnPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient'**
+  String get patientTableColumnPatient;
+
+  /// No description provided for @patientTableColumnPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get patientTableColumnPhone;
+
+  /// No description provided for @patientTableColumnDob.
+  ///
+  /// In en, this message translates to:
+  /// **'DOB'**
+  String get patientTableColumnDob;
+
+  /// No description provided for @patientTableColumnLastVisit.
+  ///
+  /// In en, this message translates to:
+  /// **'Last visit'**
+  String get patientTableColumnLastVisit;
+
+  /// No description provided for @patientTableColumnNextVisit.
+  ///
+  /// In en, this message translates to:
+  /// **'Next visit'**
+  String get patientTableColumnNextVisit;
+
+  /// No description provided for @patientPickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient'**
+  String get patientPickerLabel;
+
+  /// No description provided for @patientPickerSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by name, MRN, email, or phone.'**
+  String get patientPickerSearchHint;
+
+  /// No description provided for @patientPickerSearchPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Search patients by name, MRN, email, or phone…'**
+  String get patientPickerSearchPlaceholder;
+
+  /// No description provided for @patientPickerSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not search patients.'**
+  String get patientPickerSearchFailed;
+
+  /// No description provided for @patientPickerClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear patient'**
+  String get patientPickerClear;
+
+  /// No description provided for @emDash.
+  ///
+  /// In en, this message translates to:
+  /// **'—'**
+  String get emDash;
+
+  /// No description provided for @patientRowActionOpenDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Open patient details'**
+  String get patientRowActionOpenDetails;
+
+  /// No description provided for @patientRowActionBookAppointment.
+  ///
+  /// In en, this message translates to:
+  /// **'Book appointment'**
+  String get patientRowActionBookAppointment;
+
+  /// No description provided for @patientRowActionDeactivate.
+  ///
+  /// In en, this message translates to:
+  /// **'Deactivate'**
+  String get patientRowActionDeactivate;
+
+  /// No description provided for @patientRowActionsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient actions'**
+  String get patientRowActionsLabel;
+
+  /// No description provided for @patientDeactivatedSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'{fullName} deactivated.'**
+  String patientDeactivatedSuccess(String fullName);
+
+  /// No description provided for @archivePatientDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Deactivate patient?'**
+  String get archivePatientDialogTitle;
+
+  /// No description provided for @archivePatientDialogDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Deactivate {fullName}? They will be hidden from active lists but their records are preserved.'**
+  String archivePatientDialogDescription(String fullName);
+
+  /// No description provided for @archivePatientDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Deactivate'**
+  String get archivePatientDialogConfirm;
+
+  /// No description provided for @patientsListTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Patients'**
+  String get patientsListTitle;
+
+  /// No description provided for @patientsListDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage patient records, profiles, and medical history.'**
+  String get patientsListDescription;
+
+  /// No description provided for @patientsListAddPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Add patient'**
+  String get patientsListAddPatient;
+
+  /// No description provided for @patientsListEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No patients yet'**
+  String get patientsListEmptyTitle;
+
+  /// No description provided for @patientsListEmptyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your first patient to start building records.'**
+  String get patientsListEmptyDescription;
+
+  /// No description provided for @patientsListNoAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have access to patient records'**
+  String get patientsListNoAccessTitle;
+
+  /// No description provided for @patientsListNoMatchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No patients match'**
+  String get patientsListNoMatchTitle;
+
+  /// No description provided for @patientsListNoMatchDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Try a different search term or clear your filters.'**
+  String get patientsListNoMatchDescription;
+
+  /// No description provided for @patientsListClearFilters.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear filters'**
+  String get patientsListClearFilters;
+
+  /// No description provided for @patientsListSearchChip.
+  ///
+  /// In en, this message translates to:
+  /// **'Search: {query}'**
+  String patientsListSearchChip(String query);
+
+  /// No description provided for @patientsListLastVisitChip.
+  ///
+  /// In en, this message translates to:
+  /// **'Last visit: {label}'**
+  String patientsListLastVisitChip(String label);
+
+  /// No description provided for @patientsListSearchPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Search patients by name, MRN, email, or phone…'**
+  String get patientsListSearchPlaceholder;
+
+  /// No description provided for @patientsListSearchAriaLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Search patients'**
+  String get patientsListSearchAriaLabel;
+
+  /// No description provided for @patientsListSortAriaLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort patients'**
+  String get patientsListSortAriaLabel;
+
+  /// No description provided for @patientsListLastVisitSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Last visit'**
+  String get patientsListLastVisitSection;
+
+  /// No description provided for @patientsListSortNameAsc.
+  ///
+  /// In en, this message translates to:
+  /// **'Name (A → Z)'**
+  String get patientsListSortNameAsc;
+
+  /// No description provided for @patientsListSortNameDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Name (Z → A)'**
+  String get patientsListSortNameDesc;
+
+  /// No description provided for @patientsListSortLastVisitNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Last visit (newest)'**
+  String get patientsListSortLastVisitNewest;
+
+  /// No description provided for @patientsListSortLastVisitOldest.
+  ///
+  /// In en, this message translates to:
+  /// **'Last visit (oldest)'**
+  String get patientsListSortLastVisitOldest;
+
+  /// No description provided for @patientsListLastVisitAny.
+  ///
+  /// In en, this message translates to:
+  /// **'Any time'**
+  String get patientsListLastVisitAny;
+
+  /// No description provided for @patientsListLastVisit30Days.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 30 days'**
+  String get patientsListLastVisit30Days;
+
+  /// No description provided for @patientsListLastVisit90Days.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 90 days'**
+  String get patientsListLastVisit90Days;
+
+  /// No description provided for @patientsListLastVisitOver90Days.
+  ///
+  /// In en, this message translates to:
+  /// **'Over 90 days'**
+  String get patientsListLastVisitOver90Days;
+
+  /// No description provided for @patientsListLastVisitNever.
+  ///
+  /// In en, this message translates to:
+  /// **'Never visited'**
+  String get patientsListLastVisitNever;
+
+  /// No description provided for @patientNameFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient'**
+  String get patientNameFallback;
+
+  /// No description provided for @patientSectionsAriaLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient sections'**
+  String get patientSectionsAriaLabel;
+
+  /// No description provided for @addPatientDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Register a new patient at your active branch.'**
+  String get addPatientDescription;
+
+  /// No description provided for @duplicatePatientDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible duplicate found'**
+  String get duplicatePatientDialogTitle;
+
+  /// No description provided for @duplicatePatientDialogDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A patient with similar details already exists. Review the matches below before creating a new record.'**
+  String get duplicatePatientDialogDescription;
+
+  /// No description provided for @duplicatePatientGoBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Go back'**
+  String get duplicatePatientGoBack;
+
+  /// No description provided for @duplicatePatientRegisterAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Register anyway'**
+  String get duplicatePatientRegisterAnyway;
+
+  /// No description provided for @duplicatePatientOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get duplicatePatientOpen;
+
+  /// No description provided for @duplicatePatientMatchCountOne.
+  ///
+  /// In en, this message translates to:
+  /// **'1 existing patient matches the details you entered.'**
+  String get duplicatePatientMatchCountOne;
+
+  /// No description provided for @duplicatePatientMatchCountMany.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} existing patients match the details you entered.'**
+  String duplicatePatientMatchCountMany(int count);
+
+  /// No description provided for @duplicatePatientDobLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'DOB {date}'**
+  String duplicatePatientDobLabel(String date);
+
+  /// No description provided for @patientsListFilteredBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Filtered by'**
+  String get patientsListFilteredBy;
+
+  /// No description provided for @patientsListClearAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all'**
+  String get patientsListClearAll;
+
+  /// No description provided for @patientFormSelectBranchBeforeRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'Select an active branch before registering a patient.'**
+  String get patientFormSelectBranchBeforeRegister;
+
+  /// No description provided for @patientFormCouldNotRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not register the patient. Try again.'**
+  String get patientFormCouldNotRegister;
+
+  /// No description provided for @patientFormDetailsStillLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient details are still loading. Try again.'**
+  String get patientFormDetailsStillLoading;
+
+  /// No description provided for @patientFormCouldNotUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the patient. Try again.'**
+  String get patientFormCouldNotUpdate;
+
+  /// No description provided for @patientFormRegisteredAtBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'{fullName} registered at {branchName}.'**
+  String patientFormRegisteredAtBranch(String fullName, String branchName);
+
+  /// No description provided for @patientFormPatientUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'{fullName} updated.'**
+  String patientFormPatientUpdated(String fullName);
+
+  /// No description provided for @patientFormFullNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the patient\'s full name.'**
+  String get patientFormFullNameRequired;
+
+  /// No description provided for @patientFormFullNameMinLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Full name must be at least 2 characters.'**
+  String get patientFormFullNameMinLength;
+
+  /// No description provided for @patientFormMobileRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile number is required.'**
+  String get patientFormMobileRequired;
+
+  /// No description provided for @patientFormMobileDigitsOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only numbers are allowed.'**
+  String get patientFormMobileDigitsOnly;
+
+  /// No description provided for @patientFormMobileLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile number must be 8 to 15 digits.'**
+  String get patientFormMobileLength;
+
+  /// No description provided for @patientRpcNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient was not found or you do not have access.'**
+  String get patientRpcNotFound;
+
+  /// No description provided for @patientRpcDuplicateWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar patients were found. Review the list before continuing.'**
+  String get patientRpcDuplicateWarning;
+
+  /// No description provided for @patientRpcStalePatient.
+  ///
+  /// In en, this message translates to:
+  /// **'This record was updated elsewhere. Reload and try again.'**
+  String get patientRpcStalePatient;
+
+  /// No description provided for @patientRpcPatientArchived.
+  ///
+  /// In en, this message translates to:
+  /// **'This patient is archived and is not available.'**
+  String get patientRpcPatientArchived;
+
+  /// No description provided for @patientRpcForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have permission to perform this action.'**
+  String get patientRpcForbidden;
+
+  /// No description provided for @patientRpcBranchRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Select an active branch before registering a patient.'**
+  String get patientRpcBranchRequired;
+
+  /// No description provided for @patientRpcDefaultError.
+  ///
+  /// In en, this message translates to:
+  /// **'The clinic service rejected this request.'**
+  String get patientRpcDefaultError;
+
+  /// No description provided for @appointmentTypePlanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned'**
+  String get appointmentTypePlanned;
+
+  /// No description provided for @appointmentTypeUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get appointmentTypeUnknown;
+
+  /// No description provided for @visitStatusInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get visitStatusInProgress;
+
+  /// No description provided for @visitStatusCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get visitStatusCompleted;
+
+  /// No description provided for @appointmentStatusScheduled.
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduled'**
+  String get appointmentStatusScheduled;
+
+  /// No description provided for @appointmentStatusConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get appointmentStatusConfirmed;
+
+  /// No description provided for @appointmentStatusCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked in'**
+  String get appointmentStatusCheckedIn;
+
+  /// No description provided for @appointmentStatusInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get appointmentStatusInProgress;
+
+  /// No description provided for @appointmentStatusCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get appointmentStatusCompleted;
+
+  /// No description provided for @appointmentStatusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get appointmentStatusCancelled;
+
+  /// No description provided for @appointmentStatusNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'No-show'**
+  String get appointmentStatusNoShow;
+
+  /// No description provided for @appointmentStatusUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get appointmentStatusUnknown;
 }
 
 class _AppLocalizationsDelegate

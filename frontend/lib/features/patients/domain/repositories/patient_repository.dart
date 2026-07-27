@@ -1,10 +1,11 @@
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
-import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 /// Abstract patient CRUD operations (search, get, create, update, archive).
 abstract class PatientRepository {

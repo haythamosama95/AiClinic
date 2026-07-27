@@ -1,6 +1,7 @@
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/patient_upcoming_appointments_provider.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_visit_history_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

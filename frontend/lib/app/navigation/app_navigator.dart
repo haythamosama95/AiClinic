@@ -37,8 +37,6 @@ class AppNavigator {
     AppRoutes.patientDetail(id),
     extra: PatientDetailRouteExtra(preview: preview, sourceRect: sourceRect),
   );
-  void goPatientEdit(String id) => _context.go(AppRoutes.patientEdit(id));
-  void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
 
   /// Navigates to patient registration; returns when the route is popped.

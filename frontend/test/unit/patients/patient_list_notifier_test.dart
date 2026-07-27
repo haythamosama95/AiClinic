@@ -3,8 +3,10 @@ import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
@@ -114,12 +116,14 @@ void main() {
       final providerContainer = createContainer(auth);
       addTearDown(providerContainer.dispose);
 
-      await providerContainer.read(patientListProvider.future);
+      await providerContainer.read(patientListProvider.notifier).reload();
       expect(repository.lastBranchId, branchA);
       expect(repository.searchCallCount, 1);
 
       auth.setActiveBranch(branchB);
-      await providerContainer.read(patientListProvider.future);
+      while (repository.searchCallCount < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
 
       expect(repository.searchCallCount, 2);
       expect(repository.lastBranchId, branchB);

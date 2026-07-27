@@ -66,9 +66,6 @@ abstract final class AppRoutes {
   /// Patient detail: `/patients/:id`
   static String patientDetail(String patientId) => '$patients/$patientId';
 
-  /// Patient edit: `/patients/:id/edit`
-  static String patientEdit(String patientId) => '$patients/$patientId/edit';
-
   /// Static patient hub paths (list + register).
   static const patientStaticPaths = <String>[patients, patientsNew];
 

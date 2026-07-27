@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/add_patient_form_fields.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/duplicate_patient_dialog.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/patient_registration_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_form_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_form_state.dart';
 
 /// Add-patient registration dialog (web `AddPatientDialog`).
 class AddPatientDialog extends ConsumerStatefulWidget {
@@ -27,15 +29,18 @@ class AddPatientDialog extends ConsumerStatefulWidget {
 }
 
 class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
+  PatientFormArgs get _formArgs => PatientFormArgs.create;
+
   void _handleOpenChange(bool open) {
     if (!open) {
-      ref.read(patientRegistrationProvider.notifier).reset();
+      ref.read(patientFormNotifierProvider(_formArgs).notifier).reset();
     }
     widget.onOpenChange(open);
   }
 
   Future<void> _handleSubmit() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).submit();
+    final outcome = await ref.read(patientFormNotifierProvider(_formArgs).notifier).submit();
+    final patientId = outcome.patientId;
     if (!mounted || patientId == null) {
       return;
     }
@@ -44,7 +49,8 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   }
 
   Future<void> _handleRegisterAnyway() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).registerAnyway();
+    final outcome = await ref.read(patientFormNotifierProvider(_formArgs).notifier).submitAnyway();
+    final patientId = outcome.patientId;
     if (!mounted || patientId == null) {
       return;
     }
@@ -54,12 +60,13 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(patientRegistrationProvider);
-    final notifier = ref.read(patientRegistrationProvider.notifier);
+    final state = ref.watch(patientFormNotifierProvider(_formArgs));
+    final notifier = ref.read(patientFormNotifierProvider(_formArgs).notifier);
     final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final l10n = context.l10n;
 
     ref.listen<String?>(
-      patientRegistrationProvider.select((s) => s.pendingOpenPatientId),
+      patientFormNotifierProvider(_formArgs).select((s) => s.pendingOpenPatientId),
       (previous, next) {
         if (next == null) {
           return;
@@ -76,8 +83,8 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
         AppDialog(
           open: widget.open,
           onOpenChange: _handleOpenChange,
-          title: 'Add patient',
-          description: 'Register a new patient at your active branch.',
+          title: l10n.patientsListAddPatient,
+          description: l10n.addPatientDescription,
           size: AppDialogSize.lg,
           footer: Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -86,7 +93,7 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
                 variant: AppButtonVariant.secondary,
                 disabled: state.submitting,
                 onPressed: state.submitting ? null : () => _handleOpenChange(false),
-                child: const Text('Cancel'),
+                child: Text(l10n.cancel),
               ),
               const SizedBox(width: AppSpacing.space2),
               AppButton(
@@ -94,7 +101,7 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
                 loading: state.submitting,
                 leadingIcon: const Icon(Icons.person_add, size: 16),
                 onPressed: state.submitting ? null : _handleSubmit,
-                child: const Text('Register patient'),
+                child: Text(l10n.registerPatient),
               ),
             ],
           ),

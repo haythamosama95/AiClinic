@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('PatientFieldValidation', () {
     test('M5: rejects non-numeric mobile numbers', () {
-      expect(PatientFieldValidation.validateMobileNumber('20100abc1234'), 'Only numbers are allowed.');
-      expect(PatientFieldValidation.validateMobileNumber('20 100 555 1234'), 'Only numbers are allowed.');
+      expect(PatientFieldValidation.validateMobileNumber('20100abc1234'), MobileNumberValidationError.digitsOnly);
+      expect(PatientFieldValidation.validateMobileNumber('20 100 555 1234'), MobileNumberValidationError.digitsOnly);
     });
 
     test('accepts valid digit-only mobile numbers', () {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
@@ -32,16 +33,16 @@ class DuplicatePatientDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final l10n = context.l10n;
     final countLabel = candidates.length == 1
-        ? '1 existing patient matches the details you entered.'
-        : '${candidates.length} existing patients match the details you entered.';
+        ? l10n.duplicatePatientMatchCountOne
+        : l10n.duplicatePatientMatchCountMany(candidates.length);
 
     return AppDialog(
       open: open,
       onOpenChange: onOpenChange,
-      title: 'Possible duplicate found',
-      description:
-          'A patient with similar details already exists. Review the matches below before creating a new record.',
+      title: l10n.duplicatePatientDialogTitle,
+      description: l10n.duplicatePatientDialogDescription,
       size: AppDialogSize.md,
       footer: Row(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -50,14 +51,14 @@ class DuplicatePatientDialog extends StatelessWidget {
             variant: AppButtonVariant.secondary,
             disabled: loading,
             onPressed: loading ? null : () => onOpenChange(false),
-            child: const Text('Go back'),
+            child: Text(l10n.duplicatePatientGoBack),
           ),
           const SizedBox(width: AppSpacing.space2),
           AppButton(
             variant: AppButtonVariant.primary,
             loading: loading,
             onPressed: loading ? null : onRegisterAnyway,
-            child: const Text('Register anyway'),
+            child: Text(l10n.duplicatePatientRegisterAnyway),
           ),
         ],
       ),
@@ -77,13 +78,13 @@ class DuplicatePatientDialog extends StatelessWidget {
                   key: ValueKey(candidate.id),
                   leading: AppAvatar(name: candidate.fullName, size: AvatarSize.sm),
                   primary: Text(candidate.fullName),
-                  secondary: Text(_secondaryLabel(candidate)),
+                  secondary: Text(_secondaryLabel(context, candidate)),
                   trailing: AppButton(
                     variant: AppButtonVariant.ghost,
                     size: AppButtonSize.sm,
                     leadingIcon: const Icon(Icons.open_in_new, size: 14),
                     onPressed: () => onOpenPatient(candidate.id),
-                    child: const Text('Open'),
+                    child: Text(l10n.duplicatePatientOpen),
                   ),
                 ),
             ],
@@ -93,13 +94,17 @@ class DuplicatePatientDialog extends StatelessWidget {
     );
   }
 
-  String _secondaryLabel(DuplicateCandidate candidate) {
+  String _secondaryLabel(BuildContext context, DuplicateCandidate candidate) {
     final parts = <String>[candidate.branchName];
     if (candidate.phone != null && candidate.phone!.isNotEmpty) {
       parts.add(candidate.phone!);
     }
     if (candidate.dateOfBirth != null) {
-      parts.add('DOB ${PatientPresentationFormatting.dateOfBirthLabel(candidate.dateOfBirth)}');
+      parts.add(
+        context.l10n.duplicatePatientDobLabel(
+          PatientPresentationFormatting.dateOfBirthLabel(candidate.dateOfBirth),
+        ),
+      );
     }
     return parts.join(' · ');
   }

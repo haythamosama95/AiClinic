@@ -1,4 +1,6 @@
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
 

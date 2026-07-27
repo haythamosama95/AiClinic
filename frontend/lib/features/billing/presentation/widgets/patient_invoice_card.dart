@@ -2,19 +2,19 @@ import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/money/money.dart';
+import 'package:ai_clinic/core/money/money_formatter.dart';
 import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
-import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
-import 'package:ai_clinic/core/money/money_formatter.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/payment_method_l10n.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_card.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/providers/clinic_setup_providers.dart';
 
 /// Invoice record card for the patient detail billing tab (web `InvoiceCard`).
 ///

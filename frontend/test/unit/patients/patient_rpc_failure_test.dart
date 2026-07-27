@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
+import 'package:ai_clinic/features/patients/domain/patient_rpc_failure.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 RpcFailure _failure({

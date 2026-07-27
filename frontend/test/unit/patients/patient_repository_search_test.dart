@@ -1,6 +1,8 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
 

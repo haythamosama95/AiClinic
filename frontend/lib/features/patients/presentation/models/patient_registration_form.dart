@@ -4,6 +4,7 @@ import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_field_validation.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 @immutable
 class PatientFormErrors {
@@ -118,19 +119,28 @@ class PatientRegistrationForm {
 
 const _sentinel = Object();
 
-PatientFormErrors validateRegistration(PatientRegistrationForm form) {
+PatientFormErrors validateRegistration(PatientRegistrationForm form, AppLocalizations l10n) {
   String? fullNameError;
   final name = form.fullName.trim();
   if (name.isEmpty) {
-    fullNameError = "Enter the patient's full name.";
+    fullNameError = l10n.patientFormFullNameRequired;
   } else if (name.length < 2) {
-    fullNameError = 'Full name must be at least 2 characters.';
+    fullNameError = l10n.patientFormFullNameMinLength;
   }
 
-  final phoneError = PatientFieldValidation.validateMobileNumber(form.phone);
+  final phoneErrorKind = PatientFieldValidation.validateMobileNumber(form.phone);
+  final phoneError = phoneErrorKind == null ? null : _mobileNumberErrorMessage(l10n, phoneErrorKind);
 
   return PatientFormErrors(
     fullName: fullNameError,
     phone: phoneError,
   );
+}
+
+String _mobileNumberErrorMessage(AppLocalizations l10n, MobileNumberValidationError error) {
+  return switch (error) {
+    MobileNumberValidationError.required => l10n.patientFormMobileRequired,
+    MobileNumberValidationError.digitsOnly => l10n.patientFormMobileDigitsOnly,
+    MobileNumberValidationError.invalidLength => l10n.patientFormMobileLength,
+  };
 }

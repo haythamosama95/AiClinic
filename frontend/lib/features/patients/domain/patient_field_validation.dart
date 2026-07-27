@@ -2,18 +2,24 @@
 abstract final class PatientFieldValidation {
   static final _digitsOnly = RegExp(r'^\d+$');
 
-  /// Returns a user-facing validation message, or null when valid.
-  static String? validateMobileNumber(String? raw) {
+  /// Returns a validation error kind, or null when valid.
+  static MobileNumberValidationError? validateMobileNumber(String? raw) {
     if (raw == null || raw.trim().isEmpty) {
-      return 'Mobile number is required.';
+      return MobileNumberValidationError.required;
     }
     final trimmed = raw.trim();
     if (!_digitsOnly.hasMatch(trimmed)) {
-      return 'Only numbers are allowed.';
+      return MobileNumberValidationError.digitsOnly;
     }
     if (trimmed.length < 8 || trimmed.length > 15) {
-      return 'Mobile number must be 8 to 15 digits.';
+      return MobileNumberValidationError.invalidLength;
     }
     return null;
   }
+}
+
+enum MobileNumberValidationError {
+  required,
+  digitsOnly,
+  invalidLength,
 }

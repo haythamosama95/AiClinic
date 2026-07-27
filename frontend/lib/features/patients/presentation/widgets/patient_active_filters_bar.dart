@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/components/app_chip.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
@@ -78,7 +79,7 @@ class _ActiveFiltersContent extends StatelessWidget {
                 children: [
                   Icon(Icons.tune, size: 13, color: colors.iconMuted),
                   Text(
-                    'Filtered by',
+                    context.l10n.patientsListFilteredBy,
                     style: AppTypography.caption(context).copyWith(
                       fontWeight: FontWeight.w500,
                       color: colors.textTertiary,
@@ -105,7 +106,7 @@ class _ActiveFiltersContent extends StatelessWidget {
                 ),
                 onPressed: onClearAll,
                 child: Text(
-                  'Clear all',
+                  context.l10n.patientsListClearAll,
                   style: AppTypography.caption(context).copyWith(
                     fontWeight: FontWeight.w500,
                     color: colors.textLink,

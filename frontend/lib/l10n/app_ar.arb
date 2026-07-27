@@ -105,5 +105,136 @@
   "maritalStatusSingle": "أعزب",
   "maritalStatusMarried": "متزوج",
   "maritalStatusDivorced": "مطلّق",
-  "maritalStatusWidowed": "أرمل"
+  "maritalStatusWidowed": "أرمل",
+  "patientTableColumnPatient": "المريض",
+  "patientTableColumnPhone": "الهاتف",
+  "patientTableColumnDob": "تاريخ الميلاد",
+  "patientTableColumnLastVisit": "آخر زيارة",
+  "patientTableColumnNextVisit": "الزيارة القادمة",
+  "patientPickerLabel": "المريض",
+  "patientPickerSearchHint": "ابحث بالاسم أو رقم الملف الطبي أو البريد الإلكتروني أو الهاتف.",
+  "patientPickerSearchPlaceholder": "ابحث عن المرضى بالاسم أو رقم الملف الطبي أو البريد الإلكتروني أو الهاتف…",
+  "patientPickerSearchFailed": "تعذّر البحث عن المرضى.",
+  "patientPickerClear": "مسح المريض",
+  "emDash": "—",
+  "patientRowActionOpenDetails": "فتح تفاصيل المريض",
+  "patientRowActionBookAppointment": "حجز موعد",
+  "patientRowActionDeactivate": "إلغاء التفعيل",
+  "patientRowActionsLabel": "إجراءات المريض",
+  "patientDeactivatedSuccess": "تم إلغاء تفعيل {fullName}.",
+  "@patientDeactivatedSuccess": {
+    "placeholders": {
+      "fullName": {
+        "type": "String"
+      }
+    }
+  },
+  "archivePatientDialogTitle": "إلغاء تفعيل المريض؟",
+  "archivePatientDialogDescription": "إلغاء تفعيل {fullName}؟ سيُخفى من القوائم النشطة مع الاحتفاظ بسجلاته.",
+  "@archivePatientDialogDescription": {
+    "placeholders": {
+      "fullName": {
+        "type": "String"
+      }
+    }
+  },
+  "archivePatientDialogConfirm": "إلغاء التفعيل",
+  "patientsListTitle": "المرضى",
+  "patientsListDescription": "إدارة سجلات المرضى والملفات والتاريخ الطبي.",
+  "patientsListAddPatient": "إضافة مريض",
+  "patientsListEmptyTitle": "لا يوجد مرضى بعد",
+  "patientsListEmptyDescription": "أضف أول مريض لبدء بناء السجلات.",
+  "patientsListNoAccessTitle": "ليس لديك صلاحية الوصول إلى سجلات المرضى",
+  "patientsListNoMatchTitle": "لا يوجد مرضى مطابقون",
+  "patientsListNoMatchDescription": "جرّب مصطلح بحث مختلفًا أو امسح عوامل التصفية.",
+  "patientsListClearFilters": "مسح عوامل التصفية",
+  "patientsListSearchChip": "بحث: {query}",
+  "patientsListLastVisitChip": "آخر زيارة: {label}",
+  "patientsListSearchPlaceholder": "ابحث عن المرضى بالاسم أو رقم الملف أو البريد أو الهاتف…",
+  "patientsListSearchAriaLabel": "بحث عن المرضى",
+  "patientsListSortAriaLabel": "ترتيب المرضى",
+  "patientsListLastVisitSection": "آخر زيارة",
+  "patientsListSortNameAsc": "الاسم (أ → ي)",
+  "patientsListSortNameDesc": "الاسم (ي → أ)",
+  "patientsListSortLastVisitNewest": "آخر زيارة (الأحدث)",
+  "patientsListSortLastVisitOldest": "آخر زيارة (الأقدم)",
+  "patientsListLastVisitAny": "أي وقت",
+  "patientsListLastVisit30Days": "آخر 30 يومًا",
+  "patientsListLastVisit90Days": "آخر 90 يومًا",
+  "patientsListLastVisitOver90Days": "أكثر من 90 يومًا",
+  "patientsListLastVisitNever": "لم يزر أبدًا",
+  "patientNameFallback": "مريض",
+  "patientSectionsAriaLabel": "أقسام المريض",
+  "addPatientDescription": "Register a new patient at your active branch.",
+  "duplicatePatientDialogTitle": "Possible duplicate found",
+  "duplicatePatientDialogDescription": "A patient with similar details already exists. Review the matches below before creating a new record.",
+  "duplicatePatientGoBack": "Go back",
+  "duplicatePatientRegisterAnyway": "Register anyway",
+  "duplicatePatientOpen": "Open",
+  "duplicatePatientMatchCountOne": "1 existing patient matches the details you entered.",
+  "duplicatePatientMatchCountMany": "{count} existing patients match the details you entered.",
+  "@duplicatePatientMatchCountMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "duplicatePatientDobLabel": "DOB {date}",
+  "@duplicatePatientDobLabel": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "patientsListFilteredBy": "Filtered by",
+  "patientsListClearAll": "Clear all",
+  "patientFormSelectBranchBeforeRegister": "Select an active branch before registering a patient.",
+  "patientFormCouldNotRegister": "Could not register the patient. Try again.",
+  "patientFormDetailsStillLoading": "Patient details are still loading. Try again.",
+  "patientFormCouldNotUpdate": "Could not update the patient. Try again.",
+  "patientFormRegisteredAtBranch": "{fullName} registered at {branchName}.",
+  "@patientFormRegisteredAtBranch": {
+    "placeholders": {
+      "fullName": {
+        "type": "String"
+      },
+      "branchName": {
+        "type": "String"
+      }
+    }
+  },
+  "patientFormPatientUpdated": "{fullName} updated.",
+  "@patientFormPatientUpdated": {
+    "placeholders": {
+      "fullName": {
+        "type": "String"
+      }
+    }
+  },
+  "patientFormFullNameRequired": "Enter the patient's full name.",
+  "patientFormFullNameMinLength": "Full name must be at least 2 characters.",
+  "patientFormMobileRequired": "Mobile number is required.",
+  "patientFormMobileDigitsOnly": "Only numbers are allowed.",
+  "patientFormMobileLength": "Mobile number must be 8 to 15 digits.",
+  "patientRpcNotFound": "Patient was not found or you do not have access.",
+  "patientRpcDuplicateWarning": "Similar patients were found. Review the list before continuing.",
+  "patientRpcStalePatient": "This record was updated elsewhere. Reload and try again.",
+  "patientRpcPatientArchived": "This patient is archived and is not available.",
+  "patientRpcForbidden": "You do not have permission to perform this action.",
+  "patientRpcBranchRequired": "Select an active branch before registering a patient.",
+  "patientRpcDefaultError": "The clinic service rejected this request.",
+  "appointmentTypePlanned": "Planned",
+  "appointmentTypeUnknown": "Unknown",
+  "visitStatusInProgress": "In progress",
+  "visitStatusCompleted": "Completed",
+  "appointmentStatusScheduled": "Scheduled",
+  "appointmentStatusConfirmed": "Confirmed",
+  "appointmentStatusCheckedIn": "Checked in",
+  "appointmentStatusInProgress": "In progress",
+  "appointmentStatusCompleted": "Completed",
+  "appointmentStatusCancelled": "Cancelled",
+  "appointmentStatusNoShow": "No-show",
+  "appointmentStatusUnknown": "Unknown"
 }

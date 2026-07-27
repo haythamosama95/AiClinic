@@ -7,24 +7,26 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/patient_upcoming_appointments_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/patient_invoice_card.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/edit_patient/edit_patient_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/providers/active_branch_name_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_section.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/patient_document_card.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/patient_invoice_card.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_notes_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_grid.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_record_card.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_visit_history_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/patient_visit_document_card.dart';
 
 /// Patient profile route (`/patients/:patientId`).
 class PatientDetailPage extends ConsumerStatefulWidget {
@@ -106,7 +108,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     return error.toString();
   }
 
-  _PatientIdentityView _identityView({PatientDetail? detail, PatientListItem? preview}) {
+  _PatientIdentityView _identityView({PatientDetail? detail, PatientListItem? preview, required AppLocalizations l10n}) {
     if (detail != null) {
       return _PatientIdentityView(
         fullName: detail.fullName,
@@ -126,7 +128,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         branchName: preview.registeringBranchName,
       );
     }
-    return const _PatientIdentityView(fullName: 'Patient');
+    return _PatientIdentityView(fullName: l10n.patientNameFallback);
   }
 
   List<AppTabItem> _tabItems(BuildContext context) {
@@ -289,13 +291,14 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         (
           sortDate: appointment.startTime,
           card: PatientVisitRecordCard.fromAppointment(
+            context,
             appointment,
             branchName: branchName,
             key: ValueKey('appointment-${appointment.id}'),
           ),
         ),
       for (final visit in visits)
-        (sortDate: visit.visitDate, card: PatientVisitRecordCard.fromVisit(visit, key: ValueKey('visit-${visit.id}'))),
+        (sortDate: visit.visitDate, card: PatientVisitRecordCard.fromVisit(context, visit, key: ValueKey('visit-${visit.id}'))),
     ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));
 
     return PatientRecordGrid(
@@ -306,9 +309,16 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
   }
 
   Widget _buildBillingTabBody() {
-    final canAccessBilling = ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList));
-    final invoicesAsync = ref.watch(patientInvoicesProvider(widget.patientId));
     final l10n = context.l10n;
+    final canViewInvoices = ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList));
+
+    if (!canViewInvoices) {
+      return _buildCenteredTabPlaceholder(
+        AppEmptyState(variant: AppEmptyStateVariant.noAccess, title: l10n.billingNoAccess),
+      );
+    }
+
+    final invoicesAsync = ref.watch(patientInvoicesProvider(widget.patientId));
 
     return invoicesAsync.when(
       loading: () => _buildRecordCardSkeletonGrid(count: 3, section: PatientDetailSection.billing),
@@ -319,12 +329,6 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         ),
       ),
       data: (pageResult) {
-        if (!canAccessBilling) {
-          return _buildCenteredTabPlaceholder(
-            AppEmptyState(variant: AppEmptyStateVariant.noAccess, title: l10n.billingNoAccess),
-          );
-        }
-
         final invoices = [...pageResult.items]
           ..sort((a, b) {
             final aDate = a.issuedAt ?? a.createdAt;
@@ -375,7 +379,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         }
         return PatientRecordGrid(
           mainAxisExtent: _recordGridExtent(PatientDetailSection.documents),
-          children: [for (final document in documents) PatientDocumentCard(document: document)],
+          children: [for (final document in documents) PatientVisitDocumentCard(document: document)],
         );
       },
     );
@@ -394,6 +398,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     required _PatientIdentityView identity,
     required bool skeletonizeHeader,
     required bool showTabSkeleton,
+    required bool canEdit,
     Widget? tabBodyOverride,
     PatientDetail? detail,
   }) {
@@ -417,7 +422,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               onViewNotes: detail?.notes != null && detail!.notes!.trim().isNotEmpty
                   ? () => _openPatientNotes(detail.notes!)
                   : null,
-              onEdit: detail != null ? _openEditPatient : null,
+              onEdit: detail != null && canEdit ? _openEditPatient : null,
             ),
           ],
         ),
@@ -433,6 +438,8 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final canEdit = ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessPatientEdit));
     final detailAsync = ref.watch(patientDetailProvider(widget.patientId));
     final preview = _preview;
 
@@ -440,7 +447,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     if (detailAsync.hasError && _isPatientNotFound(detailAsync.error!)) {
       content = _buildNotFound(context);
     } else if (detailAsync.hasError) {
-      final identity = _identityView(preview: preview);
+      final identity = _identityView(preview: preview, l10n: l10n);
       content = preview == null
           ? AppErrorState(message: _errorMessage(detailAsync.error!), onRetry: _invalidateDetail)
           : _buildMainContent(
@@ -448,29 +455,32 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               identity: identity,
               skeletonizeHeader: false,
               showTabSkeleton: false,
+              canEdit: canEdit,
               tabBodyOverride: _buildCenteredTabPlaceholder(
                 AppErrorState(message: _errorMessage(detailAsync.error!), onRetry: _invalidateDetail),
               ),
             );
     } else if (detailAsync.isLoading) {
-      final identity = _identityView(detail: detailAsync.value, preview: preview);
+      final identity = _identityView(detail: detailAsync.value, preview: preview, l10n: l10n);
       content = _buildMainContent(
         context: context,
         identity: identity,
         skeletonizeHeader: preview == null,
         showTabSkeleton: true,
+        canEdit: canEdit,
       );
     } else {
       final detail = detailAsync.value;
       if (detail == null) {
         content = _buildNotFound(context);
       } else {
-        final identity = _identityView(detail: detail, preview: preview);
+        final identity = _identityView(detail: detail, preview: preview, l10n: l10n);
         content = _buildMainContent(
           context: context,
           identity: identity,
           skeletonizeHeader: false,
           showTabSkeleton: false,
+          canEdit: canEdit,
           detail: detail,
         );
       }
@@ -574,7 +584,7 @@ class _PatientIdentityCard extends StatelessWidget {
     final age = PatientPresentationFormatting.ageYears(identity.dateOfBirth);
     final dobLabel = identity.dateOfBirth != null
         ? '${l10n.dateOfBirthLabel} ${PatientPresentationFormatting.formatCalendarDate(identity.dateOfBirth!)}'
-        : '—';
+        : l10n.emDash;
     final maritalLabel = identity.maritalStatus?.label;
     final branchName = identity.branchName?.trim();
 
@@ -585,7 +595,7 @@ class _PatientIdentityCard extends StatelessWidget {
         items: tabItems,
         value: section.name,
         onChanged: (id) => onSectionChanged(PatientDetailSection.values.byName(id)),
-        ariaLabel: 'Patient sections',
+        ariaLabel: l10n.patientSectionsAriaLabel,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

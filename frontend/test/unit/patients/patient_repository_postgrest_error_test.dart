@@ -166,7 +166,7 @@ void main() {
         await repository.searchPatients(scope: PatientListScope.allBranches);
         fail('Expected RpcFailure');
       } on RpcFailure catch (e) {
-        expect(e.message, contains('20260523140000_patient_management.sql'));
+        expect(e.message, contains('20260614150000_search_patients_list_filters.sql'));
         expect(e.message, contains('search_patients'));
       }
     });

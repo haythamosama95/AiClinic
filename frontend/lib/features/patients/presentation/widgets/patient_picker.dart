@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/core/ui/components/app_combobox.dart';
 import 'package:ai_clinic/core/ui/components/app_form_field.dart';
@@ -88,7 +89,7 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
       return page.items.map(_toComboboxItem).toList();
     } catch (_) {
       if (mounted) {
-        setState(() => _searchError = 'Could not search patients.');
+        setState(() => _searchError = context.l10n.patientPickerSearchFailed);
       }
       return [];
     }
@@ -157,6 +158,7 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final selected = widget.value;
 
     if (selected != null) {
@@ -176,15 +178,15 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
 
     return AppFormField(
       id: 'patient_picker_search',
-      label: 'Patient',
+      label: l10n.patientPickerLabel,
       requiredMark: widget.requiredMark,
-      hint: widget.hint ?? 'Search by name, MRN, email, or phone.',
+      hint: widget.hint ?? l10n.patientPickerSearchHint,
       helperText: helperText,
       error: widget.validationError ?? _searchError,
       child: AppCombobox(
         key: widget.searchFieldKey ?? const Key('patient_picker_search'),
         id: 'patient_picker_search',
-        placeholder: 'Search patients by name, MRN, email, or phone…',
+        placeholder: l10n.patientPickerSearchPlaceholder,
         disabled: !widget.enabled,
         onValueChange: _handleValueChange,
         onSearch: _searchPatients,
@@ -212,14 +214,15 @@ class _SelectedPatientCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final colors = context.appColors;
 
     return AppFormField(
       id: 'patient_picker_selected',
-      label: 'Patient',
+      label: l10n.patientPickerLabel,
       requiredMark: requiredMark,
       error: validationError,
-      hint: hint ?? 'Search by name, MRN, email, or phone.',
+      hint: hint ?? l10n.patientPickerSearchHint,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -263,7 +266,7 @@ class _SelectedPatientCard extends StatelessWidget {
                   variant: AppIconButtonVariant.ghost,
                   size: AppIconButtonSize.sm,
                   icon: const Icon(Icons.close, size: 16),
-                  label: 'Clear patient',
+                  label: l10n.patientPickerClear,
                   onPressed: onClear,
                 ),
               ],

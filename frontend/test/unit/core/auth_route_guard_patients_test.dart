@@ -8,11 +8,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AuthRouteGuard patient routes', () {
-    test('isPatientRoute matches list, register, detail, and edit paths', () {
+    test('isPatientRoute matches list, register, and detail paths', () {
       expect(AuthRouteGuard.isPatientRoute(AppRoutes.patients), isTrue);
       expect(AuthRouteGuard.isPatientRoute(AppRoutes.patientsNew), isTrue);
       expect(AuthRouteGuard.isPatientRoute(AppRoutes.patientDetail('abc')), isTrue);
-      expect(AuthRouteGuard.isPatientRoute(AppRoutes.patientEdit('abc')), isTrue);
       expect(AuthRouteGuard.isPatientRoute(AppRoutes.home), isFalse);
     });
 
@@ -25,7 +24,6 @@ void main() {
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), isNull);
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientDetail('id'), auth: auth), isNull);
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientsNew, auth: auth), isNull);
-      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientEdit('id'), auth: auth), isNull);
     });
 
     test('staff without patient grants are not redirected away from patient routes', () {
@@ -67,7 +65,7 @@ void main() {
       );
 
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientsNew, auth: auth), isNull);
-      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientEdit('id'), auth: auth), isNull);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientDetail('id'), auth: auth), isNull);
     });
   });
 }

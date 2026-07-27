@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/core/ui/components/app_data_table.dart';
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -32,21 +33,22 @@ class PatientTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final l10n = context.l10n;
 
     return AppDataTable<PatientTableRow>(
-      ariaLabel: 'Patients',
+      ariaLabel: l10n.patients,
       density: TableDensity.comfortable,
       animateRows: true,
       headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
       columns: [
         TableColumn(
           id: 'patient',
-          header: 'Patient',
+          header: l10n.patientTableColumnPatient,
           accessor: (row) => _PatientCell(name: row.item.fullName),
         ),
         TableColumn(
           id: 'phone',
-          header: 'Phone',
+          header: l10n.patientTableColumnPhone,
           accessor: (row) => Text(
             PatientPresentationFormatting.orDash(row.item.phone),
             style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
@@ -54,7 +56,7 @@ class PatientTable extends StatelessWidget {
         ),
         TableColumn(
           id: 'dob',
-          header: 'DOB',
+          header: l10n.patientTableColumnDob,
           accessor: (row) => Text(
             PatientPresentationFormatting.dateOfBirthLabel(row.item.dateOfBirth),
             style: AppTypography.bodySm(context).copyWith(fontFeatures: _tabularFigures),
@@ -62,21 +64,23 @@ class PatientTable extends StatelessWidget {
         ),
         TableColumn(
           id: 'lastVisit',
-          header: 'Last visit',
+          header: l10n.patientTableColumnLastVisit,
           align: TableAlign.end,
           accessor: (row) => Text(
-            row.item.lastVisitAt != null ? PatientPresentationFormatting.date.format(row.item.lastVisitAt!) : '—',
+            row.item.lastVisitAt != null
+                ? PatientPresentationFormatting.date.format(row.item.lastVisitAt!)
+                : l10n.emDash,
             style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
           ),
         ),
         TableColumn(
           id: 'nextVisit',
-          header: 'Next visit',
+          header: l10n.patientTableColumnNextVisit,
           align: TableAlign.end,
           accessor: (row) => Text(
             row.item.nextAppointmentAt != null
                 ? PatientPresentationFormatting.dateTime.format(row.item.nextAppointmentAt!)
-                : '—',
+                : l10n.emDash,
             style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
           ),
         ),

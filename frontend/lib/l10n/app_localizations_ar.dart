@@ -337,4 +337,299 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get maritalStatusWidowed => 'أرمل';
+
+  @override
+  String get patientTableColumnPatient => 'المريض';
+
+  @override
+  String get patientTableColumnPhone => 'الهاتف';
+
+  @override
+  String get patientTableColumnDob => 'تاريخ الميلاد';
+
+  @override
+  String get patientTableColumnLastVisit => 'آخر زيارة';
+
+  @override
+  String get patientTableColumnNextVisit => 'الزيارة القادمة';
+
+  @override
+  String get patientPickerLabel => 'المريض';
+
+  @override
+  String get patientPickerSearchHint =>
+      'ابحث بالاسم أو رقم الملف الطبي أو البريد الإلكتروني أو الهاتف.';
+
+  @override
+  String get patientPickerSearchPlaceholder =>
+      'ابحث عن المرضى بالاسم أو رقم الملف الطبي أو البريد الإلكتروني أو الهاتف…';
+
+  @override
+  String get patientPickerSearchFailed => 'تعذّر البحث عن المرضى.';
+
+  @override
+  String get patientPickerClear => 'مسح المريض';
+
+  @override
+  String get emDash => '—';
+
+  @override
+  String get patientRowActionOpenDetails => 'فتح تفاصيل المريض';
+
+  @override
+  String get patientRowActionBookAppointment => 'حجز موعد';
+
+  @override
+  String get patientRowActionDeactivate => 'إلغاء التفعيل';
+
+  @override
+  String get patientRowActionsLabel => 'إجراءات المريض';
+
+  @override
+  String patientDeactivatedSuccess(String fullName) {
+    return 'تم إلغاء تفعيل $fullName.';
+  }
+
+  @override
+  String get archivePatientDialogTitle => 'إلغاء تفعيل المريض؟';
+
+  @override
+  String archivePatientDialogDescription(String fullName) {
+    return 'إلغاء تفعيل $fullName؟ سيُخفى من القوائم النشطة مع الاحتفاظ بسجلاته.';
+  }
+
+  @override
+  String get archivePatientDialogConfirm => 'إلغاء التفعيل';
+
+  @override
+  String get patientsListTitle => 'المرضى';
+
+  @override
+  String get patientsListDescription =>
+      'إدارة سجلات المرضى والملفات والتاريخ الطبي.';
+
+  @override
+  String get patientsListAddPatient => 'إضافة مريض';
+
+  @override
+  String get patientsListEmptyTitle => 'لا يوجد مرضى بعد';
+
+  @override
+  String get patientsListEmptyDescription => 'أضف أول مريض لبدء بناء السجلات.';
+
+  @override
+  String get patientsListNoAccessTitle =>
+      'ليس لديك صلاحية الوصول إلى سجلات المرضى';
+
+  @override
+  String get patientsListNoMatchTitle => 'لا يوجد مرضى مطابقون';
+
+  @override
+  String get patientsListNoMatchDescription =>
+      'جرّب مصطلح بحث مختلفًا أو امسح عوامل التصفية.';
+
+  @override
+  String get patientsListClearFilters => 'مسح عوامل التصفية';
+
+  @override
+  String patientsListSearchChip(String query) {
+    return 'بحث: $query';
+  }
+
+  @override
+  String patientsListLastVisitChip(String label) {
+    return 'آخر زيارة: $label';
+  }
+
+  @override
+  String get patientsListSearchPlaceholder =>
+      'ابحث عن المرضى بالاسم أو رقم الملف أو البريد أو الهاتف…';
+
+  @override
+  String get patientsListSearchAriaLabel => 'بحث عن المرضى';
+
+  @override
+  String get patientsListSortAriaLabel => 'ترتيب المرضى';
+
+  @override
+  String get patientsListLastVisitSection => 'آخر زيارة';
+
+  @override
+  String get patientsListSortNameAsc => 'الاسم (أ → ي)';
+
+  @override
+  String get patientsListSortNameDesc => 'الاسم (ي → أ)';
+
+  @override
+  String get patientsListSortLastVisitNewest => 'آخر زيارة (الأحدث)';
+
+  @override
+  String get patientsListSortLastVisitOldest => 'آخر زيارة (الأقدم)';
+
+  @override
+  String get patientsListLastVisitAny => 'أي وقت';
+
+  @override
+  String get patientsListLastVisit30Days => 'آخر 30 يومًا';
+
+  @override
+  String get patientsListLastVisit90Days => 'آخر 90 يومًا';
+
+  @override
+  String get patientsListLastVisitOver90Days => 'أكثر من 90 يومًا';
+
+  @override
+  String get patientsListLastVisitNever => 'لم يزر أبدًا';
+
+  @override
+  String get patientNameFallback => 'مريض';
+
+  @override
+  String get patientSectionsAriaLabel => 'أقسام المريض';
+
+  @override
+  String get addPatientDescription =>
+      'Register a new patient at your active branch.';
+
+  @override
+  String get duplicatePatientDialogTitle => 'Possible duplicate found';
+
+  @override
+  String get duplicatePatientDialogDescription =>
+      'A patient with similar details already exists. Review the matches below before creating a new record.';
+
+  @override
+  String get duplicatePatientGoBack => 'Go back';
+
+  @override
+  String get duplicatePatientRegisterAnyway => 'Register anyway';
+
+  @override
+  String get duplicatePatientOpen => 'Open';
+
+  @override
+  String get duplicatePatientMatchCountOne =>
+      '1 existing patient matches the details you entered.';
+
+  @override
+  String duplicatePatientMatchCountMany(int count) {
+    return '$count existing patients match the details you entered.';
+  }
+
+  @override
+  String duplicatePatientDobLabel(String date) {
+    return 'DOB $date';
+  }
+
+  @override
+  String get patientsListFilteredBy => 'Filtered by';
+
+  @override
+  String get patientsListClearAll => 'Clear all';
+
+  @override
+  String get patientFormSelectBranchBeforeRegister =>
+      'Select an active branch before registering a patient.';
+
+  @override
+  String get patientFormCouldNotRegister =>
+      'Could not register the patient. Try again.';
+
+  @override
+  String get patientFormDetailsStillLoading =>
+      'Patient details are still loading. Try again.';
+
+  @override
+  String get patientFormCouldNotUpdate =>
+      'Could not update the patient. Try again.';
+
+  @override
+  String patientFormRegisteredAtBranch(String fullName, String branchName) {
+    return '$fullName registered at $branchName.';
+  }
+
+  @override
+  String patientFormPatientUpdated(String fullName) {
+    return '$fullName updated.';
+  }
+
+  @override
+  String get patientFormFullNameRequired => 'Enter the patient\'s full name.';
+
+  @override
+  String get patientFormFullNameMinLength =>
+      'Full name must be at least 2 characters.';
+
+  @override
+  String get patientFormMobileRequired => 'Mobile number is required.';
+
+  @override
+  String get patientFormMobileDigitsOnly => 'Only numbers are allowed.';
+
+  @override
+  String get patientFormMobileLength => 'Mobile number must be 8 to 15 digits.';
+
+  @override
+  String get patientRpcNotFound =>
+      'Patient was not found or you do not have access.';
+
+  @override
+  String get patientRpcDuplicateWarning =>
+      'Similar patients were found. Review the list before continuing.';
+
+  @override
+  String get patientRpcStalePatient =>
+      'This record was updated elsewhere. Reload and try again.';
+
+  @override
+  String get patientRpcPatientArchived =>
+      'This patient is archived and is not available.';
+
+  @override
+  String get patientRpcForbidden =>
+      'You do not have permission to perform this action.';
+
+  @override
+  String get patientRpcBranchRequired =>
+      'Select an active branch before registering a patient.';
+
+  @override
+  String get patientRpcDefaultError =>
+      'The clinic service rejected this request.';
+
+  @override
+  String get appointmentTypePlanned => 'Planned';
+
+  @override
+  String get appointmentTypeUnknown => 'Unknown';
+
+  @override
+  String get visitStatusInProgress => 'In progress';
+
+  @override
+  String get visitStatusCompleted => 'Completed';
+
+  @override
+  String get appointmentStatusScheduled => 'Scheduled';
+
+  @override
+  String get appointmentStatusConfirmed => 'Confirmed';
+
+  @override
+  String get appointmentStatusCheckedIn => 'Checked in';
+
+  @override
+  String get appointmentStatusInProgress => 'In progress';
+
+  @override
+  String get appointmentStatusCompleted => 'Completed';
+
+  @override
+  String get appointmentStatusCancelled => 'Cancelled';
+
+  @override
+  String get appointmentStatusNoShow => 'No-show';
+
+  @override
+  String get appointmentStatusUnknown => 'Unknown';
 }

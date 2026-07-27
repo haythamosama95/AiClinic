@@ -12,7 +12,8 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/add_patient_form_fields.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/duplicate_patient_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/patient_edit_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_form_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_form_state.dart';
 
 /// Edit-patient dialog (synthesized from the add-patient flow).
 class EditPatientDialog extends ConsumerStatefulWidget {
@@ -25,24 +26,10 @@ class EditPatientDialog extends ConsumerStatefulWidget {
 }
 
 class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateFromDetail());
-  }
-
-  void _hydrateFromDetail() {
-    if (!mounted) {
-      return;
-    }
-    final detail = ref.read(patientDetailProvider(widget.patientId)).asData?.value;
-    if (detail != null) {
-      ref.read(patientEditProvider(widget.patientId).notifier).preloadFromDetail(detail);
-    }
-  }
+  PatientFormArgs get _formArgs => PatientFormArgs.edit(patientId: widget.patientId);
 
   void _close() {
-    ref.read(patientEditProvider(widget.patientId).notifier).reset();
+    ref.read(patientFormNotifierProvider(_formArgs).notifier).reset();
     Navigator.of(context).pop();
   }
 
@@ -53,8 +40,8 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   Future<void> _handleSubmit() async {
-    final success = await ref.read(patientEditProvider(widget.patientId).notifier).submit();
-    if (!mounted || !success) {
+    final outcome = await ref.read(patientFormNotifierProvider(_formArgs).notifier).submit();
+    if (!mounted || !outcome.succeeded) {
       return;
     }
     ref.invalidate(patientDetailProvider(widget.patientId));
@@ -62,8 +49,8 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   Future<void> _handleSaveAnyway() async {
-    final success = await ref.read(patientEditProvider(widget.patientId).notifier).saveAnyway();
-    if (!mounted || !success) {
+    final outcome = await ref.read(patientFormNotifierProvider(_formArgs).notifier).submitAnyway();
+    if (!mounted || !outcome.succeeded) {
       return;
     }
     ref.invalidate(patientDetailProvider(widget.patientId));
@@ -71,18 +58,18 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   void _handleStaleReload() {
-    ref.read(patientEditProvider(widget.patientId).notifier).confirmStaleReload();
+    ref.read(patientFormNotifierProvider(_formArgs).notifier).confirmStaleReload();
     _close();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(patientEditProvider(widget.patientId));
-    final notifier = ref.read(patientEditProvider(widget.patientId).notifier);
+    final state = ref.watch(patientFormNotifierProvider(_formArgs));
+    final notifier = ref.read(patientFormNotifierProvider(_formArgs).notifier);
     final reducedMotion = AppMotion.prefersReducedMotion(context);
 
     ref.listen<String?>(
-      patientEditProvider(widget.patientId).select((s) => s.pendingOpenPatientId),
+      patientFormNotifierProvider(_formArgs).select((s) => s.pendingOpenPatientId),
       (previous, next) {
         if (next == null) {
           return;
@@ -164,8 +151,8 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
         AppDialog(
           open: state.staleUpdateOpen,
           onOpenChange: notifier.setStaleUpdateOpen,
-          title: 'Record changed',
-          description: 'This record was modified by someone else. Reload and discard your edits?',
+          title: l10n.recordChangedTitle,
+          description: l10n.recordChangedDescription,
           size: AppDialogSize.sm,
           barrierDismissible: false,
           footer: Row(
@@ -180,7 +167,7 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
               AppButton(
                 variant: AppButtonVariant.primary,
                 onPressed: _handleStaleReload,
-                child: const Text('Reload'),
+                child: Text(l10n.reload),
               ),
             ],
           ),

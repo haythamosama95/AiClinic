@@ -2,21 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
 import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/components/app_pagination.dart';
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_elevation.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/add_patient_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_list_controls.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_table.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 /// Patients list route (`/patients`).
 class PatientsPage extends ConsumerStatefulWidget {
@@ -33,6 +39,7 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
   CurvedAnimation? _enterAnimation;
   var _enterStarted = false;
   var _defaultFiltersApplied = false;
+  var _initialLoadDone = false;
   var _addOpen = false;
 
   @override
@@ -40,7 +47,12 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     super.initState();
     _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (!mounted || _initialLoadDone) {
+        return;
+      }
+      _initialLoadDone = true;
+      final loadedDefaults = _ensureDefaultFilters();
+      if (!loadedDefaults) {
         ref.read(patientListProvider.notifier).reload();
       }
     });
@@ -88,13 +100,9 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     _applyFilters(_defaultFilters.copyWith(pageSize: current.pageSize));
   }
 
-  void _clearLastVisitFilter(PatientListFilters current) {
-    _resetPage(current.copyWith(lastVisitFilter: PatientLastVisitFilter.any));
-  }
-
-  void _ensureDefaultFilters() {
+  bool _ensureDefaultFilters() {
     if (_defaultFiltersApplied) {
-      return;
+      return false;
     }
     _defaultFiltersApplied = true;
 
@@ -102,7 +110,9 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     final filters = notifier.filters;
     if (_isPristineNotifierDefault(filters)) {
       _applyFilters(_defaultFilters);
+      return true;
     }
+    return false;
   }
 
   bool _isPristineNotifierDefault(PatientListFilters filters) {
@@ -118,13 +128,16 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     return filters.searchText.trim().isNotEmpty || filters.lastVisitFilter != PatientLastVisitFilter.any;
   }
 
-  List<({String id, String label, VoidCallback onRemove})> _activeFilterChips(PatientListFilters filters) {
+  List<({String id, String label, VoidCallback onRemove})> _activeFilterChips(
+    AppLocalizations l10n,
+    PatientListFilters filters,
+  ) {
     final chips = <({String id, String label, VoidCallback onRemove})>[];
 
     if (filters.searchText.trim().isNotEmpty) {
       chips.add((
         id: 'search',
-        label: 'Search: ${filters.searchText.trim()}',
+        label: l10n.patientsListSearchChip(filters.searchText.trim()),
         onRemove: () => _resetPage(filters.copyWith(searchText: '')),
       ));
     }
@@ -132,7 +145,7 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     if (filters.lastVisitFilter != PatientLastVisitFilter.any) {
       chips.add((
         id: 'lastVisit',
-        label: 'Last visit: ${_lastVisitFilterLabel(filters.lastVisitFilter)}',
+        label: l10n.patientsListLastVisitChip(_lastVisitFilterLabel(l10n, filters.lastVisitFilter)),
         onRemove: () => _resetPage(filters.copyWith(lastVisitFilter: PatientLastVisitFilter.any)),
       ));
     }
@@ -140,17 +153,17 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     return chips;
   }
 
-  String _lastVisitFilterLabel(PatientLastVisitFilter filter) {
+  String _lastVisitFilterLabel(AppLocalizations l10n, PatientLastVisitFilter filter) {
     return switch (filter) {
-      PatientLastVisitFilter.any => 'Any',
-      PatientLastVisitFilter.last30Days => 'Last 30 days',
-      PatientLastVisitFilter.last90Days => 'Last 90 days',
-      PatientLastVisitFilter.over90Days => 'Over 90 days',
-      PatientLastVisitFilter.never => 'Never',
+      PatientLastVisitFilter.any => l10n.patientsListLastVisitAny,
+      PatientLastVisitFilter.last30Days => l10n.patientsListLastVisit30Days,
+      PatientLastVisitFilter.last90Days => l10n.patientsListLastVisit90Days,
+      PatientLastVisitFilter.over90Days => l10n.patientsListLastVisitOver90Days,
+      PatientLastVisitFilter.never => l10n.patientsListLastVisitNever,
     };
   }
 
-  Widget _buildNoMatchCard(BuildContext context, PatientListFilters filters) {
+  Widget _buildNoMatchCard(BuildContext context, AppLocalizations l10n, PatientListFilters filters) {
     final colors = context.appColors;
     final elevation = Theme.of(context).extension<AppElevation>();
 
@@ -170,13 +183,13 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
               Icon(Icons.search_off, size: 32, color: colors.iconMuted),
               const SizedBox(height: AppSpacing.space4),
               Text(
-                'No patients match',
+                l10n.patientsListNoMatchTitle,
                 style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppSpacing.space1),
               Text(
-                'Try a different search term or clear your filters.',
+                l10n.patientsListNoMatchDescription,
                 style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                 textAlign: TextAlign.center,
               ),
@@ -184,7 +197,7 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
               AppButton(
                 variant: AppButtonVariant.secondary,
                 onPressed: () => _clearAll(filters),
-                child: const Text('Clear filters'),
+                child: Text(l10n.patientsListClearFilters),
               ),
             ],
           ),
@@ -219,9 +232,11 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
 
   Widget _buildBody({
     required BuildContext context,
+    required AppLocalizations l10n,
     required PatientListUiState? state,
     required PatientListFilters filters,
     required bool isLoading,
+    required bool canCreate,
   }) {
     if (isLoading && state == null) {
       return PatientTable(rows: const [], loading: true, loadingRows: filters.pageSize);
@@ -236,17 +251,26 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
       return _buildSearchHintCard(context, searchHint);
     }
 
+    if (state.accessDenied) {
+      return AppEmptyState(
+        variant: AppEmptyStateVariant.noAccess,
+        title: l10n.patientsListNoAccessTitle,
+      );
+    }
+
     if (state.isNoPatientsYet) {
       return AppEmptyState(
         variant: AppEmptyStateVariant.firstRun,
-        title: 'No patients yet',
-        description: 'Add your first patient to start building records.',
-        action: EmptyStateAction(label: 'Add patient', onPressed: _openAddPatient),
+        title: l10n.patientsListEmptyTitle,
+        description: l10n.patientsListEmptyDescription,
+        action: canCreate
+            ? EmptyStateAction(label: l10n.patientsListAddPatient, onPressed: _openAddPatient)
+            : null,
       );
     }
 
     if (state.isNoMatch) {
-      return _buildNoMatchCard(context, filters);
+      return _buildNoMatchCard(context, l10n, filters);
     }
 
     return Column(
@@ -275,15 +299,16 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    _ensureDefaultFilters();
-
+    final l10n = context.l10n;
+    final auth = ref.watch(authSessionProvider);
+    final canCreate = AuthRouteGuard.canAccessPatientRegistration(auth);
     final listAsync = ref.watch(patientListProvider);
     final state = listAsync.value;
     final filters = state?.filters ?? ref.read(patientListProvider.notifier).filters;
-    final isLoading = listAsync.isLoading;
-    final hasPatients = state != null && !state.isNoPatientsYet;
+    final isLoading = listAsync.isLoading || !_initialLoadDone;
+    final hasPatients = state != null && !state.isNoPatientsYet && !state.accessDenied;
     final activeChips = hasPatients
-        ? _activeFilterChips(filters)
+        ? _activeFilterChips(l10n, filters)
         : const <({String id, String label, VoidCallback onRemove})>[];
 
     final content = Column(
@@ -296,17 +321,18 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
           children: [
             Expanded(
               child: AppPageHeader(
-                title: 'Patients',
-                description: 'Manage patient records, profiles, and medical history.',
+                title: l10n.patientsListTitle,
+                description: l10n.patientsListDescription,
               ),
             ),
-            AppButton(
-              variant: AppButtonVariant.primary,
-              size: AppButtonSize.md,
-              leadingIcon: const Icon(Icons.person_add),
-              onPressed: _openAddPatient,
-              child: const Text('Add patient'),
-            ),
+            if (canCreate)
+              AppButton(
+                variant: AppButtonVariant.primary,
+                size: AppButtonSize.md,
+                leadingIcon: const Icon(Icons.person_add),
+                onPressed: _openAddPatient,
+                child: Text(l10n.patientsListAddPatient),
+              ),
           ],
         ),
         if (hasPatients)
@@ -315,13 +341,17 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
             onSearchChange: (search) => _resetPage(filters.copyWith(searchText: search)),
             onSortChange: (sort) => _resetPage(filters.copyWith(sortField: sort)),
             onLastVisitChange: (lastVisit) => _resetPage(filters.copyWith(lastVisitFilter: lastVisit)),
-            onClearFilters: filters.lastVisitFilter != PatientLastVisitFilter.any
-                ? () => _clearLastVisitFilter(filters)
-                : null,
             activeFilters: activeChips,
             onClearAll: _hasActiveFilterChips(filters) ? () => _clearAll(filters) : null,
           ),
-        _buildBody(context: context, state: state, filters: filters, isLoading: isLoading),
+        _buildBody(
+          context: context,
+          l10n: l10n,
+          state: state,
+          filters: filters,
+          isLoading: isLoading,
+          canCreate: canCreate,
+        ),
       ],
     );
 

@@ -307,7 +307,8 @@ abstract final class AuthRouteGuard {
       return clinicSetupRoute;
     }
 
-    // Permission checks are enforced on each patient page (UI stays visible; denial in-page).
+    // List/detail routes stay reachable; mutation affordances are gated in-page via
+    // [canAccessPatientRegistration], [canAccessPatientEdit], and [canAccessPatientDelete].
     return null;
   }
 

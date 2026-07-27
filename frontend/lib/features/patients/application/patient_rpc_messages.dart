@@ -1,15 +1,16 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 /// User-facing copy for patient RPC failures (V1-3).
-String patientMessageForRpc(RpcFailure failure) {
+String patientMessageForRpc(RpcFailure failure, AppLocalizations l10n) {
   return switch (failure.code) {
-    'NOT_FOUND' => 'Patient was not found or you do not have access.',
-    'DUPLICATE_WARNING' => 'Similar patients were found. Review the list before continuing.',
-    'STALE_PATIENT' => 'This record was updated elsewhere. Reload and try again.',
-    'PATIENT_ARCHIVED' => 'This patient is archived and is not available.',
-    'FORBIDDEN' => 'You do not have permission to perform this action.',
-    'BRANCH_REQUIRED' => 'Select an active branch before registering a patient.',
+    'NOT_FOUND' => l10n.patientRpcNotFound,
+    'DUPLICATE_WARNING' => l10n.patientRpcDuplicateWarning,
+    'STALE_PATIENT' => l10n.patientRpcStalePatient,
+    'PATIENT_ARCHIVED' => l10n.patientRpcPatientArchived,
+    'FORBIDDEN' => l10n.patientRpcForbidden,
+    'BRANCH_REQUIRED' => l10n.patientRpcBranchRequired,
     'INVALID_INPUT' => failure.message,
-    _ => failure.message,
+    _ => failure.message.isNotEmpty ? failure.message : l10n.patientRpcDefaultError,
   };
 }

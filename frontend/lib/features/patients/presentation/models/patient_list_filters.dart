@@ -1,32 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
-import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
-
-/// Sort options for the patients list (server-backed via `search_patients`).
-enum PatientSortField { nameAsc, nameDesc, lastVisitAsc, lastVisitDesc }
-
-/// Last-visit date range filter (server-backed via `search_patients`).
-enum PatientLastVisitFilter { any, last30Days, last90Days, over90Days, never }
-
-extension PatientSortFieldWire on PatientSortField {
-  String get wireValue => switch (this) {
-    PatientSortField.nameAsc => 'name_asc',
-    PatientSortField.nameDesc => 'name_desc',
-    PatientSortField.lastVisitAsc => 'last_visit_asc',
-    PatientSortField.lastVisitDesc => 'last_visit_desc',
-  };
-}
-
-extension PatientLastVisitFilterWire on PatientLastVisitFilter {
-  String get wireValue => switch (this) {
-    PatientLastVisitFilter.any => 'any',
-    PatientLastVisitFilter.last30Days => 'last_30_days',
-    PatientLastVisitFilter.last90Days => 'last_90_days',
-    PatientLastVisitFilter.over90Days => 'over_90_days',
-    PatientLastVisitFilter.never => 'never',
-  };
-}
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 
 /// Filter and pagination state for the patients list view.
 @immutable
@@ -97,16 +73,6 @@ class PatientTableRow {
   const PatientTableRow({required this.item});
 
   final PatientListItem item;
-
-  String get displayId => PatientPresentationFormatting.displayId(item.id);
-
-  DateTime? get lastVisitAt => item.lastVisitAt;
-
-  DateTime? get nextAppointmentAt => item.nextAppointmentAt;
-
-  int? get age => PatientPresentationFormatting.ageYears(item.dateOfBirth);
-
-  String get ageGenderLabel => PatientPresentationFormatting.ageGenderLabel(age: age, gender: item.gender);
 
   static List<PatientTableRow> fromItems(List<PatientListItem> items) {
     return items.map((item) => PatientTableRow(item: item)).toList();

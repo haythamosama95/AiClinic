@@ -10,17 +10,25 @@ import 'package:ai_clinic/features/patients/presentation/models/patient_list_fil
 
 @immutable
 class PatientListUiState {
-  const PatientListUiState({required this.rows, required this.totalCount, required this.filters, this.searchHint});
+  const PatientListUiState({
+    required this.rows,
+    required this.totalCount,
+    required this.filters,
+    this.searchHint,
+    this.accessDenied = false,
+  });
 
   final List<PatientTableRow> rows;
   final int totalCount;
   final PatientListFilters filters;
   final String? searchHint;
+  final bool accessDenied;
 
   bool get isEmptyResult => rows.isEmpty;
 
   /// True when the branch has no patients and the user has not searched or filtered.
-  bool get isNoPatientsYet => isEmptyResult && totalCount == 0 && searchHint == null && !filters.hasSearchOrFilters;
+  bool get isNoPatientsYet =>
+      isEmptyResult && totalCount == 0 && searchHint == null && !filters.hasSearchOrFilters && !accessDenied;
 
   /// True when search or filters yield no matching patients.
   bool get isNoMatch => isEmptyResult && !isNoPatientsYet && searchHint == null;
@@ -36,9 +44,13 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
 
   @override
   Future<PatientListUiState> build() async {
-    // Rebuild when the shell active branch changes so this-branch lists stay in sync.
-    ref.watch(authSessionProvider.select((state) => state.context?.activeBranchId));
-    return _load(_filters);
+    ref.listen(authSessionProvider.select((state) => state.context?.activeBranchId), (previous, next) {
+      if (previous != null && previous != next) {
+        reload();
+      }
+    });
+
+    return PatientListUiState(rows: const [], totalCount: 0, filters: _filters);
   }
 
   Future<void> applyFilters(PatientListFilters filters) async {
@@ -53,7 +65,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
   Future<PatientListUiState> _load(PatientListFilters filters) async {
     final auth = ref.read(authSessionProvider);
     if (!AuthRouteGuard.canAccessPatientList(auth)) {
-      return PatientListUiState(rows: const [], totalCount: 0, filters: filters);
+      return PatientListUiState(rows: const [], totalCount: 0, filters: filters, accessDenied: true);
     }
 
     final searchText = filters.searchText.trim();
