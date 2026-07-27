@@ -52,7 +52,10 @@ REPRESENTATIVE_PAYLOADS: list[tuple[dict[str, Any], int]] = [
             "task": "command",
             "prompt": "cancel appointment",
             "options": {"stream": True},
-            "context": {"branch_id": "550e8400-e29b-41d4-a716-446655440000"},
+            "context": {
+                "branch_id": "550e8400-e29b-41d4-a716-446655440000",
+                "now": "2026-07-18T12:00:00+03:00",
+            },
         },
         200,
     ),
@@ -60,6 +63,7 @@ REPRESENTATIVE_PAYLOADS: list[tuple[dict[str, Any], int]] = [
         {
             "task": "plan",
             "prompt": "plan the week",
+            "context": MVP_CONTEXT,
             "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
             "turn": 0,
         },

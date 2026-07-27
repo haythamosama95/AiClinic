@@ -138,6 +138,15 @@ def _http_error_code(exc: StarletteHTTPException) -> ErrorCode:
     return ErrorCode.BAD_REQUEST
 
 
+def _validation_error_message(exc: RequestValidationError) -> str:
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err.get("loc", ()))
+        msg = str(err.get("msg", "invalid"))
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(parts) if parts else "Request validation failed"
+
+
 def install_exception_handlers(app: FastAPI) -> None:
     """Register uniform error handlers on the FastAPI app."""
 
@@ -152,10 +161,11 @@ def install_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         rid = _request_id(request)
-        vlog.v0("Handling request validation error", request_id=rid)
+        message = _validation_error_message(exc)
+        vlog.v0("Handling request validation error", request_id=rid, detail=message)
         return error_response(
             ErrorCode.BAD_REQUEST,
-            "Request validation failed",
+            message,
             rid,
         )
 

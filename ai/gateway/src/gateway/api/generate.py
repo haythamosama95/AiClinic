@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 from collections.abc import AsyncIterator
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Self
 from uuid import UUID
@@ -107,12 +108,34 @@ class GenerateOptions(BaseModel):
     plan_mode: PlanMode = PlanMode.SINGLE
 
 
+class GenerationContext(BaseModel):
+    """Caller-supplied scheduling context. ``now`` anchors relative date semantics."""
+
+    model_config = ConfigDict(extra="allow")
+
+    now: str
+
+    @field_validator("now")
+    @classmethod
+    def validate_now(cls, value: str) -> str:
+        cleaned = strip_control_characters(value)
+        if not cleaned:
+            raise ValueError("context.now must not be empty")
+        try:
+            parsed = datetime.fromisoformat(cleaned)
+        except ValueError as exc:
+            raise ValueError("context.now must be a valid ISO-8601 timestamp") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("context.now must include a timezone offset")
+        return cleaned
+
+
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     task: GenerateTask
     prompt: str
-    context: dict[str, Any] | None = None
+    context: GenerationContext
     conversation_id: UUID | None = None
     turn: int | None = Field(default=None, ge=0)
     options: GenerateOptions = Field(default_factory=GenerateOptions)
@@ -129,9 +152,12 @@ class GenerateRequest(BaseModel):
 
     @model_validator(mode="after")
     def sanitize_context(self) -> Self:
-        if self.context is not None:
-            self.context = sanitize_context_strings(self.context)
+        ctx_dict = sanitize_context_strings(self.context.model_dump())
+        object.__setattr__(self, "context", GenerationContext.model_validate(ctx_dict))
         return self
+
+    def context_dict(self) -> dict[str, Any]:
+        return self.context.model_dump()
 
 
 def _adjust_in_flight(registry: RunnerRegistry, runner_id: str, delta: int) -> None:
@@ -398,7 +424,7 @@ async def _generate_command_non_streaming(
     registry: RunnerRegistry = request.app.state.registry
     queue: GenerationQueue = request.app.state.generation_queue
     agent = get_scheduling_agent()
-    context = body.context or {}
+    context = body.context_dict()
     settings = TimeoutSettings.from_config(config)
 
     async with queue.acquire(
@@ -529,7 +555,7 @@ async def _generate_command_streaming(
     registry: RunnerRegistry = request.app.state.registry
     queue: GenerationQueue = request.app.state.generation_queue
     agent = get_scheduling_agent()
-    context = body.context or {}
+    context = body.context_dict()
     settings = TimeoutSettings.from_config(config)
 
     async def event_generator() -> AsyncIterator[str]:
@@ -786,7 +812,7 @@ async def post_generate(
         "AI generation request details",
         request_id=request_id,
         prompt=body.prompt,
-        context=body.context,
+        context=body.context_dict(),
         conversation_id=str(body.conversation_id) if body.conversation_id else None,
     )
     log_request_v2(

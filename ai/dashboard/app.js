@@ -64,7 +64,7 @@
       path: '/v1/ai/generate',
       auth: true,
       desc: 'Scheduling command proposals (non-streaming + SSE streaming)',
-      defaultBody: '{"task":"command","prompt":"book Ahmed with Dr Ali tomorrow 5pm","options":{"stream":false}}',
+      defaultBody: JSON.stringify(defaultGenerateBody('book Ahmed with Dr Ali tomorrow 5pm')),
     },
     {
       id: 'runner-models',
@@ -89,6 +89,22 @@
     cancel: "cancel Ahmed's appointment tomorrow",
     status: "mark Ahmed's visit as checked in",
   };
+
+  function defaultGenerateContext(extra = {}) {
+    return {
+      now: new Date().toISOString(),
+      ...extra,
+    };
+  }
+
+  function defaultGenerateBody(prompt = GENERATE_PRESETS.create, extra = {}) {
+    return {
+      task: 'command',
+      prompt,
+      context: defaultGenerateContext(extra.context),
+      options: { stream: false, ...(extra.options || {}) },
+    };
+  }
 
   const $ = (id) => document.getElementById(id);
 
@@ -2520,23 +2536,24 @@
     };
   }
 
-  function parseGenerateContext() {
+  function buildGenerateContext() {
     const text = $('generate-context').value.trim();
-    if (!text) return null;
-    try {
-      const parsed = JSON.parse(text);
-      if (
-        parsed
-        && typeof parsed === 'object'
-        && !Array.isArray(parsed)
-        && Object.keys(parsed).length === 0
-      ) {
-        return null;
+    let context = defaultGenerateContext();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Context must be a JSON object.');
+        }
+        context = { ...context, ...parsed };
+        if (!context.now) {
+          context.now = new Date().toISOString();
+        }
+      } catch (e) {
+        throw new Error(`Invalid context JSON: ${e.message}`);
       }
-      return parsed;
-    } catch (e) {
-      throw new Error(`Invalid context JSON: ${e.message}`);
     }
+    return context;
   }
 
   function buildGenerateBody() {
@@ -2546,10 +2563,8 @@
     const body = {
       task: 'command',
       prompt,
+      context: buildGenerateContext(),
     };
-
-    const context = parseGenerateContext();
-    if (context != null) body.context = context;
 
     const stream = $('generate-stream').checked;
     const confidenceHint = $('generate-confidence').checked;

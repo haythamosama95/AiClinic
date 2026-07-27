@@ -330,7 +330,12 @@ async def test_stream_semantic_violation_emits_error_event(stream_client) -> Non
 
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "command", "prompt": "book in the past", "options": {"stream": True}},
+        json={
+            "task": "command",
+            "prompt": "book in the past",
+            "context": MVP_CONTEXT,
+            "options": {"stream": True},
+        },
     )
 
     assert response.status_code == 200

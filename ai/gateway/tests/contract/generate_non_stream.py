@@ -197,7 +197,12 @@ async def test_generate_semantic_violation_returns_ai_unusable(generate_client) 
 
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "command", "prompt": "book in the past", "options": {"stream": False}},
+        json={
+            "task": "command",
+            "prompt": "book in the past",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False},
+        },
     )
 
     assert response.status_code == 422
@@ -217,7 +222,12 @@ async def test_generate_off_catalog_returns_ai_unusable(generate_client) -> None
 
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "command", "prompt": "admin delete", "options": {"stream": False}},
+        json={
+            "task": "command",
+            "prompt": "admin delete",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False},
+        },
     )
 
     assert response.status_code == 422
@@ -239,7 +249,12 @@ async def test_generate_invalid_json_returns_ai_unusable(generate_client) -> Non
 
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "command", "prompt": "broken", "options": {"stream": False}},
+        json={
+            "task": "command",
+            "prompt": "broken",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False},
+        },
     )
 
     assert response.status_code == 422

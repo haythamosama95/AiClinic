@@ -274,12 +274,13 @@
 
           <div class="generate-form__context">
             <label class="generate-label" for="generate-context">Clinic context <span
-                class="generate-label__hint">optional JSON</span></label>
+                class="generate-label__hint">optional JSON — <code>now</code> auto-filled</span></label>
             <textarea id="generate-context" class="generate-context mono" rows="8" spellcheck="false"
               aria-describedby="generate-context-hint"></textarea>
-            <p class="generate-hint" id="generate-context-hint">Optional — only sent when you add JSON here (e.g.
-              branch,
-              clock, active patient, doctors).</p>
+            <p class="generate-hint" id="generate-context-hint">Extra clinic fields (branch, patient, doctors).
+              <code>context.now</code> is always sent — use your own ISO timestamp here or leave blank for the current
+              time.
+            </p>
           </div>
         </div>
 
@@ -485,8 +486,8 @@
     <p>AI Gateway control plane · served at <span class="mono">/dashboard</span></p>
   </footer>
 
-  <script src="feature-matrix.js"></script>
-  <script src="app.js" defer></script>
+  <script src="feature-matrix.js?v=20260727"></script>
+  <script src="app.js?v=20260727" defer></script>
 </body>
 
 </html>

@@ -346,7 +346,7 @@ components:
 
     GenerateRequest:
       type: object
-      required: [task, prompt]
+      required: [task, prompt, context]
       properties:
         task:
           type: string
@@ -358,11 +358,7 @@ components:
           maxLength: 8192
           description: Non-empty, at most 8 KB (UTF-8).
         context:
-          type: object
-          additionalProperties: true
-          description: >
-            Optional scheduling context (branch_id, branch_name, now, active_patient,
-            doctors, etc.). Field-by-field validated when present.
+          $ref: "#/components/schemas/GenerationContext"
         conversation_id:
           type: string
           format: uuid
@@ -374,6 +370,31 @@ components:
           description: Optional, reserved — accepted and ignored this phase.
         options:
           $ref: "#/components/schemas/GenerateOptions"
+
+    GenerationContext:
+      type: object
+      required: [now]
+      additionalProperties: true
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: >
+            Required ISO-8601 timestamp with timezone offset. Anchors relative date
+            semantics for the model and post-generation validation.
+        branch_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        active_patient:
+          type: object
+          additionalProperties: true
+        doctors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
 
     Warning:
       type: object

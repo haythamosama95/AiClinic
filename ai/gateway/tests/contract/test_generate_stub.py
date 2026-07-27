@@ -19,7 +19,11 @@ from tests.fixtures.jwt_tokens import make_hs256_token
 
 TEST_SECRET = "generate-stub-test-secret"
 GENERATE_PATH = "/v1/ai/generate"
-VALID_PAYLOAD = {"task": "command", "prompt": "book Ahmed with Dr Ali tomorrow 5pm"}
+VALID_PAYLOAD = {
+    "task": "command",
+    "prompt": "book Ahmed with Dr Ali tomorrow 5pm",
+    "context": {"now": "2026-07-18T12:00:00+03:00"},
+}
 MVP_CONTEXT = {"now": "2026-07-18T12:00:00+03:00"}
 
 RUNNER_A_URL = "http://runner-a.test:11434"
@@ -184,6 +188,18 @@ async def test_generate_valid_body_non_streaming_returns_200(generate_client, pa
         {"prompt": "missing task"},
         {"task": "command", "prompt": ""},
         {"task": "command", "prompt": "x", "turn": -1},
+        {"task": "command", "prompt": "book tomorrow", "context": {}},
+        {"task": "command", "prompt": "book tomorrow", "context": {"branch_name": "Main"}},
+        {
+            "task": "command",
+            "prompt": "book tomorrow",
+            "context": {"now": "not-a-timestamp"},
+        },
+        {
+            "task": "command",
+            "prompt": "book tomorrow",
+            "context": {"now": "2026-07-18T12:00:00"},
+        },
     ],
 )
 async def test_generate_invalid_body_returns_400(generate_client, payload) -> None:
