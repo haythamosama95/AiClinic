@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_section_title.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_totals_panel.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_perforation_divider.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -68,10 +67,6 @@ class InvoiceLineItemsCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(AppSpacing.space5, AppSpacing.space4, AppSpacing.space5, 0),
               child: _LineItemsTable(items: items, currency: currency, hasLineDiscounts: hasLineDiscounts),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.space5),
-              child: InvoicePerforationDivider(),
             ),
             InvoiceTotalsPanel(model: totals),
           ],
