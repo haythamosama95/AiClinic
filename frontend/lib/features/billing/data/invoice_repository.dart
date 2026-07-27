@@ -193,8 +193,9 @@ class InvoiceRepository with AppRpcInvoker {
     _assertNonEmpty('invoiceId', invoiceId);
 
     // `get_invoice_detail` may omit optional enrichment (`invoice.created_at`,
-    // `voided_by`, patient `phone`). `InvoiceDetail.fromRpcData` parses them
-    // when present and degrades gracefully when absent.
+    // `voided_by`). Patient contact fields (`phone`, `date_of_birth`) are
+    // returned when the RPC includes them; `InvoiceDetail.fromRpcData` degrades
+    // gracefully when absent.
     final result = await invokeRpc('get_invoice_detail', {'p_invoice_id': invoiceId.trim()});
     final detail = InvoiceDetail.fromRpcData(result.data);
     if (detail == null) {

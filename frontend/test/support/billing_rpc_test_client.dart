@@ -694,7 +694,13 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
             ]
           : List<Map<String, dynamic>>.from(_draftItems),
       'payments': isIssued ? List<Map<String, dynamic>>.from(payments) : [],
-      'patient': {'id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'display_name': 'Test Patient'},
+      'patient': {
+        'id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        'display_name': 'Test Patient',
+        'mrn': 'MRN-000001',
+        'patient_mrn': 'MRN-000001',
+        'phone': '+20 100 000 0000',
+      },
       'branch': {'id': '44444444-4444-4444-8444-444444444444', 'code': 'MAIN', 'name': 'Main'},
       'insurance_provider': isIssued || draftInsuranceProviderId == null
           ? null

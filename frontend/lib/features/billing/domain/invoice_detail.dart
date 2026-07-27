@@ -8,11 +8,7 @@ import 'package:flutter/foundation.dart';
 /// Completed visit summary embedded in `get_invoice_detail` when available.
 @immutable
 class VisitSummary {
-  const VisitSummary({
-    required this.date,
-    required this.doctor,
-    required this.branch,
-  });
+  const VisitSummary({required this.date, required this.doctor, required this.branch});
 
   final DateTime date;
   final String doctor;
@@ -24,9 +20,7 @@ class VisitSummary {
     }
 
     final map = Map<String, dynamic>.from(raw);
-    final date = _parseVisitDate(
-      map['visit_date'] ?? map['date'] ?? map['started_at'],
-    );
+    final date = _parseVisitDate(map['visit_date'] ?? map['date'] ?? map['started_at']);
     final doctor = _parseOptionalString(map['doctor_name'] ?? map['doctor']);
     final branch = _parseOptionalString(map['branch_name'] ?? map['branch']);
     if (date == null || doctor == null || branch == null) {
@@ -89,6 +83,7 @@ class InvoiceDetail {
     this.patientDisplayName,
     this.patientMrn,
     this.patientPhone,
+    this.patientDateOfBirth,
     this.branchCode,
     this.branchName,
     this.insuranceProviderName,
@@ -120,6 +115,7 @@ class InvoiceDetail {
   final String? patientDisplayName;
   final String? patientMrn;
   final String? patientPhone;
+  final DateTime? patientDateOfBirth;
   final String? branchCode;
   final String? branchName;
   final String? insuranceProviderName;
@@ -161,17 +157,10 @@ class InvoiceDetail {
     }
 
     final subtotal = Money.tryParse(invoice['subtotal']?.toString());
-    final discountAmount = Money.tryParse(
-      invoice['discount_amount']?.toString(),
-    );
-    final insuranceCoveredAmount = Money.tryParse(
-      invoice['insurance_covered_amount']?.toString(),
-    );
+    final discountAmount = Money.tryParse(invoice['discount_amount']?.toString());
+    final insuranceCoveredAmount = Money.tryParse(invoice['insurance_covered_amount']?.toString());
     final balance = Money.tryParse(invoice['balance']?.toString());
-    if (subtotal == null ||
-        discountAmount == null ||
-        insuranceCoveredAmount == null ||
-        balance == null) {
+    if (subtotal == null || discountAmount == null || insuranceCoveredAmount == null || balance == null) {
       return null;
     }
 
@@ -181,8 +170,7 @@ class InvoiceDetail {
     final patientRaw = data['patient'];
     final branchRaw = data['branch'];
     final providerRaw = data['insurance_provider'];
-    final createdAt =
-        _parseOptionalDate(invoice['created_at']?.toString()) ?? updatedAt;
+    final createdAt = _parseOptionalDate(invoice['created_at']?.toString()) ?? updatedAt;
 
     return InvoiceDetail(
       id: id,
@@ -207,30 +195,18 @@ class InvoiceDetail {
       updatedAt: updatedAt,
       items: items,
       payments: payments,
-      patientDisplayName: patientRaw is Map
-          ? patientRaw['display_name']?.toString()
-          : null,
-      patientMrn: patientRaw is Map
-          ? _parseOptionalString(patientRaw['mrn'] ?? patientRaw['patient_mrn'])
-          : null,
-      patientPhone: patientRaw is Map
-          ? _parseOptionalString(
-              patientRaw['phone'] ?? patientRaw['mobile'],
-            )
-          : null,
+      patientDisplayName: patientRaw is Map ? patientRaw['display_name']?.toString() : null,
+      patientMrn: patientRaw is Map ? _parseOptionalString(patientRaw['mrn'] ?? patientRaw['patient_mrn']) : null,
+      patientPhone: patientRaw is Map ? _parseOptionalString(patientRaw['phone'] ?? patientRaw['mobile']) : null,
+      patientDateOfBirth: patientRaw is Map ? _parsePatientDate(patientRaw['date_of_birth']) : null,
       branchCode: branchRaw is Map ? branchRaw['code']?.toString() : null,
       branchName: branchRaw is Map ? branchRaw['name']?.toString() : null,
-      insuranceProviderName: providerRaw is Map
-          ? providerRaw['name']?.toString()
-          : null,
+      insuranceProviderName: providerRaw is Map ? providerRaw['name']?.toString() : null,
       visitSummary: VisitSummary.fromRpcData(data['visit']),
     );
   }
 
-  static String? _parseVoidedByName(
-    Map<String, dynamic> invoice,
-    Map<String, dynamic> data,
-  ) {
+  static String? _parseVoidedByName(Map<String, dynamic> invoice, Map<String, dynamic> data) {
     final directName = _parseOptionalString(invoice['voided_by_name']);
     if (directName != null) {
       return directName;
@@ -238,9 +214,7 @@ class InvoiceDetail {
 
     final voidedByRaw = invoice['voided_by'] ?? data['voided_by'];
     if (voidedByRaw is Map) {
-      return _parseOptionalString(
-        voidedByRaw['display_name'] ?? voidedByRaw['full_name'],
-      );
+      return _parseOptionalString(voidedByRaw['display_name'] ?? voidedByRaw['full_name']);
     }
 
     return null;
@@ -256,6 +230,24 @@ class InvoiceDetail {
       return null;
     }
     return DateTime.tryParse(raw);
+  }
+
+  static DateTime? _parsePatientDate(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is DateTime) {
+      return DateTime.utc(raw.year, raw.month, raw.day);
+    }
+    final text = raw.toString().trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) {
+      return null;
+    }
+    return DateTime.utc(parsed.year, parsed.month, parsed.day);
   }
 
   static List<InvoiceItem> _parseItems(Object? raw) {

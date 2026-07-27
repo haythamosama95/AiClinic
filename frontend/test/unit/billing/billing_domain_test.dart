@@ -129,6 +129,7 @@ void main() {
               'display_name': 'Test Patient',
               'mrn': 'MRN-10482',
               'phone': '+20 100 000 0000',
+              'date_of_birth': '1990-05-15',
             },
             'visit': {'visit_date': '2026-06-01', 'doctor_name': 'Dr. Smith', 'branch_name': 'Main'},
           },
@@ -140,6 +141,7 @@ void main() {
       expect(detail.voidedByName, 'Front Desk');
       expect(detail.patientMrn, 'MRN-10482');
       expect(detail.patientPhone, '+20 100 000 0000');
+      expect(detail.patientDateOfBirth, DateTime.utc(1990, 5, 15));
       expect(detail.visitSummary?.doctor, 'Dr. Smith');
       expect(detail.visitSummary?.branch, 'Main');
       expect(detail.visitSummary?.date, DateTime.utc(2026, 6, 1));
@@ -153,6 +155,7 @@ void main() {
       expect(detail.voidedByName, isNull);
       expect(detail.patientMrn, isNull);
       expect(detail.patientPhone, isNull);
+      expect(detail.patientDateOfBirth, isNull);
       expect(detail.visitSummary, isNull);
     });
 

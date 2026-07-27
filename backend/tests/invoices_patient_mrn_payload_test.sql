@@ -184,6 +184,18 @@ BEGIN
     )
   );
 
+  INSERT INTO invoice_mrn_payload_results VALUES (
+    'get_invoice_detail_patient_includes_phone',
+    v_detail.success
+      AND v_patient IS NOT NULL
+      AND (v_patient ->> 'phone') = '201700000101',
+    format(
+      'success=%s patient.phone=%s',
+      v_detail.success,
+      COALESCE(v_patient ->> 'phone', '<null>')
+    )
+  );
+
   -- list_patient_invoices includes patient_mrn (delegates to list_invoices).
   PERFORM set_config('role', 'authenticated', true);
   v_list := public.list_patient_invoices(v_patient_id, 50, 0);
