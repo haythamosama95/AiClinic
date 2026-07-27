@@ -138,9 +138,10 @@ paths:
                 type: string
                 description: >
                   SSE event stream. Event types: summary (optional, zero or more),
-                  final (exactly one on success), error (exactly one on failure). For
-                  task=command, token events are never emitted. Exactly one terminal
-                  event per stream.
+                  output (optional, zero or more — raw runner command JSON as it is
+                  generated; never a validated envelope), final (exactly one on success),
+                  error (exactly one on failure). For task=command, token events are never
+                  emitted. Exactly one terminal event per stream.
               example: |
                 event: summary
                 data: {"delta":"Looking up tomorrow's availability..."}

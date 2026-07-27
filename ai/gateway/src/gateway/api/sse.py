@@ -11,7 +11,7 @@ from ai_common.verbose_logging import get_logger
 vlog = get_logger(__name__)
 
 TERMINAL_EVENT_TYPES = frozenset({"final", "error"})
-ALLOWED_EVENT_TYPES = frozenset({"token", "summary", *TERMINAL_EVENT_TYPES})
+ALLOWED_EVENT_TYPES = frozenset({"token", "summary", "output", *TERMINAL_EVENT_TYPES})
 
 
 class TerminalEventError(RuntimeError):

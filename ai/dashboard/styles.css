@@ -4207,6 +4207,73 @@ body.pv-split-dragging--row {
   margin-bottom: 0.15rem;
 }
 
+.generate-stream-output {
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--graphite);
+  overflow: hidden;
+}
+
+.generate-stream-output__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--panel-edge);
+  background: color-mix(in srgb, var(--graphite) 88%, var(--phosphor) 12%);
+}
+
+.generate-stream-output__title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.generate-stream-output__status {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.generate-stream-output__status[data-state="streaming"] {
+  color: var(--phosphor);
+}
+
+.generate-stream-output__status[data-state="complete"] {
+  color: var(--ok);
+}
+
+.generate-stream-output__status[data-state="error"] {
+  color: var(--danger);
+}
+
+.generate-stream-output__body {
+  margin: 0;
+  min-height: 4.5rem;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.generate-stream-output__body:empty::before {
+  content: 'Waiting for runner output…';
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.generate-stream-output[data-state="streaming"] .generate-stream-output__body:empty::before {
+  content: 'Receiving from runner…';
+}
+
 .panel--generate .pv-transcript {
   padding: 0.75rem;
 }

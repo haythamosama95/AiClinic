@@ -620,6 +620,7 @@ async def _generate_command_streaming(
                                         "Received streaming delta from runner",
                                         request_id=request_id,
                                         chunk_len=len(chunk) if chunk else 0,
+                                        chunk=chunk or "",
                                         in_command_body=in_command_body,
                                     )
                                     if chunk:
@@ -629,7 +630,11 @@ async def _generate_command_streaming(
                                             partial_stream_sent=True,
                                             retried=retried,
                                         )
-                                    if in_command_body or not chunk:
+                                    if not chunk:
+                                        continue
+                                    if in_command_body:
+                                        yield format_event("output", {"delta": chunk})
+                                        client_bytes_sent = True
                                         continue
                                     brace = chunk.find("{")
                                     if brace == -1:
@@ -639,6 +644,10 @@ async def _generate_command_streaming(
                                         prefix = chunk[:brace]
                                         if prefix:
                                             yield format_event("summary", {"delta": prefix})
+                                            client_bytes_sent = True
+                                        json_part = chunk[brace:]
+                                        if json_part:
+                                            yield format_event("output", {"delta": json_part})
                                             client_bytes_sent = True
                                         in_command_body = True
                             finally:

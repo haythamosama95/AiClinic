@@ -303,6 +303,16 @@
         </div>
       </form>
 
+      <section class="generate-stream-output" id="generate-stream-output" hidden aria-label="Runner stream output">
+        <header class="generate-stream-output__header">
+          <h3 class="generate-stream-output__title">Runner output</h3>
+          <span class="generate-stream-output__status mono" id="generate-stream-output-status"
+            data-state="idle">—</span>
+        </header>
+        <pre class="generate-stream-output__body mono" id="generate-stream-output-body" aria-live="polite"
+          tabindex="0"></pre>
+      </section>
+
       <div class="generate-result" id="generate-result" hidden>
         <header class="generate-result__header">
           <div class="generate-result__summary">

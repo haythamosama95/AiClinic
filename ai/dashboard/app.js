@@ -2416,8 +2416,15 @@
     setGenerateLoading(true);
 
     const started = performance.now();
-    const requestMeta = buildGenerateRequestMeta(bodyObj, { stream: bodyObj.options?.stream });
+    const isStreaming = !!bodyObj.options?.stream;
+    const requestMeta = buildGenerateRequestMeta(bodyObj, { stream: isStreaming });
     const path = '/v1/ai/generate';
+
+    if (isStreaming) {
+      resetGenerateStreamOutput();
+    } else {
+      hideGenerateStreamOutput({ force: true });
+    }
 
     try {
       const headers = { 'Content-Type': 'application/json' };
@@ -2436,18 +2443,27 @@
       const contentType = res.headers.get('content-type') || '';
 
       if (contentType.includes('text/event-stream') && res.body) {
-        const raw = await readSseResponseBody(res);
+        const raw = await readSseResponseBody(res, (partialRaw) => {
+          updateGenerateStreamOutput(partialRaw);
+        });
         const sseEvents = parseSseEvents(raw);
         const errorEvent = sseEvents.find((e) => e.event === 'error');
         const finalEvent = sseEvents.find((e) => e.event === 'final');
         const errCode = errorEvent?.data?.error?.code;
         const retryAfter = res.headers.get('Retry-After');
         const retryHint = errCode === 'ai_busy' && retryAfter ? ` · Retry-After: ${retryAfter}s` : '';
+        const streamOk = res.ok && !errorEvent;
+
+        updateGenerateStreamOutput(raw);
+        finishGenerateStreamOutput({
+          ok: streamOk,
+          errorMessage: errorEvent?.data?.error?.message || (streamOk ? null : 'Stream failed'),
+        });
 
         renderGenerateResult({
           ...requestMeta,
           statusLine: `${res.status} SSE stream${errCode ? ` (${errCode})` : ''}${retryHint}`,
-          ok: res.ok && !errorEvent,
+          ok: streamOk,
           renderType: 'sse',
           sseHtml: formatSseHtml(raw),
           bodyText: raw,
@@ -2461,6 +2477,11 @@
       }
 
       let body = null;
+      if (isStreaming) {
+        finishGenerateStreamOutput({ ok: false, errorMessage: 'No SSE stream' });
+      } else {
+        hideGenerateStreamOutput({ force: true });
+      }
       if (contentType.includes('application/json')) {
         body = await res.json().catch(() => null);
       } else {
@@ -2485,6 +2506,9 @@
     } catch (e) {
       const elapsedMs = Math.round(performance.now() - started);
       if (e.name === 'AbortError') {
+        if (isStreaming) {
+          finishGenerateStreamOutput({ ok: false, errorMessage: 'Cancelled' });
+        }
         renderGenerateResult({
           ...requestMeta,
           statusLine: 'Cancelled',
@@ -2497,6 +2521,9 @@
           networkError: 'aborted',
         });
       } else {
+        if (isStreaming) {
+          finishGenerateStreamOutput({ ok: false, errorMessage: 'Network error' });
+        }
         renderGenerateResult({
           ...requestMeta,
           statusLine: 'Network error',
@@ -2612,6 +2639,71 @@
     return events;
   }
 
+  /** Extract runner text from output/summary/token SSE events (not wire format or final envelope). */
+  function extractRunnerOutputFromSse(raw) {
+    let output = '';
+    let hasOutputEvents = false;
+    for (const e of parseSseEvents(raw)) {
+      if (e.event === 'output' && e.data?.delta) {
+        hasOutputEvents = true;
+        output += e.data.delta;
+      }
+    }
+    if (hasOutputEvents) return output;
+    for (const e of parseSseEvents(raw)) {
+      if ((e.event === 'summary' || e.event === 'token') && e.data?.delta) {
+        output += e.data.delta;
+      }
+    }
+    return output;
+  }
+
+  function resetGenerateStreamOutput() {
+    const panel = $('generate-stream-output');
+    const body = $('generate-stream-output-body');
+    const status = $('generate-stream-output-status');
+    if (!panel || !body || !status) return;
+    panel.hidden = false;
+    panel.dataset.state = 'streaming';
+    body.textContent = '';
+    status.textContent = 'Streaming…';
+    status.dataset.state = 'streaming';
+  }
+
+  function updateGenerateStreamOutput(raw) {
+    const body = $('generate-stream-output-body');
+    if (!body) return;
+    const text = extractRunnerOutputFromSse(raw);
+    body.textContent = text;
+    if (text) body.scrollTop = body.scrollHeight;
+  }
+
+  function finishGenerateStreamOutput({ ok = true, errorMessage = null } = {}) {
+    const panel = $('generate-stream-output');
+    const status = $('generate-stream-output-status');
+    if (!panel || !status) return;
+    panel.dataset.state = ok ? 'complete' : 'error';
+    if (ok) {
+      status.textContent = 'Complete';
+      status.dataset.state = 'complete';
+    } else {
+      status.textContent = errorMessage || 'Error';
+      status.dataset.state = 'error';
+    }
+  }
+
+  function hideGenerateStreamOutput({ force = false } = {}) {
+    const panel = $('generate-stream-output');
+    const status = $('generate-stream-output-status');
+    if (!panel) return;
+    if (!force && $('generate-stream')?.checked) return;
+    panel.hidden = true;
+    if (status) {
+      status.textContent = '—';
+      status.dataset.state = 'idle';
+    }
+  }
+
   function renderGenerateResult(result) {
     const panel = $('generate-result');
     panel.hidden = false;
@@ -2677,6 +2769,24 @@
   function bindGenerateEvents() {
     $('generate-form').addEventListener('submit', sendGenerateRequest);
     $('generate-cancel-btn').addEventListener('click', cancelGenerateRequest);
+    $('generate-stream')?.addEventListener('change', () => {
+      const panel = $('generate-stream-output');
+      const status = $('generate-stream-output-status');
+      if (!$('generate-stream')?.checked) {
+        if (panel) panel.hidden = true;
+        if (status) {
+          status.textContent = '—';
+          status.dataset.state = 'idle';
+        }
+        return;
+      }
+      if (panel && status?.dataset.state !== 'streaming') {
+        panel.hidden = false;
+        if (status.dataset.state === 'idle') {
+          status.textContent = 'Ready';
+        }
+      }
+    });
     document.querySelectorAll('.generate-preset').forEach((btn) => {
       btn.addEventListener('click', () => {
         const preset = GENERATE_PRESETS[btn.dataset.preset];

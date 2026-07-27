@@ -33,7 +33,7 @@ MVP_CONTEXT = {
     "now": "2026-07-18T12:00:00+03:00",
     "branch_name": "Main",
 }
-ALLOWED_SSE_EVENTS = frozenset({"token", "summary", "final", "error"})
+ALLOWED_SSE_EVENTS = frozenset({"token", "summary", "output", "final", "error"})
 TERMINAL_SSE_EVENTS = frozenset({"final", "error"})
 EQUIVALENCE_FIELDS = (
     "schema_version",
@@ -320,6 +320,35 @@ async def test_stream_emits_summary_events(stream_client) -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_stream_emits_output_events_for_command_json(stream_client) -> None:
+    client, app = stream_client
+    _prime_runner(app)
+
+    fake = FakeRunner(base_url=RUNNER_URL)
+    fake.script_chat_stream(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT, summary_prefix="")
+    _mock_streaming(fake)
+
+    response = await client.post(
+        GENERATE_PATH,
+        json={
+            "task": "command",
+            "prompt": "book Ahmed with Dr Ali tomorrow 5pm",
+            "context": MVP_CONTEXT,
+            "options": {"stream": True},
+        },
+    )
+
+    events = _parse_sse_events(response.text)
+    output_events = [payload for event_type, payload in events if event_type == "output"]
+    assert output_events
+    joined = "".join(item["delta"] for item in output_events)
+    assert joined.startswith("{")
+    assert "command_type" in joined
+    _assert_sse_contract(events)
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_stream_semantic_violation_emits_error_event(stream_client) -> None:
     client, app = stream_client
     _prime_runner(app)
@@ -340,8 +369,9 @@ async def test_stream_semantic_violation_emits_error_event(stream_client) -> Non
 
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
-    assert len(events) == 1
-    event_type, payload = events[0]
+    terminal = [event_type for event_type, _ in events if event_type in TERMINAL_SSE_EVENTS]
+    assert terminal == ["error"]
+    event_type, payload = events[-1]
     assert event_type == "error"
     assert payload["error"]["code"] == "ai_unusable"
 
