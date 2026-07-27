@@ -1,9 +1,10 @@
-import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
+import 'package:ai_clinic/core/ui/rich_text/rich_text_delta_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_submit_readiness_mapper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -165,7 +166,7 @@ void main() {
     test('EDGE-002: rich-text-only complaint counts before plain-text sync', () {
       final state = richTextOnlyComplaintState(complaintDelta: richDeltaBoldText('Headache'));
 
-      final readiness = evaluateVisitSubmitReadiness(state);
+      final readiness = evaluateVisitSubmitReadinessFromState(state);
       final badges = deriveEncounterPhaseBadges(state);
 
       expect(readiness.hasMinimumDocumentation, isTrue);
@@ -187,7 +188,7 @@ void main() {
 
       final notifier = container.read(visitDocumentationProvider(encounterTestVisitId).notifier);
       final synced = notifier.prepareEncounterReview()!;
-      final readiness = evaluateVisitSubmitReadiness(synced);
+      final readiness = evaluateVisitSubmitReadinessFromState(synced);
 
       expect(readiness.hasMinimumDocumentation, isTrue);
       expect(readiness.emptyPhases, [EncounterPhase.objective, EncounterPhase.plan]);
@@ -196,7 +197,7 @@ void main() {
     test('EDGE-007: effectively empty rich delta blocks submit and shows empty badge', () {
       final state = richTextOnlyComplaintState(complaintDelta: richDeltaEffectivelyEmpty);
 
-      final readiness = evaluateVisitSubmitReadiness(state);
+      final readiness = evaluateVisitSubmitReadinessFromState(state);
       final badges = deriveEncounterPhaseBadges(state);
 
       expect(readiness.hasMinimumDocumentation, isFalse);
@@ -207,7 +208,7 @@ void main() {
     test('EDGE-007: visitHasPersistableDocumentation is false for formatting-only empty delta', () {
       final state = richTextOnlyComplaintState(complaintDelta: richDeltaEffectivelyEmpty);
 
-      expect(visitHasPersistableDocumentation(state), isFalse);
+      expect(visitHasPersistableDocumentationFromState(state), isFalse);
     });
   });
 }

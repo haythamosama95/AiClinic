@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
-import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_submit_readiness_mapper.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -113,7 +113,7 @@ void main() {
 
     group('evaluateVisitSubmitReadiness', () {
       test('excludes error phases from emptyPhases when diagnosis exceeds max length', () {
-        final readiness = evaluateVisitSubmitReadiness(sampleEncounterDocState().copyWith(diagnosis: oversizedText()));
+        final readiness = evaluateVisitSubmitReadinessFromState(sampleEncounterDocState().copyWith(diagnosis: oversizedText()));
 
         expect(readiness.hasMinimumDocumentation, isTrue);
         expect(readiness.emptyPhases, [EncounterPhase.subjective, EncounterPhase.plan]);
@@ -121,7 +121,7 @@ void main() {
       });
 
       test('still reports minimum documentation when only an oversized section has text', () {
-        final readiness = evaluateVisitSubmitReadiness(sampleEncounterDocState().copyWith(plan: oversizedText()));
+        final readiness = evaluateVisitSubmitReadinessFromState(sampleEncounterDocState().copyWith(plan: oversizedText()));
 
         expect(readiness.hasMinimumDocumentation, isTrue);
         expect(readiness.emptyPhases, [EncounterPhase.subjective, EncounterPhase.objective]);

@@ -67,6 +67,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get discard => 'Discard';
 
   @override
+  String get visitUnsavedChangesTitle => 'Unsaved documentation';
+
+  @override
+  String get visitUnsavedChangesMessage =>
+      'You have unsaved clinical documentation. Save your work, discard changes, or stay on this page.';
+
+  @override
+  String get visitUnsavedChangesSaveAndLeave => 'Save and leave';
+
+  @override
+  String get visitUnsavedChangesDiscardAndLeave => 'Discard and leave';
+
+  @override
+  String get visitUnsavedChangesStay => 'Stay on page';
+
+  @override
+  String get patientSummaryFallbackName => 'Patient';
+
+  @override
+  String get appointmentWindowFallbackLabel => 'Appointment';
+
+  @override
   String get registerPatient => 'Register patient';
 
   @override
@@ -485,6 +507,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get patientNameFallback => 'Patient';
 
   @override
+  String get branchNameFallback => 'Branch';
+
+  @override
   String get patientSectionsAriaLabel => 'Patient sections';
 
   @override
@@ -610,6 +635,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitStatusCompleted => 'Completed';
 
   @override
+  String get visitCatalogItemAlreadyAdded => 'Already added';
+
+  @override
+  String get encounterPhaseBackground => 'Background';
+
+  @override
+  String get encounterPhaseIntake => 'Intake';
+
+  @override
+  String get encounterPhaseFindingsDiagnosis => 'Findings & Diagnosis';
+
+  @override
+  String get encounterPhaseTreatment => 'Treatment';
+
+  @override
+  String get encounterPhaseSummary => 'Summary';
+
+  @override
   String get appointmentStatusScheduled => 'Scheduled';
 
   @override
@@ -632,4 +675,67 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appointmentStatusUnknown => 'Unknown';
+
+  @override
+  String get visitStaleConflictTitle => 'Documentation changed elsewhere';
+
+  @override
+  String get visitStaleConflictDescription =>
+      'Another user updated this visit\'s clinical notes. Choose which version to keep before saving again.';
+
+  @override
+  String get visitStaleConflictKeepMine => 'Keep my version';
+
+  @override
+  String get visitStaleConflictLoadTheirs => 'Load their version';
+
+  @override
+  String get visitStaleConflictServerVersion => 'Saved on server';
+
+  @override
+  String get visitStaleConflictYourVersion => 'Your draft';
+
+  @override
+  String get visitStaleConflictSectionEmpty => 'No content';
+
+  @override
+  String get visitClinicalSectionComplaint => 'Complaint';
+
+  @override
+  String get visitClinicalSectionHistory => 'History';
+
+  @override
+  String get visitClinicalSectionExamination => 'Examination';
+
+  @override
+  String get visitClinicalSectionDiagnosis => 'Diagnosis';
+
+  @override
+  String get visitClinicalSectionPlan => 'Plan';
+
+  @override
+  String get visitDocumentationSaveStatusSaving => 'Saving…';
+
+  @override
+  String get visitDocumentationSaveStatusSaved => 'Saved';
+
+  @override
+  String get visitDocumentationSaveStatusStale => 'Conflict';
+
+  @override
+  String get visitDocumentationSaveStatusError => 'Save failed';
+
+  @override
+  String get visitDocumentationResolveConflict => 'Resolve conflict';
+
+  @override
+  String get visitFinalizeFailed =>
+      'Could not finalize the visit. Please try again.';
+
+  @override
+  String get visitBillingSubmittedWithoutInvoicePermission =>
+      'Visit submitted. No invoice was created because you do not have billing permission.';
+
+  @override
+  String get visitBillingRetryInvoice => 'Retry invoice';
 }

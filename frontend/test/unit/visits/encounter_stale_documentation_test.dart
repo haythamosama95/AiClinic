@@ -51,7 +51,6 @@ void main() {
         documentation: VisitClinicalNote(updatedAt: sessionAExpectedAt),
       );
       return VisitDocumentationState(
-        visit: persisted,
         persistedVisit: persisted,
         complaint: draftComplaint,
         history: '',
@@ -67,7 +66,6 @@ void main() {
         documentation: VisitClinicalNote(updatedAt: sessionAExpectedAt),
       );
       return VisitDocumentationState(
-        visit: visit,
         persistedVisit: visit,
         complaint: '',
         history: '',

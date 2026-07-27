@@ -26,7 +26,6 @@ VisitDetail sampleEncounterVisit({String? visitType, List<VisitVitalSign> vitalS
 VisitDocumentationState sampleEncounterDocState({VisitDetail? visit}) {
   final resolved = visit ?? sampleEncounterVisit();
   return VisitDocumentationState(
-    visit: resolved,
     persistedVisit: resolved,
     complaint: '',
     history: '',

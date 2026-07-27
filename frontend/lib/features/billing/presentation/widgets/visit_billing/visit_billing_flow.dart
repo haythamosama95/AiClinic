@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/visit_finalize_outcome.dart';
-import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_invoice_review_step.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_invoice_summary_panel.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_step.dart';
-import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
-import 'package:ai_clinic/features/visits/domain/visit_submission_confirmation.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_dialog.dart';
+
+typedef VisitFinalizeRequestedCallback =
+    Future<VisitFinalizeOutcome> Function(VisitFinalizationRequest request);
 
 /// Post-review billing workflow (web `VisitBillingFlow`).
 class VisitBillingFlow extends ConsumerStatefulWidget {
@@ -22,8 +21,10 @@ class VisitBillingFlow extends ConsumerStatefulWidget {
     required this.patientName,
     required this.branchId,
     required this.branchName,
+    required this.onFinalizeRequested,
     this.onBackToReview,
     this.onCompleted,
+    this.onFinalizeOutcome,
     super.key,
   });
 
@@ -32,8 +33,16 @@ class VisitBillingFlow extends ConsumerStatefulWidget {
   final String patientName;
   final String branchId;
   final String branchName;
+  final VisitFinalizeRequestedCallback onFinalizeRequested;
   final VoidCallback? onBackToReview;
   final VoidCallback? onCompleted;
+
+  /// Called after finalization with an outcome that should surface a confirmation UI.
+  final Future<void> Function(
+    VisitFinalizeOutcome outcome, {
+    VisitBillingInvoicePreview? invoicePreview,
+  })?
+  onFinalizeOutcome;
 
   @override
   ConsumerState<VisitBillingFlow> createState() => _VisitBillingFlowState();
@@ -74,32 +83,11 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow>
     widget.onBackToReview?.call();
   }
 
-  Future<void> _showVisitSubmittedDialog({
-    required VisitDetail visit,
-    VisitBillingInvoicePreview? invoicePreview,
-    InvoiceDetail? persistedInvoice,
-  }) async {
-    final confirmation = VisitSubmissionConfirmation.fromVisit(
-      visit: visit,
-      patientName: widget.patientName,
-      branchName: widget.branchName,
-      appointmentStart: visit.visitDate,
-      appointmentEnd: visit.visitDate.add(const Duration(minutes: 30)),
-      actionAt: DateTime.now().toUtc(),
-    );
-
-    Widget? invoiceSummary;
-    if (persistedInvoice != null) {
-      invoiceSummary = VisitInvoiceSummaryPanel(invoice: persistedInvoice, expanded: true);
-    } else if (invoicePreview != null) {
-      invoiceSummary = VisitInvoiceSummaryPanel(preview: invoicePreview, expanded: true);
+  String _localizedFinalizeFailureMessage(String message) {
+    if (message == 'visit_finalize_failed') {
+      return context.l10n.visitFinalizeFailed;
     }
-
-    await VisitSubmittedDialog.show(
-      context,
-      confirmation: confirmation,
-      invoiceSummary: invoiceSummary,
-    );
+    return message;
   }
 
   Future<void> _handleFinalize() async {
@@ -110,42 +98,47 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow>
 
     final permissions = ref.read(permissionServiceProvider);
     final billingNotifier = ref.read(visitBillingFlowProvider(widget.visitId).notifier);
+    final l10n = context.l10n;
 
-    final outcome = await billingNotifier.finalize(
-      canCreateInvoices: permissions.canCreateInvoices(),
-      canApplyDiscount: permissions.canApplyDiscount(),
-    );
+    billingNotifier.setSubmitting(true);
+    VisitFinalizeOutcome outcome;
+    try {
+      outcome = await widget.onFinalizeRequested(
+        VisitFinalizationRequest(
+          lines: billing.selectedLines,
+          discountType: billing.discountType,
+          discountValue: billing.discountValue,
+          draftInvoiceId: billing.draftInvoiceId,
+        ),
+      );
+    } finally {
+      billingNotifier.setSubmitting(false);
+    }
 
     if (!mounted) {
       return;
     }
 
     switch (outcome) {
-      case VisitFinalizeSucceeded(:final visit, :final invoice):
+      case VisitFinalizeSucceeded():
         if (!permissions.canCreateInvoices()) {
-          _showInfo('Visit submitted. No invoice was created because you do not have billing permission.');
+          _showInfo(l10n.visitBillingSubmittedWithoutInvoicePermission);
         }
         final invoicePreview = billing.invoicePreview;
         billingNotifier.reset();
-        await _showVisitSubmittedDialog(
-          visit: visit,
-          invoicePreview: invoicePreview,
-          persistedInvoice: invoice,
-        );
+        await widget.onFinalizeOutcome?.call(outcome, invoicePreview: invoicePreview);
         if (mounted) {
           widget.onCompleted?.call();
         }
-      case VisitFinalizeInvoiceFailed(:final visit, :final message):
+      case VisitFinalizeInvoiceFailed(:final message, :final draftInvoiceId):
+        billingNotifier.recordInvoiceFailure(draftInvoiceId: draftInvoiceId);
         _showError(
           message,
-          action: AppToastAction(label: 'Retry invoice', onPressed: _handleFinalize),
+          action: AppToastAction(label: l10n.visitBillingRetryInvoice, onPressed: _handleFinalize),
         );
-        await _showVisitSubmittedDialog(
-          visit: visit,
-          invoicePreview: billing.invoicePreview,
-        );
+        await widget.onFinalizeOutcome?.call(outcome, invoicePreview: billing.invoicePreview);
       case VisitFinalizeVisitFailed(:final message):
-        _showError(message);
+        _showError(_localizedFinalizeFailureMessage(message));
     }
   }
 

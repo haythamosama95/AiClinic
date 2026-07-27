@@ -2,15 +2,8 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
-import 'package:ai_clinic/features/billing/application/visit_finalize_outcome.dart';
-import 'package:ai_clinic/features/billing/application/visit_invoice_finalization_service.dart';
-import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
-import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
 
 @immutable
 class VisitBillingFlowState {
@@ -153,68 +146,11 @@ class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
     state = state.copyWith(isSubmitting: submitting);
   }
 
-  Future<VisitFinalizeOutcome> finalize({
-    required bool canCreateInvoices,
-    required bool canApplyDiscount,
-  }) async {
-    if (state.isSubmitting || state.selectedLines.isEmpty) {
-      throw StateError('Finalize called while submitting or with no selected lines.');
-    }
+  void recordInvoiceFailure({String? draftInvoiceId}) {
+    state = state.copyWith(draftInvoiceId: draftInvoiceId);
+  }
 
-    state = state.copyWith(isSubmitting: true);
-    try {
-      final isInvoiceRetry = state.draftInvoiceId != null;
-
-      if (!isInvoiceRetry) {
-        try {
-          final docNotifier = ref.read(visitDocumentationProvider(_visitId).notifier);
-          await docNotifier.completeVisit();
-        } on RpcFailure catch (error) {
-          return VisitFinalizeVisitFailed(visitMessageForRpc(error));
-        }
-      }
-
-      final visit = ref.read(visitDocumentationProvider(_visitId)).value?.visit;
-      if (visit == null) {
-        return const VisitFinalizeVisitFailed('Could not finalize the visit. Please try again.');
-      }
-
-      if (!canCreateInvoices) {
-        return VisitFinalizeSucceeded(visit: visit);
-      }
-
-      try {
-        final invoice = await ref
-            .read(visitInvoiceFinalizationServiceProvider)
-            .createIssuedInvoiceForVisit(
-              visitId: _visitId,
-              existingDraftId: state.draftInvoiceId,
-              lines: state.selectedLines,
-              discountType: state.discountType,
-              discountValue: state.discountValue,
-              canApplyDiscount: canApplyDiscount,
-            );
-        state = state.copyWith(clearDraftInvoiceId: true);
-        return VisitFinalizeSucceeded(visit: visit, invoice: invoice);
-      } on RpcFailure catch (error) {
-        var draftId = state.draftInvoiceId;
-        if (draftId == null) {
-          final existing = await ref.read(invoiceRepositoryProvider).findForVisit(visitId: _visitId);
-          if (existing?.status.isDraft == true) {
-            draftId = existing!.id;
-          }
-        }
-        state = state.copyWith(draftInvoiceId: draftId);
-        return VisitFinalizeInvoiceFailed(
-          visit: visit,
-          message: billingMessageForRpc(error),
-          draftInvoiceId: draftId,
-        );
-      }
-    } catch (_) {
-      return const VisitFinalizeVisitFailed('Could not finalize the visit. Please try again.');
-    } finally {
-      state = state.copyWith(isSubmitting: false);
-    }
+  void clearDraftInvoice() {
+    state = state.copyWith(clearDraftInvoiceId: true);
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
+import 'package:ai_clinic/core/ui/rich_text/rich_text_delta_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
@@ -82,8 +82,6 @@ bool _sectionHasContent(VisitDocumentationState state, ClinicalNoteSection secti
 
 bool _sectionTooLong(String value) => value.length > kMaxClinicalSectionLength;
 
-PhaseBadges _emptyBadges() => {for (final phase in EncounterPhase.stepperPhases) phase: PhaseCompletionBadge.empty};
-
 /// Active encounter step for the guided workspace (014 US4).
 final encounterActivePhaseProvider = NotifierProvider.autoDispose
     .family<EncounterActivePhaseNotifier, EncounterPhase, String>(EncounterActivePhaseNotifier.new);
@@ -103,9 +101,3 @@ class EncounterActivePhaseNotifier extends Notifier<EncounterPhase> {
     state = phase;
   }
 }
-
-/// Step completion badges derived from [visitDocumentationProvider].
-final encounterPhaseBadgesProvider = Provider.autoDispose.family<PhaseBadges, String>((ref, visitId) {
-  final docAsync = ref.watch(visitDocumentationProvider(visitId));
-  return docAsync.when(data: deriveEncounterPhaseBadges, loading: _emptyBadges, error: (_, _) => _emptyBadges());
-});

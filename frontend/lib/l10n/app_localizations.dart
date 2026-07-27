@@ -212,6 +212,48 @@ abstract class AppLocalizations {
   /// **'Discard'**
   String get discard;
 
+  /// No description provided for @visitUnsavedChangesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsaved documentation'**
+  String get visitUnsavedChangesTitle;
+
+  /// No description provided for @visitUnsavedChangesMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You have unsaved clinical documentation. Save your work, discard changes, or stay on this page.'**
+  String get visitUnsavedChangesMessage;
+
+  /// No description provided for @visitUnsavedChangesSaveAndLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save and leave'**
+  String get visitUnsavedChangesSaveAndLeave;
+
+  /// No description provided for @visitUnsavedChangesDiscardAndLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard and leave'**
+  String get visitUnsavedChangesDiscardAndLeave;
+
+  /// No description provided for @visitUnsavedChangesStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay on page'**
+  String get visitUnsavedChangesStay;
+
+  /// No description provided for @patientSummaryFallbackName.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient'**
+  String get patientSummaryFallbackName;
+
+  /// No description provided for @appointmentWindowFallbackLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Appointment'**
+  String get appointmentWindowFallbackLabel;
+
   /// No description provided for @registerPatient.
   ///
   /// In en, this message translates to:
@@ -998,6 +1040,12 @@ abstract class AppLocalizations {
   /// **'Patient'**
   String get patientNameFallback;
 
+  /// No description provided for @branchNameFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch'**
+  String get branchNameFallback;
+
   /// No description provided for @patientSectionsAriaLabel.
   ///
   /// In en, this message translates to:
@@ -1202,6 +1250,42 @@ abstract class AppLocalizations {
   /// **'Completed'**
   String get visitStatusCompleted;
 
+  /// No description provided for @visitCatalogItemAlreadyAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Already added'**
+  String get visitCatalogItemAlreadyAdded;
+
+  /// No description provided for @encounterPhaseBackground.
+  ///
+  /// In en, this message translates to:
+  /// **'Background'**
+  String get encounterPhaseBackground;
+
+  /// No description provided for @encounterPhaseIntake.
+  ///
+  /// In en, this message translates to:
+  /// **'Intake'**
+  String get encounterPhaseIntake;
+
+  /// No description provided for @encounterPhaseFindingsDiagnosis.
+  ///
+  /// In en, this message translates to:
+  /// **'Findings & Diagnosis'**
+  String get encounterPhaseFindingsDiagnosis;
+
+  /// No description provided for @encounterPhaseTreatment.
+  ///
+  /// In en, this message translates to:
+  /// **'Treatment'**
+  String get encounterPhaseTreatment;
+
+  /// No description provided for @encounterPhaseSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary'**
+  String get encounterPhaseSummary;
+
   /// No description provided for @appointmentStatusScheduled.
   ///
   /// In en, this message translates to:
@@ -1249,6 +1333,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unknown'**
   String get appointmentStatusUnknown;
+
+  /// No description provided for @visitStaleConflictTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Documentation changed elsewhere'**
+  String get visitStaleConflictTitle;
+
+  /// No description provided for @visitStaleConflictDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Another user updated this visit\'s clinical notes. Choose which version to keep before saving again.'**
+  String get visitStaleConflictDescription;
+
+  /// No description provided for @visitStaleConflictKeepMine.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep my version'**
+  String get visitStaleConflictKeepMine;
+
+  /// No description provided for @visitStaleConflictLoadTheirs.
+  ///
+  /// In en, this message translates to:
+  /// **'Load their version'**
+  String get visitStaleConflictLoadTheirs;
+
+  /// No description provided for @visitStaleConflictServerVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved on server'**
+  String get visitStaleConflictServerVersion;
+
+  /// No description provided for @visitStaleConflictYourVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Your draft'**
+  String get visitStaleConflictYourVersion;
+
+  /// No description provided for @visitStaleConflictSectionEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No content'**
+  String get visitStaleConflictSectionEmpty;
+
+  /// No description provided for @visitClinicalSectionComplaint.
+  ///
+  /// In en, this message translates to:
+  /// **'Complaint'**
+  String get visitClinicalSectionComplaint;
+
+  /// No description provided for @visitClinicalSectionHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get visitClinicalSectionHistory;
+
+  /// No description provided for @visitClinicalSectionExamination.
+  ///
+  /// In en, this message translates to:
+  /// **'Examination'**
+  String get visitClinicalSectionExamination;
+
+  /// No description provided for @visitClinicalSectionDiagnosis.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnosis'**
+  String get visitClinicalSectionDiagnosis;
+
+  /// No description provided for @visitClinicalSectionPlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan'**
+  String get visitClinicalSectionPlan;
+
+  /// No description provided for @visitDocumentationSaveStatusSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get visitDocumentationSaveStatusSaving;
+
+  /// No description provided for @visitDocumentationSaveStatusSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get visitDocumentationSaveStatusSaved;
+
+  /// No description provided for @visitDocumentationSaveStatusStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Conflict'**
+  String get visitDocumentationSaveStatusStale;
+
+  /// No description provided for @visitDocumentationSaveStatusError.
+  ///
+  /// In en, this message translates to:
+  /// **'Save failed'**
+  String get visitDocumentationSaveStatusError;
+
+  /// No description provided for @visitDocumentationResolveConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolve conflict'**
+  String get visitDocumentationResolveConflict;
+
+  /// No description provided for @visitFinalizeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finalize the visit. Please try again.'**
+  String get visitFinalizeFailed;
+
+  /// No description provided for @visitBillingSubmittedWithoutInvoicePermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit submitted. No invoice was created because you do not have billing permission.'**
+  String get visitBillingSubmittedWithoutInvoicePermission;
+
+  /// No description provided for @visitBillingRetryInvoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry invoice'**
+  String get visitBillingRetryInvoice;
 }
 
 class _AppLocalizationsDelegate

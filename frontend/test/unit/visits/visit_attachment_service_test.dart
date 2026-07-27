@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart'
     show VisitAttachmentDownloadResult, VisitRepository;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_pick.dart';
 
 import '../../support/visit_rpc_test_client.dart';
 
@@ -86,7 +87,7 @@ void main() {
 
     test('validatePick rejects empty bytes', () {
       expect(
-        () => VisitAttachmentService.validatePick(VisitAttachmentPickInput(filename: 'a.pdf', bytes: Uint8List(0))),
+        () => VisitAttachmentService.validatePick(VisitAttachmentPick(filename: 'a.pdf', bytes: Uint8List(0))),
         throwsA(isA<VisitAttachmentValidationException>().having((e) => e.errorCode, 'errorCode', 'INVALID_INPUT')),
       );
     });
@@ -94,7 +95,7 @@ void main() {
     test('validatePick rejects oversize files', () {
       expect(
         () => VisitAttachmentService.validatePick(
-          VisitAttachmentPickInput(filename: 'big.pdf', bytes: Uint8List(VisitAttachmentService.maxBytes + 1)),
+          VisitAttachmentPick(filename: 'big.pdf', bytes: Uint8List(VisitAttachmentService.maxBytes + 1)),
         ),
         throwsA(isA<VisitAttachmentValidationException>().having((e) => e.errorCode, 'errorCode', 'FILE_TOO_LARGE')),
       );
@@ -103,7 +104,7 @@ void main() {
     test('validatePick rejects disallowed file types', () {
       expect(
         () => VisitAttachmentService.validatePick(
-          VisitAttachmentPickInput(filename: 'notes.txt', bytes: Uint8List.fromList([1, 2, 3])),
+          VisitAttachmentPick(filename: 'notes.txt', bytes: Uint8List.fromList([1, 2, 3])),
         ),
         throwsA(isA<VisitAttachmentValidationException>().having((e) => e.errorCode, 'errorCode', 'INVALID_FILE_TYPE')),
       );
@@ -232,7 +233,7 @@ void main() {
         organizationId: 'org-1',
         branchId: 'branch-1',
         visitId: 'visit-1',
-        pick: VisitAttachmentPickInput(filename: 'result.pdf', bytes: Uint8List.fromList([1, 2, 3])),
+        pick: VisitAttachmentPick(filename: 'result.pdf', bytes: Uint8List.fromList([1, 2, 3])),
       );
       expect(id, isNotEmpty);
       expect(bucket.uploads, hasLength(1));
@@ -252,7 +253,7 @@ void main() {
           organizationId: 'org-1',
           branchId: 'branch-1',
           visitId: 'visit-1',
-          pick: VisitAttachmentPickInput(filename: 'result.pdf', bytes: Uint8List.fromList([1, 2, 3])),
+          pick: VisitAttachmentPick(filename: 'result.pdf', bytes: Uint8List.fromList([1, 2, 3])),
         ),
         throwsA(isA<RpcFailure>()),
       );

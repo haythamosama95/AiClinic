@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Encounter workspace phases (014) — view grouping over existing 013 fields.
 enum EncounterPhase {
   context,
@@ -18,30 +16,6 @@ enum EncounterPhase {
   static const ordered = <EncounterPhase>[subjective, objective, plan, review];
 
   bool get isDocumentation => documentationPhases.contains(this);
-
-  String get label => switch (this) {
-    context => 'Background',
-    subjective => 'Intake',
-    objective => 'Findings & Diagnosis',
-    plan => 'Treatment',
-    review => 'Summary',
-  };
-
-  String get abbr => switch (this) {
-    context => 'BG',
-    subjective => 'IN',
-    objective => 'FD',
-    plan => 'TX',
-    review => 'SM',
-  };
-
-  IconData get icon => switch (this) {
-    context => Icons.info_outline_rounded,
-    subjective => Icons.chat_bubble_outline_rounded,
-    objective => Icons.monitor_heart_outlined,
-    plan => Icons.medical_services_outlined,
-    review => Icons.summarize_outlined,
-  };
 
   bool get _isInStepper => stepperPhases.contains(this);
 

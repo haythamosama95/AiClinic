@@ -67,6 +67,28 @@ class AppLocalizationsAr extends AppLocalizations {
   String get discard => 'تجاهل';
 
   @override
+  String get visitUnsavedChangesTitle => 'وثائق غير محفوظة';
+
+  @override
+  String get visitUnsavedChangesMessage =>
+      'لديك وثائق سريرية غير محفوظة. احفظ عملك، أو تجاهل التغييرات، أو ابقَ في هذه الصفحة.';
+
+  @override
+  String get visitUnsavedChangesSaveAndLeave => 'حفظ والمغادرة';
+
+  @override
+  String get visitUnsavedChangesDiscardAndLeave => 'تجاهل والمغادرة';
+
+  @override
+  String get visitUnsavedChangesStay => 'البقاء في الصفحة';
+
+  @override
+  String get patientSummaryFallbackName => 'مريض';
+
+  @override
+  String get appointmentWindowFallbackLabel => 'موعد';
+
+  @override
   String get registerPatient => 'تسجيل مريض';
 
   @override
@@ -485,6 +507,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get patientNameFallback => 'مريض';
 
   @override
+  String get branchNameFallback => 'فرع';
+
+  @override
   String get patientSectionsAriaLabel => 'أقسام المريض';
 
   @override
@@ -610,6 +635,24 @@ class AppLocalizationsAr extends AppLocalizations {
   String get visitStatusCompleted => 'Completed';
 
   @override
+  String get visitCatalogItemAlreadyAdded => 'Already added';
+
+  @override
+  String get encounterPhaseBackground => 'Background';
+
+  @override
+  String get encounterPhaseIntake => 'Intake';
+
+  @override
+  String get encounterPhaseFindingsDiagnosis => 'Findings & Diagnosis';
+
+  @override
+  String get encounterPhaseTreatment => 'Treatment';
+
+  @override
+  String get encounterPhaseSummary => 'Summary';
+
+  @override
   String get appointmentStatusScheduled => 'Scheduled';
 
   @override
@@ -632,4 +675,67 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appointmentStatusUnknown => 'Unknown';
+
+  @override
+  String get visitStaleConflictTitle => 'تغيّرت الوثائق في مكان آخر';
+
+  @override
+  String get visitStaleConflictDescription =>
+      'قام مستخدم آخر بتحديث الملاحظات السريرية لهذه الزيارة. اختر الإصدار الذي تريد الاحتفاظ به قبل الحفظ مرة أخرى.';
+
+  @override
+  String get visitStaleConflictKeepMine => 'الاحتفاظ بإصداري';
+
+  @override
+  String get visitStaleConflictLoadTheirs => 'تحميل إصدارهم';
+
+  @override
+  String get visitStaleConflictServerVersion => 'المحفوظ على الخادم';
+
+  @override
+  String get visitStaleConflictYourVersion => 'مسودتك';
+
+  @override
+  String get visitStaleConflictSectionEmpty => 'لا يوجد محتوى';
+
+  @override
+  String get visitClinicalSectionComplaint => 'الشكوى';
+
+  @override
+  String get visitClinicalSectionHistory => 'التاريخ المرضي';
+
+  @override
+  String get visitClinicalSectionExamination => 'الفحص';
+
+  @override
+  String get visitClinicalSectionDiagnosis => 'التشخيص';
+
+  @override
+  String get visitClinicalSectionPlan => 'الخطة';
+
+  @override
+  String get visitDocumentationSaveStatusSaving => 'جارٍ الحفظ…';
+
+  @override
+  String get visitDocumentationSaveStatusSaved => 'تم الحفظ';
+
+  @override
+  String get visitDocumentationSaveStatusStale => 'تعارض';
+
+  @override
+  String get visitDocumentationSaveStatusError => 'فشل الحفظ';
+
+  @override
+  String get visitDocumentationResolveConflict => 'حل التعارض';
+
+  @override
+  String get visitFinalizeFailed =>
+      'تعذّر إنهاء الزيارة. يُرجى المحاولة مرة أخرى.';
+
+  @override
+  String get visitBillingSubmittedWithoutInvoicePermission =>
+      'تم تقديم الزيارة. لم يتم إنشاء فاتورة لأنك لا تملك صلاحية الفوترة.';
+
+  @override
+  String get visitBillingRetryInvoice => 'إعادة محاولة الفاتورة';
 }

@@ -27,6 +27,7 @@ import 'package:ai_clinic/features/service_catalog/data/service_catalog_reposito
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_pick.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_attachments.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_billing.dart';
@@ -645,7 +646,7 @@ class DevClinicSeedService {
           organizationId: organizationId,
           branchId: visit.branchId,
           visitId: visit.visitId,
-          pick: VisitAttachmentPickInput(
+          pick: VisitAttachmentPick(
             filename: spec.filename,
             bytes: DevClinicSeedAttachments.dummyBytesFor(spec.fileType),
           ),

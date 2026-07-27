@@ -9,6 +9,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientP
 import 'package:ai_clinic/features/visits/data/visit_attachment_opener.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_pick.dart';
 
 /// Client-side validation failure before storage upload (V1-5).
 class VisitAttachmentValidationException implements Exception {
@@ -19,14 +20,6 @@ class VisitAttachmentValidationException implements Exception {
 
   @override
   String toString() => message;
-}
-
-/// Bytes picked for upload (tests inject this without platform file picker).
-class VisitAttachmentPickInput {
-  const VisitAttachmentPickInput({required this.filename, required this.bytes});
-
-  final String filename;
-  final Uint8List bytes;
 }
 
 /// Storage upload + register/download for visit attachments (V1-5).
@@ -69,7 +62,7 @@ class VisitAttachmentService {
   }
 
   /// Validates pick before upload; throws [VisitAttachmentValidationException] on failure.
-  static void validatePick(VisitAttachmentPickInput pick) {
+  static void validatePick(VisitAttachmentPick pick) {
     if (pick.bytes.isEmpty) {
       throw const VisitAttachmentValidationException('The selected file is empty.', errorCode: 'INVALID_INPUT');
     }
@@ -108,7 +101,7 @@ class VisitAttachmentService {
     required String organizationId,
     required String branchId,
     required String visitId,
-    required VisitAttachmentPickInput pick,
+    required VisitAttachmentPick pick,
     String? label,
   }) async {
     validatePick(pick);

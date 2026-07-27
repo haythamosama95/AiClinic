@@ -1,7 +1,7 @@
 import 'dart:math';
 
-import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_pick.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
@@ -37,7 +37,7 @@ class PendingVisitAttachment {
   });
 
   final String id;
-  final VisitAttachmentPickInput pick;
+  final VisitAttachmentPick pick;
   final String label;
   final VisitAttachmentFileType fileType;
   final String uploadedBy;

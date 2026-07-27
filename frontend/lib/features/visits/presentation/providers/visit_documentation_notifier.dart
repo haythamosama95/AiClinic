@@ -3,184 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
+import 'package:ai_clinic/core/ui/rich_text/rich_text_delta_utils.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_flusher.dart';
+import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
-import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
-import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_pick.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
-import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
-import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
-import 'package:ai_clinic/features/appointments/application/appointment_surface_invalidation.dart';
-import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_attachments_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_clinical_data_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_state.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_patient_safety_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_workspace_permissions.dart';
 
-/// Clinical note save lifecycle on the visit documentation screen.
-enum DocumentationSaveStatus { idle, saving, saved, stale, error }
+export 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_state.dart';
 
-/// Whether the clinical note section is in editing or read-only-after-save mode.
-enum DocumentationEditMode { editing, readOnly }
+final visitDocumentationProvider = AsyncNotifierProvider.family<VisitDocumentationNotifier, VisitDocumentationState, String>(
+  VisitDocumentationNotifier.new,
+);
 
-/// Whether the encounter workspace allows mutations (completed visits default to viewing).
-enum WorkspaceEditMode { viewing, editing }
-
-@immutable
-class VisitDocumentationState {
-  const VisitDocumentationState({
-    required this.visit,
-    required this.persistedVisit,
-    required this.complaint,
-    required this.history,
-    required this.examination,
-    required this.diagnosis,
-    required this.plan,
-    required this.expectedUpdatedAt,
-    this.richTextDrafts = const {},
-    this.predefinedVitalSigns = const [],
-    this.encounterDraft = const VisitEncounterDraft(),
-    this.saveStatus = DocumentationSaveStatus.idle,
-    this.noteEditMode = DocumentationEditMode.editing,
-    this.workspaceEditMode = WorkspaceEditMode.editing,
-    this.errorMessage,
-  });
-
-  /// Visit data shown in the workspace (persisted rows plus in-memory draft overlay).
-  final VisitDetail visit;
-
-  /// Last server-loaded visit snapshot (without draft overlay).
-  final VisitDetail persistedVisit;
-  final String complaint;
-  final String history;
-  final String examination;
-  final String diagnosis;
-  final String plan;
-  final DateTime expectedUpdatedAt;
-
-  /// In-session Quill delta JSON per section. Preserves rich formatting while
-  /// navigating the encounter workspace; not persisted to the backend.
-  final Map<ClinicalNoteSection, List<dynamic>> richTextDrafts;
-  final List<CatalogItem> predefinedVitalSigns;
-  final VisitEncounterDraft encounterDraft;
-  final DocumentationSaveStatus saveStatus;
-  final DocumentationEditMode noteEditMode;
-  final WorkspaceEditMode workspaceEditMode;
-  final String? errorMessage;
-
-  /// Whether the workspace UI should allow edits (permission + lifecycle + edit mode).
-  bool canEditWorkspace(bool hasEditPermission) {
-    if (!hasEditPermission) {
-      return false;
-    }
-    if (visit.status != VisitStatus.completed) {
-      return true;
-    }
-    return workspaceEditMode == WorkspaceEditMode.editing;
-  }
-
-  /// Whether the clinical note draft has unsaved changes.
-  bool get hasUnsavedDraft {
-    if (saveStatus == DocumentationSaveStatus.saving) {
-      return false;
-    }
-    if (saveStatus == DocumentationSaveStatus.stale) {
-      return true;
-    }
-    return _clinicalNoteDiffersFromPersisted();
-  }
-
-  bool get clinicalNoteDiffersFromPersisted => _clinicalNoteDiffersFromPersisted();
-
-  bool _clinicalNoteDiffersFromPersisted() {
-    final persisted = persistedVisit.documentation;
-    return complaint.trim() != (persisted?.complaint ?? '').trim() ||
-        history.trim() != (persisted?.history ?? '').trim() ||
-        examination.trim() != (persisted?.examination ?? '').trim() ||
-        diagnosis.trim() != (persisted?.diagnosis ?? '').trim() ||
-        plan.trim() != (persisted?.plan ?? '').trim();
-  }
-
-  bool get hasPendingEncounterDraft => !encounterDraft.isEmpty;
-
-  /// Whether local documentation still needs to be written to the server before submit.
-  bool get needsPersistBeforeSubmit => clinicalNoteDiffersFromPersisted || hasPendingEncounterDraft;
-
-  bool get hasUnsavedChanges => hasUnsavedDraft || hasPendingEncounterDraft;
-
-  /// @deprecated Use [hasUnsavedDraft] with page-level permission gating.
-  bool get needsSaveBeforeLeaving => hasUnsavedChanges;
-
-  PatientSafetyContext effectivePatientSafety(PatientSafetyContext base) => encounterDraft.patientSafety.applyTo(base);
-
-  /// Persisted visit rows merged with the in-memory encounter draft overlay.
-  VisitDetail get effectiveVisit => encounterDraft.applyTo(persistedVisit);
-
-  VisitDocumentationState copyWith({
-    VisitDetail? visit,
-    VisitDetail? persistedVisit,
-    String? complaint,
-    String? history,
-    String? examination,
-    String? diagnosis,
-    String? plan,
-    DateTime? expectedUpdatedAt,
-    Map<ClinicalNoteSection, List<dynamic>>? richTextDrafts,
-    List<CatalogItem>? predefinedVitalSigns,
-    VisitEncounterDraft? encounterDraft,
-    DocumentationSaveStatus? saveStatus,
-    DocumentationEditMode? noteEditMode,
-    WorkspaceEditMode? workspaceEditMode,
-    String? errorMessage,
-    bool clearError = false,
-  }) {
-    return VisitDocumentationState(
-      visit: visit ?? this.visit,
-      persistedVisit: persistedVisit ?? this.persistedVisit,
-      complaint: complaint ?? this.complaint,
-      history: history ?? this.history,
-      examination: examination ?? this.examination,
-      diagnosis: diagnosis ?? this.diagnosis,
-      plan: plan ?? this.plan,
-      expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
-      richTextDrafts: richTextDrafts ?? this.richTextDrafts,
-      predefinedVitalSigns: predefinedVitalSigns ?? this.predefinedVitalSigns,
-      encounterDraft: encounterDraft ?? this.encounterDraft,
-      saveStatus: saveStatus ?? this.saveStatus,
-      noteEditMode: noteEditMode ?? this.noteEditMode,
-      workspaceEditMode: workspaceEditMode ?? this.workspaceEditMode,
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-    );
-  }
-
-  static VisitDocumentationState fromVisit(VisitDetail visit, {List<CatalogItem> predefinedVitalSigns = const []}) {
-    final note = visit.documentation;
-    final workspaceEditMode = visit.status == VisitStatus.completed
-        ? WorkspaceEditMode.viewing
-        : WorkspaceEditMode.editing;
-    return VisitDocumentationState(
-      visit: visit,
-      persistedVisit: visit,
-      complaint: note?.complaint ?? '',
-      history: note?.history ?? '',
-      examination: note?.examination ?? '',
-      diagnosis: note?.diagnosis ?? '',
-      plan: note?.plan ?? '',
-      expectedUpdatedAt: note?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
-      predefinedVitalSigns: predefinedVitalSigns,
-      workspaceEditMode: workspaceEditMode,
-      noteEditMode: workspaceEditMode == WorkspaceEditMode.editing
-          ? DocumentationEditMode.editing
-          : DocumentationEditMode.readOnly,
-    );
-  }
-}
-
-final visitDocumentationProvider = AsyncNotifierProvider.autoDispose
-    .family<VisitDocumentationNotifier, VisitDocumentationState, String>(VisitDocumentationNotifier.new);
+/// Coordinates saving notes and all encounter draft sub-notifiers.
+final visitSaveAllProvider = Provider.family<Future<bool> Function(), String>((ref, visitId) {
+  return () => ref.read(visitDocumentationProvider(visitId).notifier).saveAll();
+});
 
 /// Family arg is injected by [visitDocumentationProvider] via `NotifierT Function(String)`.
 class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> {
@@ -191,7 +41,13 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
 
   @override
   Future<VisitDocumentationState> build() async {
-    return _load();
+    ref.listen(visitClinicalDataProvider(_visitId), (_, _) => syncEncounterDraftFromSubNotifiers());
+    ref.listen(visitAttachmentsProvider(_visitId), (_, _) => syncEncounterDraftFromSubNotifiers());
+    ref.listen(visitPatientSafetyProvider(_visitId), (_, _) => syncEncounterDraftFromSubNotifiers());
+    final loaded = await _load();
+    ref.read(visitClinicalDataProvider(_visitId).notifier).setPersistedVisit(loaded.persistedVisit);
+    await ref.read(visitPatientSafetyProvider(_visitId).notifier).ensureLoaded(loaded.persistedVisit.patientId);
+    return loaded;
   }
 
   Future<VisitDocumentationState> _load() async {
@@ -206,25 +62,135 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     return VisitDocumentationState.fromVisit(visit, predefinedVitalSigns: predefinedVitalSigns);
   }
 
+  bool canMutateWorkspace(VisitDocumentationState current) => canMutateVisitWorkspace(ref, _visitId, current);
+
   bool _canEditVisit(VisitDetail visit) {
     final permissions = ref.read(permissionServiceProvider);
     final branchIds = ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
-    // Post-submit editing allowed on completed visits (013 FR-017, V1-5 parity).
     return permissions.canEditVisitSoap() && branchIds.contains(visit.branchId);
   }
 
-  bool _canMutateVisit(VisitDocumentationState current) {
-    if (!_canEditVisit(current.visit)) {
-      return false;
-    }
-    if (current.visit.status == VisitStatus.completed && current.workspaceEditMode != WorkspaceEditMode.editing) {
-      return false;
-    }
-    return true;
-  }
+  bool _canMutateVisit(VisitDocumentationState current) => canMutateWorkspace(current);
 
   /// Whether the visit can be submitted (in-progress only, with edit permission).
   bool canSubmitVisit(VisitDetail visit) => _canEditVisit(visit) && visit.status == VisitStatus.inProgress;
+
+  VisitEncounterDraft _composeEncounterDraft() {
+    final clinical = ref.read(visitClinicalDataProvider(_visitId));
+    final attachments = ref.read(visitAttachmentsProvider(_visitId));
+    final safetyDraft = ref.read(visitPatientSafetyProvider(_visitId)).value?.safetyDraft ?? const PatientSafetyDraft();
+    return VisitEncounterDraft(
+      pendingVitalSigns: clinical.pendingVitalSigns,
+      vitalSignUpdates: clinical.vitalSignUpdates,
+      archivedVitalSignIds: clinical.archivedVitalSignIds,
+      pendingInvestigations: clinical.pendingInvestigations,
+      investigationUpdates: clinical.investigationUpdates,
+      archivedInvestigationIds: clinical.archivedInvestigationIds,
+      pendingTreatmentPlans: clinical.pendingTreatmentPlans,
+      treatmentPlanUpdates: clinical.treatmentPlanUpdates,
+      archivedTreatmentPlanIds: clinical.archivedTreatmentPlanIds,
+      investigationResults: clinical.investigationResults,
+      pendingAttachments: attachments.pendingAttachments,
+      deletedAttachmentIds: attachments.deletedAttachmentIds,
+      patientSafety: safetyDraft,
+    );
+  }
+
+  void syncEncounterDraftFromSubNotifiers() {
+    final current = state.value;
+    if (current == null) return;
+    final composed = _composeEncounterDraft();
+    if (composed == current.encounterDraft) return;
+    state = AsyncData(current.copyWith(encounterDraft: composed));
+  }
+
+  void _applyComposedDraft(VisitEncounterDraft draft) {
+    ref.read(visitClinicalDataProvider(_visitId).notifier).replaceFromEncounterDraft(draft);
+    ref.read(visitAttachmentsProvider(_visitId).notifier).replaceFromEncounterDraft(draft);
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).replaceSafetyDraft(draft.patientSafety);
+    final current = state.value;
+    if (current != null) {
+      state = AsyncData(current.copyWith(encounterDraft: draft));
+    }
+  }
+
+  /// Clears pending encounter drafts and resets clinical notes to persisted values.
+  void clearPendingDrafts() {
+    final current = state.value;
+    if (current == null) return;
+
+    final persisted = current.persistedVisit.documentation;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).clearDraft();
+    ref.read(visitAttachmentsProvider(_visitId).notifier).clearDraft();
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).clearDraft();
+
+    state = AsyncData(
+      current.copyWith(
+        complaint: persisted?.complaint ?? '',
+        history: persisted?.history ?? '',
+        examination: persisted?.examination ?? '',
+        diagnosis: persisted?.diagnosis ?? '',
+        plan: persisted?.plan ?? '',
+        richTextDrafts: const {},
+        encounterDraft: const VisitEncounterDraft(),
+        saveStatus: DocumentationSaveStatus.idle,
+        clearError: true,
+        clearStaleConflict: true,
+      ),
+    );
+  }
+
+  /// Disposes visit-scoped providers after finalization so drafts do not leak across visits.
+  void disposeAfterFinalize() {
+    ref.invalidate(visitDocumentationProvider(_visitId));
+    ref.invalidate(visitClinicalDataProvider(_visitId));
+    ref.invalidate(visitAttachmentsProvider(_visitId));
+    ref.invalidate(visitPatientSafetyProvider(_visitId));
+  }
+
+  /// Refreshes the concurrency token after a stale conflict.
+  Future<void> resolveStaleConflict({required bool keepLocalDraft}) async {
+    final current = state.value;
+    if (current == null) return;
+
+    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.persistedVisit.id);
+    final newToken = refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? current.expectedUpdatedAt;
+
+    if (keepLocalDraft) {
+      state = AsyncData(
+        VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+          complaint: current.complaint,
+          history: current.history,
+          examination: current.examination,
+          diagnosis: current.diagnosis,
+          plan: current.plan,
+          richTextDrafts: current.richTextDrafts,
+          expectedUpdatedAt: newToken,
+          encounterDraft: current.encounterDraft,
+          workspaceEditMode: current.workspaceEditMode,
+          noteEditMode: current.noteEditMode,
+          saveStatus: DocumentationSaveStatus.idle,
+          clearError: true,
+          clearStaleConflict: true,
+        ),
+      );
+      _applyComposedDraft(current.encounterDraft);
+      return;
+    }
+
+    ref.read(visitClinicalDataProvider(_visitId).notifier).clearDraft();
+    ref.read(visitAttachmentsProvider(_visitId).notifier).clearDraft();
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).clearDraft();
+    state = AsyncData(
+      VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+        expectedUpdatedAt: newToken,
+        workspaceEditMode: current.workspaceEditMode,
+        saveStatus: DocumentationSaveStatus.idle,
+        clearError: true,
+        clearStaleConflict: true,
+      ),
+    );
+  }
 
   /// Completes an in-progress visit. Persists local draft fields and keeps documentation editable afterward.
   Future<CompleteVisitResult> completeVisit({DateTime? expectedUpdatedAt}) async {
@@ -232,7 +198,16 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     if (initial == null) {
       throw StateError('Visit documentation is not loaded.');
     }
-    if (!canSubmitVisit(initial.visit)) {
+    if (initial.saveStatus == DocumentationSaveStatus.stale) {
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'STALE_DOCUMENTATION',
+          errorMessage: initial.errorMessage ?? 'Resolve the documentation conflict before completing the visit.',
+        ),
+      );
+    }
+    if (!canSubmitVisit(initial.persistedVisit)) {
       throw RpcFailure(
         RpcResult(
           success: false,
@@ -242,7 +217,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       );
     }
 
-    if (_canEditVisit(initial.visit)) {
+    if (_canEditVisit(initial.persistedVisit)) {
       prepareEncounterReview();
 
       final afterFlush = state.value ?? initial;
@@ -262,15 +237,24 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final current = state.value ?? initial;
-    // Always use post-save refreshed token; caller value may be stale after saveAll/flush.
+    if (current.saveStatus == DocumentationSaveStatus.stale) {
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'STALE_DOCUMENTATION',
+          errorMessage: current.errorMessage ?? 'Resolve the documentation conflict before completing the visit.',
+        ),
+      );
+    }
+
     final concurrencyToken = current.expectedUpdatedAt;
 
     try {
       final result = await ref
           .read(visitRepositoryProvider)
-          .completeVisit(visitId: current.visit.id, expectedUpdatedAt: concurrencyToken);
+          .completeVisit(visitId: current.persistedVisit.id, expectedUpdatedAt: concurrencyToken);
 
-      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.persistedVisit.id);
       state = AsyncData(
         VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
           workspaceEditMode: WorkspaceEditMode.viewing,
@@ -280,6 +264,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         ),
       );
       invalidateAppointmentAfterVisitCompleted(ref, appointmentId: result.appointmentId);
+      disposeAfterFinalize();
       return result;
     } on RpcFailure {
       rethrow;
@@ -335,14 +320,12 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         richTextDrafts: nextRichDrafts,
         saveStatus: DocumentationSaveStatus.idle,
         clearError: true,
+        clearStaleConflict: true,
       ),
     );
   }
 
   /// Persists all local draft fields (clinical note + staged structured data).
-  ///
-  /// Returns `false` when a save fails or the state is stale; `true` when
-  /// everything is persisted (or there was nothing to save).
   Future<bool> saveAll() async {
     prepareEncounterReview();
 
@@ -357,14 +340,16 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
 
     state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saving, clearError: true));
 
-    if (current.hasPendingEncounterDraft) {
-      final flushed = await _flushEncounterDraft(current);
+    syncEncounterDraftFromSubNotifiers();
+    final withDraft = state.value ?? current;
+    if (withDraft.hasPendingEncounterDraft) {
+      final flushed = await _flushEncounterDraft(withDraft);
       if (!flushed) {
         return false;
       }
     }
 
-    final afterStructured = state.value ?? current;
+    final afterStructured = state.value ?? withDraft;
     if (afterStructured.clinicalNoteDiffersFromPersisted) {
       await save();
       final afterNote = state.value;
@@ -380,14 +365,12 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     return true;
   }
 
-  /// Clears a lingering [DocumentationSaveStatus.saving] after structured-only
-  /// persistence when no clinical note save runs afterward.
   void _settleSaveStatusAfterSuccessfulPersist() {
     final current = state.value;
     if (current == null || current.saveStatus != DocumentationSaveStatus.saving) {
       return;
     }
-    state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saved));
+    state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saved, clearStaleConflict: true));
   }
 
   Future<void> save() async {
@@ -414,10 +397,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saving, clearError: true));
 
     try {
-      final saved = await ref
-          .read(visitRepositoryProvider)
-          .saveVisitDocumentation(
-            visitId: current.visit.id,
+      final saved = await ref.read(visitRepositoryProvider).saveVisitDocumentation(
+            visitId: current.persistedVisit.id,
             expectedUpdatedAt: current.expectedUpdatedAt,
             complaint: _nullableSection(current.complaint),
             history: _nullableSection(current.history),
@@ -426,25 +407,34 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
             plan: _nullableSection(current.plan),
           );
 
-      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
-      final next = VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns)
-          .copyWith(
-            complaint: current.complaint,
-            history: current.history,
-            examination: current.examination,
-            diagnosis: current.diagnosis,
-            plan: current.plan,
-            expectedUpdatedAt: saved.updatedAt,
-            saveStatus: DocumentationSaveStatus.saved,
-            workspaceEditMode: current.workspaceEditMode,
-            noteEditMode: DocumentationEditMode.readOnly,
-          );
+      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.persistedVisit.id);
+      final next = VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+        complaint: current.complaint,
+        history: current.history,
+        examination: current.examination,
+        diagnosis: current.diagnosis,
+        plan: current.plan,
+        expectedUpdatedAt: saved.updatedAt,
+        encounterDraft: current.encounterDraft,
+        saveStatus: DocumentationSaveStatus.saved,
+        workspaceEditMode: current.workspaceEditMode,
+        noteEditMode: DocumentationEditMode.readOnly,
+        clearStaleConflict: true,
+      );
       state = AsyncData(next);
     } on RpcFailure catch (error) {
       final currentAfter = state.value ?? current;
       if (error.code == 'STALE_DOCUMENTATION') {
+        final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.persistedVisit.id);
+        final serverNote = refreshed.documentation;
+        final staleToken = serverNote?.updatedAt ?? refreshed.updatedAt;
         state = AsyncData(
-          currentAfter.copyWith(saveStatus: DocumentationSaveStatus.stale, errorMessage: visitMessageForRpc(error)),
+          currentAfter.copyWith(
+            saveStatus: DocumentationSaveStatus.stale,
+            errorMessage: visitMessageForRpc(error),
+            conflictingServerNote: serverNote,
+            staleServerUpdatedAt: staleToken,
+          ),
         );
         return;
       }
@@ -461,14 +451,13 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
 
   void enterEditMode() {
     final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) return;
+    if (current == null || !_canEditVisit(current.persistedVisit)) return;
     state = AsyncData(current.copyWith(noteEditMode: DocumentationEditMode.editing));
   }
 
-  /// Enables editing across the encounter workspace (required for completed visits).
   void enterWorkspaceEditMode() {
     final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
+    if (current == null || !_canEditVisit(current.persistedVisit)) {
       return;
     }
     state = AsyncData(
@@ -480,7 +469,6 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     );
   }
 
-  /// Refreshes visit metadata without discarding unsaved clinical note draft.
   Future<void> refreshVisitPreservingDraft() async {
     final current = state.value;
     if (current == null) {
@@ -488,32 +476,17 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final repo = ref.read(visitRepositoryProvider);
-    final refreshed = await repo.getVisit(visitId: current.visit.id);
+    final refreshed = await repo.getVisit(visitId: current.persistedVisit.id);
     final predefinedVitalSigns = await repo.listPredefinedVitalSigns();
-    final mergedVisit = current.encounterDraft.applyTo(refreshed);
     state = AsyncData(
       current.copyWith(
-        visit: mergedVisit,
         persistedVisit: refreshed,
         predefinedVitalSigns: predefinedVitalSigns,
         workspaceEditMode: current.workspaceEditMode,
+        encounterDraft: current.encounterDraft,
       ),
     );
-  }
-
-  void _applyEncounterDraft(VisitEncounterDraft draft) {
-    final current = state.value;
-    if (current == null || !_canMutateVisit(current)) {
-      return;
-    }
-    state = AsyncData(
-      current.copyWith(
-        encounterDraft: draft,
-        visit: draft.applyTo(current.persistedVisit),
-        saveStatus: DocumentationSaveStatus.idle,
-        clearError: true,
-      ),
-    );
+    syncEncounterDraftFromSubNotifiers();
   }
 
   void registerClinicalNoteFlush(VoidCallback callback) {
@@ -530,10 +503,6 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
   }
 
-  /// Pulls cached editor and staged draft input into state before Summary or submit validation.
-  ///
-  /// Sync-only: does not persist. Call before evaluating submit readiness so Quill
-  /// controller content and structured draft overlays are reflected in state.
   VisitDocumentationState? prepareEncounterReview() {
     _flushClinicalNoteDrafts();
     final current = state.value;
@@ -541,16 +510,17 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       return null;
     }
 
-    final syncedPlainText = _syncPlainTextFromRichDrafts(current);
+    syncEncounterDraftFromSubNotifiers();
+    final synced = state.value ?? current;
+    final syncedPlainText = _syncPlainTextFromRichDrafts(synced);
 
-    // Recover from a prior structured-only save that left saveStatus stuck on saving.
     final saveStatus = syncedPlainText.saveStatus == DocumentationSaveStatus.saving
         ? DocumentationSaveStatus.idle
         : syncedPlainText.saveStatus;
 
-    final synced = syncedPlainText.copyWith(visit: syncedPlainText.effectiveVisit, saveStatus: saveStatus);
-    state = AsyncData(synced);
-    return synced;
+    final next = syncedPlainText.copyWith(saveStatus: saveStatus);
+    state = AsyncData(next);
+    return next;
   }
 
   VisitDocumentationState _syncPlainTextFromRichDrafts(VisitDocumentationState current) {
@@ -570,821 +540,62 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     );
   }
 
-  VisitVitalSign? _findVitalSign(String id) {
-    final current = state.value;
-    if (current == null) return null;
-    for (final sign in current.visit.vitalSigns) {
-      if (sign.id == id) return sign;
-    }
-    return null;
-  }
-
-  VisitInvestigation? _findInvestigation(String id) {
-    final current = state.value;
-    if (current == null) return null;
-    for (final item in [...current.visit.investigations, ...current.visit.pendingInvestigations]) {
-      if (item.id == id) return item;
-    }
-    return null;
-  }
-
-  TreatmentPlanItem? _findTreatmentPlan(String id) {
-    final current = state.value;
-    if (current == null) return null;
-    for (final plan in current.visit.treatmentPlans) {
-      if (plan.id == id) return plan;
-    }
-    return null;
-  }
-
-  void stageCreateVitalSign({
-    required String name,
-    required String value,
-    String? unit,
-    String? predefinedVitalSignId,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final sign = VisitVitalSign(
-      id: newVisitDraftId(),
-      name: name,
-      value: value,
-      unit: unit,
-      predefinedVitalSignId: predefinedVitalSignId,
-    );
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(pendingVitalSigns: [...current.encounterDraft.pendingVitalSigns, sign]),
-    );
-  }
-
-  void stageUpdateVitalSign({
-    required String vitalSignId,
-    String? name,
-    String? value,
-    String? unit,
-    String? predefinedVitalSignId,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(vitalSignId)) {
-      final updated = draft.pendingVitalSigns
-          .map(
-            (sign) => sign.id == vitalSignId
-                ? VisitVitalSign(
-                    id: sign.id,
-                    name: name ?? sign.name,
-                    value: value ?? sign.value,
-                    unit: unit ?? sign.unit,
-                    predefinedVitalSignId: predefinedVitalSignId ?? sign.predefinedVitalSignId,
-                  )
-                : sign,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(pendingVitalSigns: updated));
-      return;
-    }
-    final existing = _findVitalSign(vitalSignId);
-    if (existing == null) return;
-    final updated = VisitVitalSign(
-      id: existing.id,
-      name: name ?? existing.name,
-      value: value ?? existing.value,
-      unit: unit ?? existing.unit,
-      predefinedVitalSignId: predefinedVitalSignId ?? existing.predefinedVitalSignId,
-    );
-    _applyEncounterDraft(draft.copyWith(vitalSignUpdates: {...draft.vitalSignUpdates, vitalSignId: updated}));
-  }
-
-  void stageArchiveVitalSign(String vitalSignId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(vitalSignId)) {
-      _applyEncounterDraft(
-        draft.copyWith(pendingVitalSigns: draft.pendingVitalSigns.where((sign) => sign.id != vitalSignId).toList()),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        archivedVitalSignIds: {...draft.archivedVitalSignIds, vitalSignId},
-        vitalSignUpdates: Map<String, VisitVitalSign>.from(draft.vitalSignUpdates)..remove(vitalSignId),
-      ),
-    );
-  }
-
-  void stageCreateInvestigation({required String name, String? note, String? investigationId}) {
-    final current = state.value;
-    if (current == null) return;
-    final investigation = VisitInvestigation(
-      id: newVisitDraftId(),
-      name: name,
-      note: note,
-      investigationId: investigationId,
-    );
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(
-        pendingInvestigations: [...current.encounterDraft.pendingInvestigations, investigation],
-      ),
-    );
-  }
-
-  void stageUpdateInvestigation({
-    required String investigationLineId,
-    String? name,
-    String? note,
-    String? investigationId,
-    bool updateInvestigationId = false,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(investigationLineId)) {
-      final updated = draft.pendingInvestigations
-          .map(
-            (item) => item.id == investigationLineId
-                ? VisitInvestigation(
-                    id: item.id,
-                    name: name ?? item.name,
-                    note: note ?? item.note,
-                    investigationId: updateInvestigationId ? investigationId : item.investigationId,
-                  )
-                : item,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(pendingInvestigations: updated));
-      return;
-    }
-    final existing = _findInvestigation(investigationLineId);
-    if (existing == null) return;
-    final updated = VisitInvestigation(
-      id: existing.id,
-      name: name ?? existing.name,
-      note: note ?? existing.note,
-      investigationId: updateInvestigationId ? investigationId : existing.investigationId,
-      result: existing.result,
-      resultRecordedAt: existing.resultRecordedAt,
-      orderedVisitId: existing.orderedVisitId,
-      orderedVisitDate: existing.orderedVisitDate,
-    );
-    _applyEncounterDraft(
-      draft.copyWith(investigationUpdates: {...draft.investigationUpdates, investigationLineId: updated}),
-    );
-  }
-
-  void stageArchiveInvestigation(String investigationLineId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final clearedResults = Map<String, String>.from(draft.investigationResults)..remove(investigationLineId);
-    if (isVisitDraftId(investigationLineId)) {
-      _applyEncounterDraft(
-        draft.copyWith(
-          pendingInvestigations: draft.pendingInvestigations.where((item) => item.id != investigationLineId).toList(),
-          investigationResults: clearedResults,
-        ),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        archivedInvestigationIds: {...draft.archivedInvestigationIds, investigationLineId},
-        investigationUpdates: Map<String, VisitInvestigation>.from(draft.investigationUpdates)
-          ..remove(investigationLineId),
-        investigationResults: clearedResults,
-      ),
-    );
-  }
-
-  void stageInvestigationResult({required String investigationLineId, required String result}) {
-    final current = state.value;
-    if (current == null) return;
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(
-        investigationResults: {...current.encounterDraft.investigationResults, investigationLineId: result.trim()},
-      ),
-    );
-  }
-
-  void stageCreateTreatmentPlan({
-    required String medicationName,
-    String? medicationId,
-    String? dosage,
-    String? frequency,
-    String? duration,
-    String? notes,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final plan = TreatmentPlanItem(
-      id: newVisitDraftId(),
-      visitId: current.visit.id,
-      patientId: current.visit.patientId,
-      medicationName: medicationName,
-      medicationId: medicationId,
-      dosage: dosage,
-      frequency: frequency,
-      duration: duration,
-      notes: notes,
-    );
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(pendingTreatmentPlans: [...current.encounterDraft.pendingTreatmentPlans, plan]),
-    );
-  }
-
-  void stageUpdateTreatmentPlan({
-    required String treatmentPlanId,
-    String? medicationName,
-    String? medicationId,
-    String? dosage,
-    String? frequency,
-    String? duration,
-    String? notes,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(treatmentPlanId)) {
-      final updated = draft.pendingTreatmentPlans
-          .map(
-            (plan) => plan.id == treatmentPlanId
-                ? plan.copyWith(
-                    medicationName: medicationName,
-                    medicationId: medicationId,
-                    dosage: dosage,
-                    frequency: frequency,
-                    duration: duration,
-                    notes: notes,
-                  )
-                : plan,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(pendingTreatmentPlans: updated));
-      return;
-    }
-    final existing = _findTreatmentPlan(treatmentPlanId);
-    if (existing == null) return;
-    final updated = existing.copyWith(
-      medicationName: medicationName,
-      medicationId: medicationId,
-      dosage: dosage,
-      frequency: frequency,
-      duration: duration,
-      notes: notes,
-    );
-    _applyEncounterDraft(
-      draft.copyWith(treatmentPlanUpdates: {...draft.treatmentPlanUpdates, treatmentPlanId: updated}),
-    );
-  }
-
-  void stageArchiveTreatmentPlan(String treatmentPlanId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(treatmentPlanId)) {
-      _applyEncounterDraft(
-        draft.copyWith(
-          pendingTreatmentPlans: draft.pendingTreatmentPlans.where((plan) => plan.id != treatmentPlanId).toList(),
-        ),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        archivedTreatmentPlanIds: {...draft.archivedTreatmentPlanIds, treatmentPlanId},
-        treatmentPlanUpdates: Map<String, TreatmentPlanItem>.from(draft.treatmentPlanUpdates)..remove(treatmentPlanId),
-      ),
-    );
-  }
-
-  void stageAttachment({
-    required VisitAttachmentPickInput pick,
-    required String label,
-    required String uploadedBy,
-    String? uploadedByName,
-  }) {
-    final current = state.value;
-    if (current == null) return;
-    final fileType = VisitAttachmentService.inferFileTypeFromFilename(pick.filename);
-    if (fileType == null) return;
-    final pending = PendingVisitAttachment(
-      id: newVisitDraftId(),
-      pick: pick,
-      label: label,
-      fileType: fileType,
-      uploadedBy: uploadedBy,
-      uploadedByName: uploadedByName,
-    );
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(pendingAttachments: [...current.encounterDraft.pendingAttachments, pending]),
-    );
-  }
-
-  void stageDeleteAttachment(String attachmentId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    if (isVisitDraftId(attachmentId)) {
-      _applyEncounterDraft(
-        draft.copyWith(pendingAttachments: draft.pendingAttachments.where((item) => item.id != attachmentId).toList()),
-      );
-      return;
-    }
-    _applyEncounterDraft(draft.copyWith(deletedAttachmentIds: {...draft.deletedAttachmentIds, attachmentId}));
-  }
-
-  void stageCreateAllergy({required String substance, String? reaction}) {
-    final current = state.value;
-    if (current == null) return;
-    final allergy = PatientAllergy(id: newVisitDraftId(), substance: substance, reaction: reaction);
-    final safety = current.encounterDraft.patientSafety;
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(
-        patientSafety: safety.copyWith(pendingAllergies: [...safety.pendingAllergies, allergy]),
-      ),
-    );
-  }
-
-  void stageUpdateAllergy({required String allergyId, String? substance, String? reaction}) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(allergyId)) {
-      final updated = safety.pendingAllergies
-          .map(
-            (allergy) => allergy.id == allergyId
-                ? PatientAllergy(
-                    id: allergy.id,
-                    substance: substance ?? allergy.substance,
-                    reaction: reaction ?? allergy.reaction,
-                  )
-                : allergy,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(patientSafety: safety.copyWith(pendingAllergies: updated)));
-      return;
-    }
-    final existing = _findAllergyInContext(allergyId, current);
-    if (existing == null && substance == null) return;
-    final updated = PatientAllergy(
-      id: allergyId,
-      substance: substance ?? existing?.substance ?? '',
-      reaction: reaction ?? existing?.reaction,
-    );
-    _applyEncounterDraft(
-      draft.copyWith(patientSafety: safety.copyWith(allergyUpdates: {...safety.allergyUpdates, allergyId: updated})),
-    );
-  }
-
-  void stageArchiveAllergy(String allergyId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(allergyId)) {
-      _applyEncounterDraft(
-        draft.copyWith(
-          patientSafety: safety.copyWith(
-            pendingAllergies: safety.pendingAllergies.where((allergy) => allergy.id != allergyId).toList(),
-          ),
-        ),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        patientSafety: safety.copyWith(
-          archivedAllergyIds: {...safety.archivedAllergyIds, allergyId},
-          allergyUpdates: Map<String, PatientAllergy>.from(safety.allergyUpdates)..remove(allergyId),
-        ),
-      ),
-    );
-  }
-
-  void stageCreateMedication({required String name, String? medicationId, String? note}) {
-    final current = state.value;
-    if (current == null) return;
-    final med = PatientMedication(id: newVisitDraftId(), name: name, medicationId: medicationId, note: note);
-    final safety = current.encounterDraft.patientSafety;
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(
-        patientSafety: safety.copyWith(pendingMedications: [...safety.pendingMedications, med]),
-      ),
-    );
-  }
-
-  void stageUpdateMedication({required String medicationRecordId, String? name, String? medicationId, String? note}) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(medicationRecordId)) {
-      final updated = safety.pendingMedications
-          .map(
-            (med) => med.id == medicationRecordId
-                ? PatientMedication(
-                    id: med.id,
-                    name: name ?? med.name,
-                    medicationId: medicationId ?? med.medicationId,
-                    note: note ?? med.note,
-                  )
-                : med,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(patientSafety: safety.copyWith(pendingMedications: updated)));
-      return;
-    }
-    final existing = _findMedicationInContext(medicationRecordId, current);
-    if (existing == null && name == null) return;
-    final updated = PatientMedication(
-      id: medicationRecordId,
-      name: name ?? existing?.name ?? '',
-      medicationId: medicationId ?? existing?.medicationId,
-      note: note ?? existing?.note,
-    );
-    _applyEncounterDraft(
-      draft.copyWith(
-        patientSafety: safety.copyWith(medicationUpdates: {...safety.medicationUpdates, medicationRecordId: updated}),
-      ),
-    );
-  }
-
-  void stageArchiveMedication(String medicationRecordId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(medicationRecordId)) {
-      _applyEncounterDraft(
-        draft.copyWith(
-          patientSafety: safety.copyWith(
-            pendingMedications: safety.pendingMedications.where((med) => med.id != medicationRecordId).toList(),
-          ),
-        ),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        patientSafety: safety.copyWith(
-          archivedMedicationIds: {...safety.archivedMedicationIds, medicationRecordId},
-          medicationUpdates: Map<String, PatientMedication>.from(safety.medicationUpdates)..remove(medicationRecordId),
-        ),
-      ),
-    );
-  }
-
-  void stageCreateCondition({required String name, String? note}) {
-    final current = state.value;
-    if (current == null) return;
-    final condition = PatientChronicCondition(id: newVisitDraftId(), name: name, note: note);
-    final safety = current.encounterDraft.patientSafety;
-    _applyEncounterDraft(
-      current.encounterDraft.copyWith(
-        patientSafety: safety.copyWith(pendingConditions: [...safety.pendingConditions, condition]),
-      ),
-    );
-  }
-
-  void stageUpdateCondition({required String conditionId, String? name, String? note}) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(conditionId)) {
-      final updated = safety.pendingConditions
-          .map(
-            (condition) => condition.id == conditionId
-                ? PatientChronicCondition(id: condition.id, name: name ?? condition.name, note: note ?? condition.note)
-                : condition,
-          )
-          .toList(growable: false);
-      _applyEncounterDraft(draft.copyWith(patientSafety: safety.copyWith(pendingConditions: updated)));
-      return;
-    }
-    final existing = _findConditionInContext(conditionId, current);
-    if (existing == null && name == null) return;
-    final updated = PatientChronicCondition(
-      id: conditionId,
-      name: name ?? existing?.name ?? '',
-      note: note ?? existing?.note,
-    );
-    _applyEncounterDraft(
-      draft.copyWith(
-        patientSafety: safety.copyWith(conditionUpdates: {...safety.conditionUpdates, conditionId: updated}),
-      ),
-    );
-  }
-
-  void stageArchiveCondition(String conditionId) {
-    final current = state.value;
-    if (current == null) return;
-    final draft = current.encounterDraft;
-    final safety = draft.patientSafety;
-    if (isVisitDraftId(conditionId)) {
-      _applyEncounterDraft(
-        draft.copyWith(
-          patientSafety: safety.copyWith(
-            pendingConditions: safety.pendingConditions.where((condition) => condition.id != conditionId).toList(),
-          ),
-        ),
-      );
-      return;
-    }
-    _applyEncounterDraft(
-      draft.copyWith(
-        patientSafety: safety.copyWith(
-          archivedConditionIds: {...safety.archivedConditionIds, conditionId},
-          conditionUpdates: Map<String, PatientChronicCondition>.from(safety.conditionUpdates)..remove(conditionId),
-        ),
-      ),
-    );
-  }
-
-  PatientAllergy? _findAllergyInContext(String id, VisitDocumentationState current) {
-    final safety = current.encounterDraft.patientSafety;
-    final staged = safety.allergyUpdates[id];
-    if (staged != null) {
-      return staged;
-    }
-    for (final allergy in safety.pendingAllergies) {
-      if (allergy.id == id) return allergy;
-    }
-    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
-    if (base != null) {
-      for (final allergy in base.allergies) {
-        if (allergy.id == id) return allergy;
-      }
-    }
-    return null;
-  }
-
-  PatientMedication? _findMedicationInContext(String id, VisitDocumentationState current) {
-    final safety = current.encounterDraft.patientSafety;
-    final staged = safety.medicationUpdates[id];
-    if (staged != null) {
-      return staged;
-    }
-    for (final med in safety.pendingMedications) {
-      if (med.id == id) return med;
-    }
-    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
-    if (base != null) {
-      for (final med in base.currentMedications) {
-        if (med.id == id) return med;
-      }
-    }
-    return null;
-  }
-
-  PatientChronicCondition? _findConditionInContext(String id, VisitDocumentationState current) {
-    final safety = current.encounterDraft.patientSafety;
-    final staged = safety.conditionUpdates[id];
-    if (staged != null) {
-      return staged;
-    }
-    for (final condition in safety.pendingConditions) {
-      if (condition.id == id) return condition;
-    }
-    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
-    if (base != null) {
-      for (final condition in base.chronicConditions) {
-        if (condition.id == id) return condition;
-      }
-    }
-    return null;
-  }
-
   Future<bool> _flushEncounterDraft(VisitDocumentationState current) async {
     final repo = ref.read(visitRepositoryProvider);
     final attachmentService = ref.read(visitAttachmentServiceProvider);
-    final draft = current.encounterDraft;
     final orgId = ref.read(authSessionProvider).context?.organizationId?.trim();
+    final flusher = VisitEncounterFlusher(repository: repo, attachmentService: attachmentService);
+    final initialDraft = _composeEncounterDraft();
 
-    try {
-      for (final id in draft.archivedVitalSignIds) {
-        if (!isVisitDraftId(id)) {
-          await repo.archiveVisitVitalSign(vitalSignId: id);
-        }
-      }
-      for (final sign in draft.pendingVitalSigns) {
-        await repo.createVisitVitalSign(
-          visitId: current.visit.id,
-          name: sign.name,
-          value: sign.value,
-          unit: sign.unit,
-          predefinedVitalSignId: sign.predefinedVitalSignId,
-        );
-      }
-      for (final entry in draft.vitalSignUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          await repo.updateVisitVitalSign(
-            vitalSignId: entry.key,
-            name: entry.value.name,
-            value: entry.value.value,
-            unit: entry.value.unit,
-            predefinedVitalSignId: entry.value.predefinedVitalSignId,
-          );
-        }
-      }
+    final result = await flusher.flush(
+      visit: current.effectiveVisit,
+      persistedVisit: current.persistedVisit,
+      organizationId: orgId,
+      initialDraft: initialDraft,
+      onDraftUpdated: _applyComposedDraft,
+    );
 
-      for (final id in draft.archivedInvestigationIds) {
-        if (!isVisitDraftId(id)) {
-          await repo.archiveVisitInvestigation(investigationLineId: id);
-        }
-      }
-      final investigationResultIdRemap = <String, String>{};
-      for (final investigation in draft.pendingInvestigations) {
-        final persistedId = await repo.createVisitInvestigation(
-          visitId: current.visit.id,
-          name: investigation.name,
-          note: investigation.note,
-          investigationId: investigation.investigationId,
-        );
-        if (isVisitDraftId(investigation.id)) {
-          investigationResultIdRemap[investigation.id] = persistedId;
-        }
-      }
-      for (final entry in draft.investigationUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          final existing = current.persistedVisit.investigations
-              .where((investigation) => investigation.id == entry.key)
-              .firstOrNull;
-          final investigationIdChanged = existing?.investigationId != entry.value.investigationId;
-          await repo.updateVisitInvestigation(
-            investigationLineId: entry.key,
-            name: entry.value.name,
-            note: entry.value.note,
-            investigationId: entry.value.investigationId,
-            updateInvestigationId: investigationIdChanged,
-          );
-        }
-      }
-      for (final entry in draft.investigationResults.entries) {
-        final investigationLineId = investigationResultIdRemap[entry.key] ?? entry.key;
-        if (isVisitDraftId(investigationLineId)) {
-          continue;
-        }
-        await repo.recordInvestigationResult(investigationLineId: investigationLineId, result: entry.value);
-      }
-
-      for (final id in draft.archivedTreatmentPlanIds) {
-        if (!isVisitDraftId(id)) {
-          await repo.archiveTreatmentPlan(treatmentPlanId: id);
-        }
-      }
-      for (final plan in draft.pendingTreatmentPlans) {
-        await repo.createTreatmentPlan(
-          visitId: current.visit.id,
-          medicationName: plan.medicationName,
-          medicationId: plan.medicationId,
-          dosage: plan.dosage ?? '',
-          frequency: plan.frequency ?? '',
-          duration: plan.duration ?? '',
-          notes: plan.notes,
-        );
-      }
-      for (final entry in draft.treatmentPlanUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          await repo.updateTreatmentPlan(
-            treatmentPlanId: entry.key,
-            medicationName: entry.value.medicationName,
-            medicationId: entry.value.medicationId,
-            dosage: entry.value.dosage,
-            frequency: entry.value.frequency,
-            duration: entry.value.duration,
-            notes: entry.value.notes,
-          );
-        }
-      }
-
-      if (draft.pendingAttachments.isNotEmpty) {
-        if (orgId == null || orgId.isEmpty) {
-          throw StateError('Organization context is required to upload attachments.');
-        }
-        for (final pending in draft.pendingAttachments) {
-          await attachmentService.uploadAndRegister(
-            organizationId: orgId,
-            branchId: current.visit.branchId,
-            visitId: current.visit.id,
-            pick: pending.pick,
-            label: pending.label,
-          );
-        }
-      }
-      for (final id in draft.deletedAttachmentIds) {
-        if (!isVisitDraftId(id)) {
-          await repo.deleteVisitAttachment(attachmentId: id);
-        }
-      }
-
-      final safety = draft.patientSafety;
-      final patientId = current.visit.patientId;
-      for (final id in safety.archivedAllergyIds) {
-        if (!isVisitDraftId(id)) await repo.archivePatientAllergy(allergyId: id);
-      }
-      for (final allergy in safety.pendingAllergies) {
-        await repo.createPatientAllergy(patientId: patientId, substance: allergy.substance, reaction: allergy.reaction);
-      }
-      for (final entry in safety.allergyUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          await repo.updatePatientAllergy(
-            allergyId: entry.key,
-            substance: entry.value.substance,
-            reaction: entry.value.reaction,
-          );
-        }
-      }
-
-      for (final id in safety.archivedMedicationIds) {
-        if (!isVisitDraftId(id)) await repo.archivePatientMedication(medicationRecordId: id);
-      }
-      for (final med in safety.pendingMedications) {
-        await repo.createPatientMedication(
-          patientId: patientId,
-          name: med.name,
-          medicationId: med.medicationId,
-          note: med.note,
-        );
-      }
-      for (final entry in safety.medicationUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          await repo.updatePatientMedication(
-            medicationRecordId: entry.key,
-            name: entry.value.name,
-            medicationId: entry.value.medicationId,
-            note: entry.value.note,
-          );
-        }
-      }
-
-      for (final id in safety.archivedConditionIds) {
-        if (!isVisitDraftId(id)) await repo.archivePatientChronicCondition(conditionId: id);
-      }
-      for (final condition in safety.pendingConditions) {
-        await repo.createPatientChronicCondition(patientId: patientId, name: condition.name, note: condition.note);
-      }
-      for (final entry in safety.conditionUpdates.entries) {
-        if (!isVisitDraftId(entry.key)) {
-          await repo.updatePatientChronicCondition(
-            conditionId: entry.key,
-            name: entry.value.name,
-            note: entry.value.note,
-          );
-        }
-      }
-
-      final refreshed = await repo.getVisit(visitId: current.visit.id);
-      final predefinedVitalSigns = current.predefinedVitalSigns;
-      final afterNote = state.value ?? current;
-      state = AsyncData(
-        VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: predefinedVitalSigns).copyWith(
-          complaint: afterNote.complaint,
-          history: afterNote.history,
-          examination: afterNote.examination,
-          diagnosis: afterNote.diagnosis,
-          plan: afterNote.plan,
-          richTextDrafts: afterNote.richTextDrafts,
-          expectedUpdatedAt: afterNote.expectedUpdatedAt,
-          noteEditMode: afterNote.noteEditMode,
-          workspaceEditMode: afterNote.workspaceEditMode,
-          saveStatus: afterNote.saveStatus,
-        ),
-      );
-      return true;
-    } on RpcFailure catch (error) {
+    if (!result.success) {
       await _recoverEncounterDraftAfterFlushFailure(current);
       final currentAfter = state.value ?? current;
-      final baseMessage = visitMessageForRpc(error);
+      final message = result.error is RpcFailure
+          ? visitMessageForRpc(result.error! as RpcFailure)
+          : result.error?.toString() ?? 'Unable to save encounter changes.';
       state = AsyncData(
         currentAfter.copyWith(
           saveStatus: DocumentationSaveStatus.error,
-          errorMessage: '$baseMessage Some changes may have been saved — review the visit before retrying.',
-        ),
-      );
-      return false;
-    } catch (error) {
-      await _recoverEncounterDraftAfterFlushFailure(current);
-      final currentAfter = state.value ?? current;
-      state = AsyncData(
-        currentAfter.copyWith(
-          saveStatus: DocumentationSaveStatus.error,
-          errorMessage: '${error.toString()} Some changes may have been saved — review the visit before retrying.',
+          errorMessage: '$message Saved changes were kept; remaining changes can be retried safely.',
         ),
       );
       return false;
     }
+
+    final refreshed = await repo.getVisit(visitId: current.persistedVisit.id);
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).refreshBaseContext(current.persistedVisit.patientId);
+    final afterNote = state.value ?? current;
+    state = AsyncData(
+      VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+        complaint: afterNote.complaint,
+        history: afterNote.history,
+        examination: afterNote.examination,
+        diagnosis: afterNote.diagnosis,
+        plan: afterNote.plan,
+        richTextDrafts: afterNote.richTextDrafts,
+        expectedUpdatedAt: afterNote.expectedUpdatedAt,
+        noteEditMode: afterNote.noteEditMode,
+        workspaceEditMode: afterNote.workspaceEditMode,
+        saveStatus: afterNote.saveStatus,
+        encounterDraft: result.remainingDraft,
+      ),
+    );
+    _applyComposedDraft(result.remainingDraft);
+    return true;
   }
 
-  /// Reloads persisted visit rows after a partial structured flush so the UI matches the server.
-  ///
-  /// Clears the encounter draft overlay to avoid duplicate creates on retry.
   Future<void> _recoverEncounterDraftAfterFlushFailure(VisitDocumentationState current) async {
     try {
       final repo = ref.read(visitRepositoryProvider);
-      final refreshed = await repo.getVisit(visitId: current.visit.id);
+      final refreshed = await repo.getVisit(visitId: current.persistedVisit.id);
       final afterNote = state.value ?? current;
       state = AsyncData(
         VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
@@ -1401,23 +612,222 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           saveStatus: DocumentationSaveStatus.error,
         ),
       );
+      _applyComposedDraft(afterNote.encounterDraft);
     } catch (_) {
       // Keep the pre-recovery state when refresh fails.
     }
   }
 
-  Future<void> reloadVisit() async {
-    ref.invalidateSelf();
-    await future;
-  }
-
-  Future<void> reloadAfterStale() async {
-    ref.invalidateSelf();
-    await future;
-  }
-
   String? _nullableSection(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  // Delegation to sub-notifiers (keeps [VisitEncounterPersistence] stable).
+
+  void stageCreateVitalSign({
+    required String name,
+    required String value,
+    String? unit,
+    String? predefinedVitalSignId,
+  }) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageCreateVitalSign(
+          name: name,
+          value: value,
+          unit: unit,
+          predefinedVitalSignId: predefinedVitalSignId,
+        );
+  }
+
+  void stageUpdateVitalSign({
+    required String vitalSignId,
+    String? name,
+    String? value,
+    String? unit,
+    String? predefinedVitalSignId,
+  }) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageUpdateVitalSign(
+          vitalSignId: vitalSignId,
+          name: name,
+          value: value,
+          unit: unit,
+          predefinedVitalSignId: predefinedVitalSignId,
+        );
+  }
+
+  void stageArchiveVitalSign(String vitalSignId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageArchiveVitalSign(vitalSignId);
+  }
+
+  void stageCreateInvestigation({required String name, String? note, String? investigationId}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageCreateInvestigation(
+          name: name,
+          note: note,
+          investigationId: investigationId,
+        );
+  }
+
+  void stageUpdateInvestigation({
+    required String investigationLineId,
+    String? name,
+    String? note,
+    String? investigationId,
+    bool updateInvestigationId = false,
+  }) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageUpdateInvestigation(
+          investigationLineId: investigationLineId,
+          name: name,
+          note: note,
+          investigationId: investigationId,
+          updateInvestigationId: updateInvestigationId,
+        );
+  }
+
+  void stageArchiveInvestigation(String investigationLineId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageArchiveInvestigation(investigationLineId);
+  }
+
+  void stageInvestigationResult({required String investigationLineId, required String result}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageInvestigationResult(
+          investigationLineId: investigationLineId,
+          result: result,
+        );
+  }
+
+  void stageCreateTreatmentPlan({
+    required String medicationName,
+    String? medicationId,
+    String? dosage,
+    String? frequency,
+    String? duration,
+    String? notes,
+  }) {
+    final current = state.value;
+    if (current == null || !_canMutateVisit(current)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageCreateTreatmentPlan(
+          visitId: current.persistedVisit.id,
+          patientId: current.persistedVisit.patientId,
+          medicationName: medicationName,
+          medicationId: medicationId,
+          dosage: dosage,
+          frequency: frequency,
+          duration: duration,
+          notes: notes,
+        );
+  }
+
+  void stageUpdateTreatmentPlan({
+    required String treatmentPlanId,
+    String? medicationName,
+    String? medicationId,
+    String? dosage,
+    String? frequency,
+    String? duration,
+    String? notes,
+  }) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageUpdateTreatmentPlan(
+          treatmentPlanId: treatmentPlanId,
+          medicationName: medicationName,
+          medicationId: medicationId,
+          dosage: dosage,
+          frequency: frequency,
+          duration: duration,
+          notes: notes,
+        );
+  }
+
+  void stageArchiveTreatmentPlan(String treatmentPlanId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitClinicalDataProvider(_visitId).notifier).stageArchiveTreatmentPlan(treatmentPlanId);
+  }
+
+  void stageAttachment({
+    required VisitAttachmentPick pick,
+    required String label,
+    required String uploadedBy,
+    String? uploadedByName,
+  }) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitAttachmentsProvider(_visitId).notifier).stageAttachment(
+          pick: pick,
+          label: label,
+          uploadedBy: uploadedBy,
+          uploadedByName: uploadedByName,
+        );
+  }
+
+  void stageDeleteAttachment(String attachmentId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitAttachmentsProvider(_visitId).notifier).stageDeleteAttachment(attachmentId);
+  }
+
+  void stageCreateAllergy({required String substance, String? reaction}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageCreateAllergy(substance: substance, reaction: reaction);
+  }
+
+  void stageUpdateAllergy({required String allergyId, String? substance, String? reaction}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageUpdateAllergy(
+          allergyId: allergyId,
+          substance: substance,
+          reaction: reaction,
+        );
+  }
+
+  void stageArchiveAllergy(String allergyId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageArchiveAllergy(allergyId);
+  }
+
+  void stageCreateMedication({required String name, String? medicationId, String? note}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageCreateMedication(
+          name: name,
+          medicationId: medicationId,
+          note: note,
+        );
+  }
+
+  void stageUpdateMedication({required String medicationRecordId, String? name, String? medicationId, String? note}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageUpdateMedication(
+          medicationRecordId: medicationRecordId,
+          name: name,
+          medicationId: medicationId,
+          note: note,
+        );
+  }
+
+  void stageArchiveMedication(String medicationRecordId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageArchiveMedication(medicationRecordId);
+  }
+
+  void stageCreateCondition({required String name, String? note}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageCreateCondition(name: name, note: note);
+  }
+
+  void stageUpdateCondition({required String conditionId, String? name, String? note}) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageUpdateCondition(
+          conditionId: conditionId,
+          name: name,
+          note: note,
+        );
+  }
+
+  void stageArchiveCondition(String conditionId) {
+    if (state.value == null || !_canMutateVisit(state.value!)) return;
+    ref.read(visitPatientSafetyProvider(_visitId).notifier).stageArchiveCondition(conditionId);
   }
 }

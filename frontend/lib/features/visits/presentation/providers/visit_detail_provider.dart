@@ -42,8 +42,3 @@ final visitDetailViewProvider = FutureProvider.autoDispose.family<VisitDetailVie
     canUploadAttachments: permissions.canUploadVisitAttachments() && hasBranchAccess,
   );
 });
-
-/// @deprecated Use [visitDetailViewProvider] for permission-aware detail screens.
-final visitDetailProvider = FutureProvider.autoDispose.family<VisitDetail, String>((ref, visitId) async {
-  return ref.watch(visitDetailViewProvider(visitId).future).then((view) => view.visit);
-});

@@ -106,8 +106,12 @@ abstract final class AppRoutes {
   // V1-6 billing
   static const billing = '/billing';
   static const billingInvoices = '/billing/invoices';
+  static const billingVisitSegment = 'visits';
   static const billingInsuranceProviders = '/billing/insurance-providers';
   static const settingsBilling = '/settings/billing';
+
+  /// Post-review visit billing: `/billing/visits/:visitId`
+  static String billingVisit(String visitId) => '$billing/$billingVisitSegment/$visitId';
 
   // V1-8 service catalog (015)
   static const settingsServices = '/settings/services';

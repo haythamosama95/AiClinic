@@ -189,12 +189,14 @@ Backend deliverables:
 - Tests: `run_visit_medical_records_tests.sh` (includes 014 encounter workspace tests)
 
 Frontend deliverables:
-- `features/visits/`: encounter workspace (stepper + expert mode), clinical note sections, catalogs, safety rail, deferred attachments
+- `features/visits/`: encounter workspace (guided stepper; expert accordion mode deferred), clinical note sections, catalogs, safety rail, deferred attachments
 - Routes: `/visits/:id/document`, `/visits/:id/detail`
 - Permissions: `visits.create`, `visits.edit_soap`, `visits.upload_attachment`
 - Online-only save semantics; optimistic concurrency on clinical note
 
 **Schema note:** Spec 014 P3 added then removed `diagnosis_codes`, `visit_diagnosis_codes`, and `visit_plan_details`. Current code uses free-text diagnosis and treatment plans only.
+
+**Deferred (014):** Guided/expert workspace mode toggle (`workspace_mode_provider`, `expert_mode_scroll_provider`) was removed as unreachable dead code. Only the guided stepper ships today; expert accordion layout remains a future item.
 
 ### V1-6: Billing
 

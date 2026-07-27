@@ -114,6 +114,24 @@ class VisitBillingInvoicePreview {
   final Money total;
 }
 
+/// Billing payload handed from the billing UI to visit finalization.
+@immutable
+class VisitFinalizationRequest {
+  const VisitFinalizationRequest({
+    required this.lines,
+    required this.discountType,
+    required this.discountValue,
+    this.draftInvoiceId,
+  });
+
+  final List<VisitSelectedServiceLine> lines;
+  final VisitBillingDiscountType discountType;
+  final Decimal discountValue;
+
+  /// Existing draft invoice to resume after a failed issue attempt.
+  final String? draftInvoiceId;
+}
+
 String generateVisitBillingInvoicePreviewNumber() {
   final now = DateTime.now();
   final stamp =

@@ -1,8 +1,32 @@
-import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:flutter/foundation.dart';
+
+/// Plain inputs for evaluating visit submit readiness without presentation-layer state.
+@immutable
+class VisitSubmitReadinessInput {
+  const VisitSubmitReadinessInput({
+    required this.sectionHasContent,
+    required this.vitalSignCount,
+    required this.investigationCount,
+    required this.treatmentPlanCount,
+    required this.attachmentCount,
+    required this.hasPendingInvestigationResult,
+    required this.hasDraftInvestigationResult,
+    required this.phaseBadges,
+  });
+
+  /// Whether each clinical note section has plain or rich-text content.
+  final Map<ClinicalNoteSection, bool> sectionHasContent;
+
+  final int vitalSignCount;
+  final int investigationCount;
+  final int treatmentPlanCount;
+  final int attachmentCount;
+  final bool hasPendingInvestigationResult;
+  final bool hasDraftInvestigationResult;
+  final Map<EncounterPhase, PhaseCompletionBadge> phaseBadges;
+}
 
 /// Result of evaluating whether a visit is ready to submit.
 class VisitSubmitReadiness {
@@ -21,44 +45,28 @@ class VisitSubmitReadiness {
 ///
 /// Excludes patient-safety-only edits and visit-type metadata so submit validation
 /// matches the `complete_visit` RPC.
-bool visitHasPersistableDocumentation(VisitDocumentationState state) {
-  final visit = state.effectiveVisit;
-
-  if (_clinicalNoteSectionHasContent(state, ClinicalNoteSection.complaint, state.complaint) ||
-      _clinicalNoteSectionHasContent(state, ClinicalNoteSection.history, state.history) ||
-      _clinicalNoteSectionHasContent(state, ClinicalNoteSection.examination, state.examination) ||
-      _clinicalNoteSectionHasContent(state, ClinicalNoteSection.diagnosis, state.diagnosis) ||
-      _clinicalNoteSectionHasContent(state, ClinicalNoteSection.plan, state.plan)) {
+bool visitHasPersistableDocumentation(VisitSubmitReadinessInput input) {
+  if (input.sectionHasContent.values.any((hasContent) => hasContent)) {
     return true;
   }
 
-  if (visit.vitalSigns.isNotEmpty ||
-      visit.investigations.isNotEmpty ||
-      visit.treatmentPlans.isNotEmpty ||
-      visit.attachments.isNotEmpty) {
+  if (input.vitalSignCount > 0 ||
+      input.investigationCount > 0 ||
+      input.treatmentPlanCount > 0 ||
+      input.attachmentCount > 0) {
     return true;
   }
 
-  return visit.pendingInvestigations.any((investigation) => investigation.hasResult) ||
-      state.encounterDraft.investigationResults.values.any((result) => result.trim().isNotEmpty);
+  return input.hasPendingInvestigationResult || input.hasDraftInvestigationResult;
 }
 
-bool _clinicalNoteSectionHasContent(VisitDocumentationState state, ClinicalNoteSection section, String value) {
-  if (value.trim().isNotEmpty) {
-    return true;
-  }
-  return !richDeltaIsEffectivelyEmpty(state.richTextDrafts[section]);
-}
-
-/// Evaluates submit readiness from the current documentation state (draft-aware).
-VisitSubmitReadiness evaluateVisitSubmitReadiness(VisitDocumentationState state) {
-  final badges = deriveEncounterPhaseBadges(state);
-
+/// Evaluates submit readiness from plain documentation inputs (draft-aware values included).
+VisitSubmitReadiness evaluateVisitSubmitReadiness(VisitSubmitReadinessInput input) {
   final emptyPhases = EncounterPhase.stepperPhases
-      .where((phase) => badges[phase] == PhaseCompletionBadge.empty)
+      .where((phase) => input.phaseBadges[phase] == PhaseCompletionBadge.empty)
       .toList(growable: false);
 
-  final hasMinimumDocumentation = visitHasPersistableDocumentation(state);
+  final hasMinimumDocumentation = visitHasPersistableDocumentation(input);
 
   return VisitSubmitReadiness(hasMinimumDocumentation: hasMinimumDocumentation, emptyPhases: emptyPhases);
 }

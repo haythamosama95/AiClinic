@@ -1,7 +1,7 @@
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
-import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_submit_readiness_mapper.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,11 +23,11 @@ VisitDocumentationState _patientSafetyOnlyDocState() {
 void main() {
   group('EDGE-001 — Patient-safety-only submit (FE/BE mismatch)', () {
     test('visitHasPersistableDocumentation ignores pending allergy draft', () {
-      expect(visitHasPersistableDocumentation(_patientSafetyOnlyDocState()), isFalse);
+      expect(visitHasPersistableDocumentationFromState(_patientSafetyOnlyDocState()), isFalse);
     });
 
     test('evaluateVisitSubmitReadiness blocks submit when only allergy is staged', () {
-      final readiness = evaluateVisitSubmitReadiness(_patientSafetyOnlyDocState());
+      final readiness = evaluateVisitSubmitReadinessFromState(_patientSafetyOnlyDocState());
 
       expect(readiness.hasMinimumDocumentation, isFalse);
       expect(readiness.emptyPhases, [EncounterPhase.objective, EncounterPhase.plan]);
@@ -42,7 +42,7 @@ void main() {
     });
 
     test('clinical documentation still allows submit after BUG-001 alignment', () {
-      final readiness = evaluateVisitSubmitReadiness(
+      final readiness = evaluateVisitSubmitReadinessFromState(
         _patientSafetyOnlyDocState().copyWith(complaint: 'Seasonal allergy follow-up'),
       );
 

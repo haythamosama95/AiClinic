@@ -16,7 +16,7 @@ Visit documentation evolved through three delivery phases:
 | ----- | ---- | ----- |
 | V1-5 base | `006-visit-medical-records` (superseded) | `visits`, `treatment_plans`, `visit_attachments`; legacy `soap_notes` |
 | 013 redesign | `docs/specs/013-visits/` | Sectioned `visit_clinical_notes`, vitals, investigations, org catalogs |
-| 014 workspace | `docs/specs/014-visit-encounter-workspace/` | Encounter shell, patient safety tables, guided/expert modes |
+| 014 workspace | `docs/specs/014-visit-encounter-workspace/` | Encounter shell, patient safety tables, guided stepper (expert accordion mode **not implemented**) |
 
 The legacy `soap_notes` table was backfilled into `visit_clinical_notes` and dropped. Spec 014 P3 additions for coded diagnosis (`diagnosis_codes`, `visit_diagnosis_codes`) and structured plan (`visit_plan_details`) were **implemented then removed** in migrations `20260702120000` and `20260705120000`. Architecture and contracts must reflect the rolled-back state.
 
@@ -102,14 +102,14 @@ This contradicts a general "offline-first" product stance. Tier 1/2 daily ops wo
 frontend/lib/features/visits/
 ├── data/           # VisitRepositoryImpl, VisitAttachmentService
 ├── domain/         # DTOs, EncounterPhase, VisitEncounterDraft, BMI
-├── application/    # VisitEncounterPersistence (save orchestration)
+├── application/    # visit_rpc_messages.dart, visit_launch_service.dart
 └── presentation/
     ├── pages/      # visit_documentation_page, visit_detail_page
-    ├── providers/  # visit_documentation_notifier, encounter_step_provider, workspace_mode_provider, patient_safety_provider
-    └── widgets/    # EncounterWorkspaceShell, phase canvases, safety rail, catalog autocomplete
+    ├── providers/  # visit_documentation_notifier, encounter_step_provider, patient_safety_provider
+    └── widgets/    # phase canvases, safety rail, catalog autocomplete, save-status badge
 ```
 
-Visits use an **`application/` layer** (`visit_encounter_persistence.dart`) for multi-RPC save orchestration. `VisitDocumentationNotifier` (~1400 lines) holds draft state and coordinates persistence — an intentional deviation from strict use-case-only presentation layer.
+`VisitDocumentationNotifier` (~1400 lines) holds draft state and coordinates persistence — an intentional deviation from strict use-case-only presentation layer.
 
 ### Encounter Workspace Shell
 
@@ -118,7 +118,7 @@ Visits use an **`application/` layer** (`visit_encounter_persistence.dart`) for 
 - **Stepper header** (`EncounterStepperHeader`) — phase progress and completion badges
 - **Phase canvases** — `EncounterPhaseSubjective`, `EncounterPhaseObjective`, `EncounterPhasePlan`, `EncounterReview`
 - **Patient safety rail** — allergies, medications, chronic conditions
-- **Mode toggle** — guided stepper vs expert accordion (`workspace_mode_provider`; preference cached in SharedPreferences per staff)
+- **Save status** — `VisitDocumentationSaveStatusBadge` surfaces save lifecycle and stale-conflict resolution
 - **Sticky footer** — save, submit, attachment actions
 
 `EncounterPhase` enum maps UI phases to clinical sections. Context/background (patient demographics, appointment metadata) renders in the joined header, not as an editable phase.
