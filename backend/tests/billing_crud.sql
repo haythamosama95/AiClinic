@@ -238,6 +238,7 @@ DECLARE
   v_branch_main uuid;
   v_branch_no_code uuid;
   v_patient_id uuid;
+  v_patient_mrn text;
   v_appt_completed uuid;
   v_appt_in_progress uuid;
   v_visit_completed uuid;
@@ -391,6 +392,7 @@ BEGIN
 
   v_result := public.create_patient(v_branch_main, 'Billing Patient', '201600000101', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
+  v_patient_mrn := v_result.data ->> 'mrn';
 
   v_start := pg_temp.test_appointment_same_day_slot(10);
   v_appt_in_progress := gen_random_uuid();
@@ -1501,6 +1503,13 @@ BEGIN
   v_list := public.list_invoices(jsonb_build_object('patient_search', 'Billing'), 50, 0);
   PERFORM pg_temp.billing_crud_record(
     'list_invoices_patient_search',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('patient_search', v_patient_mrn), 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_patient_search_by_mrn',
     v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
     jsonb_array_length(v_list.data -> 'items')::text
   );

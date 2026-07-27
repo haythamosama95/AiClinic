@@ -520,6 +520,42 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- MRN search by full value.
+  v_result := public.search_patients(v_patient_mrn, 'organization', NULL, 25, 0);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_mrn_full',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'items', '[]'::jsonb)) item
+        WHERE (item ->> 'id')::uuid = v_patient_main
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- MRN search by numeric suffix.
+  v_result := public.search_patients(
+    substring(v_patient_mrn from 'MRN-(\d+)$'),
+    'organization',
+    NULL,
+    25,
+    0
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_mrn_numeric_suffix',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'items', '[]'::jsonb)) item
+        WHERE (item ->> 'id')::uuid = v_patient_main
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Phone prefix too short.
   v_result := public.search_patients('2', 'organization', NULL, 25, 0);
   PERFORM set_config('role', 'postgres', true);

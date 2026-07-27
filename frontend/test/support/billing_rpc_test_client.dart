@@ -268,7 +268,12 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final patientSearch = filters['patient_search']?.toString().trim();
     if (patientSearch != null && patientSearch.isNotEmpty) {
       final needle = patientSearch.toLowerCase();
-      rows = rows.where((row) => row['patient_display_name']?.toString().toLowerCase().contains(needle) ?? false);
+      rows = rows.where((row) {
+        final name = row['patient_display_name']?.toString().toLowerCase() ?? '';
+        final mrn = row['patient_mrn']?.toString().toLowerCase() ?? '';
+        final invoiceNumber = row['invoice_number']?.toString().toLowerCase() ?? '';
+        return name.contains(needle) || mrn.contains(needle) || invoiceNumber.contains(needle);
+      });
     }
 
     final invoiceNumber = filters['invoice_number']?.toString().trim();
