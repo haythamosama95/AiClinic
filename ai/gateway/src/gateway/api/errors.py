@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from gateway.obs.metrics import record_ai_error, record_error
+
+vlog = get_logger(__name__)
 
 
 class ErrorCode(str, Enum):
@@ -93,6 +96,7 @@ def error_response(
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     status = ERROR_STATUS_MAP[code]
+    vlog.v0("Returning error response to client", code=code.value, request_id=request_id, status=status)
     _record_error_metrics(code)
     body = ErrorEnvelope(
         error=ErrorBody(code=code.value, message=message, request_id=request_id)
@@ -140,16 +144,19 @@ def install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(GatewayError)
     async def gateway_error_handler(request: Request, exc: GatewayError) -> JSONResponse:
         rid = exc.request_id or _request_id(request)
+        vlog.v0("Handling gateway error", code=exc.code.value, request_id=rid)
         return error_response(exc.code, exc.message, rid, headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        rid = _request_id(request)
+        vlog.v0("Handling request validation error", request_id=rid)
         return error_response(
             ErrorCode.BAD_REQUEST,
             "Request validation failed",
-            _request_id(request),
+            rid,
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -157,11 +164,13 @@ def install_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         code = _http_error_code(exc)
+        rid = _request_id(request)
+        vlog.v0("Handling HTTP exception", code=code.value, status_code=exc.status_code, request_id=rid)
         detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
         return error_response(
             code,
             detail,
-            _request_id(request),
+            rid,
             headers=dict(exc.headers) if exc.headers else None,
         )
 

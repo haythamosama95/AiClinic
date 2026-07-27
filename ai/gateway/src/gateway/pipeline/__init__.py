@@ -23,8 +23,8 @@ from gateway.pipeline.retry import (
 )
 from gateway.pipeline.swap import (
     SwapCandidate,
-    ensure_capable_runner,
     emit_model_swap,
+    ensure_capable_runner,
     find_ready_runner,
     find_swap_candidate,
     wait_for_runner_ready,

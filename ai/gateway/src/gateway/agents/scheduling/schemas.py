@@ -8,6 +8,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_common.verbose_logging import get_logger
+
+vlog = get_logger(__name__)
+
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 LOOKUP_REQUIRED = "lookup_required"
 TIME_PATTERN = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
@@ -160,6 +164,7 @@ COMMAND_PARAM_SCHEMAS: dict[str, dict[str, Any]] = {
 
 def command_params_schema(command_type: str) -> dict[str, Any]:
     """Return the per-command ``params`` JSON Schema for ``command_type``."""
+    vlog.v2("Retrieved command params schema", command_type=command_type)
     return deepcopy(COMMAND_PARAM_SCHEMAS[command_type])
 
 
@@ -182,6 +187,7 @@ def _hoist_nested_defs(schema: dict[str, Any]) -> tuple[dict[str, Any], dict[str
 
 def build_envelope_schema() -> dict[str, Any]:
     """Full scheduling envelope schema for Ollama ``format`` and defense-in-depth."""
+    vlog.v1("Building scheduling envelope schema", command_count=len(_PARAMS_DEF_NAMES))
     defs: dict[str, Any] = {}
     for command_type, def_name in _PARAMS_DEF_NAMES.items():
         param_schema, nested = _hoist_nested_defs(COMMAND_PARAM_SCHEMAS[command_type])

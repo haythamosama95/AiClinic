@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import httpx
 import structlog
+from ai_common.verbose_logging import get_logger, trace
 
 from gateway.api.errors import ErrorCode, GatewayError
 from gateway.config.settings import GatewayConfig, ModelDef
@@ -16,6 +17,7 @@ from gateway.routing.lifecycle import RunnerStatus
 from gateway.routing.registry import RunnerRegistry, RunnerRegistryEntry
 
 logger = structlog.get_logger("gateway.pipeline.swap")
+vlog = get_logger(__name__)
 
 _ROUTABLE = frozenset({RunnerStatus.READY, RunnerStatus.DEGRADED})
 
@@ -137,8 +139,8 @@ async def wait_for_runner_ready(
     client: httpx.AsyncClient | None = None,
 ) -> RunnerRegistryEntry | None:
     """Poll the registry and runner until READY or the timeout elapses."""
-    from gateway.runners.openai_client import poll_runner
     from gateway.routing.lifecycle import PollOutcome
+    from gateway.runners.openai_client import poll_runner
 
     deadline = time.monotonic() + timeout_s
     owns_client = client is None
@@ -174,6 +176,7 @@ async def wait_for_runner_ready(
     return registry.get(runner_id)
 
 
+@trace("ensuring capable runner")
 async def ensure_capable_runner(
     registry: RunnerRegistry,
     *,
@@ -183,13 +186,27 @@ async def ensure_capable_runner(
     request_id: str | None = None,
 ) -> RunnerRegistryEntry:
     """Select a READY runner or auto-trigger a model swap; raise ai_no_capacity on failure."""
+    vlog.v0(
+        "Finding capable runner for required capabilities",
+        request_id=request_id,
+        required_capabilities=required_capabilities,
+    )
     entries = registry.snapshot()
     ready = find_ready_runner(entries, required_capabilities=required_capabilities)
     if ready is not None:
+        vlog.v1(
+            "Capable runner already ready",
+            request_id=request_id,
+            runner_id=ready.id,
+        )
         return ready
 
     candidate = find_swap_candidate(entries, required_capabilities=required_capabilities)
     if candidate is None:
+        vlog.v0(
+            "No runner available for model swap",
+            request_id=request_id,
+        )
         raise GatewayError(
             ErrorCode.AI_NO_CAPACITY,
             "No runner available to serve the requested capability",
@@ -197,8 +214,14 @@ async def ensure_capable_runner(
         )
 
     registry.update_entry(candidate.entry.id, status=RunnerStatus.STARTING)
+    vlog.v0(
+        "Triggering model swap on runner",
+        runner_id=candidate.entry.id,
+        model=candidate.model.name,
+        request_id=request_id,
+    )
     logger.info(
-        "model_swap_triggered",
+        "Triggering model swap on runner",
         runner_id=candidate.entry.id,
         model=candidate.model.name,
     )
@@ -217,6 +240,12 @@ async def ensure_capable_runner(
         )
         if ready_entry is not None and ready_entry.status == RunnerStatus.READY:
             record_ai_model_swap(candidate.entry.id, "ok")
+            vlog.v0(
+                "Model swap completed successfully",
+                runner_id=candidate.entry.id,
+                model=candidate.model.name,
+                request_id=request_id,
+            )
             return ready_entry
         record_ai_model_swap(candidate.entry.id, "timeout")
         raise GatewayError(

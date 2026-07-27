@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+from ai_common.verbose_logging import get_logger
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from gateway.agents.scheduling import SCHEDULING_COMMANDS
 from gateway.auth.dependencies import require_ai_access
 from gateway.auth.jwt_validator import CallerIdentity
-from gateway.agents.scheduling import SCHEDULING_COMMANDS
 from gateway.config.settings import GatewayConfig
 from gateway.routing.registry import RunnerRegistry, RunnerRegistryEntry
 
 router = APIRouter(prefix="/v1", tags=["capabilities"])
+
+vlog = get_logger(__name__)
 
 SCHEMA_VERSION = "1.0"
 SCHEDULING_TASKS: list[str] = ["command"]
@@ -36,13 +39,16 @@ def build_capabilities_report(
     config: GatewayConfig,
 ) -> dict[str, Any]:
     """Build the aggregate capabilities snapshot from the live registry."""
-    return {
+    vlog.v2("Building capabilities report")
+    report = {
         "schema_version": SCHEMA_VERSION,
         "streaming": config.streaming_enabled,
         "tasks": list(SCHEDULING_TASKS),
         "commands": list(SCHEDULING_COMMANDS),
         "runners": [_runner_capability(entry) for entry in registry.snapshot()],
     }
+    vlog.v2("Built capabilities report", runner_count=len(report["runners"]))
+    return report
 
 
 @router.get("/capabilities")
@@ -51,6 +57,9 @@ async def get_capabilities(
     _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
 ) -> JSONResponse:
     """Aggregate AI-layer capability snapshot mirroring the live registry."""
+    vlog.v0("Fetching capabilities snapshot")
     registry: RunnerRegistry = request.app.state.registry
     config: GatewayConfig = request.app.state.config
-    return JSONResponse(build_capabilities_report(registry, config))
+    report = build_capabilities_report(registry, config)
+    vlog.v1("Returned capabilities snapshot", runner_count=len(report["runners"]))
+    return JSONResponse(report)

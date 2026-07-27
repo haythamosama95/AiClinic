@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
+from ai_common.verbose_logging import get_logger
+
+vlog = get_logger(__name__)
+
 REQUESTS_TOTAL = Counter(
     "gateway_requests_total",
     "Total HTTP requests",
@@ -88,22 +92,27 @@ AI_MODEL_SWAPS_TOTAL = Counter(
 
 
 def record_request(method: str, endpoint: str, status: int) -> None:
+    vlog.v2("Recorded HTTP request metric", method=method, endpoint=endpoint, status=status)
     REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status=str(status)).inc()
 
 
 def record_error(code: str) -> None:
+    vlog.v2("Recorded error metric", code=code)
     ERRORS_TOTAL.labels(code=code).inc()
 
 
 def record_ai_error(code: str) -> None:
+    vlog.v2("Recorded AI error metric", code=code)
     AI_ERRORS_TOTAL.labels(code=code).inc()
 
 
 def record_ai_request(task: str, outcome: str) -> None:
+    vlog.v2("Recorded AI request metric", task=task, outcome=outcome)
     AI_REQUESTS_TOTAL.labels(task=task, outcome=outcome).inc()
 
 
 def set_ai_queue_depth(capability: str, depth: int) -> None:
+    vlog.v2("Updated AI queue depth metric", capability=capability, depth=depth)
     AI_QUEUE_DEPTH.labels(capability=capability).set(depth)
 
 
@@ -140,4 +149,5 @@ def set_inflight(runner_id: str, count: int) -> None:
 
 
 def metrics_payload() -> bytes:
+    vlog.v2("Generating Prometheus metrics payload")
     return generate_latest()

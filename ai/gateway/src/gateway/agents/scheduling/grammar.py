@@ -5,7 +5,11 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.agents.scheduling.schemas import JSON_SCHEMA_DRAFT
+
+vlog = get_logger(__name__)
 
 
 class SchedulingGrammarMapper:
@@ -13,17 +17,20 @@ class SchedulingGrammarMapper:
 
     def to_ollama_format(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Return the JSON schema for Ollama's ``format`` parameter."""
+        vlog.v2("Converting schema to Ollama format")
         formatted = deepcopy(schema)
         formatted["$schema"] = JSON_SCHEMA_DRAFT
         return formatted
 
     def to_gbnf(self, schema: dict[str, Any]) -> str:
         """Return an equivalent GBNF grammar string for ``llama-server``."""
+        vlog.v2("Converting schema to GBNF grammar")
         return to_gbnf(schema)
 
 
 def to_ollama_format(schema: dict[str, Any]) -> dict[str, Any]:
     """Return the JSON schema for Ollama's ``format`` parameter."""
+    vlog.v2("Converting schema to Ollama format")
     return SchedulingGrammarMapper().to_ollama_format(schema)
 
 
@@ -33,6 +40,7 @@ def to_gbnf(schema: dict[str, Any]) -> str:
     Minimal translator for tests — supports objects, required string fields, enums,
     and const values used by the scheduling envelope schema.
     """
+    vlog.v2("Translating schema to GBNF grammar")
     lines: list[str] = ["root ::= ws object ws", "ws ::= [ \\t\\n\\r]*"]
 
     def _rule_name(ref: str) -> str:
@@ -81,4 +89,5 @@ def to_gbnf(schema: dict[str, Any]) -> str:
             "value ::= string-value | number-value | boolean-value | object | array",
         ]
     )
+    vlog.v2("Translated schema to GBNF grammar", line_count=len(lines))
     return "\n".join(lines)

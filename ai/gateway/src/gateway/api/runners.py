@@ -6,6 +6,7 @@ import time
 from typing import Annotated, Any
 
 import httpx
+from ai_common.verbose_logging import get_logger, log_request_v2, log_response_v2
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
@@ -18,6 +19,8 @@ from gateway.routing.registry import RunnerRegistry
 from gateway.runners.openai_client import POLL_TIMEOUT_S
 
 router = APIRouter(prefix="/v1/runners", tags=["runners"])
+
+vlog = get_logger(__name__)
 
 
 def _registry(request: Request) -> RunnerRegistry:
@@ -35,11 +38,20 @@ async def get_runner_models(
     Clients must not reach runners directly; this route lets the control plane
     inspect the same discovery response the health poller uses.
     """
+    vlog.v0("Proxying runner models request", runner_id=runner_id)
     registry = _registry(request)
     entry = registry.get(runner_id)
     request_id = getattr(request.state, "request_id", "unknown")
+    log_request_v2(
+        vlog,
+        "Proxying runner models",
+        {"runner_id": runner_id, "method": "GET", "path": "/v1/models"},
+        request_id=request_id,
+        runner_id=runner_id,
+    )
 
     if entry is None:
+        vlog.v0("Runner models request for unknown runner", runner_id=runner_id, request_id=request_id)
         return error_response(
             ErrorCode.BAD_REQUEST,
             f"Unknown runner: {runner_id}",
@@ -96,9 +108,29 @@ async def get_runner_models(
             },
             "body": body,
         }
+        log_response_v2(
+            vlog,
+            "Runner models proxy",
+            envelope,
+            request_id=request_id,
+            runner_id=runner_id,
+            http_status=response.status_code,
+        )
+        vlog.v1(
+            "Runner models request completed",
+            runner_id=runner_id,
+            http_status=response.status_code,
+            latency_ms=round(latency_ms, 2),
+        )
         return JSONResponse(status_code=response.status_code, content=envelope)
     except httpx.TimeoutException:
         latency_ms = (time.perf_counter() - started) * 1000.0
+        vlog.v0(
+            "Runner models request timed out",
+            runner_id=runner_id,
+            request_id=request_id,
+            latency_ms=round(latency_ms, 2),
+        )
         if trace_bus is not None:
             await trace_bus.emit(
                 direction="runner_to_gateway",
@@ -118,6 +150,12 @@ async def get_runner_models(
             request_id,
         )
     except httpx.HTTPError as exc:
+        vlog.v0(
+            "Runner models request HTTP error",
+            runner_id=runner_id,
+            request_id=request_id,
+            error=str(exc),
+        )
         if trace_bus is not None:
             latency_ms = (time.perf_counter() - started) * 1000.0
             await trace_bus.emit(

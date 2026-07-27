@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Annotated, Any
 
+from ai_common.verbose_logging import get_logger
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
@@ -15,6 +16,8 @@ from gateway.config.settings import GatewayConfig
 from gateway.routing.registry import LoadedModel, RunnerRegistry, RunnerRegistryEntry
 
 router = APIRouter(prefix="/v1", tags=["status"])
+
+vlog = get_logger(__name__)
 
 _GATEWAY_VERSION = "0.1.0"
 _PHASE_ACTIVE = 6
@@ -173,6 +176,7 @@ async def get_status(
     _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
 ) -> JSONResponse:
     """Safe JSON snapshot of gateway health, config, runners, and endpoint catalog."""
+    vlog.v0("Building gateway status snapshot")
     cfg: GatewayConfig = request.app.state.config
     registry: RunnerRegistry = request.app.state.registry
     started = getattr(request.app.state, "started_monotonic", None)
@@ -196,4 +200,10 @@ async def get_status(
             push_registration_enabled=cfg.enable_push_registration,
         ),
     }
+    vlog.v1(
+        "Gateway status snapshot built",
+        ready=registry.ready,
+        uptime_s=uptime_s,
+        runner_count=len(body["runners"]),
+    )
     return JSONResponse(body)

@@ -71,11 +71,13 @@ def _read_log_records(log_dir: str) -> list[dict[str, Any]]:
     log_file = Path(log_dir) / "gateway.jsonl"
     if not log_file.is_file():
         return []
-    return [
-        json.loads(line)
-        for line in log_file.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    records: list[dict[str, Any]] = []
+    for line in log_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        records.append(json.loads(line))
+    return records
 
 
 def _metric_value(metrics_text: str, name: str, *, capability: str | None = None) -> float | None:

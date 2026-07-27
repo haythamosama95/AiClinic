@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from typing import Any
 
 import jwt
+from ai_common.verbose_logging import get_logger
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError
 
 from gateway.config.settings import GatewayConfig
 
 logger = logging.getLogger(__name__)
+vlog = get_logger(__name__)
 
 STAFF_ROLE_CLAIM = "staff_role"
 # GoTrue user access tokens always carry aud=authenticated; test tokens omit aud.
@@ -52,17 +54,28 @@ class JwtValidator:
             self._jwks_client = PyJWKClient(config.jwks_url, cache_keys=True)
         elif not self._jwt_secret:
             raise ValueError("JwtValidator requires jwt_secret or jwks_url")
+        vlog.v1("Initialized JWT validator", use_jwks=self._use_jwks)
 
     def validate(self, token: str) -> CallerIdentity:
         """Validate signature, exp, and nbf; return caller identity."""
+        vlog.v0("Validating JWT token")
         try:
             if self._use_jwks:
-                return self._validate_jwks(token)
-            return self._validate_hs256(token)
+                identity = self._validate_jwks(token)
+            else:
+                identity = self._validate_hs256(token)
+            vlog.v1(
+                "JWT token validated",
+                staff_id=identity.staff_id,
+                staff_role=identity.staff_role,
+            )
+            return identity
         except InvalidTokenError as exc:
+            vlog.v0("JWT token validation failed", error=str(exc))
             raise JwtValidationError(str(exc)) from exc
 
     def _validate_hs256(self, token: str) -> CallerIdentity:
+        vlog.v2("Validating JWT with HS256 secret")
         assert self._jwt_secret is not None
         payload = jwt.decode(
             token,
@@ -73,6 +86,7 @@ class JwtValidator:
         return _identity_from_payload(payload)
 
     def _validate_jwks(self, token: str) -> CallerIdentity:
+        vlog.v2("Validating JWT with JWKS")
         assert self._jwks_client is not None
         signing_key = self._jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(

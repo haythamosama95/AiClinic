@@ -43,6 +43,10 @@ def configure_logging(
     root.addHandler(file_handler)
     root.setLevel(logging.INFO)
 
+    # Keep third-party library logs out of the JSON audit file (stderr only).
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).propagate = False
+
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

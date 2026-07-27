@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.agents.base import SemanticValidator
 from gateway.agents.scheduling.schemas import (
     APPOINTMENT_STATUSES,
@@ -14,6 +16,8 @@ from gateway.agents.scheduling.schemas import (
     REQUIRED_RESOLUTION_FIELDS,
 )
 from gateway.api.errors import ErrorCode, GatewayError
+
+vlog = get_logger(__name__)
 
 _ENTITY_ID_FIELDS = frozenset({"patient_id", "doctor_id", "appointment_id"})
 _AMBIGUITY_WARNING_CODES = frozenset({"ambiguous_ref", "ambiguous_resolution"})
@@ -57,6 +61,7 @@ def _parse_iso_date(value: str) -> date:
 
 
 def _raise_unusable(message: str) -> None:
+    vlog.v0("Semantic validation failed", detail=message)
     raise GatewayError(ErrorCode.AI_UNUSABLE, message)
 
 
@@ -154,6 +159,7 @@ def _assert_display_summary_consistency(
 
 class CreateAppointmentValidator(SemanticValidator):
     def validate(self, parsed: dict[str, Any], *, context: dict[str, Any]) -> None:
+        vlog.v2("Validating scheduling command semantics", command_type="create_appointment")
         params = _require_params(parsed)
         requires_resolution = _require_resolution(parsed)
         _assert_no_fabricated_ids(params)
@@ -174,6 +180,7 @@ class CreateAppointmentValidator(SemanticValidator):
 
 class RescheduleAppointmentValidator(SemanticValidator):
     def validate(self, parsed: dict[str, Any], *, context: dict[str, Any]) -> None:
+        vlog.v2("Validating scheduling command semantics", command_type="reschedule_appointment")
         params = _require_params(parsed)
         requires_resolution = _require_resolution(parsed)
         _assert_no_fabricated_ids(params)
@@ -189,6 +196,7 @@ class RescheduleAppointmentValidator(SemanticValidator):
 
 class CancelAppointmentValidator(SemanticValidator):
     def validate(self, parsed: dict[str, Any], *, context: dict[str, Any]) -> None:
+        vlog.v2("Validating scheduling command semantics", command_type="cancel_appointment")
         params = _require_params(parsed)
         requires_resolution = _require_resolution(parsed)
         _assert_no_fabricated_ids(params)
@@ -203,6 +211,7 @@ class CancelAppointmentValidator(SemanticValidator):
 
 class UpdateAppointmentStatusValidator(SemanticValidator):
     def validate(self, parsed: dict[str, Any], *, context: dict[str, Any]) -> None:
+        vlog.v2("Validating scheduling command semantics", command_type="update_appointment_status")
         params = _require_params(parsed)
         requires_resolution = _require_resolution(parsed)
         _assert_no_fabricated_ids(params)

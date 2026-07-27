@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from ai_common.verbose_logging import get_logger, log_request_v2, log_response_v2
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from gateway.obs.logging import log_record
@@ -18,6 +19,8 @@ from gateway.obs.trace_helpers import (
     should_emit_client_trace,
     summarize_body,
 )
+
+_vlog = get_logger(__name__)
 
 
 def _header(scope: Scope, name: bytes) -> str | None:
@@ -63,6 +66,15 @@ def _trace_request_body(body: bytes) -> str | None:
         return body_text_for_trace(body)
 
 
+def _parse_json_body(body: bytes) -> Any | None:
+    if not body:
+        return None
+    try:
+        return json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def _request_outcome(status: int, error_code: str | None) -> str:
     if status < 400:
         return "ok"
@@ -86,25 +98,45 @@ class ObservabilityMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
+        _vlog.v1("Initialized observability middleware")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        method = scope.get("method", "GET")
+        path = scope.get("path", "")
+        _vlog.v0("Handling HTTP request", method=method, path=path)
+
         request_id = _header(scope, b"x-request-id") or str(uuid.uuid4())
         started = time.monotonic()
         state = scope.setdefault("state", {})
         state["request_id"] = request_id
-
-        method = scope.get("method", "GET")
-        path = scope.get("path", "")
 
         request_body_text: str | None = None
         if method in ("POST", "PUT", "PATCH"):
             body = await _read_body(receive)
             request_body_text = _trace_request_body(body)
             receive = _replay_receive(body, receive)
+            parsed_request = _parse_json_body(body)
+            if parsed_request is not None:
+                log_request_v2(
+                    _vlog,
+                    "Received HTTP",
+                    parsed_request,
+                    request_id=request_id,
+                    method=method,
+                    path=path,
+                )
+            elif body:
+                _vlog.v2(
+                    "Received HTTP request body",
+                    request_id=request_id,
+                    method=method,
+                    path=path,
+                    body_bytes=len(body),
+                )
 
         status_code = 500
         response_chunks: list[bytes] = []
@@ -131,19 +163,56 @@ class ObservabilityMiddleware:
 
         error_code: str | None = None
         response_body_text: str | None = None
-        if not streaming_response and response_chunks:
+        if response_chunks:
             body_bytes = b"".join(response_chunks)
-            try:
-                parsed_body = json.loads(body_bytes)
-                response_body_text = body_text_for_trace(parsed_body)
-                if status_code >= 400 and isinstance(parsed_body, dict):
-                    err = parsed_body.get("error")
-                    if isinstance(err, dict):
-                        error_code = err.get("code")
-            except (json.JSONDecodeError, TypeError):
-                response_body_text = body_text_for_trace(body_bytes)
+            parsed_response = _parse_json_body(body_bytes)
+            if parsed_response is not None:
+                log_response_v2(
+                    _vlog,
+                    "Sending HTTP",
+                    parsed_response,
+                    request_id=request_id,
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    streaming_response=streaming_response,
+                )
+            elif streaming_response and body_bytes:
+                _vlog.v2(
+                    "Sending HTTP streaming response",
+                    request_id=request_id,
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    response_bytes=len(body_bytes),
+                )
+            if not streaming_response:
+                try:
+                    parsed_body = json.loads(body_bytes)
+                    response_body_text = body_text_for_trace(parsed_body)
+                    if status_code >= 400 and isinstance(parsed_body, dict):
+                        err = parsed_body.get("error")
+                        if isinstance(err, dict):
+                            error_code = err.get("code")
+                except (json.JSONDecodeError, TypeError):
+                    response_body_text = body_text_for_trace(body_bytes)
 
         outcome = _request_outcome(status_code, error_code)
+        if status_code >= 400:
+            _vlog.v0(
+                "HTTP request returned error response",
+                request_id=request_id,
+                status_code=status_code,
+                error_code=error_code,
+            )
+        _vlog.v1(
+            "HTTP request completed",
+            request_id=request_id,
+            status_code=status_code,
+            outcome=outcome,
+            latency_ms=round(latency_ms, 2),
+            streaming_response=streaming_response,
+        )
         log_record(
             request_id=request_id,
             endpoint=path,

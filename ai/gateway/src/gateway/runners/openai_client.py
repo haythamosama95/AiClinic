@@ -10,12 +10,21 @@ from typing import Any
 
 import httpx
 import jsonschema
+from ai_common.verbose_logging import (
+    dump_json_for_log,
+    get_logger,
+    health_poll_verbose_enabled,
+    log_request_v2,
+    log_response_v2,
+)
 
 from gateway.routing.lifecycle import PollOutcome
 from gateway.routing.registry import LoadedModel
 
 POLL_TIMEOUT_S = 2.0
 GENERATION_TIMEOUT_S = 45.0
+
+vlog = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -101,6 +110,9 @@ async def poll_runner(
 
     Bounded timeout (default ≤2 s). Returns ok/loading/error/timeout outcomes.
     """
+    poll_verbose = health_poll_verbose_enabled()
+    if poll_verbose:
+        vlog.v0("Polling runner health endpoint", base_url=base_url)
     url = base_url.rstrip("/") + "/v1/models"
     started = time.perf_counter()
 
@@ -112,11 +124,26 @@ async def poll_runner(
         latency_ms = (time.perf_counter() - started) * 1000.0
 
         if response.status_code != 200:
+            if poll_verbose:
+                vlog.v0(
+                    "Runner health poll returned error status",
+                    http_status=response.status_code,
+                    latency_ms=latency_ms,
+                )
             return PollResult(outcome=PollOutcome.ERROR, latency_ms=latency_ms)
 
         payload = response.json()
+        if poll_verbose:
+            log_response_v2(
+                vlog,
+                "Runner health poll",
+                payload,
+                base_url=base_url,
+            )
         models = payload.get("data") if isinstance(payload, dict) else None
         if not models:
+            if poll_verbose:
+                vlog.v1("Runner is loading; no models available yet", latency_ms=latency_ms)
             return PollResult(outcome=PollOutcome.LOADING, latency_ms=latency_ms)
 
         chosen: dict[str, Any] | None = None
@@ -130,6 +157,8 @@ async def poll_runner(
             first = models[0]
             chosen = first if isinstance(first, dict) else None
         if chosen is None or not chosen.get("id"):
+            if poll_verbose:
+                vlog.v1("Runner catalog has no usable model", latency_ms=latency_ms)
             return PollResult(outcome=PollOutcome.LOADING, latency_ms=latency_ms)
 
         digest = chosen.get("digest") or ""
@@ -139,6 +168,12 @@ async def poll_runner(
             digest=str(digest),
             context_tokens=int(context) if context is not None else None,
         )
+        if poll_verbose:
+            vlog.v1(
+                "Runner health poll succeeded",
+                model=loaded.name,
+                latency_ms=latency_ms,
+            )
         return PollResult(
             outcome=PollOutcome.OK,
             latency_ms=latency_ms,
@@ -146,9 +181,13 @@ async def poll_runner(
         )
     except httpx.TimeoutException:
         latency_ms = (time.perf_counter() - started) * 1000.0
+        if poll_verbose:
+            vlog.v0("Runner health poll timed out", latency_ms=latency_ms)
         return PollResult(outcome=PollOutcome.TIMEOUT, latency_ms=latency_ms)
     except httpx.HTTPError:
         latency_ms = (time.perf_counter() - started) * 1000.0
+        if poll_verbose:
+            vlog.v0("Runner health poll HTTP error", latency_ms=latency_ms)
         return PollResult(outcome=PollOutcome.ERROR, latency_ms=latency_ms)
     finally:
         if owns_client:
@@ -333,6 +372,7 @@ async def chat_completion_grammar(
     client: httpx.AsyncClient | None = None,
 ) -> GenerationResult:
     """Grammar-constrained non-streaming chat completion via Ollama native ``/api/chat``."""
+    vlog.v0("Sending grammar-constrained chat completion", model=model)
     url = _ollama_chat_url(base_url)
     started = time.perf_counter()
 
@@ -345,12 +385,20 @@ async def chat_completion_grammar(
         format_schema=format_schema,
         stream=False,
     )
+    log_request_v2(
+        vlog,
+        "Sending grammar-constrained chat completion",
+        body,
+        model=model,
+        url=url,
+    )
 
     try:
         response = await http.post(url, json=body, timeout=timeout_s)
         total_seconds = time.perf_counter() - started
 
         if response.status_code != 200:
+            vlog.v0("Grammar chat completion returned HTTP error", status_code=response.status_code)
             raise httpx.HTTPStatusError(
                 f"runner returned {response.status_code}",
                 request=response.request,
@@ -361,10 +409,25 @@ async def chat_completion_grammar(
         if not isinstance(payload, dict):
             raise ValueError("runner response must be a JSON object")
 
+        log_response_v2(
+            vlog,
+            "Runner chat completion",
+            payload,
+            model=model,
+            url=url,
+        )
+
         content = _content_from_ollama_chat_payload(payload)
         parsed = _extract_json_content(content)
         prompt_tokens, completion_tokens = _usage_from_ollama_chat_payload(payload)
 
+        vlog.v1(
+            "Grammar chat completion succeeded",
+            model=model,
+            total_seconds=total_seconds,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
         return GenerationResult(
             parsed=parsed,
             model=model,
@@ -395,6 +458,7 @@ async def chat_completion_grammar_stream(
     buffered content. After iteration completes, call
     ``session.parsed_json_matching_schema(format_schema)`` for command tasks.
     """
+    vlog.v0("Starting grammar-constrained streaming completion", model=model)
     url = _ollama_chat_url(base_url)
     started = time.perf_counter()
     first_token_at: float | None = None
@@ -408,12 +472,21 @@ async def chat_completion_grammar_stream(
         format_schema=format_schema,
         stream=True,
     )
+    log_request_v2(
+        vlog,
+        "Sending grammar-constrained streaming chat completion",
+        body,
+        model=model,
+        url=url,
+    )
 
     session = GrammarStreamSession(model=model, digest=digest)
+    vlog.v1("Created grammar streaming session", model=model)
 
     try:
         async with http.stream("POST", url, json=body, timeout=timeout_s) as response:
             if response.status_code != 200:
+                vlog.v0("Grammar streaming completion returned HTTP error", status_code=response.status_code)
                 await response.aread()
                 raise httpx.HTTPStatusError(
                     f"runner returned {response.status_code}",
@@ -425,6 +498,11 @@ async def chat_completion_grammar_stream(
                 delta_text = _content_from_ollama_chat_payload(chunk)
                 if delta_text and first_token_at is None:
                     first_token_at = time.perf_counter()
+                    vlog.v2(
+                        "Runner streaming chat completion first chunk received",
+                        model=model,
+                        body=dump_json_for_log(chunk),
+                    )
 
                 if chunk.get("done"):
                     prompt_tokens, completion_tokens = _usage_from_ollama_chat_payload(
@@ -432,6 +510,11 @@ async def chat_completion_grammar_stream(
                     )
                     session.prompt_tokens = prompt_tokens
                     session.completion_tokens = completion_tokens
+                    vlog.v2(
+                        "Runner streaming chat completion final chunk received",
+                        model=model,
+                        body=dump_json_for_log(chunk),
+                    )
 
                 if delta_text:
                     session.feed(delta_text)
@@ -440,6 +523,26 @@ async def chat_completion_grammar_stream(
         session.total_seconds = time.perf_counter() - started
         session.first_token_seconds = (
             (first_token_at - started) if first_token_at is not None else None
+        )
+        vlog.v1(
+            "Grammar streaming completion finished",
+            model=model,
+            total_seconds=session.total_seconds,
+            first_token_seconds=session.first_token_seconds,
+        )
+        log_response_v2(
+            vlog,
+            "Runner streaming chat completion assembled",
+            {
+                "model": session.model,
+                "digest": session.digest,
+                "content": session.content,
+                "prompt_tokens": session.prompt_tokens,
+                "completion_tokens": session.completion_tokens,
+                "total_seconds": session.total_seconds,
+                "first_token_seconds": session.first_token_seconds,
+            },
+            model=model,
         )
     finally:
         if owns_client:

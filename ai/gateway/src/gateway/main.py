@@ -10,6 +10,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
+from ai_common.verbose_logging import configure as configure_verbose_logging
+from ai_common.verbose_logging import get_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,8 +29,8 @@ from gateway.api.trace import router as trace_router
 from gateway.auth.jwt_validator import JwtValidator
 from gateway.auth.role_map import RoleMapReloader, RoleMapStore
 from gateway.config.settings import GatewayConfig, load_config
-from gateway.obs import logging as obs_logging
 from gateway.middleware.observability import ObservabilityMiddleware
+from gateway.obs import logging as obs_logging
 from gateway.obs.trace_bus import TraceBus
 from gateway.pipeline.cancel import log_cancelled
 from gateway.pipeline.queue import GenerationQueue, create_generation_queue
@@ -40,6 +42,8 @@ _poller: HealthPoller | None = None
 _registry: RunnerRegistry | None = None
 _role_map_reloader: RoleMapReloader | None = None
 _generation_queue: GenerationQueue | None = None
+
+_vlog = get_logger(__name__)
 
 
 def get_config() -> GatewayConfig:
@@ -66,6 +70,7 @@ def get_generation_queue() -> GenerationQueue:
 
 async def _graceful_shutdown(generation_queue: GenerationQueue, grace_s: float) -> None:
     """Drain in-flight requests; reject queued; cancel stragglers after grace."""
+    _vlog.v0("Beginning graceful shutdown", grace_s=grace_s)
     coordinator = generation_queue.shutdown
     if not coordinator.shutting_down:
         coordinator.begin_shutdown()
@@ -82,6 +87,11 @@ async def _graceful_shutdown(generation_queue: GenerationQueue, grace_s: float) 
     cancelled_ids = await generation_queue.cancel_stragglers_after_grace()
     for request_id in cancelled_ids:
         log_cancelled(request_id=request_id)
+    _vlog.v0(
+        "Graceful shutdown finished",
+        rejected_count=len(rejected),
+        cancelled_count=len(cancelled_ids),
+    )
 
 
 def _install_shutdown_signals(
@@ -96,6 +106,7 @@ def _install_shutdown_signals(
     rejecting generation with ``503 ai_busy`` — ``start.sh`` then treats the
     zombie as healthy and skips restart.
     """
+    _vlog.v0("Installing shutdown signal handlers", grace_s=grace_s)
 
     def _on_signal() -> None:
         async def _shutdown_and_exit() -> None:
@@ -107,6 +118,7 @@ def _install_shutdown_signals(
     for sig in (signal.SIGTERM, signal.SIGINT):
         with suppress(AttributeError, NotImplementedError, ValueError):
             loop.add_signal_handler(sig, _on_signal)
+    _vlog.v1("Shutdown signal handlers registered", signals=["SIGTERM", "SIGINT"])
 
 
 def _resolve_dashboard_dir(cfg: GatewayConfig) -> Path:
@@ -140,6 +152,7 @@ def _resolve_config_path(path: str | None) -> Path | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _poller, _role_map_reloader, _generation_queue
+    _vlog.v0("Starting gateway application lifespan")
     app.state.jwt_validator = JwtValidator(app.state.config)
     app.state.role_map_store = RoleMapStore(dict(app.state.config.role_ai_access))
     role_map_path = _resolve_role_map_path(app.state.config)
@@ -167,7 +180,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         trace_bus=app.state.trace_bus,
     )
     await _poller.start()
+    _vlog.v1("Gateway application lifespan started", runner_count=len(app.state.registry.runner_ids()))
     yield
+    _vlog.v0("Shutting down gateway application")
     await _graceful_shutdown(
         _generation_queue,
         float(app.state.config.shutdown_grace_s),
@@ -179,11 +194,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _role_map_reloader.stop()
         _role_map_reloader = None
     _generation_queue = None
+    _vlog.v0("Gateway application lifespan ended")
 
 
 def create_app(config: GatewayConfig | None = None) -> FastAPI:
     """Factory for the FastAPI application (used by tests and production)."""
     global _config, _registry
+    _vlog.v0("Creating gateway application")
     cfg = config or load_config()
     _config = cfg
     _registry = RunnerRegistry(cfg)
@@ -194,6 +211,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         log_verbatim_retention_hours=cfg.log_verbatim_retention_hours,
         development_profile=cfg.dashboard_auto_sign_in,
     )
+    configure_verbose_logging(source="gateway")
 
     app = FastAPI(title="AI Gateway", version="0.1.0", lifespan=lifespan)
     app.state.config = cfg
@@ -233,11 +251,18 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
             name="dashboard",
         )
 
+    _vlog.v0(
+        "Gateway application created",
+        port=cfg.port,
+        runner_count=len(cfg.runners),
+        dashboard_mounted=dashboard_mounted,
+    )
     return app
 
 
 def run() -> None:
     import uvicorn
 
+    _vlog.v0("Starting gateway server")
     cfg = load_config()
     uvicorn.run(create_app(cfg), host="0.0.0.0", port=cfg.port, reload=False)

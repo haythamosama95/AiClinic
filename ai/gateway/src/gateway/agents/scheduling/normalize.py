@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.agents.scheduling.schemas import LOOKUP_REQUIRED, REQUIRED_RESOLUTION_FIELDS
+
+vlog = get_logger(__name__)
 
 
 def normalize_scheduling_envelope(parsed: dict[str, Any]) -> dict[str, Any]:
     """Normalize runner JSON into the scheduling envelope shape when possible."""
+    vlog.v2("Normalizing scheduling envelope")
     out = dict(parsed)
 
     if "command_type" not in out and "command" in out:
@@ -42,4 +47,8 @@ def normalize_scheduling_envelope(parsed: dict[str, Any]) -> dict[str, Any]:
                 field: LOOKUP_REQUIRED for field in required
             }
 
+    vlog.v2(
+        "Normalized scheduling envelope",
+        command_type=out.get("command_type"),
+    )
     return out

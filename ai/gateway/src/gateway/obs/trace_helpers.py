@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.obs.trace_bus import TraceBus, TraceKind
+
+vlog = get_logger(__name__)
 
 # Operator/client routes outside /v1/* that should appear in the live trace panel.
 _TRACED_ROOT_PATHS = frozenset({"/health", "/ready", "/metrics"})
@@ -68,7 +72,16 @@ async def emit_client_trace(
     response_body: str | None = None,
 ) -> None:
     if bus is None:
+        vlog.v2("Skipped client trace emission", reason="no_bus")
         return
+    vlog.v2(
+        "Emitting client trace event",
+        direction=direction,
+        method=method,
+        path=path,
+        status_code=status_code,
+        request_id=request_id,
+    )
     await bus.emit(
         direction=direction,  # type: ignore[arg-type]
         method=method,

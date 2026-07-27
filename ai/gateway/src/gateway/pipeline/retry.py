@@ -8,6 +8,7 @@ from typing import TypeVar
 
 import httpx
 import structlog
+from ai_common.verbose_logging import get_logger
 
 from gateway.api.errors import ErrorCode, GatewayError
 from gateway.obs.logging import log_record
@@ -19,6 +20,7 @@ from gateway.routing.selector import RunnerSelector
 T = TypeVar("T")
 
 logger = structlog.get_logger("gateway.pipeline.retry")
+vlog = get_logger(__name__)
 
 _ROUTABLE = frozenset({RunnerStatus.READY, RunnerStatus.DEGRADED})
 
@@ -109,13 +111,35 @@ async def execute_with_retry(
     caller_staff_id: str | None = None,
 ) -> tuple[T, RunnerRegistryEntry, bool]:
     """Run ``call`` once; on retryable failure retry exactly once on a different runner."""
+    vlog.v0(
+        "Executing runner call with retry policy",
+        request_id=ctx.request_id,
+        runner_id=initial_runner.id,
+    )
     retried = False
     runner = initial_runner
     try:
         result = await call(runner)
+        vlog.v1(
+            "Runner call succeeded on first attempt",
+            request_id=ctx.request_id,
+            runner_id=runner.id,
+        )
         return result, runner, retried
     except BaseException as first_exc:
+        vlog.v1(
+            "Runner call failed on first attempt",
+            request_id=ctx.request_id,
+            runner_id=runner.id,
+            error_type=type(first_exc).__name__,
+            retryable=should_retry(ctx, first_exc),
+        )
         if not should_retry(ctx, first_exc):
+            vlog.v0(
+                "Runner call failure is not retryable",
+                request_id=ctx.request_id,
+                reason="non_retryable",
+            )
             raise
         retry_runner = select_retry_runner(
             all_entries,
@@ -123,8 +147,19 @@ async def execute_with_retry(
             required_capabilities=required_capabilities,
         )
         if retry_runner is None:
+            vlog.v0(
+                "No alternate runner available for retry",
+                request_id=ctx.request_id,
+                failed_runner=runner.id,
+            )
             raise
         retried = True
+        vlog.v0(
+            "Retrying runner call on alternate runner",
+            request_id=ctx.request_id,
+            failed_runner=runner.id,
+            retry_runner=retry_runner.id,
+        )
         logger.info(
             "generation_retry",
             request_id=ctx.request_id,
@@ -142,6 +177,16 @@ async def execute_with_retry(
         )
         try:
             result = await call(retry_runner)
+            vlog.v1(
+                "Runner call succeeded on retry",
+                request_id=ctx.request_id,
+                retry_runner=retry_runner.id,
+            )
             return result, retry_runner, retried
         except BaseException:
+            vlog.v0(
+                "Runner call failed on retry attempt",
+                request_id=ctx.request_id,
+                retry_runner=retry_runner.id,
+            )
             raise

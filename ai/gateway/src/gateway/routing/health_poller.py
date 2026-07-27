@@ -8,6 +8,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import httpx
+from ai_common.verbose_logging import get_logger, health_poll_verbose_enabled
 
 from gateway.obs.logging import log_record
 from gateway.obs.metrics import (
@@ -29,6 +30,8 @@ from gateway.runners.openai_client import poll_runner
 if TYPE_CHECKING:
     from gateway.config.settings import GatewayConfig
 
+vlog = get_logger(__name__)
+
 
 class HealthPoller:
     """Background task that polls configured runners on a fixed cadence."""
@@ -46,15 +49,24 @@ class HealthPoller:
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._client: httpx.AsyncClient | None = None
+        vlog.v1(
+            "Initialized health poller",
+            runner_count=len(registry.runner_ids()),
+            poll_interval_s=config.health_poll_interval_s,
+        )
 
     async def start(self) -> None:
+        vlog.v0("Starting runner health polling")
         if self._task is not None:
+            vlog.v1("Runner health polling already active", reason="already_running")
             return
         self._stop_event.clear()
         self._client = httpx.AsyncClient()
         self._task = asyncio.create_task(self._poll_loop())
+        vlog.v1("Runner health polling started")
 
     async def stop(self) -> None:
+        vlog.v0("Stopping runner health polling")
         self._stop_event.set()
         if self._task is not None:
             self._task.cancel()
@@ -64,16 +76,24 @@ class HealthPoller:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        vlog.v1("Runner health polling stopped")
 
     async def poll_once(self) -> None:
         """Poll every configured runner once (used by tests and the background loop)."""
+        poll_verbose = health_poll_verbose_enabled()
+        if poll_verbose:
+            vlog.v0("Polling configured runners")
         client = self._client or httpx.AsyncClient()
         owns_client = self._client is None
+        polled = 0
         try:
             for runner_id in self._registry.runner_ids():
                 entry = self._registry.get(runner_id)
                 if entry is None:
+                    if poll_verbose:
+                        vlog.v2("Skipping health poll for unknown runner", runner_id=runner_id)
                     continue
+                polled += 1
                 old_status = entry.status
                 poll_request_id = str(uuid.uuid4())
                 if self._trace_bus is not None:
@@ -174,6 +194,11 @@ class HealthPoller:
                 status_change: str | None = None
                 if old_status != next_state.status:
                     status_change = f"{old_status.value}→{next_state.status.value}"
+                    vlog.v0(
+                        "Runner health status changed",
+                        runner_id=runner_id,
+                        status_change=status_change,
+                    )
 
                 poll_outcome = (
                     "ok"
@@ -189,12 +214,22 @@ class HealthPoller:
                     latency_ms=result.latency_ms,
                     poll_outcome=result.outcome.value,
                 )
+                if poll_verbose:
+                    vlog.v2(
+                        "Runner health poll result",
+                        runner_id=runner_id,
+                        outcome=result.outcome.value,
+                        latency_ms=result.latency_ms,
+                    )
         finally:
             if owns_client:
                 await client.aclose()
+        if poll_verbose:
+            vlog.v1("Finished polling configured runners", polled=polled)
 
     async def _poll_loop(self) -> None:
         interval = self._config.health_poll_interval_s
+        vlog.v1("Starting runner health poll loop", interval_s=interval)
         while not self._stop_event.is_set():
             await self.poll_once()
             try:

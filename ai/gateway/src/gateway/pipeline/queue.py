@@ -11,9 +11,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.api.errors import ErrorCode, GatewayError
 from gateway.config.settings import GatewayConfig
 from gateway.obs.metrics import set_ai_inflight, set_ai_queue_depth
+
+_vlog = get_logger(__name__)
 
 
 @dataclass
@@ -55,20 +59,25 @@ class ShutdownCoordinator:
         self._shutdown_started_at: float | None = None
         self._in_flight: set[str] = set()
         self._lock = asyncio.Lock()
+        _vlog.v1("Initialized shutdown coordinator", grace_s=grace_s)
 
     @property
     def shutting_down(self) -> bool:
         return self._shutting_down
 
     def begin_shutdown(self) -> None:
+        _vlog.v0("Beginning gateway shutdown")
         self._shutting_down = True
         self._shutdown_started_at = time.monotonic()
+        _vlog.v1("Gateway shutdown initiated", grace_s=self.grace_s)
 
     def register_in_flight(self, request_id: str) -> None:
         self._in_flight.add(request_id)
+        _vlog.v2("Registered in-flight request", request_id=request_id, count=len(self._in_flight))
 
     def unregister_in_flight(self, request_id: str) -> None:
         self._in_flight.discard(request_id)
+        _vlog.v2("Unregistered in-flight request", request_id=request_id, count=len(self._in_flight))
 
     @property
     def in_flight_request_ids(self) -> frozenset[str]:
@@ -102,6 +111,12 @@ class _CapabilityQueue:
         self._waiting: deque[QueueEntry] = deque()
         self._active = 0
         self._lock = asyncio.Lock()
+        _vlog.v1(
+            "Initialized capability queue",
+            capability=capability,
+            max_depth=max_depth,
+            max_wait_s=max_wait_s,
+        )
 
     @property
     def depth(self) -> int:
@@ -113,9 +128,11 @@ class _CapabilityQueue:
 
     async def acquire(self, entry: QueueEntry) -> float:
         """Wait for a slot; return queue wait seconds. Raises GatewayError on overflow/timeout."""
+        _vlog.v0("Waiting for generation queue slot", capability=self.capability, request_id=entry.request_id)
         started_wait = time.monotonic()
         async with self._lock:
             if self._active + len(self._waiting) >= self._max_depth:
+                _vlog.v0("Generation queue is full", capability=self.capability, request_id=entry.request_id)
                 raise GatewayError(
                     ErrorCode.AI_BUSY,
                     "AI queue is full",
@@ -134,13 +151,25 @@ class _CapabilityQueue:
                         self._active += 1
                         entry.started = True
                         self._update_metrics()
-                        return time.monotonic() - started_wait
+                        wait_s = time.monotonic() - started_wait
+                        _vlog.v1(
+                            "Acquired generation queue slot",
+                            request_id=entry.request_id,
+                            queue_wait_seconds=round(wait_s, 3),
+                        )
+                        return wait_s
 
                     waited = time.monotonic() - started_wait
                     if waited >= self._max_wait_s:
                         if entry in self._waiting:
                             self._waiting.remove(entry)
                             self._update_metrics()
+                        _vlog.v0(
+                            "Generation queue wait timed out",
+                            capability=self.capability,
+                            request_id=entry.request_id,
+                            waited_s=round(waited, 3),
+                        )
                         raise GatewayError(
                             ErrorCode.AI_BUSY,
                             "AI queue wait timeout exceeded",
@@ -154,9 +183,11 @@ class _CapabilityQueue:
                 if entry in self._waiting:
                     self._waiting.remove(entry)
                     self._update_metrics()
+            _vlog.v1("Generation queue acquire cancelled", request_id=entry.request_id)
             raise
 
     def release(self) -> None:
+        _vlog.v2("Released generation queue slot", capability=self.capability, active_before=self._active)
         self._active = max(0, self._active - 1)
         self._update_metrics()
 
@@ -189,6 +220,12 @@ class GenerationQueue:
         self._caller_inflight: dict[str, int] = {}
         self._caller_lock = threading.Lock()
         self._active_tasks: dict[str, asyncio.Task[Any]] = {}
+        _vlog.v1(
+            "Initialized generation queue",
+            max_depth=self._max_depth,
+            max_wait_s=self._max_wait_s,
+            max_inflight_per_caller=self._max_inflight_per_caller,
+        )
 
     @property
     def shutdown(self) -> ShutdownCoordinator:
@@ -207,6 +244,12 @@ class GenerationQueue:
         with self._caller_lock:
             count = self._caller_inflight.get(caller_staff_id, 0)
             if count >= self._max_inflight_per_caller:
+                _vlog.v0(
+                    "Per-caller in-flight limit exceeded",
+                    caller_staff_id=caller_staff_id,
+                    request_id=request_id,
+                    count=count,
+                )
                 raise GatewayError(
                     ErrorCode.RATE_LIMITED,
                     "Per-caller in-flight limit exceeded",
@@ -229,6 +272,7 @@ class GenerationQueue:
 
     def _reject_shutdown(self, request_id: str) -> None:
         if self._shutdown.shutting_down:
+            _vlog.v0("Rejected request during gateway shutdown", request_id=request_id)
             raise GatewayError(
                 ErrorCode.AI_BUSY,
                 "Gateway is shutting down",
@@ -245,6 +289,12 @@ class GenerationQueue:
         caller_staff_id: str,
     ) -> AsyncIterator[QueueSlot]:
         """Acquire a queue slot (per-caller cap → 429, overflow/wait → 503 ai_busy)."""
+        _vlog.v0(
+            "Acquiring generation queue slot",
+            capability=capability,
+            request_id=request_id,
+            caller_staff_id=caller_staff_id,
+        )
         self._reject_shutdown(request_id)
         self._check_caller_cap(caller_staff_id, request_id)
 
@@ -284,8 +334,15 @@ class GenerationQueue:
         finally:
             if slot is not None and not slot._released:
                 slot.release()
+            if slot is not None:
+                _vlog.v1(
+                    "Released generation queue slot",
+                    request_id=request_id,
+                    queue_wait_seconds=round(slot.queue_wait_seconds, 3),
+                )
 
     def _release_slot(self, slot: QueueSlot) -> None:
+        _vlog.v2("Released queue slot and caller tracking", request_id=slot.request_id, capability=slot.capability)
         self._shutdown.unregister_in_flight(slot.request_id)
         self._active_tasks.pop(slot.request_id, None)
         cap_queue = self._queue_for(slot.capability)
@@ -326,5 +383,8 @@ class GenerationQueue:
 
 def create_generation_queue(config: GatewayConfig) -> GenerationQueue:
     """Factory used by application bootstrap."""
+    _vlog.v0("Creating generation queue")
     shutdown = ShutdownCoordinator(float(config.shutdown_grace_s))
-    return GenerationQueue(config, shutdown=shutdown)
+    queue = GenerationQueue(config, shutdown=shutdown)
+    _vlog.v1("Generation queue created")
+    return queue

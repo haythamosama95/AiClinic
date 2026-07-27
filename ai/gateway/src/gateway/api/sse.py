@@ -6,6 +6,10 @@ import json
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
+from ai_common.verbose_logging import get_logger
+
+vlog = get_logger(__name__)
+
 TERMINAL_EVENT_TYPES = frozenset({"final", "error"})
 ALLOWED_EVENT_TYPES = frozenset({"token", "summary", *TERMINAL_EVENT_TYPES})
 
@@ -17,7 +21,9 @@ class TerminalEventError(RuntimeError):
 def format_event(event_type: str, payload: Any) -> str:
     """Encode one SSE event block: ``event: <type>\\ndata: <json>\\n\\n``."""
     if event_type not in ALLOWED_EVENT_TYPES:
+        vlog.v0("Rejected unsupported SSE event type", event_type=event_type)
         raise ValueError(f"unsupported SSE event type: {event_type!r}")
+    vlog.v2("Formatting SSE event", event_type=event_type)
     data = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     return f"event: {event_type}\ndata: {data}\n\n"
 
@@ -28,6 +34,7 @@ class EventStreamEmitter:
     def __init__(self) -> None:
         self._terminal_emitted = False
         self._terminal_type: str | None = None
+        vlog.v1("Initialized SSE event stream emitter")
 
     @property
     def terminal_emitted(self) -> bool:
@@ -39,12 +46,20 @@ class EventStreamEmitter:
 
     def emit(self, event_type: str, payload: Any) -> str:
         if self._terminal_emitted:
+            vlog.v0(
+                "SSE stream violated terminal event discipline",
+                event_type=event_type,
+                terminal_type=self._terminal_type,
+            )
             raise TerminalEventError(
                 f"cannot emit {event_type!r} after terminal {self._terminal_type!r}"
             )
         if event_type in TERMINAL_EVENT_TYPES:
             self._terminal_emitted = True
             self._terminal_type = event_type
+            vlog.v1("Emitted terminal SSE event", event_type=event_type)
+        else:
+            vlog.v2("Emitted SSE event", event_type=event_type)
         return format_event(event_type, payload)
 
     def emit_final(self, payload: Any) -> str:

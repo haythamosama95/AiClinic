@@ -8,6 +8,7 @@ from typing import TypeVar
 
 import httpx
 import structlog
+from ai_common.verbose_logging import get_logger
 
 from gateway.obs.logging import log_record
 from gateway.pipeline.queue import QueueSlot
@@ -15,6 +16,7 @@ from gateway.pipeline.queue import QueueSlot
 T = TypeVar("T")
 
 logger = structlog.get_logger("gateway.pipeline.cancel")
+vlog = get_logger(__name__)
 
 
 def log_cancelled(
@@ -27,6 +29,12 @@ def log_cancelled(
     **extra: object,
 ) -> None:
     """Emit a structured log with outcome=cancelled (not error)."""
+    vlog.v0(
+        "Request cancelled",
+        request_id=request_id,
+        endpoint=endpoint,
+        runner_id=runner_id,
+    )
     log_record(
         request_id=request_id,
         endpoint=endpoint,
@@ -41,6 +49,7 @@ def log_cancelled(
 async def abort_httpx_call(client: httpx.AsyncClient | None) -> None:
     """Close the httpx client to abort any in-flight runner HTTP request."""
     if client is not None:
+        vlog.v2("Aborting in-flight runner HTTP call")
         await client.aclose()
 
 
@@ -61,22 +70,30 @@ class CancellableRunnerCall:
         self._caller_staff_id = caller_staff_id
         self._http_client: httpx.AsyncClient | None = None
         self._runner_id: str | None = None
+        vlog.v1("Prepared cancellable runner call", request_id=request_id, endpoint=endpoint)
 
     def bind_client(self, client: httpx.AsyncClient) -> None:
         self._http_client = client
+        vlog.v2("Bound HTTP client for cancellation", request_id=self._request_id)
 
     def bind_runner(self, runner_id: str) -> None:
         self._runner_id = runner_id
+        vlog.v2("Bound runner for cancellation tracking", request_id=self._request_id, runner_id=runner_id)
 
     async def run(self, coro: Awaitable[T]) -> T:
         """Execute ``coro``; on cancellation abort runner and free the queue slot."""
+        vlog.v0("Running cancellable runner call", request_id=self._request_id)
         try:
-            return await coro
+            result = await coro
+            vlog.v1("Cancellable runner call finished", request_id=self._request_id)
+            return result
         except asyncio.CancelledError:
+            vlog.v0("Cancellable runner call cancelled", request_id=self._request_id)
             await self._handle_cancel()
             raise
 
     async def _handle_cancel(self) -> None:
+        vlog.v0("Handling runner call cancellation", request_id=self._request_id)
         await abort_httpx_call(self._http_client)
         if self._queue_slot is not None:
             self._queue_slot.release()
@@ -143,5 +160,6 @@ async def cancellable_stream(
         async for item in stream:
             yield item
     except asyncio.CancelledError:
+        vlog.v0("Cancellable stream cancelled", request_id=request_id)
         await wrapper._handle_cancel()
         raise

@@ -11,6 +11,7 @@ from typing import Annotated, Any, Self
 from uuid import UUID
 
 import httpx
+from ai_common.verbose_logging import get_logger, log_request_v2
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -25,7 +26,7 @@ from gateway.auth.jwt_validator import CallerIdentity
 from gateway.obs.logging import log_generation_record, log_record
 from gateway.obs.metrics import record_ai_request
 from gateway.pipeline.cancel import log_cancelled
-from gateway.pipeline.queue import GenerationQueue, QueueSlot
+from gateway.pipeline.queue import GenerationQueue
 from gateway.pipeline.retry import RetryContext, execute_with_retry, should_retry
 from gateway.pipeline.timeout import (
     FirstTokenTimeout,
@@ -82,6 +83,7 @@ CAPABILITY_CLASS = "command"
 REQUIRED_CAPABILITIES: list[str] = []
 
 _selector_state = SelectorState()
+vlog = get_logger(__name__)
 
 
 class GenerateTask(str, Enum):
@@ -146,6 +148,7 @@ async def _select_generation_runner(
     *,
     http_client: httpx.AsyncClient | None = None,
 ) -> tuple[RunnerRegistryEntry, Any]:
+    vlog.v0("Selecting runner for generation", request_id=request_id)
     runner_entry = await select_runner_with_swap(
         registry,
         required_capabilities=REQUIRED_CAPABILITIES,
@@ -162,6 +165,12 @@ async def _select_generation_runner(
             "selected runner has no loaded model",
             request_id,
         )
+    vlog.v1(
+        "Selected runner for generation",
+        request_id=request_id,
+        runner_id=runner_entry.id,
+        model=loaded.name,
+    )
     return runner_entry, loaded
 
 
@@ -185,8 +194,10 @@ def _build_envelope_from_parsed(
     request_id: str,
     confidence_threshold: float,
 ) -> dict[str, Any]:
+    vlog.v0("Building command envelope from model output", request_id=request_id)
     parsed = normalize_scheduling_envelope(parsed)
     command_type = str(parsed.get("command_type", ""))
+    vlog.v1("Parsing model output for envelope", request_id=request_id, command_type=command_type)
 
     validate_envelope_schema(
         payload=parsed,
@@ -233,7 +244,7 @@ def _build_envelope_from_parsed(
         )
 
     confidence = float(parsed.get("confidence", 0.0))
-    return assemble_envelope(
+    envelope = assemble_envelope(
         command_type=command_type,
         confidence=confidence,
         display_summary=str(parsed.get("display_summary", "")),
@@ -244,6 +255,8 @@ def _build_envelope_from_parsed(
         warnings=_normalize_warnings(parsed),
         confidence_threshold=confidence_threshold,
     )
+    vlog.v0("Built command envelope from model output", request_id=request_id, command_type=command_type)
+    return envelope
 
 
 def _log_success(
@@ -327,6 +340,12 @@ async def _run_non_streaming_generation(
     registry: RunnerRegistry,
     http: httpx.AsyncClient,
 ) -> GenerationResult:
+    vlog.v0(
+        "Running non-streaming generation on runner",
+        request_id=request_id,
+        runner_id=runner.id,
+        model=loaded.name,
+    )
     _adjust_in_flight(registry, runner.id, 1)
     try:
         async def _call_runner() -> GenerationResult:
@@ -348,11 +367,20 @@ async def _run_non_streaming_generation(
                 ) from exc
 
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 _call_runner(),
                 timeout=settings.first_token_s,
             )
-        except asyncio.TimeoutError as exc:
+            vlog.v1(
+                "Non-streaming generation completed",
+                request_id=request_id,
+                runner_id=runner.id,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+            )
+            return result
+        except TimeoutError as exc:
+            vlog.v0("Non-streaming generation timed out waiting for first token", request_id=request_id, runner_id=runner.id)
             raise FirstTokenTimeout(request_id) from exc
     finally:
         _adjust_in_flight(registry, runner.id, -1)
@@ -365,6 +393,7 @@ async def _generate_command_non_streaming(
     caller: CallerIdentity,
     request_id: str,
 ) -> JSONResponse:
+    vlog.v0("Starting non-streaming command generation", request_id=request_id)
     config = request.app.state.config
     registry: RunnerRegistry = request.app.state.registry
     queue: GenerationQueue = request.app.state.generation_queue
@@ -450,8 +479,15 @@ async def _generate_command_non_streaming(
                 context=context,
             )
 
+            vlog.v0(
+                "Non-streaming command generation succeeded",
+                request_id=request_id,
+                runner_id=runner_entry.id,
+                command_type=envelope.get("command_type"),
+            )
             return JSONResponse(status_code=200, content=envelope)
         except asyncio.CancelledError:
+            vlog.v0("Non-streaming command generation cancelled", request_id=request_id)
             log_cancelled(
                 request_id=request_id,
                 caller_staff_id=caller.staff_id,
@@ -463,6 +499,11 @@ async def _generate_command_non_streaming(
             record_ai_request("command", "cancelled")
             raise
         except GatewayError as exc:
+            vlog.v0(
+                "Non-streaming command generation failed",
+                request_id=request_id,
+                error_code=exc.code.value,
+            )
             _log_failure(
                 request_id=request_id,
                 outcome="error",
@@ -483,6 +524,7 @@ async def _generate_command_streaming(
     caller: CallerIdentity,
     request_id: str,
 ) -> StreamingResponse:
+    vlog.v0("Starting streaming command generation", request_id=request_id)
     config = request.app.state.config
     registry: RunnerRegistry = request.app.state.registry
     queue: GenerationQueue = request.app.state.generation_queue
@@ -491,6 +533,7 @@ async def _generate_command_streaming(
     settings = TimeoutSettings.from_config(config)
 
     async def event_generator() -> AsyncIterator[str]:
+        vlog.v2("Starting SSE event generator", request_id=request_id)
         terminal_emitted = False
         runner_entry: RunnerRegistryEntry | None = None
         started = time.perf_counter()
@@ -519,6 +562,12 @@ async def _generate_command_streaming(
                     current_loaded = loaded
 
                     for attempt in range(2):
+                        vlog.v2(
+                            "Streaming generation attempt",
+                            request_id=request_id,
+                            attempt=attempt,
+                            runner_id=current_runner.id,
+                        )
                         try:
                             _adjust_in_flight(registry, current_runner.id, 1)
                             try:
@@ -541,6 +590,12 @@ async def _generate_command_streaming(
                                 async for delta, active_session in timed_stream:
                                     session = active_session
                                     chunk = delta.content
+                                    vlog.v2(
+                                        "Received streaming delta from runner",
+                                        request_id=request_id,
+                                        chunk_len=len(chunk) if chunk else 0,
+                                        in_command_body=in_command_body,
+                                    )
                                     if chunk:
                                         partial_stream_sent = True
                                         retry_ctx = RetryContext(
@@ -583,6 +638,11 @@ async def _generate_command_streaming(
                                 and should_retry(retry_ctx, exc)
                                 and not partial_stream_sent
                             ):
+                                vlog.v1(
+                                    "Retrying streaming generation on alternate runner",
+                                    request_id=request_id,
+                                    failed_runner_id=current_runner.id,
+                                )
                                 from gateway.pipeline.retry import select_retry_runner
 
                                 retry_runner = select_retry_runner(
@@ -650,9 +710,16 @@ async def _generate_command_streaming(
                         context=context,
                     )
 
+                    vlog.v0(
+                        "Streaming command generation succeeded",
+                        request_id=request_id,
+                        runner_id=runner_entry.id,
+                        command_type=envelope.get("command_type"),
+                    )
                     yield format_event("final", envelope)
                     terminal_emitted = True
         except asyncio.CancelledError:
+            vlog.v0("Streaming command generation cancelled", request_id=request_id)
             log_cancelled(
                 request_id=request_id,
                 caller_staff_id=caller.staff_id,
@@ -664,6 +731,11 @@ async def _generate_command_streaming(
             record_ai_request("command", "cancelled")
             raise
         except GatewayError as exc:
+            vlog.v0(
+                "Streaming command generation failed",
+                request_id=request_id,
+                error_code=exc.code.value,
+            )
             if not terminal_emitted:
                 yield format_event("error", _error_event_payload(exc, request_id))
                 terminal_emitted = True
@@ -703,8 +775,29 @@ async def post_generate(
     request_id = getattr(request.state, "request_id", "unknown")
     config = request.app.state.config
     options = body.options
+    vlog.v0(
+        "Received AI generation request",
+        request_id=request_id,
+        task=body.task.value,
+        stream=options.stream,
+        caller_staff_id=caller.staff_id,
+    )
+    vlog.v1(
+        "AI generation request details",
+        request_id=request_id,
+        prompt=body.prompt,
+        context=body.context,
+        conversation_id=str(body.conversation_id) if body.conversation_id else None,
+    )
+    log_request_v2(
+        vlog,
+        "Received generation",
+        body.model_dump(mode="json"),
+        request_id=request_id,
+    )
 
     if body.task != GenerateTask.COMMAND:
+        vlog.v0("Rejected unsupported generation task", request_id=request_id, task=body.task.value)
         return error_response(
             ErrorCode.NOT_IMPLEMENTED,
             UNSUPPORTED_TASK_MESSAGE,
@@ -712,6 +805,7 @@ async def post_generate(
         )
 
     if options.stream and config.streaming_enabled:
+        vlog.v1("Routing generation request to streaming handler", request_id=request_id)
         return await _generate_command_streaming(
             request=request,
             body=body,
@@ -719,6 +813,7 @@ async def post_generate(
             request_id=request_id,
         )
 
+    vlog.v1("Routing generation request to non-streaming handler", request_id=request_id)
     return await _generate_command_non_streaming(
         request=request,
         body=body,

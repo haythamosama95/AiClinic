@@ -10,11 +10,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypeVar
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.api.errors import ErrorCode, GatewayError
 from gateway.config.settings import GatewayConfig
 from gateway.routing.lifecycle import RunnerStatus
 
 T = TypeVar("T")
+
+vlog = get_logger(__name__)
 
 
 class TimeoutKind(str, Enum):
@@ -33,11 +37,18 @@ class TimeoutSettings:
 
     @classmethod
     def from_config(cls, config: GatewayConfig) -> TimeoutSettings:
-        return cls(
+        settings = cls(
             first_token_s=float(config.timeout_first_token_s),
             total_s=float(config.timeout_total_s),
             model_swap_first_token_s=float(config.model_swap_first_token_timeout_s),
         )
+        vlog.v1(
+            "Resolved timeout settings from config",
+            first_token_s=settings.first_token_s,
+            total_s=settings.total_s,
+            model_swap_first_token_s=settings.model_swap_first_token_s,
+        )
+        return settings
 
 
 class TimeoutBreached(GatewayError):
@@ -102,6 +113,7 @@ async def total_timeout(
         async with asyncio.timeout(settings.total_s):
             yield
     except TimeoutError as exc:
+        vlog.v0("Total inference timeout exceeded", request_id=request_id, limit_s=settings.total_s)
         raise TotalTimeout(request_id) from exc
 
 
@@ -119,7 +131,13 @@ async def first_token_timeout(
             yield
     except TimeoutError as exc:
         if runner_status == RunnerStatus.STARTING:
+            vlog.v0(
+                "Model swap first-token timeout exceeded",
+                request_id=request_id,
+                limit_s=limit,
+            )
             raise ModelSwapFirstTokenTimeout(request_id) from exc
+        vlog.v0("First-token timeout exceeded", request_id=request_id, limit_s=limit)
         raise FirstTokenTimeout(request_id) from exc
 
 
@@ -165,11 +183,13 @@ class FirstTokenTracker:
 
     @classmethod
     def start(cls) -> FirstTokenTracker:
+        vlog.v2("Started first-token latency tracking")
         return cls(started_at=time.perf_counter())
 
     def mark_first_token(self) -> float:
         if self.first_token_at is None:
             self.first_token_at = time.perf_counter()
+            vlog.v2("Recorded first token arrival", elapsed_s=self.elapsed_first_token())
         return self.elapsed_first_token()
 
     @property
@@ -205,7 +225,15 @@ async def stream_with_first_token_timeout(
                 return
             except TimeoutError as exc:
                 if runner_status == RunnerStatus.STARTING:
+                    vlog.v0(
+                        "Streaming model swap first-token timeout exceeded",
+                        request_id=request_id,
+                    )
                     raise ModelSwapFirstTokenTimeout(request_id) from exc
+                vlog.v0(
+                    "Streaming first-token timeout exceeded",
+                    request_id=request_id,
+                )
                 raise FirstTokenTimeout(request_id) from exc
             tracker.mark_first_token()
             first_pending = False

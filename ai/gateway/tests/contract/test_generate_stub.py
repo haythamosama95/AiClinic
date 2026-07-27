@@ -138,7 +138,12 @@ async def test_generate_streaming_returns_sse(generate_client) -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {"task": "command", "prompt": "Summarize visit", "options": {"stream": False}},
+        {
+            "task": "command",
+            "prompt": "Summarize visit",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False},
+        },
         {
             "task": "command",
             "prompt": "with context",

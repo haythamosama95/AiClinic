@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the full AI layer: Ollama runner, AI Gateway, and runner console.
-# Usage: ./start.sh [--no-setup] [--pull-model]
+# Usage: ./start.sh [--no-setup] [--pull-model] [-v LEVEL]
 #
 # First run bootstraps the gateway Python venv. Ollama starts via Docker Compose.
 # Press Ctrl+C to stop the gateway and console (Ollama keeps running in Docker).
@@ -11,6 +11,9 @@
 set -euo pipefail
 
 AI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=runners/scripts/_verbose_log.sh
+. "${AI_ROOT}/runners/scripts/_verbose_log.sh"
+_VERBOSE_LOG_ROOT="${AI_ROOT}"
 GATEWAY_DIR="${AI_ROOT}/gateway"
 RUNNERS_DIR="${AI_ROOT}/runners"
 GATEWAY_PORT="${GATEWAY_PORT:-8090}"
@@ -19,6 +22,7 @@ OLLAMA_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 
 SETUP=1
 PULL_MODEL=0
+HEALTH_POLL_VERBOSE=0
 PIDS=()
 
 usage() {
@@ -28,11 +32,22 @@ Usage: ./start.sh [options]
 Start the Ollama model runner, AI Gateway, and runner console from one command.
 
 Options:
-  --no-setup     Skip first-time gateway venv bootstrap
-  --pull-model   Pull the default model (qwen3:4b-instruct) after Ollama is up
-  -h, --help     Show this help
+  --no-setup            Skip first-time gateway venv bootstrap
+  --pull-model          Pull the default model (qwen3:4b-instruct) after Ollama is up
+  --health-poll-verbose Log each runner health poll cycle (verbose logs only)
+  -v, --verbose LEVEL   Verbose logging level 0-2
+  -l, --log-target DEST Verbose log destination: console, file, or both (default: console)
+  --log-file PATH       Verbose log file path (for file/both targets)
+  -h, --help            Show this help
+
+A numeric level (0, 1, or 2) may be passed as a positional argument.
 
 Environment:
+  AI_VERBOSE_LOG_LEVEL  Gateway/runner log verbosity: 0, 1, or 2 (default: 0)
+  AI_VERBOSE_LOG_TARGET Verbose log destination: console, file, or both (default: console)
+  AI_VERBOSE_LOG_FILE   Verbose log file path (default: ai/logs/verbose-YYYYMMDD-HHMMSS.log;
+                        ai/logs/verbose.log symlinks to the latest run)
+  AI_HEALTH_POLL_VERBOSE  Log each runner health poll cycle (default: off)
   GATEWAY_PORT          Gateway listen port (default: 8090)
   RUNNER_CONSOLE_PORT   Runner console port (default: 11435)
   OLLAMA_BASE_URL       Ollama API base (default: http://127.0.0.1:11434)
@@ -43,9 +58,22 @@ EOF
 }
 
 while [[ $# -gt 0 ]]; do
+  verbose_rc=1
+  _runner_try_verbose_option "$@" && verbose_rc=0 || verbose_rc=$?
+  case "${verbose_rc}" in
+    0) shift "${_VERBOSE_SHIFT}"; continue ;;
+    2) exit 1 ;;
+  esac
+  log_target_rc=1
+  _runner_try_log_target_option "$@" && log_target_rc=0 || log_target_rc=$?
+  case "${log_target_rc}" in
+    0) shift "${_VERBOSE_SHIFT}"; continue ;;
+    2) exit 1 ;;
+  esac
   case "$1" in
     --no-setup) SETUP=0; shift ;;
     --pull-model) PULL_MODEL=1; shift ;;
+    --health-poll-verbose) HEALTH_POLL_VERBOSE=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *)
       echo "error: unknown option: $1" >&2
@@ -54,6 +82,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+_runner_finalize_verbose_level
+_runner_finalize_log_target
+export AI_HEALTH_POLL_VERBOSE="${HEALTH_POLL_VERBOSE}"
 
 log() {
   echo "==> $*"
@@ -399,6 +431,7 @@ ensure_gateway_venv() {
   log "First-time gateway setup (venv + dependencies)..."
   "${python_bin}" -m venv "${GATEWAY_DIR}/.venv"
   "${GATEWAY_DIR}/.venv/bin/pip" install -r "${GATEWAY_DIR}/requirements-dev.lock.txt"
+  "${GATEWAY_DIR}/.venv/bin/pip" install -e "${AI_ROOT}/common"
   "${GATEWAY_DIR}/.venv/bin/pip" install -e "${GATEWAY_DIR}" --no-deps
   echo "    gateway venv ready"
 }
