@@ -1036,6 +1036,14 @@ BEGIN
     v_detail.success AND v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
     COALESCE(v_detail.error_code, 'ok')
   );
+  PERFORM pg_temp.billing_crud_record(
+    'get_invoice_detail_includes_visit_summary',
+    v_detail.success
+      AND (v_detail.data -> 'visit' ->> 'doctor_name') = 'Doctor'
+      AND (v_detail.data -> 'visit' ->> 'branch_name') = 'Main'
+      AND (v_detail.data -> 'visit' ->> 'visit_date') IS NOT NULL,
+    COALESCE(v_detail.data -> 'visit' ->> 'doctor_name', '<null>')
+  );
 
   -- US2: partial patient-tender rejected when allow_partial_payments is off (default)
   v_result := public.record_payment(v_invoice_for_payment, 'cash', 50.00, NULL, NULL);

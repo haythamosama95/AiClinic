@@ -1,8 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/core/config/supabase_config.dart'
-    show supabaseClientProvider;
+import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
@@ -35,21 +34,15 @@ class InvoiceRepository with AppRpcInvoker {
   Future<String> createFromVisit({required String visitId}) async {
     _assertNonEmpty('visitId', visitId);
 
-    final result = await invokeRpc('create_invoice_from_visit', {
-      'p_visit_id': visitId.trim(),
-    });
-    final invoiceId =
-        result.data?['invoice_id']?.toString() ?? result.data?.toString();
+    final result = await invokeRpc('create_invoice_from_visit', {'p_visit_id': visitId.trim()});
+    final invoiceId = result.data?['invoice_id']?.toString() ?? result.data?.toString();
     if (invoiceId == null || invoiceId.isEmpty) {
       throw StateError('Create invoice returned an unexpected shape.');
     }
     return invoiceId;
   }
 
-  Future<void> discardDraft({
-    required String invoiceId,
-    required DateTime expectedUpdatedAt,
-  }) async {
+  Future<void> discardDraft({required String invoiceId, required DateTime expectedUpdatedAt}) async {
     _assertNonEmpty('invoiceId', invoiceId);
 
     await invokeRpc('discard_draft_invoice', {
@@ -79,8 +72,7 @@ class InvoiceRepository with AppRpcInvoker {
       'p_unit_price': unitPrice,
     });
 
-    final itemId =
-        result.data?['item_id']?.toString() ?? result.data?.toString();
+    final itemId = result.data?['item_id']?.toString() ?? result.data?.toString();
     if (itemId == null || itemId.isEmpty) {
       throw StateError('Add invoice item returned an unexpected shape.');
     }
@@ -109,10 +101,7 @@ class InvoiceRepository with AppRpcInvoker {
     });
   }
 
-  Future<void> removeItem({
-    required String itemId,
-    required DateTime expectedUpdatedAt,
-  }) async {
+  Future<void> removeItem({required String itemId, required DateTime expectedUpdatedAt}) async {
     _assertNonEmpty('itemId', itemId);
 
     await invokeRpc('remove_invoice_item', {
@@ -121,10 +110,7 @@ class InvoiceRepository with AppRpcInvoker {
     });
   }
 
-  Future<String> issue({
-    required String invoiceId,
-    required DateTime expectedUpdatedAt,
-  }) async {
+  Future<String> issue({required String invoiceId, required DateTime expectedUpdatedAt}) async {
     _assertNonEmpty('invoiceId', invoiceId);
 
     final result = await invokeRpc('issue_invoice', {
@@ -132,8 +118,7 @@ class InvoiceRepository with AppRpcInvoker {
       'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
     });
 
-    final invoiceNumber =
-        result.data?['invoice_number']?.toString() ?? result.data?.toString();
+    final invoiceNumber = result.data?['invoice_number']?.toString() ?? result.data?.toString();
     if (invoiceNumber == null || invoiceNumber.isEmpty) {
       throw StateError('Issue invoice returned an unexpected shape.');
     }
@@ -207,13 +192,10 @@ class InvoiceRepository with AppRpcInvoker {
   Future<InvoiceDetail> getDetail({required String invoiceId}) async {
     _assertNonEmpty('invoiceId', invoiceId);
 
-    // `get_invoice_detail` does not yet emit `invoice.created_at`, `voided_by`,
-    // patient `mrn`/`phone`, or a `visit` summary block — see
-    // invoices-detail-page-implementation-plan.md §5. `InvoiceDetail.fromRpcData`
-    // parses them when present and degrades gracefully when absent.
-    final result = await invokeRpc('get_invoice_detail', {
-      'p_invoice_id': invoiceId.trim(),
-    });
+    // `get_invoice_detail` may omit optional enrichment (`invoice.created_at`,
+    // `voided_by`, patient `phone`). `InvoiceDetail.fromRpcData` parses them
+    // when present and degrades gracefully when absent.
+    final result = await invokeRpc('get_invoice_detail', {'p_invoice_id': invoiceId.trim()});
     final detail = InvoiceDetail.fromRpcData(result.data);
     if (detail == null) {
       throw StateError('Get invoice detail returned an unexpected shape.');
@@ -221,11 +203,7 @@ class InvoiceRepository with AppRpcInvoker {
     return detail;
   }
 
-  Future<InvoiceListPageResult> listInvoices({
-    Map<String, dynamic>? filters,
-    int limit = 50,
-    int offset = 0,
-  }) async {
+  Future<InvoiceListPageResult> listInvoices({Map<String, dynamic>? filters, int limit = 50, int offset = 0}) async {
     // `sort_field` / `sort_direction` are forwarded via `p_filters` when present.
     // Server-side honouring is not yet implemented; the notifier applies client-side sort (see §6).
     final result = await invokeRpc('list_invoices', {
@@ -237,11 +215,7 @@ class InvoiceRepository with AppRpcInvoker {
     return _parseListPage(result.data);
   }
 
-  Future<InvoiceListPageResult> listPatientInvoices({
-    required String patientId,
-    int limit = 50,
-    int offset = 0,
-  }) async {
+  Future<InvoiceListPageResult> listPatientInvoices({required String patientId, int limit = 50, int offset = 0}) async {
     _assertNonEmpty('patientId', patientId);
 
     final result = await invokeRpc('list_patient_invoices', {
@@ -290,35 +264,19 @@ class InvoiceRepository with AppRpcInvoker {
 
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
-      throw RpcFailure(
-        RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: '$field is required.',
-        ),
-      );
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
   }
 
   void _assertPositiveDecimal(String field, String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
-      throw RpcFailure(
-        RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: '$field is required.',
-        ),
-      );
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
     final parsed = double.tryParse(trimmed);
     if (parsed == null || parsed <= 0) {
       throw RpcFailure(
-        RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: 'Quantity must be greater than zero.',
-        ),
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Quantity must be greater than zero.'),
       );
     }
   }
@@ -326,22 +284,12 @@ class InvoiceRepository with AppRpcInvoker {
   void _assertNonNegativeDecimal(String field, String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
-      throw RpcFailure(
-        RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: '$field is required.',
-        ),
-      );
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
     final parsed = double.tryParse(trimmed);
     if (parsed == null || parsed < 0) {
       throw RpcFailure(
-        RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: '$field cannot be negative.',
-        ),
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field cannot be negative.'),
       );
     }
   }
