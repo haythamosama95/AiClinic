@@ -131,7 +131,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billing, builder: (context, state) => const BillingHubPage()),
+          GoRoute(path: AppRoutes.billing, redirect: (context, state) => AppRoutes.billingInvoices),
           GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',

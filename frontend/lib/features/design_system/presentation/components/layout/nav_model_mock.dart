@@ -13,20 +13,12 @@ const mockBranches = <AppBranch>[
 ];
 
 /// Showcase-only signed-in user (web `MOCK_USER`).
-const mockUser = AppUserMenuUser(
-  name: 'Dr. Sarah Ali',
-  role: 'Physician',
-  email: 'sarah.ali@aiclinic.health',
-);
+const mockUser = AppUserMenuUser(name: 'Dr. Sarah Ali', role: 'Physician', email: 'sarah.ali@aiclinic.health');
 
 /// Showcase-only unread notification count (web `MOCK_NOTIFICATION_COUNT`).
 const mockNotificationCount = 3;
 
-const _navCounts = <String, int>{
-  'patients': 128,
-  'appointments': 12,
-  'invoices': 5,
-};
+const _navCounts = <String, int>{'patients': 128, 'appointments': 12, 'invoices': 5};
 
 const _clinicNavGroupsBase = <AppNavGroup>[
   AppNavGroup(
@@ -50,7 +42,6 @@ const _clinicNavGroupsBase = <AppNavGroup>[
     id: 'operations',
     label: 'Operations',
     items: [
-      AppNavItem(id: 'billing', label: 'Billing', icon: Icons.receipt_long_outlined),
       AppNavItem(id: 'invoices', label: 'Invoices', icon: Icons.description_outlined),
       AppNavItem(id: 'services', label: 'Services', icon: Icons.grid_view_outlined),
       AppNavItem(id: 'staff', label: 'Staff', icon: Icons.person_outline),
@@ -68,12 +59,7 @@ final clinicNavGroups = <AppNavGroup>[
       label: group.label,
       items: [
         for (final item in group.items)
-          AppNavItem(
-            id: item.id,
-            label: item.label,
-            icon: item.icon,
-            count: _navCounts[item.id],
-          ),
+          AppNavItem(id: item.id, label: item.label, icon: item.icon, count: _navCounts[item.id]),
       ],
     ),
 ];

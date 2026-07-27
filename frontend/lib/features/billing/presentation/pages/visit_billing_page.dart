@@ -6,7 +6,6 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_billing_flow.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -27,9 +26,7 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref
-            .read(visitBillingFlowProvider(widget.visitId).notifier)
-            .beginBilling();
+        ref.read(visitBillingFlowProvider(widget.visitId).notifier).beginBilling();
       }
     });
   }
@@ -50,8 +47,7 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
     final docAsync = ref.watch(visitDocumentationProvider(widget.visitId));
 
     return docAsync.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) => Center(child: Text(error.toString())),
       data: (docState) {
         return Column(
@@ -59,8 +55,7 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
           children: [
             AppPageHeader(
               title: 'Bill this visit',
-              description:
-                  'Select services performed, review the invoice, then finalize the visit.',
+              description: 'Select services performed, review the invoice, then finalize the visit.',
             ),
             const SizedBox(height: AppSpacing.space5),
             Expanded(
@@ -74,15 +69,5 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
         );
       },
     );
-  }
-}
-
-/// Billing hub redirects to the invoice ledger.
-class BillingHubPage extends StatelessWidget {
-  const BillingHubPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const InvoiceListPage();
   }
 }

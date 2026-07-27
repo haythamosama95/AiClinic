@@ -81,8 +81,7 @@ abstract final class AuthRouteGuard {
 
   /// V1-4 appointment routes under `/appointments`.
   static bool isAppointmentRoute(String location) {
-    return location == AppRoutes.appointments ||
-        location.startsWith('${AppRoutes.appointments}/');
+    return location == AppRoutes.appointments || location.startsWith('${AppRoutes.appointments}/');
   }
 
   static bool canAccessAppointmentHub(AuthSessionState auth) {
@@ -124,15 +123,11 @@ abstract final class AuthRouteGuard {
       return false;
     }
     final permissions = PermissionService(auth.context);
-    return permissions.canViewVisitClinicalDetail() ||
-        permissions.canUploadVisitAttachments();
+    return permissions.canViewVisitClinicalDetail() || permissions.canUploadVisitAttachments();
   }
 
   /// Returns redirect when [location] is a visit route the session cannot access.
-  static String? visitRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? visitRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isVisitRoute(location)) {
       return null;
     }
@@ -162,9 +157,7 @@ abstract final class AuthRouteGuard {
     if (location.startsWith('${AppRoutes.billingInvoices}/')) {
       return true;
     }
-    if (location.startsWith(
-      '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/',
-    )) {
+    if (location.startsWith('${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/')) {
       return true;
     }
     return false;
@@ -223,10 +216,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is a shift route the session cannot access.
-  static String? shiftRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? shiftRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isShiftRoute(location)) {
       return null;
     }
@@ -242,8 +232,7 @@ abstract final class AuthRouteGuard {
     final allowed = switch (location) {
       AppRoutes.shiftsNew => canAccessShiftCreate(auth),
       AppRoutes.shiftsCalendar => canAccessShiftCalendar(auth),
-      _ when location.startsWith('${AppRoutes.shifts}/') =>
-        canAccessShiftDetail(auth),
+      _ when location.startsWith('${AppRoutes.shifts}/') => canAccessShiftDetail(auth),
       _ => false,
     };
 
@@ -251,10 +240,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is a billing route the session cannot access.
-  static String? billingRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? billingRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isBillingRoute(location)) {
       return null;
     }
@@ -268,18 +254,13 @@ abstract final class AuthRouteGuard {
     }
 
     final allowed = switch (location) {
-      AppRoutes.billing =>
-        canAccessInvoiceList(auth) || canAccessBillingSettings(auth),
       AppRoutes.billingInvoices => canAccessInvoiceList(auth),
       AppRoutes.billingInsuranceProviders => canAccessInsuranceProviders(auth),
       AppRoutes.settingsBilling => canAccessBillingSettings(auth),
-      _ when location.startsWith('${AppRoutes.billingInvoices}/') =>
-        canAccessInvoiceDetail(auth),
-      _
-          when location.startsWith(
-            '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/',
-          ) =>
-        PermissionService(auth.context).canCreateInvoices(),
+      _ when location.startsWith('${AppRoutes.billingInvoices}/') => canAccessInvoiceDetail(auth),
+      _ when location.startsWith('${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/') => PermissionService(
+        auth.context,
+      ).canCreateInvoices(),
       _ => false,
     };
 
@@ -287,10 +268,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is an appointment route the session cannot access.
-  static String? appointmentRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? appointmentRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isAppointmentRoute(location)) {
       return null;
     }
@@ -305,8 +283,7 @@ abstract final class AuthRouteGuard {
 
     final allowed = switch (location) {
       AppRoutes.appointmentsBook => canAccessAppointmentBooking(auth),
-      _ when location.startsWith('${AppRoutes.appointments}/schedule/') =>
-        canAccessAppointmentHub(auth),
+      _ when location.startsWith('${AppRoutes.appointments}/schedule/') => canAccessAppointmentHub(auth),
       _ => canAccessAppointmentHub(auth),
     };
 
@@ -314,10 +291,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is a patient route the session cannot access.
-  static String? patientRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? patientRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isPatientRoute(location)) {
       return null;
     }
@@ -366,10 +340,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is a service catalog route the session cannot access.
-  static String? serviceCatalogRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? serviceCatalogRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isServiceCatalogRoute(location)) {
       return null;
     }
@@ -385,8 +356,7 @@ abstract final class AuthRouteGuard {
     final allowed = switch (location) {
       AppRoutes.settingsServices => canAccessServiceCatalogList(auth),
       AppRoutes.settingsServicesNew => canAccessServiceEditor(auth),
-      _ when location.startsWith('/settings/services/') =>
-        canAccessServiceEditor(auth),
+      _ when location.startsWith('/settings/services/') => canAccessServiceEditor(auth),
       _ => false,
     };
 
@@ -403,12 +373,10 @@ abstract final class AuthRouteGuard {
     if (AppRoutes.adminSettingsPaths.contains(location)) {
       return true;
     }
-    if (location.startsWith('${AppRoutes.settingsBranches}/') &&
-        location.endsWith('/edit')) {
+    if (location.startsWith('${AppRoutes.settingsBranches}/') && location.endsWith('/edit')) {
       return true;
     }
-    if (location.startsWith('${AppRoutes.settingsStaff}/') &&
-        location != AppRoutes.settingsStaffNew) {
+    if (location.startsWith('${AppRoutes.settingsStaff}/') && location != AppRoutes.settingsStaffNew) {
       return true;
     }
     return false;
@@ -438,8 +406,7 @@ abstract final class AuthRouteGuard {
 
   /// Clinic setup tab: organization profile and/or branch administration.
   static bool canAccessClinicSetup(AuthSessionState auth) {
-    return canAccessOrganizationSettings(auth) ||
-        canAccessBranchManagement(auth);
+    return canAccessOrganizationSettings(auth) || canAccessBranchManagement(auth);
   }
 
   static bool canAccessStaffManagement(AuthSessionState auth) {
@@ -465,10 +432,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect target when [location] is an admin settings route the session cannot access.
-  static String? adminSettingsRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? adminSettingsRedirect({required String location, required AuthSessionState auth}) {
     if (!isAdminSettingsRoute(location)) {
       return null;
     }
@@ -483,15 +447,11 @@ abstract final class AuthRouteGuard {
 
     final allowed = switch (location) {
       AppRoutes.settingsOrganization => canAccessOrganizationSettings(auth),
-      AppRoutes.settingsBranches ||
-      AppRoutes.settingsBranchesNew => canAccessBranchManagement(auth),
-      AppRoutes.settingsStaff ||
-      AppRoutes.settingsStaffNew => canAccessStaffManagement(auth),
+      AppRoutes.settingsBranches || AppRoutes.settingsBranchesNew => canAccessBranchManagement(auth),
+      AppRoutes.settingsStaff || AppRoutes.settingsStaffNew => canAccessStaffManagement(auth),
       AppRoutes.settingsPermissions => canAccessPermissionMatrix(auth),
-      _ when location.startsWith('${AppRoutes.settingsBranches}/') =>
-        canAccessBranchManagement(auth),
-      _ when location.startsWith('${AppRoutes.settingsStaff}/') =>
-        canAccessStaffManagement(auth),
+      _ when location.startsWith('${AppRoutes.settingsBranches}/') => canAccessBranchManagement(auth),
+      _ when location.startsWith('${AppRoutes.settingsStaff}/') => canAccessStaffManagement(auth),
       _ => false,
     };
 
@@ -499,10 +459,7 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns redirect when [location] is the clinic management hub the session cannot access.
-  static String? clinicManagementRouteRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? clinicManagementRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isClinicManagementRoute(location)) {
       return null;
     }
@@ -526,29 +483,21 @@ abstract final class AuthRouteGuard {
 
   /// Staff account administration routes (blocked until clinic bootstrap completes).
   static bool isStaffProvisioningRoute(String location) {
-    return location == AppRoutes.staffCreate ||
-        location == AppRoutes.staffPasswordReset;
+    return location == AppRoutes.staffCreate || location == AppRoutes.staffPasswordReset;
   }
 
   /// Redirects V1-1 minimal provisioning routes to settings administration when setup is complete (US6).
-  static String? steadyStateProvisioningRedirect({
-    required String location,
-    required AuthSessionState auth,
-  }) {
+  static String? steadyStateProvisioningRedirect({required String location, required AuthSessionState auth}) {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return null;
     }
 
     if (location == AppRoutes.staffCreate) {
-      return canAccessStaffManagement(auth)
-          ? AppRoutes.clinicManagement
-          : AppRoutes.settings;
+      return canAccessStaffManagement(auth) ? AppRoutes.clinicManagement : AppRoutes.settings;
     }
 
     if (location == AppRoutes.staffPasswordReset) {
-      return canAccessStaffManagement(auth)
-          ? AppRoutes.clinicManagement
-          : AppRoutes.settings;
+      return canAccessStaffManagement(auth) ? AppRoutes.clinicManagement : AppRoutes.settings;
     }
 
     return null;
@@ -569,9 +518,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    return (auth.context?.needsClinicSetup ?? true)
-        ? clinicSetupRoute
-        : AppRoutes.home;
+    return (auth.context?.needsClinicSetup ?? true) ? clinicSetupRoute : AppRoutes.home;
   }
 
   /// Returns a redirect target path, or `null` when [location] may render.
@@ -596,8 +543,7 @@ abstract final class AuthRouteGuard {
     required AuthSessionState auth,
     bool bootstrapStaffWizardInProgress = false,
   }) {
-    if (auth.status == AuthSessionStatus.unknown ||
-        auth.status == AuthSessionStatus.loading) {
+    if (auth.status == AuthSessionStatus.unknown || auth.status == AuthSessionStatus.loading) {
       // Treat an unresolved session like unauthenticated for non-public routes so a
       // deep link cannot render AuthenticatedShell with enabled chrome before auth
       // resolves. Public routes (login/forgot-password/startup) are left through.
@@ -616,9 +562,7 @@ abstract final class AuthRouteGuard {
         return clinicSetupRoute;
       }
 
-      if (location == AppRoutes.login ||
-          location == AppRoutes.bootstrap ||
-          location == AppRoutes.forgotPassword) {
+      if (location == AppRoutes.login || location == AppRoutes.bootstrap || location == AppRoutes.forgotPassword) {
         if (bootstrapStaffWizardInProgress && location == AppRoutes.home) {
           return null;
         }
@@ -628,10 +572,7 @@ abstract final class AuthRouteGuard {
         return AppRoutes.home;
       }
 
-      final steadyStateProvisioning = steadyStateProvisioningRedirect(
-        location: location,
-        auth: auth,
-      );
+      final steadyStateProvisioning = steadyStateProvisioningRedirect(location: location, auth: auth);
       if (steadyStateProvisioning != null) {
         return steadyStateProvisioning;
       }

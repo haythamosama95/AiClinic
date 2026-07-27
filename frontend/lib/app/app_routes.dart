@@ -137,8 +137,8 @@ abstract final class AppRoutes {
   /// Read-only invoice document view: `/billing/invoices/:id/review`
   static String billingInvoiceReview(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceReviewSegment';
 
-  /// Static billing hub paths.
-  static const billingStaticPaths = <String>[billing, billingInvoices, billingInsuranceProviders, settingsBilling];
+  /// Static billing paths (excluding `/billing`, which redirects to invoices).
+  static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
 
   // V1-7 shift management
   static const shiftsCalendar = '/shifts/calendar';
