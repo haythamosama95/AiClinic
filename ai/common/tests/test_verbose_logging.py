@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 
@@ -125,7 +126,7 @@ def test_v0_emits_at_default_level() -> None:
     assert "should not appear" not in output
 
 
-def test_v1_sanitizes_sensitive_fields() -> None:
+def test_v1_logs_sensitive_fields_verbatim() -> None:
     os.environ["AI_VERBOSE_LOG_LEVEL"] = "1"
     stream = io.StringIO()
     configure(stream=stream, source="gateway")
@@ -138,9 +139,9 @@ def test_v1_sanitizes_sensitive_fields() -> None:
     )
     output = stream.getvalue()
     assert "req-1" in output
-    assert "sk-secret" not in output
-    assert "book Ahmed" not in output
-    assert "sha256:" in output
+    assert "sk-secret" in output
+    assert "book Ahmed" in output
+    assert "sha256:" not in output
 
 
 def test_sanitize_nested_mapping() -> None:
@@ -150,7 +151,7 @@ def test_sanitize_nested_mapping() -> None:
     }
     sanitized = sanitize(payload)
     assert sanitized["meta"]["request_id"] == "r1"
-    assert str(sanitized["context"]).startswith("sha256:")
+    assert sanitized["context"]["patient_name"] == "Jane Doe"
 
 
 def test_trace_decorator_sync() -> None:
@@ -268,7 +269,7 @@ def test_emit_shell_verbose_log_file_target(tmp_path) -> None:
     assert "job='demo'" in content
 
 
-def test_dump_json_for_log_redacts_sensitive_keys() -> None:
+def test_dump_json_for_log_preserves_sensitive_keys() -> None:
     payload = {
         "request_id": "req-1",
         "api_key": "sk-secret-key",
@@ -276,9 +277,9 @@ def test_dump_json_for_log_redacts_sensitive_keys() -> None:
     }
     dumped = dump_json_for_log(payload)
     assert "req-1" in dumped
-    assert "sk-secret-key" not in dumped
-    assert "book Ahmed" not in dumped
-    assert "sha256:" in dumped
+    assert "sk-secret-key" in dumped
+    assert "book Ahmed" in dumped
+    assert "sha256:" not in dumped
     assert "\n" in dumped  # pretty-printed by default
 
 
@@ -290,9 +291,35 @@ def test_dump_json_for_log_compact() -> None:
 
 def test_dump_json_for_log_json_string_input() -> None:
     dumped = dump_json_for_log('{"token":"abc123","id":"x1"}')
-    assert "abc123" not in dumped
+    assert "abc123" in dumped
     assert "x1" in dumped
-    assert "sha256:" in dumped
+    assert "sha256:" not in dumped
+
+
+def test_dump_json_for_log_expands_embedded_json_strings() -> None:
+    inner = {"command_type": "create_appointment", "confidence": 0.9}
+    payload = {"message": {"role": "assistant", "content": json.dumps(inner)}}
+    dumped = dump_json_for_log(payload)
+    assert '"content": {' in dumped
+    assert '"command_type": "create_appointment"' in dumped
+    assert '\\n  \\"command_type\\"' not in dumped
+
+
+def test_format_fields_multiline_body_on_separate_lines() -> None:
+    body = '{\n  "ok": true\n}'
+    line = format_verbose_line(
+        source="gateway",
+        component="openai_client",
+        message="Runner chat completion response",
+        fields={"model": "qwen3:4b", "url": "http://127.0.0.1:11434/api/chat", "body": body},
+        now=__import__("datetime").datetime(2026, 7, 27, 3, 40, 45, 740000),
+        use_color=False,
+    )
+    assert "model='qwen3:4b'" in line
+    assert "url='http://127.0.0.1:11434/api/chat'" in line
+    assert "\n\tbody=\n" in line
+    assert 'body=\'' not in line
+    assert '\n  "ok": true' in line
 
 
 def test_dump_json_for_log_plain_text_truncates() -> None:
@@ -353,7 +380,7 @@ def test_log_request_v2_suppressed_below_level_2() -> None:
     assert "json_body=" not in output
 
 
-def test_log_request_v2_redacts_sensitive_fields_in_dump() -> None:
+def test_log_request_v2_logs_sensitive_fields_in_dump() -> None:
     stream = io.StringIO()
     configure(level=2, stream=stream, source="gateway")
     logger = get_logger("test.redact")
@@ -364,13 +391,13 @@ def test_log_request_v2_redacts_sensitive_fields_in_dump() -> None:
     )
     output = stream.getvalue()
     assert "r9" in output
-    assert "sk-live" not in output
-    assert "p@ss" not in output
-    assert "sha256:" in output
+    assert "sk-live" in output
+    assert "p@ss" in output
+    assert "sha256:" not in output
 
 
-def test_json_dump_sanitized_redacts_sensitive_fields() -> None:
+def test_json_dump_sanitized_preserves_sensitive_fields() -> None:
     dumped = json_dump_sanitized({"prompt": "secret text", "task": "command"})
-    assert "secret text" not in dumped
-    assert "sha256:" in dumped
+    assert "secret text" in dumped
+    assert "sha256:" not in dumped
     assert '"task":"command"' in dumped

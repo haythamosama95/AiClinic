@@ -7,7 +7,7 @@ AI_VERBOSE_LOG_LEVEL
     structured JSON audit logs in ``gateway.obs.logging``).
 
     * ``0`` (default) — V0: entry/exit of major operations, key decisions, errors.
-    * ``1`` — V1: sanitized parameters, branch paths, timing hints.
+    * ``1`` — V1: parameters, branch paths, timing hints.
     * ``2`` — V2: full internal traces (enter/exit via ``@trace`` with an
       explicit operation description).
 
@@ -24,9 +24,6 @@ AI_VERBOSE_LOG_FILE
     ``GATEWAY_LOG_DIR`` (a symlink to the latest run when started via
     ``ai/start.sh`` with file logging). Start scripts create a new
     ``verbose-YYYYMMDD-HHMMSS.log`` per run and update the symlink.
-
-Sensitive values (API keys, tokens, JWTs, PHI-bearing fields) are hashed or
-redacted at V1 and V2. V0 messages should avoid embedding secrets directly.
 
 Log messages must describe *operations* in plain language (e.g. "polling runner
 health", "validating scheduling command"), not function or class identifiers
@@ -49,12 +46,10 @@ Output format (stderr)::
 from __future__ import annotations
 
 import functools
-import hashlib
 import inspect
 import json
 import logging
 import os
-import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -83,50 +78,6 @@ _SOURCE_COLORS = {
     "gateway": _COLOR_GATEWAY,
     "runner": _COLOR_RUNNER,
 }
-
-_SENSITIVE_FIELD_NAMES: frozenset[str] = frozenset(
-    {
-        "prompt",
-        "context",
-        "params",
-        "display_summary",
-        "notes",
-        "patient_name",
-        "request_body",
-        "response_body",
-        "request_summary",
-        "response_summary",
-        "password",
-        "secret",
-        "api_key",
-        "apikey",
-        "access_token",
-        "refresh_token",
-        "authorization",
-        "bearer",
-        "jwt",
-        "token",
-    }
-)
-
-_SENSITIVE_KEY_SUBSTRINGS: tuple[str, ...] = (
-    "password",
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer",
-    "jwt",
-    "credential",
-)
-
-_PHI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bpatient[_\s]?name\b", re.IGNORECASE),
-    re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"),
-]
-
-_JWT_PATTERN = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
 
 # Cap for non-JSON body text logged as a raw string (bytes or plain text).
 _MAX_NON_JSON_BODY_CHARS = 8192
@@ -221,47 +172,12 @@ def _reset_for_tests() -> None:
 
 
 def hash_sensitive_value(value: str) -> str:
-    """Return a stable short hash for redacted log fields."""
-    digest = hashlib.sha256(value.encode()).hexdigest()[:16]
-    return f"sha256:{digest}"
-
-
-def _is_sensitive_key(key: str) -> bool:
-    lowered = key.lower().replace("-", "_")
-    if lowered in _SENSITIVE_FIELD_NAMES:
-        return True
-    return any(substr in lowered for substr in _SENSITIVE_KEY_SUBSTRINGS)
-
-
-def _redact_string(value: str, *, deep: bool) -> str:
-    if not value:
-        return value
-    if _JWT_PATTERN.search(value):
-        return hash_sensitive_value(value)
-    if deep:
-        for pattern in _PHI_PATTERNS:
-            if pattern.search(value):
-                return hash_sensitive_value(value)
+    """Legacy helper retained for callers; logging no longer hashes values."""
     return value
 
 
 def sanitize(value: Any, *, deep: bool = True) -> Any:
-    """Recursively sanitize a value for verbose logging at V1/V2."""
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    if isinstance(value, str):
-        return _redact_string(value, deep=deep)
-    if isinstance(value, Mapping):
-        return {
-            str(key): (
-                hash_sensitive_value(str(value[key]))
-                if _is_sensitive_key(str(key)) and value[key] is not None
-                else sanitize(value[key], deep=deep)
-            )
-            for key in value
-        }
-    if isinstance(value, (list, tuple, set)):
-        return [sanitize(item, deep=deep) for item in value]
+    """Return *value* unchanged for verbose logging."""
     return value
 
 
@@ -289,20 +205,50 @@ def _format_field_value(value: Any) -> str:
     return repr(value)
 
 
+def _expand_embedded_json(value: Any) -> Any:
+    """Recursively parse JSON-encoded strings for readable verbose log output."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        if len(stripped) >= 2 and stripped[0] in "{[" and stripped[-1] in "}]":
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                return value
+            return _expand_embedded_json(parsed)
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _expand_embedded_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_expand_embedded_json(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_expand_embedded_json(item) for item in value)
+    return value
+
+
 def format_fields(fields: Mapping[str, Any]) -> str:
-    """Format sanitized fields as a tab-indented ``key=value`` suffix."""
+    """Format fields as a tab-indented ``key=value`` suffix."""
     if not fields:
         return ""
-    parts = [f"{key}={_format_field_value(fields[key])}" for key in sorted(fields)]
-    return "\t" + " ".join(parts)
+    inline_parts: list[str] = []
+    multiline_blocks: list[str] = []
+    for key in sorted(fields):
+        value = fields[key]
+        if isinstance(value, str) and "\n" in value:
+            block = "\n".join(f"\t{line}" for line in value.splitlines())
+            multiline_blocks.append(f"\n\t{key}=\n{block}")
+        else:
+            inline_parts.append(f"{key}={_format_field_value(value)}")
+    suffix = ""
+    if inline_parts:
+        suffix += "\t" + " ".join(inline_parts)
+    suffix += "".join(multiline_blocks)
+    return suffix
 
 
 def _prepare_fields(fields: Mapping[str, Any], *, level: int) -> dict[str, Any]:
     if not fields:
         return {}
-    if level >= 1:
-        return dict(sanitize(dict(fields)))
-    return {key: value for key, value in fields.items() if not _is_sensitive_key(key)}
+    return dict(fields)
 
 
 def format_verbose_line(
@@ -383,7 +329,7 @@ class VerboseLogger:
         self._emit(0, message, **fields)
 
     def v1(self, message: str, **fields: Any) -> None:
-        """More detail — sanitized parameters, branches, timing hints."""
+        """More detail — parameters, branches, timing hints."""
         self._emit(1, message, **fields)
 
     def v2(self, message: str, **fields: Any) -> None:
@@ -477,7 +423,7 @@ def sanitized_json_body(
     *,
     level: int = 2,
 ) -> Any | None:
-    """Return a redacted JSON value suitable for V2 verbose logging."""
+    """Return a parsed JSON value suitable for V2 verbose logging."""
     if raw is None:
         return None
     if isinstance(raw, (dict, list)):
@@ -498,11 +444,9 @@ def sanitized_json_body(
 def dump_json_for_log(obj: Any, *, compact: bool = False) -> str:
     """Serialize a request/response payload for V2 verbose logs.
 
-    Dicts and other JSON-serializable structures are passed through
-    ``sanitize()`` before encoding. String bodies that parse as JSON are
-    decoded, sanitized, and re-encoded. Non-JSON strings are redacted and
-    truncated when huge. Binary ``bytes`` are decoded as UTF-8 when possible;
-    otherwise a short hex preview and total length are logged.
+    String bodies that parse as JSON are decoded and re-encoded. Non-JSON
+    strings are truncated when huge. Binary ``bytes`` are decoded as UTF-8 when
+    possible; otherwise a short hex preview and total length are logged.
     """
     if isinstance(obj, bytes):
         text = _bytes_as_log_text(obj)
@@ -521,21 +465,21 @@ def dump_json_for_log(obj: Any, *, compact: bool = False) -> str:
         try:
             obj = json.loads(obj)
         except (json.JSONDecodeError, ValueError):
-            return _truncate_body_text(_redact_string(obj, deep=True))
+            return _truncate_body_text(obj)
 
-    sanitized = sanitize(obj)
+    obj = _expand_embedded_json(obj)
     if compact:
         return json.dumps(
-            sanitized,
+            obj,
             ensure_ascii=False,
             separators=(",", ":"),
             default=str,
         )
-    return json.dumps(sanitized, ensure_ascii=False, indent=2, default=str)
+    return json.dumps(obj, ensure_ascii=False, indent=2, default=str)
 
 
 def json_dump_sanitized(payload: Any) -> str:
-    """Compact JSON dump after ``sanitize()`` (alias for ``dump_json_for_log``)."""
+    """Compact JSON dump (alias for ``dump_json_for_log``)."""
     return dump_json_for_log(payload, compact=True)
 
 
@@ -545,7 +489,7 @@ def log_request_v2(
     request: dict[str, Any] | str | bytes,
     **ctx: Any,
 ) -> None:
-    """Emit a V2 log entry with the full sanitized request JSON body.
+    """Emit a V2 log entry with the full request JSON body.
 
     *operation* describes the work (e.g. "posting generate request"), not a
     code identifier. No-op when ``AI_VERBOSE_LOG_LEVEL`` is below 2.
@@ -559,7 +503,7 @@ def log_response_v2(
     response: dict[str, Any] | str | bytes,
     **ctx: Any,
 ) -> None:
-    """Emit a V2 log entry with the full sanitized response JSON body.
+    """Emit a V2 log entry with the full response JSON body.
 
     *operation* describes the work (e.g. "posting generate request"), not a
     code identifier. No-op when ``AI_VERBOSE_LOG_LEVEL`` is below 2.

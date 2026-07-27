@@ -40,7 +40,7 @@ jwks_url: null
 allowed_origins:
   - http://localhost:3000
 
-log_verbatim: false
+log_verbatim: true
 
 # Optional push-based runner registration (default off)
 enable_push_registration: false

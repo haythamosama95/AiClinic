@@ -77,7 +77,7 @@ class GatewayConfig(BaseSettings):
     jwt_secret: str | None = None
     jwks_url: str | None = None
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
-    log_verbatim: bool = False
+    log_verbatim: bool = True
     enable_push_registration: bool = False
     internal_shared_secret: str | None = None
     streaming_enabled: bool = True

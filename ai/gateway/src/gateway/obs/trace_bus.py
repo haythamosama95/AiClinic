@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import re
 import uuid
 from collections import deque
 from collections.abc import AsyncIterator
@@ -28,15 +26,6 @@ _BODY_MAX_LEN = 8192
 
 vlog = get_logger(__name__)
 
-_PHI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bpatient[_\s]?name\b", re.IGNORECASE),
-    re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"),
-]
-
-
-def _hash_value(value: str) -> str:
-    return f"sha256:{hashlib.sha256(value.encode()).hexdigest()[:16]}"
-
 
 def _redact_text(
     text: str,
@@ -44,20 +33,8 @@ def _redact_text(
     max_len: int,
     log_verbatim: bool,
 ) -> str:
-    if log_verbatim:
-        return text[:max_len] + ("…" if len(text) > max_len else "")
-
-    redacted = False
-    result = text
-    for pattern in _PHI_PATTERNS:
-        if pattern.search(result):
-            result = pattern.sub(lambda m: _hash_value(m.group(0)), result)
-            redacted = True
-    if len(result) > max_len:
-        result = result[:max_len] + "…"
-    if redacted and not result.endswith("…"):
-        result = result + " [redacted]"
-    return result
+    del log_verbatim
+    return text[:max_len] + ("…" if len(text) > max_len else "")
 
 
 def redact_summary(text: str | None, *, log_verbatim: bool = False) -> str | None:

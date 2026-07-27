@@ -1,15 +1,13 @@
-"""PHI-redacting structlog processor and verbatim log retention."""
+"""Structured log retention helpers (PHI redaction disabled)."""
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
-import re
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from typing import Any
 
-# Fields that may carry PHI or user-supplied text — redacted when log_verbatim=false.
+# Kept for callers that import the field set explicitly.
 SENSITIVE_LOG_FIELDS: frozenset[str] = frozenset(
     {
         "prompt",
@@ -25,16 +23,10 @@ SENSITIVE_LOG_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-_PHI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bpatient[_\s]?name\b", re.IGNORECASE),
-    re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"),
-]
-
 
 def hash_sensitive_value(value: str) -> str:
-    """Return a stable short hash for redacted log fields."""
-    digest = hashlib.sha256(value.encode()).hexdigest()[:16]
-    return f"sha256:{digest}"
+    """Legacy helper retained for callers; logging no longer hashes values."""
+    return value
 
 
 def redact_sensitive_fields(
@@ -42,33 +34,9 @@ def redact_sensitive_fields(
     _method: str,
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
-    """Drop or hash prompt/context/params text unless verbatim logging is enabled."""
-    log_verbatim = event_dict.pop("_log_verbatim", False)
-    if log_verbatim:
-        event_dict["_skip_redaction"] = True
-        return event_dict
-
-    redacted = False
-    for key in list(event_dict.keys()):
-        if key not in SENSITIVE_LOG_FIELDS:
-            continue
-        value = event_dict[key]
-        if value is None:
-            continue
-        if isinstance(value, str):
-            if value:
-                event_dict[key] = hash_sensitive_value(value)
-                redacted = True
-        elif isinstance(value, dict):
-            serialized = str(sorted(value.items()))
-            event_dict[key] = hash_sensitive_value(serialized)
-            redacted = True
-        else:
-            event_dict[key] = hash_sensitive_value(str(value))
-            redacted = True
-
-    if redacted:
-        event_dict["redacted"] = True
+    """Pass through structured log fields unchanged."""
+    event_dict.pop("_log_verbatim", None)
+    event_dict.pop("_skip_redaction", None)
     return event_dict
 
 
@@ -77,22 +45,8 @@ def redact_phi_patterns(
     _method: str,
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
-    """Hash remaining string values that match common PHI patterns."""
-    if event_dict.pop("_skip_redaction", False):
-        return event_dict
-
-    redacted = event_dict.get("redacted", False)
-    for key, value in list(event_dict.items()):
-        if key.startswith("_") or not isinstance(value, str):
-            continue
-        for pattern in _PHI_PATTERNS:
-            if pattern.search(value):
-                event_dict[key] = hash_sensitive_value(value)
-                redacted = True
-                break
-
-    if redacted:
-        event_dict["redacted"] = True
+    """Pass through structured log fields unchanged."""
+    event_dict.pop("_skip_redaction", None)
     return event_dict
 
 

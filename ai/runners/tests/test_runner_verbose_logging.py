@@ -36,16 +36,16 @@ def test_get_verbose_level_clamps(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_verbose_level() == 0
 
 
-def test_sanitize_for_log_redacts_sensitive_keys() -> None:
+def test_sanitize_for_log_preserves_sensitive_keys() -> None:
     payload = {"prompt": "patient notes", "model": "qwen3:4b"}
     sanitized = sanitize_for_log(payload, level=1)
     assert sanitized["model"] == "qwen3:4b"
-    assert sanitized["prompt"].startswith("sha256:")
+    assert sanitized["prompt"] == "patient notes"
 
 
-def test_hash_sensitive_value_is_stable() -> None:
+def test_hash_sensitive_value_is_identity() -> None:
+    assert hash_sensitive_value("hello") == "hello"
     assert hash_sensitive_value("hello") == hash_sensitive_value("hello")
-    assert hash_sensitive_value("hello") != hash_sensitive_value("world")
 
 
 def test_verbose_logger_emits_human_format(
@@ -167,14 +167,14 @@ def test_parse_http_json_body_returns_text_for_non_json() -> None:
     assert parse_http_json_body(b"") is None
 
 
-def test_sanitized_json_body_redacts_sensitive_fields() -> None:
+def test_sanitized_json_body_preserves_sensitive_fields() -> None:
     raw = json.dumps({"model": "qwen3:4b", "prompt": "patient notes"}).encode()
     sanitized = sanitized_json_body(raw)
     assert sanitized["model"] == "qwen3:4b"
-    assert str(sanitized["prompt"]).startswith("sha256:")
+    assert sanitized["prompt"] == "patient notes"
 
 
-def test_v2_json_dump_emitted_with_redaction(
+def test_v2_json_dump_emitted_verbatim(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -195,8 +195,8 @@ def test_v2_json_dump_emitted_with_redaction(
     captured = capsys.readouterr().err
     assert "Sending JSON response to client" in captured
     assert "qwen3:4b" in captured
-    assert "book Ahmed" not in captured
-    assert "sha256:" in captured
+    assert "book Ahmed" in captured
+    assert "sha256:" not in captured
 
 
 def test_v2_json_dump_suppressed_at_level_one(

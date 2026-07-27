@@ -138,7 +138,7 @@ async def test_trace_events_buffer_and_filters(trace_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_trace_phi_redaction_in_summaries(trace_client) -> None:
+async def test_trace_preserves_phi_in_summaries(trace_client) -> None:
     _client, app = trace_client
     bus: TraceBus = app.state.trace_bus
     await bus.emit(
@@ -151,8 +151,7 @@ async def test_trace_phi_redaction_in_summaries(trace_client) -> None:
     events = await bus.history(limit=1)
     assert events
     summary = events[0]["request_summary"]
-    assert "Maria Garcia" not in (summary or "")
-    assert "sha256:" in (summary or "")
+    assert "Maria Garcia" in (summary or "")
 
 
 @pytest.mark.asyncio
