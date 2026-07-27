@@ -257,10 +257,7 @@ abstract final class _ReceiptPdf {
   static List<(String, String)> _billToRows(InvoiceDetail invoice) {
     return [
       ('Patient', invoice.patientDisplayName?.trim().isNotEmpty == true ? invoice.patientDisplayName! : '-'),
-      ('MRN', invoice.patientMrn?.trim().isNotEmpty == true ? invoice.patientMrn! : '-'),
       ('Phone', invoice.patientPhone?.trim().isNotEmpty == true ? invoice.patientPhone! : '-'),
-      if (invoice.patientDateOfBirth != null)
-        ('Date of birth', BillingFormatting.formatDate(invoice.patientDateOfBirth!)),
     ];
   }
 
