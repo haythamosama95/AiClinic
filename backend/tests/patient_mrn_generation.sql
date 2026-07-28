@@ -210,7 +210,7 @@ BEGIN
     'archived_mrn_not_reused',
     v_result.success
       AND v_archived_mrn = 'MRN-000001'
-      AND v_mrn_3 = 'MRN-000003'
+      AND v_mrn_3 = 'MRN-000100'
       AND v_mrn_3 <> v_archived_mrn,
     'archived=' || COALESCE(v_archived_mrn, '<null>')
       || ' next=' || COALESCE(v_mrn_3, '<null>')
