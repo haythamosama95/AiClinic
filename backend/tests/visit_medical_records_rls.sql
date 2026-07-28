@@ -90,11 +90,11 @@ BEGIN
     (v_lab_staff_a, v_branch_a, true, v_user_a, v_user_a),
     (v_staff_b, v_branch_b, true, v_user_b, v_user_b);
 
-  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, created_by, updated_by)
+  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by)
   VALUES
-    (v_patient_a, v_branch_a, v_org_a, 'Patient A', '201111111251', v_user_a, v_user_a),
-    (v_patient_a2, v_branch_a2, v_org_a, 'Patient A2', '201111111252', v_user_a, v_user_a),
-    (v_patient_b, v_branch_b, v_org_b, 'Patient B', '201234567951', v_user_b, v_user_b);
+    (v_patient_a, v_branch_a, v_org_a, 'Patient A', '201111111251', 'MRN-707001', v_user_a, v_user_a),
+    (v_patient_a2, v_branch_a2, v_org_a, 'Patient A2', '201111111252', 'MRN-707002', v_user_a, v_user_a),
+    (v_patient_b, v_branch_b, v_org_b, 'Patient B', '201234567951', 'MRN-707003', v_user_b, v_user_b);
 
   INSERT INTO public.appointments (
     id, branch_id, patient_id, doctor_id, start_time, end_time, type, status, created_by, updated_by

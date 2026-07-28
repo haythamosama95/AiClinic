@@ -190,7 +190,7 @@ abstract final class AuthRouteGuard {
       return false;
     }
     final permissions = PermissionService(auth.context);
-    return permissions.canManageBillingSettings();
+    return permissions.canViewInvoices() || permissions.canRecordPayment();
   }
 
   /// V1-7 shift routes under `/shifts`.

@@ -61,7 +61,8 @@ bool _isFlutterTestRuntime() => supabase_config_env.isFlutterTestRuntimeFromEnvi
 
 bool _isBoundaryIntegration() => supabase_config_env.isBoundaryIntegrationFromEnvironment();
 
-bool _useTestStub() => _isFlutterTestRuntime() && !_isBoundaryIntegration();
+bool _useTestStub() =>
+    _isFlutterTestRuntime() && !_isBoundaryIntegration() && !SupabaseBootstrap.boundaryIntegrationTestsEnabled;
 
 /// Initializes Supabase without restoring sessions from platform storage.
 class SupabaseBootstrap {
@@ -82,6 +83,10 @@ class SupabaseBootstrap {
   }
 
   static bool _testReady = false;
+
+  /// When true, [ensureInitialized] uses the real SDK during `flutter test` (boundary suite).
+  @visibleForTesting
+  static bool boundaryIntegrationTestsEnabled = false;
 
   /// Marks bootstrap complete for widget tests without calling the real Supabase SDK.
   @visibleForTesting

@@ -12,16 +12,12 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart' hide CalendarView;
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_layout.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_status_filter.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/controllers/appointment_calendar_fullscreen_controller.dart';
 import 'package:ai_clinic/features/appointments/presentation/controllers/appointment_calendar_reschedule_controller.dart';
 import 'package:ai_clinic/features/appointments/presentation/controllers/appointment_calendar_reveal_controller.dart';
@@ -329,14 +325,14 @@ class AppointmentCalendarView extends StatelessWidget {
                               dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
                               onDragStart: onDragStart,
                               onDragUpdate: onDragUpdate,
-                              onDragEnd: onDragEnd == null ? null : onDragEnd,
+                              onDragEnd: onDragEnd,
                               onTap: (details) {
                                 onCalendarSelectionTap(details);
                                 onCalendarTap(details);
                               },
                               onAppointmentResizeStart: onResizeStart,
                               onAppointmentResizeUpdate: onResizeUpdate,
-                              onAppointmentResizeEnd: onResizeEnd == null ? null : onResizeEnd,
+                              onAppointmentResizeEnd: onResizeEnd,
                             ),
                           ),
                         ),
@@ -631,8 +627,8 @@ class AppointmentCalendarPageHostState extends ConsumerState<AppointmentCalendar
         _fullscreen.refreshOverlay();
       }
     });
-    ref.listen(appointmentCalendarBranchesProvider, (_, __) => syncFromCurrentState());
-    ref.listen(appointmentCalendarDoctorsProvider, (_, __) => syncFromCurrentState());
+    ref.listen(appointmentCalendarBranchesProvider, (_, _) => syncFromCurrentState());
+    ref.listen(appointmentCalendarDoctorsProvider, (_, _) => syncFromCurrentState());
 
     final auth = ref.watch(authSessionProvider);
     final state = ref.watch(appointmentCalendarProvider);

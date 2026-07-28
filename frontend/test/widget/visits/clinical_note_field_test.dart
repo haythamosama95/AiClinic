@@ -3,6 +3,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -57,6 +58,26 @@ class _RecordingVisitDocumentationNotifier extends VisitDocumentationNotifier {
   }
 }
 
+
+QuillController _quillController(WidgetTester tester) {
+  return tester.state<QuillEditorState>(find.byType(QuillEditor)).widget.controller;
+}
+
+String _quillPlainText(WidgetTester tester) {
+  return plainTextFromQuillDocument(_quillController(tester).document).trim();
+}
+
+Future<void> enterQuillText(WidgetTester tester, String text) async {
+  final editorFinder = find.byType(QuillEditor);
+  expect(editorFinder, findsOneWidget);
+  await tester.tap(editorFinder);
+  await tester.pump();
+  final controller = _quillController(tester);
+  final offset = controller.selection.baseOffset;
+  controller.replaceText(offset, 0, text, null);
+  await tester.pump();
+}
+
 Widget _wrap({
   required ProviderContainer container,
   required Widget child,
@@ -95,10 +116,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(QuillEditor));
-      await tester.pump();
-      await tester.enterText(find.byType(QuillEditor), 'Headache');
-      await tester.pump();
+      await enterQuillText(tester, 'Headache');
 
       expect(notifier.lastComplaint, 'Headache');
       expect(notifier.lastComplaintDelta, isNotNull);
@@ -133,7 +151,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Synced complaint'), findsOneWidget);
+      expect(_quillPlainText(tester), 'Synced complaint');
     });
 
     testWidgets('external state change while focused does not clobber the caret', (tester) async {
@@ -159,10 +177,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(QuillEditor));
-      await tester.pump();
-      await tester.enterText(find.byType(QuillEditor), 'Local draft');
-      await tester.pump();
+      await enterQuillText(tester, 'Local draft');
 
       notifier.updateComplaint(
         'Remote overwrite',
@@ -170,8 +185,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Local draft'), findsOneWidget);
-      expect(find.text('Remote overwrite'), findsNothing);
+      expect(_quillPlainText(tester), 'Local draft');
     });
 
     testWidgets('disposes the controller without error when unmounted', (tester) async {

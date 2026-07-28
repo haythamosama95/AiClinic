@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -71,7 +72,7 @@ class ListShowcaseSection extends ConsumerWidget {
               leading: AppAvatar(name: patient.name, size: AvatarSize.sm),
               primary: Text(patient.name),
               secondary: Text(patient.phone),
-              trailing: AppMoneyDisplay(amount: patient.balance),
+              trailing: AppMoneyDisplay(amount: Money.parse(patient.balance.toStringAsFixed(2)), currency: 'EGP'),
             ),
         ],
       ),

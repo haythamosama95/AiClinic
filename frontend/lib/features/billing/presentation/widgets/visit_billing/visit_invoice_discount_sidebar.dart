@@ -2,15 +2,6 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/money/money.dart';
-import 'package:ai_clinic/core/ui/components/app_form_field.dart';
-import 'package:ai_clinic/core/ui/components/app_money_display.dart';
-import 'package:ai_clinic/core/ui/components/app_money_field.dart';
-import 'package:ai_clinic/core/ui/components/app_number_input.dart';
-import 'package:ai_clinic/core/ui/components/app_radio_group.dart';
-import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 

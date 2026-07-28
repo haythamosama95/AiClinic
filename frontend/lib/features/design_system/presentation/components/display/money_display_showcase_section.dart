@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/showcase_primitives.dart';
@@ -34,12 +35,12 @@ class MoneyDisplayShowcaseSection extends ConsumerWidget {
         label: copy.variants,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            AppMoneyDisplay(amount: 1250.5),
-            SizedBox(height: AppSpacing.space2),
-            AppMoneyDisplay(amount: 1250.5, emphasis: true),
-            SizedBox(height: AppSpacing.space2),
-            AppMoneyDisplay(amount: -320, negative: true),
+          children: [
+            AppMoneyDisplay(amount: Money.parse('1250.50'), currency: 'EGP'),
+            const SizedBox(height: AppSpacing.space2),
+            AppMoneyDisplay(amount: Money.parse('1250.50'), currency: 'EGP', emphasis: true),
+            const SizedBox(height: AppSpacing.space2),
+            AppMoneyDisplay(amount: Money.parse('-320'), currency: 'EGP', negative: true),
           ],
         ),
       ),

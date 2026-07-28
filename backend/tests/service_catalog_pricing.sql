@@ -160,8 +160,8 @@ BEGIN
     (v_staff_recep, v_branch_b, v_user_admin, v_user_admin),
     (v_doctor_staff, v_branch_a, v_user_admin, v_user_admin);
 
-  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, created_by, updated_by)
-  VALUES (v_patient_id, v_branch_a, v_org_id, 'Pricing Patient', '+10000000001', v_user_admin, v_user_admin);
+  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by)
+  VALUES (v_patient_id, v_branch_a, v_org_id, 'Pricing Patient', '+10000000001', 'MRN-706001', v_user_admin, v_user_admin);
 
   INSERT INTO public.appointments (
     id, branch_id, patient_id, doctor_id, start_time, end_time, type, status, created_by, updated_by

@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_badge.dart';
@@ -100,7 +101,7 @@ class _ListIndexPatternState extends State<ListIndexPattern> {
         header: 'Default price',
         align: TableAlign.end,
         sortable: true,
-        accessor: (row) => AppMoneyDisplay(amount: row.defaultPrice),
+        accessor: (row) => AppMoneyDisplay(amount: Money.parse(row.defaultPrice.toStringAsFixed(2)), currency: 'EGP'),
       ),
       TableColumn(
         id: 'branches',

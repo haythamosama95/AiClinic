@@ -54,17 +54,17 @@ const Map<String, String> importBoundaryAllowlist = {
       'Clinic-management domain uses StaffRole from auth until shared types move to core/domain',
   'lib/features/patients/domain/patient_visit_document.dart|package:ai_clinic/features/visits/domain/visit_attachment_item.dart':
       'Patients domain references visit attachment DTO until shared patient-visit types exist',
-  'lib/features/service_catalog/domain/effective_price.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/effective_price.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
-  'lib/features/service_catalog/domain/eligible_service.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/eligible_service.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
-  'lib/features/service_catalog/domain/service.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/service.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
-  'lib/features/service_catalog/domain/service_branch_config.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/service_branch_config.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
-  'lib/features/service_catalog/domain/service_list_item.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/service_list_item.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
-  'lib/features/service_catalog/domain/service_promotion.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/service_catalog/domain/service_promotion.dart|package:ai_clinic/core/money/money.dart':
       'Service-catalog domain shares Money value type with billing until core/domain/money exists',
   'lib/features/settings/domain/provisioning_rules.dart|package:ai_clinic/features/auth/domain/auth_session.dart':
       'Settings domain uses StaffRole from auth until shared types move to core/domain',
@@ -80,7 +80,7 @@ const Map<String, String> importBoundaryAllowlist = {
       'Setup orchestration crosses feature domains until setup use cases are isolated',
   'lib/features/setup/domain/persist_clinic_setup_draft.dart|package:ai_clinic/features/auth/domain/staff_username.dart':
       'Setup orchestration crosses feature domains until setup use cases are isolated',
-  'lib/features/setup/domain/persist_clinic_setup_draft.dart|package:ai_clinic/features/billing/domain/money.dart':
+  'lib/features/setup/domain/persist_clinic_setup_draft.dart|package:ai_clinic/core/money/money.dart':
       'Setup orchestration crosses feature domains until setup use cases are isolated',
   'lib/features/setup/domain/persist_clinic_setup_draft.dart|package:ai_clinic/features/clinic-management/domain/create_branch_input.dart':
       'Setup orchestration crosses feature domains until setup use cases are isolated',
@@ -128,4 +128,48 @@ const Map<String, String> importBoundaryAllowlist = {
       'Billing patient invoice card couples to clinic-management providers until shared app providers exist',
 
   // Rule 6 — data must not import presentation in the same feature
+  'lib/core/money/organization_currency_provider.dart|package:ai_clinic/features/clinic-management/presentation/providers/clinic_setup_providers.dart':
+      'Organization currency reads clinic setup org profile until a core/data port exists',
+  'lib/features/billing/domain/visit_billing_models.dart|package:ai_clinic/features/service_catalog/domain/eligible_service.dart':
+      'Visit billing models reuse eligible service DTO until shared billing/catalog domain types exist',
+  'lib/features/appointments/domain/usecases/appointment_use_case_providers.dart|package:flutter_riverpod/flutter_riverpod.dart':
+      'Riverpod providers in domain/usecases until moved to application or presentation',
+  'lib/features/visits/domain/usecases/visit_use_case_providers.dart|package:flutter_riverpod/flutter_riverpod.dart':
+      'Riverpod providers in domain/usecases until moved to application or presentation',
+  'lib/features/visits/application/visit_finalization_service.dart|package:ai_clinic/features/billing/data/invoice_repository.dart':
+      'Visit finalization creates invoices via billing repository until shared application port exists',
+  'lib/features/billing/presentation/pages/invoice_detail_page.dart|package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart':
+      'Invoice detail couples to patient detail provider until billing orchestration facade exists',
+  'lib/features/billing/presentation/pages/invoice_editor_page.dart|package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart':
+      'Invoice editor couples to service selector until billing/service-catalog orchestration exists',
+  'lib/features/billing/presentation/widgets/visit_billing/visit_service_selection_step.dart|package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart':
+      'Visit billing step couples to service selector until shared application service exists',
+  'lib/features/patients/presentation/add_patient/add_patient_form_fields.dart|package:ai_clinic/features/clinic-management/presentation/providers/active_branch_name_provider.dart':
+      'Add patient form shows active branch name until shared app providers exist',
+  'lib/features/patients/presentation/pages/patient_detail_page.dart|package:ai_clinic/features/appointments/presentation/providers/patient_upcoming_appointments_provider.dart':
+      'Patient detail couples to appointments provider until patient-detail orchestration exists',
+  'lib/features/patients/presentation/pages/patient_detail_page.dart|package:ai_clinic/features/clinic-management/presentation/providers/active_branch_name_provider.dart':
+      'Patient detail couples to clinic-management providers until shared app providers exist',
+  'lib/features/patients/presentation/pages/patient_detail_page.dart|package:ai_clinic/features/visits/presentation/providers/patient_visit_history_provider.dart':
+      'Patient detail couples to visit history provider until patient-detail orchestration exists',
+  'lib/features/patients/presentation/providers/patient_form_notifier.dart|package:ai_clinic/features/clinic-management/presentation/providers/active_branch_name_provider.dart':
+      'Patient form notifier couples to active branch name until shared app providers exist',
+  'lib/features/visits/presentation/pages/visit_billing_host_page.dart|package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart':
+      'Visit billing host couples to patient detail until visit billing orchestration exists',
+  'lib/features/visits/presentation/pages/visit_billing_host_page.dart|package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart':
+      'Visit billing host couples to setup branch provider until shared app providers exist',
+  'lib/features/visits/presentation/pages/visit_document_page.dart|package:ai_clinic/features/appointments/presentation/providers/appointment_window_facade.dart':
+      'Visit document page uses appointment window facade until visits orchestration layer exists',
+  'lib/features/visits/presentation/pages/visit_document_page.dart|package:ai_clinic/features/patients/presentation/providers/patient_summary_facade.dart':
+      'Visit document page uses patient summary facade until visits orchestration layer exists',
+  'lib/features/visits/presentation/widgets/visit_submitted_dialog.dart|package:ai_clinic/features/appointments/presentation/providers/appointment_window_facade.dart':
+      'Visit submitted dialog uses appointment window facade until visits orchestration layer exists',
+  'lib/features/visits/presentation/widgets/visit_submitted_dialog.dart|package:ai_clinic/features/patients/presentation/providers/patient_summary_facade.dart':
+      'Visit submitted dialog uses patient summary facade until visits orchestration layer exists',
+  'lib/features/visits/presentation/widgets/visit_submitted_dialog.dart|package:ai_clinic/features/setup/presentation/providers/branch_name_facade.dart':
+      'Visit submitted dialog uses branch name facade until visits orchestration layer exists',
+  'lib/features/visits/presentation/widgets/visit_summary_section.dart|package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart':
+      'Visit summary couples to patient detail until visits orchestration layer exists',
+  'lib/features/visits/presentation/widgets/visit_summary_section.dart|package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart':
+      'Visit summary couples to setup branch provider until shared app providers exist',
 };

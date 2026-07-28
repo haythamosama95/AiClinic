@@ -967,9 +967,9 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Cannot cancel completed appointment.
-  v_start := pg_temp.test_appointment_same_day_slot(6);
-  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
+  -- Cannot cancel completed appointment (slot 9: slot 6 already has a completed booking today).
+  v_start := pg_temp.test_appointment_same_day_slot(9);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 9;
   v_result := public.create_appointment(
     v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );

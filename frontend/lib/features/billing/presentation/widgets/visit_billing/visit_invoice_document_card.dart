@@ -1,15 +1,8 @@
 import 'package:decimal/decimal.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/money/money.dart';
-import 'package:ai_clinic/core/ui/components/app_avatar.dart';
-import 'package:ai_clinic/core/ui/components/app_money_display.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_perforation_divider.dart';
@@ -246,24 +239,24 @@ class VisitInvoiceDocumentCard extends StatelessWidget {
                             discountType == VisitBillingDiscountType.percentage
                             ? 'Discount (${_discountPercentLabel(discountValue)})'
                             : 'Discount',
+                        labelColor: colors.statusSuccessFg,
                         child: AppMoneyDisplay(
                           amount: totals.discountAmount,
                           currency: currency,
                           negative: true,
                         ),
-                        labelColor: colors.statusSuccessFg,
                       ),
                     ],
                     if (totals.insuranceCoveredAmount?.isPositive == true) ...[
                       const SizedBox(height: AppSpacing.space2),
                       _VisitInvoiceTotalRow(
                         label: 'Insurance covered',
+                        labelColor: colors.statusSuccessFg,
                         child: AppMoneyDisplay(
                           amount: totals.insuranceCoveredAmount!,
                           currency: currency,
                           negative: true,
                         ),
-                        labelColor: colors.statusSuccessFg,
                       ),
                     ],
                     const SizedBox(height: AppSpacing.space3),

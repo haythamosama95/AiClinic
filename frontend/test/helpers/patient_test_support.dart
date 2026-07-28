@@ -10,7 +10,8 @@ import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
-import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
+import 'package:ai_clinic/features/patients/domain/patient_last_visit_filter.dart';
+import 'package:ai_clinic/features/patients/domain/patient_sort_field.dart';
 
 const testBranchAId = '00000000-0000-4000-8000-000000000001';
 const testBranchBId = '00000000-0000-4000-8000-000000000002';

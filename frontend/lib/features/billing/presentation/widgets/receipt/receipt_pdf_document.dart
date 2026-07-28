@@ -40,7 +40,7 @@ abstract final class ReceiptPdfDocument {
           if (invoice.issuedAt != null) pw.Text('Issued: ${BillingFormatting.formatDateTime(invoice.issuedAt!)}'),
           if (invoice.status.isVoided && invoice.voidReason != null) pw.Text('Void reason: ${invoice.voidReason}'),
           pw.SizedBox(height: 16),
-          pw.Table.fromTextArray(
+          pw.TableHelper.fromTextArray(
             headers: const ['Description', 'Qty', 'Unit', 'Total'],
             data: [
               for (final item in invoice.items)
@@ -67,7 +67,7 @@ abstract final class ReceiptPdfDocument {
             pw.SizedBox(height: 16),
             pw.Text('Payments', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
-            pw.Table.fromTextArray(
+            pw.TableHelper.fromTextArray(
               headers: const ['Method', 'Amount', 'Date'],
               data: [
                 for (final payment in invoice.payments)

@@ -20,14 +20,24 @@ class SqlFixtureHelper {
   final String password;
 
   Future<void> execute(String sql) async {
-    final result = await Process.run(
-      'psql',
-      ['-h', host, '-p', '$port', '-U', user, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
-      environment: {'PGPASSWORD': password},
-    );
+    Object? lastError;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      final result = await Process.run(
+        'psql',
+        ['-h', host, '-p', '$port', '-U', user, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
+        environment: {'PGPASSWORD': password},
+      );
 
-    if (result.exitCode != 0) {
-      throw StateError('psql failed (${result.exitCode}): ${result.stderr}\nSQL: $sql');
+      if (result.exitCode == 0) {
+        return;
+      }
+
+      final stderr = '${result.stderr}';
+      lastError = StateError('psql failed (${result.exitCode}): $stderr\nSQL: $sql');
+      if (!stderr.contains('tuple concurrently updated') || attempt == 5) {
+        throw lastError;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 40 * (attempt + 1)));
     }
   }
 
@@ -151,7 +161,7 @@ ON CONFLICT (id) DO NOTHING;
     final patientId = _deterministicUuid('a2', '${clinic.suffix}_patient');
     await execute('''
 INSERT INTO public.patients (
-  id, branch_id, organization_id, full_name, phone, created_by, updated_by
+  id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
 )
 VALUES (
   '$patientId'::uuid,
@@ -159,6 +169,7 @@ VALUES (
   '${clinic.organizationId}'::uuid,
   '$fullName',
   '$phoneDigits',
+  auth_internal.assign_patient_mrn(),
   '$_bootstrapUserId'::uuid,
   '$_bootstrapUserId'::uuid
 )

@@ -2,7 +2,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/pending_branch_configuration.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_promotion.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_editor_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';

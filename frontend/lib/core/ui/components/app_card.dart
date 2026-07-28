@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/core/ui/components/app_badge.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_elevation.dart';
@@ -469,6 +470,7 @@ class AppInvoiceCard extends StatelessWidget {
     required this.amount,
     required this.status,
     required this.date,
+    this.currency = 'EGP',
     super.key,
   });
 
@@ -477,6 +479,7 @@ class AppInvoiceCard extends StatelessWidget {
   final double amount;
   final String status;
   final String date;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -516,7 +519,7 @@ class AppInvoiceCard extends StatelessWidget {
             children: [
               DefaultTextStyle(
                 style: AppTypography.bodyStrong(context),
-                child: AppMoneyDisplay(amount: amount, emphasis: true),
+                child: AppMoneyDisplay(amount: Money.parse(amount.toStringAsFixed(2)), currency: currency, emphasis: true),
               ),
               const SizedBox(height: AppSpacing.space1),
               AppBadge(color: statusColor, variant: BadgeVariant.soft, label: status),
@@ -535,6 +538,7 @@ class AppServiceCard extends StatelessWidget {
     required this.price,
     required this.globalStatus,
     required this.branchSummary,
+    this.currency = 'EGP',
     super.key,
   });
 
@@ -542,6 +546,7 @@ class AppServiceCard extends StatelessWidget {
   final double price;
   final String globalStatus;
   final String branchSummary;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +572,7 @@ class AppServiceCard extends StatelessWidget {
                     const SizedBox(height: AppSpacing.space1),
                     DefaultTextStyle(
                       style: AppTypography.bodySm(context),
-                      child: AppMoneyDisplay(amount: price),
+                      child: AppMoneyDisplay(amount: Money.parse(price.toStringAsFixed(2)), currency: currency),
                     ),
                     const SizedBox(height: AppSpacing.space2),
                     Text(branchSummary, style: AppTypography.caption(context).copyWith(color: colors.textSecondary)),

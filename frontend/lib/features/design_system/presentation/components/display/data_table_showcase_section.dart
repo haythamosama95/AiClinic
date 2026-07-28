@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -197,7 +198,7 @@ class _DataTableShowcaseSectionState extends ConsumerState<DataTableShowcaseSect
                 id: 'balance',
                 header: copy.balance,
                 sortable: true,
-                accessor: (row) => AppMoneyDisplay(amount: row.balance, negative: row.balance < 0),
+                accessor: (row) => AppMoneyDisplay(amount: Money.parse(row.balance.toStringAsFixed(2)), currency: 'EGP', negative: row.balance < 0),
               ),
               TableColumn(
                 id: 'status',
@@ -228,7 +229,7 @@ class _DataTableShowcaseSectionState extends ConsumerState<DataTableShowcaseSect
               style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [Text('${copy.totalBalance} '), const AppMoneyDisplay(amount: 1250, emphasis: true)],
+                children: [Text('${copy.totalBalance} '), AppMoneyDisplay(amount: Money.parse('1250'), currency: 'EGP', emphasis: true)],
               ),
             ),
           ),

@@ -50,9 +50,8 @@ final visitPatientSafetyProvider = AsyncNotifierProvider.family<VisitPatientSafe
 );
 
 class VisitPatientSafetyNotifier extends AsyncNotifier<VisitPatientSafetyState> {
-  VisitPatientSafetyNotifier(this._visitId);
+  VisitPatientSafetyNotifier(String _);
 
-  final String _visitId;
 
   @override
   Future<VisitPatientSafetyState> build() async => const VisitPatientSafetyState();

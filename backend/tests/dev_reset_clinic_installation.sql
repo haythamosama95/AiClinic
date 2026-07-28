@@ -116,8 +116,8 @@ BEGIN
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
 
   PERFORM set_config('role', 'postgres', true);
-  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, created_by)
-  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', v_bootstrap_user)
+  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, mrn, created_by)
+  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', 'MRN-701001', v_bootstrap_user)
   RETURNING id INTO v_patient_id;
 
   IF to_regclass('public.patient_allergies') IS NOT NULL THEN

@@ -114,9 +114,8 @@ final visitClinicalDataProvider = NotifierProvider.family<VisitClinicalDataNotif
 );
 
 class VisitClinicalDataNotifier extends Notifier<VisitClinicalDataState> {
-  VisitClinicalDataNotifier(this._visitId);
+  VisitClinicalDataNotifier(String _);
 
-  final String _visitId;
 
   @override
   VisitClinicalDataState build() => const VisitClinicalDataState();

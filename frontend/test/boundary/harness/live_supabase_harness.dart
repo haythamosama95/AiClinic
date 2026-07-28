@@ -14,6 +14,7 @@ import 'sql_fixture_helper.dart';
 class LiveSupabaseHarness {
   LiveSupabaseHarness._();
 
+  static Future<void>? _ensureReadyTask;
   static bool? _available;
   static SupabaseConfig? _config;
 
@@ -35,7 +36,23 @@ class LiveSupabaseHarness {
       return;
     }
 
+    final inFlight = _ensureReadyTask;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    _ensureReadyTask = _ensureReady();
+    try {
+      await _ensureReadyTask;
+    } finally {
+      _ensureReadyTask = null;
+    }
+  }
+
+  static Future<void> _ensureReady() async {
     WidgetsFlutterBinding.ensureInitialized();
+  SupabaseBootstrap.boundaryIntegrationTestsEnabled = true;
+  SupabaseBootstrap.debugResetForTests();
 
     final profile = await _loadProfile();
     if (!profile.isLocalOnly) {

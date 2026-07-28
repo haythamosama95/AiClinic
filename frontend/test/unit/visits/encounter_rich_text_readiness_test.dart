@@ -1,7 +1,6 @@
 import 'package:ai_clinic/core/ui/rich_text/rich_text_delta_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
-import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_submit_readiness_mapper.dart';

@@ -77,9 +77,8 @@ final visitBillingFlowProvider = NotifierProvider.autoDispose
     );
 
 class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
-  VisitBillingFlowNotifier(this._visitId);
+  VisitBillingFlowNotifier(String _);
 
-  final String _visitId;
 
   @override
   VisitBillingFlowState build() => VisitBillingFlowState();

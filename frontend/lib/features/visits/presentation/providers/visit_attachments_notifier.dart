@@ -51,9 +51,8 @@ final visitAttachmentsProvider = NotifierProvider.family<VisitAttachmentsNotifie
 );
 
 class VisitAttachmentsNotifier extends Notifier<VisitAttachmentsState> {
-  VisitAttachmentsNotifier(this._visitId);
+  VisitAttachmentsNotifier(String _);
 
-  final String _visitId;
 
   @override
   VisitAttachmentsState build() => const VisitAttachmentsState();

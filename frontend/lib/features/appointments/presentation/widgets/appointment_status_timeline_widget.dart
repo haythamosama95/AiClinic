@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/presentation/theme/appointment_calendar_status_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';

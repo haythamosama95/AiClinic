@@ -1,5 +1,4 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
