@@ -9,7 +9,6 @@ abstract final class ShellRouteMeta {
     'appointments': 'Schedule, confirm, and track patient appointments.',
     'encounters': 'Document visits, diagnoses, and clinical notes.',
     'workspace': 'Your active tasks, drafts, and in-progress clinical work.',
-    'billing': 'Charges, payments, and revenue cycle management.',
     'invoices': 'Create, send, and reconcile patient invoices.',
     'services': 'Catalog procedures, packages, and billable services.',
     'clinic-management': 'Organization identity, locations, team accounts, and access roles.',

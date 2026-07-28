@@ -263,9 +263,9 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
             return Stack(
               children: [
                 Positioned.fill(
-                  child: Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: (_) => _setOpen(false, notify: true),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _setOpen(false, notify: true),
                   ),
                 ),
                 CompositedTransformFollower(
@@ -274,20 +274,24 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
                   targetAnchor: targetAnchor,
                   followerAnchor: followerAnchor,
                   showWhenUnlinked: false,
-                  child: Focus(
-                    autofocus: true,
-                    onKeyEvent: (node, event) {
-                      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-                        _setOpen(false, notify: true);
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: AppMotion.animatedPreset(
-                      context: overlayContext,
-                      preset: AppMotionPreset.fadeScale,
-                      animation: _controller,
-                      child: _PopoverSurface(key: _contentKey, width: contentWidth, child: widget.child),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: Focus(
+                      autofocus: true,
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+                          _setOpen(false, notify: true);
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: AppMotion.animatedPreset(
+                        context: overlayContext,
+                        preset: AppMotionPreset.fadeScale,
+                        animation: _controller,
+                        child: _PopoverSurface(key: _contentKey, width: contentWidth, child: widget.child),
+                      ),
                     ),
                   ),
                 ),

@@ -27,10 +27,12 @@ class AppointmentBookingConfirmedStep extends StatefulWidget {
   final String? doctorName;
 
   @override
-  State<AppointmentBookingConfirmedStep> createState() => _AppointmentBookingConfirmedStepState();
+  State<AppointmentBookingConfirmedStep> createState() =>
+      _AppointmentBookingConfirmedStepState();
 }
 
-class _AppointmentBookingConfirmedStepState extends State<AppointmentBookingConfirmedStep>
+class _AppointmentBookingConfirmedStepState
+    extends State<AppointmentBookingConfirmedStep>
     with SingleTickerProviderStateMixin {
   late final AnimationController _slipController;
   late final Animation<double> _slipScale;
@@ -39,11 +41,13 @@ class _AppointmentBookingConfirmedStepState extends State<AppointmentBookingConf
   @override
   void initState() {
     super.initState();
-    _slipController = AnimationController(vsync: this, duration: AppMotionDuration.deliberate);
-    _slipScale = Tween<double>(
-      begin: 0.88,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _slipController, curve: AppMotion.outCurve));
+    _slipController = AnimationController(
+      vsync: this,
+      duration: AppMotionDuration.deliberate,
+    );
+    _slipScale = Tween<double>(begin: 0.88, end: 1).animate(
+      CurvedAnimation(parent: _slipController, curve: AppMotion.outCurve),
+    );
     _slipOpacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _slipController,
@@ -84,24 +88,38 @@ class _AppointmentBookingConfirmedStepState extends State<AppointmentBookingConf
           Text(
             'Appointment booked',
             textAlign: TextAlign.center,
-            style: AppTypography.h2(context).copyWith(color: colors.textPrimary),
+            style: AppTypography.h2(
+              context,
+            ).copyWith(color: colors.textPrimary),
           ),
           const SizedBox(height: AppSpacing.space2),
           Text(
             '${widget.patientName}\'s visit is on the schedule.',
             textAlign: TextAlign.center,
-            style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.body(
+              context,
+            ).copyWith(color: colors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.space6),
           AppBookingSummaryCard(
             layout: AppBookingSummaryLayout.grid2,
             items: [
-              AppBookingSummaryItem(icon: Icons.person_outline, label: 'Patient', value: widget.patientName),
-              AppBookingSummaryItem(icon: Icons.location_on_outlined, label: 'Branch', value: widget.branchName),
+              AppBookingSummaryItem(
+                icon: Icons.person_outline,
+                label: 'Patient',
+                value: widget.patientName,
+              ),
+              AppBookingSummaryItem(
+                icon: Icons.location_on_outlined,
+                label: 'Branch',
+                value: widget.branchName,
+              ),
               AppBookingSummaryItem(
                 icon: Icons.medical_services_outlined,
                 label: 'Doctor',
-                value: widget.doctorName?.trim().isNotEmpty == true ? widget.doctorName!.trim() : 'Any available',
+                value: widget.doctorName?.trim().isNotEmpty == true
+                    ? widget.doctorName!.trim()
+                    : 'Any available',
               ),
               AppBookingSummaryItem(
                 icon: Icons.schedule_outlined,
@@ -136,12 +154,18 @@ class _AppointmentSlipStamp extends StatelessWidget {
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final isDark = brightness == Brightness.dark;
-    final headerColor = isDark ? AppColorPrimitives.teal700 : AppColorPrimitives.teal600;
+    final headerColor = isDark
+        ? AppColorPrimitives.teal700
+        : AppColorPrimitives.teal600;
     final bodyColor = isDark ? colors.surfaceDefault : Colors.white;
-    final borderColor = isDark ? colors.borderDefault : AppColorPrimitives.teal300.withValues(alpha: 0.45);
+    final borderColor = isDark
+        ? colors.borderDefault
+        : AppColorPrimitives.teal300.withValues(alpha: 0.45);
     final dayColor = isDark ? colors.textPrimary : AppColorPrimitives.teal800;
     final metaColor = colors.textSecondary;
-    final timeColor = isDark ? AppColorPrimitives.teal300 : AppColorPrimitives.teal800;
+    final timeColor = isDark
+        ? AppColorPrimitives.teal300
+        : AppColorPrimitives.teal800;
 
     final monthLabel = DateFormat('MMM').format(startTime).toUpperCase();
     final dayNumber = DateFormat.d().format(startTime);
@@ -173,18 +197,24 @@ class _AppointmentSlipStamp extends StatelessWidget {
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: headerColor,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg - 1)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppRadius.lg - 1),
+                    ),
                   ),
                   child: SizedBox(
                     width: double.infinity,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space2),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.space2,
+                      ),
                       child: Text(
                         monthLabel,
                         textAlign: TextAlign.center,
-                        style: AppTypography.caption(
-                          context,
-                        ).copyWith(color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 1.2),
+                        style: AppTypography.caption(context).copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
                   ),
@@ -200,24 +230,32 @@ class _AppointmentSlipStamp extends StatelessWidget {
                     children: [
                       Text(
                         dayNumber,
-                        style: AppTypography.display(
-                          context,
-                        ).copyWith(color: dayColor, height: 1, fontFeatures: const [FontFeature.tabularFigures()]),
+                        style: AppTypography.display(context).copyWith(
+                          color: dayColor,
+                          height: 1,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.space1),
                       Text(
                         weekdayLabel,
                         textAlign: TextAlign.center,
-                        style: AppTypography.caption(context).copyWith(color: metaColor),
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(color: metaColor),
                       ),
                       const SizedBox(height: AppSpacing.space3),
                       SizedBox(
                         width: double.infinity,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: isDark ? colors.statusSuccessSurface : AppColorPrimitives.green50,
+                            color: isDark
+                                ? colors.statusSuccessSurface
+                                : AppColorPrimitives.green50,
                             borderRadius: BorderRadius.circular(AppRadius.md),
-                            border: Border.all(color: colors.statusSuccessBorder),
+                            border: Border.all(
+                              color: colors.statusSuccessBorder,
+                            ),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -227,7 +265,11 @@ class _AppointmentSlipStamp extends StatelessWidget {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.event_available_rounded, size: 16, color: colors.statusSuccessFg),
+                                Icon(
+                                  Icons.event_available_rounded,
+                                  size: 16,
+                                  color: colors.statusSuccessFg,
+                                ),
                                 const SizedBox(height: AppSpacing.space1),
                                 Text(
                                   startLabel,
@@ -235,7 +277,9 @@ class _AppointmentSlipStamp extends StatelessWidget {
                                   style: AppTypography.bodySm(context).copyWith(
                                     color: timeColor,
                                     fontWeight: FontWeight.w600,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -257,7 +301,11 @@ class _AppointmentSlipStamp extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: bodyColor, width: 3),
                 boxShadow: [
-                  BoxShadow(color: colors.statusSuccessFg.withValues(alpha: 0.35), blurRadius: 12, spreadRadius: 1),
+                  BoxShadow(
+                    color: colors.statusSuccessFg.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
                 ],
               ),
               child: const Padding(
@@ -284,7 +332,10 @@ class _AppointmentSlipStamp extends StatelessWidget {
         builder: (context, child) {
           return Transform.scale(
             scale: slipScale.value,
-            child: Opacity(opacity: slipOpacity.value.clamp(0.0, 1.0), child: child),
+            child: Opacity(
+              opacity: slipOpacity.value.clamp(0.0, 1.0),
+              child: child,
+            ),
           );
         },
         child: slip,

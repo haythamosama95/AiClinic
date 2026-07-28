@@ -9,7 +9,8 @@ extension PaymentMethodL10n on PaymentMethod {
       PaymentMethod.cash => l10n.paymentMethodCash,
       PaymentMethod.card => l10n.paymentMethodCard,
       PaymentMethod.bankTransfer => l10n.paymentMethodBankTransfer,
-      PaymentMethod.insuranceSettlement => l10n.paymentMethodInsuranceSettlement,
+      PaymentMethod.insuranceSettlement =>
+        l10n.paymentMethodInsuranceSettlement,
     };
   }
 }

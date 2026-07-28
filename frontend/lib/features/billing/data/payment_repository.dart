@@ -25,7 +25,6 @@ class PaymentRepository with AppRpcInvoker {
     required String invoiceId,
     required PaymentMethod method,
     required String amount,
-    String? reference,
     String? note,
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
@@ -35,7 +34,6 @@ class PaymentRepository with AppRpcInvoker {
       'p_invoice_id': invoiceId.trim(),
       'p_method': method.wireValue,
       'p_amount': trimmedAmount,
-      'p_reference': reference,
       'p_note': note,
     });
 

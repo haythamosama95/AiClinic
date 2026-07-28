@@ -5,6 +5,8 @@ import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 typedef PhaseBadges = Map<EncounterPhase, PhaseCompletionBadge>;
@@ -21,7 +23,7 @@ PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationStat
     EncounterPhase.subjective => _subjectiveBadge(state, visit),
     EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
     EncounterPhase.plan => _planBadge(state),
-    EncounterPhase.review || EncounterPhase.context => PhaseCompletionBadge.empty,
+    EncounterPhase.review || EncounterPhase.billing || EncounterPhase.context => PhaseCompletionBadge.empty,
   };
 }
 
@@ -92,9 +94,49 @@ class EncounterActivePhaseNotifier extends Notifier<EncounterPhase> {
   EncounterActivePhaseNotifier(this._visitId);
 
   final String _visitId;
+  var _initialPhaseResolved = false;
 
   @override
-  EncounterPhase build() => EncounterPhase.subjective;
+  EncounterPhase build() {
+    ref.listen(visitDocumentationProvider(_visitId), (previous, next) {
+      if (_initialPhaseResolved) {
+        return;
+      }
+      next.whenData((docState) {
+        _initialPhaseResolved = true;
+        if (docState.visit.status == VisitStatus.completed) {
+          setPhase(EncounterPhase.review);
+        }
+      });
+    }, fireImmediately: true);
+
+    ref.listen(visitDetailViewProvider(_visitId), (previous, next) {
+      if (_initialPhaseResolved) {
+        return;
+      }
+      next.whenData((view) {
+        _initialPhaseResolved = true;
+        if (view.visit.status == VisitStatus.completed) {
+          setPhase(EncounterPhase.review);
+        }
+      });
+    }, fireImmediately: true);
+
+    final visitAsync = ref.read(visitDetailViewProvider(_visitId));
+    final docAsync = ref.read(visitDocumentationProvider(_visitId));
+    final visitStatus = visitAsync.value?.visit.status ?? docAsync.value?.visit.status;
+
+    final initialPhase = visitStatus == VisitStatus.completed ? EncounterPhase.review : EncounterPhase.subjective;
+    if (visitStatus != null) {
+      _initialPhaseResolved = true;
+    }
+
+    if (initialPhase == EncounterPhase.review) {
+      Future.microtask(() => ref.read(visitDocumentationProvider(_visitId).notifier).prepareEncounterReview());
+    }
+
+    return initialPhase;
+  }
 
   void setPhase(EncounterPhase phase) {
     if (phase == EncounterPhase.review) {

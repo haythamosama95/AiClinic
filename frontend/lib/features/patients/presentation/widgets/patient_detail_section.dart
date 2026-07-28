@@ -21,7 +21,10 @@ enum PatientDetailSection {
 }
 
 /// Localized label for a [PatientDetailSection] tab.
-String patientDetailSectionLabel(BuildContext context, PatientDetailSection section) {
+String patientDetailSectionLabel(
+  BuildContext context,
+  PatientDetailSection section,
+) {
   final l10n = context.l10n;
   return switch (section) {
     PatientDetailSection.visits => l10n.visits,

@@ -37,6 +37,14 @@ class TableColumn<T> {
   final double? width;
 }
 
+/// Lays out a table column cell: fixed [TableColumn.width] or flex fill.
+Widget layoutAppDataTableColumn({required Widget child, double? width}) {
+  if (width != null) {
+    return SizedBox(width: width, child: child);
+  }
+  return Expanded(child: child);
+}
+
 const _selectionColumnName = '__selection__';
 const _actionsColumnName = '__actions__';
 
@@ -380,33 +388,41 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
 
     if (widget.selectable) {
       cells.add(
-        _buildAnimatedHeaderCell(
-          context: context,
-          colors: colors,
-          align: TableAlign.center,
-          child: const SizedBox.shrink(),
+        Expanded(
+          child: _buildAnimatedHeaderCell(
+            context: context,
+            colors: colors,
+            align: TableAlign.center,
+            child: const SizedBox.shrink(),
+          ),
         ),
       );
     }
 
     for (final column in widget.columns) {
       cells.add(
-        _buildAnimatedHeaderCell(
-          context: context,
-          colors: colors,
-          align: column.align,
-          child: _headerLabel(context, column, colors),
+        layoutAppDataTableColumn(
+          width: column.width,
+          child: _buildAnimatedHeaderCell(
+            context: context,
+            colors: colors,
+            align: column.align,
+            child: _headerLabel(context, column, colors),
+          ),
         ),
       );
     }
 
     if (widget.rowActions != null) {
       cells.add(
-        _buildAnimatedHeaderCell(
-          context: context,
-          colors: colors,
-          align: TableAlign.center,
-          child: Semantics(label: 'Actions', child: const SizedBox.shrink()),
+        SizedBox(
+          width: 48,
+          child: _buildAnimatedHeaderCell(
+            context: context,
+            colors: colors,
+            align: TableAlign.center,
+            child: Semantics(label: 'Actions', child: const SizedBox.shrink()),
+          ),
         ),
       );
     }
@@ -418,10 +434,7 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
       ),
       child: SizedBox(
         height: widget.rowHeight,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [for (final cell in cells) Expanded(child: cell)],
-        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells),
       ),
     );
   }
@@ -470,15 +483,20 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
                       child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 16, height: 16),
                     ),
                   ),
-                for (final _ in widget.columns)
-                  Expanded(
+                for (final column in widget.columns)
+                  layoutAppDataTableColumn(
+                    width: column.width,
                     child: Container(
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-                      child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 120, height: 16),
+                      child: AppSkeleton(
+                        variant: SkeletonVariant.rectangular,
+                        width: column.width != null ? (column.width! - AppSpacing.space3 * 2).clamp(48, 120) : 120,
+                        height: 16,
+                      ),
                     ),
                   ),
-                if (widget.rowActions != null) const Expanded(child: SizedBox.shrink()),
+                if (widget.rowActions != null) const SizedBox(width: 48),
               ],
             ),
           ),

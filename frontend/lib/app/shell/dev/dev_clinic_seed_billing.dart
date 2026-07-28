@@ -56,12 +56,11 @@ enum DevClinicBillingScenario {
 }
 
 /// A payment or refund step applied during dev billing seeding.
-typedef DevClinicPaymentSeed = ({PaymentMethod method, String amount, String? reference, String? note, bool isRefund});
+typedef DevClinicPaymentSeed = ({PaymentMethod method, String amount, String? note, bool isRefund});
 
 /// Deterministic billing scenarios for dev clinic seeding.
 abstract final class DevClinicSeedBilling {
   static const scenarios = <DevClinicBillingScenario>[
-    DevClinicBillingScenario.none,
     DevClinicBillingScenario.draftEmpty,
     DevClinicBillingScenario.draftWithItems,
     DevClinicBillingScenario.issuedUnpaid,
@@ -87,23 +86,20 @@ abstract final class DevClinicSeedBilling {
     return scenarios[seedKey % scenarios.length];
   }
 
-  static bool shouldSeedInvoice(DevClinicBillingScenario scenario) => scenario != DevClinicBillingScenario.none;
+  static bool shouldSeedInvoice(DevClinicBillingScenario scenario) => true;
 
   static bool shouldIssue(DevClinicBillingScenario scenario) {
     return switch (scenario) {
       DevClinicBillingScenario.draftEmpty ||
       DevClinicBillingScenario.draftWithItems ||
-      DevClinicBillingScenario.withServiceCatalogItem ||
-      DevClinicBillingScenario.none => false,
+      DevClinicBillingScenario.withServiceCatalogItem => false,
       _ => true,
     };
   }
 
   static bool shouldAddManualItems(DevClinicBillingScenario scenario) {
     return switch (scenario) {
-      DevClinicBillingScenario.draftEmpty ||
-      DevClinicBillingScenario.none ||
-      DevClinicBillingScenario.withServiceCatalogItem => false,
+      DevClinicBillingScenario.draftEmpty || DevClinicBillingScenario.withServiceCatalogItem => false,
       _ => true,
     };
   }
@@ -130,87 +126,42 @@ abstract final class DevClinicSeedBilling {
   static List<DevClinicPaymentSeed> paymentsFor(DevClinicBillingScenario scenario) {
     return switch (scenario) {
       DevClinicBillingScenario.partiallyPaidCard => [
-        (
-          method: PaymentMethod.card,
-          amount: '40.00',
-          reference: 'SEED-CARD-1',
-          note: 'Dev seed partial payment',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.card, amount: '40.00', note: 'Dev seed partial payment', isRefund: false),
       ],
       DevClinicBillingScenario.paidCash => [
-        (
-          method: PaymentMethod.cash,
-          amount: '125.00',
-          reference: null,
-          note: 'Dev seed full cash payment',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.cash, amount: '125.00', note: 'Dev seed full cash payment', isRefund: false),
       ],
       DevClinicBillingScenario.paidCard => [
-        (
-          method: PaymentMethod.card,
-          amount: '125.00',
-          reference: 'SEED-CARD-FULL',
-          note: 'Dev seed full card payment',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.card, amount: '125.00', note: 'Dev seed full card payment', isRefund: false),
       ],
       DevClinicBillingScenario.paidBankTransfer => [
-        (
-          method: PaymentMethod.bankTransfer,
-          amount: '125.00',
-          reference: 'SEED-BANK-1',
-          note: 'Dev seed bank transfer payment',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.bankTransfer, amount: '125.00', note: 'Dev seed bank transfer payment', isRefund: false),
       ],
       DevClinicBillingScenario.withInsuranceAndPatientPayment => [
-        (
-          method: PaymentMethod.cash,
-          amount: '30.00',
-          reference: null,
-          note: 'Dev seed patient co-pay after insurance',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.cash, amount: '30.00', note: 'Dev seed patient co-pay after insurance', isRefund: false),
       ],
       DevClinicBillingScenario.withInsuranceSettlementPartial => [
         (
           method: PaymentMethod.insuranceSettlement,
           amount: '35.00',
-          reference: 'SEED-CLM-1',
           note: 'Dev seed insurance settlement',
           isRefund: false,
         ),
       ],
       DevClinicBillingScenario.splitPaymentCashAndCard => [
-        (
-          method: PaymentMethod.card,
-          amount: '75.00',
-          reference: 'SEED-SPLIT-CARD',
-          note: 'Dev seed split payment (card portion)',
-          isRefund: false,
-        ),
-        (
-          method: PaymentMethod.cash,
-          amount: '50.00',
-          reference: null,
-          note: 'Dev seed split payment (cash portion)',
-          isRefund: false,
-        ),
+        (method: PaymentMethod.card, amount: '75.00', note: 'Dev seed split payment (card portion)', isRefund: false),
+        (method: PaymentMethod.cash, amount: '50.00', note: 'Dev seed split payment (cash portion)', isRefund: false),
       ],
       DevClinicBillingScenario.paidWithPartialRefund => [
         (
           method: PaymentMethod.cash,
           amount: '125.00',
-          reference: null,
           note: 'Dev seed full payment before partial refund',
           isRefund: false,
         ),
         (
           method: PaymentMethod.cash,
           amount: '50.00',
-          reference: null,
           note: 'Dev seed partial refund after over-collection',
           isRefund: true,
         ),
@@ -219,14 +170,12 @@ abstract final class DevClinicSeedBilling {
         (
           method: PaymentMethod.card,
           amount: '125.00',
-          reference: 'SEED-REFUND-FULL',
           note: 'Dev seed full payment before full refund',
           isRefund: false,
         ),
         (
           method: PaymentMethod.card,
           amount: '125.00',
-          reference: null,
           note: 'Dev seed full refund restoring unpaid balance',
           isRefund: true,
         ),

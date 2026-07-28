@@ -60,7 +60,10 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
       AppointmentCalendarMode.doctors => true,
       _ => false,
     };
-    final title = AppointmentCalendarDisplay.headerTitle(state.mode, state.focusDate);
+    final title = AppointmentCalendarDisplay.headerTitle(
+      state.mode,
+      state.focusDate,
+    );
 
     return AppToolbar(
       start: Row(
@@ -86,10 +89,19 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
                     currentDate: state.focusDate,
                     onDateSelected: controller.setFocusDate,
                     triggerBuilder: (context, isOpen, onToggle) {
-                      return AppCalendarDateJumpTitleTrigger(title: title, isOpen: isOpen, onToggle: onToggle);
+                      return AppCalendarDateJumpTitleTrigger(
+                        title: title,
+                        isOpen: isOpen,
+                        onToggle: onToggle,
+                      );
                     },
                   )
-                : Text(title, style: AppTypography.bodyStrong(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+                : Text(
+                    title,
+                    style: AppTypography.bodyStrong(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
           ),
         ],
       ),
@@ -100,7 +112,9 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
         children: [
           if (onToggleFullscreen != null)
             AppIconButton(
-              icon: Icon(isFullscreen ? Icons.close_fullscreen : Icons.open_in_full),
+              icon: Icon(
+                isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
+              ),
               label: isFullscreen ? 'Exit fullscreen' : 'Expand calendar',
               onPressed: onToggleFullscreen,
             ),
@@ -128,7 +142,9 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
             size: AppSegmentedControlSize.sm,
             value: state.mode.name,
             onChanged: (value) {
-              final mode = AppointmentCalendarMode.values.where((entry) => entry.name == value).firstOrNull;
+              final mode = AppointmentCalendarMode.values
+                  .where((entry) => entry.name == value)
+                  .firstOrNull;
               if (mode != null) {
                 controller.setMode(mode);
               }
@@ -137,7 +153,10 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
               for (final mode in _modes)
                 SegmentedOption(
                   value: mode.name,
-                  label: Text(_viewLabel(mode), style: AppTypography.caption(context)),
+                  label: Text(
+                    _viewLabel(mode),
+                    style: AppTypography.caption(context),
+                  ),
                 ),
             ],
           ),

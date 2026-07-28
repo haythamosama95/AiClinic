@@ -10,10 +10,12 @@ class AppointmentCalendarTimeIntervalButton extends ConsumerStatefulWidget {
   const AppointmentCalendarTimeIntervalButton({super.key});
 
   @override
-  ConsumerState<AppointmentCalendarTimeIntervalButton> createState() => _AppointmentCalendarTimeIntervalButtonState();
+  ConsumerState<AppointmentCalendarTimeIntervalButton> createState() =>
+      _AppointmentCalendarTimeIntervalButtonState();
 }
 
-class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<AppointmentCalendarTimeIntervalButton> {
+class _AppointmentCalendarTimeIntervalButtonState
+    extends ConsumerState<AppointmentCalendarTimeIntervalButton> {
   var _open = false;
 
   @override
@@ -39,7 +41,11 @@ class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<Appointm
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.schedule_outlined, size: 16, color: colors.iconDefault),
+              Icon(
+                Icons.schedule_outlined,
+                size: 16,
+                color: colors.iconDefault,
+              ),
               const SizedBox(width: AppSpacing.space1),
               Text(_intervalLabel(selectedMinutes)),
             ],
@@ -59,9 +65,13 @@ class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<Appointm
                 AppSpacing.space2,
                 AppSpacing.space2,
               ),
-              child: Text('Time interval', style: AppTypography.bodyStrong(context)),
+              child: Text(
+                'Time interval',
+                style: AppTypography.bodyStrong(context),
+              ),
             ),
-            for (final minutes in AppointmentCalendarDisplay.supportedTimeIntervalMinutes)
+            for (final minutes
+                in AppointmentCalendarDisplay.supportedTimeIntervalMinutes)
               _IntervalOption(
                 minutes: minutes,
                 selected: minutes == selectedMinutes,
@@ -72,10 +82,14 @@ class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<Appointm
               ),
             const SizedBox(height: AppSpacing.space1),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.space2,
+              ),
               child: Text(
                 'Controls the grid spacing for day, week, and doctor views.',
-                style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(color: colors.textTertiary),
               ),
             ),
           ],
@@ -88,7 +102,11 @@ class _AppointmentCalendarTimeIntervalButtonState extends ConsumerState<Appointm
 }
 
 class _IntervalOption extends StatelessWidget {
-  const _IntervalOption({required this.minutes, required this.selected, required this.onSelected});
+  const _IntervalOption({
+    required this.minutes,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final int minutes;
   final bool selected;
@@ -105,11 +123,20 @@ class _IntervalOption extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: onSelected,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space2),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.space2,
+            vertical: AppSpacing.space2,
+          ),
           child: Row(
             children: [
-              Expanded(child: Text(_label(minutes), style: AppTypography.bodySm(context))),
-              if (selected) Icon(Icons.check, size: 16, color: colors.actionPrimary),
+              Expanded(
+                child: Text(
+                  _label(minutes),
+                  style: AppTypography.bodySm(context),
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check, size: 16, color: colors.actionPrimary),
             ],
           ),
         ),

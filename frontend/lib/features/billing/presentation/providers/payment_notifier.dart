@@ -15,10 +15,9 @@ class PaymentNotifier {
     required String invoiceId,
     required PaymentMethod method,
     required String amount,
-    String? reference,
     String? note,
   }) {
-    return _repo.recordPayment(invoiceId: invoiceId, method: method, amount: amount, reference: reference, note: note);
+    return _repo.recordPayment(invoiceId: invoiceId, method: method, amount: amount, note: note);
   }
 
   Future<String> recordRefund({

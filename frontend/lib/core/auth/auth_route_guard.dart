@@ -157,6 +157,9 @@ abstract final class AuthRouteGuard {
     if (location.startsWith('${AppRoutes.billingInvoices}/')) {
       return true;
     }
+    if (location.startsWith('${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/')) {
+      return true;
+    }
     return false;
   }
 
@@ -251,11 +254,13 @@ abstract final class AuthRouteGuard {
     }
 
     final allowed = switch (location) {
-      AppRoutes.billing => canAccessInvoiceList(auth) || canAccessBillingSettings(auth),
       AppRoutes.billingInvoices => canAccessInvoiceList(auth),
       AppRoutes.billingInsuranceProviders => canAccessInsuranceProviders(auth),
       AppRoutes.settingsBilling => canAccessBillingSettings(auth),
       _ when location.startsWith('${AppRoutes.billingInvoices}/') => canAccessInvoiceDetail(auth),
+      _ when location.startsWith('${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/') => PermissionService(
+        auth.context,
+      ).canCreateInvoices(),
       _ => false,
     };
 

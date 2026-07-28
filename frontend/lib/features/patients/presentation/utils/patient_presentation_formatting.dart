@@ -23,12 +23,17 @@ abstract final class PatientPresentationFormatting {
     }
     final now = clock.now();
     final today = DateTime(now.year, now.month, now.day);
-    final birthDate = DateTime(dateOfBirth.year, dateOfBirth.month, dateOfBirth.day);
+    final birthDate = DateTime(
+      dateOfBirth.year,
+      dateOfBirth.month,
+      dateOfBirth.day,
+    );
     if (birthDate.isAfter(today)) {
       return null;
     }
     var years = today.year - birthDate.year;
-    if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
+    if (today.month < birthDate.month ||
+        (today.month == birthDate.month && today.day < birthDate.day)) {
       years--;
     }
     return years;
@@ -61,7 +66,8 @@ abstract final class PatientPresentationFormatting {
     return '$formatted ($age yrs)';
   }
 
-  static String orDash(String? value) => value == null || value.trim().isEmpty ? '—' : value;
+  static String orDash(String? value) =>
+      value == null || value.trim().isEmpty ? '—' : value;
 
   /// Human-readable file size (web `formatFileSize` port).
   static String formatFileSize(int bytes) {

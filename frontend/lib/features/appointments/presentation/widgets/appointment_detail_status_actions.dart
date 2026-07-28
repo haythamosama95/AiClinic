@@ -36,24 +36,33 @@ class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
 
   @override
-  ConsumerState<AppointmentDetailStatusActions> createState() => _AppointmentDetailStatusActionsState();
+  ConsumerState<AppointmentDetailStatusActions> createState() =>
+      _AppointmentDetailStatusActionsState();
 }
 
-class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDetailStatusActions> {
+class _AppointmentDetailStatusActionsState
+    extends ConsumerState<AppointmentDetailStatusActions> {
   String? _busyActionKey;
 
   AppointmentDetail get detail => widget.detail;
 
   bool get _isBusy => _busyActionKey != null;
 
-  String get _organizationTimezone =>
-      effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+  String get _organizationTimezone => effectiveOrganizationTimezone(
+    ref.read(authSessionProvider).context?.organizationTimezone,
+  );
 
   AppointmentListItem get _listItem => detail.toListItem();
 
-  bool get _canAdvance => ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessAppointmentBooking));
+  bool get _canAdvance => ref.watch(
+    authSessionProvider.select(AuthRouteGuard.canAccessAppointmentBooking),
+  );
 
-  bool get _canCancel => ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessAppointmentCancelActions));
+  bool get _canCancel => ref.watch(
+    authSessionProvider.select(
+      AuthRouteGuard.canAccessAppointmentCancelActions,
+    ),
+  );
 
   AppointmentStatus? get _forwardTarget => forwardStatusTargetFor(
     _listItem,
@@ -157,7 +166,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     return _busyBlockedReason(actionKey) ?? businessReason;
   }
 
-  Future<void> _runAction(String actionKey, Future<void> Function() action) async {
+  Future<void> _runAction(
+    String actionKey,
+    Future<void> Function() action,
+  ) async {
     if (_isBusy) {
       return;
     }
@@ -222,7 +234,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           }
 
           final assignedDoctorId = workingDetail.doctorId?.trim();
-          if (assignedDoctorId == null || assignedDoctorId.isEmpty || assignedDoctorId != selectedDoctorId) {
+          if (assignedDoctorId == null ||
+              assignedDoctorId.isEmpty ||
+              assignedDoctorId != selectedDoctorId) {
             await ref
                 .read(appointmentRepositoryProvider)
                 .updateAppointment(
@@ -237,7 +251,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
         await ref
             .read(appointmentRepositoryProvider)
-            .updateAppointmentStatus(appointmentId: workingDetail.id, newStatus: target);
+            .updateAppointmentStatus(
+              appointmentId: workingDetail.id,
+              newStatus: target,
+            );
 
         if (!mounted) {
           return;
@@ -246,20 +263,28 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         appToast(
           context,
           AppToastInput(
-            message: '${workingDetail.patientName} is now ${target.label.toLowerCase()}.',
+            message:
+                '${workingDetail.patientName} is now ${target.label.toLowerCase()}.',
             variant: AppToastVariant.success,
           ),
         );
       } on RpcFailure catch (error) {
         if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: appointmentMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
       } catch (_) {
         if (mounted) {
           appToast(
             context,
             const AppToastInput(
-              message: 'Could not update the appointment status. Please try again.',
+              message:
+                  'Could not update the appointment status. Please try again.',
               variant: AppToastVariant.danger,
             ),
           );
@@ -281,7 +306,8 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     final confirmed = await AppDialog.show<bool>(
       context,
       title: 'Revert to ${target.label.toLowerCase()}?',
-      description: 'This will undo the last status change for ${detail.patientName}.',
+      description:
+          'This will undo the last status change for ${detail.patientName}.',
       size: AppDialogSize.sm,
       child: Builder(
         builder: (dialogContext) => Row(
@@ -311,7 +337,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       try {
         await ref
             .read(appointmentRepositoryProvider)
-            .updateAppointmentStatus(appointmentId: detail.id, newStatus: target);
+            .updateAppointmentStatus(
+              appointmentId: detail.id,
+              newStatus: target,
+            );
 
         if (!mounted) {
           return;
@@ -320,20 +349,28 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         appToast(
           context,
           AppToastInput(
-            message: '${detail.patientName} is back to ${target.label.toLowerCase()}.',
+            message:
+                '${detail.patientName} is back to ${target.label.toLowerCase()}.',
             variant: AppToastVariant.success,
           ),
         );
       } on RpcFailure catch (error) {
         if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: appointmentMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
       } catch (_) {
         if (mounted) {
           appToast(
             context,
             const AppToastInput(
-              message: 'Could not revert the appointment status. Please try again.',
+              message:
+                  'Could not revert the appointment status. Please try again.',
               variant: AppToastVariant.danger,
             ),
           );
@@ -347,14 +384,19 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
 
-    final reason = await AppointmentCancelDialog.show(context, appointment: _listItem);
+    final reason = await AppointmentCancelDialog.show(
+      context,
+      appointment: _listItem,
+    );
     if (!mounted || reason == null) {
       return;
     }
 
     await _runAction('cancel', () async {
       try {
-        await ref.read(appointmentRepositoryProvider).cancelAppointment(appointmentId: detail.id, reason: reason);
+        await ref
+            .read(appointmentRepositoryProvider)
+            .cancelAppointment(appointmentId: detail.id, reason: reason);
         if (!mounted) {
           return;
         }
@@ -368,7 +410,13 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         );
       } on RpcFailure catch (error) {
         if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: appointmentMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
       } catch (_) {
         if (mounted) {
@@ -392,7 +440,8 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     final confirmed = await AppDialog.show<bool>(
       context,
       title: 'Mark as no-show?',
-      description: 'Record that ${detail.patientName} did not arrive for this visit.',
+      description:
+          'Record that ${detail.patientName} did not arrive for this visit.',
       size: AppDialogSize.sm,
       child: Builder(
         builder: (dialogContext) => Row(
@@ -420,25 +469,37 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
     await _runAction('no_show', () async {
       try {
-        await ref.read(appointmentRepositoryProvider).markAppointmentNoShow(appointmentId: detail.id);
+        await ref
+            .read(appointmentRepositoryProvider)
+            .markAppointmentNoShow(appointmentId: detail.id);
         if (!mounted) {
           return;
         }
         widget.onChanged();
         appToast(
           context,
-          AppToastInput(message: '${detail.patientName} was marked as a no-show.', variant: AppToastVariant.success),
+          AppToastInput(
+            message: '${detail.patientName} was marked as a no-show.',
+            variant: AppToastVariant.success,
+          ),
         );
       } on RpcFailure catch (error) {
         if (mounted) {
-          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: appointmentMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
       } catch (_) {
         if (mounted) {
           appToast(
             context,
             const AppToastInput(
-              message: 'Could not mark the appointment as a no-show. Please try again.',
+              message:
+                  'Could not mark the appointment as a no-show. Please try again.',
               variant: AppToastVariant.danger,
             ),
           );
@@ -450,7 +511,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final currentStatusColor = AppointmentCalendarDisplay.statusColor(detail.status, brightness);
+    final currentStatusColor = AppointmentCalendarDisplay.statusColor(
+      detail.status,
+      brightness,
+    );
 
     final specs = <_StatusActionSpec>[
       if (_revertTarget != null)
@@ -462,7 +526,13 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           isLoading: _busyActionKey == 'revert',
           onPressed: _handleRevertStatus,
           backgroundGradient: LinearGradient(
-            colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_revertTarget!, brightness)],
+            colors: [
+              currentStatusColor,
+              AppointmentCalendarDisplay.statusColor(
+                _revertTarget!,
+                brightness,
+              ),
+            ],
           ),
         ),
       _StatusActionSpec(
@@ -475,7 +545,13 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         backgroundGradient: _forwardTarget == null
             ? null
             : LinearGradient(
-                colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_forwardTarget!, brightness)],
+                colors: [
+                  currentStatusColor,
+                  AppointmentCalendarDisplay.statusColor(
+                    _forwardTarget!,
+                    brightness,
+                  ),
+                ],
               ),
       ),
       _StatusActionSpec(
@@ -483,7 +559,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         icon: Icons.person_off_outlined,
         label: 'Mark no-show',
         variant: AppButtonVariant.danger,
-        disabledReason: _disabledReasonFor('no_show', _markNoShowDisabledReason()),
+        disabledReason: _disabledReasonFor(
+          'no_show',
+          _markNoShowDisabledReason(),
+        ),
         isLoading: _busyActionKey == 'no_show',
         onPressed: _handleMarkNoShow,
       ),
@@ -557,7 +636,10 @@ class _StatusActionButton extends StatelessWidget {
   void _handleTap(BuildContext context) {
     final reason = spec.disabledReason;
     if (reason != null) {
-      appToast(context, AppToastInput(message: reason, variant: AppToastVariant.info));
+      appToast(
+        context,
+        AppToastInput(message: reason, variant: AppToastVariant.info),
+      );
       return;
     }
     spec.onPressed();
@@ -579,12 +661,18 @@ class _StatusActionButton extends StatelessWidget {
       child: Text(spec.label),
     );
 
-    final wrapped = expand ? SizedBox(width: double.infinity, child: button) : button;
+    final wrapped = expand
+        ? SizedBox(width: double.infinity, child: button)
+        : button;
 
     if (isInteractive) {
       return wrapped;
     }
 
-    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => _handleTap(context), child: wrapped);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _handleTap(context),
+      child: wrapped,
+    );
   }
 }

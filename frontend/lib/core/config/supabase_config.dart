@@ -111,6 +111,19 @@ class SupabaseBootstrap {
     return _pendingInitialization ??= _initialize(config);
   }
 
+  /// Initializes the real Supabase SDK for live integration/boundary harnesses.
+  ///
+  /// Unlike [ensureInitialized], this never uses the unit-test stub because harness
+  /// code must call [Supabase.instance] after sign-in probes.
+  static Future<void> ensureLiveInitialized(SupabaseConfig config) {
+    if (_initialized && !_testReady) {
+      return Future<void>.value();
+    }
+
+    debugResetForTests();
+    return _pendingInitialization ??= _initialize(config);
+  }
+
   static Future<void> _initialize(SupabaseConfig config) async {
     try {
       await Supabase.initialize(

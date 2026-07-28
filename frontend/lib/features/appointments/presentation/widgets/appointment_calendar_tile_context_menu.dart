@@ -41,7 +41,10 @@ bool _canEditAppointment(AppointmentListItem item) {
   return !item.status.isTerminal;
 }
 
-String? _editDisabledReason({required bool canEdit, required AppointmentListItem item}) {
+String? _editDisabledReason({
+  required bool canEdit,
+  required AppointmentListItem item,
+}) {
   if (!canEdit) {
     return 'You do not have permission to edit appointments.';
   }
@@ -51,7 +54,10 @@ String? _editDisabledReason({required bool canEdit, required AppointmentListItem
   return null;
 }
 
-String? _cancelDisabledReason({required bool canCancel, required AppointmentListItem item}) {
+String? _cancelDisabledReason({
+  required bool canCancel,
+  required AppointmentListItem item,
+}) {
   if (!canCancel) {
     return 'You do not have permission to cancel appointments.';
   }

@@ -9,6 +9,7 @@ abstract final class PermissionKeys {
   static const patientsCreate = 'patients.create';
   static const patientsEdit = 'patients.edit';
   static const patientsDelete = 'patients.delete';
+  static const patientsReassignMrn = 'patients.reassign_mrn';
   static const appointmentsCreate = 'appointments.create';
   static const appointmentsCancel = 'appointments.cancel';
   static const appointmentsRead = 'appointments.read';

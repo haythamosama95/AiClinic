@@ -14,10 +14,14 @@ abstract final class AppointmentStatusTimeline {
   ];
 
   static bool isTerminalNegative(AppointmentStatus status) {
-    return status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow;
+    return status == AppointmentStatus.cancelled ||
+        status == AppointmentStatus.noShow;
   }
 
-  static AppointmentTimelineStepState stepState({required AppointmentStatus current, required AppointmentStatus step}) {
+  static AppointmentTimelineStepState stepState({
+    required AppointmentStatus current,
+    required AppointmentStatus step,
+  }) {
     if (isTerminalNegative(current)) {
       return AppointmentTimelineStepState.skipped;
     }
@@ -38,14 +42,22 @@ abstract final class AppointmentStatusTimeline {
 
   static String stepDescription(AppointmentStatus status) {
     return switch (status) {
-      AppointmentStatus.scheduled => 'The appointment is booked and waiting for staff or patient confirmation.',
-      AppointmentStatus.confirmed => 'Attendance is confirmed — the patient is expected at the scheduled time.',
-      AppointmentStatus.checkedIn => 'The patient has arrived and been registered at the front desk.',
-      AppointmentStatus.inProgress => 'The doctor is actively seeing the patient during this visit.',
-      AppointmentStatus.completed => 'The visit has finished and the appointment is fully closed.',
-      AppointmentStatus.cancelled => 'The appointment was cancelled and will not take place.',
-      AppointmentStatus.noShow => 'The patient did not arrive for the scheduled appointment.',
-      AppointmentStatus.unknown => 'The current status could not be determined.',
+      AppointmentStatus.scheduled =>
+        'The appointment is booked and waiting for staff or patient confirmation.',
+      AppointmentStatus.confirmed =>
+        'Attendance is confirmed — the patient is expected at the scheduled time.',
+      AppointmentStatus.checkedIn =>
+        'The patient has arrived and been registered at the front desk.',
+      AppointmentStatus.inProgress =>
+        'The doctor is actively seeing the patient during this visit.',
+      AppointmentStatus.completed =>
+        'The visit has finished and the appointment is fully closed.',
+      AppointmentStatus.cancelled =>
+        'The appointment was cancelled and will not take place.',
+      AppointmentStatus.noShow =>
+        'The patient did not arrive for the scheduled appointment.',
+      AppointmentStatus.unknown =>
+        'The current status could not be determined.',
     };
   }
 }

@@ -11,7 +11,11 @@ import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dar
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 
 /// Applied branch, doctor, and status filters for the appointment calendar.
-typedef AppointmentCalendarFilters = ({String? branchId, String? doctorId, Set<AppointmentStatus> statuses});
+typedef AppointmentCalendarFilters = ({
+  String? branchId,
+  String? doctorId,
+  Set<AppointmentStatus> statuses,
+});
 
 /// Filter popover for the appointment calendar toolbar.
 class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
@@ -39,10 +43,12 @@ class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
   final VoidCallback onClearFilters;
 
   @override
-  ConsumerState<AppointmentCalendarFilterButton> createState() => _AppointmentCalendarFilterButtonState();
+  ConsumerState<AppointmentCalendarFilterButton> createState() =>
+      _AppointmentCalendarFilterButtonState();
 }
 
-class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCalendarFilterButton> {
+class _AppointmentCalendarFilterButtonState
+    extends ConsumerState<AppointmentCalendarFilterButton> {
   var _open = false;
 
   int get _activeFilterCount {
@@ -72,14 +78,18 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
       triggerBuilder: (context, isOpen, onToggle) {
         return Semantics(
           button: true,
-          label: activeCount > 0 ? 'Schedule filters, $activeCount active' : 'Schedule filters',
+          label: activeCount > 0
+              ? 'Schedule filters, $activeCount active'
+              : 'Schedule filters',
           child: AppIconButton(
             icon: Stack(
               clipBehavior: Clip.none,
               children: [
                 Icon(
                   Icons.filter_list_outlined,
-                  color: widget.hasActiveFilters ? colors.actionPrimary : colors.iconDefault,
+                  color: widget.hasActiveFilters
+                      ? colors.actionPrimary
+                      : colors.iconDefault,
                 ),
                 if (activeCount > 0)
                   Positioned(
@@ -89,7 +99,10 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
                       decoration: BoxDecoration(
                         color: colors.actionPrimary,
                         borderRadius: BorderRadius.circular(AppRadius.full),
-                        border: Border.all(color: colors.surfaceRaised, width: 1.5),
+                        border: Border.all(
+                          color: colors.surfaceRaised,
+                          width: 1.5,
+                        ),
                       ),
                       child: SizedBox(
                         width: 16,
@@ -112,7 +125,9 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
             ),
             label: activeCount > 0 ? 'Filters active' : 'Schedule filters',
             tooltip: activeCount > 0 ? 'Filters active' : 'Schedule filters',
-            variant: widget.hasActiveFilters || isOpen ? AppIconButtonVariant.secondary : AppIconButtonVariant.ghost,
+            variant: widget.hasActiveFilters || isOpen
+                ? AppIconButtonVariant.secondary
+                : AppIconButtonVariant.ghost,
             onPressed: onToggle,
           ),
         );
@@ -159,10 +174,12 @@ class _AppointmentCalendarFilterPanel extends StatefulWidget {
   final VoidCallback onClearFilters;
 
   @override
-  State<_AppointmentCalendarFilterPanel> createState() => _AppointmentCalendarFilterPanelState();
+  State<_AppointmentCalendarFilterPanel> createState() =>
+      _AppointmentCalendarFilterPanelState();
 }
 
-class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFilterPanel> {
+class _AppointmentCalendarFilterPanelState
+    extends State<_AppointmentCalendarFilterPanel> {
   late String? _draftBranchId;
   late String? _draftDoctorId;
   late Set<AppointmentStatus> _draftStatuses;
@@ -202,20 +219,28 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
 
   void _toggleStatus(AppointmentStatus status) {
     setState(() {
-      _draftStatuses = AppointmentCalendarDisplay.toggleStatusChip(status, _draftStatuses);
+      _draftStatuses = AppointmentCalendarDisplay.toggleStatusChip(
+        status,
+        _draftStatuses,
+      );
     });
   }
 
-  bool _isDefaultStatusFilter() => AppointmentCalendarDisplay.isDefaultStatusFilter(_draftStatuses);
+  bool _isDefaultStatusFilter() =>
+      AppointmentCalendarDisplay.isDefaultStatusFilter(_draftStatuses);
 
   String _statusSummary() {
     if (_isDefaultStatusFilter()) {
       return 'Hiding cancelled and no-show';
     }
 
-    final hiddenShown = _draftStatuses.where(AppointmentCalendarDisplay.isHiddenOnCalendar).toSet();
+    final hiddenShown = _draftStatuses
+        .where(AppointmentCalendarDisplay.isHiddenOnCalendar)
+        .toSet();
     final workflowFiltered = _draftStatuses
-        .where((status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status))
+        .where(
+          (status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status),
+        )
         .toSet();
 
     final parts = <String>[];
@@ -241,9 +266,13 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
       return 'Cancelled and no-show stay off the calendar unless you include them below.';
     }
 
-    final hiddenShown = _draftStatuses.where(AppointmentCalendarDisplay.isHiddenOnCalendar).toSet();
+    final hiddenShown = _draftStatuses
+        .where(AppointmentCalendarDisplay.isHiddenOnCalendar)
+        .toSet();
     final workflowFiltered = _draftStatuses
-        .where((status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status))
+        .where(
+          (status) => !AppointmentCalendarDisplay.isHiddenOnCalendar(status),
+        )
         .toSet();
 
     if (workflowFiltered.isNotEmpty) {
@@ -259,17 +288,28 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
     if (_draftBranchId == null || _draftBranchId!.isEmpty) {
       return 'No branch';
     }
-    return branches.where((branch) => branch.id == _draftBranchId).firstOrNull?.name ?? 'Selected branch';
+    return branches
+            .where((branch) => branch.id == _draftBranchId)
+            .firstOrNull
+            ?.name ??
+        'Selected branch';
   }
 
   String _doctorLabel(List<StaffListItem> doctors) {
     if (_draftDoctorId == null || _draftDoctorId!.isEmpty) {
       return 'All doctors';
     }
-    return doctors.where((doctor) => doctor.id == _draftDoctorId).firstOrNull?.fullName ?? 'Selected doctor';
+    return doctors
+            .where((doctor) => doctor.id == _draftDoctorId)
+            .firstOrNull
+            ?.fullName ??
+        'Selected doctor';
   }
 
-  String _buildPreviewSummary({required List<BranchListItem> branches, required List<StaffListItem> doctors}) {
+  String _buildPreviewSummary({
+    required List<BranchListItem> branches,
+    required List<StaffListItem> doctors,
+  }) {
     final parts = <String>[_branchLabel(branches)];
     if (widget.showDoctorFilter) {
       parts.add(_doctorLabel(doctors));
@@ -282,8 +322,10 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final brightness = Theme.of(context).brightness;
-    final branches = widget.branchesAsync.asData?.value ?? const <BranchListItem>[];
-    final doctors = widget.doctorsAsync.asData?.value ?? const <StaffListItem>[];
+    final branches =
+        widget.branchesAsync.asData?.value ?? const <BranchListItem>[];
+    final doctors =
+        widget.doctorsAsync.asData?.value ?? const <StaffListItem>[];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -305,10 +347,15 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                 label: 'Location',
                 child: widget.branchesAsync.when(
                   data: (items) => AppSelect(
-                    options: [for (final branch in items) AppSelectOption(value: branch.id, label: branch.name)],
+                    options: [
+                      for (final branch in items)
+                        AppSelectOption(value: branch.id, label: branch.name),
+                    ],
                     value: _draftBranchId ?? '',
                     disabled: items.isEmpty,
-                    placeholder: items.isEmpty ? 'No branches' : 'Select branch',
+                    placeholder: items.isEmpty
+                        ? 'No branches'
+                        : 'Select branch',
                     onChanged: items.isEmpty
                         ? null
                         : (branchId) => setState(() {
@@ -316,15 +363,24 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                             if (_draftDoctorId != null &&
                                 _draftDoctorId!.isNotEmpty &&
                                 items.any((branch) => branch.id == branchId)) {
-                              final doctor = doctors.where((entry) => entry.id == _draftDoctorId).firstOrNull;
-                              if (doctor != null && branchId.isNotEmpty && !doctor.isAssignedToBranch(branchId)) {
+                              final doctor = doctors
+                                  .where((entry) => entry.id == _draftDoctorId)
+                                  .firstOrNull;
+                              if (doctor != null &&
+                                  branchId.isNotEmpty &&
+                                  !doctor.isAssignedToBranch(branchId)) {
                                 _draftDoctorId = null;
                               }
                             }
                           }),
                   ),
-                  loading: () => const _FilterPanelPlaceholder(message: 'Loading branches…'),
-                  error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load branches.', error: true),
+                  loading: () => const _FilterPanelPlaceholder(
+                    message: 'Loading branches…',
+                  ),
+                  error: (_, _) => const _FilterPanelPlaceholder(
+                    message: 'Could not load branches.',
+                    error: true,
+                  ),
                 ),
               ),
               if (widget.showDoctorFilter) ...[
@@ -342,11 +398,20 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                         ),
                         value: _draftDoctorId ?? '',
                         placeholder: 'All doctors',
-                        onChanged: (doctorId) => setState(() => _draftDoctorId = doctorId.isEmpty ? null : doctorId),
+                        onChanged: (doctorId) => setState(
+                          () => _draftDoctorId = doctorId.isEmpty
+                              ? null
+                              : doctorId,
+                        ),
                       );
                     },
-                    loading: () => const _FilterPanelPlaceholder(message: 'Loading doctors…'),
-                    error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load doctors.', error: true),
+                    loading: () => const _FilterPanelPlaceholder(
+                      message: 'Loading doctors…',
+                    ),
+                    error: (_, _) => const _FilterPanelPlaceholder(
+                      message: 'Could not load doctors.',
+                      error: true,
+                    ),
                   ),
                 ),
               ],
@@ -360,10 +425,15 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                       spacing: AppSpacing.space2,
                       runSpacing: AppSpacing.space2,
                       children: [
-                        for (final status in AppointmentCalendarDisplay.calendarStatusLegend)
+                        for (final status
+                            in AppointmentCalendarDisplay.calendarStatusLegend)
                           _StatusFilterChip(
                             status: status,
-                            selected: AppointmentCalendarDisplay.isStatusChipSelected(status, _draftStatuses),
+                            selected:
+                                AppointmentCalendarDisplay.isStatusChipSelected(
+                                  status,
+                                  _draftStatuses,
+                                ),
                             onToggle: () => _toggleStatus(status),
                           ),
                       ],
@@ -371,7 +441,9 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                     const SizedBox(height: AppSpacing.space2),
                     Text(
                       _statusHelperText(),
-                      style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+                      style: AppTypography.caption(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
                     ),
                   ],
                 ),
@@ -382,7 +454,9 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
         DecoratedBox(
           decoration: BoxDecoration(
             border: Border(top: BorderSide(color: colors.borderSubtle)),
-            color: colors.surfaceSunken.withValues(alpha: brightness == Brightness.dark ? 0.45 : 0.55),
+            color: colors.surfaceSunken.withValues(
+              alpha: brightness == Brightness.dark ? 0.45 : 0.55,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.space4),
@@ -391,7 +465,9 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
               children: [
                 Text(
                   _buildPreviewSummary(branches: branches, doctors: doctors),
-                  style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -443,12 +519,20 @@ class _FilterPanelHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [colors.actionPrimary.withValues(alpha: 0.1), colors.surfaceRaised],
+          colors: [
+            colors.actionPrimary.withValues(alpha: 0.1),
+            colors.surfaceRaised,
+          ],
         ),
         border: Border(bottom: BorderSide(color: colors.borderSubtle)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.space4, AppSpacing.space3, AppSpacing.space4, AppSpacing.space3),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.space4,
+          AppSpacing.space3,
+          AppSpacing.space4,
+          AppSpacing.space3,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -456,9 +540,17 @@ class _FilterPanelHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Schedule filters', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                  Text(
+                    'Schedule filters',
+                    style: AppTypography.overline(
+                      context,
+                    ).copyWith(color: colors.textTertiary),
+                  ),
                   const SizedBox(height: AppSpacing.space1),
-                  Text('Narrow the schedule', style: AppTypography.bodyStrong(context)),
+                  Text(
+                    'Narrow the schedule',
+                    style: AppTypography.bodyStrong(context),
+                  ),
                 ],
               ),
             ),
@@ -489,7 +581,12 @@ class _FilterScopeSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(label, style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+        Text(
+          label,
+          style: AppTypography.overline(
+            context,
+          ).copyWith(color: colors.textTertiary),
+        ),
         const SizedBox(height: AppSpacing.space2),
         child,
       ],
@@ -498,7 +595,11 @@ class _FilterScopeSection extends StatelessWidget {
 }
 
 class _StatusFilterChip extends StatefulWidget {
-  const _StatusFilterChip({required this.status, required this.selected, required this.onToggle});
+  const _StatusFilterChip({
+    required this.status,
+    required this.selected,
+    required this.onToggle,
+  });
 
   final AppointmentStatus status;
   final bool selected;
@@ -515,9 +616,15 @@ class _StatusFilterChipState extends State<_StatusFilterChip> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final brightness = Theme.of(context).brightness;
-    final style = AppointmentCalendarDisplay.statusStyle(widget.status, brightness);
+    final style = AppointmentCalendarDisplay.statusStyle(
+      widget.status,
+      brightness,
+    );
     final background = widget.selected
-        ? Color.alphaBlend(style.gradientStart.withValues(alpha: 0.55), colors.surfaceDefault)
+        ? Color.alphaBlend(
+            style.gradientStart.withValues(alpha: 0.55),
+            colors.surfaceDefault,
+          )
         : (_hovered ? colors.surfaceHover : colors.surfaceDefault);
 
     return Semantics(
@@ -543,17 +650,26 @@ class _StatusFilterChipState extends State<_StatusFilterChip> {
               borderRadius: BorderRadius.circular(AppRadius.md),
               onTap: widget.onToggle,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space1),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.space2,
+                  vertical: AppSpacing.space1,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       width: 12,
                       height: 12,
-                      decoration: AppointmentCalendarStatusSwatch.decoration(style, radius: AppRadius.sm),
+                      decoration: AppointmentCalendarStatusSwatch.decoration(
+                        style,
+                        radius: AppRadius.sm,
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.space1),
-                    Text(widget.status.label, style: AppTypography.bodySm(context)),
+                    Text(
+                      widget.status.label,
+                      style: AppTypography.bodySm(context),
+                    ),
                     if (widget.selected) ...[
                       const SizedBox(width: AppSpacing.space1),
                       Icon(Icons.check, size: 14, color: style.accent),
@@ -580,15 +696,32 @@ class _FilterPanelPlaceholder extends StatelessWidget {
     final colors = context.appColors;
 
     if (error) {
-      return Text(message, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg));
+      return Text(
+        message,
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.statusDangerFg),
+      );
     }
 
     return Row(
       children: [
-        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: colors.actionPrimary)),
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colors.actionPrimary,
+          ),
+        ),
         const SizedBox(width: AppSpacing.space2),
         Expanded(
-          child: Text(message, style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary)),
+          child: Text(
+            message,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
+          ),
         ),
       ],
     );

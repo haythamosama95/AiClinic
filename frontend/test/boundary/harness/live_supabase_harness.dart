@@ -55,7 +55,7 @@ class LiveSupabaseHarness {
 
     await SqlFixtureHelper().ensureLocalDevelopmentEnvironment();
 
-    await SupabaseBootstrap.ensureInitialized(config);
+    await SupabaseBootstrap.ensureLiveInitialized(config);
     _config = config;
     _available = true;
     await _assertStaffClaimsAfterBootstrapSignIn();

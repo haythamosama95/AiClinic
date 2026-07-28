@@ -31,7 +31,12 @@ class PatientDateStamp extends StatelessWidget {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(day, style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+          Text(
+            day,
+            style: AppTypography.bodyStrong(
+              context,
+            ).copyWith(color: colors.textPrimary),
+          ),
           const SizedBox(height: AppSpacing.space05),
           Text(
             month,
@@ -59,10 +64,9 @@ class PatientDateStamp extends StatelessWidget {
         const SizedBox(height: AppSpacing.space05),
         Text(
           month,
-          style: AppTypography.overline(context).copyWith(
-            color: colors.textSecondary,
-            letterSpacing: 0.14 * 11,
-          ),
+          style: AppTypography.overline(
+            context,
+          ).copyWith(color: colors.textSecondary, letterSpacing: 0.14 * 11),
         ),
         Text(
           year,
@@ -75,7 +79,9 @@ class PatientDateStamp extends StatelessWidget {
           const SizedBox(height: AppSpacing.space05),
           Text(
             weekday,
-            style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+            style: AppTypography.overline(
+              context,
+            ).copyWith(color: colors.textTertiary),
             textAlign: TextAlign.center,
           ),
         ],

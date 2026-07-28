@@ -54,7 +54,7 @@ class AppShell extends StatelessWidget {
                           final effectiveFillViewport =
                               fillViewport || ShellNavConfig.isDesignSystemLocation(activePageKey.toString());
                           if (effectiveFillViewport) {
-                            return framed;
+                            return SizedBox.expand(child: framed);
                           }
                           return SingleChildScrollView(primary: true, child: framed);
                         },

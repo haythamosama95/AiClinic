@@ -1,3 +1,5 @@
+import 'package:ai_clinic/core/ui/components/app_data_table.dart';
+import 'package:ai_clinic/features/billing/presentation/models/invoice_sort_key.dart';
 import 'package:flutter/foundation.dart';
 
 /// Filters for the invoice list page (`list_invoices`, V1-6 US5).
@@ -10,8 +12,10 @@ class InvoiceListFilters {
     this.branchId,
     this.dateFrom,
     this.dateTo,
+    this.sortField,
+    this.sortDirection = SortDirection.desc,
     this.page = 1,
-    this.pageSize = 50,
+    this.pageSize = 10,
   });
 
   final List<String> statuses;
@@ -20,6 +24,8 @@ class InvoiceListFilters {
   final String? branchId;
   final DateTime? dateFrom;
   final DateTime? dateTo;
+  final InvoiceSortField? sortField;
+  final SortDirection sortDirection;
   final int page;
   final int pageSize;
 
@@ -43,6 +49,9 @@ class InvoiceListFilters {
     bool clearDateFrom = false,
     DateTime? dateTo,
     bool clearDateTo = false,
+    InvoiceSortField? sortField,
+    bool clearSortField = false,
+    SortDirection? sortDirection,
     int? page,
     int? pageSize,
   }) {
@@ -53,6 +62,8 @@ class InvoiceListFilters {
       branchId: clearBranchId ? null : (branchId ?? this.branchId),
       dateFrom: clearDateFrom ? null : (dateFrom ?? this.dateFrom),
       dateTo: clearDateTo ? null : (dateTo ?? this.dateTo),
+      sortField: clearSortField ? null : (sortField ?? this.sortField),
+      sortDirection: sortDirection ?? this.sortDirection,
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
     );
@@ -82,6 +93,10 @@ class InvoiceListFilters {
     }
     if (dateTo != null) {
       filters['date_to'] = dateTo!.toUtc().toIso8601String();
+    }
+    if (sortField != null) {
+      filters['sort_field'] = sortField!.wireValue;
+      filters['sort_direction'] = sortDirection.wireValue;
     }
     return filters;
   }

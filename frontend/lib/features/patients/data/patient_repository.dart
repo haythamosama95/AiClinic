@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
@@ -24,7 +25,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260523140000_patient_management.sql';
+  String get migrationHint => '20260724125000_create_patient_optional_mrn_param.sql';
 
   @override
   String get rpcLogDomain => 'patients';
@@ -105,7 +106,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   }
 
   @override
-  Future<String> createPatient(CreatePatientInput input) async {
+  Future<CreatePatientResult> createPatient(CreatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
       throw RpcFailure(
@@ -120,6 +121,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       );
     }
 
+    final submittedMrn = input.mrn?.trim();
     final result = await invokeRpc('create_patient', {
       'p_active_branch_id': input.activeBranchId,
       'p_full_name': name,
@@ -129,13 +131,18 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
       if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
+      if (submittedMrn != null && submittedMrn.isNotEmpty) 'p_mrn': submittedMrn,
     });
 
     final patientId = result.data?['patient_id']?.toString();
+    final mrn = result.data?['mrn']?.toString();
     if (patientId == null || patientId.isEmpty) {
       throw StateError('Patient was created but no patient_id was returned.');
     }
-    return patientId;
+    if (mrn == null || mrn.isEmpty) {
+      throw StateError('Patient was created but no mrn was returned.');
+    }
+    return CreatePatientResult(patientId: patientId, mrn: mrn);
   }
 
   @override
@@ -173,6 +180,27 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   @override
   Future<void> archivePatient(String patientId) async {
     await invokeRpc('archive_patient', {'p_patient_id': patientId});
+  }
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) async {
+    final id = patientId.trim();
+    final mrn = newMrn.trim();
+    if (id.isEmpty) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Patient id is required.'),
+      );
+    }
+    if (mrn.isEmpty) {
+      throw RpcFailure(const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'MRN is required.'));
+    }
+
+    final result = await invokeRpc('reassign_patient_mrn', {'p_patient_id': id, 'p_new_mrn': mrn});
+    final assignedMrn = result.data?['mrn']?.toString();
+    if (assignedMrn == null || assignedMrn.isEmpty) {
+      throw StateError('MRN was reassigned but no mrn was returned.');
+    }
+    return assignedMrn;
   }
 
   /// Parses `candidates` from RPC success or `DUPLICATE_WARNING` error payloads.

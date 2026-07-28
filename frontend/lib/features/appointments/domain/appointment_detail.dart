@@ -33,7 +33,8 @@ class AppointmentDetail {
   final String? doctorId;
   final String? doctorName;
 
-  String get doctorDisplayName => doctorName?.trim().isNotEmpty == true ? doctorName!.trim() : 'Unassigned';
+  String get doctorDisplayName =>
+      doctorName?.trim().isNotEmpty == true ? doctorName!.trim() : 'Unassigned';
   final DateTime startTime;
   final DateTime endTime;
   final AppointmentType type;
@@ -51,9 +52,13 @@ class AppointmentDetail {
     final patientId = row['patient_id']?.toString();
     final patientName = row['patient_name']?.toString().trim();
     final doctorIdRaw = row['doctor_id']?.toString().trim();
-    final doctorId = doctorIdRaw == null || doctorIdRaw.isEmpty ? null : doctorIdRaw;
+    final doctorId = doctorIdRaw == null || doctorIdRaw.isEmpty
+        ? null
+        : doctorIdRaw;
     final doctorNameRaw = row['doctor_name']?.toString().trim();
-    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty ? null : doctorNameRaw;
+    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty
+        ? null
+        : doctorNameRaw;
     final startTime = parseAppointmentDateTime(row['start_time']);
     final endTime = parseAppointmentDateTime(row['end_time']);
     final type = AppointmentType.tryParse(row['type']?.toString());
@@ -94,7 +99,9 @@ class AppointmentDetail {
       cancelReason: optionalAppointmentString(row['cancel_reason']),
       createdAt: createdAt,
       updatedAt: updatedAt,
-      createdByDisplay: optionalAppointmentString(row['created_by_display'] ?? row['created_by_name']),
+      createdByDisplay: optionalAppointmentString(
+        row['created_by_display'] ?? row['created_by_name'],
+      ),
     );
   }
 
@@ -127,9 +134,13 @@ class AppointmentDetail {
       endTime: endTime ?? this.endTime,
       type: type ?? this.type,
       status: status ?? this.status,
-      queueNumber: identical(queueNumber, copyWithSentinel) ? this.queueNumber : queueNumber as int?,
+      queueNumber: identical(queueNumber, copyWithSentinel)
+          ? this.queueNumber
+          : queueNumber as int?,
       notes: identical(notes, copyWithSentinel) ? this.notes : notes as String?,
-      cancelReason: identical(cancelReason, copyWithSentinel) ? this.cancelReason : cancelReason as String?,
+      cancelReason: identical(cancelReason, copyWithSentinel)
+          ? this.cancelReason
+          : cancelReason as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdByDisplay: identical(createdByDisplay, copyWithSentinel)

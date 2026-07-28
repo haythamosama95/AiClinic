@@ -12,7 +12,10 @@ import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 
 @immutable
 class AppointmentDetailShiftQuery {
-  const AppointmentDetailShiftQuery({required this.branchId, required this.appointmentStart});
+  const AppointmentDetailShiftQuery({
+    required this.branchId,
+    required this.appointmentStart,
+  });
 
   final String branchId;
   final DateTime appointmentStart;
@@ -32,17 +35,29 @@ class AppointmentDetailShiftQuery {
 
 /// Shift doctor lookup for a specific appointment branch and day.
 final appointmentDetailShiftLookupProvider = FutureProvider.autoDispose
-    .family<AppointmentQueueShiftDoctorLookup, AppointmentDetailShiftQuery>((ref, query) async {
+    .family<AppointmentQueueShiftDoctorLookup, AppointmentDetailShiftQuery>((
+      ref,
+      query,
+    ) async {
       final branchId = query.branchId.trim();
       if (branchId.isEmpty) {
         return AppointmentQueueShiftDoctorLookup.empty;
       }
 
-      final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+      final timezone = effectiveOrganizationTimezone(
+        ref.read(authSessionProvider).context?.organizationTimezone,
+      );
       ensureAppointmentTimezonesInitialized();
       final location = tz.getLocation(timezone);
-      final localStart = tz.TZDateTime.from(query.appointmentStart.toUtc(), location);
-      final appointmentDay = DateTime(localStart.year, localStart.month, localStart.day);
+      final localStart = tz.TZDateTime.from(
+        query.appointmentStart.toUtc(),
+        location,
+      );
+      final appointmentDay = DateTime(
+        localStart.year,
+        localStart.month,
+        localStart.day,
+      );
 
       final shiftRepository = ref.read(shiftRepositoryProvider);
       final shifts = await shiftRepository.listShifts(
@@ -50,10 +65,18 @@ final appointmentDetailShiftLookupProvider = FutureProvider.autoDispose
         dateFrom: appointmentDay,
         dateTo: appointmentDay,
       );
-      final branchStaff = await shiftRepository.listActiveStaffForBranch(branchId);
-      final fallbackStaff = await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.active);
+      final branchStaff = await shiftRepository.listActiveStaffForBranch(
+        branchId,
+      );
+      final fallbackStaff = await ref.read(listStaffUseCaseProvider)(
+        filter: StaffListFilter.active,
+      );
 
-      final doctors = resolveQueueShiftDoctors(branchStaff: branchStaff, shifts: shifts, fallbackStaff: fallbackStaff);
+      final doctors = resolveQueueShiftDoctors(
+        branchStaff: branchStaff,
+        shifts: shifts,
+        fallbackStaff: fallbackStaff,
+      );
 
       return AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: timezone,

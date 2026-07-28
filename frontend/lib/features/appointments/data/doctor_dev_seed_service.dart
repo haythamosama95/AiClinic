@@ -8,7 +8,11 @@ import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_a
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
 
 class DoctorDevSeedOutcome {
-  const DoctorDevSeedOutcome({required this.created, required this.skippedBecauseAlreadySeeded, this.errorMessage});
+  const DoctorDevSeedOutcome({
+    required this.created,
+    required this.skippedBecauseAlreadySeeded,
+    this.errorMessage,
+  });
 
   final int created;
   final bool skippedBecauseAlreadySeeded;
@@ -19,9 +23,11 @@ class DoctorDevSeedOutcome {
 
 /// Creates demo doctor accounts for local debugging and UI testing.
 class DoctorDevSeedService {
-  DoctorDevSeedService({required StaffAdminRepository staffAdmin, required ProvisioningRepository provisioning})
-    : _staffAdmin = staffAdmin,
-      _provisioning = provisioning;
+  DoctorDevSeedService({
+    required StaffAdminRepository staffAdmin,
+    required ProvisioningRepository provisioning,
+  }) : _staffAdmin = staffAdmin,
+       _provisioning = provisioning;
 
   final StaffAdminRepository _staffAdmin;
   final ProvisioningRepository _provisioning;
@@ -41,11 +47,16 @@ class DoctorDevSeedService {
       final hasDevDoctors = existing.any(
         (staff) =>
             staff.role == StaffRole.doctor &&
-            staff.fullName.trim().toLowerCase().startsWith(DoctorDevSeedSpec.devNamePrefix.trim().toLowerCase()),
+            staff.fullName.trim().toLowerCase().startsWith(
+              DoctorDevSeedSpec.devNamePrefix.trim().toLowerCase(),
+            ),
       );
       if (hasDevDoctors) {
         AppLog.info('appointments.dev_seed_doctors.skip_already_present');
-        return const DoctorDevSeedOutcome(created: 0, skippedBecauseAlreadySeeded: true);
+        return const DoctorDevSeedOutcome(
+          created: 0,
+          skippedBecauseAlreadySeeded: true,
+        );
       }
 
       var created = 0;
@@ -63,16 +74,24 @@ class DoctorDevSeedService {
         created++;
       }
       AppLog.info('appointments.dev_seed_doctors.done created=$created');
-      return DoctorDevSeedOutcome(created: created, skippedBecauseAlreadySeeded: false);
+      return DoctorDevSeedOutcome(
+        created: created,
+        skippedBecauseAlreadySeeded: false,
+      );
     } on RpcFailure catch (error) {
-      AppLog.warning('appointments.dev_seed_doctors.rpc_failed code=${error.code}');
+      AppLog.warning(
+        'appointments.dev_seed_doctors.rpc_failed code=${error.code}',
+      );
       return DoctorDevSeedOutcome(
         created: 0,
         skippedBecauseAlreadySeeded: false,
-        errorMessage: error.result.errorMessage ?? 'Doctor seed failed (${error.code}).',
+        errorMessage:
+            error.result.errorMessage ?? 'Doctor seed failed (${error.code}).',
       );
     } catch (error, stack) {
-      AppLog.warning('appointments.dev_seed_doctors.failed reason=${error.runtimeType}');
+      AppLog.warning(
+        'appointments.dev_seed_doctors.failed reason=${error.runtimeType}',
+      );
       AppLog.fine('appointments.dev_seed_doctors.stack $stack');
       return DoctorDevSeedOutcome(
         created: 0,

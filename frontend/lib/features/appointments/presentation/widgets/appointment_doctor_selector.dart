@@ -29,7 +29,9 @@ class AppointmentDoctorSelector extends StatelessWidget {
     return AppFormField(
       id: 'appointment_doctor',
       label: 'Preferred doctor',
-      hint: hint ?? 'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
+      hint:
+          hint ??
+          'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
       child: AppSelect(
         key: key,
         options: AppointmentDoctorSelectItems.buildOptions(

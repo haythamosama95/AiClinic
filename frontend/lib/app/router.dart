@@ -25,6 +25,13 @@ import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dar
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_review_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -81,7 +88,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.foundationDemo,
             builder: (context, state) => DesignSystemPage(initialSection: ShellNavConfig.devSectionForUri(state.uri)),
           ),
-          GoRoute(path: AppRoutes.home, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),
@@ -116,18 +123,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: shellPlaceholderPage,
+            builder: (context, state) => VisitDocumentPage(
+              visitId: state.pathParameters['visitId']!,
+              startInEditMode: state.uri.queryParameters['edit'] == '1',
+            ),
           ),
           GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billing, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.billingInvoices, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.billing, redirect: (context, state) => AppRoutes.billingInvoices),
+          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
-            builder: shellPlaceholderPage,
+            builder: (context, state) => InvoiceEditorPage(invoiceId: state.pathParameters['invoiceId']!),
           ),
-          GoRoute(path: '${AppRoutes.billingInvoices}/:invoiceId', builder: shellPlaceholderPage),
+          GoRoute(
+            path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceReviewSegment}',
+            builder: (context, state) => InvoiceReviewPage(invoiceId: state.pathParameters['invoiceId']!),
+          ),
+          GoRoute(
+            path: '${AppRoutes.billingInvoices}/:invoiceId',
+            builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']!),
+          ),
+          GoRoute(
+            path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
+            builder: (context, state) => VisitBillingPage(visitId: state.pathParameters['visitId']!),
+          ),
           GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsServices, builder: shellPlaceholderPage),

@@ -110,10 +110,11 @@ class PatientDevSeedService {
       }
       otherBranchLabel ??= _secondBranchName;
 
-      for (final spec in PatientDevSeedData.patients) {
+      for (var index = 0; index < PatientDevSeedData.patients.length; index++) {
+        final spec = PatientDevSeedData.patients[index];
         final branchId = spec.branchTarget == PatientDevSeedBranchTarget.other ? otherBranchId : mainBranchId;
 
-        final patientId = await _createWithDuplicateAck(spec, branchId);
+        final patientId = await _createWithDuplicateAck(spec, branchId, seedOrder: index + 1);
         created++;
 
         if (spec.archiveAfterCreate) {
@@ -149,7 +150,7 @@ class PatientDevSeedService {
     }
   }
 
-  Future<String> _createWithDuplicateAck(PatientDevSeedSpec spec, String branchId) async {
+  Future<String> _createWithDuplicateAck(PatientDevSeedSpec spec, String branchId, {required int seedOrder}) async {
     final input = CreatePatientInput(
       activeBranchId: branchId,
       fullName: spec.fullName,
@@ -158,26 +159,18 @@ class PatientDevSeedService {
       gender: spec.gender,
       maritalStatus: spec.maritalStatus,
       notes: spec.notes,
+      mrn: PatientDevSeedSpec.mrnForSeedOrder(seedOrder),
     );
 
     try {
-      return await _patients.createPatient(input);
+      final result = await _patients.createPatient(input);
+      return result.patientId;
     } on RpcFailure catch (error) {
       if (!error.isDuplicateWarning) {
         rethrow;
       }
-      return _patients.createPatient(
-        CreatePatientInput(
-          activeBranchId: branchId,
-          fullName: spec.fullName,
-          phone: spec.phone,
-          dateOfBirth: spec.dateOfBirth,
-          gender: spec.gender,
-          maritalStatus: spec.maritalStatus,
-          notes: spec.notes,
-          acknowledgeDuplicate: true,
-        ),
-      );
+      final result = await _patients.createPatient(input.copyWith(acknowledgeDuplicate: true));
+      return result.patientId;
     }
   }
 

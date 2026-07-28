@@ -18,7 +18,6 @@ abstract final class ShellNavConfig {
     'appointments-calendar': AppRoutes.appointmentsCalendar,
     'encounters': AppRoutes.encounters,
     'workspace': AppRoutes.workspace,
-    'billing': AppRoutes.billing,
     'invoices': AppRoutes.billingInvoices,
     'services': AppRoutes.settingsServices,
     'clinic-management': AppRoutes.clinicManagement,
@@ -87,13 +86,15 @@ abstract final class ShellNavConfig {
   static bool isFullWidthLocation(String location) {
     return location == AppRoutes.patients ||
         location.startsWith('${AppRoutes.patients}/') ||
+        location == AppRoutes.billingInvoices ||
+        location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
         location == AppRoutes.appointmentsCalendar;
   }
 
   /// Routes whose content should fill the shell viewport (no outer scroll).
   static bool isFillViewportLocation(String location) {
-    return location == AppRoutes.appointmentsCalendar;
+    return location == AppRoutes.appointmentsCalendar || location.startsWith('${AppRoutes.billing}/');
   }
 
   static DevSection devSectionForUri(Uri uri) {
@@ -181,9 +182,6 @@ abstract final class ShellNavConfig {
     }
     if (location.startsWith(AppRoutes.appointments)) {
       return 'appointments';
-    }
-    if (location == AppRoutes.billing) {
-      return 'billing';
     }
     if (location.startsWith(AppRoutes.billingInvoices)) {
       return 'invoices';

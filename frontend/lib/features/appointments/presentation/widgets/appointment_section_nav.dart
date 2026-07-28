@@ -18,7 +18,8 @@ class AppointmentSectionNav extends StatelessWidget {
           AppTabItem(id: section.id, label: section.label, icon: section.icon),
       ],
       value: activeSection.id,
-      onChanged: (id) => _navigateToSection(context, AppointmentSection.byId(id)),
+      onChanged: (id) =>
+          _navigateToSection(context, AppointmentSection.byId(id)),
       ariaLabel: 'Appointments sections',
     );
   }

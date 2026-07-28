@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/invoice_list_notifier.dart';
 
 /// Permission-aware invoice detail for billing screens (V1-6).
 @immutable
@@ -50,6 +51,22 @@ final invoiceDetailViewProvider = FutureProvider.autoDispose.family<InvoiceDetai
     canRefund: permissions.canRefundPayment(),
   );
 });
+
+/// Refetches invoice detail and list after a ledger mutation (payment, refund, void).
+Future<void> refreshInvoiceBillingSurfaces(
+  WidgetRef ref, {
+  required String invoiceId,
+  required String patientId,
+}) async {
+  ref.invalidate(invoiceDetailViewProvider(invoiceId));
+  ref.invalidate(patientInvoicesProvider(patientId));
+  ref.invalidate(invoiceListProvider);
+
+  await Future.wait<void>([
+    ref.read(invoiceDetailViewProvider(invoiceId).future),
+    ref.read(invoiceListProvider.notifier).reload(),
+  ]);
+}
 
 /// Patient invoice history for the patient profile billing section.
 final patientInvoicesProvider = FutureProvider.autoDispose.family<InvoiceListPageResult, String>((

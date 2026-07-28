@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
+import 'package:ai_clinic/core/config/supabase_config.dart'
+    show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
@@ -31,28 +32,42 @@ class AppointmentRepository with AppRpcInvoker {
     final id = branchId.trim();
     if (id.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Branch id is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Branch id is required.',
+        ),
       );
     }
 
-    final result = await invokeRpc('get_appointment_settings', {'p_branch_id': id});
+    final result = await invokeRpc('get_appointment_settings', {
+      'p_branch_id': id,
+    });
     final settings = AppointmentSettings.fromRpcData(result.data);
     if (settings == null) {
-      throw StateError('Appointment settings were returned in an unexpected shape.');
+      throw StateError(
+        'Appointment settings were returned in an unexpected shape.',
+      );
     }
     return settings;
   }
 
-  Future<int> setDefaultDuration({required int durationMinutes, String? branchId}) async {
+  Future<int> setDefaultDuration({
+    required int durationMinutes,
+    String? branchId,
+  }) async {
     _assertDurationMinutes(durationMinutes);
 
     final params = <String, dynamic>{
       'p_duration_minutes': durationMinutes,
-      if (branchId != null && branchId.trim().isNotEmpty) 'p_branch_id': branchId.trim(),
+      if (branchId != null && branchId.trim().isNotEmpty)
+        'p_branch_id': branchId.trim(),
     };
 
     final result = await invokeRpc('set_appointment_default_duration', params);
-    final savedMinutes = _parseDurationMinutes(result.data?['default_duration_minutes']);
+    final savedMinutes = _parseDurationMinutes(
+      result.data?['default_duration_minutes'],
+    );
     if (savedMinutes == null) {
       throw StateError('Set default duration returned an unexpected shape.');
     }
@@ -100,12 +115,20 @@ class AppointmentRepository with AppRpcInvoker {
     final params = <String, dynamic>{
       'p_branch_id': branchId.trim(),
       'p_patient_id': patientId.trim(),
-      'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) ? trimmedDoctorId : null,
+      'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty)
+          ? trimmedDoctorId
+          : null,
       'p_type': type.wireValue,
       'p_start_time': startTime.toUtc().toIso8601String(),
-      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
-      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
-      ...?(notes != null && notes.trim().isNotEmpty) ? {'p_notes': notes.trim()} : null,
+      ...?(durationMinutes != null)
+          ? {'p_duration_minutes': durationMinutes}
+          : null,
+      ...?(endTime != null)
+          ? {'p_end_time': endTime.toUtc().toIso8601String()}
+          : null,
+      ...?(notes != null && notes.trim().isNotEmpty)
+          ? {'p_notes': notes.trim()}
+          : null,
     };
 
     final result = await invokeRpc('create_appointment', params);
@@ -117,10 +140,14 @@ class AppointmentRepository with AppRpcInvoker {
   }
 
   /// Fetches a single appointment via `get_appointment` (V1-4 detail view).
-  Future<AppointmentDetail> getAppointment({required String appointmentId}) async {
+  Future<AppointmentDetail> getAppointment({
+    required String appointmentId,
+  }) async {
     _assertNonEmpty('appointmentId', appointmentId);
 
-    final result = await invokeRpc('get_appointment', {'p_appointment_id': appointmentId.trim()});
+    final result = await invokeRpc('get_appointment', {
+      'p_appointment_id': appointmentId.trim(),
+    });
     final detail = AppointmentDetail.fromRow(result.data ?? const {});
     if (detail == null) {
       throw StateError('Get appointment returned an unexpected shape.');
@@ -152,10 +179,12 @@ class AppointmentRepository with AppRpcInvoker {
       'p_branch_id': branchId.trim(),
       'p_from': from.toUtc().toIso8601String(),
       'p_to': to.toUtc().toIso8601String(),
-      if (doctorId != null && doctorId.trim().isNotEmpty) 'p_doctor_id': doctorId.trim(),
+      if (doctorId != null && doctorId.trim().isNotEmpty)
+        'p_doctor_id': doctorId.trim(),
       if (statuses != null && statuses.isNotEmpty)
         'p_statuses': statuses.map((s) => s.wireValue).toList(growable: false),
-      if (patientId != null && patientId.trim().isNotEmpty) 'p_patient_id': patientId.trim(),
+      if (patientId != null && patientId.trim().isNotEmpty)
+        'p_patient_id': patientId.trim(),
     };
 
     final result = await invokeRpc('list_appointments', params);
@@ -189,7 +218,9 @@ class AppointmentRepository with AppRpcInvoker {
 
     final update = AppointmentStatusUpdateResult.fromRpcData(result.data);
     if (update == null) {
-      throw StateError('Update appointment status returned an unexpected shape.');
+      throw StateError(
+        'Update appointment status returned an unexpected shape.',
+      );
     }
     return update;
   }
@@ -230,11 +261,18 @@ class AppointmentRepository with AppRpcInvoker {
     final params = <String, dynamic>{
       'p_appointment_id': appointmentId.trim(),
       'p_patient_id': patientId.trim(),
-      'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) ? trimmedDoctorId : null,
+      'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty)
+          ? trimmedDoctorId
+          : null,
       'p_start_time': startTime.toUtc().toIso8601String(),
-      if (trimmedBranchId != null && trimmedBranchId.isNotEmpty) 'p_branch_id': trimmedBranchId,
-      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
-      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
+      if (trimmedBranchId != null && trimmedBranchId.isNotEmpty)
+        'p_branch_id': trimmedBranchId,
+      ...?(durationMinutes != null)
+          ? {'p_duration_minutes': durationMinutes}
+          : null,
+      ...?(endTime != null)
+          ? {'p_end_time': endTime.toUtc().toIso8601String()}
+          : null,
       ...?(notes != null) ? {'p_notes': notes.trim()} : null,
     };
 
@@ -267,8 +305,12 @@ class AppointmentRepository with AppRpcInvoker {
     final params = <String, dynamic>{
       'p_appointment_id': appointmentId.trim(),
       'p_start_time': startTime.toUtc().toIso8601String(),
-      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
-      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
+      ...?(durationMinutes != null)
+          ? {'p_duration_minutes': durationMinutes}
+          : null,
+      ...?(endTime != null)
+          ? {'p_end_time': endTime.toUtc().toIso8601String()}
+          : null,
     };
 
     final result = await invokeRpc('reschedule_appointment', params);
@@ -286,7 +328,10 @@ class AppointmentRepository with AppRpcInvoker {
   /// Cancels a `scheduled`, `confirmed`, or `checked_in` appointment via `cancel_appointment` (V1-4 US7).
   ///
   /// Throws [RpcFailure] with `INVALID_INPUT` when the server rejects the cancellation.
-  Future<AppointmentStatus> cancelAppointment({required String appointmentId, String? reason}) async {
+  Future<AppointmentStatus> cancelAppointment({
+    required String appointmentId,
+    String? reason,
+  }) async {
     _assertNonEmpty('appointmentId', appointmentId);
 
     if (reason != null && reason.trim().length > 2000) {
@@ -304,7 +349,9 @@ class AppointmentRepository with AppRpcInvoker {
       if (reason != null && reason.trim().isNotEmpty) 'p_reason': reason.trim(),
     });
 
-    final status = AppointmentStatus.tryParse(result.data?['status']?.toString());
+    final status = AppointmentStatus.tryParse(
+      result.data?['status']?.toString(),
+    );
     if (status == null) {
       throw StateError('Cancel appointment returned an unexpected shape.');
     }
@@ -312,14 +359,25 @@ class AppointmentRepository with AppRpcInvoker {
   }
 
   /// Marks an appointment as no-show via `update_appointment_status` (V1-4 US7).
-  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) async {
-    final update = await updateAppointmentStatus(appointmentId: appointmentId, newStatus: AppointmentStatus.noShow);
+  Future<AppointmentStatus> markAppointmentNoShow({
+    required String appointmentId,
+  }) async {
+    final update = await updateAppointmentStatus(
+      appointmentId: appointmentId,
+      newStatus: AppointmentStatus.noShow,
+    );
     return update.status;
   }
 
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
-      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: '$field is required.',
+        ),
+      );
     }
   }
 

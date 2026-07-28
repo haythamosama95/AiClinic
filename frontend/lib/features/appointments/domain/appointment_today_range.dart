@@ -11,14 +11,22 @@ class AppointmentTodayRange {
 /// Computes today's list_appointments bounds from a local [reference] clock.
 AppointmentTodayRange appointmentTodayRange(DateTime reference) {
   final dayStart = DateTime(reference.year, reference.month, reference.day);
-  return AppointmentTodayRange(from: dayStart.toUtc(), to: dayStart.add(const Duration(days: 1)).toUtc());
+  return AppointmentTodayRange(
+    from: dayStart.toUtc(),
+    to: dayStart.add(const Duration(days: 1)).toUtc(),
+  );
 }
 
-bool appointmentStartTimeIsWithinRange(DateTime startTime, AppointmentTodayRange range) {
+bool appointmentStartTimeIsWithinRange(
+  DateTime startTime,
+  AppointmentTodayRange range,
+) {
   return !startTime.isBefore(range.from) && startTime.isBefore(range.to);
 }
 
-List<AppointmentListItem> sortAppointmentsByStartTime(List<AppointmentListItem> items) {
+List<AppointmentListItem> sortAppointmentsByStartTime(
+  List<AppointmentListItem> items,
+) {
   final sorted = [...items];
   sorted.sort((a, b) => a.startTime.compareTo(b.startTime));
   return sorted;

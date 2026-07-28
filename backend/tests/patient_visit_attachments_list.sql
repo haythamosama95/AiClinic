@@ -202,10 +202,10 @@ BEGIN
   VALUES (v_other_branch_id, v_other_org_id, 'Other Branch', 'OT', v_other_owner, v_other_owner);
 
   INSERT INTO public.patients (
-    id, branch_id, organization_id, full_name, phone, created_by, updated_by
+    id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
   )
   VALUES (
-    v_other_org_patient, v_other_branch_id, v_other_org_id, 'Other Org Patient', '201520000099', v_other_owner, v_other_owner
+    v_other_org_patient, v_other_branch_id, v_other_org_id, 'Other Org Patient', '201520000099', 'MRN-520099', v_other_owner, v_other_owner
   );
   PERFORM set_config('role', 'authenticated', true);
 

@@ -26,7 +26,8 @@ class PatientsPage extends ConsumerStatefulWidget {
   ConsumerState<PatientsPage> createState() => _PatientsPageState();
 }
 
-class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerProviderStateMixin {
+class _PatientsPageState extends ConsumerState<PatientsPage>
+    with SingleTickerProviderStateMixin {
   static const _defaultFilters = PatientListFilters(pageSize: 10);
 
   late final AnimationController _enterController;
@@ -38,7 +39,10 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _enterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ref.read(patientListProvider.notifier).reload();
@@ -52,10 +56,15 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     if (!_enterStarted) {
       _enterStarted = true;
       final reducedMotion = AppMotion.prefersReducedMotion(context);
-      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
+      _enterController.duration = reducedMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220);
       _enterAnimation = CurvedAnimation(
         parent: _enterController,
-        curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+        curve: AppMotion.resolveCurve(
+          AppMotionPreset.rowEnter,
+          reducedMotion: reducedMotion,
+        ),
       );
       if (reducedMotion) {
         _enterController.value = 1;
@@ -115,10 +124,13 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
   }
 
   bool _hasActiveFilterChips(PatientListFilters filters) {
-    return filters.searchText.trim().isNotEmpty || filters.lastVisitFilter != PatientLastVisitFilter.any;
+    return filters.searchText.trim().isNotEmpty ||
+        filters.lastVisitFilter != PatientLastVisitFilter.any;
   }
 
-  List<({String id, String label, VoidCallback onRemove})> _activeFilterChips(PatientListFilters filters) {
+  List<({String id, String label, VoidCallback onRemove})> _activeFilterChips(
+    PatientListFilters filters,
+  ) {
     final chips = <({String id, String label, VoidCallback onRemove})>[];
 
     if (filters.searchText.trim().isNotEmpty) {
@@ -133,7 +145,9 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
       chips.add((
         id: 'lastVisit',
         label: 'Last visit: ${_lastVisitFilterLabel(filters.lastVisitFilter)}',
-        onRemove: () => _resetPage(filters.copyWith(lastVisitFilter: PatientLastVisitFilter.any)),
+        onRemove: () => _resetPage(
+          filters.copyWith(lastVisitFilter: PatientLastVisitFilter.any),
+        ),
       ));
     }
 
@@ -162,7 +176,10 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
         boxShadow: elevation?.shadows1 ?? AppElevation.level1,
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: 56),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space6,
+          vertical: 56,
+        ),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -171,13 +188,17 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
               const SizedBox(height: AppSpacing.space4),
               Text(
                 'No patients match',
-                style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                style: AppTypography.bodyStrong(
+                  context,
+                ).copyWith(color: colors.textPrimary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppSpacing.space1),
               Text(
                 'Try a different search term or clear your filters.',
-                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(color: colors.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppSpacing.space6),
@@ -205,11 +226,16 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
         boxShadow: elevation?.shadows1 ?? AppElevation.level1,
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: AppSpacing.space8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space6,
+          vertical: AppSpacing.space8,
+        ),
         child: Center(
           child: Text(
             hint,
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
             textAlign: TextAlign.center,
           ),
         ),
@@ -224,11 +250,19 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     required bool isLoading,
   }) {
     if (isLoading && state == null) {
-      return PatientTable(rows: const [], loading: true, loadingRows: filters.pageSize);
+      return PatientTable(
+        rows: const [],
+        loading: true,
+        loadingRows: filters.pageSize,
+      );
     }
 
     if (state == null) {
-      return PatientTable(rows: const [], loading: true, loadingRows: filters.pageSize);
+      return PatientTable(
+        rows: const [],
+        loading: true,
+        loadingRows: filters.pageSize,
+      );
     }
 
     final searchHint = state.searchHint;
@@ -241,7 +275,10 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
         variant: AppEmptyStateVariant.firstRun,
         title: 'No patients yet',
         description: 'Add your first patient to start building records.',
-        action: EmptyStateAction(label: 'Add patient', onPressed: _openAddPatient),
+        action: EmptyStateAction(
+          label: 'Add patient',
+          onPressed: _openAddPatient,
+        ),
       );
     }
 
@@ -258,7 +295,8 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
           rows: state.rows,
           loading: isLoading && state.rows.isEmpty,
           loadingRows: filters.pageSize,
-          onRowClick: (row) => context.nav.pushPatientDetail(row.item.id, preview: row.item),
+          onRowClick: (row) =>
+              context.nav.pushPatientDetail(row.item.id, preview: row.item),
         ),
         if (state.rows.isNotEmpty)
           AppPagination(
@@ -267,7 +305,8 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
             total: state.totalCount,
             pageSizeOptions: const [10, 25, 50],
             onPageChange: (page) => _applyFilters(filters.copyWith(page: page)),
-            onPageSizeChange: (pageSize) => _applyFilters(filters.copyWith(page: 1, pageSize: pageSize)),
+            onPageSizeChange: (pageSize) =>
+                _applyFilters(filters.copyWith(page: 1, pageSize: pageSize)),
           ),
       ],
     );
@@ -279,7 +318,8 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
 
     final listAsync = ref.watch(patientListProvider);
     final state = listAsync.value;
-    final filters = state?.filters ?? ref.read(patientListProvider.notifier).filters;
+    final filters =
+        state?.filters ?? ref.read(patientListProvider.notifier).filters;
     final isLoading = listAsync.isLoading;
     final hasPatients = state != null && !state.isNoPatientsYet;
     final activeChips = hasPatients
@@ -297,7 +337,8 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
             Expanded(
               child: AppPageHeader(
                 title: 'Patients',
-                description: 'Manage patient records, profiles, and medical history.',
+                description:
+                    'Manage patient records, profiles, and medical history.',
               ),
             ),
             AppButton(
@@ -312,16 +353,27 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
         if (hasPatients)
           PatientListControls(
             filters: filters,
-            onSearchChange: (search) => _resetPage(filters.copyWith(searchText: search)),
-            onSortChange: (sort) => _resetPage(filters.copyWith(sortField: sort)),
-            onLastVisitChange: (lastVisit) => _resetPage(filters.copyWith(lastVisitFilter: lastVisit)),
-            onClearFilters: filters.lastVisitFilter != PatientLastVisitFilter.any
+            onSearchChange: (search) =>
+                _resetPage(filters.copyWith(searchText: search)),
+            onSortChange: (sort) =>
+                _resetPage(filters.copyWith(sortField: sort)),
+            onLastVisitChange: (lastVisit) =>
+                _resetPage(filters.copyWith(lastVisitFilter: lastVisit)),
+            onClearFilters:
+                filters.lastVisitFilter != PatientLastVisitFilter.any
                 ? () => _clearLastVisitFilter(filters)
                 : null,
             activeFilters: activeChips,
-            onClearAll: _hasActiveFilterChips(filters) ? () => _clearAll(filters) : null,
+            onClearAll: _hasActiveFilterChips(filters)
+                ? () => _clearAll(filters)
+                : null,
           ),
-        _buildBody(context: context, state: state, filters: filters, isLoading: isLoading),
+        _buildBody(
+          context: context,
+          state: state,
+          filters: filters,
+          isLoading: isLoading,
+        ),
       ],
     );
 

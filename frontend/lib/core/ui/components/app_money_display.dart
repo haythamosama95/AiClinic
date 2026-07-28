@@ -6,12 +6,20 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 /// Formatted currency amount with optional emphasis and negative styling (web `MoneyDisplay`).
 class AppMoneyDisplay extends StatelessWidget {
-  const AppMoneyDisplay({required this.amount, this.currency = 'EGP', this.emphasis = false, this.negative, super.key});
+  const AppMoneyDisplay({
+    required this.amount,
+    this.currency = 'EGP',
+    this.emphasis = false,
+    this.negative,
+    this.style,
+    super.key,
+  });
 
   final double amount;
   final String currency;
   final bool emphasis;
   final bool? negative;
+  final TextStyle? style;
 
   static final _formatter = NumberFormat('#,##0.00', 'en_EG');
 
@@ -50,7 +58,7 @@ class AppMoneyDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final base = _baseTextStyle(context);
+    final base = style ?? _baseTextStyle(context);
     final isNegative = negative ?? amount < 0;
     final formatted = _formatter.format(amount.abs());
     final amountColor = isNegative ? colors.statusDangerFg : colors.textPrimary;

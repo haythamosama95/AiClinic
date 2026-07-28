@@ -14,7 +14,10 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
   Set<AppointmentStatus> _highlightedStatuses = const {};
   Brightness _brightness = Brightness.light;
 
-  AppointmentCalendarDataSource(List<AppointmentListItem> items, {List<StaffListItem> doctors = const []}) {
+  AppointmentCalendarDataSource(
+    List<AppointmentListItem> items, {
+    List<StaffListItem> doctors = const [],
+  }) {
     _apply(
       items,
       doctors,
@@ -45,6 +48,13 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       oddResourceRowColor: oddResourceRowColor,
     );
     notifyListeners(CalendarDataSourceAction.reset, appointments ?? const []);
+    // `reset` does not refresh SfCalendar's internal `_resourceCollection`.
+    // Without `resetResource`, doctor timeline view can lay out with a stale
+    // empty collection while `dataSource.resources` is populated (NaN height).
+    final resourceList = resources;
+    if (resourceList != null && resourceList.isNotEmpty) {
+      notifyListeners(CalendarDataSourceAction.resetResource, resourceList);
+    }
   }
 
   void _apply(
@@ -61,7 +71,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       brightness: _brightness,
     );
     resources = includeDoctorResources
-        ? _mapDoctorResources(doctors, evenRowColor: evenResourceRowColor, oddRowColor: oddResourceRowColor)
+        ? _mapDoctorResources(
+            doctors,
+            evenRowColor: evenResourceRowColor,
+            oddRowColor: oddResourceRowColor,
+          )
         : const [];
   }
 
@@ -79,7 +93,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
           notes: assignResources ? null : item.doctorDisplayName,
-          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses, brightness),
+          color: AppointmentCalendarDisplay.appointmentTileColor(
+            item.status,
+            highlightedStatuses,
+            brightness,
+          ),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
     ];
@@ -102,7 +120,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     var index = 0;
     for (final doctor in doctors) {
       resources.add(
-        CalendarResource(id: doctor.id, displayName: doctor.fullName, color: index.isEven ? evenRowColor : oddRowColor),
+        CalendarResource(
+          id: doctor.id,
+          displayName: doctor.fullName,
+          color: index.isEven ? evenRowColor : oddRowColor,
+        ),
       );
       index++;
     }
@@ -135,7 +157,9 @@ String? appointmentIdFromTap(CalendarTapDetails details) {
 }
 
 /// Resolves appointment id from [details] produced by [CalendarAppointmentDetails].
-String? appointmentIdFromAppointmentDetails(CalendarAppointmentDetails details) {
+String? appointmentIdFromAppointmentDetails(
+  CalendarAppointmentDetails details,
+) {
   final appointment = details.appointments.firstOrNull;
   return appointment is Appointment ? _appointmentId(appointment) : null;
 }

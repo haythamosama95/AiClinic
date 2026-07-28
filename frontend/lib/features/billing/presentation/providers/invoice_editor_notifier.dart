@@ -24,7 +24,8 @@ class InvoiceEditorState {
   final InvoiceDetail invoice;
   final bool isMutating;
 
-  bool get hasLineDiscounts => invoice.items.any((item) => !item.lineDiscountAmount.isZero);
+  bool get hasLineDiscounts =>
+      invoice.items.any((item) => !item.lineDiscountAmount.isZero);
 
   bool get hasInvoiceDiscount => !invoice.discountAmount.isZero;
 
@@ -39,13 +40,18 @@ class InvoiceEditorState {
   }
 
   InvoiceEditorState copyWith({InvoiceDetail? invoice, bool? isMutating}) {
-    return InvoiceEditorState(invoice: invoice ?? this.invoice, isMutating: isMutating ?? this.isMutating);
+    return InvoiceEditorState(
+      invoice: invoice ?? this.invoice,
+      isMutating: isMutating ?? this.isMutating,
+    );
   }
 }
 
 /// Mutations on a draft invoice with optimistic-concurrency handling (V1-6 US1/US3/US4).
 final invoiceEditorProvider = AsyncNotifierProvider.autoDispose
-    .family<InvoiceEditorNotifier, InvoiceEditorState, String>(InvoiceEditorNotifier.new);
+    .family<InvoiceEditorNotifier, InvoiceEditorState, String>(
+      InvoiceEditorNotifier.new,
+    );
 
 /// Family arg is injected by [invoiceEditorProvider] via `NotifierT Function(String)`.
 class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
@@ -55,13 +61,16 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
 
   @override
   Future<InvoiceEditorState> build() async {
-    final invoice = await ref.read(invoiceRepositoryProvider).getDetail(invoiceId: _invoiceId);
+    final invoice = await ref
+        .read(invoiceRepositoryProvider)
+        .getDetail(invoiceId: _invoiceId);
     return InvoiceEditorState(invoice: invoice);
   }
 
   InvoiceRepository get _repo => ref.read(invoiceRepositoryProvider);
 
-  ServiceCatalogRepository get _catalogRepo => ref.read(serviceCatalogRepositoryProvider);
+  ServiceCatalogRepository get _catalogRepo =>
+      ref.read(serviceCatalogRepositoryProvider);
 
   Future<void> reload() async {
     state = await AsyncValue.guard(() async {
@@ -105,7 +114,10 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     });
   }
 
-  Future<void> updateItemQuantity({required String itemId, required String quantity}) {
+  Future<void> updateItemQuantity({
+    required String itemId,
+    required String quantity,
+  }) {
     return _mutate((invoice) async {
       final item = invoice.items.firstWhere((entry) => entry.id == itemId);
       await _repo.updateItem(
@@ -118,7 +130,11 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     });
   }
 
-  Future<String> addItem({required String description, required String quantity, required String unitPrice}) {
+  Future<String> addItem({
+    required String description,
+    required String quantity,
+    required String unitPrice,
+  }) {
     return _mutate((invoice) async {
       return _repo.addItem(
         invoiceId: invoice.id,
@@ -149,25 +165,43 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
 
   Future<void> removeItem(String itemId) {
     return _mutate((invoice) async {
-      await _repo.removeItem(itemId: itemId, expectedUpdatedAt: invoice.updatedAt);
+      await _repo.removeItem(
+        itemId: itemId,
+        expectedUpdatedAt: invoice.updatedAt,
+      );
     });
   }
 
   Future<String> issue() {
     return _mutate((invoice) async {
-      return _repo.issue(invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt);
+      return _repo.issue(
+        invoiceId: invoice.id,
+        expectedUpdatedAt: invoice.updatedAt,
+      );
     });
   }
 
   Future<void> discardDraft() {
     return _mutate((invoice) async {
-      await _repo.discardDraft(invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt);
+      await _repo.discardDraft(
+        invoiceId: invoice.id,
+        expectedUpdatedAt: invoice.updatedAt,
+      );
     });
   }
 
-  Future<void> applyLineDiscount({required String itemId, DiscountKind? kind, String? value}) {
+  Future<void> applyLineDiscount({
+    required String itemId,
+    DiscountKind? kind,
+    String? value,
+  }) {
     return _mutate((invoice) async {
-      await _repo.applyLineDiscount(itemId: itemId, expectedUpdatedAt: invoice.updatedAt, kind: kind, value: value);
+      await _repo.applyLineDiscount(
+        itemId: itemId,
+        expectedUpdatedAt: invoice.updatedAt,
+        kind: kind,
+        value: value,
+      );
     });
   }
 
@@ -182,7 +216,10 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     });
   }
 
-  Future<void> setInsuranceCoverage({String? providerId, required String coveredAmount}) {
+  Future<void> setInsuranceCoverage({
+    String? providerId,
+    required String coveredAmount,
+  }) {
     return _mutate((invoice) async {
       await _repo.setInsuranceCoverage(
         invoiceId: invoice.id,

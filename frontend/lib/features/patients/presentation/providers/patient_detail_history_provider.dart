@@ -12,7 +12,8 @@ import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
 /// Past vs upcoming tab on the patient detail timeline.
 enum PatientDetailHistoryTab { past, upcoming }
 
-class PatientDetailHistoryTabNotifier extends Notifier<PatientDetailHistoryTab> {
+class PatientDetailHistoryTabNotifier
+    extends Notifier<PatientDetailHistoryTab> {
   PatientDetailHistoryTabNotifier(this.patientId);
 
   final String patientId;
@@ -25,15 +26,19 @@ class PatientDetailHistoryTabNotifier extends Notifier<PatientDetailHistoryTab> 
 
 /// Selected timeline tab for a patient detail page (survives provider reloads).
 final patientDetailHistoryTabProvider =
-    NotifierProvider.family<PatientDetailHistoryTabNotifier, PatientDetailHistoryTab, String>(
-      PatientDetailHistoryTabNotifier.new,
-      isAutoDispose: true,
-    );
+    NotifierProvider.family<
+      PatientDetailHistoryTabNotifier,
+      PatientDetailHistoryTab,
+      String
+    >(PatientDetailHistoryTabNotifier.new, isAutoDispose: true);
 
 /// Branch + patient pair for loading upcoming appointments on the detail page.
 @immutable
 class PatientDetailHistoryQuery {
-  const PatientDetailHistoryQuery({required this.patientId, required this.branchId});
+  const PatientDetailHistoryQuery({
+    required this.patientId,
+    required this.branchId,
+  });
 
   final String patientId;
   final String branchId;
@@ -52,18 +57,22 @@ class PatientDetailHistoryQuery {
 }
 
 /// Past visits for a patient (`list_patient_visits`).
-final patientPastVisitsProvider = FutureProvider.autoDispose.family<List<VisitListItem>, String>((
-  ref,
-  patientId,
-) async {
-  final page = await ref.read(visitRepositoryProvider).listPatientVisits(patientId: patientId, limit: 100);
-  final visits = [...page.items]..sort((a, b) => b.visitDate.compareTo(a.visitDate));
-  return visits;
-});
+final patientPastVisitsProvider = FutureProvider.autoDispose
+    .family<List<VisitListItem>, String>((ref, patientId) async {
+      final page = await ref
+          .read(visitRepositoryProvider)
+          .listPatientVisits(patientId: patientId, limit: 100);
+      final visits = [...page.items]
+        ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
+      return visits;
+    });
 
 /// Upcoming appointments for a patient (`list_appointments` with `p_patient_id`).
 final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
-    .family<List<AppointmentListItem>, PatientDetailHistoryQuery>((ref, query) async {
+    .family<List<AppointmentListItem>, PatientDetailHistoryQuery>((
+      ref,
+      query,
+    ) async {
       final now = clock.now().toUtc();
       final items = await ref
           .read(appointmentRepositoryProvider)
@@ -84,13 +93,17 @@ final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
     });
 
 /// Visit attachments for a patient (`list_patient_visit_attachments`).
-final patientVisitDocumentsProvider = FutureProvider.autoDispose.family<List<PatientVisitDocument>, String>((
-  ref,
-  patientId,
-) async {
-  final rows = await ref.read(visitRepositoryProvider).listPatientVisitAttachments(patientId: patientId);
-  return [
-    for (final row in rows)
-      PatientVisitDocument(visitId: row.visitId, visitDate: row.visitDate, attachment: row.attachment),
-  ];
-});
+final patientVisitDocumentsProvider = FutureProvider.autoDispose
+    .family<List<PatientVisitDocument>, String>((ref, patientId) async {
+      final rows = await ref
+          .read(visitRepositoryProvider)
+          .listPatientVisitAttachments(patientId: patientId);
+      return [
+        for (final row in rows)
+          PatientVisitDocument(
+            visitId: row.visitId,
+            visitDate: row.visitDate,
+            attachment: row.attachment,
+          ),
+      ];
+    });

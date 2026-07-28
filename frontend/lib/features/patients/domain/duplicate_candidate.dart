@@ -22,7 +22,12 @@ class DuplicateCandidate {
     final id = row['id']?.toString();
     final fullName = row['full_name']?.toString().trim();
     final branchName = row['branch_name']?.toString().trim();
-    if (id == null || id.isEmpty || fullName == null || fullName.isEmpty || branchName == null || branchName.isEmpty) {
+    if (id == null ||
+        id.isEmpty ||
+        fullName == null ||
+        fullName.isEmpty ||
+        branchName == null ||
+        branchName.isEmpty) {
       return null;
     }
 

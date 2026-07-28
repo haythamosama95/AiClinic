@@ -8,19 +8,27 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 
 /// Custom day/week column header aligned with the Syncfusion time grid.
 class AppointmentCalendarViewHeader extends StatelessWidget {
-  const AppointmentCalendarViewHeader({required this.mode, required this.focusDate, required this.colors, super.key});
+  const AppointmentCalendarViewHeader({
+    required this.mode,
+    required this.focusDate,
+    required this.colors,
+    super.key,
+  });
 
   final AppointmentCalendarMode mode;
   final DateTime focusDate;
   final AppSemanticColors colors;
 
   static bool showsFor(AppointmentCalendarMode mode) {
-    return mode == AppointmentCalendarMode.day || mode == AppointmentCalendarMode.week;
+    return mode == AppointmentCalendarMode.day ||
+        mode == AppointmentCalendarMode.week;
   }
 
   @override
   Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context).languageCode == 'ar' ? 'ar-EG' : 'en-GB';
+    final locale = Localizations.localeOf(context).languageCode == 'ar'
+        ? 'ar-EG'
+        : 'en-GB';
     final weekdayFormat = DateFormat.E(locale);
     final days = AppointmentCalendarDisplay.visibleHeaderDays(mode, focusDate);
     final today = DateTime.now();
@@ -40,7 +48,8 @@ class AppointmentCalendarViewHeader extends StatelessWidget {
                 isToday: _isSameDay(days[index], today),
                 isLast: index == days.length - 1,
                 badgeSize: AppointmentCalendarDisplay.viewHeaderBadgeSize,
-                verticalPadding: AppointmentCalendarDisplay.viewHeaderVerticalPadding,
+                verticalPadding:
+                    AppointmentCalendarDisplay.viewHeaderVerticalPadding,
               ),
             ),
         ],

@@ -59,7 +59,9 @@ class AppointmentBookingStep1 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final branchDoctors = doctors.where((doctor) => doctor.isAssignedToBranch(branchId)).length;
+    final branchDoctors = doctors
+        .where((doctor) => doctor.isAssignedToBranch(branchId))
+        .length;
     final branchName = _branchLabel(branchId);
     final doctorLabel = _doctorLabel();
     final useTwoColumns = setupFormUseTwoColumns(context);
@@ -97,14 +99,29 @@ class AppointmentBookingStep1 extends StatelessWidget {
           const SizedBox(height: AppSpacing.space4),
           _doctorField(context, colors, branchDoctors),
         ],
-        if (notesField != null) ...[const SizedBox(height: AppSpacing.space4), notesField!],
+        if (notesField != null) ...[
+          const SizedBox(height: AppSpacing.space4),
+          notesField!,
+        ],
         if (branchId.isNotEmpty && selectedPatient != null) ...[
           const SizedBox(height: AppSpacing.space6),
           AppBookingSummaryCard(
             items: [
-              AppBookingSummaryItem(icon: Icons.person_outline, label: 'Patient', value: selectedPatient!.fullName),
-              AppBookingSummaryItem(icon: Icons.business_outlined, label: 'Branch', value: branchName),
-              AppBookingSummaryItem(icon: Icons.medical_services_outlined, label: 'Preference', value: doctorLabel),
+              AppBookingSummaryItem(
+                icon: Icons.person_outline,
+                label: 'Patient',
+                value: selectedPatient!.fullName,
+              ),
+              AppBookingSummaryItem(
+                icon: Icons.business_outlined,
+                label: 'Branch',
+                value: branchName,
+              ),
+              AppBookingSummaryItem(
+                icon: Icons.medical_services_outlined,
+                label: 'Preference',
+                value: doctorLabel,
+              ),
             ],
           ),
         ],
@@ -123,7 +140,11 @@ class AppointmentBookingStep1 extends StatelessWidget {
     );
   }
 
-  Widget _doctorField(BuildContext context, AppSemanticColors colors, int branchDoctors) {
+  Widget _doctorField(
+    BuildContext context,
+    AppSemanticColors colors,
+    int branchDoctors,
+  ) {
     final doctorEnabled = (canEditDoctor ?? canEdit) && branchId.isNotEmpty;
 
     if (doctors.isNotEmpty) {
@@ -143,31 +164,45 @@ class AppointmentBookingStep1 extends StatelessWidget {
     return AppFormField(
       id: 'book_appointment_doctor',
       label: 'Preferred doctor',
-      hint: branchId.isEmpty ? 'Select a branch first.' : 'Any available doctor',
+      hint: branchId.isEmpty
+          ? 'Select a branch first.'
+          : 'Any available doctor',
       child: Text(
         branchId.isEmpty
             ? 'Select a branch first.'
             : 'No active doctors are configured. You can still book without a preferred doctor.',
-        style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
       ),
     );
   }
 
   Widget _branchField(BuildContext context, AppSemanticColors colors) {
     if (branchesLoading) {
-      return const SizedBox(height: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+      return const SizedBox(
+        height: 40,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
     }
 
     if (branches.isEmpty) {
       return Text(
-        fallbackBranchName?.trim().isNotEmpty == true ? fallbackBranchName!.trim() : 'Branch',
-        style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+        fallbackBranchName?.trim().isNotEmpty == true
+            ? fallbackBranchName!.trim()
+            : 'Branch',
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
       );
     }
 
     return AppSelect(
       key: const Key('appointment_booking_branch'),
-      options: [for (final branch in branches) AppSelectOption(value: branch.id, label: branch.name)],
+      options: [
+        for (final branch in branches)
+          AppSelectOption(value: branch.id, label: branch.name),
+      ],
       value: branchId,
       disabled: !canChangeBranch,
       placeholder: 'Select branch',
@@ -180,7 +215,9 @@ class AppointmentBookingStep1 extends StatelessWidget {
     if (branch != null) {
       return branch.name;
     }
-    return fallbackBranchName?.trim().isNotEmpty == true ? fallbackBranchName!.trim() : '—';
+    return fallbackBranchName?.trim().isNotEmpty == true
+        ? fallbackBranchName!.trim()
+        : '—';
   }
 
   String _doctorLabel() {
@@ -211,7 +248,9 @@ class _InfoCard extends StatelessWidget {
         child: Text(
           'Start by choosing who is visiting and which branch they will attend. '
           'You can optionally name a preferred doctor — or leave that open to see every available slot.',
-          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+          style: AppTypography.bodySm(
+            context,
+          ).copyWith(color: colors.textSecondary),
         ),
       ),
     );

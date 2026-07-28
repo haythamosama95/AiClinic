@@ -11,7 +11,6 @@ class Payment {
     required this.amount,
     required this.recordedById,
     required this.recordedAt,
-    this.reference,
     this.note,
     this.recordedByDisplayName,
   });
@@ -19,7 +18,6 @@ class Payment {
   final String id;
   final PaymentMethod method;
   final Money amount;
-  final String? reference;
   final String? note;
   final String recordedById;
   final String? recordedByDisplayName;
@@ -46,7 +44,6 @@ class Payment {
       id: id,
       method: method,
       amount: amount,
-      reference: row['reference']?.toString(),
       note: row['note']?.toString(),
       recordedById: recordedBy.id,
       recordedByDisplayName: recordedBy.displayName,

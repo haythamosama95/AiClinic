@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
+import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/add_patient_form_fields.dart';
@@ -35,21 +36,39 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   }
 
   Future<void> _handleSubmit() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).submit();
-    if (!mounted || patientId == null) {
+    final result = await ref
+        .read(patientRegistrationProvider.notifier)
+        .submit();
+    if (!mounted || result == null) {
       return;
     }
+    appToast(
+      context,
+      AppToastInput(
+        message: 'Patient created — MRN ${result.mrn}',
+        variant: AppToastVariant.success,
+      ),
+    );
     _handleOpenChange(false);
-    widget.onSuccess(patientId);
+    widget.onSuccess(result.patientId);
   }
 
   Future<void> _handleRegisterAnyway() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).registerAnyway();
-    if (!mounted || patientId == null) {
+    final result = await ref
+        .read(patientRegistrationProvider.notifier)
+        .registerAnyway();
+    if (!mounted || result == null) {
       return;
     }
+    appToast(
+      context,
+      AppToastInput(
+        message: 'Patient created — MRN ${result.mrn}',
+        variant: AppToastVariant.success,
+      ),
+    );
     _handleOpenChange(false);
-    widget.onSuccess(patientId);
+    widget.onSuccess(result.patientId);
   }
 
   @override
@@ -85,7 +104,9 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
               AppButton(
                 variant: AppButtonVariant.secondary,
                 disabled: state.submitting,
-                onPressed: state.submitting ? null : () => _handleOpenChange(false),
+                onPressed: state.submitting
+                    ? null
+                    : () => _handleOpenChange(false),
                 child: const Text('Cancel'),
               ),
               const SizedBox(width: AppSpacing.space2),

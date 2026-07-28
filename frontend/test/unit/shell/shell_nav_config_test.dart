@@ -11,7 +11,7 @@ void main() {
       expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.patients), isTrue);
       expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.appointments), isTrue);
       expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.settings), isTrue);
-      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.billing), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.billingInvoices), isTrue);
     });
 
     test('allows design system route for router bypass', () {
@@ -30,6 +30,15 @@ void main() {
       expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.home), isTrue);
       expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.settings), isTrue);
       expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.foundationDemo), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.isFillViewportLocation', () {
+    test('billing routes fill the shell viewport', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoiceDetail('inv-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
     });
   });
 

@@ -25,4 +25,24 @@ enum DiscountKind {
     DiscountKind.percentage => 'Percentage',
     DiscountKind.fixed => 'Fixed amount',
   };
+
+  /// Human-readable discount label for detail surfaces (mirrors web `discountLabel`).
+  static String labelFor(DiscountKind? kind, String? value) {
+    if (kind == null || value == null || value.trim().isEmpty) {
+      return '—';
+    }
+
+    return switch (kind) {
+      DiscountKind.percentage => '$value% off',
+      DiscountKind.fixed => '${_formatFixedValue(value)} off',
+    };
+  }
+
+  static String _formatFixedValue(String value) {
+    final parsed = double.tryParse(value);
+    if (parsed == null) {
+      return value;
+    }
+    return parsed.toStringAsFixed(2);
+  }
 }

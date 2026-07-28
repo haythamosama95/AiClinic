@@ -231,7 +231,7 @@ BEGIN
   );
 
   -- Emulate two near-simultaneous payments racing to zero balance (sequential txns).
-  v_result := public.record_payment(v_invoice_id, 'cash', 60.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_id, 'cash', 60.00, NULL);
   PERFORM pg_temp.billing_concurrency_record(
     'first_concurrent_payment_accepted',
     v_result.success,
@@ -241,14 +241,14 @@ BEGIN
   v_detail := public.get_invoice_detail(v_invoice_id);
   v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
 
-  v_result := public.record_payment(v_invoice_id, 'cash', 60.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_id, 'cash', 60.00, NULL);
   PERFORM pg_temp.billing_concurrency_record(
     'second_concurrent_payment_rejected_overpayment',
     NOT v_result.success AND v_result.error_code = 'OVERPAYMENT',
     COALESCE(v_result.error_code, '<null>')
   );
 
-  v_result := public.record_payment(v_invoice_id, 'cash', v_balance, NULL, 'Final payment');
+  v_result := public.record_payment(v_invoice_id, 'cash', v_balance, 'Final payment');
   PERFORM pg_temp.billing_concurrency_record(
     'remaining_balance_payment_closes_invoice',
     v_result.success

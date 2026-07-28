@@ -62,7 +62,8 @@ class AddPatientFormFields extends ConsumerStatefulWidget {
   final String fieldIdPrefix;
 
   @override
-  ConsumerState<AddPatientFormFields> createState() => _AddPatientFormFieldsState();
+  ConsumerState<AddPatientFormFields> createState() =>
+      _AddPatientFormFieldsState();
 }
 
 class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
@@ -90,12 +91,14 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
   }
 
   KeyEventResult _handleFormKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.enter) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.enter) {
       return KeyEventResult.ignored;
     }
 
     final focusedContext = FocusManager.instance.primaryFocus?.context;
-    if (focusedContext != null && focusedContext.findAncestorWidgetOfExactType<AppTextarea>() != null) {
+    if (focusedContext != null &&
+        focusedContext.findAncestorWidgetOfExactType<AppTextarea>() != null) {
       return KeyEventResult.ignored;
     }
 
@@ -105,7 +108,10 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
 
   @override
   Widget build(BuildContext context) {
-    final branchName = widget.branchName ?? ref.watch(activeBranchNameProvider).value ?? 'your active branch';
+    final branchName =
+        widget.branchName ??
+        ref.watch(activeBranchNameProvider).value ??
+        'your active branch';
 
     return Form(
       child: Focus(
@@ -114,13 +120,18 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _BranchBanner(branchName: branchName, labelPrefix: widget.branchBannerLabel),
+            _BranchBanner(
+              branchName: branchName,
+              labelPrefix: widget.branchBannerLabel,
+            ),
             const SizedBox(height: AppSpacing.space6),
             _IdentityPreview(
               trimmedName: widget.trimmedName,
               showPreview: widget.showPreview,
               reducedMotion: widget.reducedMotion,
-              subtitle: widget.identityPreviewSubtitle ?? context.l10n.newRecordMrsAssignedOnSave,
+              subtitle:
+                  widget.identityPreviewSubtitle ??
+                  context.l10n.newRecordMrsAssignedOnSave,
             ),
             const SizedBox(height: AppSpacing.space6),
             _PatientDetailsSection(
@@ -145,7 +156,9 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
                 liveRegion: true,
                 child: Text(
                   widget.errors.form!,
-                  style: AppTypography.bodySm(context).copyWith(color: context.appColors.statusDangerFg),
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(color: context.appColors.statusDangerFg),
                 ),
               ),
             ],
@@ -173,7 +186,10 @@ class _BranchBanner extends StatelessWidget {
         border: Border.all(color: colors.borderSubtle),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space3,
+          vertical: 10,
+        ),
         child: Row(
           children: [
             Icon(Icons.location_on, size: 15, color: colors.iconMuted),
@@ -181,14 +197,17 @@ class _BranchBanner extends StatelessWidget {
             Expanded(
               child: Text.rich(
                 TextSpan(
-                  style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
                   children: [
                     TextSpan(text: labelPrefix),
                     TextSpan(
                       text: branchName,
-                      style: AppTypography.bodySm(
-                        context,
-                      ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
+                      style: AppTypography.bodySm(context).copyWith(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -231,7 +250,10 @@ class _IdentityPreview extends StatelessWidget {
           child: AnimatedBuilder(
             animation: animation,
             builder: (context, child) {
-              return Transform.translate(offset: Offset(0, -6 * (1 - animation.value)), child: child);
+              return Transform.translate(
+                offset: Offset(0, -6 * (1 - animation.value)),
+                child: child,
+              );
             },
             child: child,
           ),
@@ -243,13 +265,19 @@ class _IdentityPreview extends StatelessWidget {
               trimmedName: trimmedName,
               subtitle: subtitle,
             )
-          : const SizedBox.shrink(key: ValueKey<String>('identity-preview-empty')),
+          : const SizedBox.shrink(
+              key: ValueKey<String>('identity-preview-empty'),
+            ),
     );
   }
 }
 
 class _IdentityPreviewCard extends StatelessWidget {
-  const _IdentityPreviewCard({required this.trimmedName, required this.subtitle, super.key});
+  const _IdentityPreviewCard({
+    required this.trimmedName,
+    required this.subtitle,
+    super.key,
+  });
 
   final String trimmedName;
   final String subtitle;
@@ -265,11 +293,17 @@ class _IdentityPreviewCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [colors.surfaceMuted.withValues(alpha: 0.8), colors.surfaceDefault],
+          colors: [
+            colors.surfaceMuted.withValues(alpha: 0.8),
+            colors.surfaceDefault,
+          ],
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: 14,
+        ),
         child: Row(
           children: [
             AppAvatar(name: trimmedName, size: AvatarSize.lg),
@@ -282,9 +316,16 @@ class _IdentityPreviewCard extends StatelessWidget {
                     trimmedName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                    style: AppTypography.bodyStrong(
+                      context,
+                    ).copyWith(color: colors.textPrimary),
                   ),
-                  Text(subtitle, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                  Text(
+                    subtitle,
+                    style: AppTypography.caption(
+                      context,
+                    ).copyWith(color: colors.textTertiary),
+                  ),
                 ],
               ),
             ),
@@ -318,7 +359,8 @@ class _PatientDetailsSection extends StatelessWidget {
       children: [
         const AppSectionHeader(
           title: 'Patient details',
-          description: 'Core information used to identify the patient and reach them for care.',
+          description:
+              'Core information used to identify the patient and reach them for care.',
         ),
         const SizedBox(height: AppSpacing.space4),
         _buildPatientDetailsFields(),
@@ -356,7 +398,10 @@ class _PatientDetailsSection extends StatelessWidget {
       child: AppDatePicker(
         id: '$fieldIdPrefix-dob',
         value: values.dateOfBirth,
-        onChanged: (date) => onFieldChange('dateOfBirth', date == null ? null : normalizePatientDate(date)),
+        onChanged: (date) => onFieldChange(
+          'dateOfBirth',
+          date == null ? null : normalizePatientDate(date),
+        ),
         placeholder: 'Select date',
         max: DateTime.now(),
         invalid: errors.dateOfBirth != null,
@@ -371,8 +416,14 @@ class _PatientDetailsSection extends StatelessWidget {
       child: AppSelect(
         id: '$fieldIdPrefix-gender',
         value: values.gender?.wireValue,
-        onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
-        options: _genderOptions.map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label)).toList(),
+        onChanged: (value) =>
+            onFieldChange('gender', PatientGender.tryParse(value)),
+        options: _genderOptions
+            .map(
+              (gender) =>
+                  AppSelectOption(value: gender.wireValue, label: gender.label),
+            )
+            .toList(),
         placeholder: 'Select gender',
         invalid: errors.gender != null,
       ),
@@ -402,9 +453,15 @@ class _PatientDetailsSection extends StatelessWidget {
       child: AppSelect(
         id: '$fieldIdPrefix-maritalStatus',
         value: values.maritalStatus?.wireValue,
-        onChanged: (value) => onFieldChange('maritalStatus', PatientMaritalStatus.tryParse(value)),
+        onChanged: (value) => onFieldChange(
+          'maritalStatus',
+          PatientMaritalStatus.tryParse(value),
+        ),
         options: _maritalStatusOptions
-            .map((status) => AppSelectOption(value: status.wireValue, label: status.label))
+            .map(
+              (status) =>
+                  AppSelectOption(value: status.wireValue, label: status.label),
+            )
             .toList(),
         placeholder: 'Select marital state',
         invalid: errors.maritalStatus != null,
@@ -459,7 +516,8 @@ class _ClinicalNotesSection extends StatelessWidget {
       children: [
         const AppSectionHeader(
           title: 'Clinical notes',
-          description: 'Optional context visible to staff on the patient profile.',
+          description:
+              'Optional context visible to staff on the patient profile.',
         ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
@@ -471,7 +529,8 @@ class _ClinicalNotesSection extends StatelessWidget {
             id: '$fieldIdPrefix-notes',
             initialValue: values.notes,
             onChanged: (value) => onFieldChange('notes', value),
-            placeholder: 'e.g. Referred by Dr. Nabil. Penicillin allergy noted verbally.',
+            placeholder:
+                'e.g. Referred by Dr. Nabil. Penicillin allergy noted verbally.',
             rows: 3,
             autoGrow: true,
             maxLength: 500,

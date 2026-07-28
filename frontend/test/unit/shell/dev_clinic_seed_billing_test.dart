@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DevClinicSeedBilling', () {
-    test('cycles through every billing scenario including no-invoice visits', () {
+    test('cycles through every billing scenario for completed past visits', () {
       final seen = <DevClinicBillingScenario>{};
       for (var seedKey = 0; seedKey < DevClinicSeedBilling.scenarios.length * 3; seedKey++) {
         seen.add(DevClinicSeedBilling.scenarioFor(seedKey));
@@ -12,12 +12,15 @@ void main() {
       expect(seen, DevClinicSeedBilling.scenarios.toSet());
     });
 
+    test('always seeds an invoice for completed visits', () {
+      for (final scenario in DevClinicSeedBilling.scenarios) {
+        expect(DevClinicSeedBilling.shouldSeedInvoice(scenario), isTrue);
+      }
+    });
+
     test('covers all invoice terminal and draft statuses', () {
       final statuses = <String>{};
       for (final scenario in DevClinicSeedBilling.scenarios) {
-        if (!DevClinicSeedBilling.shouldSeedInvoice(scenario)) {
-          continue;
-        }
         if (!DevClinicSeedBilling.shouldIssue(scenario)) {
           statuses.add('draft');
           continue;

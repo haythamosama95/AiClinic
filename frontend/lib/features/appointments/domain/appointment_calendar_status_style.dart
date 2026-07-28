@@ -28,14 +28,19 @@ class AppointmentCalendarStatusStyle {
 
 /// Pearlescent, clinic-chic status palette for the appointment calendar.
 abstract final class AppointmentCalendarStatusPalette {
-  static AppointmentCalendarStatusStyle styleFor(AppointmentStatus status, Brightness brightness) {
+  static AppointmentCalendarStatusStyle styleFor(
+    AppointmentStatus status,
+    Brightness brightness,
+  ) {
     return switch (brightness) {
       Brightness.dark => _darkStyle(status),
       Brightness.light => _lightStyle(status),
     };
   }
 
-  static AppointmentCalendarStatusStyle filteredOutStyle(Brightness brightness) {
+  static AppointmentCalendarStatusStyle filteredOutStyle(
+    Brightness brightness,
+  ) {
     return brightness == Brightness.dark ? _filteredOutDark : _filteredOutLight;
   }
 

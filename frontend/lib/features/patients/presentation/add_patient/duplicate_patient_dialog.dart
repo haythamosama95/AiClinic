@@ -67,7 +67,9 @@ class DuplicatePatientDialog extends StatelessWidget {
         children: [
           Text(
             countLabel,
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.space4),
           AppList(
@@ -75,7 +77,10 @@ class DuplicatePatientDialog extends StatelessWidget {
               for (final candidate in candidates)
                 AppListItem(
                   key: ValueKey(candidate.id),
-                  leading: AppAvatar(name: candidate.fullName, size: AvatarSize.sm),
+                  leading: AppAvatar(
+                    name: candidate.fullName,
+                    size: AvatarSize.sm,
+                  ),
                   primary: Text(candidate.fullName),
                   secondary: Text(_secondaryLabel(candidate)),
                   trailing: AppButton(
@@ -99,7 +104,9 @@ class DuplicatePatientDialog extends StatelessWidget {
       parts.add(candidate.phone!);
     }
     if (candidate.dateOfBirth != null) {
-      parts.add('DOB ${PatientPresentationFormatting.dateOfBirthLabel(candidate.dateOfBirth)}');
+      parts.add(
+        'DOB ${PatientPresentationFormatting.dateOfBirthLabel(candidate.dateOfBirth)}',
+      );
     }
     return parts.join(' · ');
   }

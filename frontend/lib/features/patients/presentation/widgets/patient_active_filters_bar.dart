@@ -33,7 +33,9 @@ class PatientActiveFiltersBar extends StatelessWidget {
           switchInCurve: AppMotion.outCurve,
           switchOutCurve: AppMotion.inCurve,
           child: active.isEmpty
-              ? const SizedBox.shrink(key: ValueKey<String>('patient-active-filters-empty'))
+              ? const SizedBox.shrink(
+                  key: ValueKey<String>('patient-active-filters-empty'),
+                )
               : _ActiveFiltersContent(
                   key: const ValueKey<String>('patient-active-filters'),
                   active: active,
@@ -58,15 +60,22 @@ class _ActiveFiltersContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final horizontalPadding = MediaQuery.sizeOf(context).width >= 640 ? AppSpacing.space5 : AppSpacing.space4;
+    final horizontalPadding = MediaQuery.sizeOf(context).width >= 640
+        ? AppSpacing.space5
+        : AppSpacing.space4;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceSunken.withValues(alpha: 0.4),
-        border: Border(top: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.8))),
+        border: Border(
+          top: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.8)),
+        ),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: AppSpacing.space3),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: AppSpacing.space3,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -99,7 +108,10 @@ class _ActiveFiltersContent extends StatelessWidget {
               TextButton(
                 style: TextButton.styleFrom(
                   foregroundColor: colors.textLink,
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.space2,
+                    vertical: AppSpacing.space1,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),

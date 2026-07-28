@@ -16,7 +16,12 @@ abstract final class PatientNotesDialog {
       title: l10n.clinicalNotesSectionTitle,
       description: l10n.clinicalNotesSectionDescription,
       size: AppDialogSize.md,
-      child: SelectableText(notes, style: AppTypography.body(context).copyWith(color: context.appColors.textPrimary)),
+      child: SelectableText(
+        notes,
+        style: AppTypography.body(
+          context,
+        ).copyWith(color: context.appColors.textPrimary),
+      ),
     );
   }
 }

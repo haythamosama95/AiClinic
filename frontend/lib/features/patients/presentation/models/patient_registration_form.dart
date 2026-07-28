@@ -59,7 +59,9 @@ class PatientFormErrors {
       phone: clearPhone ? null : (phone ?? this.phone),
       dateOfBirth: clearDateOfBirth ? null : (dateOfBirth ?? this.dateOfBirth),
       gender: clearGender ? null : (gender ?? this.gender),
-      maritalStatus: clearMaritalStatus ? null : (maritalStatus ?? this.maritalStatus),
+      maritalStatus: clearMaritalStatus
+          ? null
+          : (maritalStatus ?? this.maritalStatus),
       notes: clearNotes ? null : (notes ?? this.notes),
       form: clearForm ? null : (form ?? this.form),
     );
@@ -108,9 +110,15 @@ class PatientRegistrationForm {
     return PatientRegistrationForm(
       fullName: fullName ?? this.fullName,
       phone: phone ?? this.phone,
-      dateOfBirth: identical(dateOfBirth, _sentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
-      gender: identical(gender, _sentinel) ? this.gender : gender as PatientGender?,
-      maritalStatus: identical(maritalStatus, _sentinel) ? this.maritalStatus : maritalStatus as PatientMaritalStatus?,
+      dateOfBirth: identical(dateOfBirth, _sentinel)
+          ? this.dateOfBirth
+          : dateOfBirth as DateTime?,
+      gender: identical(gender, _sentinel)
+          ? this.gender
+          : gender as PatientGender?,
+      maritalStatus: identical(maritalStatus, _sentinel)
+          ? this.maritalStatus
+          : maritalStatus as PatientMaritalStatus?,
       notes: notes ?? this.notes,
     );
   }
@@ -129,8 +137,5 @@ PatientFormErrors validateRegistration(PatientRegistrationForm form) {
 
   final phoneError = PatientFieldValidation.validateMobileNumber(form.phone);
 
-  return PatientFormErrors(
-    fullName: fullNameError,
-    phone: phoneError,
-  );
+  return PatientFormErrors(fullName: fullNameError, phone: phoneError);
 }

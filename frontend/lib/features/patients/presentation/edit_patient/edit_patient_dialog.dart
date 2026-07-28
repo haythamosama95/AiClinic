@@ -35,9 +35,14 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
     if (!mounted) {
       return;
     }
-    final detail = ref.read(patientDetailProvider(widget.patientId)).asData?.value;
+    final detail = ref
+        .read(patientDetailProvider(widget.patientId))
+        .asData
+        ?.value;
     if (detail != null) {
-      ref.read(patientEditProvider(widget.patientId).notifier).preloadFromDetail(detail);
+      ref
+          .read(patientEditProvider(widget.patientId).notifier)
+          .preloadFromDetail(detail);
     }
   }
 
@@ -53,7 +58,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   Future<void> _handleSubmit() async {
-    final success = await ref.read(patientEditProvider(widget.patientId).notifier).submit();
+    final success = await ref
+        .read(patientEditProvider(widget.patientId).notifier)
+        .submit();
     if (!mounted || !success) {
       return;
     }
@@ -62,7 +69,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   Future<void> _handleSaveAnyway() async {
-    final success = await ref.read(patientEditProvider(widget.patientId).notifier).saveAnyway();
+    final success = await ref
+        .read(patientEditProvider(widget.patientId).notifier)
+        .saveAnyway();
     if (!mounted || !success) {
       return;
     }
@@ -71,7 +80,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
   }
 
   void _handleStaleReload() {
-    ref.read(patientEditProvider(widget.patientId).notifier).confirmStaleReload();
+    ref
+        .read(patientEditProvider(widget.patientId).notifier)
+        .confirmStaleReload();
     _close();
   }
 
@@ -82,7 +93,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
     final reducedMotion = AppMotion.prefersReducedMotion(context);
 
     ref.listen<String?>(
-      patientEditProvider(widget.patientId).select((s) => s.pendingOpenPatientId),
+      patientEditProvider(
+        widget.patientId,
+      ).select((s) => s.pendingOpenPatientId),
       (previous, next) {
         if (next == null) {
           return;
@@ -93,7 +106,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
       },
     );
 
-    final identitySubtitle = state.showPreview ? '${context.l10n.editingSuffix} · ${state.trimmedName}' : null;
+    final identitySubtitle = state.showPreview
+        ? '${context.l10n.editingSuffix} · ${state.trimmedName}'
+        : null;
     final l10n = context.l10n;
 
     return Column(
@@ -119,7 +134,9 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
                 variant: AppButtonVariant.primary,
                 loading: state.submitting,
                 leadingIcon: const Icon(Icons.save, size: 16),
-                onPressed: state.submitting || !state.hydrated ? null : _handleSubmit,
+                onPressed: state.submitting || !state.hydrated
+                    ? null
+                    : _handleSubmit,
                 child: Text(l10n.saveChanges),
               ),
             ],
@@ -144,11 +161,20 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      AppSkeleton(variant: SkeletonVariant.rectangular, height: 44),
+                      AppSkeleton(
+                        variant: SkeletonVariant.rectangular,
+                        height: 44,
+                      ),
                       SizedBox(height: AppSpacing.space6),
-                      AppSkeleton(variant: SkeletonVariant.rectangular, height: 72),
+                      AppSkeleton(
+                        variant: SkeletonVariant.rectangular,
+                        height: 72,
+                      ),
                       SizedBox(height: AppSpacing.space6),
-                      AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
+                      AppSkeleton(
+                        variant: SkeletonVariant.rectangular,
+                        height: 220,
+                      ),
                     ],
                   ),
                 ),
@@ -165,7 +191,8 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
           open: state.staleUpdateOpen,
           onOpenChange: notifier.setStaleUpdateOpen,
           title: 'Record changed',
-          description: 'This record was modified by someone else. Reload and discard your edits?',
+          description:
+              'This record was modified by someone else. Reload and discard your edits?',
           size: AppDialogSize.sm,
           barrierDismissible: false,
           footer: Row(

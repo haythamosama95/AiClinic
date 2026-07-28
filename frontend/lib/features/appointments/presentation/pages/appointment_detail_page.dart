@@ -24,12 +24,18 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
 /// Full appointment profile page loaded via `get_appointment`.
 class AppointmentDetailPage extends ConsumerWidget {
-  const AppointmentDetailPage({required this.appointmentId, this.extra, super.key});
+  const AppointmentDetailPage({
+    required this.appointmentId,
+    this.extra,
+    super.key,
+  });
 
   final String appointmentId;
   final AppointmentDetailRouteExtra? extra;
@@ -60,7 +66,8 @@ class AppointmentDetailPage extends ConsumerWidget {
           appointmentId: appointmentId,
           message: error.toString(),
           onBack: () => _goBack(context),
-          onRetry: () => ref.invalidate(appointmentDetailProvider(appointmentId)),
+          onRetry: () =>
+              ref.invalidate(appointmentDetailProvider(appointmentId)),
         );
       },
       data: (detail) => _AppointmentDetailContentView(
@@ -84,12 +91,18 @@ class AppointmentDetailPage extends ConsumerWidget {
     ref.invalidate(appointmentDetailProvider(detail.id));
     ref.invalidate(
       appointmentDetailSiblingsProvider(
-        AppointmentDetailSiblingsQuery(branchId: detail.branchId, startTime: detail.startTime),
+        AppointmentDetailSiblingsQuery(
+          branchId: detail.branchId,
+          startTime: detail.startTime,
+        ),
       ),
     );
     ref.invalidate(
       appointmentDetailShiftLookupProvider(
-        AppointmentDetailShiftQuery(branchId: detail.branchId, appointmentStart: detail.startTime),
+        AppointmentDetailShiftQuery(
+          branchId: detail.branchId,
+          appointmentStart: detail.startTime,
+        ),
       ),
     );
     ref.invalidate(appointmentCalendarProvider);
@@ -116,21 +129,41 @@ class _AppointmentDetailContentView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brightness = Theme.of(context).brightness;
-    final statusColor = AppointmentCalendarDisplay.statusColor(detail.status, brightness);
-    final durationMinutes = detail.endTime.difference(detail.startTime).inMinutes;
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      detail.status,
+      brightness,
+    );
+    final durationMinutes = detail.endTime
+        .difference(detail.startTime)
+        .inMinutes;
 
-    final siblingsQuery = AppointmentDetailSiblingsQuery(branchId: detail.branchId, startTime: detail.startTime);
-    final shiftQuery = AppointmentDetailShiftQuery(branchId: detail.branchId, appointmentStart: detail.startTime);
-    final siblingsAsync = ref.watch(appointmentDetailSiblingsProvider(siblingsQuery));
-    final shiftAsync = ref.watch(appointmentDetailShiftLookupProvider(shiftQuery));
+    final siblingsQuery = AppointmentDetailSiblingsQuery(
+      branchId: detail.branchId,
+      startTime: detail.startTime,
+    );
+    final shiftQuery = AppointmentDetailShiftQuery(
+      branchId: detail.branchId,
+      appointmentStart: detail.startTime,
+    );
+    final siblingsAsync = ref.watch(
+      appointmentDetailSiblingsProvider(siblingsQuery),
+    );
+    final shiftAsync = ref.watch(
+      appointmentDetailShiftLookupProvider(shiftQuery),
+    );
     final siblings = siblingsAsync.value ?? const <AppointmentListItem>[];
-    final shiftLookup = shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
+    final shiftLookup =
+        shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
 
     return _AppointmentDetailScaffold(
       title: detail.patientName,
       subtitle: detail.status.label,
       patientId: detail.patientId,
-      headerActions: [AppointmentDetailEditButton(detail: detail)],
+      headerActions: [
+        AppointmentDetailOpenVisitButton(detail: detail),
+        AppointmentDetailInvoiceSummaryButton(detail: detail),
+        AppointmentDetailEditButton(detail: detail),
+      ],
       onBack: onBack,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,7 +184,8 @@ class _AppointmentDetailContentView extends ConsumerWidget {
             shiftLookup: shiftLookup,
             onChanged: onChanged,
           ),
-          if (detail.notes?.trim().isNotEmpty == true || detail.cancelReason?.trim().isNotEmpty == true) ...[
+          if (detail.notes?.trim().isNotEmpty == true ||
+              detail.cancelReason?.trim().isNotEmpty == true) ...[
             const SizedBox(height: AppSpacing.space6),
             if (detail.notes?.trim().isNotEmpty == true)
               _AppointmentNotesCard(
@@ -161,7 +195,8 @@ class _AppointmentDetailContentView extends ConsumerWidget {
                 accent: context.appColors.textLink,
               ),
             if (detail.cancelReason?.trim().isNotEmpty == true) ...[
-              if (detail.notes?.trim().isNotEmpty == true) const SizedBox(height: AppSpacing.space4),
+              if (detail.notes?.trim().isNotEmpty == true)
+                const SizedBox(height: AppSpacing.space4),
               _AppointmentNotesCard(
                 title: 'Cancellation reason',
                 body: detail.cancelReason!.trim(),
@@ -204,12 +239,22 @@ class _AppointmentHeroCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.lg),
         gradient: LinearGradient(
-          colors: [statusColor.withValues(alpha: 0.22), colors.textLink.withValues(alpha: 0.08), colors.surfaceDefault],
+          colors: [
+            statusColor.withValues(alpha: 0.22),
+            colors.textLink.withValues(alpha: 0.08),
+            colors.surfaceDefault,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         border: Border.all(color: statusColor.withValues(alpha: 0.28)),
-        boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.space6),
@@ -233,7 +278,9 @@ class _AppointmentHeroCard extends StatelessWidget {
                       'with ${detail.doctorDisplayName}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+                      style: AppTypography.body(
+                        context,
+                      ).copyWith(color: colors.textSecondary),
                     ),
                   ],
                 );
@@ -249,7 +296,11 @@ class _AppointmentHeroCard extends StatelessWidget {
                     padding: const EdgeInsets.all(AppSpacing.space4),
                     child: AnimatedAppointmentStatusColor(
                       color: statusColor,
-                      builder: (context, color) => Icon(Icons.calendar_month_rounded, color: color, size: 28),
+                      builder: (context, color) => Icon(
+                        Icons.calendar_month_rounded,
+                        color: color,
+                        size: 28,
+                      ),
                     ),
                   ),
                 );
@@ -291,10 +342,19 @@ class _AppointmentHeroCard extends StatelessWidget {
               children: [
                 _HeroFactChip(icon: Icons.event_outlined, label: dateLabel),
                 _HeroFactChip(icon: Icons.schedule_outlined, label: timeLabel),
-                _HeroFactChip(icon: Icons.timelapse_outlined, label: durationLabel),
-                _HeroFactChip(icon: Icons.category_outlined, label: detail.type.label),
+                _HeroFactChip(
+                  icon: Icons.timelapse_outlined,
+                  label: durationLabel,
+                ),
+                _HeroFactChip(
+                  icon: Icons.category_outlined,
+                  label: detail.type.label,
+                ),
                 if (detail.queueNumber != null)
-                  _HeroFactChip(icon: Icons.tag_outlined, label: 'Queue #${detail.queueNumber}'),
+                  _HeroFactChip(
+                    icon: Icons.tag_outlined,
+                    label: 'Queue #${detail.queueNumber}',
+                  ),
                 _HeroAuditInfoChip(detail: detail, auditFormat: auditFormat),
               ],
             ),
@@ -371,20 +431,36 @@ class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
               decoration: BoxDecoration(
-                color: _isButtonHovered || isOpen ? colors.surfaceMuted : colors.surfaceDefault.withValues(alpha: 0.82),
+                color: _isButtonHovered || isOpen
+                    ? colors.surfaceMuted
+                    : colors.surfaceDefault.withValues(alpha: 0.82),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: _isButtonHovered || isOpen ? colors.textLink.withValues(alpha: 0.45) : colors.borderDefault,
+                  color: _isButtonHovered || isOpen
+                      ? colors.textLink.withValues(alpha: 0.45)
+                      : colors.borderDefault,
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.space4,
+                  vertical: AppSpacing.space2,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.info_outline_rounded, size: 16, color: colors.textLink),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: colors.textLink,
+                    ),
                     const SizedBox(width: AppSpacing.space1),
-                    Text('Record info', style: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      'Record info',
+                      style: AppTypography.caption(
+                        context,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
               ),
@@ -401,7 +477,10 @@ class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> {
           setState(() => _isPopoverHovered = false);
           _scheduleHide();
         },
-        child: _HeroAuditPanel(detail: widget.detail, auditFormat: widget.auditFormat),
+        child: _HeroAuditPanel(
+          detail: widget.detail,
+          auditFormat: widget.auditFormat,
+        ),
       ),
     );
   }
@@ -431,7 +510,10 @@ class _HeroAuditPanel extends StatelessWidget {
               AppSpacing.space2,
               AppSpacing.space1,
             ),
-            child: Text('Record info', style: AppTypography.bodyStrong(context)),
+            child: Text(
+              'Record info',
+              style: AppTypography.bodyStrong(context),
+            ),
           ),
           _HeroAuditItem(
             icon: Icons.history_rounded,
@@ -441,7 +523,12 @@ class _HeroAuditPanel extends StatelessWidget {
           ),
           if (bookedBy != null && bookedBy.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.space2),
-            _HeroAuditItem(icon: Icons.person_add_alt_1_outlined, label: 'Booked by', value: bookedBy, colors: colors),
+            _HeroAuditItem(
+              icon: Icons.person_add_alt_1_outlined,
+              label: 'Booked by',
+              value: bookedBy,
+              colors: colors,
+            ),
           ],
           const SizedBox(height: AppSpacing.space2),
           _HeroAuditItem(
@@ -457,7 +544,12 @@ class _HeroAuditPanel extends StatelessWidget {
 }
 
 class _HeroAuditItem extends StatelessWidget {
-  const _HeroAuditItem({required this.icon, required this.label, required this.value, required this.colors});
+  const _HeroAuditItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.colors,
+  });
 
   final IconData icon;
   final String label;
@@ -477,9 +569,19 @@ class _HeroAuditItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: AppTypography.caption(context).copyWith(color: colors.textSecondary)),
+                Text(
+                  label,
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
+                ),
                 const SizedBox(height: 2),
-                Text(value, style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  value,
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -508,12 +610,21 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space1),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: AppSpacing.space1,
+        ),
         child: AnimatedDefaultTextStyle(
           duration: motionDuration,
           curve: AppointmentStatusMotion.curve,
-          style: AppTypography.caption(context).copyWith(color: color, fontWeight: FontWeight.w700),
-          child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: color, fontWeight: FontWeight.w700),
+          child: Text(
+            status.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -537,7 +648,10 @@ class _HeroFactChip extends StatelessWidget {
         border: Border.all(color: colors.borderDefault),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space2),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: AppSpacing.space2,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -548,7 +662,9 @@ class _HeroFactChip extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600),
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -559,7 +675,12 @@ class _HeroFactChip extends StatelessWidget {
 }
 
 class _AppointmentNotesCard extends StatelessWidget {
-  const _AppointmentNotesCard({required this.title, required this.body, required this.icon, required this.accent});
+  const _AppointmentNotesCard({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.accent,
+  });
 
   final String title;
   final String body;
@@ -640,29 +761,56 @@ class _AppointmentDetailScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppPageHeader(
-          title: title,
-          description: subtitle,
-          breadcrumb: AppBreadcrumb(
-            items: [
-              AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
-              AppBreadcrumbItem(label: title),
-            ],
+    final header = AppPageHeader(
+      title: title,
+      description: subtitle,
+      breadcrumb: AppBreadcrumb(
+        items: [
+          AppBreadcrumbItem(
+            label: 'Calendar',
+            onTap: () => context.nav.goAppointmentsCalendar(),
           ),
-          actions: _buildHeaderActions(context),
-        ),
-        const SizedBox(height: AppSpacing.space6),
-        Expanded(child: SingleChildScrollView(child: body)),
-      ],
+          AppBreadcrumbItem(label: title),
+        ],
+      ),
+      actions: _buildHeaderActions(context),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
+
+        if (!hasBoundedHeight) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              header,
+              const SizedBox(height: AppSpacing.space6),
+              body,
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            const SizedBox(height: AppSpacing.space6),
+            Expanded(child: SingleChildScrollView(child: body)),
+          ],
+        );
+      },
     );
   }
 }
 
 class _AppointmentDetailLoadingView extends StatelessWidget {
-  const _AppointmentDetailLoadingView({required this.appointmentId, required this.onBack, this.preview});
+  const _AppointmentDetailLoadingView({
+    required this.appointmentId,
+    required this.onBack,
+    this.preview,
+  });
 
   final String appointmentId;
   final AppointmentListItem? preview;
@@ -682,20 +830,34 @@ class _AppointmentDetailLoadingView extends StatelessWidget {
               opacity: 0.65,
               child: _AppointmentHeroCard(
                 detail: _previewAsDetail(preview!),
-                statusColor: AppointmentCalendarDisplay.statusColor(preview!.status, Theme.of(context).brightness),
-                dateLabel: DateFormat.yMMMEd().format(preview!.startTime.toLocal()),
+                statusColor: AppointmentCalendarDisplay.statusColor(
+                  preview!.status,
+                  Theme.of(context).brightness,
+                ),
+                dateLabel: DateFormat.yMMMEd().format(
+                  preview!.startTime.toLocal(),
+                ),
                 timeLabel:
                     '${DateFormat.jm().format(preview!.startTime.toLocal())} – ${DateFormat.jm().format(preview!.endTime.toLocal())}',
-                durationLabel: '${preview!.endTime.difference(preview!.startTime).inMinutes} min',
+                durationLabel:
+                    '${preview!.endTime.difference(preview!.startTime).inMinutes} min',
                 auditFormat: DateFormat('MMM d, yyyy · h:mm a'),
               ),
             )
           else
-            const AppSkeleton(variant: SkeletonVariant.rectangular, height: 180),
+            const AppSkeleton(
+              variant: SkeletonVariant.rectangular,
+              height: 180,
+            ),
           const SizedBox(height: AppSpacing.space6),
           const AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
           const SizedBox(height: AppSpacing.space6),
-          const Center(child: AppProgress(variant: ProgressVariant.circular, indeterminate: true)),
+          const Center(
+            child: AppProgress(
+              variant: ProgressVariant.circular,
+              indeterminate: true,
+            ),
+          ),
         ],
       ),
     );
@@ -741,9 +903,17 @@ class _AppointmentDetailErrorView extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Unable to load appointment', style: AppTypography.bodyStrong(context)),
+          Text(
+            'Unable to load appointment',
+            style: AppTypography.bodyStrong(context),
+          ),
           const SizedBox(height: AppSpacing.space2),
-          Text(message, style: AppTypography.bodySm(context).copyWith(color: context.appColors.actionDanger)),
+          Text(
+            message,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: context.appColors.actionDanger),
+          ),
           const SizedBox(height: AppSpacing.space6),
           AppButton(onPressed: onRetry, child: const Text('Retry')),
         ],
@@ -777,6 +947,11 @@ class _AppointmentDetailPermissionDenied extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text('You do not have permission to view appointments.', style: AppTypography.body(context)));
+    return Center(
+      child: Text(
+        'You do not have permission to view appointments.',
+        style: AppTypography.body(context),
+      ),
+    );
   }
 }

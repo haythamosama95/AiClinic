@@ -79,7 +79,9 @@ enum AppointmentStatus {
             target == AppointmentStatus.inProgress ||
             target == AppointmentStatus.cancelled ||
             target == AppointmentStatus.noShow,
-      AppointmentStatus.inProgress => target == AppointmentStatus.checkedIn || target == AppointmentStatus.completed,
+      AppointmentStatus.inProgress =>
+        target == AppointmentStatus.checkedIn ||
+            target == AppointmentStatus.completed,
       _ => false,
     };
   }

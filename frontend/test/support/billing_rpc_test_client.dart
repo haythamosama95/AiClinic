@@ -44,6 +44,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '0',
       'balance': '100.00',
+      'currency': 'USD',
       'created_at': '2026-06-02T10:00:00.000Z',
       'issued_at': '2026-06-02T11:00:00.000Z',
       'payments': [],
@@ -61,6 +62,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '80.00',
       'balance': '0.00',
+      'currency': 'USD',
       'created_at': '2026-06-01T10:00:00.000Z',
       'issued_at': '2026-06-01T11:00:00.000Z',
       'payments': [
@@ -68,7 +70,6 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
           'id': 'pay-1',
           'method': 'card',
           'amount': '80.00',
-          'reference': null,
           'note': null,
           'recorded_by': {'id': 'staff-1', 'display_name': 'Reception'},
           'recorded_at': '2026-06-01T12:00:00.000Z',
@@ -88,6 +89,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '0',
       'balance': '60.00',
+      'currency': 'USD',
       'created_at': '2026-06-03T10:00:00.000Z',
       'issued_at': '2026-06-03T11:00:00.000Z',
       'payments': [],
@@ -266,7 +268,12 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final patientSearch = filters['patient_search']?.toString().trim();
     if (patientSearch != null && patientSearch.isNotEmpty) {
       final needle = patientSearch.toLowerCase();
-      rows = rows.where((row) => row['patient_display_name']?.toString().toLowerCase().contains(needle) ?? false);
+      rows = rows.where((row) {
+        final name = row['patient_display_name']?.toString().toLowerCase() ?? '';
+        final mrn = row['patient_mrn']?.toString().toLowerCase() ?? '';
+        final invoiceNumber = row['invoice_number']?.toString().toLowerCase() ?? '';
+        return name.contains(needle) || mrn.contains(needle) || invoiceNumber.contains(needle);
+      });
     }
 
     final invoiceNumber = filters['invoice_number']?.toString().trim();
@@ -366,7 +373,6 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'id': paymentId,
       'method': method,
       'amount': amount.toStringAsFixed(2),
-      'reference': lastParams?['p_reference'],
       'note': lastParams?['p_note'],
       'recorded_by': {'id': 'staff-1', 'display_name': 'Test Staff'},
       'recorded_at': DateTime.now().toUtc().toIso8601String(),
@@ -403,7 +409,6 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'id': paymentId,
       'method': lastParams?['p_method']?.toString() ?? 'cash',
       'amount': (-amount).toStringAsFixed(2),
-      'reference': null,
       'note': note,
       'recorded_by': {'id': 'staff-1', 'display_name': 'Test Staff'},
       'recorded_at': DateTime.now().toUtc().toIso8601String(),
@@ -689,7 +694,13 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
             ]
           : List<Map<String, dynamic>>.from(_draftItems),
       'payments': isIssued ? List<Map<String, dynamic>>.from(payments) : [],
-      'patient': {'id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'display_name': 'Test Patient'},
+      'patient': {
+        'id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        'display_name': 'Test Patient',
+        'mrn': 'MRN-000001',
+        'patient_mrn': 'MRN-000001',
+        'phone': '+20 100 000 0000',
+      },
       'branch': {'id': '44444444-4444-4444-8444-444444444444', 'code': 'MAIN', 'name': 'Main'},
       'insurance_provider': isIssued || draftInsuranceProviderId == null
           ? null

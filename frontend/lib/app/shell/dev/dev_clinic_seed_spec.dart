@@ -113,6 +113,16 @@ abstract final class DevClinicSeedSpec {
     return '2018${branchIndex.toString().padLeft(2, '0')}${patientIndex.toString().padLeft(4, '0')}';
   }
 
+  /// 1-based index across all seeded patients (branch 1 #1 → 1, branch 3 #16 → 48).
+  static int patientGlobalIndex({required int branchIndex, required int patientIndex}) {
+    return (branchIndex - 1) * patientsPerBranch + patientIndex;
+  }
+
+  /// Deterministic MRN for dev seed patients (`MRN-000001`, …).
+  static String patientMrn(int globalPatientIndex) {
+    return 'MRN-${globalPatientIndex.toString().padLeft(6, '0')}';
+  }
+
   /// Whether [username] belongs to a dev-seed staff account.
   static bool isDevSeedStaffUsername(String? username) {
     final normalized = username?.trim();
