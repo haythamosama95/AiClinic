@@ -28,6 +28,8 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 - `docs/architecture/14-visits-encounter-workspace.md`: visit lifecycle, clinical documentation, encounter workspace UI.
 - `docs/architecture/15-billing.md`: billing schema, invoice lifecycle, RPC inventory, frontend status.
 - `docs/architecture/16-testing.md`: backend SQL tests, Flutter test layout, CI scope.
+- `docs/architecture/17-ai-platform.md`: AI platform architecture — gateway boundaries, trust model, prompt ownership, provider routing, AI data model. Proposal; supersedes earlier AI statements in this doc set.
+- `docs/architecture/17a-ai-platform-overview.md`: high-level AI platform overview — components, contracts, request flow. Read this first for orientation; `17-ai-platform.md` remains canonical.
 - `docs/architecture/ARCHITECTURAL_FLAWS.md`: known architectural risks, doc/code drift, and remediation priorities.
 
 ## Common Routing Shortcuts
