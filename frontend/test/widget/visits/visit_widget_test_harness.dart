@@ -8,13 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
@@ -32,22 +32,21 @@ import '../../helpers/role_permission_seed.dart';
 import '../../support/visit_encounter_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
 
-export '../../support/visit_encounter_test_support.dart'
-    show encounterTestBranchId, encounterTestPatientId, encounterTestVisitId;
+export 'package:riverpod/misc.dart' show Override;
+export '../../support/visit_encounter_test_support.dart';
 
 const visitsWideSurfaceSize = Size(1400, 1000);
 
 /// Fixed documentation state that records mutation calls for widget assertions.
 class StubVisitDocumentationNotifier extends VisitDocumentationNotifier {
   StubVisitDocumentationNotifier(
-    String visitId,
+    super.visitId,
     VisitDocumentationState initialState, {
     this.onSave,
     this.onSaveAll,
     this.onCompleteVisit,
     this.completeVisitError,
-  })  : _state = initialState,
-        super(visitId);
+  })  : _state = initialState;
 
   VisitDocumentationState _state;
   final Future<void> Function()? onSave;
@@ -574,7 +573,7 @@ class StubVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Never completes so [visitDocumentationProvider] stays in loading.
 class LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  LoadingVisitDocumentationNotifier(String visitId) : super(visitId);
+  LoadingVisitDocumentationNotifier(super.visitId);
 
   @override
   Future<VisitDocumentationState> build() async {
@@ -584,7 +583,7 @@ class LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Throws on build to surface the documentation error state.
 class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  ErrorVisitDocumentationNotifier(String visitId, this._error) : super(visitId);
+  ErrorVisitDocumentationNotifier(super.visitId, this._error);
 
   final Object _error;
 
@@ -593,7 +592,7 @@ class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
 }
 
 class StubPatientSafetyNotifier extends PatientSafetyNotifier {
-  StubPatientSafetyNotifier(String patientId, this._context) : super(patientId);
+  StubPatientSafetyNotifier(super.patientId, this._context);
 
   final PatientSafetyContext _context;
 
@@ -602,7 +601,7 @@ class StubPatientSafetyNotifier extends PatientSafetyNotifier {
 }
 
 class LoadingPatientSafetyNotifier extends PatientSafetyNotifier {
-  LoadingPatientSafetyNotifier(String patientId) : super(patientId);
+  LoadingPatientSafetyNotifier(super.patientId);
 
   @override
   Future<PatientSafetyContext> build() async {
@@ -611,7 +610,7 @@ class LoadingPatientSafetyNotifier extends PatientSafetyNotifier {
 }
 
 class ErrorPatientSafetyNotifier extends PatientSafetyNotifier {
-  ErrorPatientSafetyNotifier(String patientId, this._error) : super(patientId);
+  ErrorPatientSafetyNotifier(super.patientId, this._error);
 
   final Object _error;
 
@@ -621,7 +620,7 @@ class ErrorPatientSafetyNotifier extends PatientSafetyNotifier {
 
 /// Records [EncounterActivePhaseNotifier.setPhase] calls.
 class SpyEncounterActivePhaseNotifier extends EncounterActivePhaseNotifier {
-  SpyEncounterActivePhaseNotifier(String visitId) : super(visitId);
+  SpyEncounterActivePhaseNotifier(super.visitId);
 
   var setPhaseCallCount = 0;
   EncounterPhase? lastPhase;
@@ -756,11 +755,11 @@ GoRouter createVisitsTestRouter({
     routes: [
       GoRoute(
         path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-        builder: (_, __) => home,
+        builder: (_, _) => home,
       ),
       GoRoute(
         path: AppRoutes.appointmentsCalendar,
-        builder: (_, __) => marker('appointments-calendar'),
+        builder: (_, _) => marker('appointments-calendar'),
       ),
       GoRoute(
         path: '${AppRoutes.appointments}/:appointmentId',

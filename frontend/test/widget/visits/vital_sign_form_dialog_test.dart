@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
+import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 
 import 'visit_widget_test_harness.dart';

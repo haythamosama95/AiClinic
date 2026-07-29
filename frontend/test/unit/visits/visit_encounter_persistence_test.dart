@@ -72,8 +72,10 @@ class _SeededVisitDocumentationNotifier extends VisitDocumentationNotifier {
   Future<VisitDocumentationState> build() async => _state;
 }
 
+class _FakeSupabaseClient extends Fake implements SupabaseClient {}
+
 class _RecordingVisitAttachmentService extends VisitAttachmentService {
-  _RecordingVisitAttachmentService(VisitRepository repository) : super(Fake(), repository);
+  _RecordingVisitAttachmentService(VisitRepository repository) : super(_FakeSupabaseClient(), repository);
 
   int uploadCalls = 0;
   String? lastVisitId;

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:syncfusion_flutter_calendar/calendar.dart';
+import 'package:syncfusion_flutter_calendar/calendar.dart' hide AppointmentType;
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -226,6 +226,7 @@ CalendarAppointmentDetails calendarTileDetails({
     endTime: end,
   );
   return CalendarAppointmentDetails(
+    start,
     [appointment],
     bounds,
     isMoreAppointmentRegion: false,
@@ -373,19 +374,19 @@ GoRouter createAppointmentSectionNavRouter({
     routes: [
       GoRoute(
         path: AppRoutes.appointments,
-        builder: (_, __) => stub('hub'),
+        builder: (_, _) => stub('hub'),
         routes: [
           GoRoute(
             path: 'book',
-            builder: (_, __) => stub('book'),
+            builder: (_, _) => stub('book'),
           ),
           GoRoute(
             path: 'queue',
-            builder: (_, __) => stub('queue'),
+            builder: (_, _) => stub('queue'),
           ),
           GoRoute(
             path: 'calendar',
-            builder: (_, __) => navHost,
+            builder: (_, _) => navHost,
           ),
         ],
       ),

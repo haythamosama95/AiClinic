@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import '../../helpers/patient_test_support.dart';
+import '../../support/appointment_calendar_test_support.dart';
 import 'detail_widget_test_harness.dart';
 
 void main() {

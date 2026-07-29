@@ -203,7 +203,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(await resultFuture, isNull);
+      expect(resultFuture, isNull);
     });
   });
 
@@ -220,7 +220,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      final result = await resultFuture;
+      final result = resultFuture;
       expect(result, isA<AppointmentRescheduleConfirmResult>());
       expect(result!.start, DateTime(2026, 6, 4, 11, 0));
       expect(result.end, DateTime(2026, 6, 4, 11, 30));

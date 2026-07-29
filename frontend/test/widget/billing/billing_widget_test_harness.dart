@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,7 +15,6 @@ import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
@@ -36,7 +36,6 @@ import 'package:ai_clinic/l10n/app_localizations.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
-import '../../support/visit_encounter_test_support.dart';
 
 const billingTestBranchId = '44444444-4444-4444-8444-444444444444';
 const billingTestPatientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -134,7 +133,7 @@ class SpyVisitBillingFlowNotifier extends VisitBillingFlowNotifier {
 
 /// Fixed visit documentation snapshot for [VisitBillingPage].
 class FixedVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  FixedVisitDocumentationNotifier(this._state);
+  FixedVisitDocumentationNotifier(super.visitId, this._state);
 
   final VisitDocumentationState _state;
 
@@ -144,7 +143,7 @@ class FixedVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Surfaces visit documentation load errors on [VisitBillingPage].
 class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  ErrorVisitDocumentationNotifier(this._error);
+  ErrorVisitDocumentationNotifier(super.visitId, this._error);
 
   final Object _error;
 
@@ -431,7 +430,7 @@ List<Override> billingProviderOverrides({
   InvoiceDetailViewState? detailView,
   Object? detailError,
   String? editorInvoiceId,
-  SpyInvoiceEditorNotifier? editorNotifier,
+  InvoiceEditorNotifier? editorNotifier,
   Override? editorOverride,
   String? visitId,
   VisitDocumentationState? visitDocState,
@@ -472,11 +471,11 @@ List<Override> billingProviderOverrides({
     if (visitId != null)
       if (visitDocError != null)
         visitDocumentationProvider(visitId).overrideWith(
-          () => ErrorVisitDocumentationNotifier(visitDocError),
+          () => ErrorVisitDocumentationNotifier(visitId, visitDocError),
         )
       else if (visitDocState != null)
         visitDocumentationProvider(visitId).overrideWith(
-          () => FixedVisitDocumentationNotifier(visitDocState),
+          () => FixedVisitDocumentationNotifier(visitId, visitDocState),
         ),
     if (visitId != null && visitBillingFlowNotifier != null)
       visitBillingFlowProvider(visitId).overrideWith(() => visitBillingFlowNotifier),
@@ -510,7 +509,7 @@ GoRouter createBillingTestRouter({
     routes: [
       GoRoute(
         path: AppRoutes.billingInvoices,
-        builder: (_, __) => home,
+        builder: (_, _) => home,
       ),
       GoRoute(
         path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',

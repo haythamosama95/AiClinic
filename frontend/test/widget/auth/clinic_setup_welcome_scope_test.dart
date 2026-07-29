@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
 import '../../helpers/auth_test_support.dart';
 import 'clinic_setup_welcome_test_harness.dart';

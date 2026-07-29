@@ -44,8 +44,6 @@ class _FakeProvisioningRepository extends Fake implements ProvisioningRepository
     );
   }
 
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 AuthSessionContext _authContext({

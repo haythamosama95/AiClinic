@@ -64,8 +64,8 @@ void main() {
           selectedIds: const {'svc-1'},
           selectedLines: [_line()],
           currency: 'USD',
-          onToggle: (_, __) {},
-          onQuantityChange: (_, __) {},
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -90,7 +90,7 @@ void main() {
             toggledService = candidate;
             toggledSelected = selected;
           },
-          onQuantityChange: (_, __) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -112,7 +112,7 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line()],
           currency: 'USD',
-          onToggle: (_, __) {},
+          onToggle: (_, _) {},
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );
@@ -138,8 +138,8 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line(quantity: 99)],
           currency: 'USD',
-          onToggle: (_, __) {},
-          onQuantityChange: (_, __) {},
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -159,8 +159,8 @@ void main() {
           selectedIds: const {'svc-1'},
           selectedLines: [_line()],
           currency: 'USD',
-          onToggle: (_, __) {},
-          onQuantityChange: (_, __) {},
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -184,7 +184,7 @@ void main() {
               toggledService = candidate;
             }
           },
-          onQuantityChange: (_, __) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -210,7 +210,7 @@ void main() {
               toggledService = candidate;
             }
           },
-          onQuantityChange: (_, __) {},
+          onQuantityChange: (_, _) {},
         ),
       );
 
@@ -231,7 +231,7 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line()],
           currency: 'USD',
-          onToggle: (_, __) {},
+          onToggle: (_, _) {},
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );
@@ -253,7 +253,7 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line(quantity: 99)],
           currency: 'USD',
-          onToggle: (_, __) {},
+          onToggle: (_, _) {},
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );

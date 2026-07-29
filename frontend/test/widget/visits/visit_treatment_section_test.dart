@@ -1,5 +1,6 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -207,7 +208,7 @@ void main() {
       await _pumpTreatmentSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final notesSemantics = tester.getSemantics(find.bySemanticsIdentifier('treatment-notes-input'));
-      expect(notesSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(notesSemantics.flagsCollection.isEnabled, Tristate.isFalse);
     });
 
     testWidgets('trivial: canEdit false hides structured editor mutation affordances', (tester) async {
@@ -232,7 +233,7 @@ void main() {
       expect(find.bySemanticsLabel('Remove Lab PDF'), findsNothing);
 
       final dropzoneSemantics = tester.getSemantics(find.bySemanticsIdentifier('visit-attachments'));
-      expect(dropzoneSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(dropzoneSemantics.flagsCollection.isEnabled, Tristate.isFalse);
     });
 
     testWidgets('advanced: canEdit true shows add affordances in empty editors', (tester) async {

@@ -6,7 +6,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/medical_backgroun
 import 'package:ai_clinic/features/visits/presentation/widgets/medical_background_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_medical_background_editor.dart';
 
-import '../../support/visit_encounter_test_support.dart';
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(
@@ -32,14 +31,14 @@ Future<void> _pumpEditor(
       allergies: allergies,
       currentMedications: currentMedications,
       canEdit: canEdit,
-      onCreateCondition: onCreateCondition ?? (_, __) {},
-      onUpdateCondition: onUpdateCondition ?? (_, __, ___) {},
+      onCreateCondition: onCreateCondition ?? (_, _) {},
+      onUpdateCondition: onUpdateCondition ?? (_, _, _) {},
       onArchiveCondition: onArchiveCondition ?? (_) {},
-      onCreateAllergy: onCreateAllergy ?? (_, __) {},
-      onUpdateAllergy: onUpdateAllergy ?? (_, __, ___) {},
+      onCreateAllergy: onCreateAllergy ?? (_, _) {},
+      onUpdateAllergy: onUpdateAllergy ?? (_, _, _) {},
       onArchiveAllergy: onArchiveAllergy ?? (_) {},
-      onCreateMedication: onCreateMedication ?? (_, __) {},
-      onUpdateMedication: onUpdateMedication ?? (_, __, ___) {},
+      onCreateMedication: onCreateMedication ?? (_, _) {},
+      onUpdateMedication: onUpdateMedication ?? (_, _, _) {},
       onArchiveMedication: onArchiveMedication ?? (_) {},
     ),
   );

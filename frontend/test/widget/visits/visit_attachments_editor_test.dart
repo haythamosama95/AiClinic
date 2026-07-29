@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachments_editor.dart';
 
-import '../../support/visit_encounter_test_support.dart';
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(

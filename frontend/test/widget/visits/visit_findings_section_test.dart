@@ -1,5 +1,6 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -156,10 +157,10 @@ void main() {
       await _pumpFindingsSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final examSemantics = tester.getSemantics(find.bySemanticsIdentifier('physical-examination-input'));
-      expect(examSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(examSemantics.flagsCollection.isEnabled, Tristate.isFalse);
 
       final diagnosisSemantics = tester.getSemantics(find.bySemanticsIdentifier('diagnosis-input'));
-      expect(diagnosisSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(diagnosisSemantics.flagsCollection.isEnabled, Tristate.isFalse);
     });
 
     testWidgets('trivial: canEdit false hides vital sign add and remove affordances', (tester) async {

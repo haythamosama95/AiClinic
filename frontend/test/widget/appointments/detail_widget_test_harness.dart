@@ -7,9 +7,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
@@ -42,6 +40,7 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -158,9 +157,10 @@ List<StaffListItem> buildTestDoctors() {
 }
 
 AppointmentQueueShiftDoctorLookup buildShiftLookup({
-  DateTime shiftDate = DateTime(2026, 6, 15),
+  DateTime? shiftDate,
   List<StaffListItem> doctors = const [],
 }) {
+  final resolvedShiftDate = shiftDate ?? DateTime(2026, 6, 15);
   final doctorList = doctors.isEmpty ? buildTestDoctors() : doctors;
   return AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
     organizationTimezone: 'UTC',
@@ -168,7 +168,7 @@ AppointmentQueueShiftDoctorLookup buildShiftLookup({
       ShiftListItem(
         id: 'shift-1',
         branchId: calendarTestBranchAId,
-        shiftDate: shiftDate,
+        shiftDate: resolvedShiftDate,
         startTime: '06:00',
         endTime: '23:59',
         status: ShiftStatus.active,
@@ -270,6 +270,8 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required DateTime from,
     required DateTime to,
     String? doctorId,
+    List<AppointmentStatus>? statuses,
+    String? patientId,
   }) async {
     return listAppointmentsResult;
   }
@@ -280,8 +282,9 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required String patientId,
     String? doctorId,
     required AppointmentType type,
-    required DateTime startTime,
-    required int durationMinutes,
+    DateTime? startTime,
+    int? durationMinutes,
+    DateTime? endTime,
     String? notes,
   }) async {
     createCallCount++;
@@ -291,29 +294,40 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (createAppointmentCompleter != null) {
       return createAppointmentCompleter!.future;
     }
+    final resolvedStart = startTime ?? DateTime.utc(2026, 6, 15, 10);
+    final resolvedDuration = durationMinutes ?? 30;
     return CreateAppointmentResult(
       appointmentId: 'new-appointment-id',
-      startTime: startTime,
-      endTime: startTime.add(Duration(minutes: durationMinutes)),
+      startTime: resolvedStart,
+      endTime: endTime ?? resolvedStart.add(Duration(minutes: resolvedDuration)),
       status: AppointmentStatus.scheduled,
       type: type,
     );
   }
 
   @override
-  Future<void> updateAppointment({
+  Future<CreateAppointmentResult> updateAppointment({
     required String appointmentId,
     required String patientId,
     String? doctorId,
     String? branchId,
     required DateTime startTime,
     int? durationMinutes,
+    DateTime? endTime,
     String? notes,
   }) async {
     updateCallCount++;
     if (updateFailure != null) {
       throw updateFailure!;
     }
+    final resolvedDuration = durationMinutes ?? 30;
+    return CreateAppointmentResult(
+      appointmentId: appointmentId,
+      startTime: startTime,
+      endTime: endTime ?? startTime.add(Duration(minutes: resolvedDuration)),
+      status: AppointmentStatus.scheduled,
+      type: AppointmentType.planned,
+    );
   }
 
   @override
@@ -333,7 +347,7 @@ class HarnessAppointmentRepository extends AppointmentRepository {
   }
 
   @override
-  Future<void> cancelAppointment({
+  Future<AppointmentStatus> cancelAppointment({
     required String appointmentId,
     String? reason,
   }) async {
@@ -341,14 +355,16 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (cancelFailure != null) {
       throw cancelFailure!;
     }
+    return AppointmentStatus.cancelled;
   }
 
   @override
-  Future<void> markAppointmentNoShow({required String appointmentId}) async {
+  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) async {
     noShowCallCount++;
     if (noShowFailure != null) {
       throw noShowFailure!;
     }
+    return AppointmentStatus.noShow;
   }
 }
 
@@ -508,7 +524,7 @@ List<Override> harnessDetailProviderOverrides({
     if (loadingDetailFuture != null)
       appointmentDetailProvider(appointmentId).overrideWith((ref) => loadingDetailFuture)
     else if (detailError != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError!)
+      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError)
     else
       appointmentDetailProvider(appointmentId).overrideWith(
         (ref) async => appointmentRepo.getAppointment(appointmentId: appointmentId),
@@ -608,7 +624,7 @@ Future<void> pumpAppointmentDetail(
   await tester.binding.setSurfaceSize(surfaceSize);
   tester.binding.platformDispatcher.textScaleFactorTestValue = 1.0;
   addTearDown(() {
-    tester.binding.resetTextScaleFactor();
+    tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
     tester.binding.setSurfaceSize(null);
   });
 

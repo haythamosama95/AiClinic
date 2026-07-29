@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
@@ -13,11 +12,12 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step1.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step2.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/patient_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
+import '../../support/appointment_calendar_test_support.dart';
 import 'detail_widget_test_harness.dart';
 
 void main() {

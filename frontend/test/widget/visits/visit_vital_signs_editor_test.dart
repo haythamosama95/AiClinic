@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
@@ -7,7 +6,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_entry_
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_vital_signs_editor.dart';
 
-import '../../support/visit_encounter_test_support.dart';
 import 'visit_widget_test_harness.dart';
 
 const _catalog = <CatalogItem>[
@@ -32,8 +30,10 @@ Future<void> _pumpEditor(
       entries: entries,
       catalog: catalog,
       canEdit: canEdit,
-      onCreate: onCreate ?? (_) {},
-      onUpdate: onUpdate ?? (_, {required name, required value, unit, predefinedVitalSignId}) {},
+      onCreate: onCreate ??
+          ({required name, required value, unit, predefinedVitalSignId}) {},
+      onUpdate: onUpdate ??
+          (id, {required name, required value, unit, predefinedVitalSignId}) {},
       onArchive: onArchive ?? (_) {},
     ),
   );

@@ -422,9 +422,10 @@ EligibleService _sampleEligibleService() {
 }
 
 InvoiceDetail _minimalInvoiceDetail({
-  Money discountAmount = Money.zero,
+  Money? discountAmount,
   List<InvoiceItem> items = const [],
 }) {
+  final resolvedDiscountAmount = discountAmount ?? Money.zero;
   final timestamp = DateTime.utc(2026, 6, 1, 10);
   return InvoiceDetail(
     id: BillingRpcTestClient.draftInvoiceId,
@@ -433,7 +434,7 @@ InvoiceDetail _minimalInvoiceDetail({
     patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     visitId: BillingRpcTestClient.visitId,
     subtotal: Money.zero,
-    discountAmount: discountAmount,
+    discountAmount: resolvedDiscountAmount,
     insuranceCoveredAmount: Money.zero,
     currency: 'USD',
     balance: Money.zero,

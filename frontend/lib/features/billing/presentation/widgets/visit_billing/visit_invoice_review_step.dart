@@ -3,20 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/ui/components/app_form_field.dart';
-import 'package:ai_clinic/core/ui/components/app_money_display.dart';
-import 'package:ai_clinic/core/ui/components/app_money_field.dart';
-import 'package:ai_clinic/core/ui/components/app_number_input.dart';
-import 'package:ai_clinic/core/ui/components/app_radio_group.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
-import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
-import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
@@ -667,12 +655,12 @@ class _InvoiceDocumentCard extends StatelessWidget {
                             discountType == VisitBillingDiscountType.percentage
                             ? 'Discount (${discountValue.round()}%)'
                             : 'Discount',
+                        labelColor: colors.statusSuccessFg,
                         child: AppMoneyDisplay(
                           amount: totals.discountAmount,
                           currency: currency,
                           negative: true,
                         ),
-                        labelColor: colors.statusSuccessFg,
                       ),
                     ],
                     const SizedBox(height: AppSpacing.space3),

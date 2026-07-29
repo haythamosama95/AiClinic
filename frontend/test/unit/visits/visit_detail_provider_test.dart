@@ -87,7 +87,7 @@ void main() {
     test('trivial: successful fetch maps RPC into VisitDetailViewState', () async {
       final container = _createContainer(client: client, authState: _authenticated());
       final transitions = <AsyncValue<VisitDetailViewState>>[];
-      container.listen(visitDetailViewProvider(_visitIdA), transitions.add, fireImmediately: true);
+      container.listen(visitDetailViewProvider(_visitIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       final view = await container.read(visitDetailViewProvider(_visitIdA).future);
 
@@ -187,7 +187,7 @@ void main() {
       };
       final container = _createContainer(client: client, authState: _authenticated());
       final transitions = <AsyncValue<VisitDetailViewState>>[];
-      container.listen(visitDetailViewProvider(_visitIdA), transitions.add, fireImmediately: true);
+      container.listen(visitDetailViewProvider(_visitIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       await expectLater(
         container.read(visitDetailViewProvider(_visitIdA).future),

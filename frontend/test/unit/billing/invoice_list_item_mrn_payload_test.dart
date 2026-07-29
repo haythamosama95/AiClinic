@@ -16,8 +16,8 @@ Map<String, dynamic> invoiceListRow({
     'paid_amount': '0.00',
     'balance': '100.00',
     'created_at': '2026-06-01T10:00:00.000Z',
-    if (patientMrn != null) 'patient_mrn': patientMrn,
-    if (mrnAlias != null) 'mrn': mrnAlias,
+    'patient_mrn': ?patientMrn,
+    'mrn': ?mrnAlias,
   };
 }
 
@@ -44,8 +44,8 @@ Map<String, dynamic> invoiceDetailEnvelope({
     'patient': {
       'id': 'patient-1',
       'display_name': 'Test Patient',
-      if (mrn != null) 'mrn': mrn,
-      if (patientMrnAlias != null) 'patient_mrn': patientMrnAlias,
+      'mrn': ?mrn,
+      'patient_mrn': ?patientMrnAlias,
     },
     'branch': {'id': 'branch-1', 'code': 'MAIN', 'name': 'Main'},
   };

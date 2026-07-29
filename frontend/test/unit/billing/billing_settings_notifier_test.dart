@@ -14,7 +14,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
-import '../../support/fake_postgrest_rpc.dart';
 
 void main() {
   group('BillingSettingsNotifier', () {

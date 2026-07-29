@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_options.dart';
+import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_form_dialog.dart';
 
 import '../../support/visit_rpc_test_client.dart';

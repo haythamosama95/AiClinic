@@ -7,7 +7,6 @@ import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository
 import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_branch_staff.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
@@ -83,7 +82,7 @@ void main() {
 
       final lookup = await container.read(
         appointmentDetailShiftLookupProvider(
-          const AppointmentDetailShiftQuery(
+          AppointmentDetailShiftQuery(
             branchId: '  ',
             appointmentStart: DateTime.utc(2026, 6, 4, 10),
           ),
@@ -135,7 +134,7 @@ void main() {
 
       final lookup = await container.read(
         appointmentDetailShiftLookupProvider(
-          const AppointmentDetailShiftQuery(
+          AppointmentDetailShiftQuery(
             branchId: branchId,
             appointmentStart: DateTime.utc(2026, 6, 4, 10),
           ),
@@ -165,7 +164,7 @@ void main() {
 
       final future = container.read(
         appointmentDetailShiftLookupProvider(
-          const AppointmentDetailShiftQuery(
+          AppointmentDetailShiftQuery(
             branchId: '44444444-4444-4444-8444-444444444444',
             appointmentStart: DateTime.utc(2026, 6, 4, 10),
           ),

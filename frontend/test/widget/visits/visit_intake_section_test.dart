@@ -1,5 +1,6 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -160,11 +161,11 @@ void main() {
       await _pumpIntakeSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final complaintSemantics = tester.getSemantics(find.bySemanticsIdentifier('chief-complaint-input'));
-      expect(complaintSemantics.hasFlag(SemanticsFlag.hasEnabledState), isTrue);
-      expect(complaintSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(complaintSemantics.flagsCollection.isEnabled, isNot(Tristate.none));
+      expect(complaintSemantics.flagsCollection.isEnabled, Tristate.isFalse);
 
       final historySemantics = tester.getSemantics(find.bySemanticsIdentifier('history-of-present-illness-input'));
-      expect(historySemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(historySemantics.flagsCollection.isEnabled, Tristate.isFalse);
     });
 
     testWidgets('trivial: canEdit false hides medical background add affordances', (tester) async {

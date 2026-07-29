@@ -14,10 +14,12 @@ import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/auth_repository.dart' as domain;
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -223,11 +225,11 @@ GoRouter createLoginTestRouter({
     routes: [
       GoRoute(
         path: AppRoutes.login,
-        builder: (_, __) => const LoginPage(),
+        builder: (_, _) => const LoginPage(),
       ),
       GoRoute(
         path: '/home',
-        builder: (_, __) => const Scaffold(body: Text('Home stub')),
+        builder: (_, _) => const Scaffold(body: Text('Home stub')),
       ),
     ],
   );
@@ -401,7 +403,7 @@ bool loginSubmitButtonIsLoading(WidgetTester tester) {
 
 bool loginSubmitButtonIsEnabled(WidgetTester tester) {
   final semantics = tester.getSemantics(loginSubmitButton());
-  return semantics.hasFlag(SemanticsFlag.isEnabled);
+  return semantics.flagsCollection.isEnabled == Tristate.isTrue;
 }
 
 Future<void> enterLoginCredentials(

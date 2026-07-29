@@ -70,7 +70,7 @@ class _RecordingGoTrue implements GoTrueClient {
   }
 
   @override
-  Future<AuthResponse> refreshSession() async {
+  Future<AuthResponse> refreshSession([String? refreshToken]) async {
     refreshSessionCalls++;
     if (refreshSessionError != null) {
       throw refreshSessionError!;

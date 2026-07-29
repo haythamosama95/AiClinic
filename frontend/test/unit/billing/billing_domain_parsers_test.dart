@@ -1,5 +1,4 @@
 import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
-import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/insurance_provider.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:flutter_test/flutter_test.dart';

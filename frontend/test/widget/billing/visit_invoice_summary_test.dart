@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
@@ -39,7 +39,7 @@ InvoiceDetail _issuedInvoice() {
     createdAt: DateTime.parse('2026-06-01T10:00:00.000Z'),
     updatedAt: DateTime.parse('2026-06-02T12:00:00.000Z'),
     issuedAt: DateTime.parse('2026-06-02T11:00:00.000Z'),
-    items: const [
+    items: [
       InvoiceItem(
         id: 'item-1',
         description: 'Consultation',

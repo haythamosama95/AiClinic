@@ -74,7 +74,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, doctorBId);
+    expect(resultFuture, doctorBId);
   });
 
   testWidgets('advanced: CAL-START-DOC-04 Cancel pops null', (tester) async {
@@ -89,7 +89,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, isNull);
+    expect(resultFuture, isNull);
   });
 
   testWidgets('regression: CAL-START-DOC-05 barrier tap does not dismiss dialog', (tester) async {

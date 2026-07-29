@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -745,7 +746,7 @@ void main() {
     test('comparison items are null when previous working day cannot be resolved', () async {
       const branchId = '00000000-0000-4000-8000-000000000001';
       final closedSchedule = BranchWorkingSchedule(
-        days: [
+        [
           for (final day in BranchWeekday.values)
             BranchWorkingDayHours(day: day, isWorkingDay: false),
         ],

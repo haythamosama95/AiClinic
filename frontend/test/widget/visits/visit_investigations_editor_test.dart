@@ -5,7 +5,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/investigation_ent
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_investigations_editor.dart';
 
-import '../../support/visit_encounter_test_support.dart';
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(

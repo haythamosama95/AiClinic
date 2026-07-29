@@ -6,11 +6,8 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
-import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
-import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +17,8 @@ import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 import '../../support/shift_rpc_test_client.dart';
+
+final _refCaptureProvider = Provider<Ref>((ref) => ref);
 
 class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   _PresetAuthSessionNotifier(this.initial);
@@ -68,19 +67,19 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final _ = container.read(appointmentQueueProvider);
-      final __ = container.read(appointmentCalendarProvider);
-      final ___ = container.read(appointmentQueueShiftDoctorLookupProvider);
-      final ____ = container.read(appointmentCalendarBranchesProvider);
-      final _____ = container.read(appointmentCalendarDoctorsProvider);
+      container.read(appointmentQueueProvider);
+      container.read(appointmentCalendarProvider);
+      container.read(appointmentQueueShiftDoctorLookupProvider);
+      container.read(appointmentCalendarBranchesProvider);
+      container.read(appointmentCalendarDoctorsProvider);
       await pumpEventQueue();
       final countBefore = rpcCount;
 
-      invalidateAppointmentSurfaceProviders(container.read);
+      invalidateAppointmentSurfaceProviders(container.read(_refCaptureProvider));
       await pumpEventQueue();
 
-      final ______ = container.read(appointmentQueueProvider);
-      final _______ = container.read(appointmentCalendarProvider);
+      container.read(appointmentQueueProvider);
+      container.read(appointmentCalendarProvider);
       await pumpEventQueue();
 
       expect(rpcCount, greaterThan(countBefore));
@@ -115,7 +114,10 @@ void main() {
       await container.read(appointmentDetailProvider(appointmentId).future);
       final detailCallsBefore = detailCalls;
 
-      invalidateAppointmentAfterVisitCompleted(container.read, appointmentId: appointmentId);
+      invalidateAppointmentAfterVisitCompleted(
+        container.read(_refCaptureProvider),
+        appointmentId: appointmentId,
+      );
       await container.read(appointmentDetailProvider(appointmentId).future);
 
       expect(detailCalls, greaterThan(detailCallsBefore));
@@ -144,14 +146,14 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final _ = container.read(appointmentQueueShellWarmProvider);
+      container.read(appointmentQueueShellWarmProvider);
       await pumpEventQueue();
       final countBefore = rpcCount;
 
       container.read(clinicDataChangedProvider.notifier).bump();
       await pumpEventQueue();
 
-      final __ = container.read(appointmentQueueProvider);
+      container.read(appointmentQueueProvider);
       await pumpEventQueue();
 
       expect(rpcCount, greaterThan(countBefore));

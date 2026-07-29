@@ -69,7 +69,7 @@ void main() {
     test('trivial: build loads get_patient_safety_context with patient id param', () async {
       final container = _createContainer(client);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      container.listen(patientSafetyProvider(_patientIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       final context = await container.read(patientSafetyProvider(_patientIdA).future);
 
@@ -121,7 +121,7 @@ void main() {
       };
       final container = _createContainer(client);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      container.listen(patientSafetyProvider(_patientIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       await expectLater(
         container.read(patientSafetyProvider(_patientIdA).future),
@@ -148,7 +148,7 @@ void main() {
 
       client.rpcResults['get_patient_safety_context'] = _safetyRpcPayload(includeStructuredData: false);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      container.listen(patientSafetyProvider(_patientIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       await container.read(patientSafetyProvider(_patientIdA).notifier).refresh();
 

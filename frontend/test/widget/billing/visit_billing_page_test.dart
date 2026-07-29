@@ -21,7 +21,7 @@ void main() {
           visitId: billingTestVisitId,
           extraOverrides: [
             visitDocumentationProvider(billingTestVisitId).overrideWith(
-              () => _LoadingVisitDocumentationNotifier(),
+              () => _LoadingVisitDocumentationNotifier(billingTestVisitId),
             ),
           ],
         ),
@@ -123,6 +123,8 @@ void main() {
 }
 
 class _LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
+  _LoadingVisitDocumentationNotifier(super.visitId);
+
   @override
   Future<VisitDocumentationState> build() async {
     return Completer<VisitDocumentationState>().future;

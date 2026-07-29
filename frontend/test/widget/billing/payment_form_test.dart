@@ -20,7 +20,8 @@ import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../support/billing_rpc_test_client.dart';
 
-InvoiceDetail _issuedInvoice({Money balance = Money.parse('100.00')}) {
+InvoiceDetail _issuedInvoice({Money? balance}) {
+  final resolvedBalance = balance ?? Money.parse('100.00');
   return InvoiceDetail(
     id: BillingRpcTestClient.issuedInvoiceId,
     invoiceNumber: 'INV-MAIN-000001',
@@ -32,7 +33,7 @@ InvoiceDetail _issuedInvoice({Money balance = Money.parse('100.00')}) {
     discountAmount: Money.zero,
     insuranceCoveredAmount: Money.zero,
     currency: 'USD',
-    balance: balance,
+    balance: resolvedBalance,
     createdAt: DateTime.parse('2026-06-01T10:00:00.000Z'),
     updatedAt: DateTime.parse('2026-06-02T12:00:00.000Z'),
     items: const [],

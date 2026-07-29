@@ -87,7 +87,7 @@ void main() {
       const staffMemberId = 'staff-a';
       final provider = clinicSetupWelcomeShownProvider(staffMemberId);
 
-      final subscription = container.listen(provider, (_, __) {});
+      final subscription = container.listen(provider, (_, _) {});
       expect(container.read(provider.notifier).tryMarkShown(), isTrue);
       expect(container.read(provider), isTrue);
 

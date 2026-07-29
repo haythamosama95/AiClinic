@@ -3,6 +3,7 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../support/appointment_calendar_test_support.dart';
 import 'detail_widget_test_harness.dart';
 
 void main() {

@@ -45,7 +45,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, isNull);
+    expect(resultFuture, isNull);
   });
 
   testWidgets('advanced: CAL-CANCEL-03 Cancel appointment pops trimmed reason', (tester) async {
@@ -56,7 +56,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, 'Patient rescheduled');
+    expect(resultFuture, 'Patient rescheduled');
   });
 
   testWidgets('edge case: CAL-CANCEL-04 empty reason is allowed', (tester) async {
@@ -66,7 +66,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, '');
+    expect(resultFuture, '');
   });
 
   testWidgets('edge case: CAL-CANCEL-05 whitespace-only reason trims to empty', (tester) async {
@@ -77,6 +77,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, '');
+    expect(resultFuture, '');
   });
 }

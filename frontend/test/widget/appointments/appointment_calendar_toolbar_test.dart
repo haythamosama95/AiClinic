@@ -3,10 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
 
-import '../../support/appointment_calendar_test_support.dart';
 import 'calendar_widget_test_harness.dart';
 
 void main() {

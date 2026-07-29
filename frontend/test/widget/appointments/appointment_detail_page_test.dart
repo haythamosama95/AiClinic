@@ -4,7 +4,6 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'detail_widget_test_harness.dart';
@@ -95,7 +94,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(router.location, AppRoutes.appointmentDetail(detailTestAppointmentId));
+      expect(router.state.uri.toString(), AppRoutes.appointmentDetail(detailTestAppointmentId));
       expect(find.text('Appointment not found'), findsWidgets);
       expect(find.text('Back to calendar'), findsOneWidget);
 
@@ -103,7 +102,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(router.location, AppRoutes.appointmentsCalendar);
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
     });
 
@@ -133,20 +132,20 @@ void main() {
       );
       await tester.pump();
 
-      expect(router.location, AppRoutes.appointmentsCalendar);
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
 
       router.push(AppRoutes.appointmentDetail(detailTestAppointmentId));
       await tester.pump();
 
-      expect(router.location, AppRoutes.appointmentDetail(detailTestAppointmentId));
+      expect(router.state.uri.toString(), AppRoutes.appointmentDetail(detailTestAppointmentId));
       expect(find.text('Back to calendar'), findsOneWidget);
 
       await tester.tap(find.text('Back to calendar'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(router.location, AppRoutes.appointmentsCalendar);
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
     });
 

@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
@@ -117,9 +117,8 @@ class _FlakyVisitDetailOverride {
 }
 
 class _FlakyDocNotifier extends VisitDocumentationNotifier {
-  _FlakyDocNotifier(this._visitId, this._successState);
+  _FlakyDocNotifier(super.visitId, this._successState);
 
-  final String _visitId;
   final VisitDocumentationState _successState;
   var loadAttempts = 0;
 
@@ -478,6 +477,7 @@ void main() {
       );
 
       await _pumpVisitDocumentPage(
+        tester,
         startInEditMode: true,
         overrides: _documentPageOverrides(docNotifier: docNotifier),
       );

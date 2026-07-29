@@ -3,7 +3,6 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,7 +50,7 @@ void main() {
 
       final items = await container.read(
         appointmentDetailSiblingsProvider(
-          const AppointmentDetailSiblingsQuery(
+          AppointmentDetailSiblingsQuery(
             branchId: '   ',
             startTime: DateTime.utc(2026, 6, 4, 10),
           ),
@@ -94,7 +93,7 @@ void main() {
 
       final future = container.read(
         appointmentDetailSiblingsProvider(
-          const AppointmentDetailSiblingsQuery(
+          AppointmentDetailSiblingsQuery(
             branchId: '44444444-4444-4444-8444-444444444444',
             startTime: DateTime.utc(2026, 6, 4, 10),
           ),
@@ -111,11 +110,11 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
-      const queryA = AppointmentDetailSiblingsQuery(
+      final queryA = AppointmentDetailSiblingsQuery(
         branchId: '44444444-4444-4444-8444-444444444444',
         startTime: DateTime.utc(2026, 6, 4, 10),
       );
-      const queryB = AppointmentDetailSiblingsQuery(
+      final queryB = AppointmentDetailSiblingsQuery(
         branchId: '44444444-4444-4444-8444-444444444444',
         startTime: DateTime.utc(2026, 6, 4, 12),
       );

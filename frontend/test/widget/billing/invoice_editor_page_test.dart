@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
@@ -24,6 +23,7 @@ void main() {
           extraOverrides: [
             invoiceEditorProvider(billingTestDraftInvoiceId).overrideWith(
               () => _DelayedInvoiceEditorNotifier(
+                billingTestDraftInvoiceId,
                 Future<InvoiceEditorState>.delayed(
                   const Duration(days: 1),
                   () => buildBillingEditorState(),
@@ -47,7 +47,10 @@ void main() {
         overrides: billingProviderOverrides(
           extraOverrides: [
             invoiceEditorProvider(billingTestDraftInvoiceId).overrideWith(
-              () => _CountingErrorInvoiceEditorNotifier(retryState),
+              () => _CountingErrorInvoiceEditorNotifier(
+                billingTestDraftInvoiceId,
+                retryState,
+              ),
             ),
           ],
         ),
@@ -386,7 +389,7 @@ void main() {
 }
 
 class _DelayedInvoiceEditorNotifier extends InvoiceEditorNotifier {
-  _DelayedInvoiceEditorNotifier(this._future);
+  _DelayedInvoiceEditorNotifier(super.invoiceId, this._future);
 
   final Future<InvoiceEditorState> _future;
 
@@ -400,7 +403,7 @@ class _EditorRetryState {
 }
 
 class _CountingErrorInvoiceEditorNotifier extends InvoiceEditorNotifier {
-  _CountingErrorInvoiceEditorNotifier(this._retryState);
+  _CountingErrorInvoiceEditorNotifier(super.invoiceId, this._retryState);
 
   final _EditorRetryState _retryState;
 
