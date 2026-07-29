@@ -4,6 +4,8 @@ import { getPatientById, patientFullName } from '@/data/patients'
 import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
 import { AppointmentsPage } from '@/features/appointments/AppointmentsPage'
+import { QueueBoardPage } from '@/features/queue/QueueBoardPage'
+import { QueuePage } from '@/features/queue/QueuePage'
 import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagementPage'
 import { VisitPage } from '@/features/visits/VisitPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
@@ -24,6 +26,7 @@ const ROUTE_DESCRIPTIONS: Record<string, string> = {
   dashboard: 'Key metrics, activity, and operational insights at a glance.',
   patients: 'Manage patient records, demographics, and care history.',
   appointments: 'Schedule, confirm, and track patient appointments.',
+  queue: 'Real-time patient flow, check-ins, and doctor availability.',
   encounters: 'Document visits, diagnoses, and clinical notes.',
   workspace: 'Your active tasks, drafts, and in-progress clinical work.',
   billing: 'Charges, payments, and revenue cycle management.',
@@ -95,6 +98,7 @@ const CLINIC_ROUTE_IDS = [
   'dashboard',
   'patients',
   'appointments',
+  'queue',
   'encounters',
   'workspace',
   'billing',
@@ -126,6 +130,7 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
         id !== 'settings' &&
         id !== 'clinic-management' &&
         id !== 'appointments' &&
+        id !== 'queue' &&
         id !== 'encounters',
     ).map((id) => [id, placeholderRoute(id)]),
   ),
@@ -134,6 +139,15 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
   appointments: {
     ...metaForNavId('appointments'),
     render: () => <AppointmentsPage />,
+  },
+  queue: {
+    ...metaForNavId('queue'),
+    render: ({ segments, navigate }) =>
+      segments[1] === 'board' ? (
+        <QueueBoardPage onNavigate={navigate} />
+      ) : (
+        <QueuePage onNavigate={navigate} />
+      ),
   },
   encounters: {
     ...metaForNavId('encounters'),
@@ -230,7 +244,7 @@ export function resolveRoute(
   return {
     content: route.render(ctx),
     meta,
-    fullWidth: root === 'encounters',
+    fullWidth: root === 'encounters' || root === 'queue',
   }
 }
 
