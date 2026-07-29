@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/patient_test_support.dart';
 
 void main() {
   group('PatientListNotifier high-severity regressions', () {
@@ -239,6 +240,209 @@ void main() {
       expect(repository.lastBranchId, isNull);
     });
   });
+
+  group('PatientListNotifier list state', () {
+    late FakePatientRepository repository;
+
+    ProviderContainer createContainer({AuthSessionNotifier Function()? authFactory}) {
+      return ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(authFactory ?? _PatientsAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(repository)),
+        ],
+      );
+    }
+
+    setUp(() {
+      repository = FakePatientRepository(
+        patients: samplePatientList(count: 2),
+      );
+    });
+
+    test('initial build uses default filters and issues exactly one search', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      final state = await container.read(patientListProvider.future);
+
+      expect(state.filters, const PatientListFilters());
+      expect(repository.searchCallCount, 1);
+      expect(repository.lastOffset, 0);
+      expect(repository.lastLimit, 20);
+      expect(repository.lastScope, PatientListScope.thisBranch);
+    });
+
+    test('permission gate returns empty state without issuing search', () async {
+      final container = createContainer(authFactory: _NoPatientListAuthNotifier.new);
+      addTearDown(container.dispose);
+
+      final state = await container.read(patientListProvider.future);
+
+      expect(state.rows, isEmpty);
+      expect(state.totalCount, 0);
+      expect(repository.searchCallCount, 0);
+    });
+
+    test('invalid search term sets searchHint and skips search', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(patientListProvider.notifier);
+
+      await notifier.applyFilters(const PatientListFilters(searchText: 'ab'));
+
+      final state = container.read(patientListProvider).requireValue;
+      expect(state.rows, isEmpty);
+      expect(state.totalCount, 0);
+      expect(state.searchHint, 'Enter at least 3 characters to search by name.');
+      expect(repository.searchCallCount, 0);
+    });
+
+    test('this-branch scope with missing activeBranchId returns empty state without search', () async {
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(_NoActiveBranchAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(repository)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final state = await container.read(patientListProvider.future);
+
+      expect(state.rows, isEmpty);
+      expect(state.totalCount, 0);
+      expect(repository.searchCallCount, 0);
+    });
+
+    test('forwards valid search text as query argument', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      await container
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(searchText: 'Sara'));
+
+      expect(repository.lastQuery, 'Sara');
+      expect(repository.searchCallCount, 1);
+    });
+
+    test('page 1 uses offset 0', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(page: 1, pageSize: 20));
+
+      expect(repository.lastOffset, 0);
+      expect(repository.lastLimit, 20);
+    });
+
+    test('page 2 with pageSize 20 uses offset 20', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      await container
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+
+      expect(repository.lastOffset, 20);
+      expect(repository.lastLimit, 20);
+    });
+
+    test('empty server page is preserved in UI state', () async {
+      repository = FakePatientRepository(patients: const []);
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      final state = await container.read(patientListProvider.future);
+
+      expect(state.rows, isEmpty);
+      expect(state.totalCount, 0);
+    });
+
+    test('last page beyond totalCount returns empty rows', () async {
+      repository = FakePatientRepository(patients: samplePatientList(count: 5));
+      final container = createContainer();
+      addTearDown(container.dispose);
+
+      await container
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+
+      final state = container.read(patientListProvider).requireValue;
+      expect(state.rows, isEmpty);
+      expect(state.totalCount, 5);
+      expect(repository.lastOffset, 20);
+    });
+
+    test('search error surfaces as AsyncValue error then reload recovers', () async {
+      final failingRepository = _ToggleSearchPatientRepository(
+        patients: samplePatientList(count: 1),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(failingRepository)),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(patientListProvider.notifier);
+
+      await container.read(patientListProvider.future);
+      failingRepository.throwOnNextSearch = true;
+      await notifier.applyFilters(const PatientListFilters(searchText: 'Patient'));
+      expect(container.read(patientListProvider).hasError, isTrue);
+
+      await notifier.reload();
+
+      final state = container.read(patientListProvider).requireValue;
+      expect(state.rows, hasLength(1));
+      expect(container.read(patientListProvider).hasError, isFalse);
+      expect(failingRepository.searchCallCount, 3);
+    });
+
+    test('reload re-issues search with same filters', () async {
+      final container = createContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(patientListProvider.notifier);
+
+      await container.read(patientListProvider.future);
+      expect(repository.searchCallCount, 1);
+
+      await notifier.applyFilters(const PatientListFilters(searchText: 'Patient', page: 2, pageSize: 10));
+      expect(repository.searchCallCount, 2);
+
+      await notifier.reload();
+      expect(repository.searchCallCount, 3);
+      expect(repository.lastQuery, 'Patient');
+      expect(repository.lastOffset, 10);
+      expect(repository.lastLimit, 10);
+    });
+
+    test(
+      'concurrent applyFilters keeps the last-applied filters when earlier response is slower',
+      () async {
+        final delayedRepository = _SequentialDelayPatientRepository(
+          delays: const [Duration(milliseconds: 200), Duration.zero],
+        );
+        final container = ProviderContainer(
+          overrides: [
+            authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
+            searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(delayedRepository)),
+          ],
+        );
+        addTearDown(container.dispose);
+        final notifier = container.read(patientListProvider.notifier);
+
+        final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
+        final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
+        await Future.wait([first, second]);
+
+        final state = container.read(patientListProvider).requireValue;
+        expect(state.filters.searchText, 'Beta');
+        expect(state.rows.single.item.fullName, contains('Beta'));
+        expect(delayedRepository.searchCallCount, 2);
+      },
+    );
+  });
 }
 
 class _PatientsAuthNotifier extends TestAuthSessionNotifier {
@@ -291,6 +495,118 @@ class _TrackingPatientRepository implements PatientRepository {
     lastScope = scope;
     lastBranchId = branchId;
     return nextPage;
+  }
+
+  @override
+  Future<void> archivePatient(String patientId) => throw UnimplementedError();
+
+  @override
+  Future<List<DuplicateCandidate>> checkDuplicates({
+    String? fullName,
+    String? phone,
+    DateTime? dateOfBirth,
+    String? excludePatientId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<CreatePatientResult> createPatient(CreatePatientInput input) => throw UnimplementedError();
+
+  @override
+  Future<PatientDetail> getPatient(String patientId) => throw UnimplementedError();
+
+  @override
+  Future<DateTime> updatePatient(UpdatePatientInput input) => throw UnimplementedError();
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) => throw UnimplementedError();
+}
+
+class _NoPatientListAuthNotifier extends TestAuthSessionNotifier {
+  @override
+  AuthSessionState build() => AuthSessionState(
+    status: AuthSessionStatus.authenticated,
+    context: sampleAuthSessionContext(permissions: const {}),
+  );
+}
+
+class _NoActiveBranchAuthNotifier extends TestAuthSessionNotifier {
+  @override
+  AuthSessionState build() => AuthSessionState(
+    status: AuthSessionStatus.authenticated,
+    context: sampleAuthSessionContext(branchIds: const [], activeBranchId: null),
+  );
+}
+
+class _ToggleSearchPatientRepository extends FakePatientRepository {
+  _ToggleSearchPatientRepository({super.patients});
+
+  bool throwOnNextSearch = false;
+
+  @override
+  Future<PatientSearchPage> searchPatients({
+    String? query,
+    required PatientListScope scope,
+    String? branchId,
+    int limit = 25,
+    int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
+  }) async {
+    searchCallCount++;
+    if (throwOnNextSearch) {
+      throwOnNextSearch = false;
+      throw StateError('search failed');
+    }
+    return super.searchPatients(
+      query: query,
+      scope: scope,
+      branchId: branchId,
+      limit: limit,
+      offset: offset,
+      lastVisitFilter: lastVisitFilter,
+      sortField: sortField,
+    );
+  }
+}
+
+class _SequentialDelayPatientRepository implements PatientRepository {
+  _SequentialDelayPatientRepository({required List<Duration> delays}) : _delays = delays;
+
+  final List<Duration> _delays;
+  int _callIndex = 0;
+  int searchCallCount = 0;
+
+  @override
+  Future<PatientSearchPage> searchPatients({
+    String? query,
+    required PatientListScope scope,
+    String? branchId,
+    int limit = 25,
+    int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
+  }) async {
+    searchCallCount++;
+    final delay = _callIndex < _delays.length ? _delays[_callIndex] : Duration.zero;
+    _callIndex++;
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
+
+    final label = query ?? 'browse';
+    return PatientSearchPage(
+      items: [
+        PatientListItem(
+          id: 'patient-$label',
+          fullName: 'Result for $label',
+          registeringBranchId: testBranchAId,
+          registeringBranchName: 'Branch A',
+        ),
+      ],
+      totalCount: 1,
+      limit: limit,
+      offset: offset,
+    );
   }
 
   @override

@@ -50,6 +50,13 @@ void main() {
       );
     });
 
+    test('MRN_EXISTS returns duplicate MRN message', () {
+      expect(
+        patientMessageForRpc(_failure(code: 'MRN_EXISTS')),
+        'Another patient already uses this MRN.',
+      );
+    });
+
     test('INVALID_INPUT passes through backend message', () {
       expect(
         patientMessageForRpc(_failure(code: 'INVALID_INPUT', message: 'Phone too short')),
@@ -75,6 +82,7 @@ void main() {
         'DUPLICATE_WARNING',
         'STALE_PATIENT',
         'PATIENT_ARCHIVED',
+        'MRN_EXISTS',
         'FORBIDDEN',
         'BRANCH_REQUIRED',
         'INVALID_INPUT',

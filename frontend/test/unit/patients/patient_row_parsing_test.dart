@@ -41,6 +41,47 @@ void main() {
     test('returns null for invalid timestamps', () {
       expect(parsePatientDateTime('not-a-timestamp'), isNull);
     });
+
+    test('advanced: returns same instant when given DateTime', () {
+      final instant = DateTime.utc(2026, 5, 23, 14, 22, 33, 456);
+      expect(parsePatientDateTime(instant), instant);
+    });
+
+    test('edge case: returns null for null input', () {
+      expect(parsePatientDateTime(null), isNull);
+    });
+
+    test('edge case: returns null for empty or whitespace string', () {
+      expect(parsePatientDateTime(''), isNull);
+      expect(parsePatientDateTime('   '), isNull);
+    });
+
+    test('edge case: returns null for unparseable string', () {
+      expect(parsePatientDateTime('31-12-2026'), isNull);
+    });
+  });
+
+  group('parsePatientMrn', () {
+    test('trivial: prefers mrn key over patient_mrn', () {
+      expect(
+        parsePatientMrn({'mrn': 'MRN-000001', 'patient_mrn': 'MRN-000099'}),
+        'MRN-000001',
+      );
+    });
+
+    test('trivial: falls back to patient_mrn when mrn absent', () {
+      expect(parsePatientMrn({'patient_mrn': 'MRN-000042'}), 'MRN-000042');
+    });
+
+    test('edge case: returns null when both keys missing', () {
+      expect(parsePatientMrn({}), isNull);
+    });
+
+    test('edge case: returns null for blank or whitespace values', () {
+      expect(parsePatientMrn({'mrn': ''}), isNull);
+      expect(parsePatientMrn({'mrn': '   '}), isNull);
+      expect(parsePatientMrn({'patient_mrn': '  '}), isNull);
+    });
   });
 
   group('optionalPatientString', () {
