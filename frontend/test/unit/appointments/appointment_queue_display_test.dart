@@ -367,6 +367,213 @@ void main() {
       );
       expect(AppointmentQueueDisplay.doctorInProgressBlockReason(active, [active, waiting]), isNull);
     });
+
+    test('trivial: computeStats without comparison omits trend fields', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.scheduled, id: 's1')],
+        now: now,
+      );
+
+      expect(stats.total, 1);
+      expect(stats.totalTrend, isNull);
+      expect(stats.completedTrend, isNull);
+      expect(stats.noShowTrend, isNull);
+      expect(stats.avgWaitTrend, isNull);
+      expect(stats.avgVisitTrend, isNull);
+    });
+
+    test('advanced: computeStats excludes cancelled and unknown from active total', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [
+          item(status: AppointmentStatus.cancelled, id: 'c1'),
+          item(status: AppointmentStatus.unknown, id: 'u1'),
+          item(status: AppointmentStatus.scheduled, id: 's1'),
+        ],
+        now: now,
+      );
+
+      expect(stats.total, 1);
+    });
+
+    test('edge case: computeStats returns null averages when no wait or visit data', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.scheduled, id: 's1')],
+        now: now,
+      );
+
+      expect(stats.avgWaitMinutes, isNull);
+      expect(stats.avgVisitMinutes, isNull);
+    });
+
+    test('edge case: visit duration is null when inProgressAt is missing', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.inProgress, id: 'active', inProgressAt: null)],
+        now: now,
+      );
+
+      expect(stats.avgVisitMinutes, isNull);
+    });
+
+    test('edge case: in-progress visit duration clamps negative elapsed to zero', () {
+      final startedAt = DateTime.utc(2026, 6, 4, 12);
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.inProgress, id: 'active', inProgressAt: startedAt)],
+        now: now,
+      );
+
+      expect(stats.avgVisitMinutes, 0);
+    });
+
+    test('invalid state: completed visit duration requires valid end after start', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [
+          item(
+            status: AppointmentStatus.completed,
+            id: 'bad-end',
+            inProgressAt: now,
+            updatedAt: now.subtract(const Duration(minutes: 10)),
+          ),
+        ],
+        now: now,
+      );
+
+      expect(stats.avgVisitMinutes, isNull);
+    });
+
+    test('edge case: wait duration is null without check-in timestamp', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.scheduled, id: 's1')],
+        now: now,
+      );
+
+      expect(stats.avgWaitMinutes, isNull);
+    });
+
+    test('edge case: wait duration is null after patient moved to in-progress', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [
+          item(
+            status: AppointmentStatus.inProgress,
+            id: 'active',
+            checkedInAt: now.subtract(const Duration(minutes: 40)),
+            inProgressAt: now.subtract(const Duration(minutes: 5)),
+          ),
+        ],
+        now: now,
+      );
+
+      expect(stats.avgWaitMinutes, isNull);
+    });
+
+    test('advanced: percent change when previous count is zero', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+
+      final unchanged = AppointmentQueueDisplay.computeStats(
+        const [],
+        now: now,
+        comparisonItems: const [],
+        comparisonNow: now,
+      );
+      expect(unchanged.totalTrend?.percentChange, 0);
+
+      final increased = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.scheduled, id: 's1')],
+        now: now,
+        comparisonItems: const [],
+        comparisonNow: now,
+      );
+      expect(increased.totalTrend?.percentChange, 100);
+    });
+
+    test('advanced: partition waiting column equals checked-in patients sorted by slot', () {
+      final early = item(
+        status: AppointmentStatus.checkedIn,
+        id: 'early',
+        startTime: DateTime.utc(2026, 6, 4, 9),
+      );
+      final late = item(
+        status: AppointmentStatus.checkedIn,
+        id: 'late',
+        startTime: DateTime.utc(2026, 6, 4, 11),
+      );
+      final scheduled = item(
+        status: AppointmentStatus.scheduled,
+        id: 'scheduled',
+        startTime: DateTime.utc(2026, 6, 4, 10),
+      );
+      final partition = AppointmentQueueDisplay.partition([late, scheduled, early]);
+
+      expect(partition.waiting.map((row) => row.id), ['early', 'late']);
+      expect(partition.schedule.map((row) => row.id), ['early', 'scheduled', 'late']);
+    });
+
+    test('edge case: indexClosestToNow returns zero for empty schedule', () {
+      expect(
+        AppointmentQueueDisplay.indexClosestToNow(const [], now: DateTime.utc(2026, 6, 4, 12)),
+        0,
+      );
+    });
+
+    test('edge case: waitTierFor boundaries at warning and critical thresholds', () {
+      expect(
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 14)),
+        AppointmentQueueWaitTier.normal,
+      );
+      expect(
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 15)),
+        AppointmentQueueWaitTier.warning,
+      );
+      expect(
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 29)),
+        AppointmentQueueWaitTier.warning,
+      );
+      expect(
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 30)),
+        AppointmentQueueWaitTier.critical,
+      );
+    });
+
+    test('trivial: formatDurationLabel renders minutes and hours', () {
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(minutes: 45)), '45m');
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(minutes: 60)), '1h');
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(minutes: 90)), '1h 30m');
+    });
+
+    test('advanced: scheduleBadgeTone maps every appointment status', () {
+      const expected = {
+        AppointmentStatus.scheduled: AppBadgeTone.neutral,
+        AppointmentStatus.confirmed: AppBadgeTone.info,
+        AppointmentStatus.checkedIn: AppBadgeTone.success,
+        AppointmentStatus.inProgress: AppBadgeTone.warning,
+        AppointmentStatus.completed: AppBadgeTone.muted,
+        AppointmentStatus.cancelled: AppBadgeTone.destructive,
+        AppointmentStatus.noShow: AppBadgeTone.destructive,
+        AppointmentStatus.unknown: AppBadgeTone.neutral,
+      };
+
+      for (final entry in expected.entries) {
+        expect(AppointmentQueueDisplay.scheduleBadgeTone(entry.key), entry.value);
+      }
+    });
+
+    test('edge case: estimateSessionDuration is zero when visit is not in progress', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      expect(
+        AppointmentQueueDisplay.estimateSessionDuration(
+          item(status: AppointmentStatus.checkedIn),
+          now: now,
+        ),
+        Duration.zero,
+      );
+    });
   });
 }
 

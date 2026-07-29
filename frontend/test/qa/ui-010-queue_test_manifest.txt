@@ -1,7 +1,46 @@
-frontend/test/widget/appointments/appointment_queue_func_test.dart
-frontend/test/widget/appointments/appointment_queue_fe_test.dart
-frontend/test/integration/appointments/appointment_queue_int_test.dart
-frontend/test/unit/appointments/appointment_queue_edge_test.dart
-frontend/test/regression/appointments/appointment_queue_regression_test.dart
-frontend/test/widget/appointments/appointment_queue_abuse_test.dart
+# UI-010 Appointment Queue QA manifest
+# Maps planned queue scenarios to real test files. Queue UI/widget/integration
+# coverage is not implemented yet — those rows are explicitly marked.
+
+## Unit — data layer
+frontend/test/unit/appointments/appointment_repository_list_test.dart
+frontend/test/unit/appointments/appointment_repository_cancel_test.dart
+frontend/test/unit/appointments/appointment_repository_create_planned_test.dart
+frontend/test/unit/appointments/appointment_repository_status_test.dart
+frontend/test/unit/appointments/appointment_repository_reschedule_test.dart
+frontend/test/unit/appointments/appointment_repository_postgrest_error_test.dart
+frontend/test/unit/appointments/appointment_repository_settings_test.dart
+frontend/test/unit/appointments/appointment_repository_update_test.dart
+frontend/test/unit/appointments/appointment_queue_realtime_test.dart
+frontend/test/unit/appointments/appointment_queue_realtime_apply_test.dart
+frontend/test/unit/appointments/doctor_dev_seed_service_test.dart
+
+## Unit — Riverpod / state
+frontend/test/unit/appointments/appointment_queue_provider_test.dart
+frontend/test/unit/appointments/appointment_calendar_provider_test.dart
+frontend/test/unit/appointments/appointment_detail_provider_test.dart
+frontend/test/unit/appointments/appointment_detail_siblings_provider_test.dart
+frontend/test/unit/appointments/appointment_detail_shift_provider_test.dart
+frontend/test/unit/appointments/appointment_queue_shift_provider_test.dart
+frontend/test/unit/appointments/appointment_surface_invalidation_test.dart
+frontend/test/unit/appointments/appointment_queue_shift_doctors_test.dart
+frontend/test/unit/appointments/appointment_queue_doctor_rollback_test.dart
+
+## Unit — presentation helpers (non-UI)
+frontend/test/unit/appointments/appointment_detail_route_extra_test.dart
+frontend/test/unit/appointments/appointment_section_test.dart
+frontend/test/unit/appointments/appointment_detail_list_item_test.dart
+
+## Widget — NOT YET IMPLEMENTED (no queue page UI in feature)
+# planned: appointment_queue_func_test.dart
+# planned: appointment_queue_fe_test.dart
+# planned: appointment_queue_abuse_test.dart
+
+## Integration — NOT YET IMPLEMENTED
+# planned: appointment_queue_int_test.dart
+
+## Regression — covered by named BUG/regression tests in unit files above
+# BUG-001..BUG-007, REG-003, CAL-A06/A07/B06/B07 live in provider/repository unit tests
+
+## Backend SQL
 backend/tests/appointment_queue_qa.sql
