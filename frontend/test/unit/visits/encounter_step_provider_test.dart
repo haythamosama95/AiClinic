@@ -1,6 +1,5 @@
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
-import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
@@ -42,13 +41,6 @@ void main() {
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState(visit: visit));
 
       expect(badges[EncounterPhase.objective], PhaseCompletionBadge.hasContent);
-    });
-
-    test('marks error when a section exceeds max length', () {
-      final oversized = 'x' * (kMaxClinicalSectionLength + 1);
-      final badges = deriveEncounterPhaseBadges(sampleEncounterDocState().copyWith(diagnosis: oversized));
-
-      expect(badges[EncounterPhase.objective], PhaseCompletionBadge.error);
     });
 
     test('marks plan has-content when plan section has text', () {

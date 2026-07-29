@@ -1,11 +1,41 @@
+import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/visit_encounter_test_support.dart';
+
+List<dynamic> richDeltaBoldText(String text) => [
+  {'insert': text, 'attributes': const {'bold': true}},
+  {'insert': '\n'},
+];
+
+const List<dynamic> richDeltaEffectivelyEmpty = [
+  {'insert': '\n'},
+];
+
+VisitDocumentationState richTextOnlyComplaintState({required List<dynamic> complaintDelta, String plainComplaint = ''}) {
+  return sampleEncounterDocState().copyWith(
+    complaint: plainComplaint,
+    richTextDrafts: {ClinicalNoteSection.complaint: complaintDelta},
+  );
+}
+
+VisitDocumentationState patientSafetyOnlyDocState() {
+  return sampleEncounterDocState().copyWith(
+    encounterDraft: buildVisitEncounterDraft(
+      patientSafety: const PatientSafetyDraft(
+        pendingAllergies: [PatientAllergy(id: 'draft:allergy-1', substance: 'Penicillin', reaction: 'Rash')],
+      ),
+    ),
+  );
+}
 
 void main() {
   group('evaluateVisitSubmitReadiness', () {
@@ -70,6 +100,29 @@ void main() {
 
       expect(readiness.hasMinimumDocumentation, isTrue);
       expect(readiness.emptyPhases, [EncounterPhase.subjective, EncounterPhase.plan]);
+    });
+  });
+
+  group('visitHasPersistableDocumentation', () {
+    test('trivial: false when all documentation is empty', () {
+      expect(visitHasPersistableDocumentation(sampleEncounterDocState()), isFalse);
+    });
+
+    test('EDGE-001: ignores pending allergy draft alone', () {
+      expect(visitHasPersistableDocumentation(patientSafetyOnlyDocState()), isFalse);
+    });
+
+    test('EDGE-007: false for formatting-only empty rich delta', () {
+      final state = richTextOnlyComplaintState(complaintDelta: richDeltaEffectivelyEmpty);
+
+      expect(visitHasPersistableDocumentation(state), isFalse);
+    });
+
+    test('advanced: true when complaint plain text is present', () {
+      expect(
+        visitHasPersistableDocumentation(sampleEncounterDocState().copyWith(complaint: 'Headache')),
+        isTrue,
+      );
     });
   });
 }
