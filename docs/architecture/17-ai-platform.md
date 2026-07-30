@@ -6,13 +6,16 @@
 - Usually paired with: `docs/architecture/01-principles.md`, `docs/architecture/04-backend.md`, `docs/architecture/09-security-rbac.md`, `docs/architecture/10-resilience-and-scale.md`, `.specify/memory/constitution.md`.
 - Not covered here: clinical content of specific AI features, prompt text, provider pricing negotiation, clinic business schema, or Flutter widget design.
 - Orientation first: `docs/architecture/17a-ai-platform-overview.md` is a short companion overview of the final architecture. Start there if you need the shape of the system rather than its detail.
+- Build order: `docs/architecture/17b-ai-platform-delivery-plan.md` decomposes this architecture into individually specifiable slices and defines the rules for authoring their specs. Read it before opening a Spec Kit feature for AI platform work.
 
 > **Status:** Architecture proposal. Nothing in this document is implemented. This document
 > **supersedes** every earlier AI-related statement in the architecture set and specs,
 > including the local-Ollama AI service shown in `docs/architecture/03-deployment-networking.md`.
-> Where the two conflict, this document wins; see [§2.6](#26-conflict-with-the-existing-local-ollama-assumption).
+> Where the two conflict, this document wins; see [§2.7](#27-conflict-with-the-existing-local-ollama-assumption).
 
 ---
+
+
 
 ## Table of Contents
 
@@ -35,7 +38,11 @@
 
 ---
 
+
+
 ## 1. Scope, Inherited Reality, and Constraint Audit
+
+
 
 ### 1.1 What this document decides
 
@@ -61,12 +68,14 @@ existing system, verified in the repository, that constrain the design more than
 | #   | Fact                                                                                                                                                                                                               | Source                                                                                                                | Consequence for the AI platform                                                                                                                                                                                                                                                    |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | F1  | Deployment Tier 1 is **self-hosted Supabase on a clinic PC on a LAN**, "no internet required for daily operations". Tier 3 (Supabase Cloud) is aspirational and unimplemented.                                     | `docs/architecture/03-deployment-networking.md`                                                                       | The AI platform is the **only internet-dependent component** in the product. It must be optional and degrade to "unavailable" cleanly. It also cannot assume the clinic database is reachable from the internet.                                                                   |
-| F2  | Each clinic runs its **own GoTrue instance with its own JWT signing secret**. Claims are minted by `auth_internal.build_staff_claims` via the `get_custom_claims` hook.                                            | `backend/supabase/config.toml`, `backend/local/docker-compose.yml`, migrations `20260521170000_`*, `20260611150000_*` | A Cloudflare Worker **cannot validate a clinic's Supabase JWT** without per-clinic trust material. There is no shared JWKS. This is the single most important finding; see [§2.1](#21-amendment-a1-authenticate-every-request-requires-a-trust-bootstrap-that-does-not-exist-yet). |
+| F2  | Each clinic runs its **own GoTrue instance with its own JWT signing secret**. Claims are minted by `auth_internal.build_staff_claims` via the `get_custom_claims` hook.                                            | `backend/supabase/config.toml`, `backend/local/docker-compose.yml`, migrations `20260521170000_`*, `20260611150000_`* | A Cloudflare Worker **cannot validate a clinic's Supabase JWT** without per-clinic trust material. There is no shared JWKS. This is the single most important finding; see [§2.1](#21-amendment-a1-authenticate-every-request-requires-a-trust-bootstrap-that-does-not-exist-yet). |
 | F3  | Tenancy is `organizations` → `branches` → `staff_branch_assignments`, all `uuid`. JWT carries `organization_id`, `branch_ids`, `staff_role`, `staff_member_id`, `setup_required`.                                  | `20260516100000_auth_rbac_schema.sql`, `specs/002-auth-rbac/contracts/auth-session.md`                                | The AI platform's tenant key must map to a clinic **installation**, not to `organization_id` alone — `build_staff_claims` currently resolves the org as "oldest row", which is only safe with one org per deployment.                                                              |
 | F4  | Client → backend access is **RPC-first** (`snake_case`, `p_`-prefixed params, `rpc_result` envelope) with PostgREST reads for simple RLS-filtered tables. No Edge Functions exist.                                 | `docs/architecture/04-backend.md`, `frontend/lib/features/*/data/`*                                                   | Business-data retrieval for AI context should reuse the existing RPC idiom, not invent a second access path.                                                                                                                                                                       |
 | F5  | Constitution forbids microservices, message queues, Kubernetes, and "introducing a custom primary backend service"; requires graceful degradation and forbids subscription enforcement that hard-locks the system. | `.specify/memory/constitution.md`                                                                                     | The AI platform must be a **single deployable unit**, synchronous-first, and explicitly positioned as non-primary. See [§14](#14-constitution-compliance-check).                                                                                                                   |
 | F6  | `organizations.subscription_tier` / `subscription_valid_until` and `subscription_cache` exist but have **no writers**. There are no plan, quota, or entitlement tables.                                            | `docs/architecture/05-database.md`, `docs/architecture/10-resilience-and-scale.md`                                    | AI entitlement/quota cannot be sourced from Supabase today. The AI platform must own its own entitlement record — which is also what the constraint "D1 owns AI platform data" demands.                                                                                            |
 | F7  | `audit_log` is append-only, populated only by `SECURITY DEFINER` RPCs, and client writes are denied by RLS.                                                                                                        | `20260516100000_auth_rbac_schema.sql`                                                                                 | AI audit trails must live in D1, not `audit_log`. The clinic DB may record only the *acceptance* of AI output as a clinical action.                                                                                                                                                |
+
+
 
 
 ### 1.3 The three constraints that actually shape the design
@@ -106,25 +115,47 @@ Design decisions later in this document reference these limits. Values verified 
 Workers **Paid** plan; the Free plan is not viable for this workload (10 ms CPU, 50 subrequests).
 
 
-| Capability                        | Limit                                                                        | Why it matters here                                                                                             |
-| --------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Worker wall time                  | Unlimited while the client is connected                                      | Long streaming completions are fine. No need for async job plumbing in Phase 0–1.                               |
-| Worker CPU time                   | 30 s default, up to 5 min                                                    | Validation, schema checks, and JSON repair are cheap; CPU is not the binding constraint.                        |
-| Worker memory                     | 128 MB                                                                       | Never buffer large artifacts in memory; stream through and offload payloads to R2.                              |
-| Simultaneous outgoing connections | 6 per request                                                                | Caps in-flight provider calls plus D1/R2 writes per request. Speculative multi-provider racing must be bounded. |
-| Worker script size                | 10 MB                                                                        | Bundled prompt artifacts and JSON schemas fit comfortably; large corpora do not.                                |
-| D1 max database size              | 10 GB per DB                                                                 | Raw prompt/response text **must not** live in D1 rows at scale.                                                 |
-| D1 max row / BLOB                 | 2 MB                                                                         | A single long completion can approach this. Reinforces R2 offload.                                              |
-| D1 concurrency                    | Single-threaded per DB; ~1000 q/s at 1 ms queries; overload returns an error | The journal write path must be batched and off the critical path. Never write per-token.                        |
-| D1 write cost                     | $1 per million rows written                                                  | Per-token or per-chunk rows would dominate platform cost.                                                       |
-| D1 Time Travel                    | 30 days point-in-time recovery                                               | Satisfies platform-data recovery without a bespoke backup design.                                               |
-| Durable Objects                   | Unlimited objects; strongly consistent per object; 30 s CPU default          | The correct primitive for strongly consistent per-clinic quota counting.                                        |
-| Workers Rate Limiting binding     | GA; `simple` limiter, 10 s or 60 s windows, counters shared by namespace     | Good enough for cheap first-line abuse control; **not** sufficient for quota accounting.                        |
-| Workers Analytics Engine          | High-cardinality time-series writes, SQL/GraphQL read                        | Correct home for metrics and analytics, instead of aggregating in D1.                                           |
-| Cloudflare AI Gateway             | GA; provider proxy with caching, retries, fallback, token/cost logging       | Optional egress layer; evaluated in [§9.9](#99-cloudflare-ai-gateway-as-the-egress-layer).                      |
+| Capability                        | Limit                                                                                                                | Why it matters here                                                                                                                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker wall time                  | Unlimited while the client is connected                                                                              | Long streaming completions are fine. No need for async job plumbing.                                                                                                                     |
+| Worker CPU time                   | 30 s default, up to 5 min                                                                                            | Validation, schema checks, and JSON repair are cheap; CPU is not the binding constraint.                                                                                                              |
+| Worker memory                     | 128 MB                                                                                                               | Never buffer large artifacts in memory; stream through and offload payloads to R2.                                                                                                                    |
+| Simultaneous outgoing connections | 6 per request                                                                                                        | Caps in-flight provider calls plus D1/R2 writes per request. Speculative multi-provider racing must be bounded.                                                                                       |
+| Worker script size                | 10 MB                                                                                                                | Bundled prompt artifacts and JSON schemas fit comfortably; large corpora do not.                                                                                                                      |
+| D1 max database size              | 10 GB per DB                                                                                                         | Raw prompt/response text **must not** live in D1 rows at scale.                                                                                                                                       |
+| D1 max row / BLOB                 | 2 MB                                                                                                                 | A single long completion can approach this. Reinforces R2 offload.                                                                                                                                    |
+| D1 concurrency                    | Single-threaded per DB; ~1000 q/s at 1 ms queries; overload returns an error                                         | The journal write path must be batched and off the critical path. Never write per-token.                                                                                                              |
+| D1 write cost                     | $1 per million rows written                                                                                          | Per-token or per-chunk rows would dominate platform cost.                                                                                                                                             |
+| D1 Time Travel                    | 30 days point-in-time recovery                                                                                       | Satisfies platform-data recovery without a bespoke backup design.                                                                                                                                     |
+| Durable Objects                   | Unlimited objects; strongly consistent per object; 30 s CPU default; 1M requests and 400,000 GB-s included per month | The correct primitive for strongly consistent per-clinic quota counting. The request allowance is what caps the number of DO round trips per AI request ([§6.2](#62-why-this-order-and-not-another)). |
+| Workers Rate Limiting binding     | GA; `simple` limiter, 10 s or 60 s windows, counters shared by namespace                                             | Good enough for cheap first-line abuse control; **not** sufficient for quota accounting.                                                                                                              |
+| R2 operations                     | Class A (writes/lists) and Class B (reads) metered separately; deletes free                                          | Writes are the expensive class, so the per-request blob **count** matters more than blob size ([§7.4](#74-r2-payload-layout)).                                                                        |
+| R2 free allowance                 | 10 GB storage, 1M Class A, 10M Class B per month, egress always free                                                 | Recurring, not a trial. One payload object per request keeps clinic-scale volume inside it indefinitely.                                                                                              |
+| Cloudflare AI Gateway             | GA; provider proxy with caching, retries, fallback, token/cost logging                                               | Optional egress layer; evaluated in [§9.9](#99-cloudflare-ai-gateway-as-the-egress-layer).                                                                                                            |
 
+
+
+
+#### 1.4.1 How the platform is billed
+
+Worth stating once, because it shapes several storage decisions. **Workers, D1, Durable Objects, the
+Rate Limiting binding, and Worker secrets are all bundled into the single Workers Paid subscription**
+— a minimum charge, not a floor that usage is added to. Staying inside the included allowances means
+the platform costs exactly the subscription and nothing else appears on the invoice. **R2 is the only
+store metered separately**, and it carries a recurring monthly free allowance that does not expire.
+
+Two consequences follow, and both are load-bearing later:
+
+- The scarce resources are **R2 Class A operations** and **Durable Object requests**, because both are
+consumed by the *design's* per-request fan-out rather than by data volume. Halving the number of R2
+objects or DO round trips per request doubles the platform's headroom; storing less data does not.
+- **Provider tokens dominate every Cloudflare line item by one to two orders of magnitude** at
+clinic scale ([§13.6](#136-cost-model-and-guardrails)). Infrastructure allowances are something to
+monitor; the token budget is the thing to engineer.
 
 ---
+
+
 
 ## 2. Requirement Challenges and Amendments
 
@@ -172,6 +203,8 @@ Detail in [§5.6](#56-token-contract) and the enrollment sequence in [§8.1](#81
 > a **pluggable verifier** with two strategies — enrolled-installation keys and OIDC/JWKS — rather
 > than hard-coding either.
 
+
+
 ### 2.2 Amendment A2: "return only validated responses" contradicts "support streaming"
 
 **The conflict:** schema validity and business-rule validity of a structured response are properties
@@ -203,12 +236,12 @@ starving colleagues. The requirement must name its dimensions and, more importan
 different concerns that are usually conflated:
 
 
-| Concern             | Question it answers                              | Enforcement                                                                         | Consistency needed                     | Failure mode                               |
-| ------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
-| **Rate limiting**   | "Too many requests too fast?"                    | Rate Limiting binding, per composite key                                            | Approximate is fine                    | Reject with retry-after                    |
+| Concern             | Question it answers                              | Enforcement                                                                                     | Consistency needed                     | Failure mode                               |
+| ------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
+| **Rate limiting**   | "Too many requests too fast?"                    | Rate Limiting binding, per composite key                                                        | Approximate is fine                    | Reject with retry-after                    |
 | **Quota / budget**  | "Has this clinic consumed what it paid for?"     | Per-clinic quota Durable Object counter, credited from actual usage and backed by the D1 ledger | Must be strongly consistent per clinic | Reject, or degrade to a cheaper model tier |
-| **Concurrency cap** | "Too many *simultaneous* in-flight inferences?"  | Counter in the same per-clinic DO                                                   | Strongly consistent per clinic         | Reject or queue client-side                |
-| **Cost ceiling**    | "Is this single request too expensive to allow?" | Pre-flight token estimate vs per-capability ceiling                                 | Local to the request                   | Reject before the provider call            |
+| **Concurrency cap** | "Too many *simultaneous* in-flight inferences?"  | Counter in the same per-clinic DO                                                               | Strongly consistent per clinic         | Reject or queue client-side                |
+| **Cost ceiling**    | "Is this single request too expensive to allow?" | Pre-flight token estimate vs per-capability ceiling                                             | Local to the request                   | Reject before the provider call            |
 
 
 **Amendment:** rate limits are evaluated on at least these keys — `installation`,
@@ -243,7 +276,58 @@ release plus a client resolver mapping; changing a clinic table is a client-side
 This is the pivotal design decision in the whole document; it is developed in
 [§5.2](#52-context-contract), and the alternative is dissected in [§9.4](#94-platform-pulls-context-from-supabase).
 
-### 2.5 Requirements that should be added
+### 2.5 Amendment A14: an open chat surface is a declared capability, not an inferred one
+
+**The requirement as written:** the client offers AI in two shapes. Most of it is tied to the UI — a
+"Summarize this visit" button on a visit screen, "Draft SOAP note", "Polish note" — where pressing the
+control *is* the request. Alongside those, the client offers an open **chat window** where a clinician
+types anything, unattached to any screen or record.
+
+**Why the two look incompatible.** The button case is fully determined before the request leaves the
+clinic: the capability is known because a specific control was pressed, and the context keys are known
+because the manifest lists them. The chat case determines nothing upfront. Which record the clinician
+means, and therefore which context is needed, cannot be known until someone has read the sentence they
+typed — and reading it is an inference, which is the platform's job, not the client's.
+
+**The wrong resolution** is to let the client classify the typed message and pick a capability and
+context keys from it. That places intent inference in the layer deliberately kept ignorant of AI
+([§3.4](#34-the-three-seams)), and it is exactly the recoupling that A4 exists to prevent: within a
+release the client's classifier would be frozen, so improving the assistant's understanding would
+require a desktop release.
+
+**Amendment:** add an **interaction mode** to the capability manifest, and confine every conversational
+mechanism to the second of its two values.
+
+
+| Interaction mode        | Who names the capability                                                        | Context acquisition                                                                                                                    | Turns                                   | Applies to                                                |
+| ----------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------- |
+| `single_shot` (default) | The invoking surface, by construction — the control pressed *is* the capability | Fully determined by the manifest before submission. `context_required` remains a stale-cache repair, bounded to one resubmission       | One                                     | Every button-invoked feature; unchanged by this amendment |
+| `conversational`        | The invoking surface — the chat window *is* one capability                      | Determined by the platform during the request, through a bounded negotiation with the client ([§6.7](#67-conversational-capabilities)) | Many, transcript supplied by the client | The chat assistant                                        |
+
+
+The sentence that resolves the apparent conflict: **the invoking surface always names the capability;
+the platform never infers it.** A chat window is not "no capability" — it is one capability
+(`clinic.assistant@v1`) whose user intent field is the literal typed message. What the platform infers
+is not *which* capability the user wants, but *which context the named capability now needs*, and it
+answers that by asking the client for it rather than by fetching anything itself. The direction
+established in [§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database) is preserved: data
+still flows client → platform only.
+
+Three properties of the existing design are what make this an extension rather than a redesign, and
+each is load-bearing:
+
+- **The client already holds the transcript.** Conversation state is therefore never platform state, so
+no session store and no per-request Durable Object appear ([§9.18](#918-platform-held-conversation-state)).
+- `prose` **is already an output mode** ([§5.1](#51-capability-manifest)), so a chat answer has a valid
+output contract without inventing one.
+- **The canonical request already carries prior turns** ([§5.3](#53-canonical-inference-representation)),
+so the representation needs no new element.
+
+What this amendment does *not* license is general agentic tool use. The only "tool" a conversational
+capability may invoke is context-key resolution, the allowlist is the manifest's, and the executor is
+the client under the user's own RLS ([§12.5](#125-explicitly-not-to-be-built-yet)).
+
+### 2.6 Requirements that should be added
 
 These are absent from the brief and are not optional in a clinical product. Each is cheap to honour
 if designed in now and expensive to retrofit.
@@ -256,13 +340,15 @@ if designed in now and expensive to retrofit.
 | A7  | **Idempotency keys on request submission.** A retried submission with the same key returns the original request, never a second inference.                                                                                      | Desktop clients retry on flaky LAN/WAN links. Without this, retries silently double-bill and can produce two divergent drafts.                                                                 |
 | A8  | **Per-capability, per-installation, and global kill switches** changeable without deploy.                                                                                                                                       | The only safe response to a provider incident, a prompt regression, or a clinic-specific abuse event.                                                                                          |
 | A9  | **A prompt/capability evaluation suite gated in CI.** Golden cases per capability, run against recorded provider fixtures, plus a smaller live smoke set.                                                                       | Prompts are the platform's core logic and they have no type system. Without regression evals, every prompt edit is an unreviewable change.                                                     |
-| A10 | **An explicit retention and purge policy** for stored prompts, responses, and context payloads.                                                                                                                                 | The platform will persist clinical text by design ([§2.7](#27-requirement-accepted-as-is-no-phi-redaction)). "Keep everything forever" is a liability and a D1 sizing failure.                 |
+| A10 | **An explicit retention and purge policy** for stored prompts, responses, and context payloads.                                                                                                                                 | The platform will persist clinical text by design ([§2.8](#28-requirement-accepted-as-is-no-phi-redaction)). "Keep everything forever" is a liability and a D1 sizing failure.                 |
 | A11 | **A defined degraded mode.** AI unavailable, quota exhausted, and offline are distinct, first-class UI states; no AI failure may block a clinical workflow.                                                                     | Constitution principle V. AI is additive; the clinic must be able to work with it switched off entirely.                                                                                       |
 | A12 | **Capability and contract versioning with an overlap window.** Old clients keep working against pinned capability versions for a defined period.                                                                                | Desktop clients update on the clinic's schedule, not the platform's. Breaking a deployed client is a support incident, not a release.                                                          |
 | A13 | **A user-visible request reference** on every failure, resolvable by support to a full trace.                                                                                                                                   | The brief's own auditing scenario ("the user says my request failed") is unanswerable without a short identifier the user can read aloud.                                                      |
 
 
-### 2.6 Conflict with the existing local-Ollama assumption
+
+
+### 2.7 Conflict with the existing local-Ollama assumption
 
 `docs/architecture/03-deployment-networking.md` states that "AI inference remains local regardless of
 tier" and budgets 2–4 GB of RAM for Ollama on the clinic PC, in all three tiers. The brief instead
@@ -277,16 +363,16 @@ inference support burden. The consequences must be accepted explicitly:
   must be surfaced as a documented capability difference, not discovered by clinics
    (amendment A11).
 2. **Clinical text leaves the clinic** for third-party providers. The brief accepts this
-  ([§2.7](#27-requirement-accepted-as-is-no-phi-redaction)); the architecture set and any customer
+  ([§2.8](#28-requirement-accepted-as-is-no-phi-redaction)); the architecture set and any customer
    agreement must state it.
 3. `docs/architecture/03-deployment-networking.md` and the hardware table need updating; the freed
   RAM budget should be reclaimed rather than silently retained.
 
 A local-inference fallback is *not* recommended now, but the provider abstraction is deliberately
 shaped so that an on-LAN OpenAI-compatible endpoint could later be registered as just another
-provider ([§12.2](#122-phase-map)) — that is the cheapest possible hedge and costs nothing today.
+provider ([§12.2](#122-delivery-plan)) — that is the cheapest possible hedge and costs nothing today.
 
-### 2.7 Requirement accepted as-is: no PHI redaction
+### 2.8 Requirement accepted as-is: no PHI redaction
 
 The brief explicitly excludes PHI redaction. This is accepted as a **product decision**, recorded
 here as an accepted risk rather than an oversight (risk R-9 in [§11](#11-risks-and-mitigations)), with
@@ -299,7 +385,9 @@ vitals. Minimization is a free by-product of a decision made for decoupling reas
 attached **per context key** rather than by scanning free text. That is the difference between a
 future afternoon of work and a rewrite. No redaction is built now.
 
-### 2.8 Amendment summary
+
+
+### 2.9 Amendment summary
 
 
 | ID     | Amendment                                                                                                                   | Type           | Affects                       |
@@ -309,13 +397,18 @@ future afternoon of work and a rewrite. No redaction is built now.
 | A3     | Rate limiting dimensions named; quota separated from rate limiting                                                          | Clarified      | §4.3.3                        |
 | A4     | Context Contract published by platform, resolved by client                                                                  | Clarified      | §5.2, §8.3, §8.4              |
 | A5–A13 | Human acceptance, cost ceilings, idempotency, kill switches, evals, retention, degraded mode, versioning, request reference | Added          | throughout                    |
+| A14    | Interaction mode on the manifest; the chat surface is a declared capability with bounded context negotiation                | Added          | §5.1, §6.7, §8.10, §9.19      |
 | —      | Retire local-Ollama AI service assumption                                                                                   | Removed        | `03-deployment-networking.md` |
 | —      | No PHI redaction                                                                                                            | Accepted as-is | §11 R-9                       |
 
 
 ---
 
+
+
 ## 3. High-Level Architecture
+
+
 
 ### 3.1 Architecture style, and why this one
 
@@ -330,14 +423,17 @@ Four properties define it:
   (`visit.soap_draft@v2`, `patient.summary@v1`, `lab.flag_explain@v1`). A capability manifest
    bundles everything that makes that feature what it is: required context keys, prompt artifact
    reference, output schema, validation rules, routing policy, streaming mode, cost ceiling,
-   acceptance mode. Adding an AI feature means adding a manifest and its artifacts — not editing the
-   request pipeline. This is what keeps "new AI capabilities" from becoming new code paths.
+   acceptance mode, and interaction mode. Adding an AI feature means adding a manifest and its
+   artifacts — not editing the request pipeline. This is what keeps "new AI capabilities" from
+   becoming new code paths. **The invoking surface always names the capability**: a button press
+   names it by being that button, and an open chat window names one assistant capability whose
+   intent is the typed message. The client never infers a capability from what a user wrote (A14).
 2. **A fixed pipeline, pluggable stages.** All requests traverse the same ordered stage sequence
   ([§6.1](#61-the-pipeline)). Capabilities parameterize stages; they never reorder or bypass them.
    Uniformity is what makes authentication, quota, validation, journaling, and tracing
    *unbypassable* rather than per-feature good intentions.
 3. **One abstraction boundary, not five.** Only two dependencies are hidden behind an interface, and
-   only because each will genuinely have several implementations: the **provider port** (one adapter
+  only because each will genuinely have several implementations: the **provider port** (one adapter
    per AI provider) and the **token verifier** (enrolled-installation keys today, OIDC/JWKS if Tier 3
    arrives). Provider-independence therefore becomes a structural property — the pipeline contains no
    type that can name a provider. Persistence, logging, and prompt loading are deliberately *not*
@@ -366,16 +462,12 @@ flowchart TB
 
     subgraph edge["AI platform — Cloudflare, internet"]
         GW["AI Gateway Worker<br/>single deployable unit"]
-        QDO["Quota + Session<br/>Durable Objects"]
+        QDO["Quota Durable Object<br/>per installation"]
         D1[("D1<br/>AI platform data")]
-        R2[("R2<br/>payload blobs")]
-        KV[("KV<br/>hot config cache")]
-        AE[("Analytics Engine<br/>metrics")]
+        R2[("R2<br/>payload envelopes")]
         GW --- QDO
         GW --- D1
         GW --- R2
-        GW --- KV
-        GW --- AE
     end
 
     subgraph providers["AI providers"]
@@ -409,6 +501,8 @@ server never holds one, so a stolen clinic backup or a decompiled desktop binary
 provider access.
 - **The clinic box remains fully functional if the edge box disappears.** AI is a strict addition to
 the product, not a dependency of it.
+
+
 
 ### 3.3 Trust and network topology
 
@@ -510,10 +604,10 @@ the prompt logic is in both places. Two automated rules, both cheap, are therefo
 **architectural components rather than tests**:
 
 1. **A client-side lint that fails the build** on prompt-like strings, provider names, or model
-   identifiers in the Flutter codebase. This is the entire defence against the decay above (R-12), and
+  identifiers in the Flutter codebase. This is the entire defence against the decay above (R-12), and
    it costs one CI rule.
 2. **A client-side contract test** asserting the Context Resolver can produce every context key
-   declared by every active capability. This turns the Context Contract from a convention into a
+  declared by every active capability. This turns the Context Contract from a convention into a
    verified interface, and it catches "the platform requires a key this client cannot produce" before
    release rather than in a clinic.
 
@@ -525,20 +619,25 @@ Neither is glamorous, and together they protect the decoupling more reliably tha
 Exclusions are as architectural as inclusions. The AI platform does **not**:
 
 
-| Excluded                                    | Why                                                                                  | Where it lives instead                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Any copy of clinic business tables          | Would create a second source of truth and a sync problem, violating constitution III | Supabase only; context is transient per request                                                 |
-| Clinical decision authority                 | Output is advisory (A5)                                                              | Human acceptance recorded in Supabase                                                           |
-| The clinic's RBAC rules                     | Duplicated permission logic diverges silently                                        | Supabase RBAC; the platform reads *scopes* from the token and adds only AI-specific entitlement |
-| Long-term document storage                  | Not a document store                                                                 | Supabase Storage for clinical attachments; R2 only for the platform's own journal payloads      |
-| Session/conversation memory across features | Premature; invites accidental cross-patient context bleed                            | Client passes explicit prior turns when a capability declares a conversational shape            |
-| Background/batch inference                  | Constitution forbids queues today; no requirement demands it                         | Deferred to [§12.2](#122-phase-map) Phase 3 with Workflows if a real use case appears           |
-| Fine-tuning, embeddings, vector search      | No requirement; would drag in a vector store and an ingestion pipeline               | Deferred; the provider port makes embeddings a later adapter                                    |
+| Excluded                                  | Why                                                                                                                      | Where it lives instead                                                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any copy of clinic business tables        | Would create a second source of truth and a sync problem, violating constitution III                                     | Supabase only; context is transient per request                                                                                                      |
+| Clinical decision authority               | Output is advisory (A5)                                                                                                  | Human acceptance recorded in Supabase                                                                                                                |
+| The clinic's RBAC rules                   | Duplicated permission logic diverges silently                                                                            | Supabase RBAC; the platform reads *scopes* from the token and adds only AI-specific entitlement                                                      |
+| Long-term document storage                | Not a document store                                                                                                     | Supabase Storage for clinical attachments; R2 only for the platform's own journal payloads                                                           |
+| Server-side conversation state            | Would be the platform's first per-request store, and would make a transcript something two isolates must rendezvous over | The client owns the transcript and resupplies it each turn ([§6.7](#67-conversational-capabilities), [§9.18](#918-platform-held-conversation-state)) |
+| Conversation memory *across* capabilities | Invites accidental cross-patient context bleed; a transcript belongs to one conversation with one assistant              | Each conversation is scoped to one conversational capability and one `conversation_id`                                                               |
+| Background/batch inference                | Constitution forbids queues today; no requirement demands it                                                             | Deferred to a later delivery band ([§12.2](#122-delivery-plan)) with Workflows if a real use case appears                                                                |
+| Fine-tuning, embeddings, vector search    | No requirement; would drag in a vector store and an ingestion pipeline                                                   | Deferred; the provider port makes embeddings a later adapter                                                                                         |
 
 
 ---
 
+
+
 ## 4. Components and Responsibilities
+
+
 
 ### 4.1 Client-side components
 
@@ -546,11 +645,12 @@ Three components are added to the Flutter application. None of them contains pro
 names, provider names, or AI business rules — that is the acceptance test for this layer.
 
 
-| Component               | Responsibility                                                                                                                                                                                                                       | Must not                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| **AI Client SDK**       | Transport concern only: acquire an AAT, submit a capability request with an idempotency key, consume the event stream, surface terminal state, expose cancel, retry on transport errors, hold the last request reference for support | Interpret or transform model output; decide which model/provider; embed prompt fragments; retry after a *terminal* platform error |
-| **Context Resolver**    | Map each requested context key to the existing Supabase RPC/query that produces it, assemble a payload conforming to the declared shape, cache short-lived results within a screen                                                   | Decide *which* keys are needed; send unrequested data; bypass RLS by using a privileged path                                      |
-| **AI Feature Surfaces** | Per-feature UI: draft rendering, provisional/draft styling, explicit accept/discard, degraded-mode states, request-reference display on failure                                                                                      | Persist provisional content; auto-commit AI output (A5)                                                                           |
+| Component                                                 | Responsibility                                                                                                                                                                                                                       | Must not                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| **AI Client SDK**                                         | Transport concern only: acquire an AAT, submit a capability request with an idempotency key, consume the event stream, surface terminal state, expose cancel, retry on transport errors, hold the last request reference for support | Interpret or transform model output; decide which model/provider; embed prompt fragments; retry after a *terminal* platform error |
+| **Context Resolver**                                      | Map each requested context key to the existing Supabase RPC/query that produces it, assemble a payload conforming to the declared shape, cache short-lived results within a screen                                                   | Decide *which* keys are needed; send unrequested data; bypass RLS by using a privileged path                                      |
+| **AI Feature Surfaces**                                   | Per-feature UI: draft rendering, provisional/draft styling, explicit accept/discard, degraded-mode states, request-reference display on failure                                                                                      | Persist provisional content; auto-commit AI output (A5)                                                                           |
+| **Conversation store** (conversational capabilities only) | Hold the transcript of an open chat locally, resupply it on each turn, and discard it when the conversation is closed ([§6.7](#67-conversational-capabilities))                                                                      | Interpret the transcript; classify the user's message; choose which capability or which context keys a message needs              |
 
 
 The Context Resolver deserves emphasis because it is where a careless implementation would undo the
@@ -577,6 +677,8 @@ Additive only. No existing table changes semantics, and every addition follows t
 > **Boundary note:** the clinic database gains *no* knowledge of prompts, providers, quotas, or AI
 > request state. It gains exactly two AI-shaped facts: "I can mint tokens for the AI platform" and
 > "a human accepted AI output here". Anything more would migrate AI logic into the wrong layer.
+
+
 
 ### 4.3 AI Gateway Worker components
 
@@ -628,6 +730,8 @@ flowchart TB
 
 
 
+
+
 #### 4.3.1 Protocol adapter
 
 Owns the wire format and nothing else: request parsing, size limits, header handling
@@ -641,12 +745,20 @@ for `structured_atomic`) without touching the pipeline.
 Verifies the AAT through the **verifier port** (enrolled-installation key or OIDC/JWKS, per A1),
 enforces audience, expiry, clock skew tolerance, and `jti` replay rejection; loads the installation
 record; and produces an immutable **request principal** — installation, organization, branch, actor,
-role, capability scopes — that every later stage reads and none may mutate. Installation public keys
-and status are read through a KV-cached path so the common case costs no D1 read.
+role, capability scopes — that every later stage reads and none may mutate.
+
+Installation public keys and status are read through the **config cache**: an in-isolate memory map
+with a short TTL, populated from D1 on a miss. At clinic scale the entire config set — installations,
+keys, entitlements, grants, kill switches, the active routing policy — is a few kilobytes, so a warm
+isolate answers in nanoseconds and a cold one pays a single same-region D1 read. Replay rejection is
+not part of this stage's own I/O; the `jti` is checked inside the Quota Durable Object round trip at
+the next stage, where it costs nothing extra ([§4.3.3](#433-entitlement-quota-and-rate-control)).
 
 #### 4.3.3 Entitlement, quota, and rate control
 
-Three mechanisms with three different consistency requirements (A3), deliberately not merged:
+Mechanisms with different consistency requirements (A3). Rate limiting and the cost ceiling stay
+separate because they must be *approximate and local*; everything needing serialized truth shares the
+one Durable Object:
 
 - **Rate limiting** uses the Rate Limiting binding on composite keys (`installation`,
 `installation+actor`, `installation+capability`). Approximate and eventually consistent by design;
@@ -655,6 +767,12 @@ its job is to make abuse cheap to reject, not to be exact.
 that gives serialized, strongly consistent accounting. The DO holds the entitlement snapshot, the
 period counters, and the in-flight count. It answers one question before the provider call — "is
 there budget left?" — and is **credited with actual usage after** the call completes.
+- **Replay and idempotency** ride along in that same round trip. Both are installation-scoped facts
+that need exactly the serialization the DO already provides — "have I seen this `jti`?" and "have I
+seen this idempotency key?" are the same shape of question as "is there budget left?" Folding them
+in removes a D1 table, its TTL pruning cron, and one D1 write per request, and it costs no
+additional DO request because the round trip happens regardless
+([§9.17](#917-a-separate-store-for-replay-and-idempotency-state)).
 It deliberately does **not** hold pre-flight reservations against the estimated cost of each request:
 reservations exist to stop concurrent requests from collectively overshooting the last unit of quota,
 which at clinic volumes is an overshoot of one or two requests and no real exposure. The genuinely
@@ -686,7 +804,14 @@ matter architecturally:
 was missing — enabling the self-healing handshake in [§8.4](#84-missing-context-self-healing) so a
 slightly stale client recovers automatically instead of failing.
 - **Unknown keys are dropped, not forwarded.** A prompt must never be able to receive data the
-capability did not declare, or the minimization property in [§2.7](#27-requirement-accepted-as-is-no-phi-redaction) evaporates.
+capability did not declare, or the minimization property in [§2.8](#28-requirement-accepted-as-is-no-phi-redaction) evaporates.
+
+For a **conversational** capability the same two behaviours apply, against a different list. The
+manifest declares a *permitted* key set rather than a required one, so "unknown keys are dropped"
+becomes the enforcement point for the assistant's entire reach into clinic data: a key the manifest
+does not permit cannot enter a prompt even if the model asked for it and the client supplied it. This
+stage also validates the supplied transcript — turn ordering, declared shapes, and the conversation
+budget counted from the transcript itself ([§6.7](#67-conversational-capabilities)).
 
 #### 4.3.6 Prompt composer and prompt registry
 
@@ -695,6 +820,13 @@ instruction artifact, the business-rule fragments the capability declares, the o
 instruction derived from the capability's schema, the validated context payload rendered through the
 capability's template, the user intent, and the output constraints (max tokens, stop sequences,
 language, tone, refusal policy).
+
+For a conversational capability it additionally renders the **supplied transcript** as prior turns, and
+offers the shared context-request schema as a second permitted output shape alongside prose. Both the
+transcript's user turns and any context resolved during the conversation are rendered as delimited,
+typed data on the same footing as ordinary context — the composer draws no distinction between free
+text that arrived from a clinical note and free text a clinician typed into a chat box, because neither
+may act as an instruction (R-10).
 
 Two decisions worth defending:
 
@@ -709,6 +841,8 @@ activation pointer allowing rollback without a deploy — in [§9.14](#914-mecha
 structured-output/JSON-mode configuration, and the response validator. Deriving all three from one
 artifact removes the classic failure where the prompt asks for one shape and the validator demands
 another.
+
+
 
 #### 4.3.7 Provider router and policy engine
 
@@ -754,8 +888,9 @@ per-capability manifest decision, not a global one.
 
 The stream broker relays normalized chunks to the client, enforces provisional-vs-committed semantics
 (A2), emits heartbeats so intermediaries do not time out an idle stream, and guarantees that **every
-stream ends with exactly one terminal event** — success with the validated payload, or a typed error —
-so the client never has to infer completion from silence.
+stream ends with exactly one terminal event** — success with the validated payload, a typed error, or
+(for conversational capabilities only) a validated context request — so the client never has to infer
+completion from silence.
 
 It also owns cancellation, and owns it **without any stateful component**. Cancellation is
 connection-scoped: the request is cancelled by closing the stream, the Worker observes the client
@@ -779,43 +914,61 @@ must always have a record, so the record is created at the moment the request is
 with the terminal state when it finishes. One D1 insert costs single-digit milliseconds against an
 inference measured in seconds, so deferring it to a post-response continuation would trade audit
 completeness for latency nobody can perceive — the wrong way round for a platform whose hardest
-requirement is explaining a failure after the fact. Bulk detail (per-attempt rows, payload blobs,
-metrics) is still written after the response, because losing those degrades diagnosis without losing
-the existence of the request.
-- **Payloads go to R2, pointers go to D1.** Prompts, context payloads, and raw responses are blobs
-keyed by request; D1 holds fixed-width metadata. This respects the 2 MB row limit, the 10 GB
-database ceiling, and the per-row write cost — and keeps the D1 schema queryable for support
-lookups rather than bloated with text.
+requirement is explaining a failure after the fact. Bulk detail (per-attempt rows, the usage ledger
+row, the payload envelope) is still written after the response, because losing those degrades
+diagnosis without losing the existence of the request.
+- **Payloads go to R2, pointers go to D1, and one request produces one R2 object.** Prompt, context,
+raw provider exchanges, and the validated result are written as a single **payload envelope** keyed
+by request id; D1 holds fixed-width metadata. Offloading respects the 2 MB row limit, the 10 GB
+database ceiling, and the per-row write cost. Writing *one* object rather than four is what keeps
+R2 Class A operations — the platform's scarcest metered resource — proportional to requests rather
+than to a multiple of them ([§7.4](#74-r2-payload-layout)).
+
+
 
 #### 4.3.12 Telemetry emitter
 
-Structured logs with a propagated trace id, spans per pipeline stage and provider attempt, and
-metrics as Analytics Engine data points (capability, provider, model, outcome, latency buckets, token
-counts, cost, installation). Metrics go to Analytics Engine rather than D1 because D1 is
-single-threaded and metric writes are the highest-volume, least-transactional data in the system —
-putting them in D1 would make observability compete with the audit trail for the same write budget.
+Structured logs with a propagated trace id and spans per pipeline stage and provider attempt.
+
+**Metrics are derived, not separately written.** Every dimension a dashboard needs — outcome,
+latencies, token counts, cost, per capability, provider, model, and installation — is already on the
+`ai_request` and `ai_attempt` rows the journal writes anyway, so aggregate questions are answered by
+querying the journal and by the scheduled `usage_rollup` job. The platform emits no second stream of
+metric data points ([§9.16](#916-analytics-engine-as-the-metrics-store)).
+
+The one class of signal the journal cannot supply is **guard rejections**, which are deliberately not
+journaled so that refusing abuse stays cheap ([§7.5](#75-write-path-economics)). These are counted in
+an in-isolate tally flushed periodically to a small `platform_counter` table — bounded, low-cardinality
+rows keyed by dimension and time bucket, never one row per event.
 
 ### 4.4 Storage ownership
 
-
-| Store                | Owns                                                                                                                                             | Never holds                                                 | Consistency           | Rationale                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
-| **D1**               | Installations, entitlements, routing policy, request journal metadata, usage ledger, rollups, admin audit | Clinic business records; large text; high-frequency metrics | Strong, single-writer | The stated platform datastore; ideal for low-volume relational truth                  |
-| **R2**               | Prompt/context/response payload blobs, provider raw exchanges                                                                                    | Anything needed on the hot path for authorization           | Read-after-write      | Only economical home for large text; keeps D1 small                                   |
-| **KV**               | Cached installation/verifier material, kill-switch flags, routing policy snapshot                                    | Anything requiring immediate global consistency             | Eventual, seconds     | Removes D1 reads from the hot path; acceptable staleness for config                   |
-| **Durable Objects**  | Per-installation quota and concurrency counters — nothing else                                                          | Long-term records; per-request state                                           | Strong per object     | The only primitive giving serialized counting; scoped to one job                             |
-| **Analytics Engine** | Metrics and analytics time series                                                                                                                | Auditable records of record                                 | Append-only, sampled  | High cardinality, high volume, cheap; wrong tool for audit, right tool for dashboards |
-| **Secret store**     | Provider API keys, signing material                                                                                                              | Anything logged or journaled                                | —                     | Credential isolation                                                                  |
+There are **three stores and one credential binding**. Each is present because it has a property none
+of the others has; nothing is here for convenience.
 
 
-The one nuance worth flagging: **KV's eventual consistency is a deliberate acceptance**, so a
-kill switch or quota-plan change can take seconds to propagate globally. For quota that would be
-unacceptable, which is exactly why quota lives in a DO instead. For config, seconds are fine, and
-paying D1 latency on every request to avoid them would be a poor trade.
+| Store               | Owns                                                                                                                              | Never holds                                       | Consistency           | The property nothing else provides                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------- |
+| **D1**              | Installations, keys, entitlements, grants, routing policy, request journal metadata, usage ledger, rollups, counters, admin audit | Clinic business records; large text               | Strong, single-writer | Relational, queryable truth — the only store that can answer "show me this request" and "sum this period" |
+| **R2**              | One payload envelope per request: composed prompt, context, raw provider exchanges, validated result                              | Anything needed on the hot path for authorization | Read-after-write      | Unbounded object size at storage prices D1 cannot approach                                                |
+| **Durable Object**  | Per-installation quota, concurrency, `jti` replay set, idempotency records                                                        | Long-term records; per-request objects            | Strong per object     | Serialized counting — D1 races on read-modify-write and no cache can be authoritative                     |
+| **Secrets binding** | Provider API keys, signing material                                                                                               | Anything logged or journaled                      | —                     | Credential isolation (a binding, not a store)                                                             |
 
-Note the deliberate absence of a store for live request state. There is **one** Durable Object class
-in the whole platform, it holds counters, and it is per-installation rather than per-request. An
-in-flight AI request exists only as an open connection plus a journal row.
+
+Alongside them sits the **config cache**, which is not a store: an in-isolate memory map, short TTL,
+D1 on miss, holding installations, keys, entitlements, grants, kill switches, and the active routing
+policy. It is a latency optimization over D1 and it owns nothing.
+
+Two properties of this set are worth internalizing.
+
+**D1 is the only authoritative store.** R2 holds bytes that D1 rows point to, the Durable Object holds
+live counters that settle into D1's ledger, and the config cache holds copies of D1 rows. Nothing
+outside D1 is the truth about anything — which is precisely the test that decided what to leave out
+([§9.15](#915-workers-kv-as-a-hot-config-cache), [§9.16](#916-analytics-engine-as-the-metrics-store)).
+
+**There is no store for live request state.** One Durable Object class exists, it is per-installation
+rather than per-request, and it holds counters and short-lived sets. An in-flight AI request exists
+only as an open connection plus a journal row.
 
 ### 4.5 Control plane
 
@@ -823,15 +976,15 @@ A small internal surface, separate from the client-facing API and separately aut
 (operator identity, not clinic identity):
 
 
-| Function                     | Purpose                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| Installation lifecycle       | Enroll, rotate keys, suspend, resume, delete                                   |
-| Entitlement management       | Assign plan, set quota and budget, grant/revoke capabilities                   |
-| Kill switches                | Global, per capability, per installation, per provider (A8)                    |
-| Capability availability      | Grant, gate, deprecate, or retire a capability version for a plan or installation |
-| Routing policy               | Publish a new versioned policy; canary; roll back                              |
-| Support lookup               | Resolve a request reference to its full trace and payloads (A13)               |
-| Operational dashboards       | Health, error taxonomy breakdown, provider latency and cost, quota consumption |
+| Function                | Purpose                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| Installation lifecycle  | Enroll, rotate keys, suspend, resume, delete                                      |
+| Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities                      |
+| Kill switches           | Global, per capability, per installation, per provider (A8)                       |
+| Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation |
+| Routing policy          | Publish a new versioned policy; canary; roll back                                 |
+| Support lookup          | Resolve a request reference to its full trace and payloads (A13)                  |
+| Operational dashboards  | Health, error taxonomy breakdown, provider latency and cost, quota consumption    |
 
 
 Every control-plane mutation is journaled with the operator identity. Routing policy and kill-switch
@@ -841,24 +994,26 @@ go is indistinguishable from an attack.
 ### 4.6 Responsibility matrix
 
 
-| Component                  | Owns the decision                            | Must not know                                                | Can be replaced without touching        |
-| -------------------------- | -------------------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| AI Client SDK              | Transport, retry-on-transport, cancel intent | Prompts, providers, schemas beyond the declared output shape | Pipeline, prompts, providers            |
-| Context Resolver           | How to obtain a context key                  | Which keys a capability needs, or why                        | Capabilities, prompts                   |
-| Token issuer RPC           | Actor identity and AI scopes                 | Platform internals beyond audience and key                   | Entire platform internals               |
-| Identity stage             | Whether the caller is authentic              | Clinic schema, provider details                              | Verifier strategy (enrolled key ↔ OIDC) |
-| Entitlement stage          | Whether the request is allowed to cost money | Prompt content, provider identity                            | Billing model, plan structure           |
-| Capability resolver        | Which manifest governs this request          | Provider wire formats                                        | Registry storage location               |
-| Context validator          | Whether supplied context is acceptable       | How context was fetched                                      | Client implementation                   |
-| Prompt composer            | The exact provider-bound prompt              | Which provider will receive it                               | Providers, routing                      |
-| Provider router            | Which target chain to attempt                | Provider wire formats, prompt text                           | Provider set, policy content            |
-| Provider adapter           | Wire translation and failure classification  | Prompt intent, quota, journaling                             | Other adapters, pipeline                |
-| Response validator         | Whether output may be returned               | Which provider produced it                                   | Providers, prompts                      |
-| Stream broker              | Delivery and cancellation                    | Business meaning of content                                  | Transport protocol                      |
-| Journal writer             | What is recorded and where                   | Business meaning of content                                  | Storage layout, retention policy        |
+| Component           | Owns the decision                            | Must not know                                                | Can be replaced without touching        |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
+| AI Client SDK       | Transport, retry-on-transport, cancel intent | Prompts, providers, schemas beyond the declared output shape | Pipeline, prompts, providers            |
+| Context Resolver    | How to obtain a context key                  | Which keys a capability needs, or why                        | Capabilities, prompts                   |
+| Token issuer RPC    | Actor identity and AI scopes                 | Platform internals beyond audience and key                   | Entire platform internals               |
+| Identity stage      | Whether the caller is authentic              | Clinic schema, provider details                              | Verifier strategy (enrolled key ↔ OIDC) |
+| Entitlement stage   | Whether the request is allowed to cost money | Prompt content, provider identity                            | Billing model, plan structure           |
+| Capability resolver | Which manifest governs this request          | Provider wire formats                                        | Registry storage location               |
+| Context validator   | Whether supplied context is acceptable       | How context was fetched                                      | Client implementation                   |
+| Prompt composer     | The exact provider-bound prompt              | Which provider will receive it                               | Providers, routing                      |
+| Provider router     | Which target chain to attempt                | Provider wire formats, prompt text                           | Provider set, policy content            |
+| Provider adapter    | Wire translation and failure classification  | Prompt intent, quota, journaling                             | Other adapters, pipeline                |
+| Response validator  | Whether output may be returned               | Which provider produced it                                   | Providers, prompts                      |
+| Stream broker       | Delivery and cancellation                    | Business meaning of content                                  | Transport protocol                      |
+| Journal writer      | What is recorded and where                   | Business meaning of content                                  | Storage layout, retention policy        |
 
 
 ---
+
+
 
 ## 5. Contracts
 
@@ -872,17 +1027,18 @@ The manifest is the platform's declaration of an AI feature. It is immutable per
 anything semantically meaningful produces a new version.
 
 
-| Field group              | Contents                                                                                                                                                           | Consumed by                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| **Identity**             | Capability id, semantic version, human title, lifecycle state (`active`, `deprecated`, `retired`), successor id                                                    | Capability resolver, clients (discovery)                                  |
-| **Access**               | Required capability scope, minimum plan tier, allowed staff roles, kill-switch flag                                                                                | Identity + entitlement stages                                             |
-| **Input**                | User-intent shape, optional prior-turn shape, size limits, allowed languages                                                                                       | Protocol adapter, context validator                                       |
-| **Context requirements** | Ordered list of context keys with `required`/`optional`, shape reference, max size, freshness hint                                                                 | Context validator, client Context Resolver ([§5.2](#52-context-contract)) |
-| **Prompt binding**       | System instruction artifact ref, business-rule fragment refs, context rendering template ref, output-format instruction derivation rule                            | Prompt composer                                                           |
-| **Output**               | Mode (`prose` / `structured` / `structured_atomic`), output schema ref, business validation rule refs, repair policy (allowed, max attempts)                       | Validator, stream broker                                                  |
-| **Routing**              | Routing policy ref, required provider features (structured output, context window, language), latency class, degraded-tier policy                                  | Provider router                                                           |
-| **Economics**            | Max input tokens, max output tokens, per-request cost ceiling, quota weight                                                                                        | Entitlement stage                                                         |
-| **Governance**           | Acceptance mode (`advisory_display`, `human_accept_required`, `auto_apply` — the last one disallowed for clinical content per A5), retention class, eval suite ref | Client, journal, CI                                                       |
+| Field group              | Contents                                                                                                                                                                                                                                       | Consumed by                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Identity**             | Capability id, semantic version, human title, lifecycle state (`active`, `deprecated`, `retired`), successor id                                                                                                                                | Capability resolver, clients (discovery)                                  |
+| **Access**               | Required capability scope, minimum plan tier, allowed staff roles, kill-switch flag                                                                                                                                                            | Identity + entitlement stages                                             |
+| **Interaction**          | Interaction mode (`single_shot` / `conversational`); for `conversational` only: max history turns, max context rounds per turn, transcript size limit (A14)                                                                                    | Protocol adapter, context validator, prompt composer                      |
+| **Input**                | User-intent shape, prior-turn shape (required for `conversational`), size limits, allowed languages                                                                                                                                            | Protocol adapter, context validator                                       |
+| **Context requirements** | Ordered list of context keys with `required`/`optional`, shape reference, max size, freshness hint. A `conversational` capability instead declares a **permitted key set** the assistant may request during a turn                             | Context validator, client Context Resolver ([§5.2](#52-context-contract)) |
+| **Prompt binding**       | System instruction artifact ref, business-rule fragment refs, context rendering template ref, output-format instruction derivation rule                                                                                                        | Prompt composer                                                           |
+| **Output**               | Mode (`prose` / `structured` / `structured_atomic`), output schema ref, business validation rule refs, repair policy (allowed, max attempts)                                                                                                   | Validator, stream broker                                                  |
+| **Routing**              | Routing policy ref, required provider features (structured output, context window, language), latency class, degraded-tier policy                                                                                                              | Provider router                                                           |
+| **Economics**            | Max input tokens, max output tokens, per-request cost ceiling, quota weight. For `conversational`, the per-request ceiling applies per turn, and the conversation is bounded by the turn and round limits above rather than by a running total | Entitlement stage                                                         |
+| **Governance**           | Acceptance mode (`advisory_display`, `human_accept_required`, `auto_apply` — the last one disallowed for clinical content per A5), retention class, eval suite ref                                                                             | Client, journal, CI                                                       |
 
 
 Two properties are load-bearing:
@@ -892,6 +1048,12 @@ routing policy, and an existing validation rule set requires no pipeline change 
 - **A manifest never names a provider or a model.** It names *requirements*; the routing policy maps
 requirements to targets. This is what makes "replace a provider with minimal changes" true rather
 than aspirational.
+- **Interaction mode is the only switch that changes a request's shape**, and it defaults to
+`single_shot`. Every mechanism A14 introduces — transcripts, context negotiation, turn budgets — is
+unreachable unless a manifest opts into `conversational`, so no button-invoked capability acquires
+new behaviour by their existence.
+
+
 
 ### 5.2 Context contract
 
@@ -902,16 +1064,17 @@ naming rule is strict and worth stating as a rule because violating it silently 
 > `visit.vitals@v1` is correct; `visits_vitals_table@v1` or `get_visit_vitals_rpc@v1` is not.
 
 
-| Aspect        | Specification                                                                                                                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Key format    | `domain.concept@vN` — e.g. `patient.demographics@v1`, `visit.vitals@v1`, `visit.chief_complaint@v1`, `medication.active_list@v1`, `lab.recent_results@v1`, `clinic.branch_profile@v1`                                   |
-| Shape         | Each key has a platform-published shape (field names, types, cardinality, units) — the *only* schema knowledge shared between the two sides                                                                             |
-| Direction     | Client → platform, always ([§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database))                                                                                                                            |
-| Discovery     | Client fetches capability manifests (cached, revalidated by version/etag) and knows the key list before submitting                                                                                                      |
-| Self-healing  | If a client submits without a required key (stale cache), the platform rejects with `context_required` plus the missing-key manifest; the client resolves and resubmits once ([§8.4](#84-missing-context-self-healing)) |
-| Authorization | Resolution happens under the caller's own Supabase permissions and RLS; the platform additionally verifies that supplied context is branch-consistent with the token's claims                                           |
-| Evolution     | Adding an optional key is backward compatible. Adding a required key, or changing a shape, requires a new key version and a new capability version (A12)                                                                |
-| Minimization  | Only declared keys are forwarded to the composer; extras are dropped ([§4.3.5](#435-context-validator))                                                                                                                 |
+| Aspect        | Specification                                                                                                                                                                                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key format    | `domain.concept@vN` — e.g. `patient.demographics@v1`, `visit.vitals@v1`, `visit.chief_complaint@v1`, `medication.active_list@v1`, `lab.recent_results@v1`, `clinic.branch_profile@v1`                                                                                                    |
+| Shape         | Each key has a platform-published shape (field names, types, cardinality, units) — the *only* schema knowledge shared between the two sides                                                                                                                                              |
+| Direction     | Client → platform, always ([§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database))                                                                                                                                                                                             |
+| Discovery     | Client fetches capability manifests (cached, revalidated by version/etag) and knows the key list before submitting                                                                                                                                                                       |
+| Self-healing  | `single_shot` only. If a client submits without a required key (stale cache), the platform rejects with `context_required` plus the missing-key manifest; the client resolves and resubmits once ([§8.4](#84-missing-context-self-healing))                                              |
+| Negotiation   | `conversational` only. The platform may end a turn with `context_requested` naming keys from the manifest's permitted set; the client resolves them and continues the conversation ([§6.7](#67-conversational-capabilities), [§8.10](#810-conversational-turn-with-context-negotiation)) |
+| Authorization | Resolution happens under the caller's own Supabase permissions and RLS; the platform additionally verifies that supplied context is branch-consistent with the token's claims                                                                                                            |
+| Evolution     | Adding an optional key is backward compatible. Adding a required key, or changing a shape, requires a new key version and a new capability version (A12)                                                                                                                                 |
+| Minimization  | Only declared keys are forwarded to the composer; extras are dropped ([§4.3.5](#435-context-validator))                                                                                                                                                                                  |
 
 
 **Freshness and trust.** Context is a client-supplied snapshot, so it can be stale or tampered with
@@ -949,40 +1112,47 @@ A closed, stable set of codes. Clients branch on these; providers' native errors
 them and never surfaced raw.
 
 
-| Code                                        | Meaning                                                 | Retryable                | Consumes quota      | Client behaviour                                                          |
-| ------------------------------------------- | ------------------------------------------------------- | ------------------------ | ------------------- | ------------------------------------------------------------------------- |
-| `unauthenticated`                           | Missing/invalid/expired token                           | After re-mint            | No                  | Silently re-mint AAT and retry once                                       |
-| `installation_suspended`                    | Enrollment revoked or inactive                          | No                       | No                  | Hide AI features; instruct admin                                          |
-| `forbidden_capability`                      | Actor scope or plan does not allow this capability      | No                       | No                  | Hide the affordance for this role                                         |
-| `rate_limited`                              | Too many requests too fast                              | Yes, after `retry_after` | No                  | Backoff, show transient notice                                            |
-| `quota_exhausted`                           | Period quota or budget consumed                         | Not until period reset   | No                  | Show quota state, offer admin path                                        |
-| `request_too_large`                         | Input or context exceeds capability limits              | No                       | No                  | Ask user to shorten/narrow selection                                      |
-| `context_required`                          | Required context keys missing                           | Yes, after resolving     | No                  | Resolve keys and resubmit once ([§8.4](#84-missing-context-self-healing)) |
-| `context_invalid`                           | Supplied context violates declared shape                | No                       | No                  | Bug: report with request reference                                        |
-| `capability_unknown` / `capability_retired` | Unknown or withdrawn capability/version                 | No                       | No                  | Prompt for app update                                                     |
-| `capability_disabled`                       | Kill switch active                                      | Later                    | No                  | Show temporary-unavailable state                                          |
-| `provider_unavailable`                      | All candidate targets failed retryably                  | Yes                      | Partially, recorded | Offer retry; degraded notice                                              |
-| `provider_rejected`                         | Provider refused content (safety filter etc.)           | No                       | Yes                 | Explain; do not auto-retry                                                |
-| `validation_failed`                         | Output failed schema/business rules after repair budget | Yes, at user discretion  | Yes                 | Offer retry; never show invalid content                                   |
-| `cancelled`                                 | Cancelled by the user                                   | —                        | Partially, recorded | Return to idle                                                            |
-| `timeout`                                   | Deadline exceeded                                       | Yes                      | Partially, recorded | Offer retry                                                               |
-| `internal_error`                            | Platform defect                                         | Yes                      | No                  | Show reference; report                                                    |
+| Code                                        | Meaning                                                                                                   | Retryable                    | Consumes quota      | Client behaviour                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------- | -------------------------------------------------------------------------- |
+| `unauthenticated`                           | Missing/invalid/expired token                                                                             | After re-mint                | No                  | Silently re-mint AAT and retry once                                        |
+| `installation_suspended`                    | Enrollment revoked or inactive                                                                            | No                           | No                  | Hide AI features; instruct admin                                           |
+| `forbidden_capability`                      | Actor scope or plan does not allow this capability                                                        | No                           | No                  | Hide the affordance for this role                                          |
+| `rate_limited`                              | Too many requests too fast                                                                                | Yes, after `retry_after`     | No                  | Backoff, show transient notice                                             |
+| `quota_exhausted`                           | Period quota or budget consumed                                                                           | Not until period reset       | No                  | Show quota state, offer admin path                                         |
+| `request_too_large`                         | Input or context exceeds capability limits                                                                | No                           | No                  | Ask user to shorten/narrow selection                                       |
+| `context_required`                          | Required context keys missing                                                                             | Yes, after resolving         | No                  | Resolve keys and resubmit once ([§8.4](#84-missing-context-self-healing))  |
+| `context_invalid`                           | Supplied context violates declared shape                                                                  | No                           | No                  | Bug: report with request reference                                         |
+| `conversation_budget_exhausted`             | Transcript exceeds the capability's max history turns, or this turn exceeded its max context rounds (A14) | No, within this conversation | No                  | Offer to start a fresh conversation; show the last answer if there was one |
+| `capability_unknown` / `capability_retired` | Unknown or withdrawn capability/version                                                                   | No                           | No                  | Prompt for app update                                                      |
+| `capability_disabled`                       | Kill switch active                                                                                        | Later                        | No                  | Show temporary-unavailable state                                           |
+| `provider_unavailable`                      | All candidate targets failed retryably                                                                    | Yes                          | Partially, recorded | Offer retry; degraded notice                                               |
+| `provider_rejected`                         | Provider refused content (safety filter etc.)                                                             | No                           | Yes                 | Explain; do not auto-retry                                                 |
+| `validation_failed`                         | Output failed schema/business rules after repair budget                                                   | Yes, at user discretion      | Yes                 | Offer retry; never show invalid content                                    |
+| `cancelled`                                 | Cancelled by the user                                                                                     | —                            | Partially, recorded | Return to idle                                                             |
+| `timeout`                                   | Deadline exceeded                                                                                         | Yes                          | Partially, recorded | Offer retry                                                                |
+| `internal_error`                            | Platform defect                                                                                           | Yes                          | No                  | Show reference; report                                                     |
 
 
 Every error response carries the **request reference** (A13), the trace id, and whether a retry is
 safe — so the client never has to guess, and support never has to ask the user to reproduce.
 
+One outcome deliberately does **not** appear in this table. `context_requested`
+([§6.7](#67-conversational-capabilities)) is not an error: the turn ran, the provider was called, the
+tokens were spent, and the platform is asking for data rather than reporting a fault. It is a terminal
+*event kind* alongside `completed`, not a taxonomy code, and conflating the two would make a normal
+conversational turn look like a failure in every dashboard the journal feeds.
+
 ### 5.5 API surface and streaming protocol
 
 
-| Surface                        | Purpose                                                                                               | Notes                                                                              |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Capability discovery           | Fetch active manifests for this installation/plan                                                     | Cacheable and revalidated; drives the Context Resolver                             |
-| Submit request                 | Create an AI request for a capability, with intent, context payload, idempotency key, and version pin | Returns the request reference immediately; streams if the capability's mode allows |
-| Cancel                         | Cancel an in-flight request by closing its stream                                                     | Connection-scoped; no separate endpoint, no cross-invocation state                 |
-| Get request                    | Terminal state, and the validated result if the request completed                                     | Answers "what happened to this request?" after the stream is gone                  |
-| Usage summary                  | Current period consumption and entitlement for the installation                                       | Powers in-app quota display and future billing UI                                  |
-| Support lookup (control plane) | Resolve a request reference to full trace and payloads                                                | Operator-only                                                                      |
+| Surface                        | Purpose                                                                                               | Notes                                                                                                                                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Capability discovery           | Fetch active manifests for this installation/plan                                                     | Cacheable and revalidated; drives the Context Resolver                                                                                                                                                                                     |
+| Submit request                 | Create an AI request for a capability, with intent, context payload, idempotency key, and version pin | Returns the request reference immediately; streams if the capability's mode allows. For a `conversational` capability the same surface also carries the conversation id and the prior-turn transcript — there is no separate chat endpoint |
+| Cancel                         | Cancel an in-flight request by closing its stream                                                     | Connection-scoped; no separate endpoint, no cross-invocation state                                                                                                                                                                         |
+| Get request                    | Terminal state, and the validated result if the request completed                                     | Answers "what happened to this request?" after the stream is gone                                                                                                                                                                          |
+| Usage summary                  | Current period consumption and entitlement for the installation                                       | Powers in-app quota display and future billing UI                                                                                                                                                                                          |
+| Support lookup (control plane) | Resolve a request reference to full trace and payloads                                                | Operator-only                                                                                                                                                                                                                              |
 
 
 **Streaming protocol rules** (server-sent events downstream, single request upstream):
@@ -993,7 +1163,11 @@ safe — so the client never has to guess, and support never has to ask the user
   (A2).
 3. Heartbeats keep intermediaries from closing an idle stream during a slow first token.
 4. Exactly one terminal event ends every stream: `completed` with the validated result, or `failed`
-  with a taxonomy code, or `cancelled`.
+  with a taxonomy code, or `cancelled`, or — for `conversational` capabilities only —
+   `context_requested` carrying the keys the assistant needs
+   ([§6.7](#67-conversational-capabilities)). The rule that matters is unchanged: **one terminal
+   event, never inferred from silence.** A client that does not implement conversational capabilities
+   can never receive the fourth kind, because the capabilities it invokes never declare that mode.
 5. **Closing the stream cancels the request.** The platform cannot distinguish a user pressing Cancel
   from a network drop, and deliberately does not try: both abort the provider call and end the request
    as `cancelled`. The consequence, stated plainly, is that a connection lost mid-generation loses that
@@ -1003,6 +1177,8 @@ safe — so the client never has to guess, and support never has to ask the user
   the moment the request is accepted ([§4.3.11](#4311-journal-writer)), so a cancelled or dropped
    request is still fully explainable afterwards — which is what the audit requirement actually asks
    for.
+
+
 
 ### 5.6 Token contract
 
@@ -1026,15 +1202,16 @@ by the platform and would be stale instantly), no provider or model hints (the c
 ### 5.7 Versioning and compatibility rules
 
 
-| Artifact        | Versioning                          | Compatibility promise                                                                                                                   |
-| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Capability      | Semantic, in the id (`@v2`)         | Deprecated versions remain servable for a defined overlap window (A12); retirement is announced through discovery before it is enforced |
-| Context key     | Versioned per key                   | New optional keys are backward compatible; required keys or shape changes force a new capability version                                |
-| Output schema   | Versioned with the capability       | Additive optional fields allowed in place; anything else is a new version                                                               |
-| Prompt artifact | Immutable, pinned by the capability | Swapping a prompt is a new capability *build*, not a new capability version, as long as the output schema and behaviour contract hold; guarded by the eval suite (A9) |
-| Routing policy  | Versioned, independently deployable | Invisible to clients by construction                                                                                                    |
-| Error taxonomy  | Additive only                       | Clients must treat unknown codes as `internal_error`                                                                                    |
-| Token contract  | `ver` claim                         | Overlapping acceptance during rotation                                                                                                  |
+| Artifact         | Versioning                                 | Compatibility promise                                                                                                                                                     |
+| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability       | Semantic, in the id (`@v2`)                | Deprecated versions remain servable for a defined overlap window (A12); retirement is announced through discovery before it is enforced                                   |
+| Context key      | Versioned per key                          | New optional keys are backward compatible; required keys or shape changes force a new capability version                                                                  |
+| Output schema    | Versioned with the capability              | Additive optional fields allowed in place; anything else is a new version                                                                                                 |
+| Prompt artifact  | Immutable, pinned by the capability        | Swapping a prompt is a new capability *build*, not a new capability version, as long as the output schema and behaviour contract hold; guarded by the eval suite (A9)     |
+| Routing policy   | Versioned, independently deployable        | Invisible to clients by construction                                                                                                                                      |
+| Interaction mode | Fixed for the life of a capability version | Changing a capability between `single_shot` and `conversational` is a new capability version, never an in-place edit — the client's whole interaction shape depends on it |
+| Error taxonomy   | Additive only                              | Clients must treat unknown codes as `internal_error`                                                                                                                      |
+| Token contract   | `ver` claim                                | Overlapping acceptance during rotation                                                                                                                                    |
 
 
 The asymmetry to internalize: **prompts, models, providers, and routing can change hourly without
@@ -1043,7 +1220,11 @@ architecture's job is to keep as much as possible in the first group.
 
 ---
 
+
+
 ## 6. Request Lifecycle
+
+
 
 ### 6.1 The pipeline
 
@@ -1052,49 +1233,63 @@ certain rejection first**: no request should reach a paid provider call until ev
 known locally has been checked.
 
 
-| #   | Stage                                 | Decides                                                                  | Typical cost                            | Failure code                                                      |
-| --- | ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------- | ----------------------------------------------------------------- |
-| 1   | Ingress and shape                     | Is this a well-formed, size-bounded request?                             | Microseconds, no I/O                    | `request_too_large`, `internal_error`                             |
-| 2   | Idempotency check                     | Is this a replay of an existing request? (A7)                            | One cached/D1 lookup                    | returns the original request                                      |
-| 3   | Identity                              | Is the token authentic, unexpired, correctly scoped, non-replayed?       | KV-cached key, no D1 in the common case | `unauthenticated`, `installation_suspended`                       |
-| 4   | Entitlement                           | Is this installation AI-enabled and this capability permitted?           | KV-cached snapshot                      | `forbidden_capability`, `installation_suspended`                  |
-| 5   | Rate limit                            | Is the caller within burst limits on all keys?                           | Rate Limiting binding                   | `rate_limited`                                                    |
-| 6   | Capability resolve                    | Which immutable manifest governs this? Is it killed or retired?          | KV-cached registry                      | `capability_unknown`, `capability_retired`, `capability_disabled` |
-| 7   | Context validate                      | Is the supplied context complete, well-shaped, tenant-consistent?        | CPU only                                | `context_required`, `context_invalid`                             |
-| 8   | Cost pre-flight and quota check       | Does this fit the request ceiling and the remaining budget?              | One Quota DO round trip                 | `request_too_large`, `quota_exhausted`                            |
-| 9   | Journal the request                   | Create the durable record before any work begins                         | One D1 insert                           | `internal_error`                                                  |
-| 10  | Prompt composition                    | Build the canonical request from artifacts, context, and constraints     | CPU only                                | `internal_error`                                                  |
-| 11  | Route and invoke                      | Attempt targets in order, with bounded retry and fallback                | Provider latency — dominates everything | `provider_unavailable`, `provider_rejected`, `timeout`            |
-| 12  | Stream relay                          | Deliver normalized chunks, provisional where applicable                  | Streaming duration                      | `cancelled`                                                       |
-| 13  | Validate (and optionally repair)      | Is the complete output schema-valid and business-valid?                  | CPU, plus one bounded re-ask            | `validation_failed`                                               |
-| 14  | Terminal emit                         | Emit exactly one terminal event with the validated result or typed error | Microseconds                            | —                                                                 |
-| 15  | Record outcome                        | Update the journal row with terminal state; credit actual usage to the Quota DO | One D1 update, one DO call      | —                                                                 |
-| 16  | Detail and telemetry                  | Attempt rows to D1, payloads to R2, metrics to Analytics Engine           | Post-response continuation              | never fails the request                                           |
+| #   | Stage                                  | Decides                                                                                                                                           | Typical cost                              | Failure code                                                          |
+| --- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
+| 1   | Ingress and shape                      | Is this a well-formed, size-bounded request?                                                                                                      | Microseconds, no I/O                      | `request_too_large`, `internal_error`                                 |
+| 2   | Identity                               | Is the token authentic, unexpired, correctly scoped?                                                                                              | Config cache; D1 only on a cold isolate   | `unauthenticated`, `installation_suspended`                           |
+| 3   | Entitlement                            | Is this installation AI-enabled and this capability permitted?                                                                                    | Config cache                              | `forbidden_capability`, `installation_suspended`                      |
+| 4   | Rate limit                             | Is the caller within burst limits on all keys?                                                                                                    | Rate Limiting binding, no I/O             | `rate_limited`                                                        |
+| 5   | Capability resolve                     | Which immutable manifest governs this? Is it killed or retired?                                                                                   | Bundled artifacts; config cache for flags | `capability_unknown`, `capability_retired`, `capability_disabled`     |
+| 6   | Context validate                       | Is the supplied context complete, well-shaped, tenant-consistent?                                                                                 | CPU only                                  | `context_required`, `context_invalid`                                 |
+| 7   | Cost pre-flight                        | Does the estimated cost fit the capability's per-request ceiling?                                                                                 | CPU only                                  | `request_too_large`                                                   |
+| 8   | Admission (single Quota DO round trip) | Four installation-scoped questions at once: is the `jti` fresh, is this idempotency key new, is there budget left, is there concurrency headroom? | One Quota DO round trip                   | `unauthenticated`, `quota_exhausted`; or returns the original request |
+| 9   | Journal the request                    | Create the durable record before any work begins                                                                                                  | One D1 insert                             | `internal_error`                                                      |
+| 10  | Prompt composition                     | Build the canonical request from artifacts, context, and constraints                                                                              | CPU only                                  | `internal_error`                                                      |
+| 11  | Route and invoke                       | Attempt targets in order, with bounded retry and fallback                                                                                         | Provider latency — dominates everything   | `provider_unavailable`, `provider_rejected`, `timeout`                |
+| 12  | Stream relay                           | Deliver normalized chunks, provisional where applicable                                                                                           | Streaming duration                        | `cancelled`                                                           |
+| 13  | Validate (and optionally repair)       | Is the complete output schema-valid and business-valid? For `conversational` capabilities, is it a valid answer *or* a valid context request?     | CPU, plus one bounded re-ask              | `validation_failed`                                                   |
+| 14  | Terminal emit                          | Emit exactly one terminal event with the validated result or typed error                                                                          | Microseconds                              | —                                                                     |
+| 15  | Record outcome                         | Update the journal row with terminal state; credit actual usage to the Quota DO                                                                   | One D1 update, one DO call                | —                                                                     |
+| 16  | Detail and payloads                    | Attempt rows and the usage ledger row to D1; one payload envelope to R2                                                                           | Post-response continuation                | never fails the request                                               |
 
 
 Stages 1–10 are collectively the *guard*; they are designed to complete in low tens of milliseconds
-with at most a handful of cached lookups and one write. Stage 11 is where all the latency and all the
-money is. Stage 16 alone runs after the client has its answer, and it carries only detail that
-improves diagnosis — the *existence* of the request is already durable from stage 9, so no request a
-user witnessed can vanish from the record.
+with **exactly two I/O operations in the common case** — one Durable Object round trip and one D1
+insert. Everything before stage 8 is CPU or memory-cache work, which is what keeps rejecting an
+abusive request nearly free. Stage 11 is where all the latency and all the money is. Stage 16 alone
+runs after the client has its answer, and it carries only detail that improves diagnosis — the
+*existence* of the request is already durable from stage 9, so no request a user witnessed can vanish
+from the record.
 
 ### 6.2 Why this order and not another
 
 Three orderings that look reasonable and are wrong:
 
 - **Validating context before authenticating** would let an unauthenticated caller consume CPU on
-arbitrary payloads. Identity is stage 3 for a reason.
+arbitrary payloads. Identity is stage 2 for a reason.
 - **Checking quota before resolving the capability** would be impossible to price: quota weight and
 cost ceilings are *capability* properties.
 - **Journaling before the guard passes** would fill the journal with rejected noise and put a D1 write
 in the path of every abusive request — turning the cheap rejection path into an expensive one. Stage 9
 sits exactly where a request stops being a candidate and starts being work; rejections are counted in
-metrics, not journaled as requests.
+the platform counters, not journaled as requests.
 
-The one debatable placement is idempotency at stage 2, before identity. It is placed there so a
-retried submission returns the original result even if the token has since expired — a common desktop
-scenario. The lookup is keyed by installation-scoped idempotency key, and a mismatched installation is
-rejected at stage 3, so this cannot leak across tenants.
+**Why admission is one stage and not four.** Replay rejection, idempotency, quota, and concurrency are
+four different questions, but they share three properties: each is scoped to a single installation,
+each needs serialized truth rather than a cached approximation, and each is answered by the same
+object. Asking them separately would mean either several stores or several round trips to the same
+one. Asking them together costs a single Durable Object request — which matters, because DO requests
+are one of the two metered resources this design is actually constrained by
+([§1.4.1](#141-how-the-platform-is-billed)).
+
+The consequence to accept is that **idempotency is now checked after identity, not before it.** A
+transport retry whose token expired in the meantime will be rejected as `unauthenticated` rather than
+returning the original result, so the client must re-mint the token and resubmit with the same
+idempotency key — which the error taxonomy already instructs it to do
+([§5.4](#54-error-taxonomy)). Minting an AAT is a LAN round trip to the clinic's own database, so the
+cost of that path is negligible, and the ordering is what makes the single-round-trip admission stage
+possible. It also removes a genuine subtlety in the old ordering: an idempotency lookup performed
+before authentication is a lookup performed on behalf of an unverified caller.
 
 ### 6.3 Request state machine
 
@@ -1113,8 +1308,10 @@ stateDiagram-v2
     Validating --> Repairing: invalid and repair allowed
     Repairing --> Validating
     Validating --> Completed: valid
+    Validating --> AwaitingContext: valid context request<br/>(conversational only)
     Validating --> Failed: invalid, budget exhausted
     Completed --> [*]
+    AwaitingContext --> [*]
     Failed --> [*]
     Cancelled --> [*]
     Rejected --> [*]
@@ -1122,9 +1319,14 @@ stateDiagram-v2
 
 
 
-`Completed`, `Failed`, `Cancelled`, and `Rejected` are terminal and immutable. Every state transition
-is journaled with a timestamp, which is what makes the support flow in
+`Completed`, `Failed`, `Cancelled`, `Rejected`, and `AwaitingContext` are terminal and immutable. Every
+state transition is journaled with a timestamp, which is what makes the support flow in
 [§8.9](#89-support-audit-trace) a lookup rather than an investigation.
+
+`AwaitingContext` is reachable only for `conversational` capabilities (A14) and is terminal in the same
+sense as the others: **that request is over**. The conversation continues as a new request with a new
+idempotency key, linked by `conversation_id` ([§6.7](#67-conversational-capabilities)). Naming it a
+terminal state rather than a pause is what keeps the platform free of in-flight conversation state.
 
 ### 6.4 Streaming with commit-time validation
 
@@ -1148,17 +1350,19 @@ Two invariants the implementation must not weaken:
   Enforced structurally on the client (no commit affordance until terminal success) and recorded in
    the journal (the accepted payload is always the validated one).
 
+
+
 ### 6.5 Cancellation
 
 Cancellation is **connection-scoped**, which makes it the simplest mechanism in the platform: there is
 no cancel endpoint, no request registry, and no state to reconcile.
 
 
-| Situation                                          | Mechanism                                                                                                          |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| User presses Cancel on the screen showing the stream | The client closes the stream; the Worker observes the disconnect and aborts the in-flight provider fetch          |
-| The client crashes, is closed, or loses the network | Identical path — the platform does not distinguish these from a deliberate cancel, and does not need to           |
-| User wants to cancel from a different window        | **Not supported.** See [§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)                  |
+| Situation                                            | Mechanism                                                                                                |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| User presses Cancel on the screen showing the stream | The client closes the stream; the Worker observes the disconnect and aborts the in-flight provider fetch |
+| The client crashes, is closed, or loses the network  | Identical path — the platform does not distinguish these from a deliberate cancel, and does not need to  |
+| User wants to cancel from a different window         | **Not supported.** See [§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)        |
 
 
 Semantics, chosen to be honest rather than flattering:
@@ -1171,6 +1375,8 @@ vector.
 - A generation interrupted by a network drop is lost, and the user retries. This is the accepted cost
 of holding no per-request state ([§5.5](#55-api-surface-and-streaming-protocol), rule 5).
 - The journal row survives regardless, so a cancelled request is still fully explainable.
+
+
 
 ### 6.6 Idempotency, retry, and duplicate suppression
 
@@ -1187,21 +1393,122 @@ The distinction between an *internal* retry (same request, new attempt) and a *u
 request) is worth insisting on: it is the difference between an auditable, cost-attributable journal
 and one where a support engineer cannot tell how many inferences a clinic actually paid for.
 
+### 6.7 Conversational capabilities
+
+Everything in this subsection applies **only** to capabilities whose manifest declares
+`interaction_mode: conversational` (A14). Button-invoked `single_shot` capabilities are unaffected by
+all of it: they resolve their context from the manifest before submitting, they never negotiate, and
+`context_required` remains for them exactly what [§8.4](#84-missing-context-self-healing) describes.
+
+#### 6.7.1 The unit of work is a leg, not a conversation
+
+A conversation is not a session the platform holds open. It is a series of independent requests, each
+one a full trip through the same pipeline in [§6.1](#61-the-pipeline), tied together by two fields the
+client supplies:
+
+
+| Field             | Supplied by                 | Purpose                                                                               |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------------- |
+| `conversation_id` | Client, once per chat       | Groups the legs in the journal so support and evals can read a conversation as a unit |
+| `turn_ordinal`    | Client, incremented per leg | Orders them, and makes a replayed or reordered transcript detectable                  |
+
+
+Each leg carries the **transcript so far** as prior turns in the request body. The platform reads it,
+uses it, journals a reference to it, and forgets it. This is what keeps every property the design
+depends on: routing stays stateless, cancellation stays connection-scoped, admission and quota stay
+per-request, and no store is added ([§9.18](#918-platform-held-conversation-state)).
+
+#### 6.7.2 A turn ends in one of two ways
+
+The assistant either answers, or asks for data. Both are terminal for that leg.
+
+
+| Terminal event      | Meaning                                                                          | Journal                            | Quota                                               | What the client does next                                                                                                           |
+| ------------------- | -------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `completed`         | The assistant answered. Validated `prose`, exactly as any other prose capability | Leg row reaches `completed`        | Credited with actual usage                          | Render the answer; append it to the transcript                                                                                      |
+| `context_requested` | The assistant needs clinic data, named as context keys with their arguments      | Leg row reaches `awaiting_context` | Credited with actual usage — the inference happened | Resolve the named keys through the Resolver, append the request and the resolved payload to the transcript, and submit the next leg |
+
+
+The second row is the whole mechanism, and the property that makes it safe is that **the platform
+asks; it never fetches**. The requested keys travel to the client, the client resolves them against
+Supabase under the requesting user's own session and RLS, and the resolved values come back the same
+way any other context payload does. A user who may not see a patient cannot have that patient
+summarized by asking the assistant nicely, because the read that would produce the data is the user's
+own read.
+
+The context request itself is structured output, validated against a **platform-owned schema shared by
+every conversational capability** — a list of `{key, arguments}` drawn from the manifest's permitted
+set. It is not a per-capability schema, so the validator gains one fixed shape rather than one per
+assistant.
+
+#### 6.7.3 What bounds the loop
+
+An assistant that can ask for data can ask forever, so three bounds apply. All three are computed from
+the submitted request alone, which is what keeps them stateless:
+
+
+| Bound                           | Where declared | Enforced by                                                                                                                                                      | Breach                          |
+| ------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| **Max context rounds per turn** | Manifest       | Counting consecutive `context_requested` turns at the tail of the supplied transcript                                                                            | `conversation_budget_exhausted` |
+| **Max history turns**           | Manifest       | Counting turns in the supplied transcript                                                                                                                        | `conversation_budget_exhausted` |
+| **Per-turn cost ceiling**       | Manifest       | The existing cost pre-flight ([§6.1](#61-the-pipeline) stage 7), which estimates input tokens from the whole request — and the transcript is part of the request | `request_too_large`             |
+
+
+The third is worth pausing on because it required no change at all. Growth in a conversation shows up
+as growth in the input, the pre-flight already prices the input, and so a conversation that grows too
+long is rejected by the mechanism that already exists for a pasted document (A6). Total conversation
+spend is therefore bounded by max turns × the per-turn ceiling, without a running total and without the
+pre-flight reservations rejected in [§9.14](#914-mechanisms-deliberately-simplified).
+
+**The transcript is client-supplied, and therefore untrusted** — the same status as any context payload
+([§3.3](#33-trust-and-network-topology), assertion 4). A malicious client can trim the context-request
+turns out of a transcript to reset the round counter. That is accepted rather than solved, for the same
+reason stale context is accepted: the containment is elsewhere and it is sufficient. Every leg is
+independently authenticated, rate-limited, cost-checked, and admitted against the installation's own
+budget, so the worst achievable outcome is a clinic spending its own quota faster. Making the platform
+authoritative over transcript integrity would mean holding conversation state, which is the thing this
+design is avoiding.
+
+#### 6.7.4 What conversational mode does not change
+
+Stated explicitly, because the value of confining A14 to one manifest flag is precisely that this list
+is long:
+
+- **No new pipeline stage.** A leg traverses [§6.1](#61-the-pipeline) unchanged. Stage 13 gains a
+second valid output shape and stage 14 a fourth terminal event kind; both are parameterized by the
+manifest, exactly as capabilities parameterize every other stage.
+- **No new store and no new stateful component.** The Quota Durable Object remains the only one, and it
+remains per-installation ([§4.4](#44-storage-ownership)).
+- **No change to cancellation.** A leg is one connection; closing it cancels that leg
+([§6.5](#65-cancellation)). The conversation survives on the client, which still holds the transcript.
+- **No change to idempotency.** Each leg carries its own key. A transport retry of a leg returns that
+leg; it never re-runs the turn ([§6.6](#66-idempotency-retry-and-duplicate-suppression)).
+- **No change to the advisory rule.** Anything a clinician moves from a chat answer into a record goes
+through the same human acceptance path (A5).
+- **No general tool use.** The only invocable operation is context-key resolution, restricted to the
+manifest's permitted set and executed by the client
+([§12.5](#125-explicitly-not-to-be-built-yet)).
+
 ---
 
+
+
 ## 7. Data Flow and Data Model
+
+
 
 ### 7.1 Data ownership boundaries
 
 
-| Data                                                | Owner                                              | May the other side hold it?                                                                               |
-| --------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Patients, visits, invoices, staff, RBAC             | Supabase                                           | The AI platform holds **transient** copies inside request payloads only, subject to retention class (A10) |
-| Prompts, manifests, routing policy, provider config | AI platform                                        | The clinic app never receives them                                                                        |
-| AI request journal, usage ledger, entitlement       | AI platform (D1)                                   | Supabase holds only the request reference on accepted output                                              |
-| Provider credentials                                | AI platform secret store                           | Never leaves it; never journaled                                                                          |
-| Installation signing key                            | Clinic PostgreSQL (private) / AI platform (public) | The private key never leaves the clinic                                                                   |
-| Human acceptance of AI output                       | Supabase (`audit_log` + domain row)                | The platform journals that a terminal result was delivered, not that it was accepted                      |
+| Data                                                | Owner                                              | May the other side hold it?                                                                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Patients, visits, invoices, staff, RBAC             | Supabase                                           | The AI platform holds **transient** copies inside request payloads only, subject to retention class (A10)                                                          |
+| Prompts, manifests, routing policy, provider config | AI platform                                        | The clinic app never receives them                                                                                                                                 |
+| AI request journal, usage ledger, entitlement       | AI platform (D1)                                   | Supabase holds only the request reference on accepted output                                                                                                       |
+| Provider credentials                                | AI platform secret store                           | Never leaves it; never journaled                                                                                                                                   |
+| Installation signing key                            | Clinic PostgreSQL (private) / AI platform (public) | The private key never leaves the clinic                                                                                                                            |
+| Human acceptance of AI output                       | Supabase (`audit_log` + domain row)                | The platform journals that a terminal result was delivered, not that it was accepted                                                                               |
+| An open conversation's transcript                   | The client, for the life of the chat               | The platform holds it only for the duration of each leg, and afterwards only inside that leg's retained payload envelope ([§6.7](#67-conversational-capabilities)) |
 
 
 The last row is the deliberate seam in the audit story: the platform can prove *what it returned*, and
@@ -1217,7 +1524,7 @@ flowchart LR
     FL --> |"1. mint AAT"| SB["Supabase"]
     FL --> |"2. resolve context keys<br/>under user RLS"| SB
     FL --> |"3. submit: intent + context<br/>+ AAT + idempotency key"| GW["Gateway Worker"]
-    GW --> |"4. verify, entitle, rate-limit"| KVQ["KV cache + Quota DO"]
+    GW --> |"4. verify, entitle, rate-limit,<br/>admit via one DO round trip"| ADM["Config cache + Quota DO"]
     GW --> |"5. journal the request"| D1[("D1")]
     GW --> |"6. compose prompt<br/>from bundled artifacts"| PA["Prompt artifacts"]
     GW --> |"6. canonical request"| AD["Provider adapter"]
@@ -1229,8 +1536,7 @@ flowchart LR
     GW --> |"12. terminal validated result"| FL
     FL --> |"13. human accepts →<br/>domain write + request ref"| SB
     GW --> |"14. terminal state + usage"| D1
-    GW -.-> |"15. attempt detail, payload blobs"| R2[("R2")]
-    GW -.-> |"15. metrics"| AE[("Analytics Engine")]
+    GW -.-> |"15. one payload envelope"| R2[("R2")]
 
     style GW fill:#fff6e8,stroke:#c98a2b
     style SB fill:#eef6ff,stroke:#4a7ab8
@@ -1250,19 +1556,19 @@ Logical entities and their purpose. Field lists indicate *shape and cardinality*
 schema definition.
 
 
-| Entity                  | Purpose                                                                           | Key fields                                                                                                                                                                                       | Growth                 | Retention                                  |
-| ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------ |
-| `installation`          | An enrolled clinic deployment                                                     | installation id, org id, display name, status, region, enrolled_at                                                                                                                               | Tens–thousands of rows | Life of customer                           |
-| `installation_key`      | Verification material and rotation history                                        | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                      | Few per installation   | History kept for audit                     |
-| `entitlement`           | What this installation may use and how much                                       | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, status                                                                           | One current + history  | History kept for billing disputes          |
-| `capability_grant`      | Which capability versions a plan or installation may use                          | scope, capability id, version, granted/revoked, changed_at, changed_by                                                                                                                            | Low                    | Full history                               |
-| `routing_policy`        | Versioned target chains and selection rules                                       | policy id, version, content pointer, active_from, activated_by                                                                                                                                   | Low                    | Full history                               |
-| `ai_request`            | One row per request: the journal spine                                            | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, timestamps, terminal error code, trace id, payload pointers | **The dominant table** | Retention class (A10)                      |
-| `ai_attempt`            | One row per provider attempt                                                      | request id, attempt no., provider, model, outcome, latency, tokens in/out, cost, provider request id, error code                                                                                 | 1–3 per request        | With the request                           |
-| `usage_event`           | Append-only quota/billing ledger                                                  | installation, period, request id, quota weight, tokens, cost, recorded_at                                                                                                                        | ~1 per request         | Longer than requests — billing evidence    |
-| `usage_rollup`          | Pre-aggregated per installation/period/capability                                 | dimensions, counts, tokens, cost                                                                                                                                                                 | Small                  | Long                                       |
-| `token_replay_guard`    | Recently seen `jti` values                                                        | jti, installation, expires_at                                                                                                                                                                    | High churn, short TTL  | Minutes–hours, pruned by cron              |
-| `control_audit`         | Control-plane mutations                                                           | operator, action, target, before/after pointer, at                                                                                                                                               | Low                    | Long                                       |
+| Entity             | Purpose                                                                        | Key fields                                                                                                                                                                                                                                                                   | Growth                   | Retention                               |
+| ------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | --------------------------------------- |
+| `installation`     | An enrolled clinic deployment                                                  | installation id, org id, display name, status, region, enrolled_at                                                                                                                                                                                                           | Tens–thousands of rows   | Life of customer                        |
+| `installation_key` | Verification material and rotation history                                     | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                  | Few per installation     | History kept for audit                  |
+| `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
+| `capability_grant` | Which capability versions a plan or installation may use                       | scope, capability id, version, granted/revoked, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
+| `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer, active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
+| `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, timestamps, terminal error code, trace id, payload pointers, plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
+| `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
+| `usage_event`      | Append-only quota/billing ledger                                               | installation, period, request id, quota weight, tokens, cost, recorded_at                                                                                                                                                                                                    | ~1 per request           | Longer than requests — billing evidence |
+| `usage_rollup`     | Pre-aggregated per installation/period/capability                              | dimensions, counts, tokens, cost                                                                                                                                                                                                                                             | Small                    | Long                                    |
+| `platform_counter` | Bucketed counts for events that are never journaled — chiefly guard rejections | dimension set, time bucket, count                                                                                                                                                                                                                                            | Bounded, low cardinality | Months                                  |
+| `control_audit`    | Control-plane mutations                                                        | operator, action, target, before/after pointer, at                                                                                                                                                                                                                           | Low                      | Long                                    |
 
 
 Sizing check against the 10 GB per-database ceiling: at roughly 0.5–1 KB per metadata row,
@@ -1273,21 +1579,57 @@ limit on long completions. This is the most consequential storage decision in th
 
 If volume ever outgrows one database, the escape hatch is D1's intended model — a database per region
 or per installation cohort, with the installation registry as the routing key. A deliberate late
-option, not a Phase 0 complication.
+option, not an early complication.
+
+**Conversations add two nullable columns and no table** (A14). A chat turn is an ordinary request row;
+`conversation_id` and `turn_ordinal` group and order the legs so that support can read a whole
+conversation with one indexed query, and so that evals can score a conversation rather than a single
+exchange. There is no `conversation` entity, because there is nothing about a conversation the
+platform owns: its transcript lives on the client during the chat and in the per-leg R2 envelopes
+afterwards. The cost worth noting honestly is that the transcript is re-journaled on every leg, so an
+*n*-turn conversation stores roughly *n²/2* turns' worth of text across its envelopes. At the manifest's
+turn limits this is kilobytes, and the `diagnostic` retention class ([§7.7](#77-retention-and-recovery))
+is the shortest-lived of all — but a capability allowing long conversations should carry a
+correspondingly short diagnostic window.
 
 ### 7.4 R2 payload layout
 
+**One request produces exactly one R2 object.** The key is `request/{id}/envelope`, derived from the
+request id, and the object is a single document with four sections:
 
-| Blob class                     | Contents                                  | Answers                                                                    |
-| ------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------- |
-| `request/{id}/context`         | The validated context payload as supplied | "What inputs did the model actually see?"                                  |
-| `request/{id}/prompt`          | The fully composed provider-bound prompt  | "What did we actually send?" — the first question in every prompt incident |
-| `request/{id}/attempt/{n}/raw` | Raw provider response or error body       | Provider-side diagnostics and dispute evidence                             |
-| `request/{id}/result`          | The validated terminal payload            | "What was the user given?"                                                 |
 
+| Envelope section | Contents                                         | Answers                                                                    |
+| ---------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `context`        | The validated context payload as supplied        | "What inputs did the model actually see?"                                  |
+| `prompt`         | The fully composed provider-bound prompt         | "What did we actually send?" — the first question in every prompt incident |
+| `attempts[]`     | Raw provider response or error body, per attempt | Provider-side diagnostics and dispute evidence                             |
+| `result`         | The validated terminal payload                   | "What was the user given?"                                                 |
+
+
+
+
+#### 7.4.1 Why one object and not four
+
+The natural decomposition is one object per artifact, and it is the wrong one. R2 meters **Class A**
+operations (writes and lists) at roughly an order of magnitude more than **Class B** operations
+(reads), with a free allowance of one million Class A per month against ten million Class B. Four
+objects per request therefore consume the platform's scarcest metered resource four times faster
+while producing no benefit:
+
+- **Nothing is written earlier by splitting.** All four artifacts are assembled in the same
+post-response continuation ([§6.1](#61-the-pipeline) stage 16), after the client already has its
+answer, so there is no latency to reclaim.
+- **Nothing expires separately by splitting.** Retention class is a per-capability property
+([§5.1](#51-capability-manifest)), not a per-artifact one, so all four sections of a request share a
+lifecycle by construction and a single object lifecycle rule expires them together.
+- **Support reads get cheaper.** Reconstructing a request is one `GetObject` rather than four, which
+also removes the "some parts expired, some did not" state from the support path.
+
+The trade accepted is that a support lookup interested in only the prompt still transfers the whole
+envelope. Envelopes are kilobytes and R2 egress is free, so this costs nothing that matters.
 
 Keys are derived from the request id, so a support lookup is a pointer dereference rather than a
-search, and lifecycle rules expire blobs by retention class without touching D1.
+search, and lifecycle rules expire envelopes by retention class without touching D1.
 
 ### 7.5 Write-path economics
 
@@ -1295,39 +1637,45 @@ Stated explicitly because this is where a reasonable-looking implementation beco
 expensive:
 
 
-| Anti-pattern                               | Consequence                                                                                | Design rule                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| A D1 row per stream chunk                  | Millions of writes per thousand requests; write cost and single-thread contention dominate | Chunks are never individually persisted — only aggregates |
-| Journaling rejected requests               | Puts a D1 write in the cheap-rejection path, so abuse becomes expensive to refuse          | Journal at stage 9, after the guard; count rejections in metrics |
-| Writing per-attempt detail before responding | Adds avoidable latency for data only needed during diagnosis                              | One row on the request path; detail afterwards            |
-| Storing text in D1                         | 2 MB row ceiling, 10 GB database ceiling, expensive reads                                  | Payloads to R2, pointers in D1                            |
-| Metrics as D1 aggregate updates            | Hot-row contention on a single-threaded database                                           | Analytics Engine data points; cron rollups                |
-| Quota counters in D1                       | Read-modify-write races between concurrent requests                                        | Per-installation Durable Object                           |
-| Unbounded replay-guard table               | Grows without limit and slows its own lookups                                              | TTL plus scheduled pruning                                |
+| Anti-pattern                                 | Consequence                                                                                                  | Design rule                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| A D1 row per stream chunk                    | Millions of writes per thousand requests; write cost and single-thread contention dominate                   | Chunks are never individually persisted — only aggregates                               |
+| Journaling rejected requests                 | Puts a D1 write in the cheap-rejection path, so abuse becomes expensive to refuse                            | Journal at stage 9, after the guard; count rejections in `platform_counter`             |
+| Writing per-attempt detail before responding | Adds avoidable latency for data only needed during diagnosis                                                 | One row on the request path; detail afterwards                                          |
+| Storing text in D1                           | 2 MB row ceiling, 10 GB database ceiling, expensive reads                                                    | Payloads to R2, pointers in D1                                                          |
+| One R2 object per artifact                   | Multiplies Class A operations — the scarcest metered resource — with no offsetting benefit                   | One payload envelope per request ([§7.4.1](#741-why-one-object-and-not-four))           |
+| A metric write per event                     | A second high-volume write stream duplicating data the journal already holds                                 | Metrics are queried from the journal; only never-journaled events get bucketed counters |
+| Quota counters in D1                         | Read-modify-write races between concurrent requests                                                          | Per-installation Durable Object                                                         |
+| A separate store for replay and idempotency  | A high-churn table plus a pruning cron, and extra round trips, for facts the Quota DO is already serializing | Fold both into the admission round trip ([§6.1](#61-the-pipeline) stage 8)              |
+| Multiple round trips to the same DO          | Each one bills a Durable Object request against a 1M monthly allowance                                       | Ask every installation-scoped question in a single admission call                       |
+
+
 
 
 ### 7.6 Read paths
 
 
-| Read path                           | Frequency            | Source                                                 | Constraint                                                          |
-| ----------------------------------- | -------------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
-| Verify installation and entitlement | Every request        | KV, D1 on miss                                         | Must not be a D1 read in the common case                            |
-| Resolve capability manifest         | Every request        | Bundled artifacts; KV for grants and kill switches     | No D1 on the hot path                                               |
-| Support lookup by request reference | Rare                 | D1, indexed on the reference, then R2                  | Single indexed lookup — the reference exists to make this trivial   |
-| Usage summary for a clinic          | Occasional           | Quota DO for live counters; `usage_rollup` for history | Live and historical answers deliberately come from different places |
-| Analytics and dashboards            | Continuous, internal | Analytics Engine                                       | Never queries journal tables                                        |
-| Billing period close                | Monthly              | `usage_event` → `usage_rollup` via cron                | The ledger is the evidence; rollups are the convenience             |
+| Read path                           | Frequency            | Source                                                                  | Constraint                                                                         |
+| ----------------------------------- | -------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Verify installation and entitlement | Every request        | Config cache; D1 on a cold isolate                                      | Must not be a D1 read in the common case                                           |
+| Resolve capability manifest         | Every request        | Bundled artifacts; config cache for grants and kill switches            | No D1 on the hot path                                                              |
+| Support lookup by request reference | Rare                 | D1, indexed on the reference, then one R2 envelope                      | Single indexed lookup — the reference exists to make this trivial                  |
+| Usage summary for a clinic          | Occasional           | Quota DO for live counters; `usage_rollup` for history                  | Live and historical answers deliberately come from different places                |
+| Analytics and dashboards            | Continuous, internal | `ai_request` / `ai_attempt` / `usage_rollup` / `platform_counter` in D1 | Read-only, off the request path; acceptable because journal volume is clinic-scale |
+| Billing period close                | Monthly              | `usage_event` → `usage_rollup` via cron                                 | The ledger is the evidence; rollups are the convenience                            |
+
+
 
 
 ### 7.7 Retention and recovery
 
 
-| Class        | Applies to                                                              | Default horizon  | Reason                                                                                         |
-| ------------ | ----------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------- |
-| `diagnostic` | Prompt, context, raw response blobs                                     | Days to weeks    | The window in which anyone actually debugs a request; also the largest and most sensitive data |
-| `journal`    | `ai_request`, `ai_attempt` metadata                                     | Months           | Supports the audit scenario without retaining clinical text                                    |
-| `ledger`     | `usage_event`, `usage_rollup`, `control_audit`, `capability_grant`      | Years            | Billing and governance evidence; small                                                         |
-| `ephemeral`  | Replay guard, provider health                                           | Minutes to hours | Operational only                                                                               |
+| Class        | Applies to                                                         | Default horizon  | Reason                                                                                         |
+| ------------ | ------------------------------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------- |
+| `diagnostic` | The R2 payload envelope (prompt, context, raw responses, result)   | Days to weeks    | The window in which anyone actually debugs a request; also the largest and most sensitive data |
+| `journal`    | `ai_request`, `ai_attempt` metadata                                | Months           | Supports the audit scenario without retaining clinical text                                    |
+| `ledger`     | `usage_event`, `usage_rollup`, `control_audit`, `capability_grant` | Years            | Billing and governance evidence; small                                                         |
+| `ephemeral`  | `jti` replay set and idempotency records inside the Quota DO       | Minutes to hours | Operational only; expired in place by the object, with no table to prune                       |
 
 
 Retention class is a **per-capability** manifest field ([§5.1](#51-capability-manifest)), so a
@@ -1338,6 +1686,8 @@ warranted — and an installation deletion request is executable as "purge by in
 stores.
 
 ---
+
+
 
 ## 8. Sequence Diagrams
 
@@ -1394,9 +1744,9 @@ sequenceDiagram
     SB-->>C: context payload
     C->>GW: submit(capability@v, intent, context, idempotency key, AAT)
 
-    GW->>GW: stages 1-7: shape, idempotency, identity,<br/>entitlement, rate limit, capability, context
-    GW->>QDO: budget remaining?
-    QDO-->>GW: yes
+    GW->>GW: stages 1-7: shape, identity, entitlement,<br/>rate limit, capability, context, cost pre-flight
+    GW->>QDO: admit? (jti fresh, key new,<br/>budget left, concurrency headroom)
+    QDO-->>GW: admitted
     GW->>D1: insert request row (state = accepted)
     GW-->>C: event: accepted {request_reference}
 
@@ -1415,9 +1765,11 @@ sequenceDiagram
 
     GW->>D1: update state = completed
     GW->>QDO: credit actual usage
-    GW-->>R2: store prompt, context, result (after response)
+    GW-->>R2: store one payload envelope (after response)
     Note over GW,D1: The request row exists from "accepted" onward,<br/>so nothing the user witnessed can go unrecorded.
 ```
+
+
 
 
 
@@ -1462,10 +1814,15 @@ sequenceDiagram
 
 
 
+
+
 ### 8.4 Missing-context self-healing
 
-A client with a stale manifest cache would otherwise fail hard. Instead it recovers in one round trip,
-which is what makes desktop release cadence survivable (A12).
+`single_shot` **capabilities only.** A client with a stale manifest cache would otherwise fail hard.
+Instead it recovers in one round trip, which is what makes desktop release cadence survivable (A12).
+The superficially similar but distinct conversational flow — where the platform asks for context it
+could only identify *after* an inference — is
+[§8.10](#810-conversational-turn-with-context-negotiation).
 
 ```mermaid
 sequenceDiagram
@@ -1482,7 +1839,7 @@ sequenceDiagram
     C->>GW: resubmit (same idempotency key)
     GW->>GW: validation passes → normal pipeline
     GW-->>C: accepted → stream → completed
-    Note over C,GW: Bounded to one automatic resubmission.<br/>A second context_required is a real defect<br/>and surfaces to the user with a request reference.
+    Note over C,GW: Bounded to one automatic resubmission.<br/>A second context_required is a real defect<br/>and surfaces to the user with a request reference.<br/>This bound is correct here precisely because<br/>the manifest fully determines the key list.
 ```
 
 
@@ -1565,6 +1922,8 @@ switching would produce text with a seam in the middle of a clinical sentence.
 capability requiring structured output must never fall back to a model that cannot produce it —
 otherwise fallback converts a provider outage into a validation failure, which is a worse outcome
 reported as a different problem.
+
+
 
 ### 8.7 User-initiated cancellation
 
@@ -1651,10 +2010,10 @@ sequenceDiagram
     D1-->>GW: request row: installation, actor, branch,<br/>capability@version, prompt artifact hash,<br/>state timeline, terminal error code, trace id
     GW->>D1: attempts for the request
     D1-->>GW: provider, model, latency, tokens,<br/>provider request ids, error codes
-    GW->>R2: fetch prompt, context, raw responses
-    R2-->>GW: blobs (if within diagnostic retention)
+    GW->>R2: fetch the payload envelope
+    R2-->>GW: prompt, context, raw responses, result<br/>(if within diagnostic retention)
     GW-->>SUP: full reconstruction
-    SUP->>SUP: correlate trace id with logs and metrics
+    SUP->>SUP: correlate trace id with logs and journal aggregates
     Note over SUP,U: Answerable without reproducing the failure:<br/>what was sent, which provider, why it failed,<br/>which prompt version, what it cost.
 ```
 
@@ -1669,7 +2028,69 @@ Three properties make this work, and all three are architectural rather than ope
 3. The **trace id is propagated from the client**, so logs, metrics, and the journal join without a
   correlation heuristic.
 
+
+
+### 8.10 Conversational turn with context negotiation
+
+The chat surface (A14). A clinician types a free-text question that the client cannot interpret and
+does not try to. Contrast this with [§8.4](#84-missing-context-self-healing), which looks superficially
+similar and is a different mechanism: there the platform rejects *before* any inference because the
+client's cache was stale; here the platform answers *after* an inference, because only the model could
+know what was needed.
+
+```mermaid
+sequenceDiagram
+    participant U as Clinician
+    participant C as Client
+    participant SB as Supabase
+    participant GW as Gateway
+    participant PRV as Provider
+
+    U->>C: types "what did we prescribe Ahmed last visit?"
+    C->>C: no interpretation — the chat window<br/>is capability clinic.assistant@v1
+    C->>GW: leg 1: submit(assistant@v1, intent = the message,<br/>conversation_id, turn 1, empty context, AAT)
+
+    GW->>GW: guard, journal, compose from transcript
+    GW->>PRV: canonical request (context-request schema offered)
+    PRV-->>GW: structured: need patient.demographics@v1,<br/>medication.active_list@v1 for patient "Ahmed"
+    GW->>GW: validate against the permitted key set<br/>drop anything not permitted
+    GW-->>C: terminal: context_requested {keys + arguments}
+    GW->>GW: state = awaiting_context; credit actual usage
+
+    C->>SB: resolve the named keys (user's own session + RLS)
+    SB-->>C: payloads — or nothing, if the user may not see this patient
+    C->>C: append request + resolved payload to transcript
+
+    C->>GW: leg 2: submit(same conversation_id, turn 2,<br/>transcript, context, new idempotency key)
+    GW->>GW: guard: count context rounds in the transcript<br/>against the manifest's limit
+    GW->>PRV: canonical request with rendered context
+    loop while streaming
+        PRV-->>GW: chunk
+        GW-->>C: text_delta
+    end
+    GW-->>C: terminal: completed {validated prose}
+    C-->>U: render the answer
+
+    Note over C,GW: Two journal rows, one conversation_id.<br/>The platform held no state between them.
+```
+
+
+
+Three properties of this flow carry the design's weight:
+
+1. **The client never interprets anything.** It forwards a message, resolves keys it is told to
+
+resolve, and appends to a transcript. Its ignorance of AI is intact.
+2. **Authorization is not re-implemented.** The assistant's reach is the intersection of the manifest's
+permitted key set and what the *requesting user* can read through RLS. The platform never gains a way
+to see data the user could not have opened in the UI themselves.
+3. **Each leg is independently accountable.** Two rows, two admissions, two usage credits. A support
+engineer reading the conversation later sees exactly what was asked, what was fetched, and what each
+turn cost — the same audit story as any other request, grouped.
+
 ---
+
+
 
 ## 9. Alternatives Considered
 
@@ -1757,6 +2178,8 @@ schema-coupled platform is correlated outages plus a breach path.
 > The Context Contract is deliberately shaped so that this becomes a change of *transport* for a key,
 > not a change of architecture.
 
+
+
 ### 9.5 Prompts as editable data in D1
 
 **The case for it:** edit prompts in an admin UI, no deploy, instant iteration, per-clinic
@@ -1799,11 +2222,11 @@ surface ([§4.5](#45-control-plane)).
 Three options for cancellation and stream lifecycle:
 
 
-| Option                                        | Same-screen cancel | Out-of-band cancel                                                                                        | Reconnect to a live stream | Complexity                                               |
-| --------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------- |
-| **Connection-scoped (recommended)**           | ✓ Close the stream | ✗ Not possible                                                                                            | ✗                          | None — no component at all                               |
-| Cancel flag polled in D1 or KV                | ✓                  | ~ Works with seconds of lag, and burns writes on the single-threaded D1 or fights KV eventual consistency | ✗                          | Low, but wasteful                                        |
-| Session Durable Object                        | ✓                  | ✓ Immediate, event-driven                                                                                 | ✓ Possible                 | Moderate: one DO class, one object per in-flight request |
+| Option                              | Same-screen cancel | Out-of-band cancel                                                      | Reconnect to a live stream | Complexity                                               |
+| ----------------------------------- | ------------------ | ----------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------- |
+| **Connection-scoped (recommended)** | ✓ Close the stream | ✗ Not possible                                                          | ✗                          | None — no component at all                               |
+| Cancel flag polled in D1            | ✓                  | ~ Works with seconds of lag, and burns writes on the single-threaded D1 | ✗                          | Low, but wasteful                                        |
+| Session Durable Object              | ✓                  | ✓ Immediate, event-driven                                               | ✓ Possible                 | Moderate: one DO class, one object per in-flight request |
 
 
 **Recommendation: connection-scoped.** The product need is a clinician abandoning a generation on the
@@ -1812,8 +2235,8 @@ operate, or reason about. A per-request Durable Object would be the largest stru
 platform — a second stateful class with its own lifecycle, failure modes, and cost — bought for one rare
 interaction.
 
-The polling option is worth naming only to dismiss: KV's eventual consistency makes cancel unreliable,
-and polling D1 would spend the same single-threaded write budget the audit journal depends on.
+The polling option is worth naming only to dismiss: it would spend the same single-threaded D1 write
+budget the audit journal depends on, and it would still cancel with seconds of lag.
 
 **Two consequences are accepted, not hidden.** A network drop mid-generation is indistinguishable from
 a cancel, so that generation is lost and the user retries. And a stream cannot be resumed on another
@@ -1831,14 +2254,28 @@ endpoint; it does not disturb any contract.
 **The case for it:** one store, one mental model, matches the stated constraint literally, no
 additional bindings.
 
-**Rejected because** the numbers do not permit it ([§1.4](#14-verified-platform-capability-budget)):
-a 2 MB row limit against long completions, a 10 GB database ceiling against retained prompt and
-response text, single-threaded writes against per-request journaling plus metrics, and per-row write
-pricing against high-volume telemetry. The constraint "D1 is responsible only for AI platform data" is
-honoured in the sense that matters — **D1 remains the system of record for AI platform data** — while
-R2 holds the byte payloads it points to, KV holds cached copies of D1 truth, DOs hold live counters
-that settle into D1, and Analytics Engine holds metrics that were never records in the first place. No
-other store holds anything D1 does not authoritatively describe.
+**Rejected, but only barely, and the reasoning determined the whole store set.** Two of D1's limits
+are hard ([§1.4](#14-verified-platform-capability-budget)) and neither can be engineered around: a
+2 MB row limit that a single long completion can approach, and a 10 GB database ceiling that retained
+prompt and response text would exhaust at roughly one to two million requests. That forces R2. One
+more property is missing rather than limited: D1 cannot serialize a read-modify-write, so concurrent
+requests would race on a quota counter. That forces the Durable Object. Nothing else about the
+workload forces anything.
+
+That last sentence is the useful one, because it supplies the test that every other candidate store
+was measured against: **does it hold something authoritative, or is it an optimization over D1?**
+Applying it leaves three stores. R2 holds bytes that D1 rows point to. The Durable Object holds live
+counters and short-lived sets that settle into D1's ledger. The config cache holds copies of D1 rows
+and is not a store at all. **Nothing outside D1 is the truth about anything**, so the constraint "D1
+is responsible only for AI platform data" is honoured in the sense that matters — D1 remains the
+system of record, and the other two exist because of a byte-size limit and a concurrency primitive
+respectively, not because they own data.
+
+Two stores that appeared in earlier drafts of this design failed that test and were removed: Workers
+KV, which cached D1 truth ([§9.15](#915-workers-kv-as-a-hot-config-cache)), and Analytics Engine,
+which held metrics derivable from the journal
+([§9.16](#916-analytics-engine-as-the-metrics-store)). Both were optimizations for a scale this
+product does not have, and each carried a store's worth of operational surface.
 
 ### 9.9 Cloudflare AI Gateway as the egress layer
 
@@ -1911,13 +2348,13 @@ here so a future reader can tell a deliberate omission from an oversight, and kn
 should reverse it.
 
 
-| Mechanism                                          | What it buys                                      | Why it is out                                                                                                                                                                                | Add it when                                                                       |
-| -------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **Interfaces for persistence, logging, and prompt loading** | Swappable infrastructure                  | Each would only ever have one implementation. An interface with one implementor is a layer to read through, permanently, in exchange for nothing — a direct cost to the maintainability it claims to serve | A second implementation genuinely exists, not is imagined                         |
-| **Write-behind journaling**                        | ~10 ms off each response                          | Trades audit completeness for latency nobody perceives, in a platform whose hardest requirement is explaining failures after the fact ([§4.3.11](#4311-journal-writer))                        | Guard latency is measurably dominated by the journal write, which it will not be   |
-| **Pre-flight quota reservations**                  | Exact quota under concurrency                     | Prevents an overshoot of one or two requests at clinic volumes. The dangerous case — one very expensive request — is already blocked by the per-request cost ceiling ([§4.3.3](#433-entitlement-quota-and-rate-control)) | Quotas become hard commercial limits with disputes, or concurrency per clinic rises sharply |
-| **Circuit breaker / provider health state**        | Skips a known-sick provider                       | Introduces shared mutable state that changes routing based on invisible history, so "why did this request go there?" stops being answerable from one journal entry ([§4.3.7](#437-provider-router-and-policy-engine)) | Provider outages are frequent enough that the wasted first attempt is a real cost  |
-| **Runtime prompt activation pointer**              | Rollback and canary without a deploy              | A second source of truth for which prompt was live, which is the one fact a prompt incident depends on ([§9.5](#95-prompts-as-editable-data-in-d1))                                            | Paying clinics depend on the platform and incident containment must beat a deploy cycle |
+| Mechanism                                                   | What it buys                         | Why it is out                                                                                                                                                                                                            | Add it when                                                                                 |
+| ----------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Interfaces for persistence, logging, and prompt loading** | Swappable infrastructure             | Each would only ever have one implementation. An interface with one implementor is a layer to read through, permanently, in exchange for nothing — a direct cost to the maintainability it claims to serve               | A second implementation genuinely exists, not is imagined                                   |
+| **Write-behind journaling**                                 | ~10 ms off each response             | Trades audit completeness for latency nobody perceives, in a platform whose hardest requirement is explaining failures after the fact ([§4.3.11](#4311-journal-writer))                                                  | Guard latency is measurably dominated by the journal write, which it will not be            |
+| **Pre-flight quota reservations**                           | Exact quota under concurrency        | Prevents an overshoot of one or two requests at clinic volumes. The dangerous case — one very expensive request — is already blocked by the per-request cost ceiling ([§4.3.3](#433-entitlement-quota-and-rate-control)) | Quotas become hard commercial limits with disputes, or concurrency per clinic rises sharply |
+| **Circuit breaker / provider health state**                 | Skips a known-sick provider          | Introduces shared mutable state that changes routing based on invisible history, so "why did this request go there?" stops being answerable from one journal entry ([§4.3.7](#437-provider-router-and-policy-engine))    | Provider outages are frequent enough that the wasted first attempt is a real cost           |
+| **Runtime prompt activation pointer**                       | Rollback and canary without a deploy | A second source of truth for which prompt was live, which is the one fact a prompt incident depends on ([§9.5](#95-prompts-as-editable-data-in-d1))                                                                      | Paying clinics depend on the platform and incident containment must beat a deploy cycle     |
 
 
 The common thread is worth naming, because it is the rule that should govern future additions:
@@ -1926,53 +2363,203 @@ exactly the kind of complexity that makes a system hard to debug and hard to ext
 the kind most easily justified in the abstract. Every one of them can be added later without changing a
 contract, which is the strongest possible argument for not adding them now.
 
-### 9.15 Decision log
+### 9.15 Workers KV as a hot config cache
+
+**The case for it:** KV is the obvious home for the small, read-heavy, rarely-changing config the
+guard consults on every request — installation keys, entitlement snapshots, capability grants, kill
+switches, the active routing policy — and it keeps those reads off D1's single write thread.
+
+**Rejected**, in favour of an **in-isolate memory cache with a short TTL, backed by a D1 read on
+miss**. Three observations decide it:
+
+- **The dataset is tiny and the tenancy is small.** Clinic-scale means tens of installations
+(F5), so the entire config set is a few kilobytes. It fits in isolate memory with room to spare, and
+a warm isolate answers in nanoseconds — faster than KV's own read, not merely comparable to it.
+- **KV would not buy consistency, only a different flavour of staleness.** KV is eventually
+consistent, so a kill switch propagates in seconds either way. Swapping a memory TTL for KV
+replication changes which seconds you wait, not whether you wait.
+- **A cold-isolate D1 read is affordable.** D1 reads are metered at $0.001 per million against a
+25-billion-row monthly allowance, and the read is a single indexed lookup in the same region.
+
+**The trigger that reverses this is geographic, not volumetric.** Because low traffic means isolates
+go cold often, a meaningful share of requests will actually hit D1. That is a few milliseconds if D1
+sits in the same region as the clinics, and 100–200 ms if it does not — which is why the D1 region is
+pinned near the served clinics as a deployment decision. **Revisit if** clinics are served far from
+the D1 region, or if installations reach the hundreds, at which point the config set stops being
+isolate-sized.
+
+Adding KV later is a change inside the config-cache lookup function. It touches no contract and no
+pipeline stage.
+
+### 9.16 Analytics Engine as the metrics store
+
+**The case for it:** high-cardinality, append-only, cheap time-series writes that never contend with
+D1's single write thread — the textbook home for metrics, and the reason it was in earlier drafts of
+this design.
+
+**Rejected**, because at clinic scale it is a second write path to data the platform already stores.
+Every dimension the dashboards need — outcome, latencies, token counts, cost, per capability,
+provider, model, and installation — is already on the `ai_request` and `ai_attempt` rows
+([§7.3](#73-d1-logical-model)). Emitting metric data points duplicates the journal into a second
+system that is authoritative for nothing, and then requires reconciling the two when they disagree.
+A `GROUP BY` over a journal holding tens of thousands of monthly rows is immediate, runs off the
+request path entirely, and has the useful property that the dashboard and the audit trail can never
+tell different stories.
+
+Two details make the rejection cleaner than it first appears:
+
+- **The included Analytics Engine tier retains three days.** Anything longer needs the scheduled
+`usage_rollup` job regardless — so AE would not have replaced the rollups, only added to them.
+- **The one signal AE uniquely served has a smaller answer.** Guard rejections are deliberately not
+journaled, so they cannot be queried from `ai_request`. They are counted instead in
+`platform_counter` — bucketed, low-cardinality rows flushed periodically, never one row per event
+([§4.3.12](#4312-telemetry-emitter)).
+
+**Revisit if** journal aggregation starts contending with the write path — that is, if dashboard
+queries become slow enough to notice or D1 shows write-thread saturation — or if a genuine
+high-cardinality analytics need appears that the journal's fixed dimensions cannot express. Adding it
+later is a call inside the telemetry emitter.
+
+### 9.17 A separate store for replay and idempotency state
+
+**The case for it:** `jti` replay rejection and idempotency records are conceptually part of the
+request guard, not part of quota, so a dedicated D1 table (with a TTL and a pruning cron) or a KV
+namespace keeps each mechanism in its own place.
+
+**Rejected in favour of folding both into the Quota Durable Object.** All three concerns are
+installation-scoped, all three demand serialized truth rather than a cached approximation, and all
+three are consulted at the same point in the pipeline. Keeping them apart buys conceptual tidiness
+and costs: a high-churn D1 table, a scheduled pruner, one D1 write on every request, and — most
+importantly — additional round trips billed against the 1M monthly Durable Object request allowance,
+one of the two resources this design is actually constrained by
+([§1.4.1](#141-how-the-platform-is-billed)).
+
+Merging them yields a single **admission** stage ([§6.1](#61-the-pipeline) stage 8) that answers four
+questions in one round trip. The cost is that idempotency is now evaluated after identity rather than
+before it, with the consequence spelled out in [§6.2](#62-why-this-order-and-not-another).
+
+**Revisit if** idempotency records need to outlive the DO's practical retention, or if a future
+out-of-band cancellation design introduces a per-request object that would be a more natural home
+([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)).
+
+### 9.18 Platform-held conversation state
+
+**The case for it:** it is how every chat product is built. The platform keeps the transcript — in a
+per-conversation Durable Object, or a D1 table with an R2 spillover — and the client sends only the new
+message. The transcript becomes trustworthy rather than client-asserted, so turn budgets and round
+limits can be enforced against a record the client cannot edit. Bandwidth stops growing with
+conversation length. And the negotiation in [§6.7](#67-conversational-capabilities) could then happen
+*inside* one request over a bidirectional transport, rather than as a sequence of legs.
+
+**Rejected, and the reasoning is the same one that shaped the whole store set**
+([§9.8](#98-d1-as-the-only-platform-store)). A transcript store would be the platform's first
+per-request stateful component and its first mutable state with a lifecycle — creation, expiry,
+abandonment, cleanup — for data the client already has in memory because it is rendering it on screen.
+Concretely it would cost:
+
+- **A second Durable Object class**, per conversation rather than per installation, which is precisely
+the addition [§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object) declined for
+cancellation and for the same reason.
+- **A conversation lifecycle nobody owns.** A clinician who closes the app mid-chat leaves an object
+that must expire on a timer the product has no opinion about.
+- **A second copy of clinical text** with its own retention story, sitting outside the per-request
+envelope that [§7.7](#77-retention-and-recovery) already expires by capability retention class.
+- **DO round trips per turn**, against the allowance that is one of the two metered resources this
+design is actually constrained by ([§1.4.1](#141-how-the-platform-is-billed)).
+
+**What is given up** is real and worth naming: the transcript stays untrusted, so a modified client can
+reset its own round counter. The bound that actually contains this is per-installation quota, which
+every leg passes through regardless, so the exposure is a clinic burning its own budget rather than any
+cross-tenant or safety problem ([§6.7.3](#673-what-bounds-the-loop)). The other cost is bandwidth: the
+transcript is re-sent every turn, which at the manifest's turn limits is kilobytes over a link that is
+already carrying clinical context.
+
+**Revisit if** conversations become long enough that re-sending the transcript is a real latency cost,
+or if a capability needs a conversation to survive a client restart. Both are the same trigger that
+would justify the Session DO in [§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object),
+and if that object is ever built for cancellation, transcripts are its natural second tenant.
+
+### 9.19 Client-side intent routing for the chat surface
+
+**The case for it:** the client could classify the typed message and pick the matching capability —
+`visit.summarize@v1` for "summarize this visit", `patient.history@v1` for a history question — reusing
+the entire `single_shot` path with its manifest-declared context keys. No new interaction mode, no
+negotiation, no fourth terminal event. The chat window becomes a natural-language launcher for
+capabilities that already exist.
+
+**Rejected because the classifier is the AI feature.** Deciding what a clinician meant is inference,
+and putting it in the client contradicts the seam that the rest of this document is built on
+([§3.4](#34-the-three-seams)). Three consequences follow, and each is the failure mode A4 was written
+to prevent:
+
+1. **Improving the assistant would require a desktop release.** The classification rules would ship
+
+inside the Flutter binary on the clinic's update schedule, so the platform would lose the property
+stated as the design goal in [§1.1](#11-what-this-document-decides).
+2. **It reintroduces prompt-shaped logic to the client** — the classifier's rules are prompt
+engineering under another name, and the CI lint in [§3.4.1](#341-enforcing-the-seams) exists precisely
+to fail builds containing them (R-12).
+3. **A misclassification is unfixable from the platform side.** With the capability chosen client-side
+there is no kill switch, no routing policy, and no prompt change that can correct it.
+
+The accepted design keeps capability selection where it is unambiguous — the surface the user
+touched — and gives intent inference to the platform, inside a capability, where it can be versioned,
+evaluated, and killed like any other prompt logic (A14).
+
+### 9.20 Decision log
 
 
-| ID   | Decision                 | Chosen                                                   | Rejected alternative                           | Primary reason                                                           |
-| ---- | ------------------------ | -------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| D-1  | Where AI logic lives     | Cloudflare Worker gateway                                | Client-side; Supabase Edge Functions; Postgres | Credential isolation, central prompt ownership, offline-tier reality     |
-| D-2  | Authentication           | Enrolled installation keys + short-lived AAT             | Verify clinic Supabase JWTs                    | Blast radius, revocation, audience scoping                               |
-| D-3  | Context acquisition      | Client resolves platform-declared context keys           | Platform pulls from Supabase                   | Not reachable in Tier 1; avoids schema coupling and standing credentials |
-| D-4  | Prompt storage           | Immutable bundled artifacts pinned by the capability     | Editable D1 rows; runtime activation pointer   | One reviewable, reproducible answer to "which prompt was live?"          |
-| D-5  | Internal request format  | Own canonical representation                             | OpenAI-compatible shape                        | Vendor-format independence                                               |
-| D-6  | Deployment shape         | Single Worker, modular internals                         | Worker per concern                             | Constitution; no scaling need                                            |
-| D-7  | Cancellation             | Connection-scoped, no stateful component                 | Session Durable Object; D1/KV polling          | Serves the only cancellation the product needs, with nothing to operate  |
-| D-8  | Quota                    | Per-installation Durable Object counter, credited after  | D1 counters; pre-flight reservations           | Serialized counting without a second mechanism                           |
-| D-9  | Payload storage          | R2 blobs, D1 pointers                                    | All in D1                                      | 2 MB row limit, 10 GB ceiling, write cost                                |
-| D-10 | Metrics                  | Analytics Engine                                         | D1 aggregates                                  | Volume and cardinality; protects D1 write budget                         |
-| D-11 | Validation and streaming | Provisional streaming + commit-time validation           | Literal "only validated responses"             | The two requirements are otherwise contradictory                         |
-| D-12 | Tenancy in D1            | Shared DB scoped by installation                         | DB per installation                            | Cross-tenant operations; clinic-scale volume                             |
-| D-13 | Async execution          | Synchronous now; state machine ready                     | Queues/Workflows now                           | No requirement; constitution forbids queues                              |
-| D-14 | Provider egress          | Direct fetch, AI Gateway optional behind the port        | AI Gateway as router                           | Keep routing explainable and journaled                                   |
-| D-15 | Abstraction boundaries   | Interfaces only for providers and token verification     | Ports for persistence, logging, prompt loading  | An interface with one implementor is permanent indirection for nothing    |
-| D-16 | Journal timing           | Request row written before work begins                   | Write-behind after the response                | Audit completeness beats imperceptible latency                            |
-| D-17 | Provider health          | Stateless routing, retry and fallback per request        | Circuit breaker with shared health state       | Routing must be explainable from one journal entry                        |
+| ID   | Decision                 | Chosen                                                        | Rejected alternative                                | Primary reason                                                                                     |
+| ---- | ------------------------ | ------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| D-1  | Where AI logic lives     | Cloudflare Worker gateway                                     | Client-side; Supabase Edge Functions; Postgres      | Credential isolation, central prompt ownership, offline-tier reality                               |
+| D-2  | Authentication           | Enrolled installation keys + short-lived AAT                  | Verify clinic Supabase JWTs                         | Blast radius, revocation, audience scoping                                                         |
+| D-3  | Context acquisition      | Client resolves platform-declared context keys                | Platform pulls from Supabase                        | Not reachable in Tier 1; avoids schema coupling and standing credentials                           |
+| D-4  | Prompt storage           | Immutable bundled artifacts pinned by the capability          | Editable D1 rows; runtime activation pointer        | One reviewable, reproducible answer to "which prompt was live?"                                    |
+| D-5  | Internal request format  | Own canonical representation                                  | OpenAI-compatible shape                             | Vendor-format independence                                                                         |
+| D-6  | Deployment shape         | Single Worker, modular internals                              | Worker per concern                                  | Constitution; no scaling need                                                                      |
+| D-7  | Cancellation             | Connection-scoped, no stateful component                      | Session Durable Object; D1 polling                  | Serves the only cancellation the product needs, with nothing to operate                            |
+| D-8  | Quota                    | Per-installation Durable Object counter, credited after       | D1 counters; pre-flight reservations                | Serialized counting without a second mechanism                                                     |
+| D-9  | Payload storage          | One R2 envelope per request, D1 pointers                      | All in D1; one object per artifact                  | 2 MB row limit and 10 GB ceiling force R2; Class A operations force one object                     |
+| D-10 | Metrics                  | Derived from the D1 journal; counters for un-journaled events | Analytics Engine data points                        | The journal already holds every dimension; a second write path is authoritative for nothing        |
+| D-11 | Validation and streaming | Provisional streaming + commit-time validation                | Literal "only validated responses"                  | The two requirements are otherwise contradictory                                                   |
+| D-12 | Tenancy in D1            | Shared DB scoped by installation                              | DB per installation                                 | Cross-tenant operations; clinic-scale volume                                                       |
+| D-13 | Async execution          | Synchronous now; state machine ready                          | Queues/Workflows now                                | No requirement; constitution forbids queues                                                        |
+| D-14 | Provider egress          | Direct fetch, AI Gateway optional behind the port             | AI Gateway as router                                | Keep routing explainable and journaled                                                             |
+| D-15 | Abstraction boundaries   | Interfaces only for providers and token verification          | Ports for persistence, logging, prompt loading      | An interface with one implementor is permanent indirection for nothing                             |
+| D-16 | Journal timing           | Request row written before work begins                        | Write-behind after the response                     | Audit completeness beats imperceptible latency                                                     |
+| D-17 | Provider health          | Stateless routing, retry and fallback per request             | Circuit breaker with shared health state            | Routing must be explainable from one journal entry                                                 |
+| D-18 | Chat surface             | A declared `conversational` capability; the surface names it  | Client-side intent classification and routing       | Intent inference is an AI concern; client-side it would freeze at each desktop release             |
+| D-19 | Conversation state       | Client holds the transcript and resupplies it per leg         | Per-conversation Durable Object or D1 table         | Avoids the platform's first per-request store and its lifecycle, for data the client already holds |
+| D-20 | Context for chat         | Bounded negotiation: the platform asks, the client resolves   | Platform fetches; or client pre-resolves everything | Preserves client → platform data flow and per-user RLS, while keeping intent inference server-side |
 
 
 ---
+
+
 
 ## 10. Trade-offs of the Recommended Design
 
 Nothing here is free. These are the costs, stated plainly, with the reason each is acceptable.
 
 
-| #    | What is gained                            | What is given up                                                                                                                | Why the trade is right                                                                                                                          |
-| ---- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-1  | Centralized prompts, keys, and validation | AI features require internet, in an otherwise offline-capable product                                                           | AI is additive (A11). The alternative — local inference on 8 GB clinic PCs — costs more RAM, more support, and worse quality                    |
-| T-2  | No coupling to clinic schema              | The platform cannot verify context freshness or authenticity beyond shape and tenant scope                                      | Advisory output plus human acceptance (A5) contains the harm; schema coupling would cause correlated outages and a breach path                  |
-| T-3  | Cheap, uniform guard stages               | Extra round trips before inference: token mint, context resolution, then submit                                                 | The guard is tens of milliseconds against provider latency measured in seconds; token and manifest caching removes most of it                   |
-| T-4  | Reviewable, reproducible prompts          | Prompt changes *and rollbacks* both need a deploy                                                                               | Prompts are logic. One source of truth for which prompt was live is worth more than sub-minute rollback until real clinics depend on the platform |
-| T-5  | No per-request state to build or operate  | Cancellation only works from the screen showing the stream, and a network drop loses that generation                            | Serves the only cancellation the product needs; a whole stateful class for a rare interaction is a poor trade ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)) |
-| T-6  | Strongly consistent quota                 | Quota is per-installation-serialized, and counted after the fact, so concurrent requests can overshoot by one or two            | Clinic volumes are far below a DO's throughput; the expensive-single-request case is caught by the cost ceiling instead                          |
-| T-7  | Every witnessed request is recorded       | One D1 write sits on the request path before generation starts                                                                 | Single-digit milliseconds against seconds of inference, in exchange for an audit trail with no holes — the requirement that motivated the journal |
-| T-8  | Provider independence                     | One mapping layer per provider, and per-provider quirks must be discovered and encoded                                          | This is the irreducible cost of not being locked in; it is paid once per provider, in one file                                                  |
-| T-9  | Live feedback on structured output        | Clients must implement provisional/draft rendering and resist committing it                                                     | This is honest about validation being a whole-document property; hiding it would produce a system that shows unvalidated clinical text as final |
-| T-10 | Simple single-deployable platform         | The gateway is a single point of failure for all AI features                                                                    | Correct blast radius: AI down means AI features hidden, not clinic work stopped. The constitution's graceful degradation makes this survivable  |
-| T-11 | Multi-tenant efficiency in one D1         | Tenant isolation is enforced by query scoping, not physical separation                                                          | Clinic-scale data volumes; `installation_id` on every row keeps physical sharding available later                                               |
-| T-12 | Extensibility through manifests           | A registry and contract discipline to maintain — manifests, context keys, schemas, error codes                                  | This *is* the product's ability to add AI features without releases; the discipline is the asset                                                |
-| T-13 | Only one polymorphic boundary             | Replacing D1, the logger, or the prompt source would mean editing their callers rather than swapping an implementation          | Those replacements are hypothetical; the indirection would be permanent. Concentrating abstraction where it is exercised keeps the code readable |
-| T-14 | Routing explainable from one record       | During a provider outage, every request pays a failed first attempt                                                            | Latency during an incident is cheaper than routing behaviour that depends on invisible history ([§9.14](#914-mechanisms-deliberately-simplified)) |
+| #    | What is gained                            | What is given up                                                                                                                                              | Why the trade is right                                                                                                                                                                     |
+| ---- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T-1  | Centralized prompts, keys, and validation | AI features require internet, in an otherwise offline-capable product                                                                                         | AI is additive (A11). The alternative — local inference on 8 GB clinic PCs — costs more RAM, more support, and worse quality                                                               |
+| T-2  | No coupling to clinic schema              | The platform cannot verify context freshness or authenticity beyond shape and tenant scope                                                                    | Advisory output plus human acceptance (A5) contains the harm; schema coupling would cause correlated outages and a breach path                                                             |
+| T-3  | Cheap, uniform guard stages               | Extra round trips before inference: token mint, context resolution, then submit                                                                               | The guard is tens of milliseconds against provider latency measured in seconds; token and manifest caching removes most of it                                                              |
+| T-4  | Reviewable, reproducible prompts          | Prompt changes *and rollbacks* both need a deploy                                                                                                             | Prompts are logic. One source of truth for which prompt was live is worth more than sub-minute rollback until real clinics depend on the platform                                          |
+| T-5  | No per-request state to build or operate  | Cancellation only works from the screen showing the stream, and a network drop loses that generation                                                          | Serves the only cancellation the product needs; a whole stateful class for a rare interaction is a poor trade ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)) |
+| T-6  | Strongly consistent quota                 | Quota is per-installation-serialized, and counted after the fact, so concurrent requests can overshoot by one or two                                          | Clinic volumes are far below a DO's throughput; the expensive-single-request case is caught by the cost ceiling instead                                                                    |
+| T-7  | Every witnessed request is recorded       | One D1 write sits on the request path before generation starts                                                                                                | Single-digit milliseconds against seconds of inference, in exchange for an audit trail with no holes — the requirement that motivated the journal                                          |
+| T-8  | Provider independence                     | One mapping layer per provider, and per-provider quirks must be discovered and encoded                                                                        | This is the irreducible cost of not being locked in; it is paid once per provider, in one file                                                                                             |
+| T-9  | Live feedback on structured output        | Clients must implement provisional/draft rendering and resist committing it                                                                                   | This is honest about validation being a whole-document property; hiding it would produce a system that shows unvalidated clinical text as final                                            |
+| T-10 | Simple single-deployable platform         | The gateway is a single point of failure for all AI features                                                                                                  | Correct blast radius: AI down means AI features hidden, not clinic work stopped. The constitution's graceful degradation makes this survivable                                             |
+| T-11 | Multi-tenant efficiency in one D1         | Tenant isolation is enforced by query scoping, not physical separation                                                                                        | Clinic-scale data volumes; `installation_id` on every row keeps physical sharding available later                                                                                          |
+| T-12 | Extensibility through manifests           | A registry and contract discipline to maintain — manifests, context keys, schemas, error codes                                                                | This *is* the product's ability to add AI features without releases; the discipline is the asset                                                                                           |
+| T-13 | Only one polymorphic boundary             | Replacing D1, the logger, or the prompt source would mean editing their callers rather than swapping an implementation                                        | Those replacements are hypothetical; the indirection would be permanent. Concentrating abstraction where it is exercised keeps the code readable                                           |
+| T-14 | Routing explainable from one record       | During a provider outage, every request pays a failed first attempt                                                                                           | Latency during an incident is cheaper than routing behaviour that depends on invisible history ([§9.14](#914-mechanisms-deliberately-simplified))                                          |
+| T-15 | A chat surface with no conversation store | A chat answer needing clinic data costs two inferences and a client round trip, and the transcript is re-sent every turn                                      | The alternative is the platform's first per-request stateful component and a second copy of clinical text ([§9.18](#918-platform-held-conversation-state))                                 |
+| T-16 | Intent inference stays on the platform    | The client cannot show which capability will handle a typed message before sending it, so a chat surface has a less specific "generating" state than a button | Client-side classification would freeze the assistant's understanding at each desktop release (D-18)                                                                                       |
 
 
 Two trade-offs deserve a second sentence, because they are the ones most likely to be regretted:
@@ -1990,33 +2577,40 @@ support evidence, not discomfort with the idea.
 
 ---
 
+
+
 ## 11. Risks and Mitigations
 
 Likelihood and impact are assessed for a clinic-scale product with a small team.
 
 
-| ID   | Risk                                                                                                                            | L       | I      | Mitigation                                                                                                                                                                                                                                      | Detection                                                                             |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| R-1  | **Provider outage or degradation**                                                                                              | High    | Medium | Multi-target candidate chains, bounded retry with jitter, per-capability and per-provider kill switch (A8), degraded UI state (A11). Health-based skipping is a documented later addition ([§9.14](#914-mechanisms-deliberately-simplified))    | Provider error-rate and latency dashboards; fallback-rate alerts                      |
-| R-2  | **Prompt regression** — a wording change quietly worsens output                                                                 | Medium  | High   | Immutable artifacts pinned by the capability, CI eval suite per capability (A9), staged rollout, rollback by deploy                                                                                                                             | Validation-failure and repair rates per prompt version; eval scores in CI              |
-| R-3  | **Cost blowout** — a pasted document or a loop burns the budget                                                                 | Medium  | High   | Pre-flight token estimation against per-capability ceilings (A6), input size caps, per-installation budget in the Quota DO, max output tokens always set, global spend alerting                                                                 | Cost per installation and per capability in Analytics Engine; budget-threshold alerts |
-| R-4  | **Silent model drift** — the provider updates a model and behaviour changes                                                     | Medium  | High   | Pin explicit model versions in routing policy, never use floating aliases; scheduled evals against pinned targets; treat a model change as a policy change with a canary                                                                        | Eval suite run on schedule, not only on prompt edits                                  |
-| R-5  | **Gateway or Cloudflare outage**                                                                                                | Low     | Medium | AI is additive: features hide, clinic work continues (A11). Client treats platform unreachability as a normal state, never an error dialog                                                                                                      | Synthetic checks; client-side telemetry of unreachable states                         |
-| R-6  | **Loss of post-response detail** — eviction after the terminal event drops attempt rows, blobs, or usage credit                  | Low     | Low    | The request row and its terminal state are already durable ([§4.3.11](#4311-journal-writer)), so only diagnostic depth is at risk; reconcile DO counters against the `usage_event` ledger on a schedule                                          | Periodic reconciliation report: requests with terminal state but missing attempt rows |
-| R-7  | **D1 saturation or growth ceiling**                                                                                             | Medium  | Medium | Payloads in R2, metrics in Analytics Engine, one row per request on the hot path, retention purges, rollups; documented shard-by-installation escape hatch                                                                                      | D1 storage and write-rate dashboards with headroom alerts                             |
-| R-8  | **Installation private key compromise** (clinic server stolen or breached)                                                      | Low     | High   | Key is confined to a restricted schema readable only by the issuing function; short token lifetime; per-installation suspension; key rotation without re-enrollment; anomaly detection on issuance volume                                       | Sudden change in token issuance rate or geography; usage spikes                       |
-| R-9  | **Clinical text sent to third-party providers** (accepted by decision, [§2.7](#27-requirement-accepted-as-is-no-phi-redaction)) | Certain | High   | Context Contract minimization; per-capability retention classes; provider agreements and data-processing terms; region-aware routing if required; per-key redaction is a pre-shaped future option                                               | Journal shows exactly what was transmitted per request                                |
-| R-10 | **Prompt injection through clinical free text** — a patient note contains instructions                                          | Medium  | Medium | Context is delivered as clearly delimited, typed data rather than merged into instructions; system instructions assert precedence; validator detects instruction echo and system-prompt leakage; output schema constrains the surface           | Guard-trigger rate per capability                                                     |
-| R-11 | **Automation bias** — clinicians accept AI drafts without reading                                                               | Medium  | High   | Advisory-only output with mandatory human acceptance (A5); provisional content visually distinct and non-committable; acceptance recorded with the request reference for later review                                                           | Acceptance-without-edit rates per capability and per user                             |
-| R-12 | **Client drift** — prompt fragments or model names creep into the Flutter app                                                   | Medium  | High   | Architectural test in CI that fails on prompt-like strings, provider names, or model identifiers in client code; code review checklist; the Context Resolver is capability-agnostic by construction                                             | CI guard; periodic review of the client's AI directory                                |
-| R-13 | **Stale or falsified context** (T-2)                                                                                            | Medium  | Medium | Freshness hints per capability; tenant/branch consistency checks against token claims; full context journaling; advisory output                                                                                                                 | Support cases correlated with journaled context                                       |
-| R-14 | **Provider terms, residency, or deprecation changes**                                                                           | Medium  | Medium | Provider abstraction keeps switching cheap; two live providers at all times so no single provider is load-bearing; deprecation calendar tracked in routing policy reviews                                                                       | Provider changelog monitoring; eval failures on deprecated targets                    |
-| R-15 | **Quota DO unavailability or hot-spotting**                                                                                     | Low     | Medium | Documented fail-open or fail-closed decision per capability class (recommendation: fail-open with capped grace and a reconciliation pass, so an infrastructure blip never blocks care); intra-installation sharding available if volume demands | DO error rates and latency; grace-mode counters                                       |
-| R-20 | **Complexity creep** — mechanisms in [§9.14](#914-mechanisms-deliberately-simplified) get added because they sound prudent      | Medium  | Medium | Each carries a written "add it when" trigger; adding one requires citing the evidence, not the argument. New indirection needs a second implementation to justify it (D-15)                                                                     | Architecture review at each phase gate; diff of components against §4                 |
-| R-16 | **Capability sprawl** — dozens of near-duplicate capabilities                                                                   | Medium  | Low    | Capabilities require a manifest, an output schema, and an eval suite before activation; retirement process with an overlap window (A12); registry review                                                                                        | Registry growth versus usage per capability                                           |
-| R-17 | **Offline clinics discover AI does not work**                                                                                   | High    | Medium | AI-enabled flag per installation so affordances never appear where they cannot function; explicit, documented capability difference per tier ([§2.6](#26-conflict-with-the-existing-local-ollama-assumption))                                   | Support ticket categories; unreachable-state telemetry                                |
-| R-18 | **Token theft or replay**                                                                                                       | Low     | Medium | Minutes-long lifetime, audience restriction, `jti` replay guard, scope minimization, actor-level rate limits, suspension levers                                                                                                                 | Replay-guard hit rate; anomalous actor volume                                         |
-| R-19 | **Cloudflare lock-in**                                                                                                          | Low     | Low    | The pipeline is ordinary request/response logic; Durable Object use is one counter class; D1 is SQLite-shaped and exportable; R2 is S3-shaped. Migration would be work, not a rewrite                                                            | Reviewed at each phase gate                                                           |
+| ID   | Risk                                                                                                                                                                | L       | I      | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Detection                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| R-1  | **Provider outage or degradation**                                                                                                                                  | High    | Medium | Multi-target candidate chains, bounded retry with jitter, per-capability and per-provider kill switch (A8), degraded UI state (A11). Health-based skipping is a documented later addition ([§9.14](#914-mechanisms-deliberately-simplified))                                                                                                                                                                                                                                            | Provider error-rate and latency dashboards; fallback-rate alerts                                      |
+| R-2  | **Prompt regression** — a wording change quietly worsens output                                                                                                     | Medium  | High   | Immutable artifacts pinned by the capability, CI eval suite per capability (A9), staged rollout, rollback by deploy                                                                                                                                                                                                                                                                                                                                                                     | Validation-failure and repair rates per prompt version; eval scores in CI                             |
+| R-3  | **Cost blowout** — a pasted document or a loop burns the budget                                                                                                     | Medium  | High   | Pre-flight token estimation against per-capability ceilings (A6), input size caps, per-installation budget in the Quota DO, max output tokens always set, global spend alerting                                                                                                                                                                                                                                                                                                         | Cost per installation and per capability from the journal and `usage_rollup`; budget-threshold alerts |
+| R-4  | **Silent model drift** — the provider updates a model and behaviour changes                                                                                         | Medium  | High   | Pin explicit model versions in routing policy, never use floating aliases; scheduled evals against pinned targets; treat a model change as a policy change with a canary                                                                                                                                                                                                                                                                                                                | Eval suite run on schedule, not only on prompt edits                                                  |
+| R-5  | **Gateway or Cloudflare outage**                                                                                                                                    | Low     | Medium | AI is additive: features hide, clinic work continues (A11). Client treats platform unreachability as a normal state, never an error dialog                                                                                                                                                                                                                                                                                                                                              | Synthetic checks; client-side telemetry of unreachable states                                         |
+| R-6  | **Loss of post-response detail** — eviction after the terminal event drops attempt rows, the payload envelope, or usage credit                                      | Low     | Low    | The request row and its terminal state are already durable ([§4.3.11](#4311-journal-writer)), so only diagnostic depth is at risk; reconcile DO counters against the `usage_event` ledger on a schedule                                                                                                                                                                                                                                                                                 | Periodic reconciliation report: requests with terminal state but missing attempt rows                 |
+| R-7  | **D1 saturation or growth ceiling**                                                                                                                                 | Medium  | Medium | Payloads in R2, one row per request on the hot path, no per-event metric writes, retention purges, rollups; documented shard-by-installation escape hatch                                                                                                                                                                                                                                                                                                                               | D1 storage and write-rate dashboards with headroom alerts                                             |
+| R-8  | **Installation private key compromise** (clinic server stolen or breached)                                                                                          | Low     | High   | Key is confined to a restricted schema readable only by the issuing function; short token lifetime; per-installation suspension; key rotation without re-enrollment; anomaly detection on issuance volume                                                                                                                                                                                                                                                                               | Sudden change in token issuance rate or geography; usage spikes                                       |
+| R-9  | **Clinical text sent to third-party providers** (accepted by decision, [§2.8](#28-requirement-accepted-as-is-no-phi-redaction))                                     | Certain | High   | Context Contract minimization; per-capability retention classes; provider agreements and data-processing terms; region-aware routing if required; per-key redaction is a pre-shaped future option                                                                                                                                                                                                                                                                                       | Journal shows exactly what was transmitted per request                                                |
+| R-10 | **Prompt injection through clinical free text** — a patient note contains instructions                                                                              | Medium  | Medium | Context is delivered as clearly delimited, typed data rather than merged into instructions; system instructions assert precedence; validator detects instruction echo and system-prompt leakage; output schema constrains the surface. Conversational capabilities widen this — the user's own message is instruction-shaped by design and injected text could steer a context request — so the permitted key set and per-user RLS bound what any successful injection can reach (R-23) | Guard-trigger rate per capability                                                                     |
+| R-11 | **Automation bias** — clinicians accept AI drafts without reading                                                                                                   | Medium  | High   | Advisory-only output with mandatory human acceptance (A5); provisional content visually distinct and non-committable; acceptance recorded with the request reference for later review                                                                                                                                                                                                                                                                                                   | Acceptance-without-edit rates per capability and per user                                             |
+| R-12 | **Client drift** — prompt fragments or model names creep into the Flutter app                                                                                       | Medium  | High   | Architectural test in CI that fails on prompt-like strings, provider names, or model identifiers in client code; code review checklist; the Context Resolver is capability-agnostic by construction                                                                                                                                                                                                                                                                                     | CI guard; periodic review of the client's AI directory                                                |
+| R-13 | **Stale or falsified context** (T-2)                                                                                                                                | Medium  | Medium | Freshness hints per capability; tenant/branch consistency checks against token claims; full context journaling; advisory output                                                                                                                                                                                                                                                                                                                                                         | Support cases correlated with journaled context                                                       |
+| R-14 | **Provider terms, residency, or deprecation changes**                                                                                                               | Medium  | Medium | Provider abstraction keeps switching cheap; two live providers at all times so no single provider is load-bearing; deprecation calendar tracked in routing policy reviews                                                                                                                                                                                                                                                                                                               | Provider changelog monitoring; eval failures on deprecated targets                                    |
+| R-15 | **Quota DO unavailability or hot-spotting**                                                                                                                         | Low     | Medium | Documented fail-open or fail-closed decision per capability class (recommendation: fail-open with capped grace and a reconciliation pass, so an infrastructure blip never blocks care); intra-installation sharding available if volume demands                                                                                                                                                                                                                                         | DO error rates and latency; grace-mode counters                                                       |
+| R-20 | **Complexity creep** — mechanisms in [§9.14](#914-mechanisms-deliberately-simplified) get added because they sound prudent                                          | Medium  | Medium | Each carries a written "add it when" trigger; adding one requires citing the evidence, not the argument. New indirection needs a second implementation to justify it (D-15)                                                                                                                                                                                                                                                                                                             | Architecture review at each delivery checkpoint; diff of components against §4                                 |
+| R-16 | **Capability sprawl** — dozens of near-duplicate capabilities                                                                                                       | Medium  | Low    | Capabilities require a manifest, an output schema, and an eval suite before activation; retirement process with an overlap window (A12); registry review                                                                                                                                                                                                                                                                                                                                | Registry growth versus usage per capability                                                           |
+| R-17 | **Offline clinics discover AI does not work**                                                                                                                       | High    | Medium | AI-enabled flag per installation so affordances never appear where they cannot function; explicit, documented capability difference per tier ([§2.7](#27-conflict-with-the-existing-local-ollama-assumption))                                                                                                                                                                                                                                                                           | Support ticket categories; unreachable-state telemetry                                                |
+| R-18 | **Token theft or replay**                                                                                                                                           | Low     | Medium | Minutes-long lifetime, audience restriction, `jti` replay guard, scope minimization, actor-level rate limits, suspension levers                                                                                                                                                                                                                                                                                                                                                         | Replay-guard hit rate; anomalous actor volume                                                         |
+| R-21 | **Conversational cost amplification** — a chat turn that negotiates context costs several inferences, and long transcripts re-price the whole history on every turn | Medium  | High   | Max context rounds per turn and max history turns in the manifest, both counted from the submitted transcript; the existing per-turn cost pre-flight already prices the transcript as input (A6); per-installation budget bounds the total ([§6.7.3](#673-what-bounds-the-loop))                                                                                                                                                                                                        | Inferences per conversation and cost per conversation, grouped by `conversation_id` in the journal    |
+| R-22 | **Transcript tampering** — a modified client trims context-request turns to reset its round budget, or fabricates assistant turns                                   | Low     | Medium | Accepted, not solved: the transcript has the same untrusted status as any context payload ([§3.3](#33-trust-and-network-topology)). Every leg is separately authenticated, rate-limited, cost-checked, and admitted, so the ceiling is the clinic's own quota. `turn_ordinal` makes reordering and replay visible in the journal                                                                                                                                                        | Conversations with anomalous round counts; per-actor inference rates                                  |
+| R-23 | **Assistant over-reach** — a conversational capability asks for context beyond what the question needed                                                             | Medium  | Medium | The manifest's permitted key set is an allowlist enforced at the context validator, so keys outside it are dropped even if requested; resolution still runs under the requesting user's RLS, so the assistant can never reach data the user could not open themselves ([§8.10](#810-conversational-turn-with-context-negotiation))                                                                                                                                                      | Requested-key frequency per capability against the permitted set                                      |
+| R-19 | **Cloudflare lock-in**                                                                                                                                              | Low     | Low    | The pipeline is ordinary request/response logic; Durable Object use is one counter class; D1 is SQLite-shaped and exportable; R2 is S3-shaped. Migration would be work, not a rewrite                                                                                                                                                                                                                                                                                                   | Reviewed at each delivery checkpoint                                                                           |
+
+
 
 
 Two risks are structural rather than technical and deserve the most attention: **R-11 (automation
@@ -2026,52 +2620,80 @@ makes drafts feel like drafts, and a CI guard that fails the build — not by in
 
 ---
 
+
+
 ## 12. Evolution Path
+
+
 
 ### 12.1 Sequencing principle
 
-Each phase must be independently shippable and must leave the contracts in
-[§5](#5-contracts) intact. The order is chosen so that the **contracts and the guard** come first
-even though they are the least visible work: they are what later phases plug into, and retrofitting
-them is what turns an AI prototype into a rewrite.
+Build order is determined by **dependency and contract stability**, and by nothing else. The
+**contracts and the guard** come first even though they are the least visible work: they are what
+everything later plugs into, and retrofitting them is what turns an AI prototype into a rewrite.
 
-### 12.2 Phase map
+Increments are deliberately *not* sequenced by user-visible value or by shippability. The product
+does not reach a customer until the Flutter client, the Supabase backend, and this platform are all
+complete, so there is no release in between for an increment to be safe for. The only thing that can
+make later work expensive is earlier work having frozen the wrong contract — which is what the order
+is chosen to prevent, and what the checkpoints exist to catch.
+
+The completion criterion for an increment is correspondingly an **automated test that a human can
+read and believe**, not a demonstration.
+
+### 12.2 Delivery plan
 
 
-| Phase                         | Goal                                      | Includes                                                                                                                                                                                                                                                                                  | Deliberately excluded                                   |
-| ----------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **P0 — Walking skeleton**     | One capability end to end, contracts real | Enrollment + AAT + verifier; one capability manifest; one context key; one provider adapter; prose streaming with connection-scoped cancellation; guard stages; journal to D1 + R2; request reference; trace propagation                                                                   | Quota, fallback, repair, control-plane UI               |
-| **P1 — Production hardening** | Safe to expose to real clinics            | Second provider adapter + routing policy + retry/fallback; structured output + schema validation + bounded repair; rate limiting; cost ceilings; Quota DO; kill switches; retention purges; eval suite in CI; support lookup; client-side CI guards                                        | Billing, self-service admin, analytics product          |
-| **P2 — Commercial**           | Usage becomes a product surface           | Usage tracking surfaced in-app; plans and entitlement management; billing period close from the ledger; overage and soft-degrade policies; usage rollups and dashboards; per-installation capability grants                                                                               | Marketplace, per-clinic prompt editing                  |
-| **P3 — Scale and depth**      | More capabilities, heavier workloads      | Capability catalogue growth; conversational/multi-turn capabilities; asynchronous/batch execution if a real use case appears (Workflows); provider cost optimization and caching; region-aware routing                                                                                    | Fine-tuning, vector search unless demanded              |
-| **P4 — Optional hedges**      | Reduce external dependence                | On-LAN OpenAI-compatible provider as a registered adapter for privacy-sensitive customers; per-context-key redaction; per-installation model preferences; D1 sharding if volume demands                                                                                                   | —                                                       |
+The build order itself lives in **`docs/architecture/17b-ai-platform-delivery-plan.md`**, which
+decomposes this architecture into individually specifiable slices grouped into lettered bands, gives
+each slice its acceptance shape, and defines the review checkpoints and the spec-authoring rules. It
+is not repeated here: this document decides what the platform is, that one decides in what order the
+decisions get built, and where they conflict this document wins.
+
+Four consequences of that split change how this section used to read, and are recorded here because
+they are governance decisions rather than plan detail:
+
+- **The earlier P0–P4 phase model is retired.** Bands are orientation, not gates, and carry no
+release meaning.
+- **Compatibility machinery is deferred, but its contract surface is not.** With no deployed clients,
+overlap windows (A12), deprecation flows, staged prompt rollout, and the `context_required`
+self-healing round trip have no audience yet. The error codes, lifecycle states, and journal columns
+they depend on are cheap now and expensive to retrofit, so those exist from the earliest slices and
+sit unused until there is a client version in the field.
+- **The client architecture guard (R-12) precedes any client AI code**, rather than arriving during
+hardening — it is the one control standing between this design and its most likely failure mode, so
+it must exist before the code it guards.
+- **One end-to-end thread through a fake provider is built early**, as a falsification checkpoint
+rather than a demonstration. Without a release to force integration, the standing risk is a large
+set of individually correct slices that have never run together.
 
 
-The single most important property of this sequence: **P0 already contains the seams.** Enrollment,
-the Context Contract, the capability manifest, the canonical representation, the error taxonomy, and
-the journal exist from day one with one capability and one provider. Everything after P0 either fills
-in an existing extension point or is one of the mechanisms deliberately left out in
+The property that made the old phase model defensible survives unchanged: **the seams are built
+before anything that uses them.** Enrollment, the Context Contract, the capability manifest, the
+canonical representation, the error taxonomy, and the journal exist before the first capability and
+the first provider. Everything after them either fills in an existing extension point or is one of
+the mechanisms deliberately left out in
 [§9.14](#914-mechanisms-deliberately-simplified) — and those require evidence, not enthusiasm.
 
 ### 12.3 Where each future-growth requirement plugs in
 
 
-| Future capability                  | Plugs into                                                  | Additional design needed                                                                                  |
-| ---------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **AI usage tracking**              | `usage_event` ledger + Quota DO counters (exist from P1)     | A read surface only                                                                                       |
-| **Analytics**                      | Analytics Engine datasets emitted from P0                   | Dashboards and queries; no schema change                                                                  |
-| **Subscription management**        | `entitlement` entity + control plane                        | Plan catalogue; optional sync with `organizations.subscription_tier`, which currently has no writers (F6) |
-| **AI quotas**                      | Quota DO + entitlement (P1)                                 | Policy choices: period, weights, soft thresholds                                                          |
-| **Billing**                        | `usage_event` is already an append-only priced ledger       | Invoice generation and a payment provider — outside this platform                                         |
-| **Additional AI providers**        | New adapter behind the provider port + routing policy entry | Adapter, eval run, canary. No pipeline change                                                             |
-| **New AI capabilities**            | New manifest + prompt artifact + schema + eval suite        | Client changes only if a *new* context key is required                                                    |
-| **Multi-turn / conversational AI** | Canonical request already carries prior turns               | Turn storage; and this is the case that may finally justify a per-request Durable Object ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object)) |
-| **Cross-clinic benchmarking**      | Rollups + Analytics Engine                                  | Aggregation and anonymization policy — a product and legal decision, not a technical one                  |
+| Future capability                  | Plugs into                                                                                                     | Additional design needed                                                                                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **AI usage tracking**              | `usage_event` ledger + Quota DO counters                                                                       | A read surface only                                                                                                                                                                                                                        |
+| **Analytics**                      | The `ai_request` / `ai_attempt` journal, written from the first request                                        | Dashboards and queries; no schema change. A dedicated metrics store only if aggregation starts contending with the write path ([§9.16](#916-analytics-engine-as-the-metrics-store))                                                        |
+| **Subscription management**        | `entitlement` entity + control plane                                                                           | Plan catalogue; optional sync with `organizations.subscription_tier`, which currently has no writers (F6)                                                                                                                                  |
+| **AI quotas**                      | Quota DO + entitlement                                                                                         | Policy choices: period, weights, soft thresholds                                                                                                                                                                                           |
+| **Billing**                        | `usage_event` is already an append-only priced ledger                                                          | Invoice generation and a payment provider — outside this platform                                                                                                                                                                          |
+| **Additional AI providers**        | New adapter behind the provider port + routing policy entry                                                    | Adapter, eval run, canary. No pipeline change                                                                                                                                                                                              |
+| **New AI capabilities**            | New manifest + prompt artifact + schema + eval suite                                                           | Client changes only if a *new* context key is required                                                                                                                                                                                     |
+| **Multi-turn / conversational AI** | The `conversational` interaction mode on the manifest (A14); the canonical request already carries prior turns | A manifest flag, a permitted key set, a fourth terminal event kind, and two nullable journal columns. No turn storage and no per-request Durable Object, because the client holds the transcript ([§6.7](#67-conversational-capabilities)) |
+| **Cross-clinic benchmarking**      | `usage_rollup` + journal aggregation                                                                           | Aggregation and anonymization policy — a product and legal decision, not a technical one                                                                                                                                                   |
 
 
 The test this table is really documenting: every listed future capability is either **already an
 emitted data stream** or **a new instance of an existing extension point**. None requires a new
-pipeline stage. That is the return on the contract discipline paid for in P0.
+pipeline stage. That is the return on the contract discipline paid for in the foundation slices.
 
 ### 12.4 Extension recipes
 
@@ -2095,6 +2717,14 @@ publish the capability requiring the key. Old clients fail safe via `context_req
 staged cohort; promote, or roll back by deploying the previous build. The prompt version recorded in
 each journal row is what makes the effect of the change measurable afterwards.
 
+**Add a conversational capability:** author the prompt artifacts and eval suite as usual, then declare
+`interaction_mode: conversational`, the **permitted key set** the assistant may draw on, the max
+history turns, and the max context rounds per turn. The output mode is `prose`; the context-request
+schema is platform-owned and shared, so none is authored. The client needs a chat surface and a local
+transcript once — after that, widening the assistant's reach is a manifest change that adds keys the
+Context Resolver already knows, with no client release. Keeping the permitted set narrow is a safety
+decision, not a performance one (R-23).
+
 **Retire a capability:** mark deprecated in discovery with a successor; keep serving through the
 overlap window (A12); then retire, returning `capability_retired` so old clients prompt for an update
 instead of failing opaquely.
@@ -2102,39 +2732,51 @@ instead of failing opaquely.
 ### 12.5 Explicitly not to be built yet
 
 
-| Not now                              | Why                                                                                                                                       | Revisit when                                                                       |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Per-clinic prompt editing            | Turns prompts into unreviewable, unversioned, per-tenant logic                                                                            | A large customer's requirement justifies constrained parameterized templates       |
-| Vector search / RAG over clinic data | Requires an ingestion pipeline, an embedding store, and a sync problem — plus a copy of clinic data the platform has deliberately avoided | A capability provably needs corpus-wide retrieval that context keys cannot express |
-| Agentic multi-step tool use          | Multiplies cost, latency, and failure surface; hard to validate; hard to audit                                                            | A high-value workflow cannot be expressed as one call                              |
-| Fine-tuning                          | Locks in a provider, needs a labelled corpus and a governance story                                                                       | Prompt engineering demonstrably plateaus on a high-volume capability               |
-| Async/batch execution                | No requirement; constitution forbids queues today                                                                                         | A batch workload appears with a real user                                          |
-| Client-side model fallback           | Reintroduces prompts and model choice into the client (R-12)                                                                              | Never, without a constitutional amendment                                          |
-| Self-service enrollment              | Enrollment is a billing and trust boundary ([§8.1](#81-clinic-enrollment-and-trust-bootstrap))                                            | A verified sign-up flow with payment exists                                        |
-| Out-of-band cancellation, stream resume | Requires per-request state for a rare interaction ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object))         | Generations routinely exceed a minute, or support data shows work lost to reconnects |
-| Health-based provider routing        | Makes routing depend on invisible history ([§9.14](#914-mechanisms-deliberately-simplified))                                              | Provider outages make the wasted first attempt a measurable cost                    |
+| Not now                                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Revisit when                                                                                          |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Per-clinic prompt editing                              | Turns prompts into unreviewable, unversioned, per-tenant logic                                                                                                                                                                                                                                                                                                                                                                                                   | A large customer's requirement justifies constrained parameterized templates                          |
+| Vector search / RAG over clinic data                   | Requires an ingestion pipeline, an embedding store, and a sync problem — plus a copy of clinic data the platform has deliberately avoided                                                                                                                                                                                                                                                                                                                        | A capability provably needs corpus-wide retrieval that context keys cannot express                    |
+| Agentic multi-step tool use, beyond context resolution | Multiplies cost, latency, and failure surface; hard to validate; hard to audit. The bounded context negotiation in [§6.7](#67-conversational-capabilities) is the one deliberate exception: its only "tool" is context-key resolution, its allowlist is the manifest's permitted key set, its executor is the client under the user's own RLS, and its round count is capped. Tools that *write*, call third-party services, or are chosen at runtime remain out | A high-value workflow cannot be expressed as one call, *and* it can be validated and audited per step |
+| Fine-tuning                                            | Locks in a provider, needs a labelled corpus and a governance story                                                                                                                                                                                                                                                                                                                                                                                              | Prompt engineering demonstrably plateaus on a high-volume capability                                  |
+| Async/batch execution                                  | No requirement; constitution forbids queues today                                                                                                                                                                                                                                                                                                                                                                                                                | A batch workload appears with a real user                                                             |
+| Client-side model fallback                             | Reintroduces prompts and model choice into the client (R-12)                                                                                                                                                                                                                                                                                                                                                                                                     | Never, without a constitutional amendment                                                             |
+| Self-service enrollment                                | Enrollment is a billing and trust boundary ([§8.1](#81-clinic-enrollment-and-trust-bootstrap))                                                                                                                                                                                                                                                                                                                                                                   | A verified sign-up flow with payment exists                                                           |
+| Out-of-band cancellation, stream resume                | Requires per-request state for a rare interaction ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object))                                                                                                                                                                                                                                                                                                                                   | Generations routinely exceed a minute, or support data shows work lost to reconnects                  |
+| Health-based provider routing                          | Makes routing depend on invisible history ([§9.14](#914-mechanisms-deliberately-simplified))                                                                                                                                                                                                                                                                                                                                                                     | Provider outages make the wasted first attempt a measurable cost                                      |
 
 
 ---
 
+
+
 ## 13. Operational Concerns
+
+
 
 ### 13.1 Observability
 
 
-| Signal              | Content                                                                                                                                                                                                                     | Store                             | Purpose                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------- |
-| **Trace**           | Client-generated trace id propagated through every stage and provider attempt as spans                                                                                                                                      | Workers tracing / logs            | Follow one request end to end                      |
-| **Structured logs** | One event per stage transition and provider attempt, always carrying request reference, trace id, installation, capability, prompt version. Never prompts, context, or credentials                                          | Workers Logs, optionally exported | Incident diagnosis                                 |
-| **Metrics**         | Request counts by outcome, latency histograms (time to first token, total), token counts, cost, retry and fallback rates, validation-failure and repair rates, quota rejections, per provider/model/capability/installation | Analytics Engine                  | Dashboards, alerting, capacity and cost management |
-| **Journal**         | The auditable record ([§7.3](#73-d1-logical-model))                                                                                                                                                                         | D1 + R2                           | Audit, support, billing evidence                   |
+| Signal              | Content                                                                                                                                                                                                   | Store                                          | Purpose                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| **Trace**           | Client-generated trace id propagated through every stage and provider attempt as spans                                                                                                                    | Workers tracing / logs                         | Follow one request end to end                      |
+| **Structured logs** | One event per stage transition and provider attempt, always carrying request reference, trace id, installation, capability, prompt version. Never prompts, context, or credentials                        | Workers Logs, optionally exported              | Incident diagnosis                                 |
+| **Metrics**         | Request counts by outcome, latency histograms (time to first token, total), token counts, cost, retry and fallback rates, validation-failure and repair rates, per provider/model/capability/installation | Queried from the D1 journal and `usage_rollup` | Dashboards, alerting, capacity and cost management |
+| **Counters**        | Only what the journal cannot hold: guard rejections by error code, and other pre-journal events                                                                                                           | `platform_counter` in D1                       | Abuse and misconfiguration signals                 |
+| **Journal**         | The auditable record ([§7.3](#73-d1-logical-model))                                                                                                                                                       | D1 + R2                                        | Audit, support, billing evidence                   |
 
 
-The distinction that keeps this affordable: **logs and metrics are for aggregate health, the journal is
-for individual truth.** Logs may be sampled and expire quickly; the journal may not. Conflating them
+The distinction that keeps this affordable: **logs are for aggregate health, the journal is for
+individual truth.** Logs may be sampled and expire quickly; the journal may not. Conflating them
 produces either an unaffordable log bill or an unauditable platform.
 
-Named diagnostics worth having from P0 because they are the questions actually asked in incidents:
+Metrics sit deliberately on the journal's side of that line rather than in a store of their own. Every
+dimension above is already a column on a journal row, so querying it costs one read against data that
+is written regardless, and the dashboard can never disagree with the audit trail. The reasoning, and
+the condition that would reverse it, are in
+[§9.16](#916-analytics-engine-as-the-metrics-store).
+
+Named diagnostics worth having from the first working request, because they are the questions
+actually asked in incidents:
 time to first token by provider; validation-failure rate by prompt version; repair rate by
 capability; fallback rate by provider; cost per capability per installation; quota rejection rate.
 
@@ -2168,28 +2810,32 @@ provider behaviour.
 ### 13.4 Environments, configuration, and secrets
 
 
-| Concern             | Approach                                                                                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Environments        | Separate Worker environments with separate D1, R2, KV, and DO namespaces. No shared state, no shared installations                                         |
-| Development clinics | Non-production installations enrolled against non-production platform environments, so a clinic's staging build never touches production quota or journals |
-| Configuration       | Prompts, manifests, and schemas are deployed artifacts; only genuinely volatile policy (kill switches, capability grants, routing policy version) is data in D1, cached in KV |
-| Secrets             | Provider keys and signing material in the platform secret store only. Never in config files, never journaled, never logged. Rotation without redeploy      |
-| Promotion           | Contracts first: a capability or context-key change is reviewed as a contract change, deployed, then activated by cohort                                   |
-| Migrations          | Forward-only, additive D1 migrations, versioned in the repository like the Supabase migrations already are                                                 |
+| Concern             | Approach                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Environments        | Separate Worker environments with separate D1, R2, and DO namespaces. No shared state, no shared installations                                                                                                        |
+| Development clinics | Non-production installations enrolled against non-production platform environments, so a clinic's staging build never touches production quota or journals                                                            |
+| Configuration       | Prompts, manifests, and schemas are deployed artifacts; only genuinely volatile policy (kill switches, capability grants, routing policy version) is data in D1, read through the config cache                        |
+| D1 region           | Pinned to the region serving the clinics. This is what keeps a cold-isolate config read cheap and is the condition under which a distributed cache stays unnecessary ([§9.15](#915-workers-kv-as-a-hot-config-cache)) |
+| Secrets             | Provider keys and signing material in the platform secret store only. Never in config files, never journaled, never logged. Rotation without redeploy                                                                 |
+| Promotion           | Contracts first: a capability or context-key change is reviewed as a contract change, deployed, then activated by cohort                                                                                              |
+| Migrations          | Forward-only, additive D1 migrations, versioned in the repository like the Supabase migrations already are                                                                                                            |
+
+
 
 
 ### 13.5 Testing strategy
 
 
-| Layer                     | What is tested                                                                                                                                       | How                                                                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract tests            | Manifests, context key shapes, output schemas, and the error taxonomy are internally consistent and backward compatible against the previous release | CI, on every change                                                                                                                     |
-| Provider adapter tests    | Wire mapping, stream normalization, usage extraction, and error classification                                                                       | Recorded provider fixtures, including malformed and truncated responses                                                                 |
-| Pipeline tests            | Stage ordering, guard rejection paths, idempotency, quota check and credit, cancellation on disconnect                                               | Fake provider adapter; deterministic                                                                                                    |
-| Capability evals (A9)     | Output quality and schema conformance per capability                                                                                                 | Golden cases against fixtures in CI; a small live smoke set on schedule against pinned models                                           |
-| Client contract tests     | The Context Resolver satisfies every declared key for every active capability                                                                        | Runs in the Flutter test suite against fetched manifests — catches "platform requires a key the client cannot produce" *before* release |
-| Architecture guard (R-12) | No prompt-like strings, provider names, or model identifiers in client code                                                                          | CI lint that fails the build                                                                                                            |
-| Load and cost tests       | Guard latency under concurrency; D1 write headroom; DO throughput per installation                                                                   | Before each phase gate                                                                                                                  |
+| Layer                     | What is tested                                                                                                                                                    | How                                                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract tests            | Manifests, context key shapes, output schemas, and the error taxonomy are internally consistent and backward compatible against the previous release              | CI, on every change                                                                                                                     |
+| Provider adapter tests    | Wire mapping, stream normalization, usage extraction, and error classification                                                                                    | Recorded provider fixtures, including malformed and truncated responses                                                                 |
+| Pipeline tests            | Stage ordering, guard rejection paths, idempotency, quota check and credit, cancellation on disconnect                                                            | Fake provider adapter; deterministic                                                                                                    |
+| Capability evals (A9)     | Output quality and schema conformance per capability                                                                                                              | Golden cases against fixtures in CI; a small live smoke set on schedule against pinned models                                           |
+| Conversation evals (A14)  | For conversational capabilities: does the assistant request the *right* keys, does it stay inside the permitted set, and does it converge within the round budget | Scripted multi-leg conversations against fixtures, scored per conversation rather than per turn                                         |
+| Client contract tests     | The Context Resolver satisfies every declared key for every active capability                                                                                     | Runs in the Flutter test suite against fetched manifests — catches "platform requires a key the client cannot produce" *before* release |
+| Architecture guard (R-12) | No prompt-like strings, provider names, or model identifiers in client code                                                                                       | CI lint that fails the build                                                                                                            |
+| Load and cost tests       | Guard latency under concurrency; D1 write headroom; DO throughput per installation                                                                                | Before each delivery checkpoint                                                                                                                  |
 
 
 The last two rows carry more architectural weight than their size suggests, and both belong to the
@@ -2197,26 +2843,44 @@ The last two rows carry more architectural weight than their size suggests, and 
 interface rather than a documented convention. The architecture guard is the only thing standing
 between this design and its most likely failure mode — a prompt fragment added to the Flutter app under
 deadline pressure (R-12). Two CI rules protect the decoupling more effectively than any component in
-[§4](#4-components-and-responsibilities), and they should exist from P1 at the latest.
+[§4](#4-components-and-responsibilities). The architecture guard must exist **before any AI code is
+written in the client**, not after it ([§12.2](#122-delivery-plan)); the contract test follows as
+soon as there are live manifests to test against.
 
 ### 13.6 Cost model and guardrails
 
 
-| Cost driver                    | Control                                                                                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider tokens (dominant)     | Per-capability max output tokens, input caps, pre-flight estimation, per-installation budgets, cheaper degraded tiers, caching of identical requests where safe |
-| Repair and retry amplification | Hard caps per request, journaled and monitored as quality signals rather than being invisible                                                                   |
-| D1 writes                      | One row per request on the hot path, detail afterwards; payloads to R2; metrics to Analytics Engine; no per-chunk rows                                          |
-| R2 storage                     | Retention classes with lifecycle expiry; diagnostic blobs are the shortest-lived and the largest                                                                |
-| Durable Objects                | One quota object per installation, hibernating when idle — no per-request objects                                                                               |
-| Worker invocations             | Negligible relative to token cost                                                                                                                               |
+| Cost driver                    | Control                                                                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider tokens (dominant)     | Per-capability max output tokens, input caps, pre-flight estimation, per-installation budgets, cheaper degraded tiers, caching of identical requests where safe                          |
+| Repair and retry amplification | Hard caps per request, journaled and monitored as quality signals rather than being invisible                                                                                            |
+| **R2 Class A operations**      | **One payload envelope per request** ([§7.4.1](#741-why-one-object-and-not-four)) — the single largest lever on the platform's metered footprint                                         |
+| **Durable Object requests**    | **Two round trips per request**: one admission call in the guard, one credit call at settle. Every additional installation-scoped question rides an existing trip rather than adding one |
+| D1 writes                      | One row per request on the hot path, detail afterwards; payloads to R2; no per-event metric rows; no per-chunk rows                                                                      |
+| R2 storage                     | Retention classes with lifecycle expiry; the diagnostic envelope is the shortest-lived and the largest object                                                                            |
+| Worker invocations             | Negligible relative to token cost                                                                                                                                                        |
 
+
+
+
+#### 13.6.1 Where the platform actually sits
+
+Two of these are the binding constraints, and both are consumed by *design shape* rather than by data
+volume — halving the per-request fan-out doubles the headroom, while storing less data does not
+([§1.4.1](#141-how-the-platform-is-billed)). With one envelope and two DO calls per request, each
+allowance supports roughly a million requests a month before anything above the subscription is
+billed. Twenty clinics averaging forty AI requests a day is on the order of twenty-five thousand
+requests a month — low single-digit percentages of every allowance, with no line item beyond the
+subscription.
 
 The one-line summary that should govern implementation decisions: **token spend dominates every other
-cost by orders of magnitude**, so guard cheaply, reject early, cap outputs, and never let a retry loop
-run unbounded.
+cost by one to two orders of magnitude**, so guard cheaply, reject early, cap outputs, and never let a
+retry loop run unbounded. Cloudflare allowances are something to monitor at a checkpoint; the token
+budget is the thing to engineer continuously.
 
 ---
+
+
 
 ## 14. Constitution Compliance Check
 
@@ -2224,19 +2888,19 @@ The constitution (`.specify/memory/constitution.md`) is authoritative, and this 
 it does not currently anticipate. The check is therefore explicit.
 
 
-| Principle / guardrail                                                       | Assessment                     | Justification                                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **I. Product fit and simplicity** — no microservices, queues, or Kubernetes | ✅ Pass                         | One deployable Worker, synchronous, no queues (D-6, D-13). One Durable Object class holding counters, no per-request state, and five mechanisms deliberately left out ([§9.14](#914-mechanisms-deliberately-simplified))                                                                                          |
-| **I. Desktop-first, local-first where possible**                            | ⚠ Tension, resolved            | AI is the one internet-dependent capability. Mitigated by making AI strictly additive and by hiding affordances where unavailable (A11, R-17). The alternative — local inference — costs 3 GB of RAM on 8 GB clinic machines and a per-clinic model support burden, so this better serves the principle's intent |
-| **II. Replaceable layer boundaries**                                        | ✅ Pass, strengthened           | Three explicit contracts ([§3.4](#34-the-three-seams)); the platform never learns clinic schema and the client never learns AI internals                                                                                                                                                                         |
-| **II. No custom core backend for primary business logic**                   | ✅ Pass, with a stated boundary | The gateway holds **no domain logic and no business data**. Every clinical rule stays in PostgreSQL; AI output is advisory and requires human acceptance (A5). If the platform vanishes, no business rule is lost — the correct test for "not primary"                                                           |
-| **III. Backend authority and data integrity**                               | ✅ Pass                         | AI output enters the clinical record only through existing RPCs, with existing validation, triggers, and RLS. The platform cannot write to Supabase at all                                                                                                                                                       |
-| **III. Tenant isolation**                                                   | ✅ Pass                         | Context resolution runs under the user's own RLS. Platform-side isolation is enforced by installation-scoped tokens and installation-scoped queries                                                                                                                                                              |
-| **IV. Secure and human-gated operations**                                   | ✅ Pass, reinforced             | Every request authenticated and scoped ([§3.3](#33-trust-and-network-topology)); defense in depth via token scopes, entitlement, and capability gating; human acceptance mandatory for clinical content (A5)                                                                                                     |
-| **IV. Auditability**                                                        | ✅ Pass                         | Immutable platform journal plus the clinic-side acceptance record, joined by request reference                                                                                                                                                                                                                   |
-| **V. Operational continuity; subscription must never hard-lock**            | ✅ Pass                         | Quota exhaustion and platform outage degrade to "AI unavailable" and never block clinical work; soft thresholds downgrade rather than refuse ([§8.8](#88-quota-and-rate-limit-rejection))                                                                                                                        |
-| **Guardrail: no infrastructure assuming enterprise scale**                  | ✅ Pass                         | Serverless, scale-to-zero, no fixed capacity, no cluster to operate                                                                                                                                                                                                                                              |
-| **Guardrail: no coupling of unrelated domains**                             | ✅ Pass                         | AI is additive per feature; removing it removes affordances, not workflows                                                                                                                                                                                                                                       |
+| Principle / guardrail                                                       | Assessment                     | Justification                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **I. Product fit and simplicity** — no microservices, queues, or Kubernetes | ✅ Pass                         | One deployable Worker, synchronous, no queues (D-6, D-13). One Durable Object class holding counters, no per-request state, and five mechanisms deliberately left out ([§9.14](#914-mechanisms-deliberately-simplified)). The chat surface (A14) adds no component and no store — it is a manifest flag plus a fourth terminal event kind (D-19) |
+| **I. Desktop-first, local-first where possible**                            | ⚠ Tension, resolved            | AI is the one internet-dependent capability. Mitigated by making AI strictly additive and by hiding affordances where unavailable (A11, R-17). The alternative — local inference — costs 3 GB of RAM on 8 GB clinic machines and a per-clinic model support burden, so this better serves the principle's intent                                 |
+| **II. Replaceable layer boundaries**                                        | ✅ Pass, strengthened           | Three explicit contracts ([§3.4](#34-the-three-seams)); the platform never learns clinic schema and the client never learns AI internals                                                                                                                                                                                                         |
+| **II. No custom core backend for primary business logic**                   | ✅ Pass, with a stated boundary | The gateway holds **no domain logic and no business data**. Every clinical rule stays in PostgreSQL; AI output is advisory and requires human acceptance (A5). If the platform vanishes, no business rule is lost — the correct test for "not primary"                                                                                           |
+| **III. Backend authority and data integrity**                               | ✅ Pass                         | AI output enters the clinical record only through existing RPCs, with existing validation, triggers, and RLS. The platform cannot write to Supabase at all                                                                                                                                                                                       |
+| **III. Tenant isolation**                                                   | ✅ Pass                         | Context resolution runs under the user's own RLS. Platform-side isolation is enforced by installation-scoped tokens and installation-scoped queries                                                                                                                                                                                              |
+| **IV. Secure and human-gated operations**                                   | ✅ Pass, reinforced             | Every request authenticated and scoped ([§3.3](#33-trust-and-network-topology)); defense in depth via token scopes, entitlement, and capability gating; human acceptance mandatory for clinical content (A5)                                                                                                                                     |
+| **IV. Auditability**                                                        | ✅ Pass                         | Immutable platform journal plus the clinic-side acceptance record, joined by request reference                                                                                                                                                                                                                                                   |
+| **V. Operational continuity; subscription must never hard-lock**            | ✅ Pass                         | Quota exhaustion and platform outage degrade to "AI unavailable" and never block clinical work; soft thresholds downgrade rather than refuse ([§8.8](#88-quota-and-rate-limit-rejection))                                                                                                                                                        |
+| **Guardrail: no infrastructure assuming enterprise scale**                  | ✅ Pass                         | Serverless, scale-to-zero, no fixed capacity, no cluster to operate                                                                                                                                                                                                                                                                              |
+| **Guardrail: no coupling of unrelated domains**                             | ✅ Pass                         | AI is additive per feature; removing it removes affordances, not workflows                                                                                                                                                                                                                                                                       |
 
 
 **Two items require formal acknowledgement rather than a pass mark:**
@@ -2246,11 +2910,13 @@ it does not currently anticipate. The check is therefore explicit.
    in the constitution's operating constraints so future readers do not treat it as drift, together
    with the boundary that makes it acceptable: *no domain logic, no business data, no write path into
    Supabase, always optional.*
-2. **The local-Ollama assumption is retired** ([§2.6](#26-conflict-with-the-existing-local-ollama-assumption)),
+2. **The local-Ollama assumption is retired** ([§2.7](#27-conflict-with-the-existing-local-ollama-assumption)),
   which changes `docs/architecture/03-deployment-networking.md` including its hardware table. That is
    a documentation amendment with a resource-budget improvement, not an architectural regression.
 
 ---
+
+
 
 ## 15. Open Decisions
 
@@ -2258,46 +2924,56 @@ These require product or business input before implementation; each has a recomm
 nothing blocks on them.
 
 
-| #   | Decision                                                                                     | Recommended default                                                                                                                     |
-| --- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Which capabilities ship in P0/P1, and which are `human_accept_required` versus display-only? | Start with one non-clinical-record capability (e.g. drafting a visit summary for review) to exercise the platform without clinical risk |
-| 2   | Quota period and unit: requests, tokens, or cost?                                            | Cost-based budget with a request-count guard; requests alone cannot bound spend (A6)                                                    |
-| 3   | Behaviour when the Quota DO is unavailable: fail open or fail closed?                        | Fail open with a capped grace allowance and reconciliation — an infrastructure blip must not block care (R-15)                          |
-| 4   | Diagnostic retention horizon for prompts, context, and responses                             | Short by default (days), extendable per capability; this is the largest and most sensitive data (A10)                                   |
-| 5   | Is per-clinic model or provider preference a product requirement?                            | No initially; it multiplies the eval matrix. Revisit for privacy-sensitive customers (P4)                                               |
-| 6   | Does any capability require data residency guarantees?                                       | Assume no initially; region-aware routing is a routing-policy change if it becomes required                                             |
-| 7   | Enrollment operational owner and process                                                     | Part of clinic onboarding, operator-driven ([§8.1](#81-clinic-enrollment-and-trust-bootstrap))                                          |
-| 8   | Should AI entitlement mirror into Supabase for offline visibility?                           | Yes, minimally: an AI-enabled flag only, so the client can hide affordances offline. Not quota state, which would be stale (F6)         |
-| 9   | Capability version overlap window length                                                     | Two client release cycles, minimum 90 days (A12)                                                                                        |
-| 10  | Who reviews prompt changes, and against what acceptance bar?                                 | A named clinical reviewer plus a passing eval suite; prompts are clinical-facing logic (A9)                                             |
-| 11  | Is a local/on-LAN provider adapter needed for privacy-sensitive prospects?                   | Not now; kept cheap by the provider port (P4)                                                                                           |
+| #   | Decision                                                                                     | Recommended default                                                                                                                                                                                  |
+| --- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Which capability is built first, and which are `human_accept_required` versus display-only?  | Start with one non-clinical-record capability (e.g. drafting a visit summary for review) to exercise the platform without clinical risk                                                              |
+| 2   | Quota period and unit: requests, tokens, or cost?                                            | Cost-based budget with a request-count guard; requests alone cannot bound spend (A6)                                                                                                                 |
+| 3   | Behaviour when the Quota DO is unavailable: fail open or fail closed?                        | Fail open with a capped grace allowance and reconciliation — an infrastructure blip must not block care (R-15)                                                                                       |
+| 4   | Diagnostic retention horizon for prompts, context, and responses                             | Short by default (days), extendable per capability; this is the largest and most sensitive data (A10)                                                                                                |
+| 5   | Is per-clinic model or provider preference a product requirement?                            | No initially; it multiplies the eval matrix. Revisit for privacy-sensitive customers (a later band)                                                                                                            |
+| 6   | Does any capability require data residency guarantees?                                       | Assume no initially; region-aware routing is a routing-policy change if it becomes required                                                                                                          |
+| 7   | Enrollment operational owner and process                                                     | Part of clinic onboarding, operator-driven ([§8.1](#81-clinic-enrollment-and-trust-bootstrap))                                                                                                       |
+| 8   | Should AI entitlement mirror into Supabase for offline visibility?                           | Yes, minimally: an AI-enabled flag only, so the client can hide affordances offline. Not quota state, which would be stale (F6)                                                                      |
+| 9   | Capability version overlap window length                                                     | Two client release cycles, minimum 90 days (A12)                                                                                                                                                     |
+| 10  | Who reviews prompt changes, and against what acceptance bar?                                 | A named clinical reviewer plus a passing eval suite; prompts are clinical-facing logic (A9)                                                                                                          |
+| 11  | Is a local/on-LAN provider adapter needed for privacy-sensitive prospects?                   | Not now; kept cheap by the provider port (a later band)                                                                                                                                                        |
+| 12  | What is the chat assistant's permitted context key set, and does it vary by staff role?      | Start narrow — the keys the button-invoked capabilities already use — and widen on evidence. Role variation needs no new mechanism: the token's scopes and the user's own RLS already bound it (A14) |
+| 13  | Max history turns and max context rounds per turn for the assistant                          | A short history and two context rounds to begin. Both are manifest values, so tuning them is a manifest publish rather than a release ([§6.7.3](#673-what-bounds-the-loop))                          |
+| 14  | May chat output be moved into a clinical record, and through which acceptance path?          | Only through the same human acceptance RPC as any other capability (A5). Declaring the assistant `advisory_display` first, and adding acceptance later, is the lower-risk order                      |
 
 
 ---
+
+
 
 ## 16. Glossary Additions
 
 Proposed additions to `docs/architecture/13-glossary.md`:
 
 
-| Term                            | Definition                                                                                                                          |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **AI platform**                 | The Cloudflare-hosted gateway, its stores, and its contracts. Distinct from the clinic application                                  |
-| **Installation**                | One enrolled clinic deployment; the platform's tenant and billing boundary                                                          |
-| **AI Access Token (AAT)**       | Short-lived, audience-scoped token minted by the clinic database and verified by the platform                                       |
-| **Capability**                  | A versioned, declared AI feature: context requirements, prompt binding, output schema, validation rules, routing policy, governance |
-| **Capability manifest**         | The immutable declaration of a capability version                                                                                   |
-| **Context key**                 | A stable, versioned name for a unit of business data in domain vocabulary, e.g. `visit.vitals@v1`                                   |
-| **Context Contract**            | The set of context keys a capability requires; declared by the platform, satisfied by the client                                    |
-| **Context Resolver**            | Client-side registry mapping context keys to Supabase reads                                                                         |
-| **Canonical inference request** | The platform's provider-neutral internal request representation                                                                     |
-| **Provider adapter**            | Component translating between the canonical representation and one provider's wire format                                           |
-| **Provisional content**         | Streamed, unvalidated output that may be displayed as a draft but never persisted                                                   |
-| **Request reference**           | Short human-readable identifier for one AI request, used for support and audit                                                      |
-| **Prompt artifact**             | Immutable, versioned prompt asset deployed with the Worker and pinned by a capability manifest                                       |
-| **Quota credit**                | Recording a request's actual token and cost usage against the installation's period counters after it completes                     |
-| **Connection-scoped cancellation** | Cancelling a request by closing its event stream, requiring no server-side request state                                          |
-| **Degraded tier**               | Cheaper routing target used when a soft quota threshold is crossed                                                                  |
+| Term                               | Definition                                                                                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **AI platform**                    | The Cloudflare-hosted gateway, its stores, and its contracts. Distinct from the clinic application                                     |
+| **Installation**                   | One enrolled clinic deployment; the platform's tenant and billing boundary                                                             |
+| **AI Access Token (AAT)**          | Short-lived, audience-scoped token minted by the clinic database and verified by the platform                                          |
+| **Capability**                     | A versioned, declared AI feature: context requirements, prompt binding, output schema, validation rules, routing policy, governance    |
+| **Capability manifest**            | The immutable declaration of a capability version                                                                                      |
+| **Context key**                    | A stable, versioned name for a unit of business data in domain vocabulary, e.g. `visit.vitals@v1`                                      |
+| **Context Contract**               | The set of context keys a capability requires; declared by the platform, satisfied by the client                                       |
+| **Context Resolver**               | Client-side registry mapping context keys to Supabase reads                                                                            |
+| **Canonical inference request**    | The platform's provider-neutral internal request representation                                                                        |
+| **Provider adapter**               | Component translating between the canonical representation and one provider's wire format                                              |
+| **Provisional content**            | Streamed, unvalidated output that may be displayed as a draft but never persisted                                                      |
+| **Request reference**              | Short human-readable identifier for one AI request, used for support and audit                                                         |
+| **Prompt artifact**                | Immutable, versioned prompt asset deployed with the Worker and pinned by a capability manifest                                         |
+| **Quota credit**                   | Recording a request's actual token and cost usage against the installation's period counters after it completes                        |
+| **Connection-scoped cancellation** | Cancelling a request by closing its event stream, requiring no server-side request state                                               |
+| **Degraded tier**                  | Cheaper routing target used when a soft quota threshold is crossed                                                                     |
+| **Interaction mode**               | Manifest field selecting a capability's request shape: `single_shot` (button-invoked, one call) or `conversational` (chat, many turns) |
+| **Conversational capability**      | A capability declaring `interaction_mode: conversational` — the chat assistant. Its user intent is the literal typed message           |
+| **Conversation leg**               | One request within a conversation. Each leg is independently authenticated, admitted, journaled, and billed                            |
+| **Context negotiation**            | A conversational turn ending in `context_requested` so the client can resolve the keys the assistant asked for, then continue          |
+| **Permitted key set**              | The context keys a conversational capability may request during a turn; an allowlist enforced by the context validator                 |
 
 
 ---

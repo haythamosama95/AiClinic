@@ -14,6 +14,8 @@ Branch: (set per active feature)
 
 - `frontend/` — Flutter desktop app (presentation, orchestration).
 - `backend/` — Supabase (auth, storage, RPCs) + PostgreSQL migrations/functions.
+- `ai-platform/` — Cloudflare Worker AI gateway: source, D1 migrations, prompt artifacts, tests.
+ Additive and non-primary; no domain logic, no business data, no write path into Supabase.
 - `specs/` — Spec Kit feature working directories (`<NNN>-<short-name>/` with `spec.md`,
   `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `tasks.md`).
 - `.specify/` — Spec Kit configuration, templates, scripts, memory (`constitution.md`).

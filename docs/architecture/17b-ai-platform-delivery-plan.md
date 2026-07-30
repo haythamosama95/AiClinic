@@ -1,0 +1,564 @@
+# AI Platform — Delivery Plan
+
+- Purpose: Decompose the AI platform architecture into small, individually specifiable, individually implementable slices, and define the rules that keep those slices from drifting away from the architecture.
+- Read this when: choosing what to build next on the AI platform, opening a new Spec Kit feature for AI platform work, or reviewing a completed AI platform slice.
+- Canonical for: AI platform build order, slice boundaries, slice completion criteria, and the authoring rules for AI platform feature specs.
+- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), `.specify/memory/constitution.md`.
+- Not covered here: any architectural decision. This document sequences decisions made in `17-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `17-ai-platform.md` wins and this document is wrong.
+
+> **Status:** Delivery plan for an unimplemented architecture. Section references of the form
+> §N.M refer to `docs/architecture/17-ai-platform.md` unless stated otherwise.
+
+---
+
+
+
+## Table of Contents
+
+1. [Purpose and Operating Assumptions](#1-purpose-and-operating-assumptions)
+2. [What a Slice Is](#2-what-a-slice-is)
+3. [The Slice Sequence](#3-the-slice-sequence)
+4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed)
+5. [Review Checkpoints](#5-review-checkpoints)
+6. [Spec Authoring Protocol](#6-spec-authoring-protocol)
+7. [Dependencies Outside the Platform](#7-dependencies-outside-the-platform)
+
+---
+
+
+
+## 1. Purpose and Operating Assumptions
+
+
+
+### 1.1 Why this document exists separately
+
+`17-ai-platform.md` decides *what* the AI platform is. It is deliberately dense, and it is stable:
+once a decision in it is settled, it should not churn. This document decides *in what order the
+decisions get built*, and it is expected to churn — slice boundaries will move as the first few
+slices reveal how much a single Spec Kit cycle can actually absorb.
+
+Keeping them apart means the volatile document can be rewritten without touching the authoritative
+one.
+
+### 1.2 The four assumptions that shape the sequence
+
+These are stated explicitly because they invalidate the ordering criteria that would otherwise be
+obvious, and because if any of them stops being true the plan needs revisiting.
+
+
+| #   | Assumption                                                                                                                                              | Consequence for the plan                                                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Nothing is sold and nothing is deployed.** The product ships only when the Flutter client, the Supabase backend, and the AI platform are all complete | "Independently shippable" is not a useful property of an increment. No slice needs to be demoable, and no slice needs a migration path from a previous release                  |
+| 2   | **Feature specs are authored by a capable but not exceptional reasoning model.** Its job is to transcribe architecture into tasks, not to design        | A slice must be answerable entirely from `17-ai-platform.md`. Any slice that would require inventing an architectural decision is mis-scoped ([§6.3](#63-stop-conditions))      |
+| 3   | **Implementation is performed by a model with weak judgement.** It will implement whatever the spec says, including whatever the spec got wrong         | Contracts must be frozen as *code* before their consumers are built, so the implementer is constrained by the type system rather than by prose ([§2.3](#23-the-no-rework-rule)) |
+| 4   | **The reviewer is one human.** Review capacity, not implementation capacity, is the binding constraint                                                  | Slice size is chosen so that one diff is reviewable in one sitting against one named part of the architecture                                                                   |
+
+
+
+
+### 1.3 Decisions this plan records
+
+These supersede the phase model previously carried in §12.2 of the architecture document.
+
+
+| #    | Decision                                                                                                                                                 | Rationale                                                                                                                                                                                                                                                                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DP-1 | **The P0–P4 milestone layer is retired.** Slices are grouped into lettered *bands* for orientation only; a band is not a gate and has no release meaning | Milestones existed to mark "safe to expose to a clinic". With no rollout before completion, that gate protects nothing and only adds a concept                                                                                                                                                                                                                              |
+| DP-2 | **Sequencing is driven by dependency and contract stability**, not by user-visible value                                                                 | The only thing that can make a later slice expensive is an earlier slice having frozen the wrong contract, so contract slices come first                                                                                                                                                                                                                                    |
+| DP-3 | **A slice is complete when an automated test proves it**, not when it can be demonstrated                                                                | With nothing deployed, tests are the only available evidence, and they are also the review artifact ([§2.2](#22-the-completion-criterion))                                                                                                                                                                                                                                  |
+| DP-4 | **Contracts are frozen in dedicated early slices that contain no behaviour**                                                                             | A frozen, typed contract is a constraint a weak implementer cannot drift away from; prose in a spec is a suggestion                                                                                                                                                                                                                                                         |
+| DP-5 | **Compatibility machinery is deferred, but its contract surface is not**                                                                                 | There are no deployed clients, so overlap windows, deprecation flows, staged prompt rollout, and the `context_required` self-healing *behaviour* have no audience yet. The error codes, lifecycle states, and journal columns they need are cheap now and expensive to retrofit, so those land early and stay unused; the behaviour is sliced as band J ([§3.9](#39-band-j--deferred-compatibility-machinery)) |
+| DP-6 | **The client architecture guard (R-12) lands before any client AI code**, not at hardening time                                                          | The guard exists to stop prompt text, provider names, and model identifiers from entering the Flutter app. With generated client code, that is the expected outcome rather than a tail risk, so the guard must precede the code it guards                                                                                                                                   |
+| DP-7 | **The walking-skeleton thread is retained as a falsification checkpoint**, not as a release                                                              | Without shipping pressure, the failure mode is fifty well-tested slices that have never run together. One end-to-end thread through a fake provider is the earliest point at which the contract slices can be proven wrong ([§5](#5-review-checkpoints))                                                                                                                    |
+| DP-8 | **Everything the architecture decides is sliced (bands A–J).** Only band G and band K stay coarse                                                        | Band G is blocked on product decisions rather than architectural ones, and band K is deliberately undesigned — slicing either would encode a default or a deferral as a commitment ([§4](#4-bands-not-yet-decomposed))                                                                                                                                                       |
+
+
+---
+
+
+
+## 2. What a Slice Is
+
+
+
+### 2.1 Definition
+
+A slice is one Spec Kit feature: one `specs/<NNN>-<name>/` directory, one branch, one review. It
+implements a *named part* of `17-ai-platform.md` — ideally one component from §4 or one contract from
+§5 — and nothing else.
+
+Slice identifiers in this document (`A1`, `D6`, …) are stable and do not change when a slice is
+started. The three-digit Spec Kit number is assigned at that moment from the next free number in
+`specs/`, so a slice directory looks like `specs/015-ai-worker-skeleton/` while still being referred
+to here as A1.
+
+### 2.2 The completion criterion
+
+**A slice is done when a test a human can read and believe passes.** Every slice's `spec.md` states
+its acceptance criteria as test cases, and the review artifact is the test file plus the diff. The
+minimum case list for each slice is [§3.11](#311-required-test-cases-per-slice), governed by the
+coverage rule in [§3.10](#310-coverage-rule).
+
+This replaces "independently shippable" (DP-1, DP-3). It has two useful side effects: it gives the
+spec-authoring model something concrete to write instead of prose about clinical value, and it makes
+a slice's boundary self-enforcing — work that cannot be named in a test belongs to a different slice.
+
+### 2.3 The no-rework rule
+
+**A later slice may extend an earlier slice's contract. It may never rewrite one.** Adding a field, a
+case, a column, or an implementation is extension. Changing the meaning of an existing one is not.
+
+If a slice discovers that a frozen contract is wrong, that is not a licence to change it inside the
+slice. It is a finding: stop, amend `17-ai-platform.md`, and treat the amendment as a contract change
+reviewed on its own ([§13.4](17-ai-platform.md#134-environments-configuration-and-secrets),
+"contracts first"). The rule exists because the implementer will otherwise "fix" a contract to suit
+the slice in front of it, and the fix will be invisible in a large diff.
+
+### 2.4 Every slice states its exclusions
+
+Each slice's `spec.md` carries an explicit out-of-scope list, the way the retired phase table did per
+phase. With fifty slices instead of five phases, R-20 (complexity creep) has ten times as many
+openings, and an implementer with weak judgement is exactly the kind that helpfully adds a retry loop
+nobody asked for.
+
+### 2.5 Sizing guidance
+
+A correctly sized slice touches one component from §4, produces roughly 10–25 tasks, and has
+requirements that fit on a page or two because they are restatements of named architecture sections.
+A slice whose `spec.md` needs original prose to explain *why* is too large or is mis-scoped.
+
+---
+
+
+
+## 3. The Slice Sequence
+
+
+
+### 3.1 How to read the tables
+
+`Canonical` names the sections of `17-ai-platform.md` a slice implements; these are the sections the
+spec must cite and the reviewer must check against. `Needs` lists prerequisite slices. `Done when`
+states the acceptance shape — the spec expands each into named test cases.
+
+Bands A, B, and C are close to strictly ordered. Band D and band E may proceed in parallel once C2
+exists. Band F may start any time after the slice it hardens. Band H is the last large block of new
+behaviour. Band J is ordered by trigger rather than by position: each of its slices waits for the
+condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility-machinery)).
+
+### 3.2 Band A — Foundations and frozen contracts
+
+Nothing in this band handles a real request. It exists so that everything after it is constrained.
+
+
+| ID     | Slice                                                                     | Canonical                  | Needs | Done when                                                                                                                                                                                                                                                                                                   |
+| ------ | ------------------------------------------------------------------------- | -------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A1** | Worker skeleton and environments                                          | §13.4, §1.4                | —     | Separate dev/staging/production Worker environments deploy, each with its own D1, R2, and Durable Object namespaces and its own secret bindings; a health endpoint reports build and environment identity; a test fails if two environments share any binding                                               |
+| **A2** | Diagnostic envelope: error taxonomy, request reference, trace propagation | §5.4, §4.3.1, §13.1, §13.2 | A1    | Every code in the §5.4 table exists with its retryability, quota-consumption flag, and HTTP mapping; a caller-supplied trace id appears on every log line for that request; the request reference generator produces a short human-readable identifier; an unrecognised code is treated as `internal_error` |
+| **A3** | Canonical inference representation                                        | §5.3, §9.10                | A1    | Canonical request, stream chunk, result, and error types exist; a contract test fails if any field name is provider-shaped                                                                                                                                                                                  |
+| **A4** | Capability manifest schema and loader                                     | §5.1, §5.7                 | A3    | The manifest schema covers all ten field groups; the build fails on a malformed manifest or on an in-place edit to a published version; `interaction_mode` defaults to `single_shot`                                                                                                                        |
+| **A5** | Context key vocabulary and shape registry                                 | §5.2                       | A4    | The `domain.concept@vN` format is enforced; the first key's shape is published; a test rejects a key named after storage rather than meaning                                                                                                                                                                |
+| **A6** | D1 schema and migrations                                                  | §7.3, §13.4                | A1    | Forward-only migrations create every entity in §7.3, including the index on the request reference and the nullable `conversation_id` / `turn_ordinal` columns; a schema snapshot test pins the result; migrations apply cleanly to an empty database                                                        |
+| **A7** | Config cache                                                              | §4.3.2, §4.4, §9.15        | A6    | A warm isolate answers installations, keys, entitlements, grants, kill switches, and the active routing policy from memory with no I/O; a cold isolate performs exactly one D1 read; TTL expiry is covered by a test                                                                                        |
+| **A8** | Protocol adapter and SSE framing                                          | §4.3.1, §5.5               | A2    | Size limits and the idempotency key, trace id, and version pin headers are parsed; a stream opens with `accepted` carrying the request reference, emits heartbeats, and ends with exactly one terminal event; the one-terminal-event invariant holds under abort                                            |
+
+
+
+
+### 3.3 Band B — Trust, identity, and admission
+
+
+| ID     | Slice                                               | Canonical                           | Needs      | Done when                                                                                                                                                                                                                                                                               |
+| ------ | --------------------------------------------------- | ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1** | Supabase installation keystore                      | §4.2, §8.1                          | —          | The installation id and private signing key live in a restricted schema; an RLS test proves `anon` and `authenticated` cannot read it; rotation adds a key without invalidating tokens already in flight                                                                                |
+| **B2** | AAT issuer RPC                                      | §5.6, §4.2, §8.1                    | B1         | All claims in §5.6 are populated; a test proves `scopes` are derived from the RBAC tables and can never be supplied by the caller; issuance is recorded; the issuer is itself rate-limited                                                                                              |
+| **B3** | Control-plane enrollment and installation lifecycle | §4.5, §8.1                          | A6         | Operator-authenticated enroll, suspend, resume, rotate, and delete write `installation`, `installation_key`, `entitlement`, and a `control_audit` row carrying the operator identity                                                                                                    |
+| **B4** | Token verifier port and identity stage              | §4.3.2, §5.6, §6.1 stage 2          | A7, B2, B3 | Signature, audience, expiry, and clock skew are verified through the verifier port; the request principal is immutable to later stages; a suspended installation is rejected. Replay rejection is explicitly out of scope here — it belongs to B6                                       |
+| **B5** | Rate limiting and platform counters                 | §4.3.3, §4.3.12, §7.5, §6.1 stage 4 | B4         | All three composite keys are enforced; rejections increment bucketed `platform_counter` rows and a test proves they are never journaled as requests                                                                                                                                     |
+| **B6** | Quota Durable Object                                | §4.3.3, §4.4, §9.17, §7.7           | A6         | One admission call answers all four installation-scoped questions — `jti` freshness, idempotency novelty, remaining budget, concurrency headroom — and a separate credit call settles actual usage; ephemeral sets expire in place; a concurrency test demonstrates serialized counting |
+| **B7** | Admission stage and idempotency behaviour           | §6.1 stage 8, §6.2, §6.6            | B6         | A test asserts exactly one Durable Object round trip per request; a repeated idempotency key returns the original request's state instead of starting a second inference; Durable Object unavailability follows the capped fail-open grace policy (Open Decision 3)                     |
+| **B8** | Entitlement stage and kill switches                 | §4.3.3, §4.3.4, §6.1 stage 3, A8    | A7, B4     | AI-enablement, plan tier, capability grant, and all four kill-switch scopes are evaluated from the config cache with no D1 read on a warm isolate                                                                                                                                       |
+
+
+
+
+### 3.4 Band C — Capability, context, and the journal
+
+
+| ID     | Slice                                     | Canonical                            | Needs  | Done when                                                                                                                                                                                                                                          |
+| ------ | ----------------------------------------- | ------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **C1** | Capability registry and resolver stage    | §4.3.4, §5.1, §6.1 stage 5           | A4, B8 | A capability id plus requested version resolves to one immutable manifest honouring the client's pin; `capability_unknown`, `capability_retired`, and `capability_disabled` are distinguished                                                      |
+| **C2** | Capability discovery endpoint             | §5.5, §5.2                           | C1     | Active manifests for an installation and plan are returned, cacheable and revalidated by version or etag                                                                                                                                           |
+| **C3** | Context validator stage                   | §4.3.5, §5.2, §6.1 stage 6           | A5, C1 | Required keys, declared shapes, size bounds, and branch consistency against the token claims are enforced; undeclared keys are dropped rather than forwarded; a missing required key produces `context_required` carrying the missing-key manifest |
+| **C4** | Cost pre-flight                           | §4.3.3, §6.1 stage 7, A6             | C1     | Estimated input tokens plus the capability's maximum output tokens are checked against its per-request ceiling before any egress, producing `request_too_large`                                                                                    |
+| **C5** | Journal writer — the request row          | §4.3.11, §6.1 stages 9 and 15, §6.3  | A6, C1 | The `ai_request` row is written synchronously before any work begins and updated with the terminal state; every state transition in §6.3 is journaled with a timestamp; a test proves a request rejected by the guard produces no journal row      |
+| **C6** | Post-response detail and payload envelope | §4.3.11, §7.4, §7.4.1, §6.1 stage 16 | C5     | `ai_attempt` rows, the `usage_event` row, and exactly one R2 object per request are written after the response; a test asserts one R2 `PutObject` per request and that a failure here never fails the request                                      |
+| **C7** | Get-request endpoint                      | §5.5, §7.6                           | C5     | A request reference resolves to its terminal state and, if completed, the validated result, through a single indexed lookup                                                                                                                        |
+
+
+
+
+### 3.5 Band D — The inference path
+
+
+| ID      | Slice                                      | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                                                                                               |
+| ------- | ------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D1**  | Prompt registry and artifacts              | §4.3.6, §5.7, §9.5  | A4         | Prompt artifacts are immutable assets deployed with the Worker, pinned by hash from the manifest; the build fails if a pinned artifact is missing or altered; a test proves no prompt text is readable from D1                                                                                                                                          |
+| **D2**  | Prompt composer                            | §4.3.6, §5.3        | D1, C3, A3 | A canonical request is assembled from the system instruction, business-rule fragments, the context rendering template, the user intent, and the output constraints; the output-format instruction is derived from the output schema rather than authored separately; context is rendered as delimited typed data, never merged into instructions (R-10) |
+| **D3**  | Provider port and fake adapter             | §4.3.8, §13.5       | A3         | The provider port is defined including the retryable-versus-terminal classification contract; a deterministic fake adapter can produce success, each retryable failure class, each terminal failure class, truncation, and a malformed response                                                                                                         |
+| **D4**  | Routing policy and provider router         | §4.3.7, §7.3        | D3, A6     | A versioned routing policy stored as data yields an ordered candidate chain from capability requirements; the selection reason is recorded on the request; a test proves the chain depends only on capability, policy, and request — never on provider history                                                                                          |
+| **D5**  | Invocation with bounded retry and fallback | §4.3.7, §8.6, §6.6  | D4         | Retries are bounded and jittered and occur only for adapter-classified retryable failures; each attempt is journaled separately; exhausting the chain produces `provider_unavailable`; a stream restarted on a fallback target emits an explicit regenerating event and never splices two providers' text                                               |
+| **D6**  | Stream broker and prose streaming          | §4.3.10, §6.4, §5.5 | A8, D5     | Normalized chunks are relayed with incremental cheap guards for `prose`; heartbeats prevent idle timeouts; the full guard set runs on the assembled text at completion                                                                                                                                                                                  |
+| **D7**  | Connection-scoped cancellation             | §4.3.10, §6.5, §9.7 | D6         | A client disconnect aborts the in-flight provider fetch through its abort signal, the request terminates as `cancelled`, and partial usage is credited to the Quota Durable Object; a test proves no per-request state is created                                                                                                                       |
+| **D8**  | First real provider adapter                | §4.3.8              | D3         | Wire mapping, stream normalization, usage extraction, and error classification pass against recorded fixtures including malformed and truncated responses; credentials come from the secret store and appear in no log or journal row                                                                                                                   |
+| **D9**  | Response validator                         | §4.3.9, §6.4        | D6         | Transport validity, schema conformance, declared business constraints, and safety guards (leaked system instructions, refusals, empty or truncated output, injection echo) are applied in that order                                                                                                                                                    |
+| **D10** | Bounded repair                             | §4.3.9              | D9         | A single budgeted re-ask with the validation errors appended is attempted only where the manifest allows it; attempts are capped, counted, and journaled; exhaustion produces `validation_failed` and invalid content is never returned                                                                                                                 |
+| **D11** | Structured and atomic output modes         | §6.4, §5.1          | D9         | `structured` emits `partial_structured` events every one of which is flagged provisional, and the terminal event carries the whole validated document; `structured_atomic` emits progress only; a test proves the terminal payload is self-contained and never assembled from chunks                                                                    |
+| **D12** | Second provider adapter                    | §4.3.8, §13.5       | D8, F1     | A second provider passes the same fixture suite and the capability evals, and is registered as a low-priority fallback target by routing policy alone, with no pipeline change                                                                                                                                                                          |
+
+
+
+
+### 3.6 Band E — Client integration
+
+E1 must land before E2 (DP-6). The rest of the band may proceed in parallel with band D once C2
+exists.
+
+
+| ID     | Slice                                  | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                   |
+| ------ | -------------------------------------- | ------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **E1** | Client architecture guard in CI        | §13.5, §3.4.1, R-12 | —          | A CI lint fails the Flutter build on prompt-like strings, provider names, or model identifiers anywhere in client code, and is proven by a deliberately failing fixture                                                                                                     |
+| **E2** | AI Client SDK                          | §4.1, §5.5, §5.4    | E1, A8, C2 | The SDK acquires and caches an AAT, re-mints once on `unauthenticated`, submits with a stable idempotency key, consumes the event stream, surfaces terminal state, exposes cancel, retains the last N request references, and never retries after a terminal platform error |
+| **E3** | Context Resolver registry              | §4.1, §5.2          | E2         | A generic context key → resolver registry assembles a payload from a key list; a test proves it never receives or branches on a capability id; results are cached only within a screen                                                                                      |
+| **E4** | Context provider RPC for the first key | §4.2, §5.2          | E3         | An ordinary read RPC returns the first key's declared shape under the caller's own RLS, with no AI-specific knowledge                                                                                                                                                       |
+| **E5** | First AI feature surface               | §4.1, §6.4, §13.2   | E2, E4     | Provisional content is visibly draft with no commit affordance until terminal success; the request reference is displayed on every failure; a test proves provisional content is never persisted or exported                                                                |
+| **E6** | AI availability flag and degraded mode | §4.2, §5.4, A11     | E2         | A non-enrolled installation hides AI affordances entirely without probing the network; platform unreachability renders as a normal state rather than an error dialog                                                                                                        |
+| **E7** | Client contract test                   | §13.5               | E3, C2     | The Flutter test suite fetches live manifests and fails if the Context Resolver cannot satisfy every declared key of every active capability                                                                                                                                |
+
+
+
+
+### 3.7 Band F — Hardening and operations
+
+
+| ID     | Slice                                           | Canonical             | Needs  | Done when                                                                                                                                                                                                                                                                                                |
+| ------ | ----------------------------------------------- | --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **F1** | Eval suite harness and first capability eval    | §13.5, A9             | D2, D8 | Golden cases run per capability in CI against fixtures and block a prompt change that regresses them; a scheduled live smoke set runs against pinned model versions                                                                                                                                      |
+| **F2** | Acceptance recording RPC and client accept path | §4.2, §4.1, A5        | E5, C5 | Accepting AI content into a clinical record writes the domain change and the AI request reference together, so the clinic audit log can explain a field's provenance. Required before any capability may write to a clinical record                                                                      |
+| **F3** | Support lookup                                  | §4.5, §8.9, §7.6, A13 | C6, C7 | An operator resolves a request reference to the full trace and the R2 envelope through one indexed D1 lookup and one `GetObject`                                                                                                                                                                         |
+| **F4** | Retention purges and lifecycle rules            | §7.7                  | C6     | Each retention class expires on its own horizon; the diagnostic envelope's horizon is per-capability; an installation deletion is executable as a purge by installation id in both stores                                                                                                                |
+| **F5** | Usage rollups and ledger reconciliation         | §7.6, R-6             | C6, B6 | A scheduled job produces `usage_rollup` from `usage_event`, and a reconciliation pass reports requests with a terminal state but missing attempt rows or missing usage credit                                                                                                                            |
+| **F6** | Soft-threshold degraded routing                 | §4.3.3, §8.8, §4.3.7  | D4, B6 | Crossing a soft quota threshold downgrades routing to the capability's degraded tier rather than refusing; exhaustion disables an additive feature and says so, and never hard-locks anything                                                                                                            |
+| **F7** | Operational dashboards from the journal         | §13.1                 | C6     | The named diagnostics are answerable by query against the journal and rollups with no second metrics store: time to first token by provider, validation-failure rate by prompt version, repair rate by capability, fallback rate by provider, cost per capability per installation, quota rejection rate |
+| **F8** | Load and cost tests                             | §13.5, §13.6          | D12    | Guard latency at p95 under concurrency, D1 write headroom, and Durable Object throughput per installation are measured, and per-request R2 Class A operations and Durable Object round trips are asserted at one and two respectively                                                                    |
+
+
+
+
+### 3.8 Band H — Conversational capabilities
+
+Everything amendment A14 introduces, and nothing before it: `interaction_mode` defaults to
+`single_shot`, so no button-invoked capability acquires behaviour from this band's existence. The
+band is fully determined by §6.7, §5.1, §5.2, §5.4, §5.5, and §8.10; it is placed late because it is
+the largest capability addition, not because it is under-specified.
+
+
+| ID     | Slice                                       | Canonical                              | Needs          | Done when                                                                                                                                                                                                                                                    |
+| ------ | ------------------------------------------- | -------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **H1** | Conversational manifest fields              | §5.1, §5.7, §6.7.4, A14                | A4             | A manifest may declare `interaction_mode: conversational` with max history turns, max context rounds per turn, transcript size limit, and a permitted key set; interaction mode is fixed for the life of a capability version; conversational-only fields are rejected on a `single_shot` manifest |
+| **H2** | Context-request schema and the fourth terminal event | §6.7.2, §5.5, §5.4, §6.3      | A2, A8, H1     | One platform-owned `{key, arguments}` schema is shared by every conversational capability; `context_requested` is a terminal event kind and not a taxonomy code; `AwaitingContext` is terminal and immutable; a `single_shot` client can never receive the fourth kind |
+| **H3** | Transcript validation and conversation budgets | §4.3.5, §6.7.1, §6.7.3              | C3, C4, H1     | Turn ordering and declared turn shapes are validated; max history turns and max context rounds are counted from the submitted transcript alone; a breach produces `conversation_budget_exhausted`; the permitted key set is an allowlist enforced at the validator; per-turn cost pre-flight prices the transcript with no new mechanism |
+| **H4** | Composer transcript rendering and dual output shape | §4.3.6, §6.7.2                 | D2, D9, H2     | The transcript renders as prior turns of delimited typed data on the same footing as context; the context-request schema is offered as a second permitted output shape alongside prose; the validator accepts either |
+| **H5** | Conversational journaling                   | §7.3, §6.7.1, §8.10                    | C5, C6, H2     | `conversation_id` and `turn_ordinal` are written per leg; a whole conversation is readable with one indexed query; each leg is independently admitted, journaled, and credited; no conversation entity and no per-request state is introduced |
+| **H6** | Client conversation store and chat surface  | §4.1, §6.7, §8.10                      | E2, E3, H2     | The client holds the transcript locally, resupplies it per leg, resolves requested keys through the existing Resolver, appends the request and payload, and submits the next leg with a new idempotency key; the transcript is discarded when the conversation closes |
+| **H7** | Conversation evals                          | §13.5, A9                              | F1, H4         | Scripted multi-leg conversations are scored per conversation: does the assistant request the right keys, stay inside the permitted set, and converge within the round budget |
+
+
+### 3.9 Band J — Deferred compatibility machinery
+
+Deferred under DP-5 because there are no deployed clients, not because it is undesigned. Each slice's
+contract surface already exists from bands A–D, so these are behaviour-only additions. Build a slice
+when its trigger fires; the triggers are in the `Build when` column.
+
+
+| ID     | Slice                                            | Canonical                | Needs          | Build when                                                                        | Done when                                                                                                                                                                                                                        |
+| ------ | ------------------------------------------------ | ------------------------ | -------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **J1** | Capability deprecation and the overlap window    | §5.7, §12.4, A12         | C1, C2, B3     | A client version exists in the field that a capability change could break         | Discovery announces deprecation with a successor before retirement is enforced; a deprecated version keeps serving for the configured window; retirement returns `capability_retired` so old clients prompt for an update        |
+| **J2** | `context_required` self-healing round trip       | §8.4, §5.2               | C3, E2, E3     | A client's manifest cache can be stale relative to the platform                   | A client receiving `context_required` refreshes its manifest, resolves the named keys, and resubmits **once** with the same idempotency key; a second `context_required` surfaces to the user with the request reference          |
+| **J3** | Staged rollout and canary cohorts                | §12.4, §4.5, §13.4       | B3, D1, D4, F1 | A prompt, capability version, or routing policy has an audience that can be split | A new capability build, prompt artifact, or routing policy version is activated for a named cohort, promoted, or rolled back by deploy; every activation is a `control_audit` row with the operator identity                     |
+| **J4** | Token contract rotation with overlapping acceptance | §5.7, §5.6            | B2, B4         | The token contract needs its first change                                         | Two `ver` values are accepted simultaneously during a rotation window; tokens of the retired version are refused after it; rotation requires no re-enrollment                                                                     |
+
+
+### 3.10 Coverage rule
+
+A slice's suite must cover, with no exceptions:
+
+1. The happy path of every requirement.
+2. **Every error code the slice can emit**, one case each.
+3. Every branch of every rule the slice states.
+4. Every invariant and every prohibition it inherits from [§6.4](#64-what-implementation-must-never-do).
+5. Every boundary the architecture names — size limits, caps, TTLs, skew windows, retry ceilings.
+
+Coverage is **behavioural, not line-based**; a line-coverage percentage is not evidence. Where a case
+below says *spy*, the assertion is on the number or absence of calls, because several of this
+platform's invariants are about work *not* done. The cases in
+[§3.11](#311-required-test-cases-per-slice) are a floor, not a ceiling.
+
+Every slice's suite joins CI permanently. A checkpoint ([§5](#5-review-checkpoints)) requires every
+prior suite green, not just the latest.
+
+### 3.11 Required test cases per slice
+
+#### 3.11.1 Band A
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **A1** | Infra / config | Each environment deploys; health endpoint returns build and environment identity; no binding is shared between two environments; a missing required binding fails startup rather than at first use |
+| **A2** | Unit + contract | One case per §5.4 code asserting its HTTP status, retryability, and quota-consumption flag; unrecognised code → `internal_error`; every error body carries reference, trace id, and retry-safety; reference format valid and unique across a large generation run; supplied trace id reaches every log line; absent trace id is generated |
+| **A3** | Contract | Round-trip each canonical element; a provider-shaped field name fails the guard test; chunk kinds exhaustive (`text_delta`, `partial_structured`, `usage`, `provider_note`); terminal flag appears exactly once per chunk sequence |
+| **A4** | Contract + build | A valid manifest loads with all ten field groups; one failure case per omitted or malformed group; in-place edit of a published version fails the build; omitted `interaction_mode` defaults to `single_shot`; conversational-only fields are rejected on a `single_shot` manifest |
+| **A5** | Contract | Valid key accepted; malformed format rejected; storage-named key rejected; unknown key version rejected; a conforming payload validates and one case per shape violation (type, cardinality, units, missing field) |
+| **A6** | Migration | Migrations apply cleanly to an empty database; schema snapshot matches; one presence case per §7.3 entity; request-reference index exists and is unique; `conversation_id` and `turn_ordinal` are nullable; re-running migrations is a no-op |
+| **A7** | Unit (spy) | Cold isolate performs exactly one D1 read; warm isolate performs zero I/O; TTL expiry triggers exactly one refetch; one case per cached entity kind; a D1 miss surfaces as a typed failure rather than an empty cache entry |
+| **A8** | Integration | Oversized body → `request_too_large` before any other work; one case per header parsed and per malformed header; stream opens with `accepted` carrying the reference; heartbeat emitted while idle; exactly one terminal event for each of `completed`, `failed`, `cancelled`; abort mid-stream still yields exactly one terminal event; no duplicate terminal event under any path |
+
+#### 3.11.2 Band B
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **B1** | SQL / RLS | `anon` read denied; `authenticated` read denied; the issuing function reads successfully; rotation adds a key without removing the previous one; a token signed by the previous key still verifies inside its validity window; a revoked key is rejected |
+| **B2** | SQL | One case per §5.6 claim populated; `scopes` derived from RBAC and unaffected by a caller attempting to supply them; expired or absent session rejected; issuance row written; issuer rate limit trips; `exp` within the configured minutes |
+| **B3** | Integration | Enroll writes `installation`, `installation_key`, `entitlement`, `control_audit`; one case per lifecycle action (suspend, resume, rotate, delete) asserting the audit row and operator identity; non-operator credentials rejected; duplicate enrollment handled deterministically |
+| **B4** | Unit + integration | Valid token accepted; one rejection case each for bad signature, wrong audience, expired, not-yet-valid inside skew, outside skew, unknown issuer, suspended installation; the principal cannot be mutated by a later stage; swapping the verifier implementation changes no outcome |
+| **B5** | Integration (spy) | One case per composite key tripping independently; `retry_after` returned; counter incremented with correct dimensions per rejection; no `ai_request` row created on rejection; counters flush bucketed, never one row per event |
+| **B6** | DO unit + concurrency | Fresh `jti` accepted, repeated `jti` rejected; new idempotency key accepted, repeat returns the prior record; budget exhaustion; concurrency ceiling; credit adjusts counters correctly including partial usage; N parallel admissions produce an exact final count; ephemeral entries expire in place |
+| **B7** | Integration (spy) | Exactly one Durable Object fetch per request; a repeated idempotency key returns the original state and starts no second inference; expired token with the same key → `unauthenticated` (§6.2); Durable Object unavailable → capped grace then rejection; grace usage is reconciled afterwards |
+| **B8** | Unit (spy) | AI-disabled installation; plan tier too low; capability not granted; one case per kill-switch scope (global, capability, installation, provider); warm isolate performs no D1 read |
+
+#### 3.11.3 Band C
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **C1** | Unit | Exact version pin resolves; unknown id → `capability_unknown`; retired → `capability_retired`; killed → `capability_disabled`; deprecated still serves; the returned manifest cannot be mutated |
+| **C2** | Integration | Only granted and active manifests returned; etag revalidation returns not-modified; a changed manifest changes the etag; an entitlement-gated capability is absent for an ineligible installation |
+| **C3** | Unit (spy) | Complete valid context passes; one case per required key missing, each listing exactly the missing keys in `context_required`; one case per shape violation → `context_invalid`; oversize key rejected; an undeclared key is provably absent from the composer input; org or branch mismatch against the token rejected; absent optional key passes |
+| **C4** | Unit (spy) | Under ceiling passes; over ceiling → `request_too_large`; the estimate includes the capability's max output tokens; no egress occurs on rejection |
+| **C5** | Integration (ordering) | The row exists before the provider is invoked; one terminal-state case each for `completed`, `failed`, `cancelled`, `rejected`; every §6.3 transition timestamped; a guard-rejected request produces no row; the row survives a failed generation |
+| **C6** | Integration (spy) | Exactly one R2 `PutObject` per request; the envelope contains all four sections; one `ai_attempt` row per attempt; exactly one `usage_event`; a failure here does not fail the request; all of it runs after the terminal event |
+| **C7** | Integration (spy) | Completed → state plus validated result; failed → state plus error code and no content; cancelled → state only; unknown reference → not found; exactly one indexed query |
+
+#### 3.11.4 Band D
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **D1** | Build + unit | A manifest-pinned hash resolves to its artifact; an altered artifact fails the build; a missing artifact fails the build; no prompt text is present in any D1 table; the prompt version is recorded on the journal row |
+| **D2** | Golden + unit | Composed request matches the golden for a fixture capability; changing the output schema changes the derived format instruction; context is rendered as delimited typed data; an instruction embedded in context does not act as an instruction (R-10); max tokens, stop conditions, and language constraints present; no provider-shaped field in the output |
+| **D3** | Unit | The fake produces success, one case per retryable class, one per terminal class, truncation, and a malformed response; the classification contract is exhaustive over the error taxonomy |
+| **D4** | Unit | Chain ordered by policy; one filtering case per capability requirement (structured support, context window, language, latency class); installation override applied; identical inputs produce an identical chain; the selection reason is recorded; a prior failure does not change the next request's chain |
+| **D5** | Integration | A retryable failure is retried to the cap then falls back; a terminal failure is not retried; jitter is applied; every attempt is journaled separately; an exhausted chain → `provider_unavailable`; a fallback after partial streaming emits the regenerating event and discards the earlier text; the retry budget is never exceeded |
+| **D6** | Integration | Chunks relayed in order; heartbeat emitted during provider silence; one case per incremental guard (length ceiling, stop sequence, system-prompt leak) aborting the stream and failing terminally; the full guard set runs on the assembled text; the terminal event carries the validated payload |
+| **D7** | Integration (spy) | Disconnect aborts the in-flight provider fetch via its abort signal; state becomes `cancelled`; partial usage is credited; the journal row is complete; no per-request state object is created; cancel before the first token and cancel mid-stream are separate cases |
+| **D8** | Adapter fixtures | Request-mapping golden; stream normalization; usage extraction; one case per provider error class mapped to the taxonomy; malformed response; truncated response; timeout; credentials absent from every emitted log and journal record |
+| **D9** | Unit (ordering) | Valid output passes; parse failure; schema violation; one case per declared business rule; one case per safety guard (leaked instruction, refusal, empty, truncated, injection echo); the four phases run in the stated order; invalid content is never emitted |
+| **D10** | Integration | Repair allowed → one re-ask with errors appended → success; repair disallowed → immediate `validation_failed`; repair fails → `validation_failed`; the attempt cap is enforced and journaled; repair cost is counted against the request |
+| **D11** | Integration | `structured` emits `partial_structured` events all flagged provisional; the terminal event carries the whole validated document; `structured_atomic` emits progress only; a client ignoring all chunks still receives the correct result; the terminal payload is not assembled from chunks |
+| **D12** | Adapter fixtures + evals | The full D8 case list against the second provider; capability evals pass; the provider is added by a routing-policy edit with no pipeline diff; fallback ordering honoured |
+
+#### 3.11.5 Band E
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **E1** | CI lint | A fixture containing a prompt-like string fails the build; a provider name fails; a model identifier fails; a clean tree passes; the guard covers every client source path |
+| **E2** | Flutter unit + integration | Token acquired and cached; one re-mint on `unauthenticated` then success; no re-mint loop; the idempotency key is stable across transport retries of the same action; stream consumed to its terminal event; cancel closes the stream; one case per terminal code proving no retry; last-N references retained; an unknown error code is treated as `internal_error` |
+| **E3** | Flutter unit | A key list resolves to a payload; an unknown key surfaces a typed failure; the API exposes no capability id; the cache is screen-scoped and discarded on dispose |
+| **E4** | SQL / RLS | Returns the declared shape; RLS denies out-of-scope rows; the RPC takes no AI-specific parameter; the returned shape matches the key shape published in A5 |
+| **E5** | Flutter widget | Provisional content is visually distinct; no commit control exists before `completed`; accept and discard both behave; failure displays the request reference; provisional content does not survive a rebuild or restart; the degraded state renders |
+| **E6** | Flutter (spy) | A non-enrolled installation shows no affordances and makes no network call; an unreachable platform renders a normal state, not an error dialog; enrolled and reachable shows affordances |
+| **E7** | Flutter contract | Every declared key of every active manifest is resolvable; a manifest requiring an unknown key fails the suite |
+
+#### 3.11.6 Band F
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **F1** | CI | The golden set passes on the current prompt; a deliberately regressed prompt fails; scores are recorded per run; the scheduled live smoke set runs against pinned model versions |
+| **F2** | SQL + Flutter | Acceptance writes the domain change and the request reference together or not at all; the clinic `audit_log` entry is present; the discard path writes nothing; unaccepted content is never persisted |
+| **F3** | Integration (spy) | A reference resolves to trace plus envelope in exactly one D1 query and one `GetObject`; an expired envelope still resolves its metadata; a non-operator is denied |
+| **F4** | Scheduled job | One expiry case per retention class; the per-capability diagnostic horizon is honoured; purge by installation id clears both stores; nothing inside its horizon is deleted |
+| **F5** | Scheduled job | Rollup totals equal ledger sums; reconciliation flags a terminal request missing attempt rows; flags missing usage credit; a re-run is idempotent |
+| **F6** | Integration | Crossing the soft threshold selects the degraded target; hard exhaustion returns `quota_exhausted` with the admin path and disables the feature without locking anything; below-threshold traffic is unaffected |
+| **F7** | Query tests (spy) | One case per named diagnostic returning correct values against a seeded journal; no second metrics store is written |
+| **F8** | Load | Guard p95 within tens of milliseconds at target concurrency; exactly one R2 Class A operation and two Durable Object requests per request under load; D1 write headroom measured; Durable Object throughput per installation measured |
+
+#### 3.11.7 Band H
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **H1** | Contract + build | A conversational manifest loads with all four extra fields; one failure case per omitted field; conversational fields on a `single_shot` manifest are rejected; changing interaction mode in place fails the build; a permitted key set naming an unknown key fails |
+| **H2** | Contract + integration | The shared context-request schema validates a conforming request and rejects each malformed form; `context_requested` is absent from the error taxonomy; `AwaitingContext` is terminal and cannot transition; a `single_shot` capability can never emit the fourth kind; still exactly one terminal event per leg |
+| **H3** | Unit | Valid transcript passes; out-of-order `turn_ordinal` rejected; malformed turn shape rejected; history-turn limit breached → `conversation_budget_exhausted`; consecutive context rounds at the transcript tail breached → same code; a key outside the permitted set is dropped even when requested by the model; oversized transcript → `request_too_large` from the existing pre-flight; a trimmed transcript is accepted but bounded by admission (R-22) |
+| **H4** | Golden + unit | Transcript renders as delimited typed prior turns; an instruction inside a user turn does not act as an instruction (R-10); a prose answer validates; a context request validates; output that is neither fails; the composer draws no distinction between chat text and clinical free text |
+| **H5** | Integration (spy) | `conversation_id` and `turn_ordinal` written per leg; one indexed query returns a whole conversation ordered; each leg admitted and credited independently; a `context_requested` leg is credited with actual usage; no conversation table and no per-request state object created |
+| **H6** | Flutter | Transcript held locally and resupplied per leg; requested keys resolved through the existing Resolver with no capability branching; each leg uses a new idempotency key; the transcript is discarded on close; closing one leg's stream cancels only that leg; the conversation survives a cancelled leg |
+| **H7** | Evals | A scripted conversation converges within the round budget; one case where the assistant must request the correct key; one case proving it cannot obtain a key outside the permitted set; scoring is per conversation, not per turn |
+
+#### 3.11.8 Band J
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **J1** | Integration | Discovery marks a deprecated version with its successor; a deprecated version still serves inside the window; after retirement the same request returns `capability_retired`; retirement is journaled with the operator identity |
+| **J2** | Flutter integration | A stale client receiving `context_required` refreshes, resolves, and resubmits once with the same idempotency key and succeeds; a second `context_required` stops and surfaces the request reference; no automatic third attempt; conversational capabilities never take this path |
+| **J3** | Integration | A cohort receives the new build while others receive the previous one; promotion moves all cohorts; rollback restores the previous build; every activation writes a `control_audit` row; the journal records which version served each request |
+| **J4** | Unit + SQL | Both `ver` values verify during the rotation window; a retired `ver` is refused afterwards; a token minted under the new contract carries every claim; rotation requires no re-enrollment |
+
+
+---
+
+
+
+## 4. Bands Not Yet Decomposed
+
+Two bands are deliberately left coarse, for two different reasons. Neither reason is "the
+architecture has not decided" — everything the architecture owns is decided, which is why bands A
+through J are slices.
+
+### 4.1 Band G — Commercial surface
+
+Usage summary endpoint and in-app quota display; plan catalogue and entitlement management in the
+control plane; billing period close from the `usage_event` ledger; overage policies; per-installation
+capability grants.
+
+Not decomposed because the missing inputs are **product decisions, not architectural ones**: the
+quota unit and period are Open Decision 2, plan structure and overage policy have no owner yet, and
+invoice generation is explicitly outside this platform (§12.3). Decomposing now would encode a
+recommended default as a commitment. Nothing here is on the critical path — its only claim on earlier
+slices is that entitlement and quota are consulted inside the guard, and stages 3 and 8 of §6.1
+already reserve that position.
+
+### 4.2 Band K — Explicitly later
+
+Held under §12.5 and §9.14 of the architecture document, each with its own written trigger:
+health-based provider routing, out-of-band cancellation and stream resume, region-aware routing, D1
+sharding, an on-LAN OpenAI-compatible adapter, per-context-key redaction, per-installation model
+preferences, asynchronous or batch execution, fine-tuning, and vector search.
+
+Not decomposed because these are **deliberately undesigned**. Each is a deferral with a written
+trigger, and slicing one now would be a soft commitment to build it. Adding one requires citing the
+evidence its trigger names, not the argument for it (R-20).
+
+---
+
+
+
+## 5. Review Checkpoints
+
+A checkpoint is a point at which the *composition* of the preceding slices is examined, rather than
+any single slice. It is not a gate on shipping, because nothing ships (DP-1); it is a gate on
+continuing to build in the same direction.
+
+
+| #       | After                             | Question the checkpoint answers                                                                                                                                                                                                                                                                                                     |
+| ------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CP1** | A8                                | Do the frozen contracts compose at build time? Manifest, context key shapes, canonical representation, and error taxonomy are mutually consistent, and the contract tests in §13.5 pass                                                                                                                                             |
+| **CP2** | B8                                | Can a request be authenticated, admitted, and correctly rejected with no inference? The guard's I/O budget — one Durable Object round trip, one D1 insert — is measurable and met                                                                                                                                                   |
+| **CP3** | D7 with the fake adapter, plus E5 | **The falsification checkpoint (DP-7).** One thread runs from a Flutter button through the whole guard, a composed prompt, a fake provider, a stream, and a terminal event, and back to a rendered draft. This is the earliest point at which a wrong contract becomes visible, and the last point at which correcting one is cheap |
+| **CP4** | D12                               | Is the inference path complete and provider-independent? A second provider is added by adapter and policy alone, with no pipeline change — the claim in §12.4 that the whole design rests on                                                                                                                                        |
+| **CP5** | F8                                | Is the platform operationally honest? Every request is explainable from its reference, costs are bounded and measured, and the metered footprint matches §13.6.1                                                                                                                                                                    |
+
+
+At CP2, CP4, and CP5, also perform the review R-19 and R-20 call for: diff the implemented components
+against §4, and confirm nothing from §9.14 was added without its trigger.
+
+---
+
+
+
+## 6. Spec Authoring Protocol
+
+This section is the instruction set for whichever model authors a slice's `spec.md` and `plan.md`.
+
+### 6.1 The authoring model's job is transcription, not design
+
+`17-ai-platform.md` has already made the decisions. A slice spec is correctly written when it can be
+produced by citing sections and attaching acceptance tests to their statements. If the spec contains
+original architectural reasoning, something has gone wrong: either the slice is too large, or a
+decision is missing from the architecture document and is being invented in the wrong place
+([§6.3](#63-stop-conditions)).
+
+### 6.2 Required sections in every AI platform slice spec
+
+
+| Section                      | Contents                                                                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Implements**               | The exact sections of `17-ai-platform.md` this slice realises, copied from the `Canonical` column of the slice's row                                            |
+| **Freezes**                  | Contracts this slice establishes for the first time. Later slices may extend these and may not rewrite them ([§2.3](#23-the-no-rework-rule))                    |
+| **Consumes**                 | Contracts frozen by earlier slices that this slice uses. Changing any of them is out of scope by definition                                                     |
+| **Requirements**             | Restatements of the cited architecture, each with acceptance criteria expressed as named test cases ([§2.2](#22-the-completion-criterion))                      |
+| **Test plan**                | The slice's row in [§3.11](#311-required-test-cases-per-slice) expanded into named tests, plus any case the coverage rule in [§3.10](#310-coverage-rule) adds  |
+| **Out of scope**             | Explicit exclusions, including anything from a neighbouring slice that would be tempting to finish while nearby ([§2.4](#24-every-slice-states-its-exclusions)) |
+| **Open decisions relied on** | Any of the fourteen decisions in §15 whose recommended default this slice assumes                                                                               |
+
+
+
+
+### 6.3 Stop conditions
+
+Authoring must stop and escalate to an architecture change, rather than proceed, when any of these is
+true:
+
+1. A requirement cannot be traced to a section of `17-ai-platform.md` or to a recommended default in
+  §15.
+2. Satisfying the slice appears to require changing a contract listed in its **Consumes** section.
+3. The slice cannot be given acceptance criteria as test cases.
+4. The task list exceeds roughly 25 tasks, or the slice touches more than one component from §4
+  without an explicit reason recorded in the plan.
+
+Escalation means amending `17-ai-platform.md` first, then returning. The amendment is reviewed as a
+contract change, which is the discipline §13.4 already requires of every capability and context-key
+change.
+
+### 6.4 What implementation must never do
+
+Restated here because these are the failure modes a weak implementer produces by default, and each
+maps to a named risk:
+
+- Add a mechanism from §9.14 because it looks prudent (R-20).
+- Put prompt text, a provider name, or a model identifier anywhere in the Flutter client (R-12) — E1
+exists to make this fail the build.
+- Add a second round trip to the Quota Durable Object, or a second R2 object per request (§7.5,
+§13.6).
+- Journal a guard rejection as a request, or write a D1 row per stream chunk (§7.5).
+- Introduce per-request server-side state of any kind (§4.4, §9.7).
+- Assemble a final result from stream chunks on the client, or make provisional content committable
+(§6.4, A5).
+
+---
+
+
+
+## 7. Dependencies Outside the Platform
+
+Three prerequisites sit outside the AI platform's own work and are on someone else's schedule.
+
+
+| Dependency                                                        | Blocks         | Note                                                                                                                                                                                                     |
+| ----------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The clinic schema and RPCs that can satisfy the first context key | A5, E4         | The Context Contract can only declare keys the clinic side can actually produce. Confirm which of the §5.2 example keys the current schema supports before A5 fixes the first key's shape                |
+| Supabase RBAC tables stable enough to derive AI capability scopes | B2             | `scopes` are derived server-side from RBAC and never supplied by the client, so the RBAC model must be settled before the token contract is                                                              |
+| Selection of the first capability                                 | A5, D1, D2, E5 | Open Decision 1, whose recommended default is one non-clinical-record capability. Its output mode should be `prose` and its acceptance mode `advisory_display`, so that F2 is not a prerequisite for CP3 |
+
+
+The constitution amendment recorded in §14 — registering the new deployable component and its
+boundary in `.specify/memory/constitution.md` — should be made before A1, not after, so that the
+first slice is not itself architectural drift.
+
+### 7.1 Repository layout
+
+The gateway lives in **`ai-platform/`** at the repository root, alongside `frontend/` and
+`backend/`: Worker source, D1 migrations, prompt artifacts, and tests. It is deliberately a sibling
+rather than a subdirectory of `backend/`, because it is a separate deployable with a separate store
+and no write path into Supabase (§3.4, §14).
+
+The Spec Kit templates in `.specify/templates/` predate this directory and name only `frontend/` and
+`backend/` in their path conventions. A slice's plan extends the tree rather than forcing Worker code
+into `backend/`.

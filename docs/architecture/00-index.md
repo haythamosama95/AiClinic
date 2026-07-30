@@ -30,6 +30,7 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 - `docs/architecture/16-testing.md`: backend SQL tests, Flutter test layout, CI scope.
 - `docs/architecture/17-ai-platform.md`: AI platform architecture — gateway boundaries, trust model, prompt ownership, provider routing, AI data model. Proposal; supersedes earlier AI statements in this doc set.
 - `docs/architecture/17a-ai-platform-overview.md`: high-level AI platform overview — components, contracts, request flow. Read this first for orientation; `17-ai-platform.md` remains canonical.
+- `docs/architecture/17b-ai-platform-delivery-plan.md`: AI platform build order — slice decomposition, acceptance criteria, review checkpoints, and spec-authoring rules. Read before opening a Spec Kit feature for AI platform work.
 - `docs/architecture/ARCHITECTURAL_FLAWS.md`: known architectural risks, doc/code drift, and remediation priorities.
 
 ## Common Routing Shortcuts
