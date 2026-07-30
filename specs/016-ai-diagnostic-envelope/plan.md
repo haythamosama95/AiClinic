@@ -106,16 +106,16 @@ boundary.
 ```text
 specs/016-ai-diagnostic-envelope/
 ├── spec.md               # /ai-platform-specify output (authoritative)
-└── plan.md               # This file (/ai-platform-plan output)
+├── plan.md               # This file (/ai-platform-plan output)
+└── quickstart.md         # What A2 implemented, files to review, and how to validate in CI
 ```
 
 No `data-model.md` — A2 defines no D1 entities (spec Key Entities: "Not applicable").
 No `contracts/` — A2 freezes the error-taxonomy, error-body, request-reference, and trace contracts
 as prose + code in its `## Slice Contract`, Requirements, and `ai-platform/` source; it produces no
 machine-readable contract artifact beyond the TypeScript types that encode them (the contract *is*
-the typed module). No `quickstart.md` — a human runs nothing to verify A2; its evidence is the
-permanent CI contract suite (DP-3). No `research.md` — the research is `17-ai-platform.md` and
-redoing it is how architecture drift starts (Delivery Plan §6.1).
+the typed module). No `research.md` — the research is `17-ai-platform.md` and redoing it is how
+architecture drift starts (Delivery Plan §6.1).
 
 ### Source Code (repository root)
 
@@ -182,6 +182,7 @@ Stop condition 5 is not triggered.
 | `ai-platform/test/reference.test.ts` | Created | T21, T28 |
 | `ai-platform/test/trace.test.ts` | Created | T22, T23 |
 | `ai-platform/test/log-redaction.test.ts` | Created | T25, T27 |
+| `specs/016-ai-diagnostic-envelope/quickstart.md` | Created | Slice completion guide — what was implemented, files to review, CI validation commands (Documentation) |
 
 Every file traces to named FRs and named tests. No file is untraced. No file introduces a
 requirement the spec does not name. `worker.ts` is modified, not created, and its modification is
@@ -243,6 +244,8 @@ order is driven by what each module's tests need to exist:
    `test/log-redaction.test.ts`.
 6. **Full CI run** — all five test files plus A1's two, green, before the slice is reviewable
    (Delivery Plan §3.10 — every prior suite green, not just the latest).
+7. **`quickstart.md`** — last; documents what was implemented, the files to review, and how to
+   reproduce the green suite for a human reviewer.
 
 No implementation step precedes its test by more than the trivial "the module the test imports
 must exist" coupling. No test is deferred to a later slice. The `worker.ts` change is last among

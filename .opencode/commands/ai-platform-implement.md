@@ -86,10 +86,16 @@ wins:
 5. **Implement only what the plan's Files section names**, and only for in-scope tasks. A file not in
    that table is out of scope.
 6. **Mark each finished task `[X]` in `tasks.md`** as you complete it, and report progress per task.
-7. **When the Verification phase is in scope, run it last:** this slice's whole suite plus **every prior
-   slice's suite** (delivery plan §3.10). A prior slice going red is a regression, not an acceptable
-   cost. If Verification is out of scope, still report the suite's state at the point you stopped.
-8. **Report and stop.** List the tasks completed, the tasks left in the selected phases (with why), and
+7. **When the Verification phase is in scope, run it before Documentation:** this slice's whole suite
+   plus **every prior slice's suite** (delivery plan §3.10). A prior slice going red is a regression,
+   not an acceptable cost. If Verification is out of scope, still report the suite's state at the
+   point you stopped.
+8. **When the Documentation phase is in scope, write `quickstart.md` last** — only after Verification
+   is green. Fill it per `.specify/templates/ai-platform-quickstart-template.md`: a brief of what was
+   implemented, the files to review, exact commands to run the suite (and any slice-specific tests),
+   how to inspect the changes, and manual validation steps only when the slice exposes behaviour
+   beyond CI. The quickstart documents the passing state, not the plan.
+9. **Report and stop.** List the tasks completed, the tasks left in the selected phases (with why), and
    the next phase that is now runnable.
 
 ## Prohibitions — delivery plan §6.4

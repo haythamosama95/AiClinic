@@ -5,7 +5,29 @@ isolated environments — `development`, `staging`, and `production` — each wi
 and Durable Object bindings, plus a `/health` endpoint that reports build and environment
 identity.
 
-## 1. Prerequisites
+Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
+
+## 1. What was implemented
+
+- **`ai-platform/wrangler.toml`** — three named environments, each with isolated D1, R2, and
+  Durable Object bindings; per-environment `BUILD_SHA` variable.
+- **`ai-platform/src/worker.ts`** — startup binding-presence check (fail at module load if D1/R2/DO
+  missing) and `/health` endpoint returning `build` + `environment` JSON fields.
+- **`ai-platform/package.json` / `tsconfig.json`** — Workers + Vitest pool-workers project skeleton.
+- **`ai-platform/README.md`** — one-paragraph orientation to the gateway directory.
+- **Four contract tests** — environment deploy/bindings (T1, T3, T4) and health identity (T2).
+
+## 2. Files to review
+
+| Path | Role |
+| --- | --- |
+| `ai-platform/wrangler.toml` | Three-environment binding topology |
+| `ai-platform/src/worker.ts` | Startup check and `/health` handler |
+| `ai-platform/test/env-deploys.test.ts` | T1, T3, T4 — env isolation and missing-binding startup |
+| `ai-platform/test/health.test.ts` | T2 — build and environment identity |
+| `ai-platform/README.md` | Gateway directory orientation |
+
+## 3. Prerequisites
 
 From the repository root, activate the pinned Node version:
 
@@ -26,18 +48,13 @@ cd ai-platform
 npx wrangler login
 ```
 
-## 2. Install dependencies
+## 4. Run the automated suite (reproduce the green run)
 
 From the repository root:
 
 ```bash
 cd ai-platform
-npm install
-```
-
-## 3. Run the automated suite (reproduce the green run)
-
-```bash
+npm install   # first time only
 npm test
 ```
 
@@ -45,7 +62,20 @@ This runs `vitest run` and exercises all four named A1 tests (T1–T4) via
 `@cloudflare/vitest-pool-workers`. Expect four passing tests across `test/env-deploys.test.ts`
 and `test/health.test.ts`.
 
-## 4. Deploy each environment
+## 5. Inspect the changes
+
+```bash
+git diff ai/master -- ai-platform/
+```
+
+Read the binding topology and startup check:
+
+```bash
+cat ai-platform/wrangler.toml
+cat ai-platform/src/worker.ts
+```
+
+## 6. Deploy each environment
 
 Before the first deploy, provision Cloudflare resources for each environment if they do not exist
 yet:
@@ -80,7 +110,7 @@ Each command deploys to its own Worker name and binding set defined in `wrangler
 `wrangler deploy` prints the deployed URL when the command succeeds. Use that URL for the health
 check in the next step.
 
-## 5. Call the health endpoint
+## 7. Call the health endpoint
 
 The health endpoint path is `/health`. It returns JSON with two fields only:
 
@@ -106,7 +136,7 @@ Expected shape:
 Repeat for each deployed environment and confirm `environment` matches the wrangler `--env` value
 and `build` matches the SHA you passed at deploy time.
 
-## 6. Local smoke check (optional)
+## 8. Local smoke check (optional)
 
 To exercise a single environment locally without deploying:
 

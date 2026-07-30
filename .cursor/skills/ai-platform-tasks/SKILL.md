@@ -17,6 +17,7 @@ current branch or the slice id. If `plan.md` is missing, stop and say so.
 1. The slice's `spec.md` and `plan.md`.
 2. `docs/architecture/17b-ai-platform-delivery-plan.md` §3.10 and §6.
 3. `.specify/templates/tasks-template.md`.
+4. `.specify/templates/ai-platform-quickstart-template.md`.
 
 Do not read `17-ai-platform.md` at this phase. If you believe you need it, the spec is incomplete —
 that is stop condition 1.
@@ -48,6 +49,11 @@ Phases, replacing the template's:
 3. **Implementation** — one task per implementation unit in the plan's Files section.
 4. **Verification** — a final task running the whole suite, including every prior slice's suite
    (delivery plan §3.10).
+5. **Documentation** — always present. One task for `specs/<NNN>-<name>/quickstart.md`, filled per
+   `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review,
+   suite commands, how to inspect the changes, and manual validation only when the slice exposes
+   behaviour beyond CI. Add a separate `[P]` task per other documentation artifact the plan names
+   (e.g. `ai-platform/README.md` on the bootstrap slice only).
 
 Then keep Dependencies & Execution Order and Parallel Opportunities, scoped to this one slice.
 
