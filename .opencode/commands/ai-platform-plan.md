@@ -1,6 +1,5 @@
 ---
-name: ai-platform-plan
-description: Writes plan.md for an AI platform delivery slice whose spec.md already exists, filling the Spec Kit plan template and binding each consumed contract to an existing module without adding requirements. Use when the user asks to plan an AI platform slice or drive speckit.plan on one.
+description: Plan an AI platform delivery slice whose spec.md already exists, filling the Spec Kit plan template and binding each consumed contract to an existing module. Pass the slice id or spec path as the argument.
 ---
 
 # AI Platform — Plan a Slice
@@ -9,7 +8,16 @@ The spec is authoritative. **The plan may not introduce any requirement, file, o
 does not name.** You are choosing how to satisfy an already-written spec, not extending it.
 
 **Input:** the slice's `specs/<NNN>-<name>/spec.md`. Resolve it from the current branch or the slice
-id. If neither identifies exactly one spec directory, ask; do nothing else.
+id given as `$ARGUMENTS`. If neither identifies exactly one spec directory, ask; do nothing else.
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+The first argument should be the slice id (e.g. `A1`, `D6`). If empty, resolve from the current branch
+or ask.
 
 ## Sources — read exactly these
 

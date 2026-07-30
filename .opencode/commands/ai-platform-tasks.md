@@ -1,6 +1,5 @@
 ---
-name: ai-platform-tasks
-description: Writes tasks.md for an AI platform delivery slice whose spec.md and plan.md already exist, one task per acceptance test plus its implementation, capped at 25. Use when the user asks to generate tasks for an AI platform slice or drive speckit.tasks on one.
+description: Task out an AI platform delivery slice whose spec.md and plan.md already exist, one task per acceptance test plus its implementation, capped at 25. Pass the slice id or spec path as the argument.
 ---
 
 # AI Platform — Task Out a Slice
@@ -9,7 +8,15 @@ The spec and the plan are authoritative. **Tasks add nothing.** Every task imple
 documents already name.
 
 **Input:** the slice's `specs/<NNN>-<name>/` containing `spec.md` and `plan.md`. Resolve it from the
-current branch or the slice id. If `plan.md` is missing, stop and say so.
+slice id given as `$ARGUMENTS` or the current branch. If `plan.md` is missing, stop and say so.
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+The first argument should be the slice id. If empty, resolve from the current branch or ask.
 
 ## Sources — read exactly these
 

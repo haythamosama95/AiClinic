@@ -1,6 +1,5 @@
 ---
-name: ai-platform-specify
-description: Writes spec.md for one AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template, without inventing architecture. Use when the user names an AI platform slice id and asks to specify it or drive speckit.specify on it.
+description: Specify an AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template. Pass the slice id as the argument.
 ---
 
 # AI Platform — Specify a Slice
@@ -10,6 +9,14 @@ Every requirement must be traceable to a cited section. If it cannot be traced, 
 
 **Input:** the slice id (`A1`, `B7`, `D6`, `H3`, `J2`, …). If the user did not give one, ask for it
 and do nothing else.
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+The first argument should be the slice id. If empty, ask for it and stop.
 
 ## Branch
 
