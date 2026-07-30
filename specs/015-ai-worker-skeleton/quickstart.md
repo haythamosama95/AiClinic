@@ -7,7 +7,19 @@ identity.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
-## 1. What was implemented
+## 1. Architecture context
+
+This slice implements delivery-plan row **A1** (*Worker skeleton and environments*), which maps to
+[§13.4 *Environments* and §1.4](../../docs/architecture/17-ai-platform.md) of
+[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A1 of
+[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+The **spec** delivers three isolated Worker environments (dev, staging, production) with separate
+D1/R2/DO bindings, a health endpoint reporting build and environment identity, and startup failure
+on a missing required binding. The **plan** scopes only the `ai-platform/` skeleton —
+`wrangler.toml`, `worker.ts`, Vitest project setup, and four infra/config contract tests (T1–T4);
+no request path.
+
+## 2. What was implemented
 
 - **`ai-platform/wrangler.toml`** — three named environments, each with isolated D1, R2, and
   Durable Object bindings; per-environment `BUILD_SHA` variable.
@@ -17,7 +29,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 - **`ai-platform/README.md`** — one-paragraph orientation to the gateway directory.
 - **Four contract tests** — environment deploy/bindings (T1, T3, T4) and health identity (T2).
 
-## 2. Files to review
+## 3. Files to review
 
 | Path | Role |
 | --- | --- |
@@ -27,7 +39,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 | `ai-platform/test/health.test.ts` | T2 — build and environment identity |
 | `ai-platform/README.md` | Gateway directory orientation |
 
-## 3. Prerequisites
+## 4. Prerequisites
 
 From the repository root, activate the pinned Node version:
 
@@ -48,7 +60,7 @@ cd ai-platform
 npx wrangler login
 ```
 
-## 4. Run the automated suite (reproduce the green run)
+## 5. Run the automated suite (reproduce the green run)
 
 From the repository root:
 
@@ -62,7 +74,7 @@ This runs `vitest run` and exercises all four named A1 tests (T1–T4) via
 `@cloudflare/vitest-pool-workers`. Expect four passing tests across `test/env-deploys.test.ts`
 and `test/health.test.ts`.
 
-## 5. Inspect the changes
+## 6. Inspect the changes
 
 ```bash
 git diff ai/master -- ai-platform/
@@ -75,7 +87,7 @@ cat ai-platform/wrangler.toml
 cat ai-platform/src/worker.ts
 ```
 
-## 6. Deploy each environment
+## 7. Deploy each environment
 
 Before the first deploy, provision Cloudflare resources for each environment if they do not exist
 yet:
@@ -110,7 +122,7 @@ Each command deploys to its own Worker name and binding set defined in `wrangler
 `wrangler deploy` prints the deployed URL when the command succeeds. Use that URL for the health
 check in the next step.
 
-## 7. Call the health endpoint
+## 8. Call the health endpoint
 
 The health endpoint path is `/health`. It returns JSON with two fields only:
 
@@ -136,7 +148,7 @@ Expected shape:
 Repeat for each deployed environment and confirm `environment` matches the wrangler `--env` value
 and `build` matches the SHA you passed at deploy time.
 
-## 8. Local smoke check (optional)
+## 9. Local smoke check (optional)
 
 To exercise a single environment locally without deploying:
 

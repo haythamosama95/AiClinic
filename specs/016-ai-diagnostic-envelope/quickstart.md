@@ -7,7 +7,18 @@ constrained by contracts that already exist.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
-## 1. What was implemented
+## 1. Architecture context
+
+This slice implements delivery-plan row **A2** (*Diagnostic envelope*), which maps to
+[§5.4, §4.3.1, §13.1, and §13.2](../../docs/architecture/17-ai-platform.md) of
+[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A2 of
+[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+The **spec** freezes the gateway's closed §5.4 error taxonomy (normative HTTP mapping),
+request-reference generator, and trace-id propagation contract. The **plan** scopes three contract
+modules (`errors.ts`, `reference.ts`, `trace.ts`), minimal wiring into `worker.ts`, and twenty-nine
+unit/contract tests — contracts and generators only, no persistence or live streaming.
+
+## 2. What was implemented
 
 - **`ai-platform/src/errors.ts`** — the §5.4 taxonomy table (eighteen codes: HTTP status,
   retryability, quota-consumption flag); `retry_safe` boolean mapping (`false` for Retryable
@@ -28,7 +39,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 - **Twenty-nine named contract/unit cases (T1–T29)** across five test files — **48 passing
   tests** total.
 
-## 2. Files to review
+## 3. Files to review
 
 | Path | Role |
 | --- | --- |
@@ -42,7 +53,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 | `ai-platform/test/trace.test.ts` | T22, T23 — trace propagation and ULID fallback |
 | `ai-platform/test/log-redaction.test.ts` | T25, T27 — malformed-body rejection and log redaction |
 
-## 3. Run the automated suite
+## 4. Run the automated suite
 
 From the repository root:
 
@@ -55,7 +66,7 @@ npx vitest run test/taxonomy.test.ts test/error-body.test.ts test/reference.test
 
 Expect **48 passing tests** across the five A2 test files listed above.
 
-## 4. Inspect the changes
+## 5. Inspect the changes
 
 Read the three contract modules:
 

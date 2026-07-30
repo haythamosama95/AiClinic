@@ -7,7 +7,18 @@ provider-neutral representation upstream of the adapters.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
-## 1. What was implemented
+## 1. Architecture context
+
+This slice implements delivery-plan row **A3** (*Canonical inference representation*), which maps to
+[§5.3 and §9.10](../../docs/architecture/17-ai-platform.md) of
+[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A3 of
+[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+The **spec** freezes the four provider-neutral canonical elements (request, stream chunk, result,
+error), the closed chunk-kind set, and a guard that rejects provider-shaped field names upstream of
+adapters. The **plan** scopes `contracts/canonical.ts`, seven contract tests (T-A3-01..07), and a
+`contracts/canonical-shapes.md` artifact — types and tests only, no Worker behaviour changes.
+
+## 2. What was implemented
 
 - **`ai-platform/src/contracts/canonical.ts`** — field-name manifest (`CANONICAL_FIELD_MANIFEST`)
   for all four §5.3 elements; TypeScript types derived from the manifest
@@ -22,7 +33,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 - **`specs/017-ai-canonical-inference/contracts/canonical-shapes.md`** — frozen wire-shape
   reference for later slices' Consumes review.
 
-## 2. Files to review
+## 3. Files to review
 
 | Path | Role |
 | --- | --- |
@@ -30,7 +41,7 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 | `ai-platform/test/canonical.test.ts` | T-A3-01..07 contract suite |
 | `specs/017-ai-canonical-inference/contracts/canonical-shapes.md` | Frozen §5.3 wire shapes |
 
-## 3. Run the automated suite
+## 4. Run the automated suite
 
 From the repository root:
 
@@ -44,7 +55,7 @@ Expect **16 passing tests** in `canonical.test.ts` — the seven named A3 contra
 (T-A3-01..07) plus supporting assertions for the manifest guard, chunk-kind set, and
 terminal-flag invariant.
 
-## 4. Inspect the changes
+## 5. Inspect the changes
 
 Read the frozen wire shapes:
 
