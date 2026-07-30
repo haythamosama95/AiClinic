@@ -2,7 +2,7 @@
 
 **Branch**: `ai/018-a4-capability-manifest` | **Date**: 2026-07-30 | **Spec**: [spec.md](./spec.md)
 
-**Input**: Feature specification from `/specs/018-capability-manifest/spec.md`
+**Input**: Feature specification from `/specs/018-ai-capability-manifest/spec.md`
 
 ## Summary
 
@@ -59,7 +59,7 @@ The three unchecked boxes are the Supabase/PostgreSQL/acceptance-runtime rows th
 ### Documentation (this feature)
 
 ```text
-specs/018-capability-manifest/
+specs/018-ai-capability-manifest/
 ├── plan.md              # This file
 ├── spec.md              # /ai-platform-specify + /ai-platform-clarify output (already present)
 ├── quickstart.md        # Written after implementation + verification (this slice's review surface)
@@ -130,8 +130,8 @@ Coverage additions from §3.10 (every error path the slice can emit, every inher
 1. **`ai-platform/src/manifest/index.ts`** — define the ten-group schema as data (mirroring A3's `CANONICAL_FIELD_MANIFEST`), the `Manifest` type, internal `validate()`, `load(json)`, `hashManifest(json)`, and `verifyPublishedRegistry(entries, registry)`; the `interaction_mode` default and the conversational-only-field rejection live in `validate` (FR-005, FR-006); the never-names-provider/model check lives in `validate` over the Routing group (FR-008).
 2. **`ai-platform/test/manifest.test.ts`** — write the valid-manifest inline factory and per-group mutation helpers first, then the named tests. Tests are written alongside / before the module's matching branches (the loader is exercised through them immediately); no test is written after its implementation. The contract-rule tests (T-A4-13..17) and the registry test (T-A4-12) are added once their counterparts in `index.ts` exist.
 3. **Run `npx vitest run test/manifest.test.ts`** — all T-A4-* tests green; the prior band-A suites (`canonical.test.ts`, `taxonomy.test.ts`, `reference.test.ts`, `health.test.ts`, `env-deploys.test.ts`, `trace.test.ts`, `error-body.test.ts`, `log-redaction.test.ts`) remain green (checkpoint rule: every prior suite green, §3.10).
-4. **`specs/018-capability-manifest/contracts/manifest-schema.md`** — write the frozen manifest payload shape (the ten field groups, the `interaction_mode` default, the conversational-only rule, the never-names-provider/model rule, the published-version hash mechanism) so C1/C2/C5/C6/E7/H1/H5 bind to an artifact, not to prose.
-5. **`specs/018-capability-manifest/quickstart.md`** — fill from `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review (`index.ts`, `manifest.test.ts`), how to run the suite (`npx vitest run test/manifest.test.ts`), how to inspect the frozen schema and the contract artifact. No Manual validation section — CI is the only verification path (template: "Omit this section when CI is the only verification path").
+4. **`specs/018-ai-capability-manifest/contracts/manifest-schema.md`** — write the frozen manifest payload shape (the ten field groups, the `interaction_mode` default, the conversational-only rule, the never-names-provider/model rule, the published-version hash mechanism) so C1/C2/C5/C6/E7/H1/H5 bind to an artifact, not to prose.
+5. **`specs/018-ai-capability-manifest/quickstart.md`** — fill from `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review (`index.ts`, `manifest.test.ts`), how to run the suite (`npx vitest run test/manifest.test.ts`), how to inspect the frozen schema and the contract artifact. No Manual validation section — CI is the only verification path (template: "Omit this section when CI is the only verification path").
 
 Tests land alongside or before their implementation branches (step 1 and step 2 interleave); no test is written after its implementation. The Documentation artifacts (step 4, step 5) are written only after the suite is green — the plan names them here, the implement phase fills them in.
 

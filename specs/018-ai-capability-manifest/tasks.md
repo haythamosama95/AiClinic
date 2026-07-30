@@ -5,7 +5,7 @@ description: "Task list for AI platform slice A4 — Capability manifest schema 
 
 # Tasks: Capability manifest schema and loader (A4)
 
-**Input**: Design documents from `/specs/018-capability-manifest/`
+**Input**: Design documents from `/specs/018-ai-capability-manifest/`
 
 **Prerequisites**: `plan.md` (required), `spec.md` (required). `contracts/` and `quickstart.md` are produced by this slice's Documentation phase; none of `data-model.md`, `research.md`, or prior-slice docs are needed — A4 defines no D1 entity and the research is `docs/architecture/17-ai-platform.md` (never re-produced on this platform).
 
@@ -70,8 +70,8 @@ description: "Task list for AI platform slice A4 — Capability manifest schema 
 
 **Purpose**: The documentation artifacts the plan names. Written only after the suite is green.
 
-- [X] T013 [US1] Create `specs/018-capability-manifest/contracts/manifest-schema.md` documenting the frozen manifest payload shape: the ten §5.1 field groups and their contents, the `interaction_mode` default of `single_shot`, the conversational-only-field rejection rule, the never-names-provider/model rule, and the published-version content-hash registry mechanism. Later slices (C1/C2/C5/C6/E7/H1/H5) bind to this artifact, not to prose. Satisfies the plan's `contracts/` requirement for a Freezes entry that has a wire shape.
-- [X] T014 [US1] Create `specs/018-capability-manifest/quickstart.md` from `.specify/templates/ai-platform-quickstart-template.md`, scoped to this slice only: what was implemented (manifest schema + loader + published-version hash check), the files to review (`ai-platform/src/manifest/index.ts`, `ai-platform/test/manifest.test.ts`), the slice-only test command (`npx vitest run test/manifest.test.ts`), and how to inspect the frozen schema (`specs/018-capability-manifest/contracts/manifest-schema.md`). No Manual validation section — CI is the only verification path for this contract slice (template: omit when CI is the only path). Explicitly excludes prior-slice files, combined test counts, and prior-slice regression commands.
+- [X] T013 [US1] Create `specs/018-ai-capability-manifest/contracts/manifest-schema.md` documenting the frozen manifest payload shape: the ten §5.1 field groups and their contents, the `interaction_mode` default of `single_shot`, the conversational-only-field rejection rule, the never-names-provider/model rule, and the published-version content-hash registry mechanism. Later slices (C1/C2/C5/C6/E7/H1/H5) bind to this artifact, not to prose. Satisfies the plan's `contracts/` requirement for a Freezes entry that has a wire shape.
+- [X] T014 [US1] Create `specs/018-ai-capability-manifest/quickstart.md` from `.specify/templates/ai-platform-quickstart-template.md`, scoped to this slice only: what was implemented (manifest schema + loader + published-version hash check), the files to review (`ai-platform/src/manifest/index.ts`, `ai-platform/test/manifest.test.ts`), the slice-only test command (`npx vitest run test/manifest.test.ts`), and how to inspect the frozen schema (`specs/018-ai-capability-manifest/contracts/manifest-schema.md`). No Manual validation section — CI is the only verification path for this contract slice (template: omit when CI is the only path). Explicitly excludes prior-slice files, combined test counts, and prior-slice regression commands.
 
 ---
 

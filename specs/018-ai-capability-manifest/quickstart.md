@@ -27,7 +27,7 @@ versions. The **plan** scopes `manifest/index.ts`, seventeen contract tests (T-A
   load, per-group omit/malform rejection, published-version hash mismatch, interaction-mode default
   and immutability, conversational-field rejection, data-not-code export surface, and routing
   provider/model rejection.
-- **`specs/018-capability-manifest/contracts/manifest-schema.md`** — frozen manifest wire-shape
+- **`specs/018-ai-capability-manifest/contracts/manifest-schema.md`** — frozen manifest wire-shape
   reference for later slices' Consumes review.
 
 ## 3. Files to review
@@ -36,7 +36,7 @@ versions. The **plan** scopes `manifest/index.ts`, seventeen contract tests (T-A
 | --- | --- |
 | `ai-platform/src/manifest/index.ts` | Schema manifest, `load`, hash registry helpers |
 | `ai-platform/test/manifest.test.ts` | T-A4-01..17 contract suite |
-| `specs/018-capability-manifest/contracts/manifest-schema.md` | Frozen §5.1 manifest wire shape |
+| `specs/018-ai-capability-manifest/contracts/manifest-schema.md` | Frozen §5.1 manifest wire shape |
 
 ## 4. Run the automated suite
 
@@ -57,7 +57,7 @@ variants.
 Read the frozen manifest wire shape:
 
 ```bash
-cat specs/018-capability-manifest/contracts/manifest-schema.md
+cat specs/018-ai-capability-manifest/contracts/manifest-schema.md
 ```
 
 Inspect the field-group manifest and validation rules in code:
