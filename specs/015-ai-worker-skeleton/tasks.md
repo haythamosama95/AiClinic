@@ -31,11 +31,11 @@ not apply to this platform (Delivery Plan §3.10).
 **Purpose**: Create the `ai-platform/` tree the plan's Files section names, so the tests and
 implementation have files to live in.
 
-- [ ] T001 [US1] Create `ai-platform/` directory with `package.json` declaring `wrangler`,
+- [X] T001 [US1] Create `ai-platform/` directory with `package.json` declaring `wrangler`,
       `vitest`, and `@cloudflare/vitest-pool-workers`, and `tsconfig.json` targeting the Workers
       runtime. Produces the project skeleton plan Files names. Satisfies no FR directly; it is the
       prerequisite for every later task. Proved by the suite running at all in T008.
-- [ ] T002 [US1] Create `ai-platform/wrangler.toml` defining three named environments
+- [X] T002 [US1] Create `ai-platform/wrangler.toml` defining three named environments
       (`development`, `staging`, `production`), each with its own `d1_databases`, `r2_buckets`,
       and `durable_objects` binding, and a per-environment `vars.BUILD_SHA` placeholder. Produces
       the binding topology. Satisfies FR-001, FR-002, FR-004. Proved by T005, T006, T007.

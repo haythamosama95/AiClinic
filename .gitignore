@@ -72,3 +72,7 @@ dist/
 *.egg
 
 web-reference/node_modules
+
+# AI platform (Cloudflare Workers)
+ai-platform/node_modules/
+ai-platform/.wrangler/

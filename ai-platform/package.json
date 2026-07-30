@@ -1,0 +1,19 @@
+{
+  "name": "ai-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --env development",
+    "deploy": "wrangler deploy",
+    "check": "wrangler check",
+    "test": "vitest run",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.71",
+    "@cloudflare/workers-types": "^4.20250730.0",
+    "typescript": "^5.9.2",
+    "vitest": "~3.2.4",
+    "wrangler": "^4.86.0"
+  }
+}
