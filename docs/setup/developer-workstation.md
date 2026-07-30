@@ -25,6 +25,12 @@ Install in this order:
    flutter doctor
    ```
 4. **curl** — used by backend smoke and validation scripts.
+5. **Node.js 22+** — required for `ai-platform/` (Wrangler 4.x). Use [nvm](https://github.com/nvm-sh/nvm):
+   ```bash
+   nvm install    # reads .nvmrc at repo root
+   nvm use
+   node -v        # expect v22.x
+   ```
 
 Optional: VS Code with the Dart and Flutter extensions (repository settings live in `.vscode/settings.json`).
 

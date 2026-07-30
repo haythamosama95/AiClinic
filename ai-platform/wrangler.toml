@@ -1,6 +1,6 @@
 name = "ai-platform-gateway"
 main = "src/worker.ts"
-compatibility_date = "2026-07-30"
+compatibility_date = "2026-05-03"
 
 [[migrations]]
 tag = "v1"
@@ -11,6 +11,7 @@ name = "ai-platform-gateway-development"
 
 [env.development.vars]
 BUILD_SHA = "local"
+ENVIRONMENT = "development"
 
 [[env.development.d1_databases]]
 binding = "DB"
@@ -30,6 +31,7 @@ name = "ai-platform-gateway-staging"
 
 [env.staging.vars]
 BUILD_SHA = "local"
+ENVIRONMENT = "staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
@@ -49,6 +51,7 @@ name = "ai-platform-gateway-production"
 
 [env.production.vars]
 BUILD_SHA = "local"
+ENVIRONMENT = "production"
 
 [[env.production.d1_databases]]
 binding = "DB"
