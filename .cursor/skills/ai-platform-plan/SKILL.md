@@ -36,7 +36,7 @@ path conventions predate it; extend the source tree rather than forcing Worker c
 | Summary | The slice's purpose in two sentences, taken from the spec, plus its position in the delivery sequence |
 | Technical Context | Concrete values only. Every field must be answerable from the spec or the cited architecture. **Never write `NEEDS CLARIFICATION`** — an unanswerable field is stop condition 1 |
 | Constitution Check | Every box must be checked before proceeding. For gateway slices, record the §14 acknowledgement: the Worker is an additive, non-primary component with no domain logic, no business data, and no write path into Supabase. An uncheckable box is an escalation, not a Complexity Tracking row |
-| Project Structure → Documentation | List only the artifacts this slice actually produces. `data-model.md` only when the slice defines D1 entities; `contracts/` only when it freezes a contract; `quickstart.md` only when a human must run something to verify it. **Never `research.md`** — the research is `17-ai-platform.md`, and redoing it is how architecture drift starts |
+| Project Structure → Documentation | List only the artifacts this slice actually produces, then **write every one you list**. `data-model.md` only when the slice defines D1 entities; `contracts/` whenever a **Freezes** entry has a wire shape — a table, a payload, a token, an event, an error taxonomy — because a later slice's **Consumes** must bind to a frozen artifact, not to prose; `quickstart.md` only when a human must run something to verify it. **Never `research.md`** — the research is `17-ai-platform.md`, and redoing it is how architecture drift starts |
 | Project Structure → Source Code | The real tree for this slice, including `ai-platform/` where applicable. Delete unused branches |
 | **`## Consumes Binding`** *(added)* | One row per **Consumes** entry, naming the existing module, file, or type it binds to. An entry with no existing implementation is stop condition 2 |
 | **`## Components Touched`** *(added)* | The §4 components of `17-ai-platform.md` this slice modifies. More than one requires an explicit written reason here |
@@ -47,6 +47,8 @@ path conventions predate it; extend the source tree rather than forcing Worker c
 
 ## Rules
 
+- **The phase is not done until every artifact named in Project Structure → Documentation exists on
+  disk.** Naming one and not writing it leaves a later slice binding to a file that is not there.
 - Every file in the plan traces to a spec requirement. An untraced file is out of scope.
 - Do not choose a library, pattern, or abstraction the spec or the cited architecture does not name.
   One implementation needs no interface (D-15).
