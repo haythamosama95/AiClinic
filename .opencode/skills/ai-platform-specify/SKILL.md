@@ -1,7 +1,6 @@
 ---
 name: ai-platform-specify
 description: Writes spec.md for one AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template, without inventing architecture. Use when the user names an AI platform slice id and asks to specify it or drive speckit.specify on it.
-disable-model-invocation: true
 ---
 
 # AI Platform — Specify a Slice
