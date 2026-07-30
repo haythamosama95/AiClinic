@@ -18,9 +18,41 @@ $ARGUMENTS
 
 The first argument should be the slice id. If empty, resolve from the current branch or ask.
 
+## Relationship to Spec Kit
+
+This is the AI platform variant of Spec Kit's `/speckit-tasks`, in the same slot and producing the same
+artifact: `specs/<NNN>-<name>/tasks.md` from `.specify/templates/tasks-template.md`, keeping its
+`[ID] [P?] [Story]` format and Path Conventions. It diverges where the delivery plan overrides the
+template — tests are mandatory, one slice is one story, no Foundational or Polish phase, and a hard cap
+of 25 tasks. It runs after `/ai-platform-plan` and before `/ai-platform-implement`.
+
+## Prerequisites
+
+Resolve the slice and validate that `spec.md` and `plan.md` both exist, once, from the repository root:
+
+```bash
+.specify/scripts/bash/ai-platform-paths.sh --json
+```
+
+That wraps `check-prerequisites.sh` — which fails when `plan.md` is absent, exactly the check this
+phase needs — adding only the `ai/<NNN>-…` branch resolution `.specify/feature.json` would otherwise
+override. Never call `check-prerequisites.sh` directly on an `ai/` branch. Parse `FEATURE_DIR` and
+`AVAILABLE_DOCS`; the latter tells you whether `data-model.md`, `contracts/`, and `quickstart.md`
+already exist. If the script fails, report its error verbatim and stop.
+
+Then resolve the tasks template through Spec Kit's override stack rather than reading the core file
+directly:
+
+```bash
+SPECIFY_FEATURE_DIRECTORY="$FEATURE_DIR" .specify/scripts/bash/setup-tasks.sh --json
+```
+
+Use the `TASKS_TEMPLATE` path it returns.
+
 ## Sources — read exactly these
 
-1. The slice's `spec.md` and `plan.md`.
+1. The slice's `spec.md` and `plan.md`. The spec's `## Clarifications` section, when present, holds
+   decided implementation choices, not requirements — a task still traces to an `FR-###`.
 2. `docs/architecture/17b-ai-platform-delivery-plan.md` §3.10 and §6.
 3. `.specify/templates/tasks-template.md`.
 4. `.specify/templates/ai-platform-quickstart-template.md`.

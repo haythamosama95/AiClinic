@@ -21,6 +21,28 @@ The slice id (e.g. `A1`, `D6`) and a phase selector (e.g. `A1 phase 2`, `A1 2-3`
 `D6 T003-T006`). If the slice is empty, resolve from the current branch or ask. If the phase selector
 is empty, see Scope below.
 
+## Relationship to Spec Kit
+
+This is the AI platform variant of Spec Kit's `/speckit-implement`, in the same slot: executing the
+slice's `tasks.md` and marking tasks complete in place. It diverges in that it runs only the phases it
+was asked for rather than the whole file, and it enforces the delivery plan's §6.4 prohibitions and
+§3.10 regression rule. It is the last phase, after `/ai-platform-tasks`.
+
+## Prerequisites
+
+Resolve the slice and validate that `spec.md`, `plan.md`, and `tasks.md` all exist, once, from the
+repository root:
+
+```bash
+.specify/scripts/bash/ai-platform-paths.sh --json --require-tasks --include-tasks
+```
+
+That wraps `check-prerequisites.sh` in the same mode `/speckit-implement` uses, adding only the
+`ai/<NNN>-…` branch resolution `.specify/feature.json` would otherwise override. Never call
+`check-prerequisites.sh` directly on an `ai/` branch. Parse `FEATURE_DIR` and `AVAILABLE_DOCS`, and
+read only the documents `AVAILABLE_DOCS` reports as present. If the script fails, report its error
+verbatim and stop.
+
 ## Sources — read exactly these
 
 1. The slice's `tasks.md` — the execution order.
