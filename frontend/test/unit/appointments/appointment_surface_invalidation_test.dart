@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
@@ -27,6 +28,18 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
 
   @override
   AuthSessionState build() => initial;
+}
+
+class _FakeAppointmentQueueRealtimeClient implements AppointmentQueueRealtimeClient {
+  @override
+  void subscribe({
+    required String branchId,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
+    required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
+  }) {}
+
+  @override
+  void unsubscribe() {}
 }
 
 class _CountingAppointmentRpcClient extends AppointmentRpcTestClient {
@@ -60,6 +73,7 @@ void main() {
             ),
           ),
           appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+          appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeAppointmentQueueRealtimeClient()),
           branchRepositoryProvider.overrideWithValue(CalendarStubBranchRepository()),
           staffAdminRepositoryProvider.overrideWithValue(CalendarDoctorsStubStaffRepository()),
           shiftRepositoryProvider.overrideWithValue(ShiftRepository(ShiftRpcTestClient())),
@@ -142,6 +156,10 @@ void main() {
             ),
           ),
           appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+          appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeAppointmentQueueRealtimeClient()),
+          branchRepositoryProvider.overrideWithValue(CalendarStubBranchRepository()),
+          staffAdminRepositoryProvider.overrideWithValue(CalendarDoctorsStubStaffRepository()),
+          shiftRepositoryProvider.overrideWithValue(ShiftRepository(ShiftRpcTestClient())),
         ],
       );
       addTearDown(container.dispose);

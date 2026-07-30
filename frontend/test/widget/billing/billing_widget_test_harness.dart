@@ -89,6 +89,11 @@ class LoadingInvoiceListNotifier extends InvoiceListNotifier {
     );
     return Completer<InvoiceListUiState>().future;
   }
+
+  @override
+  Future<void> reload() async {
+    // InvoiceListPage calls reload on mount; keep the loading build() pending.
+  }
 }
 
 /// Throws on build to surface the list error state.
@@ -587,6 +592,7 @@ Future<void> pumpBillingSurface(
 
   await tester.pumpWidget(
     ProviderScope(
+      key: UniqueKey(),
       overrides: overrides,
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -626,12 +632,15 @@ Future<GoRouter> pumpBillingRouter(
 
   await tester.pumpWidget(
     ProviderScope(
+      key: UniqueKey(),
       overrides: overrides,
-      child: MaterialApp.router(
-        theme: AppTheme.light(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: router,
+      child: AppToastHost(
+        child: MaterialApp.router(
+          theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
       ),
     ),
   );

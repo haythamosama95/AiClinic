@@ -13,7 +13,7 @@ void main() {
   const doctorAId = '11111111-1111-4111-8111-111111111111';
   const doctorBId = '22222222-2222-4222-8222-222222222222';
 
-  Future<String?> openDialog(
+  Future<PendingDialogResult<String?>> openDialog(
     WidgetTester tester, {
     required List<QueueStartDoctorOption> options,
   }) async {
@@ -32,7 +32,7 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    return result;
+    return PendingDialogResult(result);
   }
 
   testWidgets('invalid state: CAL-START-DOC-01 empty options shows No doctors available', (tester) async {
@@ -60,7 +60,7 @@ void main() {
   });
 
   testWidgets('advanced: CAL-START-DOC-03 Start visit pops chosen doctor id', (tester) async {
-    final resultFuture = await openDialog(
+    final dialog = await openDialog(
       tester,
       options: const [
         QueueStartDoctorOption(id: doctorAId, name: 'Dr. Ada', isBusy: false, isPreferred: true),
@@ -74,30 +74,26 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(resultFuture, doctorBId);
+    expect(await dialog.result, doctorBId);
   });
 
   testWidgets('advanced: CAL-START-DOC-04 Cancel pops null', (tester) async {
-    final resultFuture = await openDialog(
+    final dialog = await openDialog(
       tester,
-      options: const [
-        QueueStartDoctorOption(id: doctorAId, name: 'Dr. Ada', isBusy: false),
-      ],
+      options: const [QueueStartDoctorOption(id: doctorAId, name: 'Dr. Ada', isBusy: false)],
     );
 
     await tester.tap(find.text('Cancel'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(resultFuture, isNull);
+    expect(await dialog.result, isNull);
   });
 
   testWidgets('regression: CAL-START-DOC-05 barrier tap does not dismiss dialog', (tester) async {
     await openDialog(
       tester,
-      options: const [
-        QueueStartDoctorOption(id: doctorAId, name: 'Dr. Ada', isBusy: false),
-      ],
+      options: const [QueueStartDoctorOption(id: doctorAId, name: 'Dr. Ada', isBusy: false)],
     );
 
     await tester.tapAt(const Offset(5, 5));

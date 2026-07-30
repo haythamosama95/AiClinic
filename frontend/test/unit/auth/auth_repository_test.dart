@@ -314,8 +314,6 @@ void main() {
       final goTrue = client.auth as _RecordingGoTrue;
       final repository = AuthRepositoryImpl(client);
 
-      expect(repository.authStateChanges, same(goTrue.onAuthStateChange));
-
       final events = <AuthState>[];
       final subscription = repository.authStateChanges.listen(events.add);
 

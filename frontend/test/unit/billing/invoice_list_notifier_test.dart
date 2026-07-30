@@ -382,7 +382,13 @@ void main() {
 AuthSessionState _authorizedSession() {
   return AuthSessionState(
     status: AuthSessionStatus.authenticated,
-    context: sampleAuthSessionContext(permissions: RolePermissionSeed.receptionist),
+    context: sampleAuthSessionContext(
+      permissions: RolePermissionSeed.receptionist,
+      branchIds: [
+        '44444444-4444-4444-8444-444444444444',
+        '77777777-7777-4777-8777-777777777777',
+      ],
+    ),
   );
 }
 

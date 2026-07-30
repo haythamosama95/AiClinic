@@ -486,7 +486,7 @@ List<Override> harnessDetailProviderOverrides({
   List<BranchListItem>? branches,
   List<StaffListItem>? doctors,
   String appointmentId = detailTestAppointmentId,
-  Future<AppointmentDetail>? loadingDetailFuture,
+  bool loadingDetail = false,
   Object? detailError,
 }) {
   final resolvedDetail = detail ?? buildAppointmentDetail();
@@ -521,14 +521,12 @@ List<Override> harnessDetailProviderOverrides({
     appointmentCalendarDoctorsProvider.overrideWith(
       (ref) async => doctors ?? buildTestDoctors(),
     ),
-    if (loadingDetailFuture != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) => loadingDetailFuture)
+    if (loadingDetail)
+      appointmentDetailProvider(appointmentId).overrideWithValue(
+        const AsyncLoading<AppointmentDetail>(),
+      )
     else if (detailError != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError)
-    else
-      appointmentDetailProvider(appointmentId).overrideWith(
-        (ref) async => appointmentRepo.getAppointment(appointmentId: appointmentId),
-      ),
+      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError),
     appointmentDetailSiblingsProvider(siblingsQuery).overrideWith(
       (ref) async => siblings ?? const [],
     ),
@@ -663,6 +661,7 @@ Future<void> pumpBookingSheetHost(
   String? initialDoctorId,
   List<StaffListItem>? doctors,
   String? branchName = 'Main',
+  Duration settleAfterOpen = const Duration(milliseconds: 300),
 }) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -707,7 +706,9 @@ Future<void> pumpBookingSheetHost(
 
   await tester.tap(find.byKey(const Key('open_booking_sheet')));
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
+  if (settleAfterOpen > Duration.zero) {
+    await tester.pump(settleAfterOpen);
+  }
 }
 
 Future<void> tapAppSelectOption(
@@ -715,7 +716,11 @@ Future<void> tapAppSelectOption(
   Key selectKey,
   String optionLabel,
 ) async {
-  await tester.tap(find.byKey(selectKey));
+  final select = find.descendant(
+    of: find.byKey(selectKey),
+    matching: find.byType(AppSelect),
+  );
+  await tester.tap(select);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.tap(find.text(optionLabel).last);
@@ -737,30 +742,41 @@ Future<void> selectPatientAndAdvanceToStep2(
   String patientSearch = 'Booking',
   String patientName = 'Booking Patient',
 }) async {
-  await tester.enterText(
-    find.byKey(const Key('appointment_booking_patient_search')),
-    patientSearch,
+  final searchField = find.descendant(
+    of: find.bySemanticsIdentifier('patient_picker_search'),
+    matching: find.byType(TextField),
   );
-  await tester.pump(const Duration(milliseconds: 100));
-  await tester.tap(find.text(patientName));
+  await tester.tap(searchField);
+  await tester.pump();
+  await tester.enterText(searchField, patientSearch);
+  await tester.pump(const Duration(milliseconds: 350));
+  await tester.pump();
+  await tester.tap(find.text(patientName).last);
   await tester.pump();
   await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
+  await tester.pump(const Duration(milliseconds: 50));
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+    if (find.bySemanticsLabel('Available time slots').evaluate().isNotEmpty) {
+      break;
+    }
+  }
 }
 
 Future<void> enterBookingNotes(WidgetTester tester, String text) async {
-  await tester.enterText(
-    find.descendant(
-      of: find.text('Notes (optional)'),
-      matching: find.byType(TextField),
-    ),
-    text,
+  final notesField = find.descendant(
+    of: find.bySemanticsLabel('Notes (optional)'),
+    matching: find.byType(TextField),
   );
+  await tester.tap(notesField);
+  await tester.pump();
+  await tester.enterText(notesField, text);
   await tester.pump(const Duration(milliseconds: 50));
 }
 
 Future<void> tapBookingDialogBackdrop(WidgetTester tester) async {
   await tester.tapAt(const Offset(5, 5));
+  await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
 }

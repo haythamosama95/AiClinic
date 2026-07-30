@@ -22,6 +22,11 @@ class RetryableErrorInvoiceListNotifier extends InvoiceListNotifier {
     }
     return buildBillingListState();
   }
+
+  @override
+  Future<void> reload() async {
+    // InvoiceListPage calls reload on mount; keep the initial build() error.
+  }
 }
 
 void main() {

@@ -71,7 +71,7 @@ class _RolesPermissionsFilterBuilder extends Fake implements PostgrestFilterBuil
       return Future<List<Map<String, dynamic>>>.error(queryError!).then(onValue, onError: onError);
     }
     return Future<List<Map<String, dynamic>>>.value(
-      _rows as List<Map<String, dynamic>>,
+      List<Map<String, dynamic>>.from(_rows.whereType<Map>()),
     ).then(onValue, onError: onError);
   }
 }
@@ -209,11 +209,13 @@ void main() {
       expect(grants, {'patients.view', 'ai.access'});
       expect(recorder.table, 'roles_permissions');
       expect(recorder.selectColumns, 'permission_key');
-      expect(recorder.filters, [
-        const MapEntry('role', 'lab_staff'),
-        const MapEntry('is_granted', true),
-        const MapEntry('is_deleted', false),
-      ]);
+      expect(recorder.filters, hasLength(3));
+      expect(recorder.filters[0].key, 'role');
+      expect(recorder.filters[0].value, 'lab_staff');
+      expect(recorder.filters[1].key, 'is_granted');
+      expect(recorder.filters[1].value, isTrue);
+      expect(recorder.filters[2].key, 'is_deleted');
+      expect(recorder.filters[2].value, isFalse);
     });
 
     test('returns empty set when query returns zero rows', () async {

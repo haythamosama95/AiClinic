@@ -5,11 +5,28 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_billing_flow.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 import '../../support/visit_encounter_test_support.dart';
 import 'billing_widget_test_harness.dart';
+
+class _BeginBillingTracker {
+  var callCount = 0;
+}
+
+class _TrackedVisitBillingFlowNotifier extends VisitBillingFlowNotifier {
+  _TrackedVisitBillingFlowNotifier(super.visitId, this._tracker);
+
+  final _BeginBillingTracker _tracker;
+
+  @override
+  void beginBilling() {
+    _tracker.callCount++;
+    super.beginBilling();
+  }
+}
 
 void main() {
   group('VisitBillingPage', () {
@@ -61,7 +78,7 @@ void main() {
     });
 
     testWidgets('beginBilling invoked on first frame', (tester) async {
-      final flowNotifier = SpyVisitBillingFlowNotifier(billingTestVisitId);
+      final tracker = _BeginBillingTracker();
 
       await pumpBillingSurface(
         tester,
@@ -69,12 +86,16 @@ void main() {
         overrides: billingProviderOverrides(
           visitId: billingTestVisitId,
           visitDocState: sampleEncounterDocState(),
-          visitBillingFlowNotifier: flowNotifier,
+          extraOverrides: [
+            visitBillingFlowProvider(billingTestVisitId).overrideWith(
+              () => _TrackedVisitBillingFlowNotifier(billingTestVisitId, tracker),
+            ),
+          ],
         ),
       );
-      await tester.pump();
+      await pumpBillingFrames(tester);
 
-      expect(flowNotifier.beginBillingCallCount, 1);
+      expect(tracker.callCount, 1);
     });
 
     testWidgets('back-to-review navigates to visit document route', (tester) async {

@@ -51,7 +51,7 @@ StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
 }
 
 AppRichTextEditor _richTextEditor(WidgetTester tester, String semanticsId) {
-  final finder = find.descendant(
+  final finder = find.ancestor(
     of: find.bySemanticsIdentifier(semanticsId),
     matching: find.byType(AppRichTextEditor),
   );
@@ -73,7 +73,12 @@ Future<void> _submitMedicalBackgroundDialog(WidgetTester tester, {required Strin
   if (note != null) {
     await tester.enterText(fields.at(1), note);
   }
-  await tester.tap(find.widgetWithText(AppButton, 'Add'));
+  final submitButton = find.descendant(
+    of: dialog,
+    matching: find.widgetWithText(AppButton, 'Add'),
+  );
+  await tester.ensureVisible(submitButton);
+  await tester.tap(submitButton);
   await pumpVisitsFrames(tester);
 }
 
@@ -123,8 +128,14 @@ void main() {
         ),
       );
 
-      expect(find.text('Sore throat'), findsOneWidget);
-      expect(find.textContaining('Started 3 days ago'), findsOneWidget);
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'chief-complaint-input').controller!.document),
+        'Sore throat',
+      );
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'history-of-present-illness-input').controller!.document),
+        'Started 3 days ago with mild fever',
+      );
     });
 
     testWidgets('trivial: empty patient safety shows nothing-documented copy in each category', (tester) async {

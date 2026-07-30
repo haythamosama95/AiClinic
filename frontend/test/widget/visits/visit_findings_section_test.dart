@@ -3,11 +3,13 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_findings_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_vital_signs_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_entry_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 
 import 'visit_widget_test_harness.dart';
@@ -36,7 +38,17 @@ Future<StubVisitDocumentationNotifier> _pumpFindingsSection(
   );
   await pumpVisitsFrames(tester);
   await pumpVisitsFrames(tester);
+  await tester.pumpAndSettle();
   return docNotifier;
+}
+
+AppRichTextEditor _richTextEditor(WidgetTester tester, String semanticsId) {
+  final finder = find.ancestor(
+    of: find.bySemanticsIdentifier(semanticsId),
+    matching: find.byType(AppRichTextEditor),
+  );
+  expect(finder, findsOneWidget);
+  return tester.widget<AppRichTextEditor>(finder);
 }
 
 StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
@@ -47,12 +59,7 @@ StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
 }
 
 void _driveRichText(WidgetTester tester, String semanticsId, String text) {
-  final finder = find.descendant(
-    of: find.bySemanticsIdentifier(semanticsId),
-    matching: find.byType(AppRichTextEditor),
-  );
-  expect(finder, findsOneWidget);
-  final editor = tester.widget<AppRichTextEditor>(finder);
+  final editor = _richTextEditor(tester, semanticsId);
   expect(editor.controller, isNotNull);
   setQuillControllerPlainText(editor.controller!, text);
 }
@@ -64,7 +71,12 @@ Future<void> _submitVitalSignDialog(WidgetTester tester, {required String value}
     find.descendant(of: dialog, matching: find.byType(EditableText)),
     value,
   );
-  await tester.tap(find.widgetWithText(AppButton, 'Add vital sign'));
+  final submitButton = find.descendant(
+    of: dialog,
+    matching: find.widgetWithText(AppButton, 'Add vital sign'),
+  );
+  await tester.ensureVisible(submitButton);
+  await tester.tap(submitButton);
   await pumpVisitsFrames(tester);
 }
 
@@ -113,8 +125,14 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('Lungs clear bilaterally'), findsOneWidget);
-      expect(find.textContaining('Acute pharyngitis'), findsOneWidget);
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'physical-examination-input').controller!.document),
+        'Lungs clear bilaterally',
+      );
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'diagnosis-input').controller!.document),
+        'Acute pharyngitis',
+      );
     });
 
     testWidgets('trivial: renders existing vital sign cards', (tester) async {
@@ -129,7 +147,8 @@ void main() {
       );
 
       expect(find.text('BLOOD PRESSURE'), findsOneWidget);
-      expect(find.text('118/76'), findsOneWidget);
+      expect(find.byType(VitalSignEntryCard), findsOneWidget);
+      expect(tester.widget<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).value, '118/76');
       expect(find.text('1 vital sign documented'), findsOneWidget);
     });
 

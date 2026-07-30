@@ -674,6 +674,7 @@ List<Override> visitsProviderOverrides({
   StubVisitDocumentationNotifier? docNotifier,
   VisitDetailViewState? detailView,
   Object? detailError,
+  Override? detailViewProviderOverride,
   String? patientId,
   PatientSafetyContext? patientSafety,
   Object? patientSafetyError,
@@ -712,7 +713,9 @@ List<Override> visitsProviderOverrides({
           () => StubVisitDocumentationNotifier(visitId, docState),
         ),
     if (visitId != null)
-      if (detailError != null)
+      if (detailViewProviderOverride != null)
+        detailViewProviderOverride
+      else if (detailError != null)
         visitDetailViewProvider(visitId).overrideWith(
           (ref) async => throw detailError,
         )

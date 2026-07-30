@@ -8,12 +8,14 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 
 import 'calendar_widget_test_harness.dart';
 
+void _noop() {}
+
 void main() {
   Future<SpyAppointmentCalendarController> pumpToolbar(
     WidgetTester tester, {
     AppointmentCalendarState? calendarState,
     bool isFullscreen = false,
-    VoidCallback? onToggleFullscreen,
+    VoidCallback? onToggleFullscreen = _noop,
   }) async {
     final state = calendarState ?? defaultCalendarState();
     return pumpCalendarSurface(

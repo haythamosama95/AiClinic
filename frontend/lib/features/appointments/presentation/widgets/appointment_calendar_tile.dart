@@ -38,7 +38,7 @@ class AppointmentCalendarTile extends StatelessWidget {
   static const _compactHeightThreshold = 28.0;
   static const _minContentHeight = 14.0;
   static const _horizontalMinHeight = 36.0;
-  static const _horizontalFullWidth = 220.0;
+  static const _horizontalFullWidth = 300.0;
   static const _horizontalMediumWidth = 120.0;
   static const _horizontalMediumWithStatusWidth = 196.0;
   static final _timeFormat = DateFormat('HH:mm');

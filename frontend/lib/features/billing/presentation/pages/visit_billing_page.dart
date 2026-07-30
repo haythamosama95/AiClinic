@@ -46,6 +46,10 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
   Widget build(BuildContext context) {
     final docAsync = ref.watch(visitDocumentationProvider(widget.visitId));
 
+    if (docAsync.hasError && !docAsync.hasValue) {
+      return Center(child: Text(docAsync.error!.toString()));
+    }
+
     return docAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) => Center(child: Text(error.toString())),

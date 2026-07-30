@@ -3,6 +3,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,7 +34,7 @@ void main() {
       final repo = HarnessAppointmentRepository();
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
-        loadingDetailFuture: Future<Never>.delayed(const Duration(days: 1)),
+        loadingDetail: true,
       );
 
       await pumpAppointmentDetail(
@@ -43,8 +44,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Loading…'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(find.text('Loading…'), findsWidgets);
+      expect(find.byType(AppProgress), findsWidgets);
     });
 
     testWidgets('advanced: loading with preview shows patient name', (tester) async {
@@ -52,7 +53,7 @@ void main() {
       final preview = buildAppointmentListItem(patientName: 'Preview Patient');
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
-        loadingDetailFuture: Future<Never>.delayed(const Duration(days: 1)),
+        loadingDetail: true,
       );
 
       await pumpAppointmentDetail(
@@ -137,6 +138,7 @@ void main() {
 
       router.push(AppRoutes.appointmentDetail(detailTestAppointmentId));
       await tester.pump();
+      await tester.pump();
 
       expect(router.state.uri.toString(), AppRoutes.appointmentDetail(detailTestAppointmentId));
       expect(find.text('Back to calendar'), findsOneWidget);
@@ -152,8 +154,8 @@ void main() {
     testWidgets('invalid state: other error shows message and Retry refetches', (tester) async {
       final repo = HarnessAppointmentRepository();
       repo.failGetAppointmentTimes = 1;
-      repo.detailOverride = buildAppointmentDetail(patientName: 'Reloaded Patient');
       final overrides = harnessDetailProviderOverrides(appointmentRepo: repo);
+      repo.detailOverride = buildAppointmentDetail(patientName: 'Reloaded Patient');
 
       await pumpAppointmentDetail(
         tester,

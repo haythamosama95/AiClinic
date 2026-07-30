@@ -88,8 +88,8 @@ void main() {
       await tester.pump();
 
       await tester.enterText(find.byKey(const Key('appointment_booking_patient_search')), 'Picker');
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Picker Patient'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Picker Patient').last);
       await tester.pump();
 
       expect(selected?.fullName, 'Picker Patient');

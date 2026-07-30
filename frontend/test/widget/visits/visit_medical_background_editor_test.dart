@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/medical_background_entry_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/medical_background_form_dialog.dart';
@@ -45,16 +46,18 @@ Future<void> _pumpEditor(
   await pumpVisitsFrames(tester);
 }
 
-Finder _columnForLabel(String label) {
+Finder _categoryColumnScope(String columnLabel) {
   return find.ancestor(
-    of: find.text(label),
+    of: find.text(columnLabel),
     matching: find.byType(Column),
-  );
+  ).first;
 }
 
 Future<void> _tapAddInColumn(WidgetTester tester, String columnLabel) async {
-  final column = _columnForLabel(columnLabel);
-  final addButton = find.descendant(of: column, matching: find.text('Add'));
+  final addButton = find.descendant(
+    of: _categoryColumnScope(columnLabel),
+    matching: find.widgetWithText(AppButton, 'Add'),
+  );
   await tester.ensureVisible(addButton);
   await tester.tap(addButton);
   await pumpVisitsFrames(tester);

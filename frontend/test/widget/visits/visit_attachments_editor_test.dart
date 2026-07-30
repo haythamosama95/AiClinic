@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_file_dropzone.dart';
@@ -25,19 +26,21 @@ Future<void> _pumpEditor(
 }) async {
   await pumpVisitsSurface(
     tester,
-    child: VisitAttachmentsEditor(
-      attachments: attachments,
-      uploadedBy: encounterTestDoctorId,
-      uploadedByName: 'Dr Test',
-      canEdit: canEdit,
-      onStage: onStage ??
-          ({
-            required pick,
-            required label,
-            required uploadedBy,
-            uploadedByName,
-          }) {},
-      onDelete: onDelete ?? (_) {},
+    child: SingleChildScrollView(
+      child: VisitAttachmentsEditor(
+        attachments: attachments,
+        uploadedBy: encounterTestDoctorId,
+        uploadedByName: 'Dr Test',
+        canEdit: canEdit,
+        onStage: onStage ??
+            ({
+              required pick,
+              required label,
+              required uploadedBy,
+              uploadedByName,
+            }) {},
+        onDelete: onDelete ?? (_) {},
+      ),
     ),
   );
   await pumpVisitsFrames(tester);
@@ -148,9 +151,16 @@ void main() {
         await _pumpEditor(tester, attachments: attachments);
 
         expect(find.text('File 0.pdf'), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('File 19.pdf'), 100);
+        await pumpVisitsFrames(tester);
         expect(find.text('File 19.pdf'), findsOneWidget);
-        expect(find.text('Remove File 0.pdf'), findsOneWidget);
-        expect(find.text('Remove File 19.pdf'), findsOneWidget);
+        expect(find.bySemanticsLabel('Remove File 0.pdf'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.bySemanticsLabel('Remove File 19.pdf'),
+          100,
+        );
+        await pumpVisitsFrames(tester);
+        expect(find.bySemanticsLabel('Remove File 19.pdf'), findsOneWidget);
       });
 
       testWidgets('very long filename does not throw', (tester) async {

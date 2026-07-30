@@ -48,8 +48,14 @@ Future<void> _pumpWide(WidgetTester tester, Widget child) async {
   );
 }
 
+Finder _iconButtonFinder(String label) {
+  return find.byWidgetPredicate(
+    (widget) => widget is AppIconButton && widget.label == label,
+  );
+}
+
 AppIconButton _iconButton(WidgetTester tester, String label) {
-  return tester.widget<AppIconButton>(find.bySemanticsLabel(label));
+  return tester.widget<AppIconButton>(_iconButtonFinder(label));
 }
 
 void main() {
@@ -122,7 +128,7 @@ void main() {
         isTrue,
       );
 
-      await tester.tap(find.bySemanticsLabel('Increase quantity for Consultation'));
+      await tester.tap(_iconButtonFinder('Increase quantity for Consultation'));
       await tester.pump();
 
       expect(changes, contains((service.serviceId, 2)));
@@ -241,7 +247,7 @@ void main() {
         isTrue,
       );
 
-      await tester.tap(find.bySemanticsLabel('Increase quantity for Consultation'));
+      await tester.tap(_iconButtonFinder('Increase quantity for Consultation'));
       await tester.pump();
 
       expect(changes, contains((service.serviceId, 2)));

@@ -229,7 +229,7 @@ void main() {
       const ManifestScenario('patients.archivePatient.FORBIDDEN.receptionist');
       final clinic = await ctx.ensureClinic(label: 'pat_arch_recv');
       final id = await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('89'));
-      await ctx.signInAdmin();
+      await ctx.signInAdminForClinic(clinic);
       await ctx.rolePermissions.updateRolePermission(
         role: StaffRole.receptionist,
         permissionKey: 'patients.delete',
@@ -239,7 +239,7 @@ void main() {
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
       await expectRpcCode(() => ctx.patients.archivePatient(id), 'FORBIDDEN');
-      await ctx.signInAdmin();
+      await ctx.signInAdminForClinic(clinic);
       await ctx.rolePermissions.updateRolePermission(
         role: StaffRole.receptionist,
         permissionKey: 'patients.delete',

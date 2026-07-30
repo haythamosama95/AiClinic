@@ -63,7 +63,10 @@ void main() {
       );
 
       expect(find.byType(VisitEncounterStepRail), findsOneWidget);
-      expect(find.bySemanticsLabel('Visit progress'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byType(VisitEncounterStepRail)).label,
+        startsWith('Visit progress'),
+      );
     });
 
     testWidgets('advanced: forwards onPhaseSelected from the embedded step rail', (tester) async {
@@ -99,7 +102,10 @@ void main() {
     testWidgets('advanced: marks the current phase as selected in semantics', (tester) async {
       await _pumpChromeSurface(
         tester,
-        child: VisitEncounterStepRail(currentPhase: EncounterPhase.objective),
+        child: VisitEncounterStepRail(
+          currentPhase: EncounterPhase.objective,
+          onPhaseSelected: (_) {},
+        ),
       );
 
       final intakeSemantics = tester.getSemantics(find.bySemanticsLabel('Intake'));
@@ -144,10 +150,12 @@ void main() {
       testWidgets('regression: routes ${phase.name} to the expected child widget', (tester) async {
         await _pumpChromeSurface(
           tester,
-          child: VisitEncounterStepContent(
-            visitId: encounterTestVisitId,
-            phase: phase,
-            canEdit: true,
+          child: SingleChildScrollView(
+            child: VisitEncounterStepContent(
+              visitId: encounterTestVisitId,
+              phase: phase,
+              canEdit: true,
+            ),
           ),
           overrides: _docOverrides(),
         );
@@ -281,15 +289,18 @@ void main() {
           await _pumpChromeSurface(
             tester,
             child: VisitEncounterStepRail(currentPhase: phase),
+            overrides: _docOverrides(),
           );
           expect(find.text(phase.label), findsOneWidget);
         } else {
           await _pumpChromeSurface(
             tester,
-            child: VisitEncounterStepContent(
-              visitId: encounterTestVisitId,
-              phase: phase,
-              canEdit: true,
+            child: SingleChildScrollView(
+              child: VisitEncounterStepContent(
+                visitId: encounterTestVisitId,
+                phase: phase,
+                canEdit: true,
+              ),
             ),
             overrides: _docOverrides(),
           );

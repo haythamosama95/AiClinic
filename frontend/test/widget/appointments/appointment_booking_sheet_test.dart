@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
+import 'package:ai_clinic/core/ui/components/app_progress.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_confirmed_step.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step1.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step2.dart';
@@ -36,11 +37,18 @@ void main() {
       final repo = HarnessAppointmentRepository();
       repo.delaySettingsLoad = true;
       await withClock(Clock.fixed(detailHarnessFixedNow), () async {
-        await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
+        await pumpBookingSheetHost(
+          tester,
+          overrides: bookingOverrides(repo),
+          appointmentRepo: repo,
+          settleAfterOpen: Duration.zero,
+        );
       });
       await tester.pump();
 
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(find.byType(AppProgress), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
     });
 
     testWidgets('invalid state: settings error shows Retry that reloads', (tester) async {
@@ -84,14 +92,20 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      await tester.enterText(find.byKey(const Key('appointment_booking_patient_search')), 'Booking');
-      await tester.pump(const Duration(milliseconds: 100));
+      final searchField = find.byKey(const Key('appointment_booking_patient_search'));
+      await tester.tap(searchField);
+      await tester.pump();
+      await tester.enterText(searchField, 'Booking');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       await tester.tap(find.text('Booking Patient'));
       await tester.pump();
+      expect(find.byKey(const Key('patient_picker_clear')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
       expect(find.byType(AppointmentBookingStep2), findsOneWidget);
       expect(find.byKey(const Key('appointment_booking_submit')), findsOneWidget);
@@ -119,29 +133,45 @@ void main() {
 
     testWidgets('advanced: successful submit shows confirmed step and Done button', (tester) async {
       final repo = HarnessAppointmentRepository();
-      await withClock(Clock.fixed(detailHarnessFixedNow), () async {
-        await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
+      final bookingStart = DateTime(2026, 6, 15, 10, 0);
+      await withClock(Clock.fixed(DateTime(2026, 6, 15, 9, 0)), () async {
+        await pumpBookingSheetHost(
+          tester,
+          overrides: bookingOverrides(repo),
+          appointmentRepo: repo,
+          slotStart: bookingStart,
+          slotEnd: bookingStart.add(const Duration(minutes: 30)),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        final searchField = find.byKey(const Key('appointment_booking_patient_search'));
+        await tester.tap(searchField);
+        await tester.pump();
+        await tester.enterText(searchField, 'Booking');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+        await tester.tap(find.text('Booking Patient'));
+        await tester.pump();
+        expect(find.byKey(const Key('patient_picker_clear')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
+        await tester.pump();
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+
+        expect(find.text('Choose time'), findsNothing);
+        expect(find.text('Confirm booking'), findsOneWidget);
+        expect(find.byKey(const Key('appointment_booking_submit')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pump();
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+
+        expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
+        expect(find.text('Appointment booked'), findsWidgets);
+        expect(find.byKey(const Key('appointment_booking_done')), findsOneWidget);
+        expect(repo.createCallCount, 1);
       });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await tester.enterText(find.byKey(const Key('appointment_booking_patient_search')), 'Booking');
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Booking Patient'));
-      await tester.pump();
-
-      await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
-      expect(find.text('Appointment booked'), findsOneWidget);
-      expect(find.byKey(const Key('appointment_booking_done')), findsOneWidget);
-      expect(repo.createCallCount, 1);
     });
 
     testWidgets('invalid state: SCHEDULE_CONFLICT shows conflict alert', (tester) async {
@@ -149,27 +179,29 @@ void main() {
       repo.createFailure = RpcFailure(
         RpcResult(success: false, errorCode: 'SCHEDULE_CONFLICT', errorMessage: 'overlap'),
       );
-      await withClock(Clock.fixed(detailHarnessFixedNow), () async {
-        await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
+      final bookingStart = DateTime(2026, 6, 15, 10, 0);
+      await withClock(Clock.fixed(DateTime(2026, 6, 15, 9, 0)), () async {
+        await pumpBookingSheetHost(
+          tester,
+          overrides: bookingOverrides(repo),
+          appointmentRepo: repo,
+          slotStart: bookingStart,
+          slotEnd: bookingStart.add(const Duration(minutes: 30)),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await selectPatientAndAdvanceToStep2(tester);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pump();
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+
+        expect(repo.createCallCount, 1);
+        expect(
+          find.text(appointmentMessageForRpc(repo.createFailure!)),
+          findsOneWidget,
+        );
       });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await tester.enterText(find.byKey(const Key('appointment_booking_patient_search')), 'Booking');
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Booking Patient'));
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(
-        find.text(appointmentMessageForRpc(repo.createFailure!)),
-        findsOneWidget,
-      );
     });
 
     testWidgets('advanced: edit mode prefills and calls update path', (tester) async {
@@ -208,9 +240,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      await tester.tap(find.text('Cancel'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('appointment_booking_cancel')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
       expect(find.byType(AppointmentBookingStep1), findsNothing);
     });
@@ -267,15 +298,15 @@ void main() {
       final repo = HarnessAppointmentRepository();
       await withClock(Clock.fixed(detailHarnessFixedNow), () async {
         await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
-      });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
-      await selectPatientAndAdvanceToStep2(tester);
-      await tester.tap(find.text('9:00 AM'));
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pump();
+        await selectPatientAndAdvanceToStep2(tester);
+        await tester.tap(find.textContaining('9:00').first);
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pump();
+      });
 
       expect(find.text('Start time must be in the future.'), findsOneWidget);
     });
@@ -366,28 +397,33 @@ void main() {
 
     testWidgets('invalid state: selected slot no longer available on submit', (tester) async {
       final repo = HarnessAppointmentRepository();
-      final slotTime = DateTime(2026, 6, 15, 11, 0);
+      final slotTime = DateTime(2026, 6, 15, 10, 0);
       await withClock(Clock.fixed(detailHarnessFixedNow), () async {
         await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await selectPatientAndAdvanceToStep2(tester);
+
+        repo.listAppointmentsResult = [
+          buildAppointmentListItem(
+            startTime: slotTime,
+            doctorId: calendarTestDoctorAId,
+            status: AppointmentStatus.confirmed,
+          ),
+        ];
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pump();
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+          if (find.text('This slot is no longer available.').evaluate().isNotEmpty) {
+            break;
+          }
+        }
+
+        expect(repo.createCallCount, 0);
+        expect(find.text('This slot is no longer available.'), findsOneWidget);
       });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await selectPatientAndAdvanceToStep2(tester);
-      await tester.tap(find.text('11:00 AM'));
-      await tester.pump();
-
-      repo.listAppointmentsResult = [
-        buildAppointmentListItem(
-          startTime: slotTime,
-          doctorId: calendarTestDoctorAId,
-          status: AppointmentStatus.confirmed,
-        ),
-      ];
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pump();
-
-      expect(find.text('This slot is no longer available.'), findsOneWidget);
     });
 
     testWidgets('advanced: backdrop dismisses dialog when idle', (tester) async {
@@ -400,6 +436,7 @@ void main() {
 
       expect(find.byType(AppointmentBookingStep1), findsOneWidget);
       await tapBookingDialogBackdrop(tester);
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
       expect(find.byType(AppointmentBookingStep1), findsNothing);
     });
@@ -437,20 +474,27 @@ void main() {
 
     testWidgets('invalid state: backdrop does not dismiss after confirmation', (tester) async {
       final repo = HarnessAppointmentRepository();
-      await withClock(Clock.fixed(detailHarnessFixedNow), () async {
-        await pumpBookingSheetHost(tester, overrides: bookingOverrides(repo), appointmentRepo: repo);
+      final bookingStart = DateTime(2026, 6, 15, 10, 0);
+      await withClock(Clock.fixed(DateTime(2026, 6, 15, 9, 0)), () async {
+        await pumpBookingSheetHost(
+          tester,
+          overrides: bookingOverrides(repo),
+          appointmentRepo: repo,
+          slotStart: bookingStart,
+          slotEnd: bookingStart.add(const Duration(minutes: 30)),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await selectPatientAndAdvanceToStep2(tester);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pump();
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+
+        expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
+        await tapBookingDialogBackdrop(tester);
+        expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
       });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      await selectPatientAndAdvanceToStep2(tester);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
-      await tapBookingDialogBackdrop(tester);
-      expect(find.byType(AppointmentBookingConfirmedStep), findsOneWidget);
     });
   });
 }

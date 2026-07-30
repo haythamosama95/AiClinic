@@ -162,16 +162,21 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final future = container.read(
-        appointmentDetailShiftLookupProvider(
-          AppointmentDetailShiftQuery(
-            branchId: '44444444-4444-4444-8444-444444444444',
-            appointmentStart: DateTime.utc(2026, 6, 4, 10),
-          ),
-        ).future,
+      final provider = appointmentDetailShiftLookupProvider(
+        AppointmentDetailShiftQuery(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          appointmentStart: DateTime.utc(2026, 6, 4, 10),
+        ),
       );
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
 
-      await expectLater(future, throwsA(isA<RpcFailure>()));
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(asyncValue.error, isA<RpcFailure>());
     });
   });
 }

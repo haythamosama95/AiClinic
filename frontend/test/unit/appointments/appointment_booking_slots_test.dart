@@ -6,7 +6,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
-import 'package:fake_async/fake_async.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -435,10 +435,8 @@ void main() {
     });
 
     test('edge case: multiDayFetchRange empty defaults to today', () {
-      FakeAsync().run((async) {
-        final anchor = DateTime(2026, 7, 15, 14, 30);
-        async.elapse(anchor.difference(DateTime(1970, 1, 1)));
-
+      final anchor = DateTime(2026, 7, 15, 14, 30);
+      withClock(Clock.fixed(anchor), () {
         final range = AppointmentBookingSlots.multiDayFetchRange([]);
 
         expect(range.from, DateTime(anchor.year, anchor.month, anchor.day));

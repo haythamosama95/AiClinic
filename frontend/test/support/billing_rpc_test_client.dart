@@ -8,6 +8,17 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
 
   final Map<String, Map<String, dynamic>> rpcResults;
   final List<String> rpcLog = [];
+  final List<({String fn, Map<String, dynamic>? params})> rpcCalls = [];
+
+  /// Params from the most recent call to [fn], if any.
+  Map<String, dynamic>? paramsForFunction(String fn) {
+    for (var i = rpcCalls.length - 1; i >= 0; i--) {
+      if (rpcCalls[i].fn == fn) {
+        return rpcCalls[i].params;
+      }
+    }
+    return null;
+  }
   final List<Map<String, dynamic>> _draftItems = [];
   final List<Map<String, dynamic>> payments = [];
 
@@ -105,8 +116,10 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     rpcLog.add(fn);
+    final copied = params == null ? null : Map<String, dynamic>.from(params);
+    rpcCalls.add((fn: fn, params: copied));
     lastFunction = fn;
-    lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    lastParams = copied;
     if (fn == 'update_billing_settings') {
       allowPartialPayments = lastParams?['p_allow_partial_payments'] == true;
     }

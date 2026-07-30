@@ -73,18 +73,18 @@ class _EncounterStepItem extends StatelessWidget {
 
     final indicator = _EncounterStepIndicator(icon: phase.icon, state: state, colors: colors);
 
-    final stepIcon = onTap == null
-        ? indicator
-        : Semantics(
-            button: true,
-            selected: state == AppStepState.current,
-            label: phase.label,
-            child: Material(
+    final stepIcon = Semantics(
+      button: onTap != null,
+      selected: state == AppStepState.current,
+      label: phase.label,
+      child: onTap == null
+          ? indicator
+          : Material(
               color: Colors.transparent,
               shape: const CircleBorder(),
               child: InkWell(onTap: () => onTap!(phase), customBorder: const CircleBorder(), child: indicator),
             ),
-          );
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,

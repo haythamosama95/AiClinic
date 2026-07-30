@@ -80,11 +80,18 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final future = container.read(appointmentDetailProvider('missing').future);
+      final provider = appointmentDetailProvider('missing');
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
 
-      await expectLater(
-        future,
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND')),
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND'),
       );
     });
 

@@ -54,6 +54,7 @@ class LiveSupabaseHarness {
     }
 
     await SqlFixtureHelper().ensureLocalDevelopmentEnvironment();
+    await _waitForPostgrestReady(config.restProbeUrl);
 
     await SupabaseBootstrap.ensureLiveInitialized(config);
     _config = config;
@@ -88,6 +89,17 @@ class LiveSupabaseHarness {
     } on Exception {
       return false;
     }
+  }
+
+  /// PostgREST reloads after local dev pre-request DDL; wait until probes succeed again.
+  static Future<void> _waitForPostgrestReady(Uri restProbeUrl) async {
+    for (var attempt = 0; attempt < 20; attempt++) {
+      if (await _probe(restProbeUrl)) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    markTestSkipped('PostgREST did not become ready after local dev pre-request setup.');
   }
 
   static Future<DeploymentProfile> _loadProfile() async {

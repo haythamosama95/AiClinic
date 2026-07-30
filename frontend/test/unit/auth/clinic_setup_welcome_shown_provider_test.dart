@@ -82,7 +82,7 @@ void main() {
       expect(container.read(unusualProvider), isTrue);
     });
 
-    test('autoDispose creates a fresh notifier after the last listener closes', () {
+    test('autoDispose creates a fresh notifier after the last listener closes', () async {
       final container = createContainer();
       const staffMemberId = 'staff-a';
       final provider = clinicSetupWelcomeShownProvider(staffMemberId);
@@ -92,6 +92,7 @@ void main() {
       expect(container.read(provider), isTrue);
 
       subscription.close();
+      await container.pump();
 
       expect(container.read(provider), isFalse);
       expect(container.read(provider.notifier).tryMarkShown(), isTrue);

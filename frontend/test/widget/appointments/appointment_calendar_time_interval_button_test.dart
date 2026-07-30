@@ -16,7 +16,7 @@ void main() {
       tester,
       calendarState: state,
       child: const Center(child: AppointmentCalendarTimeIntervalButton()),
-      surfaceSize: const Size(600, 300),
+      surfaceSize: const Size(600, 450),
     );
   }
 

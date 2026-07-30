@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
@@ -24,11 +25,8 @@ void main() {
         child: const InvoiceDetailPage(invoiceId: billingTestIssuedInvoiceId),
         overrides: billingProviderOverrides(
           extraOverrides: [
-            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWith(
-              (ref) => Future<InvoiceDetailViewState>.delayed(
-                const Duration(days: 1),
-                () => buildBillingDetailView(),
-              ),
+            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWithValue(
+              const AsyncLoading<InvoiceDetailViewState>(),
             ),
           ],
         ),
@@ -123,14 +121,19 @@ void main() {
         tester,
         child: const InvoiceDetailPage(invoiceId: billingTestIssuedInvoiceId),
         overrides: billingProviderOverrides(
-          detailInvoiceId: billingTestIssuedInvoiceId,
-          detailView: buildBillingDetailView(
-            invoice: buildBillingInvoiceDetail(
-              status: InvoiceStatus.voided,
-              voidReason: 'Entered in error',
-              voidedAt: DateTime.utc(2026, 6, 3),
+          extraOverrides: [
+            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWithValue(
+              AsyncData(
+                buildBillingDetailView(
+                  invoice: buildBillingInvoiceDetail(
+                    status: InvoiceStatus.voided,
+                    voidReason: 'Entered in error',
+                    voidedAt: DateTime.utc(2026, 6, 3),
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       );
       await pumpBillingFrames(tester);
@@ -175,7 +178,7 @@ void main() {
       );
       await pumpBillingFrames(tester);
 
-      await tester.tap(find.text('View patient profile'));
+      await tester.tap(find.bySemanticsLabel('View patient profile'));
       await pumpBillingFrames(tester);
 
       expect(find.text('stub:patient-$billingTestPatientId'), findsOneWidget);
@@ -195,8 +198,9 @@ void main() {
         ),
       );
       await pumpBillingFrames(tester);
+      await tester.pumpAndSettle();
 
-      await tester.tap(find.text('View visit in patient record'));
+      await tester.tap(find.bySemanticsLabel('View visit in patient record'));
       await pumpBillingFrames(tester);
 
       expect(find.text('stub:visit-document-$billingTestVisitId'), findsOneWidget);
@@ -235,8 +239,9 @@ void main() {
       await pumpBillingFrames(tester);
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Record payment'), findsOneWidget);
+      expect(find.byType(Dialog), findsOneWidget);
       expect(find.byType(PaymentForm), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Record payment'), findsOneWidget);
     });
 
     testWidgets('permission-gated actions are disabled without grants', (tester) async {

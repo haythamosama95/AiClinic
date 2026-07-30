@@ -89,7 +89,7 @@ void main() {
     final voidButton = voidButtons.firstWhere(
       (button) => button.child is Text && (button.child as Text).data == 'Void invoice',
     );
-    expect(voidButton.disabled, isTrue);
+    expect(voidButton.onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), 'Duplicate invoice');
     await tester.pump();
@@ -97,7 +97,7 @@ void main() {
     final enabledVoidButton = tester.widgetList<AppButton>(find.byType(AppButton)).firstWhere(
       (button) => button.child is Text && (button.child as Text).data == 'Void invoice',
     );
-    expect(enabledVoidButton.disabled, isFalse);
+    expect(enabledVoidButton.onPressed, isNotNull);
   });
 
   testWidgets('VoidInvoiceDialog Cancel dismisses without calling repository', (tester) async {

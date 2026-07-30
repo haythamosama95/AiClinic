@@ -148,7 +148,7 @@ void main() {
     testWidgets('builds invoice card and discount sidebar', (tester) async {
       await _pumpReviewStep(tester, overrides: _reviewOverrides());
 
-      expect(find.text('Review invoice'), findsOneWidget);
+      expect(find.textContaining('Review invoice'), findsOneWidget);
       expect(find.text('Discount'), findsWidgets);
       expect(find.text('Consultation'), findsOneWidget);
       expect(find.text('Discount type'), findsOneWidget);
@@ -162,6 +162,11 @@ void main() {
 
       expect(find.text('Discount type'), findsOneWidget);
       expect(find.text('No discount'), findsOneWidget);
+
+      // Force a fresh provider scope so permission overrides from the first pump
+      // do not leak into the receptionist session.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
 
       await _pumpReviewStep(
         tester,

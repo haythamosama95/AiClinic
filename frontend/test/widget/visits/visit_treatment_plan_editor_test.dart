@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
@@ -34,21 +35,23 @@ Future<void> _pumpEditor(
 }) async {
   await pumpVisitsSurface(
     tester,
-    child: VisitTreatmentPlanEditor(
-      entries: entries,
-      canEdit: canEdit,
-      onCreate: onCreate ??
-          ({
-            required medicationName,
-            medicationId,
-            dosage,
-            frequency,
-            duration,
-            notes,
-          }) {},
-      onUpdate: onUpdate ??
-          (id, {medicationName, medicationId, dosage, frequency, duration, notes}) {},
-      onArchive: onArchive ?? (_) {},
+    child: SingleChildScrollView(
+      child: VisitTreatmentPlanEditor(
+        entries: entries,
+        canEdit: canEdit,
+        onCreate: onCreate ??
+            ({
+              required medicationName,
+              medicationId,
+              dosage,
+              frequency,
+              duration,
+              notes,
+            }) {},
+        onUpdate: onUpdate ??
+            (id, {medicationName, medicationId, dosage, frequency, duration, notes}) {},
+        onArchive: onArchive ?? (_) {},
+      ),
     ),
   );
   await pumpVisitsFrames(tester);

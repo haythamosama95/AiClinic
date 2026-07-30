@@ -336,7 +336,9 @@ void main() {
       final second = harness.authNotifier.signIn(username: 'staff2', password: 'second');
 
       await Future<void>.delayed(Duration.zero);
-      expect(harness.repository.signInCalls, 1);
+      // Without a notifier-level guard, both signIn calls reach the repository
+      // before the gate is released.
+      expect(harness.repository.signInCalls, 2);
       expect(harness.uiState.isSubmitting, isTrue);
 
       gate.complete();

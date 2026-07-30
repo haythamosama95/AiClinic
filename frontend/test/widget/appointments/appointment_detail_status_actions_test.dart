@@ -118,7 +118,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      await tester.tap(find.text('Undo confirm'));
+      await tester.tap(find.text('Undo confirm').last);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -143,7 +143,7 @@ void main() {
       await tester.tap(find.byKey(const Key('appointment_control_no_show')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Mark no-show'));
+      await tester.tap(find.text('Mark no-show').last);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 

@@ -76,60 +76,57 @@ class _AppointmentCalendarFilterButtonState
       matchTriggerWidth: false,
       estimatedContentHeight: 460,
       triggerBuilder: (context, isOpen, onToggle) {
-        return Semantics(
-          button: true,
-          label: activeCount > 0
-              ? 'Schedule filters, $activeCount active'
-              : 'Schedule filters',
-          child: AppIconButton(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  Icons.filter_list_outlined,
-                  color: widget.hasActiveFilters
-                      ? colors.actionPrimary
-                      : colors.iconDefault,
-                ),
-                if (activeCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: colors.actionPrimary,
-                        borderRadius: BorderRadius.circular(AppRadius.full),
-                        border: Border.all(
-                          color: colors.surfaceRaised,
-                          width: 1.5,
-                        ),
+        return AppIconButton(
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                Icons.filter_list_outlined,
+                color: widget.hasActiveFilters
+                    ? colors.actionPrimary
+                    : colors.iconDefault,
+              ),
+              if (activeCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.actionPrimary,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                      border: Border.all(
+                        color: colors.surfaceRaised,
+                        width: 1.5,
                       ),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: Center(
-                          child: Text(
-                            '$activeCount',
-                            style: AppTypography.caption(context).copyWith(
-                              color: colors.actionPrimaryFg,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
-                            ),
+                    ),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: Center(
+                        child: Text(
+                          '$activeCount',
+                          style: AppTypography.caption(context).copyWith(
+                            color: colors.actionPrimaryFg,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            height: 1,
                           ),
                         ),
                       ),
                     ),
                   ),
-              ],
-            ),
-            label: activeCount > 0 ? 'Filters active' : 'Schedule filters',
-            tooltip: activeCount > 0 ? 'Filters active' : 'Schedule filters',
-            variant: widget.hasActiveFilters || isOpen
-                ? AppIconButtonVariant.secondary
-                : AppIconButtonVariant.ghost,
-            onPressed: onToggle,
+                ),
+            ],
           ),
+          label: activeCount > 0
+              ? 'Schedule filters, $activeCount active'
+              : 'Schedule filters',
+          tooltip: activeCount > 0 ? 'Filters active' : 'Schedule filters',
+          tooltipDisabled: true,
+          variant: widget.hasActiveFilters || isOpen
+              ? AppIconButtonVariant.secondary
+              : AppIconButtonVariant.ghost,
+          onPressed: onToggle,
         );
       },
       child: _AppointmentCalendarFilterPanel(

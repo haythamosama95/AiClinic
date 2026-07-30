@@ -2,12 +2,14 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart' show VisitClinicalNote, kMaxClinicalSectionLength;
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/visit_encounter_test_support.dart';
@@ -34,6 +36,9 @@ void main() {
           ),
         ),
         visitRepositoryProvider.overrideWith((ref) => VisitRepository(client)),
+        visitAttachmentServiceProvider.overrideWith(
+          (ref) => _StubVisitAttachmentService(ref.watch(visitRepositoryProvider)),
+        ),
         visitDocumentationProvider(encounterTestVisitId).overrideWith(
           () => _SeededVisitDocumentationNotifier(seedState),
         ),
@@ -579,4 +584,10 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
 
   @override
   AuthSessionState build() => initial;
+}
+
+class _FakeSupabaseClient extends Fake implements SupabaseClient {}
+
+class _StubVisitAttachmentService extends VisitAttachmentService {
+  _StubVisitAttachmentService(VisitRepository repository) : super(_FakeSupabaseClient(), repository);
 }

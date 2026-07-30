@@ -177,6 +177,8 @@ void main() {
     expect(applied, isNotNull);
     expect(applied!.branchId, calendarTestBranchAId);
     expect(applied!.doctorId, isNull);
-    expect(applied!.statuses, contains(AppointmentStatus.confirmed));
+    // Default filter shows all workflow chips selected; tapping Confirmed deselects it.
+    expect(applied!.statuses, isNot(contains(AppointmentStatus.confirmed)));
+    expect(applied!.statuses, contains(AppointmentStatus.scheduled));
   });
 }

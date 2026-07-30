@@ -663,6 +663,9 @@ void main() {
 
     test('realtime change applies in place when payload is sufficient', () async {
       const branchId = '00000000-0000-4000-8000-000000000001';
+      final today = DateTime.now().toUtc();
+      final updatedStart = DateTime.utc(today.year, today.month, today.day, 11);
+      final updatedEnd = updatedStart.add(const Duration(minutes: 30));
       final realtimeClient = _CapturingAppointmentQueueRealtimeClient(onSubscribe: (_) {});
       final container = ProviderContainer(
         overrides: [
@@ -693,8 +696,8 @@ void main() {
           eventType: PostgresChangeEvent.update,
           newRecord: {
             'id': targetId,
-            'start_time': DateTime.utc(2026, 6, 4, 11).toIso8601String(),
-            'end_time': DateTime.utc(2026, 6, 4, 11, 30).toIso8601String(),
+            'start_time': updatedStart.toIso8601String(),
+            'end_time': updatedEnd.toIso8601String(),
             'status': 'confirmed',
             'type': 'planned',
           },

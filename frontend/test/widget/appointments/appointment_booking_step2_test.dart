@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/ui/components/app_progress.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step2.dart';
 import 'package:flutter/material.dart';
@@ -105,7 +106,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(find.byType(AppProgress), findsWidgets);
     });
 
     testWidgets('invalid state: date and time errors render', (tester) async {

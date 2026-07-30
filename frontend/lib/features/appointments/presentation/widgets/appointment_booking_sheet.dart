@@ -71,6 +71,7 @@ class AppointmentBookingSheet extends ConsumerStatefulWidget {
       builder: (dialogContext) => UncontrolledProviderScope(
         container: ProviderScope.containerOf(context, listen: false),
         child: _AppointmentBookingDialogHost(
+          routeContext: dialogContext,
           branchId: branchId,
           schedule: schedule,
           slotStart: slotStart,
@@ -400,6 +401,39 @@ class _AppointmentBookingSheetState
     });
     _notifyPhaseChanged();
     await _loadBranchAppointmentsForDay(_selectedDate!);
+    if (!mounted) {
+      return;
+    }
+    _syncSelectedSlotWithGrid();
+  }
+
+  void _syncSelectedSlotWithGrid() {
+    final slots = _slotsForSelectedDay;
+    if (slots.isEmpty) {
+      return;
+    }
+
+    final current = _selectedSlotStart;
+    final matched = current == null
+        ? null
+        : slots.where((slot) => slot.start == current).firstOrNull;
+    if (matched != null && matched.status != AppointmentBookingSlotStatus.locked) {
+      return;
+    }
+
+    final openSlots = slots
+        .where((slot) => slot.status != AppointmentBookingSlotStatus.locked)
+        .toList(growable: false);
+    if (openSlots.isEmpty) {
+      return;
+    }
+
+    final anchor = current ?? clock.now();
+    final nextOpen = openSlots
+            .where((slot) => !slot.start.isBefore(anchor))
+            .firstOrNull ??
+        openSlots.last;
+    _applySelectedSlot(nextOpen);
   }
 
   void _goBack() {
@@ -474,9 +508,27 @@ class _AppointmentBookingSheetState
         await _goNext();
         return;
       }
-    } else if (!_validateStep2()) {
-      return;
     } else {
+      final normalizedDay = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+      );
+      final range = AppointmentBookingSlots.dayFetchRange(normalizedDay);
+      final items = await ref
+          .read(appointmentRepositoryProvider)
+          .listAppointments(
+            branchId: _selectedBranchId,
+            from: range.from,
+            to: range.to,
+          );
+      _branchAppointments = items;
+      _loadedAppointmentsDay = normalizedDay;
+      _loadingBranchAppointments = false;
+      if (!_validateStep2()) {
+        setState(() => _formError = _timeError);
+        return;
+      }
       final slot = _slotsForSelectedDay
           .where((item) => item.start == _selectedSlotStart)
           .firstOrNull;
@@ -883,15 +935,22 @@ class _AppointmentBookingSheetState
     );
   }
 
-  Widget buildDialogFooter(BuildContext context) => _buildFooter(context);
+  Widget buildDialogFooter({
+    required VoidCallback onCancel,
+    required VoidCallback onDone,
+  }) =>
+      _buildFooter(onCancel: onCancel, onDone: onDone);
 
-  Widget _buildFooter(BuildContext context) {
+  Widget _buildFooter({
+    required VoidCallback onCancel,
+    required VoidCallback onDone,
+  }) {
     if (_bookingConfirmed) {
       return Align(
         alignment: AlignmentDirectional.centerEnd,
         child: AppButton(
           key: const Key('appointment_booking_done'),
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => onDone(),
           child: const Text('Done'),
         ),
       );
@@ -916,9 +975,10 @@ class _AppointmentBookingSheetState
           )
         else
           AppButton(
+            key: const Key('appointment_booking_cancel'),
             variant: AppButtonVariant.secondary,
             disabled: _isSaving,
-            onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+            onPressed: _isSaving ? null : onCancel,
             child: const Text('Cancel'),
           ),
         const SizedBox(width: AppSpacing.space2),
@@ -950,6 +1010,7 @@ class _AppointmentBookingSheetState
 /// Dialog host with dynamic title and footer for the multi-step booking flow.
 class _AppointmentBookingDialogHost extends StatefulWidget {
   const _AppointmentBookingDialogHost({
+    required this.routeContext,
     required this.branchId,
     required this.schedule,
     required this.slotStart,
@@ -960,6 +1021,7 @@ class _AppointmentBookingDialogHost extends StatefulWidget {
     this.branchName,
   });
 
+  final BuildContext routeContext;
   final String branchId;
   final BranchWorkingSchedule schedule;
   final DateTime slotStart;
@@ -977,6 +1039,16 @@ class _AppointmentBookingDialogHost extends StatefulWidget {
 class _AppointmentBookingDialogHostState
     extends State<_AppointmentBookingDialogHost> {
   final _sheetKey = GlobalKey<_AppointmentBookingSheetState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
 
   bool get _isEdit => widget.existingAppointment != null;
 
@@ -1008,6 +1080,10 @@ class _AppointmentBookingDialogHostState
     };
   }
 
+  void _closeDialog([bool? result]) {
+    Navigator.of(widget.routeContext).pop(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1023,36 +1099,40 @@ class _AppointmentBookingDialogHostState
       insetPadding: EdgeInsets.zero,
       child: Stack(
         fit: StackFit.expand,
+        alignment: Alignment.center,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: dismissible ? () => Navigator.of(context).pop() : null,
-            child: ColoredBox(color: backdropColor),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: dismissible ? () => _closeDialog() : null,
+              child: ColoredBox(color: backdropColor),
+            ),
           ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.space4),
-              child: Center(
-                child: AppDialogPanel(
-                  title: _title,
-                  description: _description,
-                  size: AppDialogSize.lg,
-                  showCloseButton: dismissible,
-                  showHeader: true,
-                  onClose: () => Navigator.of(context).pop(),
-                  footer: _sheet?.buildDialogFooter(context),
-                  child: AppointmentBookingSheet(
-                    key: _sheetKey,
-                    branchId: widget.branchId,
-                    schedule: widget.schedule,
-                    slotStart: widget.slotStart,
-                    slotEnd: widget.slotEnd,
-                    initialDoctorId: widget.initialDoctorId,
-                    doctors: widget.doctors,
-                    existingAppointment: widget.existingAppointment,
-                    branchName: widget.branchName,
-                    onPhaseChanged: () => setState(() {}),
-                  ),
+              child: AppDialogPanel(
+                title: _title,
+                description: _description,
+                size: AppDialogSize.lg,
+                showCloseButton: dismissible,
+                showHeader: true,
+                onClose: () => _closeDialog(),
+                footer: _sheet?.buildDialogFooter(
+                  onCancel: () => _closeDialog(),
+                  onDone: () => _closeDialog(true),
+                ),
+                child: AppointmentBookingSheet(
+                  key: _sheetKey,
+                  branchId: widget.branchId,
+                  schedule: widget.schedule,
+                  slotStart: widget.slotStart,
+                  slotEnd: widget.slotEnd,
+                  initialDoctorId: widget.initialDoctorId,
+                  doctors: widget.doctors,
+                  existingAppointment: widget.existingAppointment,
+                  branchName: widget.branchName,
+                  onPhaseChanged: () => setState(() {}),
                 ),
               ),
             ),

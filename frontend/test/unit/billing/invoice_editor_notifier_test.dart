@@ -59,11 +59,18 @@ void main() {
       addTearDown(container.dispose);
 
       final provider = invoiceEditorProvider(invoiceId);
-      await expectLater(
-        container.read(provider.future),
-        throwsA(isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND')),
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
+
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND'),
       );
-      expect(container.read(provider), isA<AsyncError>());
     });
 
     test('reload refreshes invoice detail on success', () async {
@@ -234,7 +241,7 @@ void main() {
       expect(catalogClient.calls, ['add_invoice_item_from_service']);
       expect(billingClient.rpcLog, isNot(contains('add_invoice_item_from_service')));
       expect(
-        catalogClient.lastParams?['p_expected_updated_at'],
+        catalogClient.paramsForFunction('add_invoice_item_from_service')?['p_expected_updated_at'],
         expectedUpdatedAt.toUtc().toIso8601String(),
       );
     });
@@ -247,45 +254,52 @@ void main() {
       final notifier = container.read(provider.notifier);
       await container.read(provider.future);
 
-      Future<void> expectLatestExpectedUpdatedAt() async {
-        final expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
+      void expectRpcExpectedUpdatedAt(String rpcName, DateTime expectedUpdatedAt) {
         expect(
-          billingClient.lastParams?['p_expected_updated_at'] ?? catalogClient.lastParams?['p_expected_updated_at'],
+          billingClient.paramsForFunction(rpcName)?['p_expected_updated_at'] ??
+              catalogClient.paramsForFunction(rpcName)?['p_expected_updated_at'],
           expectedUpdatedAt.toUtc().toIso8601String(),
         );
       }
 
+      var expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.addItem(description: 'Manual item', quantity: '1', unitPrice: '40.00');
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('add_invoice_item', expectedUpdatedAt);
 
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.addItemFromService(_sampleEligibleService());
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('add_invoice_item_from_service', expectedUpdatedAt);
 
       final itemId = container.read(provider).value!.invoice.items.first.id;
 
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.updateItemQuantity(itemId: itemId, quantity: '2');
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('update_invoice_item', expectedUpdatedAt);
 
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.updateItem(
         itemId: itemId,
         description: 'Updated item',
         quantity: '2',
         unitPrice: '45.00',
       );
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('update_invoice_item', expectedUpdatedAt);
 
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.applyInvoiceDiscount(kind: DiscountKind.percentage, value: '10');
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('apply_invoice_discount', expectedUpdatedAt);
 
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.setInsuranceCoverage(
         providerId: BillingRpcTestClient.insuranceProviderId,
         coveredAmount: '5.00',
       );
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('set_insurance_coverage', expectedUpdatedAt);
 
       final removableItemId = container.read(provider).value!.invoice.items.last.id;
+      expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.removeItem(removableItemId);
-      await expectLatestExpectedUpdatedAt();
+      expectRpcExpectedUpdatedAt('remove_invoice_item', expectedUpdatedAt);
     });
 
     test('applyLineDiscount, issue, and discardDraft mutations', () async {
@@ -313,7 +327,7 @@ void main() {
         value: '10',
       );
       expect(
-        discountClient.lastParams?['p_expected_updated_at'],
+        discountClient.paramsForFunction('apply_line_discount')?['p_expected_updated_at'],
         expectedUpdatedAt.toUtc().toIso8601String(),
       );
 
@@ -335,7 +349,7 @@ void main() {
       final invoiceNumber = await issueNotifier.issue();
       expect(invoiceNumber, 'INV-MAIN-000001');
       expect(
-        issueClient.lastParams?['p_expected_updated_at'],
+        issueClient.paramsForFunction('issue_invoice')?['p_expected_updated_at'],
         issueUpdatedAt.toUtc().toIso8601String(),
       );
 
@@ -355,7 +369,7 @@ void main() {
 
       await discardNotifier.discardDraft();
       expect(
-        discardClient.lastParams?['p_expected_updated_at'],
+        discardClient.paramsForFunction('discard_draft_invoice')?['p_expected_updated_at'],
         discardUpdatedAt.toUtc().toIso8601String(),
       );
       expect(discardClient.rpcLog, contains('discard_draft_invoice'));
@@ -445,14 +459,25 @@ InvoiceDetail _minimalInvoiceDetail({
   );
 }
 
-class _TrackingCatalogClient extends RpcCaptureSupabaseClient {
+class _TrackingCatalogClient extends BillingRpcTestClient {
   final List<String> calls = <String>[];
+
+  Map<String, dynamic>? paramsForFunction(String fn) {
+    for (var i = rpcCalls.length - 1; i >= 0; i--) {
+      if (rpcCalls[i].fn == fn) {
+        return rpcCalls[i].params;
+      }
+    }
+    return null;
+  }
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     calls.add(fn);
+    final copied = params == null ? null : Map<String, dynamic>.from(params);
+    rpcCalls.add((fn: fn, params: copied));
     lastFunction = fn;
-    lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    lastParams = copied;
     return FakePostgrestRpc({
       'success': true,
       'data': {

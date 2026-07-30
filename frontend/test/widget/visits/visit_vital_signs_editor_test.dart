@@ -71,11 +71,10 @@ void main() {
         expect(find.text('2 vital signs documented'), findsOneWidget);
         expect(find.byType(VitalSignEntryCard), findsNWidgets(2));
         expect(find.text('BLOOD PRESSURE'), findsOneWidget);
-        expect(find.text('120/80'), findsOneWidget);
         expect(find.text('HEART RATE'), findsOneWidget);
-        expect(find.text('72'), findsOneWidget);
-        expect(find.textContaining('mmHg'), findsOneWidget);
-        expect(find.textContaining('bpm'), findsOneWidget);
+        final cards = tester.widgetList<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).toList();
+        expect(cards.map((card) => card.value), containsAll(['120/80', '72']));
+        expect(cards.map((card) => card.unit), containsAll(['mmHg', 'bpm']));
         expect(find.text('Add another vital sign'), findsOneWidget);
       });
 

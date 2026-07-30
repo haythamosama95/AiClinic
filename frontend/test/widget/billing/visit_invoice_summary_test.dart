@@ -108,36 +108,31 @@ Future<void> _pumpPanel(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: child),
+        home: Scaffold(
+          body: SingleChildScrollView(child: child),
+        ),
       ),
     ),
   );
 }
 
-GoRouter _dialogRouter({required Set<String> permissions}) {
+Future<void> _tapVisibleButton(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(AppButton, label);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+}
+
+GoRouter _dialogRouter() {
   return GoRouter(
     initialLocation: '/',
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => ProviderScope(
-          overrides: [
-            authSessionProvider.overrideWith(
-              () => MutableAuthSessionNotifier(
-                AuthSessionState(
-                  status: AuthSessionStatus.authenticated,
-                  context: sampleAuthSessionContext(permissions: permissions),
-                ),
-              ),
-            ),
-            ..._currencyOverrides(),
-          ],
-          child: Scaffold(
-            body: Center(
-              child: AppButton(
-                onPressed: () => VisitInvoiceSummaryDialog.show(context, invoice: _issuedInvoice()),
-                child: const Text('Show summary'),
-              ),
+        builder: (context, state) => Scaffold(
+          body: Center(
+            child: AppButton(
+              onPressed: () => VisitInvoiceSummaryDialog.show(context, invoice: _issuedInvoice()),
+              child: const Text('Show summary'),
             ),
           ),
         ),
@@ -160,11 +155,24 @@ Future<void> _pumpDialogHost(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
-    MaterialApp.router(
-      theme: AppTheme.light(),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      routerConfig: _dialogRouter(permissions: permissions),
+    ProviderScope(
+      overrides: [
+        authSessionProvider.overrideWith(
+          () => MutableAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(permissions: permissions),
+            ),
+          ),
+        ),
+        ..._currencyOverrides(),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: _dialogRouter(),
+      ),
     ),
   );
 }
@@ -290,7 +298,7 @@ void main() {
       expect(find.text('Consultation'), findsOneWidget);
       expect(find.text('Issued'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(AppButton, 'Back'));
+      await _tapVisibleButton(tester, 'Back');
       await tester.pump();
 
       expect(backTapped, isTrue);

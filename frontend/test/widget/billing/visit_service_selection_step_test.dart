@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -62,7 +64,12 @@ class _SpyServiceSelectorNotifier extends ServiceSelectorNotifier {
   final List<EligibleService> _services;
 
   @override
-  Future<List<EligibleService>> build() async => const [];
+  Future<List<EligibleService>> build() async {
+    if (_mode == _CatalogMode.loading) {
+      return Completer<List<EligibleService>>().future;
+    }
+    return const [];
+  }
 
   @override
   void search(String query, {Duration debounce = const Duration(milliseconds: 300)}) {
@@ -188,6 +195,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
 
       expect(find.byType(AppSkeleton), findsOneWidget);
+      expect(find.text('No services in the catalog yet.'), findsNothing);
     });
 
     testWidgets('shows catalog error state', (tester) async {

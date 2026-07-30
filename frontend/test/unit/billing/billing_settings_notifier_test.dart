@@ -96,9 +96,17 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      await expectLater(
-        container.read(billingSettingsProvider.future),
-        throwsA(isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR')),
+      final subscription = container.listen(billingSettingsProvider, (_, _) {});
+      addTearDown(subscription.close);
+
+      container.read(billingSettingsProvider);
+      await pumpEventQueue();
+
+      final state = container.read(billingSettingsProvider);
+      expect(state.hasError, isTrue);
+      expect(
+        state.error,
+        isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR'),
       );
     });
 
@@ -186,8 +194,12 @@ void main() {
 
       await updateFuture;
 
-      expect(client.lastFunction, 'update_billing_settings');
-      expect(client.lastParams?['p_allow_partial_payments'], isTrue);
+      expect(client.rpcLog, contains('update_billing_settings'));
+      expect(
+        client.rpcLog.lastIndexWhere((fn) => fn == 'update_billing_settings'),
+        lessThan(client.rpcLog.lastIndexWhere((fn) => fn == 'get_billing_settings')),
+      );
+      expect(client.allowPartialPayments, isTrue);
       expect(client.rpcLog.where((fn) => fn == 'get_billing_settings').length, greaterThanOrEqualTo(2));
       expect(container.read(billingSettingsProvider).value?.allowPartialPayments, isTrue);
     });
@@ -248,10 +260,12 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      await expectLater(
-        container.read(billingSettingsProvider.future),
-        throwsA(isA<RpcFailure>()),
-      );
+      final subscription = container.listen(billingSettingsProvider, (_, _) {});
+      addTearDown(subscription.close);
+
+      container.read(billingSettingsProvider);
+      await pumpEventQueue();
+      expect(container.read(billingSettingsProvider).hasError, isTrue);
 
       client.rpcResults.remove('get_billing_settings');
       client.rpcResults['update_billing_settings'] = {

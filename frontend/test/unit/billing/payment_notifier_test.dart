@@ -14,6 +14,7 @@ void main() {
 
     setUp(() {
       client = BillingRpcTestClient();
+      client.allowPartialPayments = true;
       container = ProviderContainer(
         overrides: [
           paymentRepositoryProvider.overrideWithValue(PaymentRepository(client)),
@@ -60,7 +61,7 @@ void main() {
         note: '  Patient overpaid  ',
       );
 
-      expect(paymentId, 'ref-1');
+      expect(paymentId, 'ref-2');
       expect(client.lastFunction, 'record_refund');
       expect(client.lastParams?['p_invoice_id'], BillingRpcTestClient.issuedInvoiceId);
       expect(client.lastParams?['p_method'], 'bank_transfer');

@@ -117,14 +117,15 @@ Future<void> dismissActiveSetupWelcomeFlow(
   WidgetTester tester,
   TestAuthSessionNotifier auth,
 ) async {
+  auth.setAuthenticated(setupRequired: false);
+  await tester.pump();
+
   if (find.text('Continue').evaluate().isNotEmpty) {
     await tester.tap(find.text('Continue'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
   }
 
-  auth.setAuthenticated(setupRequired: false);
-  await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
 
   if (find.text('Start exploring').evaluate().isNotEmpty) {

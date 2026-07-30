@@ -186,15 +186,21 @@ void main() {
         'error_message': 'Service unavailable',
       };
       final container = _createContainer(client: client, authState: _authenticated());
+      final provider = visitDetailViewProvider(_visitIdA);
       final transitions = <AsyncValue<VisitDetailViewState>>[];
-      container.listen(visitDetailViewProvider(_visitIdA), (_, next) => transitions.add(next), fireImmediately: true);
+      final subscription = container.listen(provider, (_, next) => transitions.add(next), fireImmediately: true);
+      addTearDown(subscription.close);
 
-      await expectLater(
-        container.read(visitDetailViewProvider(_visitIdA).future),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_ERROR')),
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_ERROR'),
       );
       expect(transitions.any((value) => value is AsyncLoading), isTrue);
-      expect(container.read(visitDetailViewProvider(_visitIdA)), isA<AsyncError>());
     });
 
     test('regression: NOT_FOUND propagates from get_visit', () async {
@@ -204,10 +210,18 @@ void main() {
         'error_message': 'Missing',
       };
       final container = _createContainer(client: client, authState: _authenticated());
+      final provider = visitDetailViewProvider(_visitIdA);
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
 
-      await expectLater(
-        container.read(visitDetailViewProvider(_visitIdA).future),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND')),
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND'),
       );
     });
 

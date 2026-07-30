@@ -204,8 +204,8 @@ Widget _loginTestMediaQuery({required Size surfaceSize, required Widget child}) 
   );
 }
 
-Widget _loginMaterialApp({required Widget child}) {
-  return MaterialApp(
+Widget _loginRouterMaterialApp({required GoRouter router}) {
+  return MaterialApp.router(
     theme: AppTheme.light(),
     builder: (context, appChild) {
       return MediaQuery(
@@ -213,7 +213,7 @@ Widget _loginMaterialApp({required Widget child}) {
         child: appChild!,
       );
     },
-    home: child,
+    routerConfig: router,
   );
 }
 
@@ -250,6 +250,7 @@ Future<LoginPumpResult> pumpLoginPage(
 
   final session = sessionNotifier ?? TestAuthSessionNotifier();
   final repository = authRepository ?? RecordingAuthRepository();
+  final router = createLoginTestRouter();
 
   await tester.pumpWidget(
     ProviderScope(
@@ -261,7 +262,7 @@ Future<LoginPumpResult> pumpLoginPage(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
-        child: _loginMaterialApp(child: const LoginPage()),
+        child: _loginRouterMaterialApp(router: router),
       ),
     ),
   );
@@ -298,16 +299,7 @@ Future<LoginPumpResult> pumpLoginRouter(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
-        child: MaterialApp.router(
-          theme: AppTheme.light(),
-          builder: (context, child) {
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child!,
-            );
-          },
-          routerConfig: router,
-        ),
+        child: _loginRouterMaterialApp(router: router),
       ),
     ),
   );
@@ -392,13 +384,7 @@ bool loginPasswordIsObscured(WidgetTester tester) {
 }
 
 bool loginSubmitButtonIsLoading(WidgetTester tester) {
-  return find
-      .descendant(
-        of: loginSubmitButton(),
-        matching: find.bySemanticsLabel('Loading'),
-      )
-      .evaluate()
-      .isNotEmpty;
+  return tester.widget<AppButton>(loginSubmitButton()).loading;
 }
 
 bool loginSubmitButtonIsEnabled(WidgetTester tester) {
@@ -439,9 +425,7 @@ Future<void> triggerUsernameFieldNext(WidgetTester tester) async {
 Future<void> navigateAwayFromLogin(WidgetTester tester) async {
   final router = GoRouter.of(tester.element(find.byType(LoginPage)));
   router.go('/home');
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 50));
-  await tester.pump();
+  await tester.pumpAndSettle();
 }
 
 String loginRouteWithForgotPasswordIntent() => LoginQueryParams.loginWithForgotPasswordIntent();

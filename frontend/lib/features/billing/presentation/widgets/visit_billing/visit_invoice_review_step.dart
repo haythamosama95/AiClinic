@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -41,6 +43,7 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
   late final Animation<double> _sidebarAnimation;
+  Timer? _sidebarStartTimer;
 
   @override
   void initState() {
@@ -71,7 +74,7 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
     if (reducedMotion) {
       _sidebarController.forward();
     } else {
-      Future<void>.delayed(const Duration(milliseconds: 50), () {
+      _sidebarStartTimer = Timer(const Duration(milliseconds: 50), () {
         if (mounted) {
           _sidebarController.forward();
         }
@@ -81,6 +84,7 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
 
   @override
   void dispose() {
+    _sidebarStartTimer?.cancel();
     _mainController.dispose();
     _sidebarController.dispose();
     super.dispose();
@@ -242,6 +246,7 @@ class _VisitInvoiceReadOnlyReviewState
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
   late final Animation<double> _sidebarAnimation;
+  Timer? _sidebarStartTimer;
 
   @override
   void initState() {
@@ -272,7 +277,7 @@ class _VisitInvoiceReadOnlyReviewState
     if (reducedMotion) {
       _sidebarController.forward();
     } else {
-      Future<void>.delayed(const Duration(milliseconds: 50), () {
+      _sidebarStartTimer = Timer(const Duration(milliseconds: 50), () {
         if (mounted) {
           _sidebarController.forward();
         }
@@ -282,6 +287,7 @@ class _VisitInvoiceReadOnlyReviewState
 
   @override
   void dispose() {
+    _sidebarStartTimer?.cancel();
     _mainController.dispose();
     _sidebarController.dispose();
     super.dispose();

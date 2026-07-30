@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
+import 'package:ai_clinic/core/ui/components/app_skeletonizer_zone.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
@@ -68,7 +69,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(Bone), findsWidgets);
+    expect(find.byType(AppSkeletonizerZone), findsOneWidget);
     expect(find.byType(SfCalendar), findsNothing);
   });
 
@@ -79,6 +80,7 @@ void main() {
       calendarState: defaultCalendarState(loading: false, error: errorMessage),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Could not load calendar'), findsOneWidget);
     expect(find.text(errorMessage), findsOneWidget);
@@ -128,6 +130,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     final bookButton = find.widgetWithText(AppButton, 'Book appointment');
     expect(bookButton, findsOneWidget);
@@ -145,6 +148,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Book appointment'), findsNothing);
   });
@@ -163,6 +167,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Book appointment'), findsNothing);
   });
@@ -181,9 +186,12 @@ void main() {
 
     await tester.tap(find.text('Book appointment'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Book appointment'), findsWidgets);
-    expect(find.text('Pick a day and choose an open time slot.'), findsOneWidget);
+    expect(
+      find.text('Patient, branch, and optional doctor preference.'),
+      findsOneWidget,
+    );
   });
 }

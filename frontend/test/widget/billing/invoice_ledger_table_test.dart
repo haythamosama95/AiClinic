@@ -54,7 +54,11 @@ Future<void> _pumpLedgerTable(
     ),
   );
 
-  await tester.pumpAndSettle();
+  if (loading) {
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -95,7 +99,7 @@ void main() {
     );
 
     expect(find.text('Ahmed Hassan'), findsOneWidget);
-    expect(find.text('Patient'), findsOneWidget);
+    expect(find.text('Patient'), findsNWidgets(2));
   });
 
   testWidgets('InvoiceLedgerTable loading mode shows skeleton rows', (tester) async {

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
@@ -17,12 +18,14 @@ Future<void> _pumpEditor(
 }) async {
   await pumpVisitsSurface(
     tester,
-    child: VisitInvestigationsEditor(
-      entries: entries,
-      canEdit: canEdit,
-      onCreate: onCreate ?? ({required name, note, investigationId}) {},
-      onUpdate: onUpdate ?? (id, {required name, note, investigationId}) {},
-      onArchive: onArchive ?? (_) {},
+    child: SingleChildScrollView(
+      child: VisitInvestigationsEditor(
+        entries: entries,
+        canEdit: canEdit,
+        onCreate: onCreate ?? ({required name, note, investigationId}) {},
+        onUpdate: onUpdate ?? (id, {required name, note, investigationId}) {},
+        onArchive: onArchive ?? (_) {},
+      ),
     ),
   );
   await pumpVisitsFrames(tester);
@@ -139,6 +142,9 @@ void main() {
 
         await _pumpEditor(tester, entries: entries);
 
+        expect(find.text('Investigation 0'), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('Investigation 19'), 100);
+        await pumpVisitsFrames(tester);
         expect(find.byType(InvestigationEntryCard), findsNWidgets(20));
         expect(find.text('20 investigations to order'), findsOneWidget);
       });

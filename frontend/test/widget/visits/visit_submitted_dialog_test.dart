@@ -116,6 +116,12 @@ Future<void> _openSubmittedDialog(
   await tester.pump(const Duration(milliseconds: 500));
 }
 
+Future<void> _tapVisibleButton(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(AppButton, label);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+}
+
 void main() {
   group('VisitSubmittedDialog.show', () {
     testWidgets('trivial: displays confirmation content and footer actions', (tester) async {
@@ -137,9 +143,9 @@ void main() {
         overrides: _submittedDialogOverrides(),
       );
 
-      await tester.tap(find.widgetWithText(AppButton, 'View appointment'));
+      await _tapVisibleButton(tester, 'View appointment');
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(find.text('stub:appointment-$encounterTestAppointmentId'), findsOneWidget);
       expect(find.byType(VisitSubmittedCombinedConfirmation), findsNothing);
@@ -151,9 +157,9 @@ void main() {
         overrides: _submittedDialogOverrides(),
       );
 
-      await tester.tap(find.widgetWithText(AppButton, 'Back to calendar'));
+      await _tapVisibleButton(tester, 'Back to calendar');
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(find.text('stub:appointments-calendar'), findsOneWidget);
       expect(find.byType(VisitSubmittedCombinedConfirmation), findsNothing);
@@ -168,7 +174,7 @@ void main() {
       expect(find.byType(VisitSubmittedCombinedConfirmation), findsOneWidget);
       await tester.tapAt(const Offset(8, 8));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(find.byType(VisitSubmittedCombinedConfirmation), findsNothing);
     });
