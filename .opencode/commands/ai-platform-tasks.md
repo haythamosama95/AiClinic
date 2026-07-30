@@ -89,9 +89,12 @@ Phases, replacing the template's:
    (delivery plan §3.10).
 5. **Documentation** — always present. One task for `specs/<NNN>-<name>/quickstart.md`, filled per
    `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review,
-   suite commands, how to inspect the changes, and manual validation only when the slice exposes
-   behaviour beyond CI. Add a separate `[P]` task per other documentation artifact the plan names
-   (e.g. `ai-platform/README.md` on the bootstrap slice only).
+   slice-only test commands (`npx vitest run` for this slice's test files — not full `npm test`),
+   how to inspect the changes, and manual validation only when the slice exposes behaviour beyond CI.
+   The quickstart task must state slice-only scope explicitly: no prior-slice files in the review
+   table, no combined test counts, no prior-slice regression commands. Add a separate `[P]` task per
+   other documentation artifact the plan names (e.g. `ai-platform/README.md` on the bootstrap slice
+   only).
 
 Then keep Dependencies & Execution Order and Parallel Opportunities, scoped to this one slice.
 

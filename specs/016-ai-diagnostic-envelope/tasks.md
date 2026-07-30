@@ -152,10 +152,12 @@ after Verification is green; it documents the passing state for a human reviewer
 - [X] T011 [US1] Write `specs/016-ai-diagnostic-envelope/quickstart.md` per
       `.specify/templates/ai-platform-quickstart-template.md`: a brief of what A2 implemented (the
       §5.4 error taxonomy, error-body contract, request-reference generator, trace-id resolver, and
-      worker wiring), a files-to-review table, exact `npm test` / `vitest run` commands (full suite
-      and per-file), how to inspect the three contract modules and the `worker.ts` integration, and
-      no manual-validation section (CI is the verification path). Satisfies the plan's Documentation
-      artifact. Proved by a reviewer being able to reproduce the green run from the doc alone.
+      worker wiring), a files-to-review table (A2 files only), slice-only `npx vitest run` commands
+      for the five A2 test files (48 passing), how to inspect the three contract modules and the
+      `worker.ts` integration, and no manual-validation section (CI is the verification path).
+      Slice-only scope: no prior-slice files, combined test counts, or full-suite `npm test`. Satisfies
+      the plan's Documentation artifact. Proved by a reviewer being able to reproduce the green run
+      from the doc alone.
 
 ---
 

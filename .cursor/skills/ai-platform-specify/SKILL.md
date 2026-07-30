@@ -1,6 +1,6 @@
 ---
 name: ai-platform-specify
-description: Writes spec.md for one AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template, without inventing architecture. Use when the user names an AI platform slice id and asks to specify it or drive speckit.specify on it.
+description: Specify an AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template. Use when the user names a slice id and asks to specify it or run ai-platform-specify.
 disable-model-invocation: true
 ---
 
@@ -12,15 +12,57 @@ Every requirement must be traceable to a cited section. If it cannot be traced, 
 **Input:** the slice id (`A1`, `B7`, `D6`, `H3`, `J2`, …). If the user did not give one, ask for it
 and do nothing else.
 
-## Branch
+## User Input
 
-Before anything else, branch from `ai/master` with the `ai/` prefix (e.g. `ai/017-a1-worker-skeleton`).
+```text
+$ARGUMENTS
+```
+
+The first argument should be the slice id. If empty, ask for it and stop.
+
+## Branch and feature directory
+
+Before anything else, take the next feature number from Spec Kit rather than picking one, then branch
+from `ai/master` with the `ai/` prefix.
+
+`create-new-feature.sh` cannot be used to create the branch — it hardcodes `<NNN>-<name>` with no
+prefix hook. Use it in `--dry-run` mode purely to allocate the number, which keeps AI slices in the
+same sequence as every other feature:
+
+```bash
+.specify/scripts/bash/create-new-feature.sh --dry-run --json \
+  --short-name '<short-name>' '<slice name from the delivery plan>'
+```
+
+Read `FEATURE_NUM` from the JSON. Then:
 
 ```bash
 git fetch origin ai/master
 git checkout ai/master
-git checkout -b ai/<branch-name>
+git checkout -b ai/<FEATURE_NUM>-<slice-id-lowercase>-<short-name>
+mkdir -p specs/<FEATURE_NUM>-<short-name>
+cp .specify/templates/spec-template.md specs/<FEATURE_NUM>-<short-name>/spec.md
 ```
+
+Confirm the wiring before writing anything, and abort if it does not resolve to the new directory:
+
+```bash
+.specify/scripts/bash/ai-platform-paths.sh --json --paths-only
+```
+
+Branch and directory need not have identical slugs — Spec Kit matches on the numeric prefix — but the
+prefix must be the same and exactly one `specs/<FEATURE_NUM>-*` directory may exist.
+
+## Relationship to Spec Kit
+
+This is the AI platform variant of Spec Kit's `/speckit-specify`, in the same slot and producing the
+same artifact: `specs/<NNN>-<name>/spec.md` from `.specify/templates/spec-template.md`. It diverges in
+that the feature description is not the user's prose but a row of the delivery plan, so every
+requirement must cite a `§` section of `docs/architecture/17-ai-platform.md`, and an untraceable
+requirement is an `## ESCALATION` rather than a `[NEEDS CLARIFICATION]` marker. The rest of Spec Kit
+still applies: same directory layout, same templates, same constitution gate. The phase order is
+`/ai-platform-specify` → `/ai-platform-clarify` → `/ai-platform-plan` → `/ai-platform-tasks` →
+`/ai-platform-implement`.
 
 ## Sources — read exactly these
 

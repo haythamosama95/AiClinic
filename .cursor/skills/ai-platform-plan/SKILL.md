@@ -1,6 +1,6 @@
 ---
 name: ai-platform-plan
-description: Writes plan.md for an AI platform delivery slice whose spec.md already exists, filling the Spec Kit plan template and binding each consumed contract to an existing module without adding requirements. Use when the user asks to plan an AI platform slice or drive speckit.plan on one.
+description: Plan an AI platform delivery slice whose spec.md already exists, filling the Spec Kit plan template and binding each consumed contract to an existing module. Use when the user asks to plan an AI platform slice or run ai-platform-plan.
 disable-model-invocation: true
 ---
 
@@ -10,11 +10,54 @@ The spec is authoritative. **The plan may not introduce any requirement, file, o
 does not name.** You are choosing how to satisfy an already-written spec, not extending it.
 
 **Input:** the slice's `specs/<NNN>-<name>/spec.md`. Resolve it from the current branch or the slice
-id. If neither identifies exactly one spec directory, ask; do nothing else.
+id given as `$ARGUMENTS`. If neither identifies exactly one spec directory, ask; do nothing else.
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+The first argument should be the slice id (e.g. `A1`, `D6`). If empty, resolve from the current branch
+or ask.
+
+## Relationship to Spec Kit
+
+This is the AI platform variant of Spec Kit's `/speckit-plan`, in the same slot and producing the same
+artifact: `specs/<NNN>-<name>/plan.md` from `.specify/templates/plan-template.md`, with its
+Constitution Check gate intact. It diverges in that the research phase is already done — it is
+`docs/architecture/17-ai-platform.md` — so no `research.md` is produced, `NEEDS CLARIFICATION` is
+forbidden, and an unanswerable field is an `## ESCALATION`. Four sections are added for the delivery
+plan's contract model. It runs after `/ai-platform-clarify` and before `/ai-platform-tasks`.
+
+## Prerequisites
+
+Resolve the slice's paths through Spec Kit, once, from the repository root:
+
+```bash
+.specify/scripts/bash/ai-platform-paths.sh --json --paths-only
+```
+
+That wraps `check-prerequisites.sh`, adding only the `ai/<NNN>-…` branch resolution
+`.specify/feature.json` would otherwise override. Never call `check-prerequisites.sh` directly on an
+`ai/` branch. Parse `FEATURE_SPEC` and `IMPL_PLAN`. If `FEATURE_SPEC` is missing, stop and instruct
+the user to run `/ai-platform-specify`.
+
+Then seed `plan.md` from the template rather than writing it from scratch, so the template stack
+(`.specify/templates/overrides/`, presets, extensions, core) is honoured:
+
+```bash
+SPECIFY_FEATURE_DIRECTORY="$FEATURE_DIR" .specify/scripts/bash/setup-plan.sh --json
+```
+
+Fill the copied file in place. It is a fresh copy of the template on every run, so an earlier partial
+plan is discarded — that is intended.
 
 ## Sources — read exactly these
 
-1. The slice's `spec.md` — whole file, including its `## Slice Contract` block.
+1. The slice's `spec.md` — whole file, including its `## Slice Contract` block. Its `## Clarifications`
+   section, when present, holds decided implementation choices, not requirements: follow them, but
+   never promote one into a requirement and never trace a file to one instead of to an `FR-###`.
 2. `docs/architecture/17b-ai-platform-delivery-plan.md` — the slice's §3 row, §3.10, and §6.
 3. `docs/architecture/17-ai-platform.md` — **only** the sections in the spec's **Implements**.
 4. The existing modules named in the spec's **Consumes**.
@@ -36,7 +79,7 @@ path conventions predate it; extend the source tree rather than forcing Worker c
 | Summary | The slice's purpose in two sentences, taken from the spec, plus its position in the delivery sequence |
 | Technical Context | Concrete values only. Every field must be answerable from the spec or the cited architecture. **Never write `NEEDS CLARIFICATION`** — an unanswerable field is stop condition 1 |
 | Constitution Check | Every box must be checked before proceeding. For gateway slices, record the §14 acknowledgement: the Worker is an additive, non-primary component with no domain logic, no business data, and no write path into Supabase. An uncheckable box is an escalation, not a Complexity Tracking row |
-| Project Structure → Documentation | **Always** list `quickstart.md` — every slice produces one. Fill it using `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review, how to run the suite, how to inspect the changes, and manual validation steps only when the slice exposes behaviour beyond CI. Also list `data-model.md` only when the slice defines D1 entities; `contracts/` whenever a **Freezes** entry has a wire shape — a table, a payload, a token, an event, an error taxonomy — because a later slice's **Consumes** must bind to a frozen artifact, not to prose. **Never `research.md`** — the research is `17-ai-platform.md`, and redoing it is how architecture drift starts |
+| Project Structure → Documentation | **Always** list `quickstart.md` — every slice produces one. Fill it using `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, this slice's files to review, slice-only test commands (`npx vitest run` for this slice's test files), how to inspect the changes, and manual validation steps only when the slice exposes behaviour beyond CI. **Slice-only scope:** no prior-slice files, combined test counts, or full-suite `npm test` (except A1 bootstrap). Also list `data-model.md` only when the slice defines D1 entities; `contracts/` whenever a **Freezes** entry has a wire shape — a table, a payload, a token, an event, an error taxonomy — because a later slice's **Consumes** must bind to a frozen artifact, not to prose. **Never `research.md`** — the research is `17-ai-platform.md`, and redoing it is how architecture drift starts |
 | Project Structure → Source Code | The real tree for this slice, including `ai-platform/` where applicable. Delete unused branches |
 | **`## Consumes Binding`** *(added)* | One row per **Consumes** entry, naming the existing module, file, or type it binds to. An entry with no existing implementation is stop condition 2 |
 | **`## Components Touched`** *(added)* | The §4 components of `17-ai-platform.md` this slice modifies. More than one requires an explicit written reason here |

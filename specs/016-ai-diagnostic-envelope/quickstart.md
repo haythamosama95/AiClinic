@@ -1,9 +1,9 @@
 # Quickstart: Diagnostic envelope — error taxonomy, request reference, trace propagation (A2)
 
-Slice **A2** adds the gateway's diagnostic envelope to the A1 Worker skeleton: a closed §5.4
-error taxonomy with normative HTTP mapping, a stable error-body contract, a Crockford-base32
-request-reference generator, and a trace-id resolver wired into the fetch path — so every later
-slice that emits or handles an error is constrained by contracts that already exist.
+Slice **A2** adds the gateway's diagnostic envelope: a closed §5.4 error taxonomy with normative HTTP
+mapping, a stable error-body contract, a Crockford-base32 request-reference generator, and a trace-id
+resolver wired into the fetch path — so every later slice that emits or handles an error is
+constrained by contracts that already exist.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
@@ -22,12 +22,11 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 - **`ai-platform/src/trace.ts`** — trace-id resolver (accept caller-supplied `x-trace-id` or
   generate a ULID); structured logger carrying `request_reference`, `trace_id`, installation,
   capability, and prompt version — never prompt text, context payload, or credentials.
-- **`ai-platform/src/worker.ts`** — wires the envelope into the existing fetch path: resolves
-  trace id at the top of `POST /v1/requests`, generates a request reference, rejects malformed
-  bodies before taxonomy codes are built, and emits structured logs with the diagnostic fields.
-  A1's `/health` route and binding topology are unchanged.
-- **Twenty-nine named contract/unit cases (T1–T29)** across five test files, plus A1's ten
-  cases — fifty-eight passing tests total.
+- **`ai-platform/src/worker.ts`** — wires the envelope into the fetch path: resolves trace id at
+  the top of `POST /v1/requests`, generates a request reference, rejects malformed bodies before
+  taxonomy codes are built, and emits structured logs with the diagnostic fields.
+- **Twenty-nine named contract/unit cases (T1–T29)** across five test files — **48 passing
+  tests** total.
 
 ## 2. Files to review
 
@@ -42,8 +41,6 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 | `ai-platform/test/reference.test.ts` | T21, T28 — generator format and normalisation |
 | `ai-platform/test/trace.test.ts` | T22, T23 — trace propagation and ULID fallback |
 | `ai-platform/test/log-redaction.test.ts` | T25, T27 — malformed-body rejection and log redaction |
-| `ai-platform/test/env-deploys.test.ts` | A1 — T1, T3, T4 (env isolation, missing-binding startup) |
-| `ai-platform/test/health.test.ts` | A1 — T2 (build and environment identity) |
 
 ## 3. Run the automated suite
 
@@ -52,38 +49,13 @@ From the repository root:
 ```bash
 cd ai-platform
 npm install   # first time only
-npm test
+npx vitest run test/taxonomy.test.ts test/error-body.test.ts test/reference.test.ts \
+  test/trace.test.ts test/log-redaction.test.ts
 ```
 
-This runs `vitest run` via `@cloudflare/vitest-pool-workers`. Expect **58 passing tests**
-across seven files: **48** from A2 (`taxonomy`, `error-body`, `reference`, `trace`,
-`log-redaction`) and **10** from A1 (`env-deploys`, `health`). A regression in A1's suite is a
-hard fail.
-
-To run only A2's test files:
-
-```bash
-npx vitest run test/taxonomy.test.ts
-npx vitest run test/error-body.test.ts
-npx vitest run test/reference.test.ts
-npx vitest run test/trace.test.ts
-npx vitest run test/log-redaction.test.ts
-```
-
-To run a single A1 regression check:
-
-```bash
-npx vitest run test/env-deploys.test.ts test/health.test.ts
-```
+Expect **48 passing tests** across the five A2 test files listed above.
 
 ## 4. Inspect the changes
-
-View the diff against the A1 baseline:
-
-```bash
-git diff ai/master -- ai-platform/src/errors.ts ai-platform/src/reference.ts \
-  ai-platform/src/trace.ts ai-platform/src/worker.ts ai-platform/test/
-```
 
 Read the three contract modules:
 

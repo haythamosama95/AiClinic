@@ -114,9 +114,14 @@ wins:
    point you stopped.
 8. **When the Documentation phase is in scope, write `quickstart.md` last** — only after Verification
    is green. Fill it per `.specify/templates/ai-platform-quickstart-template.md`: a brief of what was
-   implemented, the files to review, exact commands to run the suite (and any slice-specific tests),
-   how to inspect the changes, and manual validation steps only when the slice exposes behaviour
-   beyond CI. The quickstart documents the passing state, not the plan.
+   implemented, the files to review, exact commands to run this slice's tests, how to inspect the
+   changes, and manual validation steps only when the slice exposes behaviour beyond CI. The
+   quickstart documents the passing state, not the plan. **Slice-only scope is mandatory:** list only
+   files this slice added or modified; run commands must target only this slice's test files (e.g.
+   `npx vitest run test/<slice-files>.test.ts`), not `npm test` for the full platform suite; do not
+   include prior-slice files in the review table, combined test counts, regression commands, or
+   baseline diffs — full-suite regression is the Verification task's job, not the quickstart's.
+   Renumber sections sequentially when omitting Prerequisites or Manual validation (no gaps).
 9. **Report and stop.** List the tasks completed, the tasks left in the selected phases (with why), and
    the next phase that is now runnable.
 

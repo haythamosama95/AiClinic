@@ -1,6 +1,6 @@
 ---
 name: ai-platform-implement
-description: Executes selected phases of tasks.md for an AI platform delivery slice whose spec.md and plan.md already exist, enforcing the delivery plan's implementation prohibitions and keeping every prior slice's suite green. Use when the user asks to implement an AI platform slice, or one or more phases of its task list, or to drive speckit.implement on one.
+description: Execute selected phases of tasks.md for an AI platform delivery slice, enforcing the delivery plan's implementation prohibitions and keeping every prior slice's suite green. Use when the user asks to implement an AI platform slice or run ai-platform-implement with a phase selector.
 disable-model-invocation: true
 ---
 
@@ -10,8 +10,40 @@ The spec, the plan, and the task list are authoritative. **Implementation adds n
 executing an already-written task list, not deciding what to build.
 
 **Input:** the slice's `specs/<NNN>-<name>/` containing `spec.md`, `plan.md`, and `tasks.md`, plus
-**which phases of `tasks.md` to run**. Resolve the slice from the current branch or the slice id. If
-`tasks.md` is missing, stop and say so.
+**which phases of `tasks.md` to run**. Resolve the slice from the current branch or the slice id given
+as `$ARGUMENTS`. If `tasks.md` is missing, stop and say so.
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+The slice id (e.g. `A1`, `D6`) and a phase selector (e.g. `A1 phase 2`, `A1 2-3`, `A1 tests`,
+`D6 T003-T006`). If the slice is empty, resolve from the current branch or ask. If the phase selector
+is empty, see Scope below.
+
+## Relationship to Spec Kit
+
+This is the AI platform variant of Spec Kit's `/speckit-implement`, in the same slot: executing the
+slice's `tasks.md` and marking tasks complete in place. It diverges in that it runs only the phases it
+was asked for rather than the whole file, and it enforces the delivery plan's §6.4 prohibitions and
+§3.10 regression rule. It is the last phase, after `/ai-platform-tasks`.
+
+## Prerequisites
+
+Resolve the slice and validate that `spec.md`, `plan.md`, and `tasks.md` all exist, once, from the
+repository root:
+
+```bash
+.specify/scripts/bash/ai-platform-paths.sh --json --require-tasks --include-tasks
+```
+
+That wraps `check-prerequisites.sh` in the same mode `/speckit-implement` uses, adding only the
+`ai/<NNN>-…` branch resolution `.specify/feature.json` would otherwise override. Never call
+`check-prerequisites.sh` directly on an `ai/` branch. Parse `FEATURE_DIR` and `AVAILABLE_DOCS`, and
+read only the documents `AVAILABLE_DOCS` reports as present. If the script fails, report its error
+verbatim and stop.
 
 ## Sources — read exactly these
 
@@ -84,9 +116,14 @@ wins:
    point you stopped.
 8. **When the Documentation phase is in scope, write `quickstart.md` last** — only after Verification
    is green. Fill it per `.specify/templates/ai-platform-quickstart-template.md`: a brief of what was
-   implemented, the files to review, exact commands to run the suite (and any slice-specific tests),
-   how to inspect the changes, and manual validation steps only when the slice exposes behaviour
-   beyond CI. The quickstart documents the passing state, not the plan.
+   implemented, the files to review, exact commands to run this slice's tests, how to inspect the
+   changes, and manual validation steps only when the slice exposes behaviour beyond CI. The
+   quickstart documents the passing state, not the plan. **Slice-only scope is mandatory:** list only
+   files this slice added or modified; run commands must target only this slice's test files (e.g.
+   `npx vitest run test/<slice-files>.test.ts`), not `npm test` for the full platform suite; do not
+   include prior-slice files in the review table, combined test counts, regression commands, or
+   baseline diffs — full-suite regression is the Verification task's job, not the quickstart's.
+   Renumber sections sequentially when omitting Prerequisites or Manual validation (no gaps).
 9. **Report and stop.** List the tasks completed, the tasks left in the selected phases (with why), and
    the next phase that is now runnable.
 
