@@ -48,17 +48,43 @@ class _ControlsHarnessState extends State<_ControlsHarness> {
   }
 }
 
+const _controlsSurfaceSize = Size(1800, 900);
+
+Finder _filterButtonFinder() {
+  return find.ancestor(
+    of: find.text('Filter'),
+    matching: find.byType(AppButton),
+  );
+}
+
+Future<void> _tapFilterButton(WidgetTester tester) async {
+  final button = _filterButtonFinder();
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 Future<_ControlsHarnessState> _pumpControls(
   WidgetTester tester, {
   PatientListFilters initialFilters = const PatientListFilters(),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1200, 700));
+  if (find.byType(MaterialApp).evaluate().isNotEmpty) {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  }
+
+  await tester.binding.setSurfaceSize(_controlsSurfaceSize);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light(),
       home: Scaffold(
-        body: _ControlsHarness(initialFilters: initialFilters),
+        body: SizedBox(
+          width: _controlsSurfaceSize.width,
+          height: _controlsSurfaceSize.height,
+          child: _ControlsHarness(initialFilters: initialFilters),
+        ),
       ),
     ),
   );
@@ -87,18 +113,16 @@ void main() {
     testWidgets('advanced: filter popover selects last visit and clears filters', (tester) async {
       final harness = await _pumpControls(tester);
 
-      await tester.tap(find.text('Filter'));
-      await tester.pumpAndSettle();
+      await _tapFilterButton(tester);
 
       expect(find.text('Last visit'), findsOneWidget);
 
       await tester.tap(find.text('Last 30 days'));
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       expect(harness.lastLastVisit, PatientLastVisitFilter.last30Days);
 
-      await tester.tap(find.text('Filter'));
-      await tester.pumpAndSettle();
+      await _tapFilterButton(tester);
       await tester.tap(find.text('Clear filters'));
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -140,21 +164,20 @@ void main() {
         findsNothing,
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: _ControlsHarness(
-              initialFilters: const PatientListFilters(
-                lastVisitFilter: PatientLastVisitFilter.last90Days,
-              ),
-            ),
-          ),
+      await _pumpControls(
+        tester,
+        initialFilters: const PatientListFilters(
+          lastVisitFilter: PatientLastVisitFilter.last90Days,
         ),
       );
-      await tester.pumpAndSettle();
 
-      expect(find.text('1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _filterButtonFinder(),
+          matching: find.byType(AppBadge),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

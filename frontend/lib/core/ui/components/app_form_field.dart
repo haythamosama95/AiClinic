@@ -35,7 +35,7 @@ class AppFormField extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(label, style: AppTypography.bodyStrong(context)),
+            Text(label, style: AppTypography.title(context)),
             if (requiredMark) ...[
               const SizedBox(width: 2),
               Text('*', style: AppTypography.bodyStrong(context).copyWith(color: colors.statusDangerFg)),

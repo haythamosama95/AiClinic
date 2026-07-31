@@ -46,21 +46,28 @@ Future<void> _pumpTable(
   await tester.binding.setSurfaceSize(const Size(1280, 600));
 
   await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.light(),
-      home: Scaffold(
-        body: PatientTable(
-          rows: rows,
-          loading: loading,
-          loadingRows: loadingRows,
-          onRowClick: onRowClick,
-          emptyState: emptyState,
-          errorState: errorState,
+    MediaQuery(
+      data: const MediaQueryData(disableAnimations: true),
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: PatientTable(
+            rows: rows,
+            loading: loading,
+            loadingRows: loadingRows,
+            onRowClick: onRowClick,
+            emptyState: emptyState,
+            errorState: errorState,
+          ),
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (loading) {
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {

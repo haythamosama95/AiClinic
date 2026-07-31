@@ -55,21 +55,23 @@ class _FormFieldsHarnessState extends State<_FormFieldsHarness> {
   @override
   Widget build(BuildContext context) {
     final trimmedName = _values.fullName.trim();
-    return Column(
-      children: [
-        AddPatientFormFields(
-          values: _values,
-          errors: widget.errors,
-          trimmedName: trimmedName,
-          showPreview: trimmedName.length >= 2,
-          reducedMotion: true,
-          branchName: widget.branchName,
-          fieldIdPrefix: widget.fieldIdPrefix,
-          onSubmit: _onSubmit,
-          onFieldChange: _onFieldChange,
-        ),
-        Text('submit-count:$_submitCount'),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          AddPatientFormFields(
+            values: _values,
+            errors: widget.errors,
+            trimmedName: trimmedName,
+            showPreview: trimmedName.length >= 2,
+            reducedMotion: true,
+            branchName: widget.branchName,
+            fieldIdPrefix: widget.fieldIdPrefix,
+            onSubmit: _onSubmit,
+            onFieldChange: _onFieldChange,
+          ),
+          Text('submit-count:$_submitCount'),
+        ],
+      ),
     );
   }
 }

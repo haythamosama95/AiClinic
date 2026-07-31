@@ -380,10 +380,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -449,10 +446,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -484,10 +478,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -522,10 +513,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -563,10 +551,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -592,10 +577,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -633,10 +615,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -673,10 +652,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -718,10 +694,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -736,10 +709,7 @@ void main() {
       final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
 
       realtimeClient.onAppointmentChange?.call(
-        const AppointmentQueueRealtimeChange(
-          eventType: PostgresChangeEvent.insert,
-          newRecord: {'id': 'new'},
-        ),
+        const AppointmentQueueRealtimeChange(eventType: PostgresChangeEvent.insert, newRecord: {'id': 'new'}),
       );
       await pumpEventQueue();
 
@@ -748,12 +718,9 @@ void main() {
 
     test('comparison items are null when previous working day cannot be resolved', () async {
       const branchId = '00000000-0000-4000-8000-000000000001';
-      final closedSchedule = BranchWorkingSchedule(
-        [
-          for (final day in BranchWeekday.values)
-            BranchWorkingDayHours(day: day, isWorkingDay: false),
-        ],
-      );
+      final closedSchedule = BranchWorkingSchedule([
+        for (final day in BranchWeekday.values) BranchWorkingDayHours(day: day, isWorkingDay: false),
+      ]);
 
       final container = ProviderContainer(
         overrides: [
@@ -761,10 +728,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -794,10 +758,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
+                context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
               ),
             ),
           ),
@@ -826,15 +787,7 @@ class _ClosedBranchRepository implements BranchRepository {
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) async {
-    return [
-      BranchListItem(
-        id: branchId,
-        name: 'Closed Branch',
-        code: 'CB',
-        isActive: true,
-        workingSchedule: schedule,
-      ),
-    ];
+    return [BranchListItem(id: branchId, name: 'Closed Branch', code: 'CB', isActive: true, workingSchedule: schedule)];
   }
 
   @override

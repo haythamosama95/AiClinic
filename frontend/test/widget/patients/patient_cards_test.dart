@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/ui/components/app_badge.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
@@ -105,6 +106,11 @@ Future<void> _pumpMaterial(
   required Widget child,
   List<Override> overrides = const [],
 }) async {
+  if (find.byType(MaterialApp).evaluate().isNotEmpty) {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  }
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: overrides,
@@ -231,7 +237,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('INV-000123'), findsOneWidget);
-      expect(find.text(InvoiceStatus.issued.label), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PatientInvoiceCard),
+          matching: find.widgetWithText(AppBadge, InvoiceStatus.issued.label),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('INV-000123'));
       await tester.pumpAndSettle();

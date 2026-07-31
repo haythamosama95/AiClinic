@@ -188,7 +188,13 @@ void main() {
       final input = tester.widget<AppTextInput>(find.byType(AppTextInput));
       expect(input.disabled, isTrue);
       expect(_saveButton(tester).loading, isTrue);
-      expect(find.bySemanticsLabel('Loading'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.widgetWithText(AppButton, 'Save')).value,
+        'Loading',
+      );
+
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
     });
 
     testWidgets('advanced: Cancel dismisses without invoking reassign use case', (tester) async {
@@ -199,7 +205,7 @@ void main() {
       await tester.enterText(_mrnField(), 'MRN-000099');
       await pumpPatientsFrames(tester);
       await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
-      await pumpPatientsFrames(tester);
+      await tester.pumpAndSettle();
 
       expect(repo.reassignCallCount, 0);
       expect(find.text('Reassign MRN'), findsNothing);
@@ -213,9 +219,10 @@ void main() {
       );
       await pumpPatientsFrames(tester);
 
-      final container = patientsProviderContainer(tester);
       expect(
-        container.read(permissionServiceProvider).canReassignPatientMrn(),
+        patientsProviderContainer(tester)
+            .read(permissionServiceProvider)
+            .canReassignPatientMrn(),
         isFalse,
       );
 
@@ -226,9 +233,10 @@ void main() {
       );
       await pumpPatientsFrames(tester);
 
-      final grantedContainer = patientsProviderContainer(tester);
       expect(
-        grantedContainer.read(permissionServiceProvider).canReassignPatientMrn(),
+        patientsProviderContainer(tester)
+            .read(permissionServiceProvider)
+            .canReassignPatientMrn(),
         isTrue,
       );
     });

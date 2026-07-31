@@ -26,6 +26,7 @@ import 'package:ai_clinic/features/patients/presentation/widgets/patient_invoice
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_notes_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_grid.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_record_card.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_navigation.dart';
 
 /// Patient profile route (`/patients/:patientId`).
 class PatientDetailPage extends ConsumerStatefulWidget {
@@ -358,6 +359,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
           card: PatientVisitRecordCard.fromVisit(
             visit,
             key: ValueKey('visit-${visit.id}'),
+            onTap: canOpenVisitFromPatientHistory(ref, visit)
+                ? () => openVisitFromPatientHistory(context, ref, visit)
+                : null,
           ),
         ),
     ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));

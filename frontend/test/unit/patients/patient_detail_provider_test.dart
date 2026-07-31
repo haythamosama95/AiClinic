@@ -106,7 +106,10 @@ void main() {
           context: sampleAuthSessionContext(permissions: const {}),
         ),
       );
-      await container.read(patientDetailProvider(patientId).future);
+      await expectLater(
+        container.read(patientDetailProvider(patientId).future),
+        throwsA(isA<StateError>()),
+      );
       final asyncValue = container.read(patientDetailProvider(patientId));
 
       expect(asyncValue.hasError, isTrue);

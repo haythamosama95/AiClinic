@@ -288,13 +288,16 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(patientListProvider.notifier);
 
+      await container.read(patientListProvider.future);
+      final callsBefore = repository.searchCallCount;
+
       await notifier.applyFilters(const PatientListFilters(searchText: 'ab'));
 
       final state = container.read(patientListProvider).requireValue;
       expect(state.rows, isEmpty);
       expect(state.totalCount, 0);
       expect(state.searchHint, 'Enter at least 3 characters to search by name.');
-      expect(repository.searchCallCount, 0);
+      expect(repository.searchCallCount, callsBefore);
     });
 
     test('this-branch scope with missing activeBranchId returns empty state without search', () async {
@@ -317,12 +320,15 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
+      await container.read(patientListProvider.future);
+      final callsBefore = repository.searchCallCount;
+
       await container
           .read(patientListProvider.notifier)
           .applyFilters(const PatientListFilters(searchText: 'Sara'));
 
       expect(repository.lastQuery, 'Sara');
-      expect(repository.searchCallCount, 1);
+      expect(repository.searchCallCount, callsBefore + 1);
     });
 
     test('page 1 uses offset 0', () async {
@@ -387,6 +393,7 @@ void main() {
       final notifier = container.read(patientListProvider.notifier);
 
       await container.read(patientListProvider.future);
+      final callsBefore = failingRepository.searchCallCount;
       failingRepository.throwOnNextSearch = true;
       await notifier.applyFilters(const PatientListFilters(searchText: 'Patient'));
       expect(container.read(patientListProvider).hasError, isTrue);
@@ -396,7 +403,8 @@ void main() {
       final state = container.read(patientListProvider).requireValue;
       expect(state.rows, hasLength(1));
       expect(container.read(patientListProvider).hasError, isFalse);
-      expect(failingRepository.searchCallCount, 3);
+      // Failed search increments once; successful reload increments twice (override + super).
+      expect(failingRepository.searchCallCount, callsBefore + 3);
     });
 
     test('reload re-issues search with same filters', () async {
@@ -432,6 +440,9 @@ void main() {
         addTearDown(container.dispose);
         final notifier = container.read(patientListProvider.notifier);
 
+        await container.read(patientListProvider.future);
+        final callsBefore = delayedRepository.searchCallCount;
+
         final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
         final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
         await Future.wait([first, second]);
@@ -439,7 +450,7 @@ void main() {
         final state = container.read(patientListProvider).requireValue;
         expect(state.filters.searchText, 'Beta');
         expect(state.rows.single.item.fullName, contains('Beta'));
-        expect(delayedRepository.searchCallCount, 2);
+        expect(delayedRepository.searchCallCount, callsBefore + 2);
       },
     );
   });

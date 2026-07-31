@@ -151,10 +151,9 @@ void main() {
     test('maps null optional fields to empty strings or null', () {
       final detail = samplePatientDetail(
         phone: null,
-        dateOfBirth: null,
         gender: null,
         notes: null,
-      ).copyWith(maritalStatus: null);
+      ).copyWith(dateOfBirth: null, maritalStatus: null);
 
       final form = PatientRegistrationForm.fromPatientDetail(detail);
 

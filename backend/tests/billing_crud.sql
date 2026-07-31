@@ -1070,6 +1070,15 @@ BEGIN
     format('status=%s balance=%s', v_status, v_balance)
   );
 
+  PERFORM pg_temp.billing_crud_record(
+    'payment_payload_omits_reference_field',
+    NOT (v_result.data ? 'payment_reference')
+      AND NOT (v_result.data ? 'reference')
+      AND NOT (v_detail.data -> 'payments' -> 0 ? 'reference')
+      AND NOT (v_detail.data -> 'payments' -> 0 ? 'payment_reference'),
+    'record_payment and invoice detail omit reference keys'
+  );
+
   SELECT count(*)::int
   INTO v_audit_count
   FROM public.audit_log al

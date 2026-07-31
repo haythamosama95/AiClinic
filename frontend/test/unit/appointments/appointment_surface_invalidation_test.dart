@@ -1,11 +1,11 @@
 import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
+import 'package:ai_clinic/features/queue/presentation/providers/queue_provider.dart';
+import 'package:ai_clinic/features/queue/presentation/providers/queue_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
 import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';

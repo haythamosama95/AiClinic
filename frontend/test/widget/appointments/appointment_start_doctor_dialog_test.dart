@@ -3,9 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
-import 'package:ai_clinic/core/ui/components/app_radio_group.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_start_doctor_dialog.dart';
+import 'package:ai_clinic/core/ui/components/app_badge.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
+import 'package:ai_clinic/features/queue/presentation/widgets/queue_start_doctor_dialog.dart';
 
 import 'calendar_widget_test_harness.dart';
 
@@ -23,7 +23,7 @@ void main() {
       home: Builder(
         builder: (context) => ElevatedButton(
           onPressed: () {
-            result = AppointmentStartDoctorDialog.show(context, options: options);
+            result = QueueStartDoctorDialog.show(context, options: options);
           },
           child: const Text('Open'),
         ),
@@ -54,9 +54,11 @@ void main() {
       ],
     );
 
-    expect(find.byType(AppRadioGroup), findsOneWidget);
-    expect(find.text('Dr. Ada (preferred)'), findsOneWidget);
-    expect(find.text('Dr. Ben'), findsNothing);
+    expect(find.text('Preferred provider'), findsOneWidget);
+    expect(find.text('Dr. Ada'), findsWidgets);
+    expect(find.text('Preferred'), findsOneWidget);
+    expect(find.text('Dr. Ben'), findsOneWidget);
+    expect(find.byType(AppBadge), findsWidgets);
   });
 
   testWidgets('advanced: CAL-START-DOC-03 Start visit pops chosen doctor id', (tester) async {

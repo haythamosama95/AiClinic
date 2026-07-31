@@ -109,7 +109,17 @@ abstract final class ShellNavConfig {
         location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
         location == AppRoutes.appointmentsCalendar ||
-        location == AppRoutes.appointmentsQueue;
+        location == AppRoutes.appointmentsQueue ||
+        _isVisitWorkspaceLocation(location);
+  }
+
+  /// Encounter documentation and chronicle routes (web `encounters` full-width layout).
+  static bool _isVisitWorkspaceLocation(String location) {
+    if (!location.startsWith('${AppRoutes.visits}/')) {
+      return false;
+    }
+    return location.endsWith('/${AppRoutes.visitDocumentSegment}') ||
+        location.endsWith('/${AppRoutes.visitDetailSegment}');
   }
 
   /// Routes whose content should fill the shell viewport (no outer scroll).

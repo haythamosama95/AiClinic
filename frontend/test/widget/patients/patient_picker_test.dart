@@ -80,8 +80,6 @@ void main() {
       await pumpPatientsFrames(tester);
 
       expect(selected?.fullName, 'Picker Patient');
-      expect(find.byKey(const Key('patient_picker_clear')), findsOneWidget);
-      expect(find.text('Picker Patient'), findsWidgets);
 
       await _pumpPicker(
         tester,
@@ -89,6 +87,9 @@ void main() {
         patientRepo: repo,
         onChanged: (value) => selected = value,
       );
+
+      expect(find.byKey(const Key('patient_picker_clear')), findsOneWidget);
+      expect(find.text('Picker Patient'), findsWidgets);
 
       await tester.tap(find.byKey(const Key('patient_picker_clear')));
       await pumpPatientsFrames(tester);

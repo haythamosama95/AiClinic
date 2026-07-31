@@ -109,6 +109,13 @@ void main() {
     });
 
     testWidgets('advanced: Register anyway invokes callback', (tester) async {
+      await pumpPatientsDialogShell(
+        tester,
+        home: const _DuplicateDialogHarness(candidates: [_candidateA]),
+      );
+      await pumpPatientsFrames(tester);
+
+      await tester.tap(find.widgetWithText(AppButton, 'Register anyway'));
       await pumpPatientsFrames(tester);
       expect(find.text('register-anyway-count:1'), findsOneWidget);
     });

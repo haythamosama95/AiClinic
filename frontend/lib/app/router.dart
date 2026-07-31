@@ -32,6 +32,7 @@ import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_pag
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_review_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
@@ -129,7 +130,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               startInEditMode: state.uri.queryParameters['edit'] == '1',
             ),
           ),
-          GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
+          GoRoute(
+            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
+            builder: (context, state) => VisitDetailPage(visitId: state.pathParameters['visitId']!),
+          ),
 
           // Billing (V1-6)
           GoRoute(path: AppRoutes.billing, redirect: (context, state) => AppRoutes.billingInvoices),

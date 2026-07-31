@@ -11,7 +11,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_update_result.dart';
@@ -716,10 +716,15 @@ Future<void> tapAppSelectOption(
   Key selectKey,
   String optionLabel,
 ) async {
-  final select = find.descendant(
-    of: find.byKey(selectKey),
+  final keyFinder = find.byKey(selectKey);
+  final descendantSelect = find.descendant(
+    of: keyFinder,
     matching: find.byType(AppSelect),
   );
+  // Key may be on the AppSelect itself (branch) or a parent wrapper (doctor).
+  final select = descendantSelect.evaluate().isNotEmpty
+      ? descendantSelect
+      : keyFinder;
   await tester.tap(select);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));

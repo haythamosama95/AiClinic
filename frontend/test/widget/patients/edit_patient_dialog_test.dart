@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +10,7 @@ import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/edit_patient/edit_patient_dialog.dart';
+import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 
 import '../../helpers/patient_test_support.dart';
@@ -30,10 +33,9 @@ class _EditDialogLauncher extends StatelessWidget {
     return Scaffold(
       body: TextButton(
         onPressed: () {
-          Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const EditPatientDialog(patientId: _patientId),
-            ),
+          showDialog<void>(
+            context: context,
+            builder: (_) => const EditPatientDialog(patientId: _patientId),
           );
         },
         child: const Text('open-edit'),
@@ -46,16 +48,24 @@ Future<void> _openEditDialog(
   WidgetTester tester, {
   required FakePatientRepository repo,
   PatientDetail? detail,
+  bool repoBackedDetail = false,
+  bool customPatientDetail = false,
   List<Override> extraOverrides = const [],
 }) async {
   await pumpPatientsDialogShell(
     tester,
     home: const _EditDialogLauncher(),
     overrides: patientsProviderOverrides(
-      patientId: _patientId,
+      patientId: repoBackedDetail || customPatientDetail ? null : _patientId,
       patientDetail: detail ?? samplePatientDetail(id: _patientId),
       patientRepo: repo,
-      extraOverrides: extraOverrides,
+      extraOverrides: [
+        if (repoBackedDetail)
+          patientDetailProvider(_patientId).overrideWith(
+            (ref) async => ref.read(patientRepositoryProvider).getPatient(_patientId),
+          ),
+        ...extraOverrides,
+      ],
     ),
   );
   await tester.tap(find.text('open-edit'));
@@ -86,16 +96,15 @@ void main() {
       final repo = FakePatientRepository(
         detail: samplePatientDetail(id: _patientId),
       );
+      final detailCompleter = Completer<PatientDetail>();
 
       await _openEditDialog(
         tester,
         repo: repo,
+        customPatientDetail: true,
         extraOverrides: [
           patientDetailProvider(_patientId).overrideWith(
-            (ref) async {
-              await Future<void>.delayed(const Duration(seconds: 30));
-              return samplePatientDetail(id: _patientId);
-            },
+            (ref) => detailCompleter.future,
           ),
         ],
       );
@@ -124,7 +133,7 @@ void main() {
       );
       expect(
         tester.widget<TextField>(_editPhoneField()).controller?.text,
-        contains('123'),
+        contains('234'),
       );
       expect(find.text('Allergy noted'), findsOneWidget);
       expect(_saveButton(tester).onPressed, isNotNull);
@@ -142,7 +151,7 @@ void main() {
       await pumpPatientsFrames(tester);
 
       await tester.tap(find.widgetWithText(AppButton, 'Save changes'));
-      await pumpPatientsFrames(tester);
+      await tester.pumpAndSettle();
 
       expect(repo.lastUpdateInput, isNotNull);
       expect(repo.lastUpdateInput?.patientId, _patientId);
@@ -198,7 +207,12 @@ void main() {
         ),
       );
 
-      await _openEditDialog(tester, repo: repo, detail: detail);
+      await _openEditDialog(
+        tester,
+        repo: repo,
+        detail: detail,
+        repoBackedDetail: true,
+      );
       await pumpPatientsFrames(tester);
 
       await tester.tap(find.widgetWithText(AppButton, 'Save changes'));
@@ -207,7 +221,7 @@ void main() {
       final callsBeforeReload = repo.getPatientCallCount;
 
       await tester.tap(find.widgetWithText(AppButton, 'Reload'));
-      await pumpPatientsFrames(tester);
+      await tester.pumpAndSettle();
 
       expect(repo.getPatientCallCount, greaterThan(callsBeforeReload));
       expect(find.byType(EditPatientDialog), findsNothing);
@@ -250,7 +264,7 @@ void main() {
       await pumpPatientsFrames(tester);
 
       await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
-      await pumpPatientsFrames(tester);
+      await tester.pumpAndSettle();
 
       expect(find.byType(EditPatientDialog), findsNothing);
       expect(repo.lastUpdateInput, isNull);

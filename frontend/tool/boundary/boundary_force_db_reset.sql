@@ -66,6 +66,20 @@ DELETE FROM public.appointments WHERE true;
 DELETE FROM public.audit_log WHERE true;
 DELETE FROM public.patients WHERE true;
 
+-- AI layer (ai_internal): clear before staff_members and auth.users.
+DO $$
+BEGIN
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.app_settings') IS NOT NULL THEN
+    DELETE FROM ai_internal.app_settings WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys WHERE true;
+  END IF;
+END $$;
+
 DELETE FROM public.staff_branch_assignments sba
 WHERE sba.staff_member_id IN (
   SELECT id FROM public.staff_members WHERE NOT is_bootstrap_admin

@@ -677,6 +677,7 @@ void appToast(BuildContext context, AppToastInput input) {
 9. Material `Slider` inside a scroll view? → **Do not use Material `Slider`**; its `OverlayPortal` cannot be disabled. Build a custom track/thumb slider instead (see `app_slider.dart`).
 10. Token/multi-select with chips + inline query `TextField` in `Wrap`? → Hide the query field when every option is selected and the user is not searching; use a fixed ~72px width when visible so `Wrap` does not leave a blank second row (see entry #38).
 11. `AppRichTextEditor` / Quill with list toolbar buttons? → Override `lists`, `leading`, and `indent` in `customStyles` with the same `appBareInputTextStyle` as `paragraph`; wrap the editor in `DefaultTextStyle` (see entry #46).
+12. `AppIconButton` inside horizontal `SingleChildScrollView` (toolbar rail)? → Pass `tooltipDisabled: true`; do not also wrap in `AppTooltip` (see entry #46).
 
 ## Checklist for new display components
 
@@ -1129,6 +1130,29 @@ if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
 
 ---
 
+## 45. `RenderFlex` unbounded constraints (`AppointmentDetailPage` / `VisitPatientBanner`)
+
+**Symptom:** Red screen when opening an appointment detail from the calendar, and when the visit documentation page loads the patient banner. The visit page `AppPageHeader` (title/actions) may appear missing because layout failures cascade through the shell content column. Primary errors: `RenderFlex children have non-zero flex but incoming height constraints are unbounded` on `Column` in `appointment_detail_page.dart` (`_AppointmentDetailScaffold`); `RenderFlex children have non-zero flex but incoming width constraints are unbounded` on `Row` in `visit_patient_banner.dart` (`_VisitContextBody` wide layout). Cascading `does not meet its constraints` through `authenticated_shell.dart`, `app_shell.dart`, and scheduler semantics assertions.
+
+**Cause:** (1) `_AppointmentDetailScaffold` used `Expanded` inside a root `Column` while the page lives in `AppShell` → `SingleChildScrollView`, which passes unbounded max height — same class of bug as entries #28 and #30. (2) In the wide visit banner layout (≥640px), a nested `Row` (`identity`) containing `Expanded` was placed as a non-flex child of the outer `Row`. The outer row gives non-flex children unbounded max width, so the inner `Expanded` cannot resolve. This regressed when visit routes were aligned to the web encounters shell — the wide banner `Row` must wrap **both** halves in `Expanded`, not only `stepRail`.
+
+**Fix:** (1) Guard `_AppointmentDetailScaffold` with `LayoutBuilder`: when `constraints.maxHeight.isFinite`, keep header fixed and scroll the body with `Expanded` + `SingleChildScrollView`; when height is unbounded (shell scroll path), use `mainAxisSize: MainAxisSize.min` and render the body directly — mirror `AppointmentPageShell`. (2) Wrap the wide-layout `identity` block in `Expanded` so both banner halves share bounded width:
+
+```dart
+// visit_patient_banner.dart — wide layout
+return Row(
+  children: [
+    Expanded(child: identity),
+    /* divider */,
+    Expanded(child: stepRail),
+  ],
+);
+```
+
+**Affected files (fixed):** `appointment_detail_page.dart`, `visit_patient_banner.dart`.
+
+---
+
 ## 43. `NoSuchMethodError`: `firstOrNull` on `WhereIterable` (`AppointmentDetailPage`)
 
 **Symptom:** Red screen opening an appointment detail page. `Class 'WhereIterable<BranchListItem>' has no instance getter 'firstOrNull'` in `_resolveBranchName` at `appointment_detail_page.dart`.
@@ -1205,31 +1229,64 @@ If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transpar
 
 ---
 
-## 44. `RenderFlex` overflow (`AppointmentCalendarTile` medium strip `Row`)
+## 46. `RenderBox.size accessed beyond the scope of resize` (`AppRichTextEditor` toolbar / Material `Tooltip`)
 
-**Symptom:** Yellow/black overflow stripe on appointment calendar tiles in day/month/schedule views — "overflowed by N pixels on the right" at `_buildMediumStrip` `Row` in `appointment_calendar_tile.dart` (~line 234). Constraints show a tight tile width (~149px) with time range, patient name, and status chip all competing horizontally.
+**Symptom:** Red screen when opening Document Visit (or any screen using `AppRichTextEditor`). Assertion in `box.dart` (`sizeAccessAllowed`); error-causing widget is Material `Tooltip` in `app_icon_button.dart`. Stack includes `_RenderLayoutSurrogateProxyBox` / `_RenderTheater.performLayout`, a `Row` inside horizontal `SingleChildScrollView` with `0.0<=h<=32.0`, and follow-on `_RenderDeferredLayoutBox` / gesture hit-test failures.
 
-**Cause:** Layout breakpoints (`_showFullStrip`, `_showMediumStrip`, status chip at `bounds.width >= 160`) used the raw Syncfusion `bounds.width`, but the encounter strip content area is smaller after the accent bar (~3px) and horizontal padding (~16px). At `bounds.width` ~168 the status chip rendered even though only ~149px remained for the `Row`. Fixed children (`_TimeBlock` ~101px + `_StatusChip` ~79px + spacers) exceeded that width before the `Expanded` patient section received any space.
+**Cause:** `_FormatButton` wrapped `AppIconButton` in `AppTooltip` while `AppIconButton` also wraps itself in Material `Tooltip` when `tooltipDisabled` is false. Material `Tooltip` hosts an `OverlayPortal` (`_RenderTheater`) that reads child `size` during the toolbar row's deferred layout inside a horizontal scroll view — the same class of failure as entry #9 (`AppSlider`).
 
-**Fix:** Derive `_contentWidth` (bounds minus chrome) and use it for strip mode thresholds and status visibility. Only show the medium-strip status chip when `_contentWidth >= 196`. Wrap the time block in `Flexible` in the medium strip and ellipsize its label so it can shrink when space is still tight:
+**Fix:** Use a single `AppIconButton` with `tooltipDisabled: true` in horizontally scrolled toolbars. `Semantics.label` on the button still exposes the action to screen readers; avoid Material `Tooltip` / `AppTooltip` in this layout context:
 
 ```dart
-double get _contentWidth {
-  final accentWidth = _isTightHeight ? 2.0 : 3.0;
-  final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
-  return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
-}
-
-bool get _showStatusInMediumStrip =>
-    _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
-
-// medium strip Row
-Flexible(flex: 2, child: _TimeBlock(..., compact: true)),
-Expanded(flex: 3, child: _LabeledStripSection(...)),
-if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
+AppIconButton(
+  icon: Icon(Icons.format_bold_rounded, size: 16),
+  label: 'Bold',
+  tooltipDisabled: true,
+  onPressed: onPressed,
+)
 ```
 
-**Affected files (fixed):** `appointment_calendar_tile.dart`.
+**Affected files (fixed):** `app_rich_text_editor.dart`.
+
+---
+
+## 47. `borderRadius` with non-uniform border colors (`VisitEntryCard`)
+
+**Symptom:** Rendering exception on visits/encounters entry cards (vital signs, investigations, treatments, safety): "A borderRadius can only be given on borders with uniform colors." Error-causing widget: `DecoratedBox` in `visit_entry_card.dart`.
+
+**Cause:** `VisitEntryCard` combined `borderRadius: BorderRadius.circular(AppRadius.xl)` with a `Border` whose left side used `actionPrimary@50%` (3px) while other sides used `borderSubtle`. Flutter only allows `borderRadius` when every `BorderSide` shares the same color — unlike CSS `border-l-action-primary/50` on web `*EntryCard.tsx`.
+
+**Fix:** Use a uniform `Border.all(color: colors.borderSubtle)` inside `ClipRRect`, then paint the left accent as a `PositionedDirectional` `ColoredBox` (3px wide) so rounded corners clip correctly:
+
+```dart
+ClipRRect(
+  borderRadius: BorderRadius.circular(AppRadius.xl),
+  child: DecoratedBox(
+    decoration: BoxDecoration(
+      color: colors.surfaceDefault,
+      border: Border.all(color: colors.borderSubtle),
+    ),
+    child: Stack(
+      children: [
+        PositionedDirectional(
+          start: 0,
+          top: 0,
+          bottom: 0,
+          child: ColoredBox(
+            color: colors.actionPrimary.withValues(alpha: 0.5),
+            child: const SizedBox(width: 3),
+          ),
+        ),
+        Padding(padding: widget.padding, child: widget.child),
+      ],
+    ),
+  ),
+)
+```
+
+**Affected files (fixed):** `visit_entry_card.dart`.
+
+**Checklist:** When porting web cards with mixed border colors and `rounded-*`, do not put `borderRadius` on a `BoxDecoration` with per-side `Border` colors — use `ClipRRect` + uniform border + overlay accent stripe instead.
 
 
 ---

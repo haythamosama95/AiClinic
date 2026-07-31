@@ -173,6 +173,9 @@ void main() {
       expect(cancelButton.onPressed, isNull);
       expect(registerButton.loading, isTrue);
       expect(registerButton.onPressed, isNull);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
     });
 
     testWidgets('advanced: repository duplicates surface duplicate dialog', (tester) async {

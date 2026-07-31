@@ -35,8 +35,7 @@ class SqlFixtureHelper {
       }
 
       final stderr = '${result.stderr}';
-      final retryable = stderr.contains('tuple concurrently updated') ||
-          stderr.contains('deadlock detected');
+      final retryable = stderr.contains('tuple concurrently updated') || stderr.contains('deadlock detected');
       if (!retryable || attempt == _maxExecuteAttempts) {
         throw StateError('psql failed (${result.exitCode}): $stderr\nSQL: $sql');
       }
@@ -219,6 +218,19 @@ DO $$
 BEGIN
   IF to_regclass('public.patient_mrn_seq') IS NOT NULL THEN
     PERFORM setval('public.patient_mrn_seq', 1, false);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.app_settings') IS NOT NULL THEN
+    DELETE FROM ai_internal.app_settings WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys WHERE true;
   END IF;
 END $$;
 

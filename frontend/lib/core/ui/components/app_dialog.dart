@@ -386,24 +386,27 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.zero,
-      child: _AppDialogTransition(
-        animation: _animation,
-        barrierDismissible: widget.barrierDismissible,
-        blur: widget.blur,
-        child: AppDialogPanel(
-          title: widget.title,
-          description: widget.description,
-          size: widget.size,
-          maxWidth: widget.maxWidth,
-          footer: widget.footer,
-          onClose: widget.onClose,
-          showCloseButton: widget.showCloseButton,
-          showHeader: widget.showHeader,
-          child: widget.child,
+    return PopScope(
+      canPop: widget.barrierDismissible,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: EdgeInsets.zero,
+        child: _AppDialogTransition(
+          animation: _animation,
+          barrierDismissible: widget.barrierDismissible,
+          blur: widget.blur,
+          child: AppDialogPanel(
+            title: widget.title,
+            description: widget.description,
+            size: widget.size,
+            maxWidth: widget.maxWidth,
+            footer: widget.footer,
+            onClose: widget.onClose,
+            showCloseButton: widget.showCloseButton,
+            showHeader: widget.showHeader,
+            child: widget.child,
+          ),
         ),
       ),
     );

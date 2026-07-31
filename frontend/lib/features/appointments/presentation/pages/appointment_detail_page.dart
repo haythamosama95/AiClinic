@@ -765,34 +765,36 @@ class _AppointmentDetailScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final header = AppPageHeader(
-      title: title,
-      description: subtitle,
-      breadcrumb: AppBreadcrumb(
-        items: [
-          AppBreadcrumbItem(
-            label: 'Calendar',
-            onTap: () => context.nav.goAppointmentsCalendar(),
-          ),
-          AppBreadcrumbItem(label: title),
-        ],
-      ),
-      actions: _buildHeaderActions(context),
-    );
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final hasBoundedHeight = constraints.maxHeight.isFinite;
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppPageHeader(
+              title: title,
+              description: subtitle,
+              breadcrumb: AppBreadcrumb(
+                items: [
+                  AppBreadcrumbItem(
+                    label: 'Calendar',
+                    onTap: () => context.nav.goAppointmentsCalendar(),
+                  ),
+                  AppBreadcrumbItem(label: title),
+                ],
+              ),
+              actions: _buildHeaderActions(context),
+            ),
+            const SizedBox(height: AppSpacing.space6),
+          ],
+        );
 
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
         if (!hasBoundedHeight) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
-            children: [
-              header,
-              const SizedBox(height: AppSpacing.space6),
-              body,
-            ],
+            children: [header, body],
           );
         }
 
@@ -800,7 +802,6 @@ class _AppointmentDetailScaffold extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             header,
-            const SizedBox(height: AppSpacing.space6),
             Expanded(child: SingleChildScrollView(child: body)),
           ],
         );

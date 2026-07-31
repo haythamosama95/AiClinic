@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
+import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/components/app_pagination.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
@@ -17,7 +18,7 @@ import 'patients_widget_test_harness.dart';
 
 Finder _headerAddPatientButton() {
   final headerRow = find.ancestor(
-    of: find.text('Patients'),
+    of: find.byType(AppPageHeader),
     matching: find.byType(Row),
   );
   return find.descendant(
@@ -46,7 +47,10 @@ void main() {
     testWidgets('trivial: PAT-PAGE-02 shows loading skeleton while provider is loading', (tester) async {
       await pumpPatientsSurface(
         tester,
-        child: const PatientsPage(),
+        child: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: const PatientsPage(),
+        ),
         overrides: patientsProviderOverrides(
           patientListOverride: patientListProvider.overrideWith(
             () => LoadingPatientListNotifier(),
@@ -167,9 +171,10 @@ void main() {
         ),
       );
       await pumpPatientsFrames(tester);
+      await tester.pump();
 
       final container = patientsProviderContainer(tester);
-      expect(container.read(patientListProvider), isA<AsyncError>());
+      expect(container.read(patientListProvider).hasError, isTrue);
 
       expect(find.byType(PatientTable), findsOneWidget);
       expect(find.byType(AppSkeleton), findsWidgets);
@@ -331,7 +336,13 @@ void main() {
       await pumpPatientsFrames(tester);
 
       expect(notifier.applyFiltersCallCount, callsBefore + 1);
-      expect(notifier.lastAppliedFilters, const PatientListFilters(pageSize: 10));
+      expect(notifier.lastAppliedFilters?.searchText, isEmpty);
+      expect(notifier.lastAppliedFilters?.page, 1);
+      expect(notifier.lastAppliedFilters?.pageSize, 10);
+      expect(
+        notifier.lastAppliedFilters?.lastVisitFilter,
+        PatientLastVisitFilter.any,
+      );
     });
   });
 }

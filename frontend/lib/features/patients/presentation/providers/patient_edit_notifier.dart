@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
@@ -90,7 +91,12 @@ final patientEditProvider =
         ref.listen<AsyncValue<PatientDetail>>(
           patientDetailProvider(patientId),
           (_, next) {
-            next.whenData(notifier.preloadFromDetail);
+            next.whenData(
+              (detail) => notifier.preloadFromDetail(
+                detail,
+                isRefreshing: next.isRefreshing,
+              ),
+            );
           },
           fireImmediately: true,
         );
@@ -99,6 +105,20 @@ final patientEditProvider =
       },
     );
 
+/// Returns a mounted root navigator context when the widget tree is available.
+BuildContext? _rootNavigatorContext(Ref ref) {
+  try {
+    final context = ref.read(rootNavigatorKeyProvider).currentContext;
+    if (context == null || !context.mounted) {
+      return null;
+    }
+    return context;
+  } catch (_) {
+    // Unit tests and other non-widget contexts have no binding yet.
+    return null;
+  }
+}
+
 class PatientEditNotifier extends StateNotifier<PatientEditState> {
   PatientEditNotifier(this._ref, this._patientId)
     : super(const PatientEditState());
@@ -106,7 +126,12 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
   final Ref _ref;
   final String _patientId;
 
-  void preloadFromDetail(PatientDetail detail) {
+  void preloadFromDetail(PatientDetail detail, {bool isRefreshing = false}) {
+    if (isRefreshing &&
+        (state.staleUpdateOpen ||
+            (!state.hydrated && state.expectedUpdatedAt != null))) {
+      return;
+    }
     if (state.hydrated && !state.staleUpdateOpen) {
       return;
     }
@@ -249,8 +274,8 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
         ),
       );
 
-      final toastContext = _ref.read(rootNavigatorKeyProvider).currentContext;
-      if (toastContext != null && toastContext.mounted) {
+      final toastContext = _rootNavigatorContext(_ref);
+      if (toastContext != null) {
         appToast(
           toastContext,
           AppToastInput(

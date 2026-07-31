@@ -17,8 +17,9 @@ enum TooltipAlign { start, center, end }
 
 /// Application-owned tooltip wrapper (web `Tooltip`).
 ///
-/// Uses Material [Tooltip] for plain [message] strings; rich [content] uses an
-/// overlay with fade-scale motion via [AppMotion].
+/// Renders message and rich content through a composited overlay with
+/// fade-scale motion via [AppMotion], avoiding Material [Tooltip]'s
+/// `OverlayPortal` deferred layout (unsafe inside scroll views).
 class AppTooltip extends StatefulWidget {
   const AppTooltip({
     required this.child,
@@ -65,6 +66,18 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
     final leader = _layerLink.leader;
     return leader != null && leader.attached;
   }
+
+  TooltipSide get _effectiveSide {
+    if (widget.content != null) {
+      return widget.side;
+    }
+    if (widget.preferBelow == true) {
+      return TooltipSide.bottom;
+    }
+    return TooltipSide.top;
+  }
+
+  Widget get _tooltipContent => widget.content ?? Text(widget.message!);
 
   @override
   void initState() {
@@ -170,7 +183,15 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
   void _showOverlay() {
     if (_overlayEntry != null) return;
     _overlayEntry = _createOverlayEntry();
-    Overlay.of(context).insert(_overlayEntry!);
+    // Always insert into the app root overlay. Nested [Overlay.wrap] overlays use
+    // a different layer coordinate space and break [CompositedTransformFollower]
+    // positioning for triggers rendered in their child subtree.
+    final overlay = Overlay.of(context, rootOverlay: true);
+    overlay.insert(_overlayEntry!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _overlayEntry?.markNeedsBuild();
+    });
   }
 
   void _removeOverlay({bool immediate = false}) {
@@ -192,32 +213,34 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
 
         final direction = Directionality.of(overlayContext);
         final (targetAnchor, followerAnchor, offset) = _anchorsFor(
-          widget.side,
+          _effectiveSide,
           widget.align,
           direction,
         );
 
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            return CompositedTransformFollower(
-              link: _layerLink,
-              offset: offset,
-              targetAnchor: targetAnchor,
-              followerAnchor: followerAnchor,
-              showWhenUnlinked: false,
-              child: AppMotion.animatedPreset(
-                context: overlayContext,
-                preset: AppMotionPreset.fadeScale,
-                animation: _controller,
-                child: _TooltipSurface(
-                  side: widget.side,
-                  showArrow: widget.showArrow,
-                  child: widget.content!,
+        return IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return CompositedTransformFollower(
+                link: _layerLink,
+                offset: offset,
+                targetAnchor: targetAnchor,
+                followerAnchor: followerAnchor,
+                showWhenUnlinked: false,
+                child: AppMotion.animatedPreset(
+                  context: overlayContext,
+                  preset: AppMotionPreset.fadeScale,
+                  animation: _controller,
+                  child: _TooltipSurface(
+                    side: _effectiveSide,
+                    showArrow: widget.showArrow,
+                    child: _tooltipContent,
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );
@@ -262,7 +285,7 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
   }
 
   static Alignment _horizontalFollower(TooltipAlign align, TextDirection direction, {required int vertical}) {
-    final y = (-vertical).toDouble();
+    final y = vertical.toDouble();
     return switch (align) {
       TooltipAlign.start => Alignment(direction == TextDirection.rtl ? 1 : -1, y),
       TooltipAlign.center => Alignment(0, y),
@@ -280,7 +303,7 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
   }
 
   static Alignment _verticalFollower(TooltipAlign align, {required int horizontal}) {
-    final x = (-horizontal).toDouble();
+    final x = horizontal.toDouble();
     return switch (align) {
       TooltipAlign.start => Alignment(x, -1),
       TooltipAlign.center => Alignment(x, 0),
@@ -292,15 +315,6 @@ class _AppTooltipState extends State<AppTooltip> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     if (widget.disabled) {
       return widget.child;
-    }
-
-    if (widget.content == null) {
-      return Tooltip(
-        message: widget.message!,
-        preferBelow: widget.preferBelow ?? false,
-        waitDuration: widget.delay,
-        child: widget.child,
-      );
     }
 
     return CompositedTransformTarget(

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
 import 'package:ai_clinic/core/ui/components/app_error_state.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
@@ -59,7 +60,7 @@ Future<void> _pumpPatientDetailPage(
 
 AppLocalizations _l10n(WidgetTester tester) {
   return AppLocalizations.of(
-    tester.element(find.byType(MaterialApp)),
+    tester.element(find.byType(PatientDetailPage)),
   )!;
 }
 
@@ -93,7 +94,13 @@ void main() {
 
       final l10n = _l10n(tester);
 
-      expect(find.text('Jordan Lee'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppCard),
+          matching: find.text('Jordan Lee'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('+15551234567'), findsOneWidget);
       expect(find.text('Branch A'), findsOneWidget);
       expect(find.textContaining('Male'), findsOneWidget);
@@ -107,9 +114,13 @@ void main() {
     testWidgets('trivial: loading state shows skeleton affordances', (tester) async {
       await pumpPatientsSurface(
         tester,
-        child: const PatientDetailPage(patientId: patientsTestPatientId),
+        child: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: const PatientDetailPage(patientId: patientsTestPatientId),
+        ),
         overrides: patientsProviderOverrides(
           patientId: patientsTestPatientId,
+          customPatientDetail: true,
           extraOverrides: [
             patientDetailProvider(patientsTestPatientId).overrideWith(
               (ref) => Completer<PatientDetail>().future,
@@ -148,6 +159,7 @@ void main() {
         child: const PatientDetailPage(patientId: patientsTestPatientId),
         overrides: patientsProviderOverrides(
           patientId: patientsTestPatientId,
+          customPatientDetail: true,
           extraOverrides: [
             patientDetailProvider(patientsTestPatientId).overrideWith((ref) async {
               loadAttempts++;
@@ -169,7 +181,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(loadAttempts, 2);
-      expect(find.text('Test Patient'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppCard),
+          matching: find.text('Test Patient'),
+        ),
+        findsOneWidget,
+      );
       expect(find.byType(AppErrorState), findsNothing);
     });
 
@@ -190,7 +208,13 @@ void main() {
         ),
       );
 
-      expect(find.text(previewName), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppCard),
+          matching: find.text(previewName),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('+19998887777'), findsOneWidget);
       expect(find.text('Detail load failed'), findsOneWidget);
       expect(find.byType(AppErrorState), findsOneWidget);

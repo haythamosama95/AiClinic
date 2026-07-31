@@ -97,6 +97,17 @@ class LoadingPatientListNotifier extends PatientListNotifier {
     );
     return Completer<PatientListUiState>().future;
   }
+
+  @override
+  Future<void> applyFilters(PatientListFilters filters) async {
+    // No-op: PatientsPage applies default filters during build; loading data here
+    // would overwrite the loading state the test is asserting.
+  }
+
+  @override
+  Future<void> reload() async {
+    // No-op: keep the provider in loading for skeleton assertions.
+  }
 }
 
 /// Throws on build to surface the list error state.
@@ -107,7 +118,21 @@ class ErrorPatientListNotifier extends PatientListNotifier {
 
   @override
   Future<PatientListUiState> build() async {
+    ref.watch(
+      authSessionProvider.select((state) => state.context?.activeBranchId),
+    );
     throw Exception(message);
+  }
+
+  @override
+  Future<void> reload() async {
+    state = AsyncError<PatientListUiState>(Exception(message), StackTrace.current);
+  }
+
+  @override
+  Future<void> applyFilters(PatientListFilters filters) async {
+    // No-op: PatientsPage applies default filters during build; loading data here
+    // would overwrite the error state the test is asserting.
   }
 }
 
@@ -179,6 +204,10 @@ List<Override> patientsProviderOverrides({
   List<PatientVisitDocument>? visitDocuments,
   InvoiceListPageResult? patientInvoices,
   String? activeBranchName,
+  bool customPatientDetail = false,
+  bool customPatientInvoices = false,
+  bool customPatientVisitDocuments = false,
+  bool customPatientPastVisits = false,
   List<Override> extraOverrides = const [],
 }) {
   final resolvedAuth = auth ?? patientsAuthSession();
@@ -207,7 +236,7 @@ List<Override> patientsProviderOverrides({
       patientListProvider.overrideWith(
         () => listNotifier ?? SpyPatientListNotifier(buildPatientListState()),
       ),
-    if (patientId != null)
+    if (patientId != null && !customPatientDetail)
       if (detailError != null)
         patientDetailProvider(patientId).overrideWith(
           (ref) async => throw detailError,
@@ -216,7 +245,7 @@ List<Override> patientsProviderOverrides({
         patientDetailProvider(patientId).overrideWith(
           (ref) async => resolvedDetail ?? samplePatientDetail(id: patientId),
         ),
-    if (patientId != null)
+    if (patientId != null && !customPatientPastVisits)
       patientPastVisitsProvider(patientId).overrideWith(
         (ref) async => pastVisits ?? const [],
       ),
@@ -231,11 +260,11 @@ List<Override> patientsProviderOverrides({
       ).overrideWith(
         (ref) async => upcomingAppointments ?? const [],
       ),
-    if (patientId != null)
+    if (patientId != null && !customPatientVisitDocuments)
       patientVisitDocumentsProvider(patientId).overrideWith(
         (ref) async => visitDocuments ?? const [],
       ),
-    if (patientId != null)
+    if (patientId != null && !customPatientInvoices)
       patientInvoicesProvider(patientId).overrideWith(
         (ref) async =>
             patientInvoices ?? const InvoiceListPageResult(items: [], hasMore: false),
@@ -300,6 +329,11 @@ Future<void> pumpPatientsSurface(
   Set<String>? permissions,
   bool wrapToastHost = true,
 }) async {
+  if (find.byType(MaterialApp).evaluate().isNotEmpty) {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  }
+
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -350,6 +384,11 @@ Future<PatientsTestRouterBundle> pumpPatientsRouter(
   Widget Function(BuildContext context, GoRouterState state)? patientDetailBuilder,
   Widget Function(BuildContext context, GoRouterState state)? billingInvoiceDetailBuilder,
 }) async {
+  if (find.byType(MaterialApp).evaluate().isNotEmpty) {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  }
+
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -389,6 +428,11 @@ Future<void> pumpPatientsDialogShell(
   Set<String>? permissions,
   Size surfaceSize = const Size(800, 700),
 }) async {
+  if (find.byType(MaterialApp).evaluate().isNotEmpty) {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  }
+
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -402,14 +446,27 @@ Future<void> pumpPatientsDialogShell(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: AppToastHost(child: Scaffold(body: home)),
+        builder: (context, child) =>
+            AppToastHost(child: child ?? const SizedBox.shrink()),
+        home: Scaffold(body: home),
       ),
     ),
   );
 }
 
+/// Reads the active [ProviderContainer] for the patients test shell.
+///
+/// Do not keep the returned container across a second [pumpWidget] — holding the
+/// reference prevents Riverpod from disposing the old scope and breaks re-pumps.
 ProviderContainer patientsProviderContainer(WidgetTester tester) {
-  return ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+  return ProviderScope.containerOf(
+    tester.element(
+      find.descendant(
+        of: find.byType(MaterialApp),
+        matching: find.byType(Scaffold),
+      ),
+    ),
+  );
 }
 
 /// Pumps one frame plus a short settle delay for patient async providers.

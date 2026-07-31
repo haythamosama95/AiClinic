@@ -51,13 +51,21 @@ Future<void> _pumpPatientDetailPage(
 
 AppLocalizations _l10n(WidgetTester tester) {
   return AppLocalizations.of(
-    tester.element(find.byType(MaterialApp)),
+    tester.element(find.byType(PatientDetailPage)),
   )!;
 }
 
-Future<void> _selectTab(WidgetTester tester, String label) async {
+Future<void> _selectTab(
+  WidgetTester tester,
+  String label, {
+  bool settle = true,
+}) async {
   await tester.tap(find.text(label));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 VisitListItem _sampleVisit() {
@@ -155,9 +163,13 @@ void main() {
       testWidgets('trivial: loading shows skeleton affordances', (tester) async {
         await pumpPatientsSurface(
           tester,
-          child: const PatientDetailPage(patientId: patientsTestPatientId),
+          child: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: const PatientDetailPage(patientId: patientsTestPatientId),
+          ),
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientPastVisits: true,
             extraOverrides: [
               patientPastVisitsProvider(patientsTestPatientId).overrideWith(
                 (ref) => Completer<List<VisitListItem>>().future,
@@ -175,6 +187,7 @@ void main() {
           tester,
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientPastVisits: true,
             extraOverrides: [
               patientPastVisitsProvider(patientsTestPatientId).overrideWith(
                 (ref) async => throw StateError('Visits failed'),
@@ -216,16 +229,23 @@ void main() {
     });
 
     group('Documents tab', () {
-      Future<void> openDocumentsTab(WidgetTester tester) async {
-        await _selectTab(tester, _l10n(tester).documents);
+      Future<void> openDocumentsTab(
+        WidgetTester tester, {
+        bool settle = true,
+      }) async {
+        await _selectTab(tester, _l10n(tester).documents, settle: settle);
       }
 
       testWidgets('trivial: loading shows skeleton affordances', (tester) async {
         await pumpPatientsSurface(
           tester,
-          child: const PatientDetailPage(patientId: patientsTestPatientId),
+          child: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: const PatientDetailPage(patientId: patientsTestPatientId),
+          ),
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientVisitDocuments: true,
             extraOverrides: [
               patientVisitDocumentsProvider(patientsTestPatientId).overrideWith(
                 (ref) => Completer<List<PatientVisitDocument>>().future,
@@ -233,8 +253,8 @@ void main() {
             ],
           ),
         );
-        await tester.pumpAndSettle();
-        await openDocumentsTab(tester);
+        await tester.pump();
+        await openDocumentsTab(tester, settle: false);
 
         expect(find.byType(AppSkeleton), findsWidgets);
       });
@@ -244,6 +264,7 @@ void main() {
           tester,
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientVisitDocuments: true,
             extraOverrides: [
               patientVisitDocumentsProvider(patientsTestPatientId).overrideWith(
                 (ref) async => throw StateError('Documents failed'),
@@ -283,16 +304,23 @@ void main() {
     });
 
     group('Billing tab', () {
-      Future<void> openBillingTab(WidgetTester tester) async {
-        await _selectTab(tester, _l10n(tester).billing);
+      Future<void> openBillingTab(
+        WidgetTester tester, {
+        bool settle = true,
+      }) async {
+        await _selectTab(tester, _l10n(tester).billing, settle: settle);
       }
 
       testWidgets('trivial: loading shows skeleton affordances', (tester) async {
         await pumpPatientsSurface(
           tester,
-          child: const PatientDetailPage(patientId: patientsTestPatientId),
+          child: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: const PatientDetailPage(patientId: patientsTestPatientId),
+          ),
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientInvoices: true,
             extraOverrides: [
               patientInvoicesProvider(patientsTestPatientId).overrideWith(
                 (ref) => Completer<InvoiceListPageResult>().future,
@@ -300,8 +328,8 @@ void main() {
             ],
           ),
         );
-        await tester.pumpAndSettle();
-        await openBillingTab(tester);
+        await tester.pump();
+        await openBillingTab(tester, settle: false);
 
         expect(find.byType(AppSkeleton), findsWidgets);
       });
@@ -311,6 +339,7 @@ void main() {
           tester,
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
+            customPatientInvoices: true,
             extraOverrides: [
               patientInvoicesProvider(patientsTestPatientId).overrideWith(
                 (ref) async => throw StateError('Billing failed'),
