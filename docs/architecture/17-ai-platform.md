@@ -74,6 +74,7 @@ existing system, verified in the repository, that constrain the design more than
 | F5  | Constitution forbids microservices, message queues, Kubernetes, and "introducing a custom primary backend service"; requires graceful degradation and forbids subscription enforcement that hard-locks the system. | `.specify/memory/constitution.md`                                                                                     | The AI platform must be a **single deployable unit**, synchronous-first, and explicitly positioned as non-primary. See [§14](#14-constitution-compliance-check).                                                                                                                   |
 | F6  | `organizations.subscription_tier` / `subscription_valid_until` and `subscription_cache` exist but have **no writers**. There are no plan, quota, or entitlement tables.                                            | `docs/architecture/05-database.md`, `docs/architecture/10-resilience-and-scale.md`                                    | AI entitlement/quota cannot be sourced from Supabase today. The AI platform must own its own entitlement record — which is also what the constraint "D1 owns AI platform data" demands.                                                                                            |
 | F7  | `audit_log` is append-only, populated only by `SECURITY DEFINER` RPCs, and client writes are denied by RLS.                                                                                                        | `20260516100000_auth_rbac_schema.sql`                                                                                 | AI audit trails must live in D1, not `audit_log`. The clinic DB may record only the *acceptance* of AI output as a clinical action.                                                                                                                                                |
+| F8  | The clinic Postgres image (`supabase/postgres:15.8.1.085`) ships `pgcrypto` and `pgjwt` installed and `pgsodium` 3.1.8 available but not enabled. `pgjwt` signs **HMAC only**; `pgsodium.crypto_sign_*` is **Ed25519 only**.                                                                                     | `backend/local/docker-compose.yml`, `pg_available_extensions` on the running image                    | The AAT's signature algorithm is not a free choice: Ed25519/`EdDSA` is the only asymmetric signing primitive available without adding a component. See [§4.2.1](#421-the-clinic-side-signing-mechanism).                                                                                                                           |
 
 
 
@@ -831,7 +832,7 @@ Additive only. No existing table changes semantics, and every addition follows t
 
 | Component                       | Responsibility                                                                                                                                         | Notes                                                                                                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Installation keystore**       | Hold the installation ID and private signing key in a restricted schema, unreadable by `anon`/`authenticated` roles                                    | Only the token-issuing function may read it. Rotation is a supported operation.                                                                               |
+| **Installation keystore**       | Hold the installation ID and the Ed25519 private signing key in a restricted schema, unreadable by `anon`/`authenticated` roles                        | Only the token-issuing function may read it. Rotation is a supported operation. Mechanism in [§4.2.1](#421-the-clinic-side-signing-mechanism).                |
 | **AI token issuer RPC**         | Verify the caller's session, resolve tenant/actor claims and AI capability scopes from the RBAC tables, mint a short-lived signed AAT, record issuance | The single point where clinic identity is converted into AI platform identity. Rate-limited itself, so a compromised client cannot mint tokens without bound. |
 | **Context provider RPCs**       | Return the domain payloads the Context Resolver needs, under the caller's own permissions                                                              | Prefer reusing existing RPCs. New ones are ordinary read RPCs with no AI knowledge — an RPC returning vitals is not "an AI RPC".                              |
 | **AI acceptance recording RPC** | Record that a human accepted AI-generated content into a clinical record, storing the AI request reference alongside the domain write                  | Closes the audit loop (A5): the clinic `audit_log` can explain the provenance of a clinical field.                                                            |
@@ -842,7 +843,51 @@ Additive only. No existing table changes semantics, and every addition follows t
 > request state. It gains exactly two AI-shaped facts: "I can mint tokens for the AI platform" and
 > "a human accepted AI output here". Anything more would migrate AI logic into the wrong layer.
 
+#### 4.2.1 The clinic-side signing mechanism
 
+[§2.1](#21-amendment-a1-authenticate-every-request-requires-a-trust-bootstrap-that-does-not-exist-yet)
+requires the clinic database to sign AATs **asymmetrically**, so the platform can verify them while
+holding only a public key. Naming the mechanism is not an implementation detail that a delivery slice
+may choose for itself: the algorithm appears in the token header, the public key format appears in the
+enrollment payload, and the verifier port depends on both. It is therefore fixed here.
+
+**The mechanism: the `pgsodium` extension's Ed25519 detached signatures, producing a JWS with
+`alg: EdDSA`.**
+
+
+| Concern              | Named mechanism                                                                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keypair generation   | `pgsodium.crypto_sign_new_keypair()` during enrollment, run by the migration/enrollment role, which must hold `pgsodium_keymaker`. Produces a 64-byte Ed25519 secret key and a 32-byte public key |
+| Private key at rest  | Stored in the restricted AI schema, with no grants to `anon`/`authenticated`, read only by the `SECURITY DEFINER` issuer. Wrapping it in `supabase_vault` (already installed) is permitted     |
+| Signing              | `pgsodium.crypto_sign_detached(signing_input, secret_key)` over the base64url `header.payload`, appended as the third JWS segment. Base64url encoding uses `translate`/`encode`, not `pgjwt` |
+| Public key export    | Raw 32 bytes, published to the platform as a JWK `{"kty":"OKP","crv":"Ed25519","x":<base64url>}` with a `kid`                                                                                |
+| Verification         | Platform side, WebCrypto `Ed25519` `importKey` (`jwk` or `raw`) + `verify` — a first-class Workers algorithm. Clinic-side self-test uses `pgsodium.crypto_sign_verify_detached`                  |
+
+**Why EdDSA and not ES256 or RS256.** The choice is forced, not preferred. Verified against the
+clinic's own Postgres image (`supabase/postgres:15.8.1.085`): `pgcrypto` offers hashing, HMAC, and PGP
+but no raw asymmetric signing primitive; `pgjwt` is installed but signs **HMAC only** (`HS256`/`HS384`/
+`HS512`), so it cannot produce an asymmetric AAT and is used for nothing here; `pgsodium` 3.1.8 is
+available in the image and its `crypto_sign_*` family is Ed25519 exclusively. Ed25519 is the only
+asymmetric signing primitive the existing stack can offer without adding a component. ECDSA P-256
+would require a Postgres extension the image does not ship, and a pure-PL/pgSQL implementation is not
+a serious option. Ed25519 is also the better key: 32-byte public keys make the enrolled-key record and
+the config cache trivially small ([§4.3.2](#432-identity-and-tenant-resolution)).
+
+**Why not move signing out of Postgres.** A Supabase Edge Function or a signer in the gateway would
+introduce a component kind the architecture does not have — the issuer is fixed as a `SECURITY DEFINER`
+RPC (F4), the constitution forbids a custom primary backend (F5), and the gateway is the only new
+deployable ([§14](#14-constitution-compliance-check)). Moving the private key anywhere outside the
+clinic database would also break the one-directional trust that [§3.3](#33-trust-and-network-topology)
+depends on.
+
+**The one liability, recorded.** Supabase has marked `pgsodium` *pending deprecation* on its hosted
+platform, steering hosted users to Supabase Vault — which stores secrets but exposes no signing
+primitive, so it is not a substitute. The deprecation is a **hosted-platform** decision; the clinic
+deployment is self-hosted (F1) and pins its own Postgres image, so the extension's availability is
+under this project's control, not Supabase's release calendar. Should Tier 3 (Supabase Cloud) ever
+become real, the affected clinics are precisely the ones that gain a cloud-issued JWKS, which is the
+OIDC verifier strategy [§2.1](#21-amendment-a1-authenticate-every-request-requires-a-trust-bootstrap-that-does-not-exist-yet)
+already keeps on the table. Tracked as R-24.
 
 ### 4.3 AI Gateway Worker components
 
@@ -910,6 +955,16 @@ Verifies the AAT through the **verifier port** (enrolled-installation key or OID
 enforces audience, expiry, clock skew tolerance, and `jti` replay rejection; loads the installation
 record; and produces an immutable **request principal** — installation, organization, branch, actor,
 role, capability scopes — that every later stage reads and none may mutate.
+
+The port has two strategies, and only the first is built now:
+
+- **Enrolled installation key** — the AAT is an `EdDSA` JWS, verified with WebCrypto `Ed25519`
+ against the installation's enrolled 32-byte public key ([§4.2.1](#421-the-clinic-side-signing-mechanism)).
+ The key is selected by `iss` and `kid`; no network call is involved.
+- **OIDC / JWKS** — reserved for Tier 3, where a hosted issuer publishes a key set over HTTP. It is
+ the reason this is a port at all, and the reason a JWKS-shaped key representation (JWK `OKP`) is
+ used for the enrolled key too: the two strategies then differ only in *where the key came from*,
+ not in what a key is.
 
 Installation public keys and status are read through the **config cache**: an in-isolate memory map
 with a short TTL, populated from D1 on a miss. At clinic scale the entire config set — installations,
@@ -1376,6 +1431,13 @@ conversational turn look like a failure in every dashboard the journal feeds.
 | `iat`, `exp`    | Short lifetime, minutes        | Limits the value of a stolen token                       |
 | `ver`           | Token contract version         | Enables rotation of the contract itself                  |
 
+
+The AAT is a compact JWS. Its header carries `alg: EdDSA` and the `kid` of the installation key that
+signed it; `alg` is **not** negotiable per token — a verifier that accepts anything other than
+`EdDSA`, and in particular one that accepts `none` or an HMAC algorithm, is accepting a forgery.
+The signing and verifying mechanisms are named in [§4.2.1](#421-the-clinic-side-signing-mechanism);
+`iss` plus `kid` select the enrolled public key, which is what makes rotation a key-set operation
+rather than a re-enrollment.
 
 Deliberate omissions: no patient identifiers (a token is not a resource grant), no quota state (owned
 by the platform and would be stale instantly), no provider or model hints (the client has no say).
@@ -1888,8 +1950,8 @@ sequenceDiagram
     participant D1 as D1
 
     OPS->>SB: run enrollment routine
-    SB->>SB: generate installation keypair<br/>store private key in restricted schema
-    SB-->>OPS: installation id + public key
+    SB->>SB: pgsodium.crypto_sign_new_keypair (Ed25519)<br/>store secret key in restricted schema
+    SB-->>OPS: installation id + kid + public key (JWK OKP/Ed25519)
     OPS->>GW: control-plane enroll<br/>(operator credentials, org info, public key, plan)
     GW->>D1: create installation + installation_key + entitlement
     GW->>D1: control_audit: enrolled by operator
@@ -1899,6 +1961,12 @@ sequenceDiagram
 ```
 
 
+
+The keypair never leaves the clinic in whole: `crypto_sign_new_keypair()` returns both halves inside
+the database, the 64-byte secret half is written to the restricted AI schema and never selected again
+except by the issuer, and only the 32-byte public half travels to the operator
+([§4.2.1](#421-the-clinic-side-signing-mechanism)). Rotation repeats these three steps and adds a
+`kid`; the platform accepts both keys during the overlap, so no clinic is offline for a rotation.
 
 Why enrollment is operator-driven rather than self-service: an installation is a **billing and trust
 boundary**. Allowing a client to enroll itself would let anyone with a copy of the desktop app create
@@ -2724,6 +2792,7 @@ evaluated, and killed like any other prompt logic (A14).
 | D-18 | Chat surface             | A declared `conversational` capability; the surface names it  | Client-side intent classification and routing       | Intent inference is an AI concern; client-side it would freeze at each desktop release             |
 | D-19 | Conversation state       | Client holds the transcript and resupplies it per leg         | Per-conversation Durable Object or D1 table         | Avoids the platform's first per-request store and its lifecycle, for data the client already holds |
 | D-20 | Context for chat         | Bounded negotiation: the platform asks, the client resolves   | Platform fetches; or client pre-resolves everything | Preserves client → platform data flow and per-user RLS, while keeping intent inference server-side |
+| D-21 | AAT signing mechanism    | `pgsodium` Ed25519 detached signatures, `alg: EdDSA`          | `pgjwt` (HMAC-only); ECDSA P-256; an Edge Function signer | The only asymmetric signing primitive the clinic's own Postgres image ships; keeps the issuer a `SECURITY DEFINER` RPC ([§4.2.1](#421-the-clinic-side-signing-mechanism)) |
 
 
 ---
@@ -2803,6 +2872,7 @@ Likelihood and impact are assessed for a clinic-scale product with a small team.
 | R-21 | **Conversational cost amplification** — a chat turn that negotiates context costs several inferences, and long transcripts re-price the whole history on every turn | Medium  | High   | Max context rounds per turn and max history turns in the manifest, both counted from the submitted transcript; the existing per-turn cost pre-flight already prices the transcript as input (A6); per-installation budget bounds the total ([§6.7.3](#673-what-bounds-the-loop))                                                                                                                                                                                                        | Inferences per conversation and cost per conversation, grouped by `conversation_id` in the journal    |
 | R-22 | **Transcript tampering** — a modified client trims context-request turns to reset its round budget, or fabricates assistant turns                                   | Low     | Medium | Accepted, not solved: the transcript has the same untrusted status as any context payload ([§3.3](#33-trust-and-network-topology)). Every leg is separately authenticated, rate-limited, cost-checked, and admitted, so the ceiling is the clinic's own quota. `turn_ordinal` makes reordering and replay visible in the journal                                                                                                                                                        | Conversations with anomalous round counts; per-actor inference rates                                  |
 | R-23 | **Assistant over-reach** — a conversational capability asks for context beyond what the question needed                                                             | Medium  | Medium | The manifest's permitted key set is an allowlist enforced at the context validator, so keys outside it are dropped even if requested; resolution still runs under the requesting user's RLS, so the assistant can never reach data the user could not open themselves ([§8.10](#810-conversational-turn-with-context-negotiation))                                                                                                                                                      | Requested-key frequency per capability against the permitted set                                      |
+| R-24 | **`pgsodium` deprecation** — the signing extension is pending deprecation on hosted Supabase                                                                        | Low     | Medium | The clinic runs self-hosted Supabase on a pinned Postgres image (F1), so extension availability is this project's choice, not Supabase's calendar. If a future image drops it, the fallback is a pinned build of the extension or, for Tier 3 clinics, the OIDC/JWKS verifier strategy the port already anticipates ([§4.2.1](#421-the-clinic-side-signing-mechanism))                                                                                                                    | Extension presence asserted by a backend test at migration time; Supabase image release notes         |
 | R-19 | **Cloudflare lock-in**                                                                                                                                              | Low     | Low    | The pipeline is ordinary request/response logic; Durable Object use is one counter class; D1 is SQLite-shaped and exportable; R2 is S3-shaped. Migration would be work, not a rewrite                                                                                                                                                                                                                                                                                                   | Reviewed at each delivery checkpoint                                                                  |
 
 
@@ -3090,7 +3160,7 @@ it does not currently anticipate. The check is therefore explicit.
 | **II. No custom core backend for primary business logic**                   | ✅ Pass, with a stated boundary | The gateway holds **no domain logic and no business data**. Every clinical rule stays in PostgreSQL; AI output is advisory and requires human acceptance (A5). If the platform vanishes, no business rule is lost — the correct test for "not primary"                                                                                           |
 | **III. Backend authority and data integrity**                               | ✅ Pass                         | AI output enters the clinical record only through existing RPCs, with existing validation, triggers, and RLS. The platform cannot write to Supabase at all                                                                                                                                                                                       |
 | **III. Tenant isolation**                                                   | ✅ Pass                         | Context resolution runs under the user's own RLS. Platform-side isolation is enforced by installation-scoped tokens and installation-scoped queries                                                                                                                                                                                              |
-| **IV. Secure and human-gated operations**                                   | ✅ Pass, reinforced             | Every request authenticated and scoped ([§3.3](#33-trust-and-network-topology)); defense in depth via token scopes, entitlement, and capability gating; human acceptance mandatory for clinical content (A5)                                                                                                                                     |
+| **IV. Secure and human-gated operations**                                   | ✅ Pass, reinforced             | Every request authenticated and scoped ([§3.3](#33-trust-and-network-topology)) by a named, verifiable mechanism — Ed25519 AATs signed in the clinic database and verified against an enrolled public key ([§4.2.1](#421-the-clinic-side-signing-mechanism)), which is what makes the `aud`/`iss`/`jti`/`exp` claims enforceable rather than declarative; defense in depth via token scopes, entitlement, and capability gating; human acceptance mandatory for clinical content (A5) |
 | **IV. Auditability**                                                        | ✅ Pass                         | Immutable platform journal plus the clinic-side acceptance record, joined by request reference                                                                                                                                                                                                                                                   |
 | **V. Operational continuity; subscription must never hard-lock**            | ✅ Pass                         | Quota exhaustion and platform outage degrade to "AI unavailable" and never block clinical work; soft thresholds downgrade rather than refuse ([§8.8](#88-quota-and-rate-limit-rejection))                                                                                                                                                        |
 | **Guardrail: no infrastructure assuming enterprise scale**                  | ✅ Pass                         | Serverless, scale-to-zero, no fixed capacity, no cluster to operate                                                                                                                                                                                                                                                                              |

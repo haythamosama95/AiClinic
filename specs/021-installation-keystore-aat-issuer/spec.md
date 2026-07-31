@@ -59,6 +59,14 @@ None. No §15 recommended default is needed to satisfy the B1 `Done when` cell. 
 lifetime ("minutes") and issuer rate limiting are named directly in §5.6 and §4.2, not
 deferred to §15.
 
+## Clarifications
+
+### Session 2026-07-31
+
+- Q: What asymmetric signing algorithm should the installation keypair use for AATs? → A: ES256 (ECDSA P-256, JWKS `EC` key) `[implementation choice — no §citation]`
+- Q: Where should the installation keystore and issuer RPC live inside the Supabase layout? → A: Keystore in a new `ai_internal` schema; issuer RPC in `auth_internal` as `SECURITY DEFINER` `[implementation choice — no §citation]`
+- Q: How should the T05/T06 SQL/RLS tests produce and verify an AAT? → A: SQL/RLS-only — PL/pgSQL verifier function in `auth_internal` + SQL-generated ES256 fixtures, minting via the real issuer RPC `[implementation choice — no §citation]`
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Installation keystore and AAT issuer (Priority: P1)
@@ -136,17 +144,7 @@ Named tests:
 - `T04 rotation adds key without removing previous` — layer: SQL / RLS
 - `T05 previous-key AAT still verifies within validity window` — layer: SQL / RLS
 - `T06 revoked key rejected` — layer: SQL / RLS
-- `T07a iss populated` — layer: SQL / RLS
-- `T07b aud populated` — layer: SQL / RLS
-- `T07c sub populated` — layer: SQL / RLS
-- `T07d org populated` — layer: SQL / RLS
-- `T07e branch populated` — layer: SQL / RLS
-- `T07f role populated` — layer: SQL / RLS
-- `T07g scopes populated` — layer: SQL / RLS
-- `T07h jti populated` — layer: SQL / RLS
-- `T07i iat populated` — layer: SQL / RLS
-- `T07j exp populated` — layer: SQL / RLS
-- `T07k ver populated` — layer: SQL / RLS
+- `T07 all section 5.6 claims populated` (asserts each of `iss`, `aud`, `sub`, `org`, `branch`, `role`, `scopes`, `jti`, `iat`, `exp`, `ver` is present and non-null on one minted AAT) — layer: SQL / RLS
 - `T08 scopes derived from RBAC and unaffected by caller-supplied scopes` — layer: SQL / RLS
 - `T09 expired or absent session rejected` — layer: SQL / RLS
 - `T10 issuance row written` — layer: SQL / RLS
