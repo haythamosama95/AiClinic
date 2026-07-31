@@ -1198,13 +1198,21 @@ A small internal surface, separate from the client-facing API and separately aut
 | Function                | Purpose                                                                           |
 | ----------------------- | --------------------------------------------------------------------------------- |
 | Installation lifecycle  | Enroll, rotate keys, suspend, resume, delete                                      |
-| Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities                      |
+| Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities, set period bounds and soft threshold |
 | Kill switches           | Global, per capability, per installation, per provider (A8)                       |
 | Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation |
 | Routing policy          | Publish a new versioned policy; canary; roll back                                 |
 | Support lookup          | Resolve a request reference to its full trace and payloads (A13)                  |
 | Operational dashboards  | Health, error taxonomy breakdown, provider latency and cost, quota consumption    |
 
+
+**The line between the first two rows.** Installation lifecycle owns identity and trust material —
+the `installation` row, its keys, and its lifecycle status. Entitlement management owns everything
+economic. Enroll creates the entitlement row so that the tenant's shape is complete on day one, but
+it creates it empty and `pending`; every value that decides what a request may cost is written by
+Entitlement management ([§8.1](#81-clinic-enrollment-and-trust-bootstrap) for the exact initial
+values). An installation is therefore enrolled and verifiable before it is entitled to anything, and
+the two states are separately auditable.
 
 Every control-plane mutation is journaled with the operator identity. Routing policy and kill-switch
 changes are the highest-leverage actions in the entire system — an unaudited change to where requests
@@ -1814,6 +1822,12 @@ schema definition.
 | `control_audit`    | Control-plane mutations                                                        | operator, action, target, before/after pointer, at                                                                                                                                                                                                                           | Low                      | Long                                    |
 
 
+**Entitlement status** takes `pending`, `active`, or `suspended`. A row is created `pending` by
+enroll with no economics set and is moved to `active` by entitlement assignment
+([§4.5](#45-control-plane), [§8.1](#81-clinic-enrollment-and-trust-bootstrap)). Every column stays
+non-null throughout — `pending` is expressed as zeroed budgets and an empty capability set, not as
+absent values — so the guard reads one shape regardless of which state a tenant is in.
+
 Sizing check against the 10 GB per-database ceiling: at roughly 0.5–1 KB per metadata row,
 `ai_request` + `ai_attempt` + `usage_event` consume on the order of a few gigabytes per ten million
 requests — comfortable, **but only because payloads live in R2**. Storing prompts and responses inline
@@ -1971,6 +1985,31 @@ except by the issuer, and only the 32-byte public half travels to the operator
 Why enrollment is operator-driven rather than self-service: an installation is a **billing and trust
 boundary**. Allowing a client to enroll itself would let anyone with a copy of the desktop app create
 a tenant, and would make the platform's entitlement record meaningless.
+
+**What enroll writes into the entitlement row.** Enroll creates the entitlement row but does not set
+its economics. The row is created in status `pending` with the plan name from the enroll payload
+recorded, a zero request quota, a zero token and cost budget, an empty allowed-capability set, and a
+soft threshold of zero (never crossed, because the budget it is a fraction of is zero). The period
+bounds are the enrollment instant for both start and end — a closed, empty period, not an open one —
+so that no period is silently in force before one has been assigned. The row is therefore complete
+and non-null from the moment it exists, and it grants nothing.
+
+The economics are filled by the **Entitlement management** mutation
+([§4.5](#45-control-plane)), which assigns the plan's quota, budget, allowed capabilities, soft
+threshold, and period bounds and moves the row to status `active`. Enrollment and entitlement are
+deliberately two mutations rather than one: enroll establishes *who this tenant is and how to verify
+it*, entitlement assignment establishes *what it may spend*. Folding the second into the first would
+require enroll to carry a plan catalogue — a pricing artifact the platform does not otherwise model
+— and would make every plan change a lifecycle concern.
+
+The consequence a later slice binds to: an installation is enrolled and verifiable but entitled to
+nothing until entitlement assignment runs. The guard's entitlement stage
+([§4.3.3](#433-entitlement-quota-and-rate-control)) reads a `pending` snapshot as "no capability
+allowed" and rejects with the ordinary quota-exhaustion path, so a not-yet-entitled installation
+behaves exactly like one that has spent its budget: the AI affordance is unavailable with a stated
+reason and no clinical workflow is blocked (constitution principle V, [§8.8](#88-quota-and-rate-limit-rejection)).
+This is the reason `pending` is a status value and not an absent row — an absent row would be
+indistinguishable from a lookup failure at the guard.
 
 ### 8.2 Streaming prose request — happy path
 
@@ -3204,6 +3243,7 @@ nothing blocks on them.
 | 12  | What is the chat assistant's permitted context key set, and does it vary by staff role?     | Start narrow — the keys the button-invoked capabilities already use — and widen on evidence. Role variation needs no new mechanism: the token's scopes and the user's own RLS already bound it (A14) |
 | 13  | Max history turns and max context rounds per turn for the assistant                         | A short history and two context rounds to begin. Both are manifest values, so tuning them is a manifest publish rather than a release ([§6.7.3](#673-what-bounds-the-loop))                          |
 | 14  | May chat output be moved into a clinical record, and through which acceptance path?         | Only through the same human acceptance RPC as any other capability (A5). Declaring the assistant `advisory_display` first, and adding acceptance later, is the lower-risk order                      |
+| 15  | Is there a plan catalogue that maps a plan name to quota, budget, and capability set?       | Not initially. Enroll records the plan name only and leaves the row `pending`; an operator assigns the economics explicitly ([§8.1](#81-clinic-enrollment-and-trust-bootstrap)). A catalogue becomes worth building when plans outnumber operators' memory, and it is additive — it changes what Entitlement management reads, not what enroll writes |
 
 
 ---
