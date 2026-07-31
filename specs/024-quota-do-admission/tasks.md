@@ -37,7 +37,7 @@ Test plan is a task, ordered to fail before the implementation that makes it pas
 **Purpose**: The one artifact the plan names that must exist before any test or handler binds to it —
 the frozen RPC shapes later slices' `Consumes` will bind to.
 
-- [ ] T001 [US1] Write `specs/024-quota-do-admission/contracts/quota-do-rpc.md` freezing the admission
+- [X] T001 [US1] Write `specs/024-quota-do-admission/contracts/quota-do-rpc.md` freezing the admission
   RPC request/response shape (payload keys: `jti`, `installationId`, `idempotencyKey` plus the
   entitlement snapshot carried in), the credit RPC request/response shape (actual usage tokens/cost
   plus a `partial` flag), and the in-object ephemeral entry shape (`{expiresAt}` for the `jti` replay
@@ -57,61 +57,61 @@ row B4 layer "DO unit + concurrency + integration (spy)". DO unit + concurrency 
 binding (`cloudflare:test` `env.DO`, `env.DO.idFromString(installationId)`) — Clarification Q3 — and
 the integration spy cases wrap `env.DO` in a counting spy — Clarification Q4.
 
-- [ ] T002 [US1] `admission_fresh_jti_accepted` in `ai-platform/test/quota-do.test.ts` (DO unit): a
+- [X] T002 [US1] `admission_fresh_jti_accepted` in `ai-platform/test/quota-do.test.ts` (DO unit): a
   previously-unseen `jti` is admitted as fresh. Also register `test/quota-do.test.ts` in
   `vitest.workers.config.ts` `test.include`. Asserts FR-004 (§3.11.2 row B4; §4.3.3; §6.1 stage 8).
-- [ ] T003 [US1] `admission_repeated_jti_rejected` in `ai-platform/test/quota-do.test.ts` (DO unit): a
+- [X] T003 [US1] `admission_repeated_jti_rejected` in `ai-platform/test/quota-do.test.ts` (DO unit): a
   `jti` already seen for this installation is rejected as a replay. Asserts FR-004 (§3.11.2 row B4;
   §9.17).
-- [ ] T004 [US1] `admission_new_idempotency_key_accepted` in `ai-platform/test/quota-do.test.ts` (DO
+- [X] T004 [US1] `admission_new_idempotency_key_accepted` in `ai-platform/test/quota-do.test.ts` (DO
   unit): a previously-unseen idempotency key is accepted as new. Asserts FR-005 (§3.11.2 row B4; §6.6).
-- [ ] T005 [US1] `admission_repeat_idempotency_key_returns_prior_record` in
+- [X] T005 [US1] `admission_repeat_idempotency_key_returns_prior_record` in
   `ai-platform/test/quota-do.test.ts` (DO unit): a repeat idempotency key returns the existing
   request's state instead of starting a second inference. Asserts FR-005 (§3.11.2 row B4; §6.1 stage
   8; §6.6).
-- [ ] T006 [US1] `admission_budget_exhaustion_rejected` in `ai-platform/test/quota-do.test.ts` (DO
+- [X] T006 [US1] `admission_budget_exhaustion_rejected` in `ai-platform/test/quota-do.test.ts` (DO
   unit): an installation with no remaining budget is rejected `quota_exhausted`. Asserts FR-006
   (§3.11.2 row B4; §6.1 stage 8; §5.4).
-- [ ] T007 [US1] `admission_concurrency_ceiling_rejected` in `ai-platform/test/quota-do.test.ts` (DO
+- [X] T007 [US1] `admission_concurrency_ceiling_rejected` in `ai-platform/test/quota-do.test.ts` (DO
   unit): an installation at its in-flight concurrency ceiling is rejected for lack of headroom.
   Asserts FR-007 (§3.11.2 row B4; §4.3.3; §4.4).
-- [ ] T008 [US1] `credit_adjusts_counters_with_actual_usage` in `ai-platform/test/quota-do.test.ts`
+- [X] T008 [US1] `credit_adjusts_counters_with_actual_usage` in `ai-platform/test/quota-do.test.ts`
   (DO unit): a completed request's credit call adjusts the period counters by actual usage. Asserts
   FR-008 (§3.11.2 row B4; §6.1 stage 15; §4.3.3).
-- [ ] T009 [US1] `credit_adjusts_counters_with_partial_usage` in `ai-platform/test/quota-do.test.ts`
+- [X] T009 [US1] `credit_adjusts_counters_with_partial_usage` in `ai-platform/test/quota-do.test.ts`
   (DO unit): a cancelled request's partial usage is credited. Asserts FR-008 (§3.11.2 row B4; §6.1
   stage 15; §6.4).
-- [ ] T010 [US1] `parallel_admissions_exact_final_count` in `ai-platform/test/quota-do.test.ts`
+- [X] T010 [US1] `parallel_admissions_exact_final_count` in `ai-platform/test/quota-do.test.ts`
   (concurrency): N parallel admissions against one installation produce an exact final count, proving
   DO-level serialized counting (uses `ctx.storage` / `blockConcurrencyWhile`). Asserts FR-009
   (§3.11.2 row B4; §4.4).
-- [ ] T011 [US1] `ephemeral_entries_expire_in_place` in `ai-platform/test/quota-do.test.ts` (DO unit):
+- [X] T011 [US1] `ephemeral_entries_expire_in_place` in `ai-platform/test/quota-do.test.ts` (DO unit):
   `jti` replay and idempotency records older than the ephemeral horizon are evicted by the next
   admission's lazy sweep, with no `alarm()` handler and no table to prune. Asserts FR-010 (§3.11.2
   row B4; §7.7 `ephemeral`; §9.17; Clarification Q5).
-- [ ] T012 [US1] `admission_exactly_one_do_fetch_per_request` in
+- [X] T012 [US1] `admission_exactly_one_do_fetch_per_request` in
   `ai-platform/test/admission-credit.test.ts` (integration, spy): the pipeline admission stage makes
   exactly one Durable Object fetch per request — wrap `env.DO` in a counting spy and assert the fetch
   count. Also register `test/admission-credit.test.ts` in `vitest.workers.config.ts` `test.include`.
   Asserts FR-011 (§3.11.2 row B4; §6.1 stage 8; §7.5) — *spy case*.
-- [ ] T013 [US1] `admission_repeated_key_no_second_inference` in
+- [X] T013 [US1] `admission_repeated_key_no_second_inference` in
   `ai-platform/test/admission-credit.test.ts` (integration, spy): a repeated idempotency key returns
   the original state and starts no second inference, observed through the same `env.DO` spy. Asserts
   FR-005, FR-011 (§3.11.2 row B4; §6.6) — *spy case*.
-- [ ] T014 [US1] `admission_expired_token_same_key_unauthenticated` in
+- [X] T014 [US1] `admission_expired_token_same_key_unauthenticated` in
   `ai-platform/test/admission-credit.test.ts` (integration): a transport retry whose token expired in
   the meantime carrying the same idempotency key is rejected `unauthenticated`, not returned as the
   original result, because idempotency is checked after identity. Asserts FR-012 (§3.11.2 row B4;
   §6.2).
-- [ ] T015 [US1] `quota_do_unavailable_capped_grace_then_rejection` in
+- [X] T015 [US1] `quota_do_unavailable_capped_grace_then_rejection` in
   `ai-platform/test/admission-credit.test.ts` (integration): Quota DO unavailability serves the
   request under the capped grace allowance, then rejects once the cap is exhausted (fail-open deepened
   by stubbing `env.DO.fetch` to throw then to succeed). Asserts FR-013 (§3.11.2 row B4; §15 #3).
-- [ ] T016 [US1] `grace_usage_reconciled_afterwards` in
+- [X] T016 [US1] `grace_usage_reconciled_afterwards` in
   `ai-platform/test/admission-credit.test.ts` (integration, spy): usage admitted under the fail-open
   cap is reconciled against the DO's counters afterwards — spy asserts the reconciliation credit call
   fires once the DO is reachable. Asserts FR-013 (§3.11.2 row B4; §15 #3) — *spy case*.
-- [ ] T017 [US1] `admission_rejection_counted_not_journaled` in
+- [X] T017 [US1] `admission_rejection_counted_not_journaled` in
   `ai-platform/test/admission-credit.test.ts` (integration, spy): an admission rejection is tallied to
   bucketed `platform_counter` (the B3-frozen flush shape) and creates no `ai_request` row and no
   per-event row. Asserts FR-014 (§4.3.12; §7.5; B3 `Freezes`; §3.11.2 row B4) — *spy case*.
