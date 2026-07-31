@@ -544,6 +544,7 @@ List<AppCommandItem> kDefaultCommandItems({void Function(String id)? onNavigate}
   return [
     nav('patients', 'Patients'),
     nav('appointments', 'Appointments'),
+    nav('appointments-queue', 'Queue'),
     nav('invoices', 'Invoices'),
     nav('reports', 'Reports'),
     AppCommandItem(

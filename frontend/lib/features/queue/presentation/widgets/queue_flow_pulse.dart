@@ -7,11 +7,7 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 /// Animated wait-severity meter for the checked-in panel (web `FlowPulse`).
 class QueueFlowPulse extends StatefulWidget {
-  const QueueFlowPulse({
-    required this.severity,
-    required this.patientCount,
-    super.key,
-  });
+  const QueueFlowPulse({required this.severity, required this.patientCount, super.key});
 
   /// 0–1 severity based on max wait time.
   final double severity;
@@ -22,37 +18,43 @@ class QueueFlowPulse extends StatefulWidget {
   State<QueueFlowPulse> createState() => _QueueFlowPulseState();
 }
 
-class _QueueFlowPulseState extends State<QueueFlowPulse>
-    with SingleTickerProviderStateMixin {
-  AnimationController? _controller;
+class _QueueFlowPulseState extends State<QueueFlowPulse> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500));
+    _opacityAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(_controller);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _syncController();
+    _syncAnimation();
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _syncController() {
-    final tickerEnabled = TickerMode.valuesOf(context).enabled;
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    final shouldAnimate = tickerEnabled && !disableAnimations;
+  bool _shouldAnimate(BuildContext context) {
+    return TickerMode.valuesOf(context).enabled && !MediaQuery.disableAnimationsOf(context);
+  }
 
-    if (!shouldAnimate) {
-      _controller?.dispose();
-      _controller = null;
+  void _syncAnimation() {
+    if (_shouldAnimate(context)) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true);
+      }
       return;
     }
 
-    _controller ??= AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2500),
-    )..repeat(reverse: true);
+    _controller.stop();
+    _controller.value = 1.0;
   }
 
   Color _severityColor(AppSemanticColors colors) {
@@ -70,6 +72,7 @@ class _QueueFlowPulseState extends State<QueueFlowPulse>
     final colors = context.appColors;
     final color = _severityColor(colors);
     final fillPercent = widget.severity.clamp(0.08, 1.0);
+    final animate = _shouldAnimate(context);
 
     return Semantics(
       label: 'Queue wait severity',
@@ -83,19 +86,16 @@ class _QueueFlowPulseState extends State<QueueFlowPulse>
               children: [
                 Text(
                   'Flow Pulse',
-                  style: AppTypography.caption(context).copyWith(
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: colors.textSecondary,
-                  ),
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w600, letterSpacing: 1.2, color: colors.textSecondary),
                 ),
                 const Spacer(),
                 Text(
                   '${widget.patientCount} waiting',
-                  style: AppTypography.caption(context).copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: colors.textSecondary,
-                  ),
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(fontFeatures: const [FontFeature.tabularFigures()], color: colors.textSecondary),
                 ),
               ],
             ),
@@ -111,13 +111,12 @@ class _QueueFlowPulseState extends State<QueueFlowPulse>
                     FractionallySizedBox(
                       alignment: AlignmentDirectional.centerStart,
                       widthFactor: fillPercent,
-                      child: _controller == null
-                          ? ColoredBox(color: color)
-                          : FadeTransition(
-                              opacity: Tween<double>(begin: 0.7, end: 1.0)
-                                  .animate(_controller!),
+                      child: animate
+                          ? FadeTransition(
+                              opacity: _opacityAnimation,
                               child: ColoredBox(color: color),
-                            ),
+                            )
+                          : ColoredBox(color: color),
                     ),
                   ],
                 ),

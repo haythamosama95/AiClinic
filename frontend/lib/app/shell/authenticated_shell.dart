@@ -31,8 +31,10 @@ class AuthenticatedShell extends ConsumerWidget {
       ref.watch(appointmentCalendarShellWarmProvider);
     }
 
-    final location = GoRouterState.of(context).matchedLocation;
-    final uri = GoRouterState.of(context).uri;
+    final routerState = GoRouterState.of(context);
+    // Use the actual URI path so pushed routes (e.g. visit billing) get correct shell layout.
+    final location = routerState.uri.path;
+    final uri = routerState.uri;
     final activeId = ShellNavConfig.itemIdForLocation(location) ?? '';
     final pageContext = ShellNavConfig.breadcrumbForLocation(
       location,
@@ -46,6 +48,8 @@ class AuthenticatedShell extends ConsumerWidget {
     final setupLocked = auth.context?.needsClinicSetup ?? true;
     final chrome = ref.watch(shellChromeProvider);
     final collapsed = ref.watch(shellSidebarCollapsedProvider);
+    final queueCheckedInCount = ref.watch(appointmentQueueCheckedInCountProvider);
+    final sidebarGroups = ShellNavConfig.groupsWithCounts(queueCheckedInCount: queueCheckedInCount);
 
     final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
     final designSystemFullWidth = ShellNavConfig.isDesignSystemFullWidth(uri);
@@ -70,7 +74,7 @@ class AuthenticatedShell extends ConsumerWidget {
           fullWidth: fullWidth,
           fillViewport: fillViewport,
           sidebar: AppSidebar(
-            items: ShellNavConfig.groups,
+            items: sidebarGroups,
             footerItems: ShellNavConfig.footerItems(),
             activeId: activeId,
             collapsed: collapsed,

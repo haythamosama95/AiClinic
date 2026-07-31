@@ -34,6 +34,7 @@ class AppTabs extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.variant = AppTabsVariant.underline,
+    this.equalWidth = false,
     this.ariaLabel = 'Tabs',
     super.key,
   });
@@ -42,6 +43,7 @@ class AppTabs extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
   final AppTabsVariant variant;
+  final bool equalWidth;
   final String ariaLabel;
 
   @override
@@ -62,6 +64,7 @@ class AppTabs extends StatelessWidget {
         onChanged: onChanged,
         ariaLabel: ariaLabel,
         isVertical: true,
+        equalWidth: equalWidth,
       ),
       AppTabsVariant.underline => _AppTabList(
         items: items,
@@ -69,6 +72,7 @@ class AppTabs extends StatelessWidget {
         onChanged: onChanged,
         ariaLabel: ariaLabel,
         isVertical: false,
+        equalWidth: equalWidth,
       ),
     };
   }
@@ -81,6 +85,7 @@ class _AppTabList extends StatefulWidget {
     required this.onChanged,
     required this.ariaLabel,
     required this.isVertical,
+    this.equalWidth = false,
   });
 
   final List<AppTabItem> items;
@@ -88,6 +93,7 @@ class _AppTabList extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final String ariaLabel;
   final bool isVertical;
+  final bool equalWidth;
 
   @override
   State<_AppTabList> createState() => _AppTabListState();
@@ -245,6 +251,7 @@ class _AppTabListState extends State<_AppTabList> {
           item: widget.items[index],
           selected: widget.items[index].id == widget.value,
           isVertical: widget.isVertical,
+          expand: widget.equalWidth && !widget.isVertical,
           focusNode: _focusNodes[index],
           onSelected: () => widget.onChanged(widget.items[index].id),
         ),
@@ -274,34 +281,40 @@ class _AppTabListState extends State<_AppTabList> {
     return Semantics(
       container: true,
       label: widget.ariaLabel,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: context.appColors.borderSubtle)),
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomLeft,
-          children: [
-            Row(
-              key: _tabListKey,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var index = 0; index < tabButtons.length; index++) ...[
-                  if (index > 0) const SizedBox(width: AppSpacing.space1),
-                  tabButtons[index],
+      child: SizedBox(
+        width: widget.equalWidth ? double.infinity : null,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.appColors.borderSubtle)),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.bottomLeft,
+            children: [
+              Row(
+                key: _tabListKey,
+                mainAxisSize: widget.equalWidth ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < tabButtons.length; index++)
+                    if (widget.equalWidth)
+                      Expanded(child: tabButtons[index])
+                    else ...[
+                      if (index > 0) const SizedBox(width: AppSpacing.space1),
+                      tabButtons[index],
+                    ],
                 ],
-              ],
-            ),
-            if (_signalLeft != null && _signalWidth != null)
-              AnimatedPositioned(
-                duration: duration,
-                curve: curve,
-                left: _signalLeft,
-                bottom: 0,
-                width: _signalWidth,
-                child: const AppSignal(orientation: Axis.horizontal),
               ),
-          ],
+              if (_signalLeft != null && _signalWidth != null)
+                AnimatedPositioned(
+                  duration: duration,
+                  curve: curve,
+                  left: _signalLeft,
+                  bottom: 0,
+                  width: _signalWidth,
+                  child: const AppSignal(orientation: Axis.horizontal),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -315,12 +328,14 @@ class _AppTabButton extends StatefulWidget {
     required this.isVertical,
     required this.focusNode,
     required this.onSelected,
+    this.expand = false,
     super.key,
   });
 
   final AppTabItem item;
   final bool selected;
   final bool isVertical;
+  final bool expand;
   final FocusNode focusNode;
   final VoidCallback onSelected;
 
@@ -371,16 +386,21 @@ class _AppTabButtonState extends State<_AppTabButton> {
                 ? [BoxShadow(color: appInputFocusRingColor(context), blurRadius: 0, spreadRadius: 2)]
                 : null;
             final label = Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
+              mainAxisAlignment: widget.expand ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
                 if (widget.item.icon != null) ...[
                   Icon(widget.item.icon, size: 16, color: _textColor(colors)),
                   const SizedBox(width: AppSpacing.space2),
                 ],
-                Text(
-                  widget.item.label,
-                  style: textStyle.copyWith(color: _textColor(colors)),
-                  textAlign: widget.isVertical ? TextAlign.start : TextAlign.center,
+                Flexible(
+                  child: Text(
+                    widget.item.label,
+                    style: textStyle.copyWith(color: _textColor(colors)),
+                    textAlign: widget.expand || widget.isVertical ? TextAlign.center : TextAlign.start,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
               ],
             );
@@ -418,7 +438,10 @@ class _AppTabButtonState extends State<_AppTabButton> {
                 behavior: HitTestBehavior.opaque,
                 child: DecoratedBox(
                   decoration: BoxDecoration(boxShadow: focusRing),
-                  child: Padding(padding: padding, child: label),
+                  child: Padding(
+                    padding: padding,
+                    child: widget.expand ? Center(child: label) : label,
+                  ),
                 ),
               ),
             );

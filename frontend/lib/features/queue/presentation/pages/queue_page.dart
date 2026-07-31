@@ -13,28 +13,21 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
-import 'package:ai_clinic/features/appointments/presentation/models/appointment_section.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_section_nav.dart';
 import 'package:ai_clinic/features/queue/domain/queue_display.dart';
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/queue/presentation/providers/queue_provider.dart';
 import 'package:ai_clinic/features/queue/presentation/providers/queue_shift_provider.dart';
-import 'package:ai_clinic/features/queue/presentation/widgets/queue_alert_banner.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_appointments_table.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_confirm_dialog.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_flow_control_panel.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_kpi_carousel.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_secretary_utils.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_toolbar.dart';
-import 'package:ai_clinic/features/queue/presentation/widgets/queue_undo_toast.dart';
 
 class _PendingConfirm {
-  const _PendingConfirm({
-    required this.appointmentId,
-    required this.target,
-    required this.patientName,
-  });
+  const _PendingConfirm({required this.appointmentId, required this.target, required this.patientName});
 
   final String appointmentId;
   final AppointmentStatus target;
@@ -55,13 +48,11 @@ class _QueuePageState extends ConsumerState<QueuePage> {
   static const _sideRailWidthLg = 340.0;
   static const _sideRailWidthXl = 380.0;
 
-  final _undoToastController = QueueUndoToastController();
   Timer? _nowTimer;
   DateTime _now = DateTime.now();
   String _search = '';
   final Set<AppointmentStatus> _statusFilters = {};
   _PendingConfirm? _pendingConfirm;
-  var _alertDismissed = false;
   var _transitionBusy = false;
 
   @override
@@ -77,21 +68,15 @@ class _QueuePageState extends ConsumerState<QueuePage> {
   @override
   void dispose() {
     _nowTimer?.cancel();
-    _undoToastController.dispose();
     super.dispose();
   }
 
-  String get _organizationTimezone => effectiveOrganizationTimezone(
-    ref.read(authSessionProvider).context?.organizationTimezone,
-  );
+  String get _organizationTimezone =>
+      effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
 
-  AppointmentQueueShiftDoctorLookup get _emptyShiftLookup =>
-      AppointmentQueueShiftDoctorLookup.empty;
+  AppointmentQueueShiftDoctorLookup get _emptyShiftLookup => AppointmentQueueShiftDoctorLookup.empty;
 
-  AppointmentListItem? _findAppointment(
-    List<AppointmentListItem> items,
-    String appointmentId,
-  ) {
+  AppointmentListItem? _findAppointment(List<AppointmentListItem> items, String appointmentId) {
     for (final item in items) {
       if (item.id == appointmentId) {
         return item;
@@ -109,12 +94,8 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     final partition = AppointmentQueueDisplay.partition(items, now: now);
     final waiting = partition.waiting.length;
     final checkedIn = waiting;
-    final inProgress = items
-        .where((item) => item.status == AppointmentStatus.inProgress)
-        .length;
-    final cancelled = items
-        .where((item) => item.status == AppointmentStatus.cancelled)
-        .length;
+    final inProgress = items.where((item) => item.status == AppointmentStatus.inProgress).length;
+    final cancelled = items.where((item) => item.status == AppointmentStatus.cancelled).length;
     final queueLength = waiting;
 
     if (comparisonItems == null) {
@@ -128,18 +109,11 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     }
 
     final previousNow = comparisonNow ?? now;
-    final previousPartition = AppointmentQueueDisplay.partition(
-      comparisonItems,
-      now: previousNow,
-    );
+    final previousPartition = AppointmentQueueDisplay.partition(comparisonItems, now: previousNow);
     final previousWaiting = previousPartition.waiting.length;
     final previousCheckedIn = previousWaiting;
-    final previousInProgress = comparisonItems
-        .where((item) => item.status == AppointmentStatus.inProgress)
-        .length;
-    final previousCancelled = comparisonItems
-        .where((item) => item.status == AppointmentStatus.cancelled)
-        .length;
+    final previousInProgress = comparisonItems.where((item) => item.status == AppointmentStatus.inProgress).length;
+    final previousCancelled = comparisonItems.where((item) => item.status == AppointmentStatus.cancelled).length;
 
     return QueueKpiCarouselTrends(
       waiting: waiting,
@@ -147,21 +121,11 @@ class _QueuePageState extends ConsumerState<QueuePage> {
       inProgress: inProgress,
       cancelled: cancelled,
       queueLength: queueLength,
-      waitingTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(waiting, previousWaiting),
-      ),
-      checkedInTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(checkedIn, previousCheckedIn),
-      ),
-      inProgressTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(inProgress, previousInProgress),
-      ),
-      cancelledTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(cancelled, previousCancelled),
-      ),
-      queueLengthTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(queueLength, previousWaiting),
-      ),
+      waitingTrend: AppointmentQueueStatTrend(percentChange: _percentChange(waiting, previousWaiting)),
+      checkedInTrend: AppointmentQueueStatTrend(percentChange: _percentChange(checkedIn, previousCheckedIn)),
+      inProgressTrend: AppointmentQueueStatTrend(percentChange: _percentChange(inProgress, previousInProgress)),
+      cancelledTrend: AppointmentQueueStatTrend(percentChange: _percentChange(cancelled, previousCancelled)),
+      queueLengthTrend: AppointmentQueueStatTrend(percentChange: _percentChange(queueLength, previousWaiting)),
     );
   }
 
@@ -172,26 +136,16 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     return ((current - previous) / previous) * 100;
   }
 
-  List<AppointmentListItem> _filterTableAppointments(
-    List<AppointmentListItem> items,
-  ) {
+  List<AppointmentListItem> _filterTableAppointments(List<AppointmentListItem> items) {
     var result = queueFilterByStatus(items, _statusFilters);
     final query = _search.trim().toLowerCase();
     if (query.isNotEmpty) {
-      result = result
-          .where(
-            (item) => item.patientName.toLowerCase().contains(query),
-          )
-          .toList(growable: false);
+      result = result.where((item) => item.patientName.toLowerCase().contains(query)).toList(growable: false);
     }
-    return queueSortForTriage(result, _now);
+    return sortAppointmentsByStartTime(result);
   }
 
-  void _handleTransition(
-    String appointmentId,
-    AppointmentStatus target, {
-    String? doctorId,
-  }) {
+  void _handleTransition(String appointmentId, AppointmentStatus target, {String? doctorId}) {
     if (_transitionBusy) {
       return;
     }
@@ -202,8 +156,7 @@ class _QueuePageState extends ConsumerState<QueuePage> {
       return;
     }
 
-    if (target == AppointmentStatus.cancelled ||
-        target == AppointmentStatus.noShow) {
+    if (target == AppointmentStatus.cancelled || target == AppointmentStatus.noShow) {
       setState(() {
         _pendingConfirm = _PendingConfirm(
           appointmentId: appointmentId,
@@ -217,18 +170,12 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     unawaited(_applyTransition(appointment, target, doctorId: doctorId));
   }
 
-  Future<void> _applyTransition(
-    AppointmentListItem appointment,
-    AppointmentStatus target, {
-    String? doctorId,
-  }) async {
+  Future<void> _applyTransition(AppointmentListItem appointment, AppointmentStatus target, {String? doctorId}) async {
     if (_transitionBusy) {
       return;
     }
 
-    final canAdvance = ref.read(
-      authSessionProvider.select(AuthRouteGuard.canAccessAppointmentBooking),
-    );
+    final canAdvance = ref.read(authSessionProvider.select(AuthRouteGuard.canAccessAppointmentBooking));
     if (!canAdvance) {
       if (mounted) {
         appToast(
@@ -256,9 +203,7 @@ class _QueuePageState extends ConsumerState<QueuePage> {
         }
 
         final assignedDoctorId = appointment.doctorId?.trim();
-        if (assignedDoctorId == null ||
-            assignedDoctorId.isEmpty ||
-            assignedDoctorId != selectedDoctorId) {
+        if (assignedDoctorId == null || assignedDoctorId.isEmpty || assignedDoctorId != selectedDoctorId) {
           await repository.updateAppointment(
             appointmentId: appointment.id,
             patientId: appointment.patientId,
@@ -271,57 +216,63 @@ class _QueuePageState extends ConsumerState<QueuePage> {
 
       final update = await switch (target) {
         AppointmentStatus.cancelled => _cancelWithReason(repository, appointment),
-        AppointmentStatus.noShow => repository.markAppointmentNoShow(
-          appointmentId: appointment.id,
-        ).then(
-          (status) => (
-            status: status,
-            updatedAt: DateTime.now().toUtc(),
-            checkedInAt: appointment.checkedInAt,
-            inProgressAt: appointment.inProgressAt,
-          ),
-        ),
-        _ => repository
-            .updateAppointmentStatus(
-              appointmentId: appointment.id,
-              newStatus: target,
-            )
-            .then(
-              (result) => (
-                status: result.status,
-                updatedAt: result.updatedAt,
-                checkedInAt: result.checkedInAt,
-                inProgressAt: result.inProgressAt,
+        AppointmentStatus.noShow =>
+          repository
+              .markAppointmentNoShow(appointmentId: appointment.id)
+              .then(
+                (status) => (
+                  status: status,
+                  updatedAt: DateTime.now().toUtc(),
+                  checkedInAt: appointment.checkedInAt,
+                  inProgressAt: appointment.inProgressAt,
+                ),
               ),
-            ),
+        _ =>
+          repository
+              .updateAppointmentStatus(appointmentId: appointment.id, newStatus: target)
+              .then(
+                (result) => (
+                  status: result.status,
+                  updatedAt: result.updatedAt,
+                  checkedInAt: result.checkedInAt,
+                  inProgressAt: result.inProgressAt,
+                ),
+              ),
       };
 
-      ref.read(appointmentQueueProvider.notifier).patchAppointmentStatus(
-        appointmentId: appointmentId,
-        newStatus: update.status,
-        doctorId: doctorId ?? appointment.doctorId,
-        updatedAt: update.updatedAt,
-        checkedInAt: update.checkedInAt,
-        inProgressAt: update.inProgressAt,
-      );
+      ref
+          .read(appointmentQueueProvider.notifier)
+          .patchAppointmentStatus(
+            appointmentId: appointmentId,
+            newStatus: update.status,
+            doctorId: doctorId ?? appointment.doctorId,
+            updatedAt: update.updatedAt,
+            checkedInAt: update.checkedInAt,
+            inProgressAt: update.inProgressAt,
+          );
 
       if (!mounted) {
         return;
       }
 
-      final revertTarget = previousStatusTargetFor(
-        appointment.copyWith(status: update.status),
-      );
-      if (revertTarget != null && canRevertAppointmentStatus(
-        appointment.copyWith(status: update.status),
-      )) {
-        _undoToastController.show(
-          message: 'Status updated',
-          onUndo: () => _revertTransition(
-            appointmentId: appointmentId,
-            currentStatus: update.status,
-            revertTarget: revertTarget,
-            patientName: patientName,
+      final revertTarget = previousStatusTargetFor(appointment.copyWith(status: update.status));
+      if (revertTarget != null && canRevertAppointmentStatus(appointment.copyWith(status: update.status))) {
+        appToast(
+          context,
+          AppToastInput(
+            message: 'Status updated',
+            variant: AppToastVariant.success,
+            action: AppToastAction(
+              label: 'Undo',
+              onPressed: () => unawaited(
+                _revertTransition(
+                  appointmentId: appointmentId,
+                  currentStatus: update.status,
+                  revertTarget: revertTarget,
+                  patientName: patientName,
+                ),
+              ),
+            ),
           ),
         );
       } else {
@@ -337,21 +288,14 @@ class _QueuePageState extends ConsumerState<QueuePage> {
       return;
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(
-          context,
-          AppToastInput(
-            message: appointmentMessageForRpc(error),
-            variant: AppToastVariant.danger,
-          ),
-        );
+        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
       }
     } catch (_) {
       if (mounted) {
         appToast(
           context,
           const AppToastInput(
-            message:
-                'Could not update the appointment status. Please try again.',
+            message: 'Could not update the appointment status. Please try again.',
             variant: AppToastVariant.danger,
           ),
         );
@@ -363,26 +307,13 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     }
   }
 
-  Future<({
-    AppointmentStatus status,
-    DateTime? updatedAt,
-    DateTime? checkedInAt,
-    DateTime? inProgressAt,
-  })> _cancelWithReason(
-    AppointmentRepository repository,
-    AppointmentListItem appointment,
-  ) async {
-    final reason = await AppointmentCancelDialog.show(
-      context,
-      appointment: appointment,
-    );
+  Future<({AppointmentStatus status, DateTime? updatedAt, DateTime? checkedInAt, DateTime? inProgressAt})>
+  _cancelWithReason(AppointmentRepository repository, AppointmentListItem appointment) async {
+    final reason = await AppointmentCancelDialog.show(context, appointment: appointment);
     if (reason == null) {
       throw _QueueTransitionCancelled();
     }
-    final status = await repository.cancelAppointment(
-      appointmentId: appointment.id,
-      reason: reason,
-    );
+    final status = await repository.cancelAppointment(appointmentId: appointment.id, reason: reason);
     return (
       status: status,
       updatedAt: DateTime.now().toUtc(),
@@ -400,46 +331,37 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     try {
       final result = await ref
           .read(appointmentRepositoryProvider)
-          .updateAppointmentStatus(
-            appointmentId: appointmentId,
-            newStatus: revertTarget,
-          );
+          .updateAppointmentStatus(appointmentId: appointmentId, newStatus: revertTarget);
 
-      ref.read(appointmentQueueProvider.notifier).patchAppointmentStatus(
-        appointmentId: appointmentId,
-        newStatus: result.status,
-        updatedAt: result.updatedAt,
-        checkedInAt: result.checkedInAt,
-        inProgressAt: result.inProgressAt,
-      );
+      ref
+          .read(appointmentQueueProvider.notifier)
+          .patchAppointmentStatus(
+            appointmentId: appointmentId,
+            newStatus: result.status,
+            updatedAt: result.updatedAt,
+            checkedInAt: result.checkedInAt,
+            inProgressAt: result.inProgressAt,
+          );
 
       if (mounted) {
         appToast(
           context,
           AppToastInput(
-            message:
-                '$patientName is back to ${revertTarget.label.toLowerCase()}.',
+            message: '$patientName is back to ${revertTarget.label.toLowerCase()}.',
             variant: AppToastVariant.success,
           ),
         );
       }
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(
-          context,
-          AppToastInput(
-            message: appointmentMessageForRpc(error),
-            variant: AppToastVariant.danger,
-          ),
-        );
+        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
       }
     } catch (_) {
       if (mounted) {
         appToast(
           context,
           const AppToastInput(
-            message:
-                'Could not revert the appointment status. Please try again.',
+            message: 'Could not revert the appointment status. Please try again.',
             variant: AppToastVariant.danger,
           ),
         );
@@ -469,17 +391,10 @@ class _QueuePageState extends ConsumerState<QueuePage> {
   Widget build(BuildContext context) {
     final queueState = ref.watch(appointmentQueueProvider);
     final shiftLookupAsync = ref.watch(appointmentQueueShiftDoctorLookupProvider);
-    final shiftLookup = shiftLookupAsync.maybeWhen(
-      data: (lookup) => lookup,
-      orElse: () => _emptyShiftLookup,
-    );
+    final shiftLookup = shiftLookupAsync.maybeWhen(data: (lookup) => lookup, orElse: () => _emptyShiftLookup);
 
     if (queueState.loading && queueState.items.isEmpty) {
-      return const AppLoadingOverlay(
-        loading: true,
-        label: 'Loading queue',
-        child: SizedBox.expand(),
-      );
+      return const AppLoadingOverlay(loading: true, label: 'Loading queue', child: SizedBox.expand());
     }
 
     if (queueState.error != null && queueState.items.isEmpty) {
@@ -504,11 +419,6 @@ class _QueuePageState extends ConsumerState<QueuePage> {
       comparisonNow: queueState.comparisonNow,
     );
     final filteredAppointments = _filterTableAppointments(items);
-    final healthIssues = queueHealthIssues(
-      items,
-      shiftLookup: shiftLookup,
-      now: _now,
-    );
 
     return Stack(
       children: [
@@ -517,17 +427,14 @@ class _QueuePageState extends ConsumerState<QueuePage> {
           label: 'Refreshing queue',
           scoped: true,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.space6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              spacing: AppSpacing.space5,
+              spacing: AppSpacing.space6,
               children: [
                 const AppPageHeader(
                   title: 'Queue',
-                  description:
-                      "Today's patient flow — scan exceptions, move patients forward",
+                  description: "Today's patient flow — scan exceptions, move patients forward",
                 ),
-                const AppointmentSectionNav(activeSection: AppointmentSection.queue),
                 QueueKpiCarousel(stats: stats, trends: trends),
                 QueueToolbar(
                   search: _search,
@@ -544,26 +451,18 @@ class _QueuePageState extends ConsumerState<QueuePage> {
                   },
                   onClearFilters: () => setState(_statusFilters.clear),
                 ),
-                if (!_alertDismissed && healthIssues.isNotEmpty)
-                  QueueAlertBanner(
-                    issues: healthIssues,
-                    onDismiss: () => setState(() => _alertDismissed = true),
-                  ),
                 if (items.isEmpty)
                   const AppEmptyState(
                     variant: AppEmptyStateVariant.firstRun,
                     title: 'No appointments today',
-                    description:
-                        'Checked-in patients and today\'s schedule will appear here.',
+                    description: 'Checked-in patients and today\'s schedule will appear here.',
                   )
                 else
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final width = constraints.maxWidth;
                       final useSideBySide = width >= _largeBreakpoint;
-                      final sideRailWidth = width >= _xlBreakpoint
-                          ? _sideRailWidthXl
-                          : _sideRailWidthLg;
+                      final sideRailWidth = width >= _xlBreakpoint ? _sideRailWidthXl : _sideRailWidthLg;
 
                       final tableSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -573,17 +472,14 @@ class _QueuePageState extends ConsumerState<QueuePage> {
                               Expanded(
                                 child: Text(
                                   "Today's appointments",
-                                  style: AppTypography.bodySm(context).copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: context.appColors.textPrimary,
-                                  ),
+                                  style: AppTypography.bodySm(
+                                    context,
+                                  ).copyWith(fontWeight: FontWeight.w600, color: context.appColors.textPrimary),
                                 ),
                               ),
                               Text(
                                 '${filteredAppointments.length} shown',
-                                style: AppTypography.caption(context).copyWith(
-                                  color: context.appColors.textSecondary,
-                                ),
+                                style: AppTypography.caption(context).copyWith(color: context.appColors.textSecondary),
                               ),
                             ],
                           ),
@@ -600,22 +496,19 @@ class _QueuePageState extends ConsumerState<QueuePage> {
                         ],
                       );
 
-                      final flowPanel = QueueFlowControlPanel(
-                        appointments: items,
-                        now: _now,
-                      );
+                      final flowPanel = QueueFlowControlPanel(appointments: items, now: _now);
 
                       if (!useSideBySide) {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
-                          spacing: AppSpacing.space5,
+                          spacing: AppSpacing.space6,
                           children: [tableSection, flowPanel],
                         );
                       }
 
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: AppSpacing.space5,
+                        spacing: AppSpacing.space6,
                         children: [
                           Expanded(child: tableSection),
                           SizedBox(width: sideRailWidth, child: flowPanel),
@@ -629,14 +522,11 @@ class _QueuePageState extends ConsumerState<QueuePage> {
         ),
         QueueConfirmDialog(
           open: _pendingConfirm != null,
-          kind: _pendingConfirm?.target == AppointmentStatus.noShow
-              ? QueueConfirmKind.noShow
-              : QueueConfirmKind.cancel,
+          kind: _pendingConfirm?.target == AppointmentStatus.noShow ? QueueConfirmKind.noShow : QueueConfirmKind.cancel,
           patientName: _pendingConfirm?.patientName ?? '',
           onConfirm: _confirmPendingTransition,
           onCancel: () => setState(() => _pendingConfirm = null),
         ),
-        QueueUndoToast(controller: _undoToastController),
       ],
     );
   }

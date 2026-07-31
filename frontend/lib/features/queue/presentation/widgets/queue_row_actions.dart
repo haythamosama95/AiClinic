@@ -173,22 +173,25 @@ class _QueueRowActionsState extends State<QueueRowActions> {
               variant: AppButtonVariant.secondary,
               size: AppButtonSize.sm,
               onPressed: toggle,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Actions',
-                    style: AppTypography.bodySm(context).copyWith(
-                      fontWeight: FontWeight.w500,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Actions',
+                      style: AppTypography.bodySm(context).copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.space1),
-                  Icon(
-                    Icons.expand_more,
-                    size: 12,
-                    color: context.appColors.iconDefault,
-                  ),
-                ],
+                    const SizedBox(width: AppSpacing.space1),
+                    Icon(
+                      Icons.expand_more,
+                      size: 12,
+                      color: context.appColors.iconDefault,
+                    ),
+                  ],
+                ),
               ),
             ),
           );

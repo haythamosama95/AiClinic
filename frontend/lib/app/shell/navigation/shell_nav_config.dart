@@ -8,13 +8,32 @@ import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
 abstract final class ShellNavConfig {
-  static const List<AppNavGroup> groups = kClinicNavGroups;
+  static List<AppNavGroup> groups = kClinicNavGroups;
+
+  /// Sidebar groups with live badge counts (e.g. checked-in patients on Queue).
+  static List<AppNavGroup> groupsWithCounts({int queueCheckedInCount = 0}) {
+    return [
+      for (final group in kClinicNavGroups)
+        AppNavGroup(
+          id: group.id,
+          label: group.label,
+          items: [
+            for (final item in group.items)
+              if (item.id == 'appointments-queue' && queueCheckedInCount > 0)
+                AppNavItem(id: item.id, label: item.label, icon: item.icon, count: queueCheckedInCount)
+              else
+                item,
+          ],
+        ),
+    ];
+  }
 
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
     'dashboard': AppRoutes.dashboard,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
+    'appointments-queue': AppRoutes.appointmentsQueue,
     'appointments-calendar': AppRoutes.appointmentsCalendar,
     'encounters': AppRoutes.encounters,
     'workspace': AppRoutes.workspace,
@@ -89,7 +108,8 @@ abstract final class ShellNavConfig {
         location == AppRoutes.billingInvoices ||
         location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
-        location == AppRoutes.appointmentsCalendar;
+        location == AppRoutes.appointmentsCalendar ||
+        location == AppRoutes.appointmentsQueue;
   }
 
   /// Routes whose content should fill the shell viewport (no outer scroll).
@@ -183,13 +203,13 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.appointmentsCalendar) {
       return 'appointments-calendar';
     }
-    if (location == AppRoutes.appointmentsQueue) {
-      return 'appointments';
-    }
     if (location.startsWith(AppRoutes.appointments)) {
       return 'appointments';
     }
     if (location.startsWith(AppRoutes.billingInvoices)) {
+      return 'invoices';
+    }
+    if (location.startsWith('${AppRoutes.billing}/')) {
       return 'invoices';
     }
     if (location.startsWith(AppRoutes.settingsServices)) {

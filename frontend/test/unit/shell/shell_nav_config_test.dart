@@ -42,6 +42,12 @@ void main() {
     });
   });
 
+  group('ShellNavConfig.itemIdForLocation', () {
+    test('maps pushed visit billing routes to invoices nav item', () {
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.billingVisit('visit-1')), 'invoices');
+    });
+  });
+
   group('LoginQueryParams', () {
     test('forgot-password intent redirect preserves query contract', () {
       expect(

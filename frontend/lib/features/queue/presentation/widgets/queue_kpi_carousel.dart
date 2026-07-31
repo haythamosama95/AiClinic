@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/components/app_card.dart';
-import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -54,19 +52,14 @@ enum _KpiCardId {
 enum _TrendDirection { up, down, flat }
 
 class _KpiTrendPresentation {
-  const _KpiTrendPresentation({
-    required this.direction,
-    required this.favorableUp,
-    this.label,
-  });
+  const _KpiTrendPresentation({required this.direction, required this.favorableUp, required this.label});
 
   final _TrendDirection direction;
   final bool favorableUp;
-  final String? label;
+  final String label;
 
   bool get isGood =>
-      (direction == _TrendDirection.up && favorableUp) ||
-      (direction == _TrendDirection.down && !favorableUp);
+      (direction == _TrendDirection.up && favorableUp) || (direction == _TrendDirection.down && !favorableUp);
 }
 
 class _KpiCardData {
@@ -74,24 +67,20 @@ class _KpiCardData {
     required this.id,
     required this.label,
     required this.value,
+    required this.trend,
     this.valueColor,
-    this.trend,
   });
 
   final _KpiCardId id;
   final String label;
   final String value;
   final Color? valueColor;
-  final _KpiTrendPresentation? trend;
+  final _KpiTrendPresentation trend;
 }
 
 /// Horizontal KPI statistics carousel (web `QueueStats`).
 class QueueKpiCarousel extends StatefulWidget {
-  const QueueKpiCarousel({
-    required this.stats,
-    required this.trends,
-    super.key,
-  });
+  const QueueKpiCarousel({required this.stats, required this.trends, super.key});
 
   final AppointmentQueueStats stats;
   final QueueKpiCarouselTrends trends;
@@ -102,6 +91,8 @@ class QueueKpiCarousel extends StatefulWidget {
 
 class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
   static const _scrollEpsilon = 4.0;
+  static const _navButtonWidth = 40.0;
+  static const _kpiCardHeight = AppSpacing.space4 * 2 + 24 + AppSpacing.space2 * 2 + 20 + 20;
 
   late final ScrollController _scrollController;
   var _canScrollLeft = false;
@@ -111,6 +102,7 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_updateScrollState);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollState());
   }
 
   @override
@@ -134,8 +126,7 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
 
     final position = _scrollController.position;
     final nextLeft = position.pixels > _scrollEpsilon;
-    final nextRight =
-        position.pixels + position.viewportDimension < position.maxScrollExtent - _scrollEpsilon;
+    final nextRight = position.pixels + position.viewportDimension < position.maxScrollExtent - _scrollEpsilon;
 
     if (nextLeft != _canScrollLeft || nextRight != _canScrollRight) {
       setState(() {
@@ -145,31 +136,20 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
     }
   }
 
-  void _scrollByDirection(bool left) {
+  void _scrollByDirection(bool left, double cardStride) {
     if (!_scrollController.hasClients) {
       return;
     }
 
-    final cardWidth = _estimateCardWidth(context);
-    final delta = cardWidth * 2 * (left ? -1 : 1);
+    final delta = cardStride * 2 * (left ? -1 : 1);
     final tickerEnabled = TickerMode.valuesOf(context).enabled;
     final disableAnimations = MediaQuery.disableAnimationsOf(context);
 
     _scrollController.animateTo(
-      (_scrollController.offset + delta).clamp(
-        0.0,
-        _scrollController.position.maxScrollExtent,
-      ),
-      duration: tickerEnabled && !disableAnimations
-          ? const Duration(milliseconds: 300)
-          : Duration.zero,
+      (_scrollController.offset + delta).clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: tickerEnabled && !disableAnimations ? const Duration(milliseconds: 300) : Duration.zero,
       curve: Curves.easeOut,
     );
-  }
-
-  double _estimateCardWidth(BuildContext context) {
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    return _cardMinWidth(viewportWidth);
   }
 
   List<_KpiCardData> _buildCards(BuildContext context) {
@@ -252,13 +232,14 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
     return AppointmentQueueDisplay.formatDurationLabel(Duration(minutes: minutes));
   }
 
-  _KpiTrendPresentation? _trendFor(
-    AppointmentQueueStatTrend? trend, {
-    required bool favorableUp,
-  }) {
+  _KpiTrendPresentation _trendFor(AppointmentQueueStatTrend? trend, {required bool favorableUp}) {
     final percentChange = trend?.percentChange;
     if (percentChange == null) {
-      return null;
+      return _KpiTrendPresentation(
+        direction: _TrendDirection.flat,
+        favorableUp: favorableUp,
+        label: 'same as yesterday',
+      );
     }
 
     final direction = switch (percentChange) {
@@ -270,9 +251,7 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
     return _KpiTrendPresentation(
       direction: direction,
       favorableUp: favorableUp,
-      label: direction == _TrendDirection.flat
-          ? 'same as yesterday'
-          : _formatTrendLabel(percentChange),
+      label: direction == _TrendDirection.flat ? 'same as yesterday' : _formatTrendLabel(percentChange),
     );
   }
 
@@ -301,10 +280,10 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
     return 2;
   }
 
-  double _cardMinWidth(double width) {
+  double _cardMinWidth(double scrollViewportWidth) {
     const gap = AppSpacing.space3;
-    final columns = _columnCount(width);
-    return (width - gap * (columns - 1)) / columns;
+    final columns = _columnCount(scrollViewportWidth);
+    return (scrollViewportWidth - gap * (columns - 1)) / columns;
   }
 
   @override
@@ -319,112 +298,146 @@ class _QueueKpiCarouselState extends State<QueueKpiCarousel> {
       container: true,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final cardMinWidth = _cardMinWidth(constraints.maxWidth);
+          const rowGap = AppSpacing.space2;
+          final scrollViewportWidth = constraints.maxWidth - (_navButtonWidth + rowGap) * 2;
+          final cardWidth = _cardMinWidth(scrollViewportWidth);
+          final cardStride = cardWidth + AppSpacing.space3;
           final showEdgeFades = constraints.maxWidth >= 1024;
 
-          return Stack(
-            children: [
-              if (showEdgeFades) ...[
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: SizedBox(
-                      width: AppSpacing.space10,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              colors.surfaceCanvas,
-                              colors.surfaceCanvas.withValues(alpha: 0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: SizedBox(
-                      width: AppSpacing.space10,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerRight,
-                            end: Alignment.centerLeft,
-                            colors: [
-                              colors.surfaceCanvas,
-                              colors.surfaceCanvas.withValues(alpha: 0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              Row(
-                children: [
-                  AppIconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    label: 'Scroll statistics left',
-                    size: AppIconButtonSize.sm,
-                    variant: AppIconButtonVariant.secondary,
-                    onPressed: _canScrollLeft ? () => _scrollByDirection(true) : null,
-                  ),
-                  const SizedBox(width: AppSpacing.space2),
-                  Expanded(
-                    child: Semantics(
-                      label: 'Queue KPI cards',
-                      container: true,
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (_) {
-                          _updateScrollState();
-                          return false;
-                        },
-                        child: ScrollConfiguration(
-                          behavior: const _HiddenScrollbarBehavior(),
-                          child: SingleChildScrollView(
-                            controller: _scrollController,
-                            scrollDirection: Axis.horizontal,
-                            clipBehavior: Clip.none,
-                            child: Row(
-                              children: [
-                                for (var i = 0; i < cards.length; i++) ...[
-                                  if (i > 0) const SizedBox(width: AppSpacing.space3),
-                                  SizedBox(
-                                    width: cardMinWidth,
-                                    child: _KpiCard(
-                                      key: ValueKey(cards[i].id),
-                                      data: cards[i],
-                                    ),
-                                  ),
-                                ],
-                              ],
+          return SizedBox(
+            height: _kpiCardHeight,
+            child: Stack(
+              children: [
+                if (showEdgeFades) ...[
+                  Positioned(
+                    left: _navButtonWidth + rowGap,
+                    top: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: SizedBox(
+                        width: AppSpacing.space10,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [colors.surfaceCanvas, colors.surfaceCanvas.withValues(alpha: 0)],
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.space2),
-                  AppIconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    label: 'Scroll statistics right',
-                    size: AppIconButtonSize.sm,
-                    variant: AppIconButtonVariant.secondary,
-                    onPressed: _canScrollRight ? () => _scrollByDirection(false) : null,
+                  Positioned(
+                    right: _navButtonWidth + rowGap,
+                    top: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: SizedBox(
+                        width: AppSpacing.space10,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerRight,
+                              end: Alignment.centerLeft,
+                              colors: [colors.surfaceCanvas, colors.surfaceCanvas.withValues(alpha: 0)],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: rowGap,
+                  children: [
+                    _CarouselNavButton(
+                      icon: Icons.chevron_left,
+                      label: 'Scroll statistics left',
+                      enabled: _canScrollLeft,
+                      onPressed: () => _scrollByDirection(true, cardStride),
+                    ),
+                    Expanded(
+                      child: Semantics(
+                        label: 'Queue KPI cards',
+                        container: true,
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification is ScrollUpdateNotification || notification is ScrollMetricsNotification) {
+                              _updateScrollState();
+                            }
+                            return false;
+                          },
+                          child: ScrollConfiguration(
+                            behavior: const _HiddenScrollbarBehavior(),
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              scrollDirection: Axis.horizontal,
+                              primary: false,
+                              clipBehavior: Clip.hardEdge,
+                              child: Row(
+                                children: [
+                                  for (var i = 0; i < cards.length; i++) ...[
+                                    if (i > 0) const SizedBox(width: AppSpacing.space3),
+                                    SizedBox(
+                                      width: cardWidth,
+                                      height: _kpiCardHeight,
+                                      child: _KpiCard(key: ValueKey(cards[i].id), data: cards[i]),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    _CarouselNavButton(
+                      icon: Icons.chevron_right,
+                      label: 'Scroll statistics right',
+                      enabled: _canScrollRight,
+                      onPressed: () => _scrollByDirection(false, cardStride),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _CarouselNavButton extends StatelessWidget {
+  const _CarouselNavButton({required this.icon, required this.label, required this.enabled, required this.onPressed});
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: Material(
+        color: enabled ? colors.surfaceDefault : colors.surfaceMuted,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(color: colors.borderDefault),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          child: SizedBox(
+            width: _QueueKpiCarouselState._navButtonWidth,
+            child: Center(child: Icon(icon, size: 16, color: enabled ? colors.iconDefault : colors.iconMuted)),
+          ),
+        ),
       ),
     );
   }
@@ -440,9 +453,7 @@ class _KpiCard extends StatelessWidget {
     final colors = context.appColors;
     final trend = data.trend;
     final surface = _trendSurface(trend, colors);
-    final semanticsValue = trend?.label == null
-        ? '${data.label}: ${data.value}'
-        : '${data.label}: ${data.value}, ${trend!.label}';
+    final semanticsValue = '${data.label}: ${data.value}, ${trend.label}';
 
     return Semantics(
       label: semanticsValue,
@@ -451,66 +462,48 @@ class _KpiCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.xl),
           border: Border.all(color: surface.border),
+          gradient: surface.gradient,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          child: AppCard(
-            variant: CardVariant.flat,
-            padding: CardPadding.md,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(decoration: BoxDecoration(gradient: surface.gradient)),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.space4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.value,
+                style: AppTypography.mono(context).copyWith(
+                  fontSize: 24,
+                  height: 1,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.5,
+                  color: data.valueColor ?? colors.textPrimary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      data.value,
-                      style: AppTypography.mono(context).copyWith(
-                        fontSize: 24,
-                        height: 1,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.5,
-                        color: data.valueColor ?? colors.textPrimary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.space2),
-                    Text(
-                      data.label,
-                      style: AppTypography.bodySm(context).copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                    if (trend != null) ...[
-                      const SizedBox(height: AppSpacing.space2),
-                      _TrendIndicator(trend: trend),
-                    ],
-                  ],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: AppSpacing.space2),
+              Text(
+                data.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500, color: colors.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.space2),
+              _TrendIndicator(trend: trend),
+            ],
           ),
         ),
       ),
     );
   }
 
-  _TrendSurface _trendSurface(_KpiTrendPresentation? trend, AppSemanticColors colors) {
-    if (trend == null || trend.direction == _TrendDirection.flat) {
+  _TrendSurface _trendSurface(_KpiTrendPresentation trend, AppSemanticColors colors) {
+    if (trend.direction == _TrendDirection.flat) {
       return _TrendSurface(
         border: colors.borderDefault,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            colors.surfaceSunken.withValues(alpha: 0.4),
-            colors.surfaceDefault,
-            colors.surfaceDefault,
-          ],
+          colors: [colors.surfaceSunken.withValues(alpha: 0.4), colors.surfaceDefault, colors.surfaceDefault],
         ),
       );
     }
@@ -521,11 +514,7 @@ class _KpiCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            colors.statusSuccessSurface.withValues(alpha: 0.7),
-            colors.surfaceDefault,
-            colors.surfaceDefault,
-          ],
+          colors: [colors.statusSuccessSurface.withValues(alpha: 0.7), colors.surfaceDefault, colors.surfaceDefault],
         ),
       );
     }
@@ -535,11 +524,7 @@ class _KpiCard extends StatelessWidget {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          colors.statusWarningSurface.withValues(alpha: 0.7),
-          colors.surfaceDefault,
-          colors.surfaceDefault,
-        ],
+        colors: [colors.statusWarningSurface.withValues(alpha: 0.7), colors.surfaceDefault, colors.surfaceDefault],
       ),
     );
   }
@@ -579,11 +564,8 @@ class _TrendIndicator extends StatelessWidget {
         const SizedBox(width: AppSpacing.space1),
         Flexible(
           child: Text(
-            trend.label ?? 'same as yesterday',
-            style: AppTypography.bodySm(context).copyWith(
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
+            trend.label,
+            style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500, color: color),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -596,11 +578,7 @@ class _HiddenScrollbarBehavior extends ScrollBehavior {
   const _HiddenScrollbarBehavior();
 
   @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
     return child;
   }
 }

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/components/app_data_table.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/queue/domain/queue_display.dart';
@@ -39,7 +41,7 @@ class QueueAppointmentsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sorted = queueSortForTriage(appointments, now);
+    final sorted = sortAppointmentsByStartTime(appointments);
 
     if (sorted.isEmpty) {
       return _buildEmptyState(context);
@@ -50,15 +52,16 @@ class QueueAppointmentsTable extends StatelessWidget {
     return AppDataTable<AppointmentListItem>(
       ariaLabel: "Today's appointments",
       animateRows: true,
+      resizableColumns: true,
+      columnWidthsStorageKey: 'queue-appointments-table',
       density: TableDensity.comfortable,
-      headerTextStyle: AppTypography.caption(context).copyWith(
-        fontWeight: FontWeight.w600,
-        color: colors.textTertiary,
-      ),
+      rowHeightOverride: 56,
+      headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
       columns: [
         TableColumn(
           id: 'patient',
           header: 'Patient',
+          minWidth: 160,
           accessor: (item) => _overdueCell(
             context,
             item,
@@ -70,6 +73,7 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'time',
           header: 'Time',
+          minWidth: 112,
           accessor: (item) => _overdueCell(
             context,
             item,
@@ -80,6 +84,7 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'status',
           header: 'Status',
+          minWidth: 120,
           accessor: (item) => _overdueCell(
             context,
             item,
@@ -90,49 +95,23 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'doctor',
           header: 'Preferred doctor',
+          minWidth: 160,
           accessor: (item) => _overdueCell(
             context,
             item,
             now: now,
             child: Text(
-              AppointmentQueueDisplay.queueDoctorLabel(
-                item,
-                shiftLookup: shiftLookup,
-              ),
-              style: AppTypography.bodySm(context).copyWith(
-                color: colors.textSecondary,
-              ),
+              AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
             ),
-          ),
-        ),
-        TableColumn(
-          id: 'type',
-          header: 'Type',
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: Text(
-              item.type.label,
-              style: AppTypography.bodySm(context).copyWith(
-                color: colors.textSecondary,
-              ),
-            ),
-          ),
-        ),
-        TableColumn(
-          id: 'wait',
-          header: 'Wait',
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: _WaitCell(item: item, now: now),
           ),
         ),
         TableColumn(
           id: 'actions',
           header: 'Actions',
+          minWidth: 180,
           accessor: (item) => _overdueCell(
             context,
             item,
@@ -150,6 +129,7 @@ class QueueAppointmentsTable extends StatelessWidget {
       ],
       data: sorted,
       getRowId: (item) => item.id,
+      onRowClick: (item) => context.nav.pushAppointmentDetail(item.id, preview: item),
       emptyState: _buildEmptyState(context),
     );
   }
@@ -172,8 +152,7 @@ class QueueAppointmentsTable extends StatelessWidget {
   }
 
   static bool _isOverdueScheduled(AppointmentListItem item, DateTime now) {
-    return queueIsOverdue(item, now) &&
-        item.status == AppointmentStatus.scheduled;
+    return queueIsOverdue(item, now) && item.status == AppointmentStatus.scheduled;
   }
 
   static Widget _overdueCell(
@@ -192,11 +171,7 @@ class QueueAppointmentsTable extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.statusDangerSurface.withValues(alpha: 0.3),
-        border: isFirstColumn
-            ? Border(
-                left: BorderSide(color: colors.statusDangerFg, width: 4),
-              )
-            : null,
+        border: isFirstColumn ? Border(left: BorderSide(color: colors.statusDangerFg, width: 4)) : null,
       ),
       child: child,
     );
@@ -218,18 +193,16 @@ class _PatientCell extends StatelessWidget {
       children: [
         Text(
           item.patientName,
-          style: AppTypography.bodySm(context).copyWith(
-            fontWeight: FontWeight.w500,
-            color: colors.textPrimary,
-          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500, color: colors.textPrimary),
         ),
         const SizedBox(height: 2),
         Text(
           item.patientMrn ?? '—',
-          style: AppTypography.mono(context).copyWith(
-            fontSize: 12,
-            color: colors.textSecondary,
-          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.mono(context).copyWith(fontSize: 12, color: colors.textSecondary),
         ),
       ],
     );
@@ -253,71 +226,22 @@ class _TimeCell extends StatelessWidget {
       children: [
         Text(
           QueueAppointmentsTable._timeFormat.format(item.startTime),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppTypography.mono(context).copyWith(color: colors.textPrimary),
         ),
         if (overdue) ...[
           const SizedBox(height: 2),
           Text(
             '${now.difference(item.startTime).inMinutes}m overdue',
-            style: AppTypography.bodySm(context).copyWith(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: colors.statusDangerFg,
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(fontSize: 12, fontWeight: FontWeight.w500, color: colors.statusDangerFg),
           ),
         ],
       ],
-    );
-  }
-}
-
-class _WaitCell extends StatelessWidget {
-  const _WaitCell({required this.item, required this.now});
-
-  final AppointmentListItem item;
-  final DateTime now;
-
-  static const _showWaitStatuses = <AppointmentStatus>{
-    AppointmentStatus.checkedIn,
-    AppointmentStatus.inProgress,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-
-    if (!_showWaitStatuses.contains(item.status)) {
-      return Text(
-        '—',
-        style: AppTypography.mono(context).copyWith(
-          color: colors.textPlaceholder,
-        ),
-      );
-    }
-
-    final (label, tier) = AppointmentQueueDisplay.waitPresentation(
-      item,
-      now: now,
-    );
-
-    final color = switch (tier) {
-      AppointmentQueueWaitTier.critical => colors.statusDangerFg,
-      AppointmentQueueWaitTier.warning => colors.statusWarningFg,
-      AppointmentQueueWaitTier.normal => colors.textPrimary,
-    };
-
-    final fontWeight = switch (tier) {
-      AppointmentQueueWaitTier.critical => FontWeight.w600,
-      AppointmentQueueWaitTier.warning => FontWeight.w500,
-      AppointmentQueueWaitTier.normal => FontWeight.w400,
-    };
-
-    return Text(
-      label,
-      style: AppTypography.mono(context).copyWith(
-        color: color,
-        fontWeight: fontWeight,
-      ),
     );
   }
 }

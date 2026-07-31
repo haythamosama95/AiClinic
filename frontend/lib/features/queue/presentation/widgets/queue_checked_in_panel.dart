@@ -15,12 +15,7 @@ import 'package:ai_clinic/features/queue/presentation/widgets/queue_secretary_ut
 /// Checked-in patients waiting list with sort toggle and flow pulse
 /// (web `CheckedInPanel`).
 class QueueCheckedInPanel extends StatefulWidget {
-  const QueueCheckedInPanel({
-    required this.patients,
-    required this.now,
-    this.embedded = false,
-    super.key,
-  });
+  const QueueCheckedInPanel({required this.patients, required this.now, this.embedded = false, super.key});
 
   final List<AppointmentListItem> patients;
   final DateTime now;
@@ -52,16 +47,12 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
     if (sorted.isEmpty) {
       return 0;
     }
-    return sorted
-        .map((patient) => queueWaitMinutes(patient, widget.now))
-        .reduce((a, b) => a > b ? a : b);
+    return sorted.map((patient) => queueWaitMinutes(patient, widget.now)).reduce((a, b) => a > b ? a : b);
   }
 
   double _waitSeverity(int maxWait) => queueFlowPulseSeverity(maxWait);
 
-  String get _sortHint => _sort == _sortNextInOrder
-      ? 'Earliest appointment first'
-      : 'Longest wait first';
+  String get _sortHint => _sort == _sortNextInOrder ? 'Earliest appointment first' : 'Longest wait first';
 
   @override
   Widget build(BuildContext context) {
@@ -80,24 +71,18 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
                 border: Border.all(color: colors.borderDefault),
               ),
         child: Column(
+          mainAxisSize: widget.embedded ? MainAxisSize.min : MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildHeader(context, colors),
             Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                AppSpacing.space4,
-                AppSpacing.space3,
-                AppSpacing.space4,
-                0,
-              ),
-              child: QueueFlowPulse(
-                severity: _waitSeverity(_maxWait),
-                patientCount: sortedPatients.length,
-              ),
+              padding: const EdgeInsetsDirectional.fromSTEB(AppSpacing.space4, AppSpacing.space3, AppSpacing.space4, 0),
+              child: QueueFlowPulse(severity: _waitSeverity(_maxWait), patientCount: sortedPatients.length),
             ),
-            Flexible(
-              child: _buildPatientList(context, colors, sortedPatients),
-            ),
+            if (widget.embedded)
+              _buildPatientList(context, colors, sortedPatients)
+            else
+              Flexible(child: _buildPatientList(context, colors, sortedPatients)),
           ],
         ),
       ),
@@ -105,97 +90,80 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
   }
 
   Widget _buildHeader(BuildContext context, AppSemanticColors colors) {
+    final titleColumn = Column(
+      crossAxisAlignment: widget.embedded ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Checked in — waiting',
+          textAlign: widget.embedded ? TextAlign.center : null,
+          style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w600, color: colors.textPrimary),
+        ),
+        Text(
+          _sortHint,
+          textAlign: widget.embedded ? TextAlign.center : null,
+          style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+        ),
+      ],
+    );
+
+    final sortControl = AppSegmentedControl<String>(
+      ariaLabel: 'Sort checked-in patients',
+      size: AppSegmentedControlSize.sm,
+      value: _sort,
+      onChanged: (value) => setState(() => _sort = value),
+      options: const [
+        SegmentedOption(value: _sortLongestWait, label: Text('Longest wait')),
+        SegmentedOption(value: _sortNextInOrder, label: Text('Next in order')),
+      ],
+    );
+
     return DecoratedBox(
       decoration: widget.embedded
           ? const BoxDecoration()
           : BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: colors.borderDefault),
-              ),
+              border: Border(bottom: BorderSide(color: colors.borderDefault)),
             ),
       child: Padding(
         padding: const EdgeInsetsDirectional.all(AppSpacing.space4),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          spacing: AppSpacing.space2,
-          runSpacing: AppSpacing.space2,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Checked in — waiting',
-                  style: AppTypography.bodySm(context).copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                Text(
-                  _sortHint,
-                  style: AppTypography.caption(context).copyWith(
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            AppSegmentedControl<String>(
-              ariaLabel: 'Sort checked-in patients',
-              size: AppSegmentedControlSize.sm,
-              value: _sort,
-              onChanged: (value) => setState(() => _sort = value),
-              options: const [
-                SegmentedOption(
-                  value: _sortLongestWait,
-                  label: Text('Longest wait'),
-                ),
-                SegmentedOption(
-                  value: _sortNextInOrder,
-                  label: Text('Next in order'),
-                ),
-              ],
-            ),
-          ],
-        ),
+        child: widget.embedded
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: AppSpacing.space2,
+                children: [
+                  titleColumn,
+                  Center(child: sortControl),
+                ],
+              )
+            : Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.start,
+                spacing: AppSpacing.space2,
+                runSpacing: AppSpacing.space2,
+                children: [titleColumn, sortControl],
+              ),
       ),
     );
   }
 
-  Widget _buildPatientList(
-    BuildContext context,
-    AppSemanticColors colors,
-    List<AppointmentListItem> sortedPatients,
-  ) {
+  Widget _buildPatientList(BuildContext context, AppSemanticColors colors, List<AppointmentListItem> sortedPatients) {
     if (sortedPatients.isEmpty) {
       return Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          AppSpacing.space4,
-          0,
-          AppSpacing.space4,
-          AppSpacing.space4,
-        ),
+        padding: const EdgeInsetsDirectional.fromSTEB(AppSpacing.space4, 0, AppSpacing.space4, AppSpacing.space4),
         child: Text(
           'No patients currently waiting',
-          style: AppTypography.bodySm(context).copyWith(
-            color: colors.textSecondary,
-          ),
+          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
         ),
       );
     }
 
     return ConstrainedBox(
-      constraints: widget.embedded
-          ? const BoxConstraints(maxHeight: 448)
-          : const BoxConstraints(),
+      constraints: widget.embedded ? const BoxConstraints(maxHeight: 448) : const BoxConstraints(),
       child: ListView.separated(
         shrinkWrap: widget.embedded,
+        physics: widget.embedded ? const ClampingScrollPhysics() : null,
         padding: EdgeInsets.zero,
         itemCount: sortedPatients.length,
-        separatorBuilder: (_, _) => Divider(
-          height: 1,
-          thickness: 1,
-          color: colors.borderSubtle,
-        ),
+        separatorBuilder: (_, _) => Divider(height: 1, thickness: 1, color: colors.borderSubtle),
         itemBuilder: (context, index) {
           return _CheckedInPatientRow(
             patient: sortedPatients[index],
@@ -210,12 +178,7 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
 }
 
 class _CheckedInPatientRow extends StatelessWidget {
-  const _CheckedInPatientRow({
-    required this.patient,
-    required this.index,
-    required this.now,
-    required this.timeFormat,
-  });
+  const _CheckedInPatientRow({required this.patient, required this.index, required this.now, required this.timeFormat});
 
   final AppointmentListItem patient;
   final int index;
@@ -234,19 +197,16 @@ class _CheckedInPatientRow extends StatelessWidget {
     final backgroundColor = isCritical
         ? colors.statusDangerSurface.withValues(alpha: 0.5)
         : isWarning
-            ? colors.statusWarningSurface.withValues(alpha: 0.5)
-            : null;
+        ? colors.statusWarningSurface.withValues(alpha: 0.5)
+        : null;
 
     final waitColor = isCritical
         ? colors.statusDangerFg
         : isWarning
-            ? colors.statusWarningFg
-            : colors.actionPrimary;
+        ? colors.statusWarningFg
+        : colors.actionPrimary;
 
-    final preferredDoctor =
-        patient.doctorName?.trim().isNotEmpty == true
-            ? patient.doctorName!.trim()
-            : 'Any provider';
+    final preferredDoctor = patient.doctorName?.trim().isNotEmpty == true ? patient.doctorName!.trim() : 'Any provider';
 
     return ColoredBox(
       color: backgroundColor ?? Colors.transparent,
@@ -265,16 +225,13 @@ class _CheckedInPatientRow extends StatelessWidget {
                     children: [
                       Text(
                         patient.patientName,
-                        style: AppTypography.bodySm(context).copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: colors.textPrimary,
-                        ),
+                        style: AppTypography.bodySm(
+                          context,
+                        ).copyWith(fontWeight: FontWeight.w500, color: colors.textPrimary),
                       ),
                       Text(
                         preferredDoctor,
-                        style: AppTypography.caption(context).copyWith(
-                          color: colors.textSecondary,
-                        ),
+                        style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
                       ),
                     ],
                   ),
@@ -291,11 +248,9 @@ class _CheckedInPatientRow extends StatelessWidget {
                     ),
                     child: Text(
                       '#${index + 1}',
-                      style: AppTypography.mono(context).copyWith(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textSecondary,
-                      ),
+                      style: AppTypography.mono(
+                        context,
+                      ).copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textSecondary),
                     ),
                   ),
                 ),
@@ -307,28 +262,21 @@ class _CheckedInPatientRow extends StatelessWidget {
               children: [
                 Text(
                   AppointmentQueueDisplay.formatDurationLabel(wait),
-                  style: AppTypography.mono(context).copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: waitColor,
-                  ),
+                  style: AppTypography.mono(
+                    context,
+                  ).copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: waitColor),
                 ),
                 if (isWarning || isCritical)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 14,
-                        color: colors.statusDangerFg,
-                      ),
+                      Icon(Icons.error_outline, size: 14, color: colors.statusDangerFg),
                       const SizedBox(width: AppSpacing.space1),
                       Text(
                         isCritical ? 'Critical wait' : 'Long wait',
-                        style: AppTypography.caption(context).copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: colors.statusDangerFg,
-                        ),
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(fontWeight: FontWeight.w500, color: colors.statusDangerFg),
                       ),
                     ],
                   ),
@@ -340,16 +288,12 @@ class _CheckedInPatientRow extends StatelessWidget {
               children: [
                 Text(
                   'Appt ${timeFormat.format(patient.startTime.toLocal())}',
-                  style: AppTypography.caption(context).copyWith(
-                    color: colors.textSecondary,
-                  ),
+                  style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
                 ),
                 if (patient.checkedInAt != null)
                   Text(
                     'Arr ${timeFormat.format(patient.checkedInAt!.toLocal())}',
-                    style: AppTypography.caption(context).copyWith(
-                      color: colors.textSecondary,
-                    ),
+                    style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
                   ),
               ],
             ),

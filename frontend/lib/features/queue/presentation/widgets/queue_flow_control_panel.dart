@@ -14,18 +14,13 @@ import 'package:ai_clinic/features/queue/presentation/widgets/queue_secretary_ut
 
 /// Side-rail flow control with waiting and doctors tabs (web `FlowControlPanel`).
 class QueueFlowControlPanel extends ConsumerStatefulWidget {
-  const QueueFlowControlPanel({
-    required this.appointments,
-    required this.now,
-    super.key,
-  });
+  const QueueFlowControlPanel({required this.appointments, required this.now, super.key});
 
   final List<AppointmentListItem> appointments;
   final DateTime now;
 
   @override
-  ConsumerState<QueueFlowControlPanel> createState() =>
-      _QueueFlowControlPanelState();
+  ConsumerState<QueueFlowControlPanel> createState() => _QueueFlowControlPanelState();
 }
 
 class _QueueFlowControlPanelState extends ConsumerState<QueueFlowControlPanel> {
@@ -37,14 +32,10 @@ class _QueueFlowControlPanelState extends ConsumerState<QueueFlowControlPanel> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final shiftLookup = ref.watch(appointmentQueueShiftDoctorLookupProvider).maybeWhen(
-          data: (lookup) => lookup,
-          orElse: () => null,
-        );
-    final checkedInPatients = queueCheckedInPatients(
-      widget.appointments,
-      widget.now,
-    );
+    final shiftLookup = ref
+        .watch(appointmentQueueShiftDoctorLookupProvider)
+        .maybeWhen(data: (lookup) => lookup, orElse: () => null);
+    final checkedInPatients = queueCheckedInPatients(widget.appointments, widget.now);
     final doctors = shiftLookup?.doctorsOnCurrentShiftAt(widget.now) ?? const [];
 
     return Semantics(
@@ -61,26 +52,16 @@ class _QueueFlowControlPanelState extends ConsumerState<QueueFlowControlPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                AppSpacing.space3,
-                AppSpacing.space3,
-                AppSpacing.space3,
-                0,
-              ),
+              padding: const EdgeInsetsDirectional.fromSTEB(AppSpacing.space3, AppSpacing.space3, AppSpacing.space3, 0),
               child: AppTabs(
                 variant: AppTabsVariant.underline,
+                equalWidth: true,
                 ariaLabel: 'Flow control sections',
                 value: _activeTab,
                 onChanged: (id) => setState(() => _activeTab = id),
                 items: [
-                  AppTabItem(
-                    id: _waitingTab,
-                    label: 'Waiting (${checkedInPatients.length})',
-                  ),
-                  AppTabItem(
-                    id: _doctorsTab,
-                    label: 'Doctors (${doctors.length})',
-                  ),
+                  AppTabItem(id: _waitingTab, label: 'Waiting (${checkedInPatients.length})'),
+                  AppTabItem(id: _doctorsTab, label: 'Doctors (${doctors.length})'),
                 ],
               ),
             ),
