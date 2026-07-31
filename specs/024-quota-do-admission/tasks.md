@@ -124,20 +124,20 @@ the integration spy cases wrap `env.DO` in a counting spy — Clarification Q4.
 written first and fail; these make them pass. Ordered so the in-object handlers exist before the DO
 dispatch delegates to them, and the dispatch exists before the callers exercise it.
 
-- [ ] T018 [US1] Write `ai-platform/src/quota-do/index.ts` — the Quota Durable Object handlers:
+- [X] T018 [US1] Write `ai-platform/src/quota-do/index.ts` — the Quota Durable Object handlers:
   `admissionRPC` (one atomic read-modify-write inside `ctx.blockConcurrencyWhile` answering `jti`
   freshness, idempotency-key novelty, remaining budget, and concurrency headroom, performing the lazy
   ephemeral sweep before answering), `creditRPC` (period counter adjustment by actual usage, including
   the `partial` flag), and the in-object ephemeral entry type. No pre-flight reservations (FR-015); no
   `alarm()` handler (Clarification Q5). Satisfies FR-001, FR-002, FR-003, FR-004, FR-005, FR-006,
   FR-007, FR-008, FR-009, FR-010, FR-015. Proved by T002–T011.
-- [ ] T019 [US1] Extend `ai-platform/src/worker.ts` — implement `GatewayObject`'s `fetch`/rpc method,
+- [X] T019 [US1] Extend `ai-platform/src/worker.ts` — implement `GatewayObject`'s `fetch`/rpc method,
   dispatching on the RPC kind from the request to `admissionRPC` / `creditRPC` from
   `src/quota-do/index.ts`. The existing `export class GatewayObject extends DurableObject { }` is
   extended in place; its name and the `DO → GatewayObject` binding in `wrangler.toml` are unchanged
   (delivery plan §2.3; spec `## Out of Scope`). Satisfies FR-001, FR-011. Proved by T002–T011 (DO
   unit cases hit this dispatch through `env.DO`). Depends on T018.
-- [ ] T020 [P] [US1] Write `ai-platform/src/admission/index.ts` — the stage-8 caller: load the
+- [X] T020 [P] [US1] Write `ai-platform/src/admission/index.ts` — the stage-8 caller: load the
   entitlement snapshot via `loadConfig(cache, reader, "entitlements", installationId)` (the A5/B3
   seam — Clarification Q2), build the admission RPC payload from the B3 `Principal.jti` /
   `Principal.installationId` and the A6-parsed idempotency key, call
@@ -146,7 +146,7 @@ dispatch delegates to them, and the dispatch exists before the callers exercise 
   fail-open grace path: a DO `fetch` rejection admits under the capped grace allowance and queues
   reconciliation to the credit call (§15 #3). Satisfies FR-001, FR-004, FR-005, FR-006, FR-007,
   FR-011, FR-012, FR-013, FR-014. Proved by T012–T017.
-- [ ] T021 [P] [US1] Write `ai-platform/src/credit/index.ts` — the stage-15 caller: build the credit
+- [X] T021 [P] [US1] Write `ai-platform/src/credit/index.ts` — the stage-15 caller: build the credit
   RPC payload with actual usage (tokens/cost) plus the `partial` flag, and call the same DO instance
   exactly once. Satisfies FR-008, FR-016. Proved by T008, T009, T016.
 
