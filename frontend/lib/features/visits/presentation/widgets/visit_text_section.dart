@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
+import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 /// Shared clinical note rich-text block for visit documentation sections.
-///
-/// Stagger enter is applied by a parent [VisitStagger] when present; this widget
-/// is a plain form-field block otherwise.
 class VisitTextSection extends ConsumerStatefulWidget {
   const VisitTextSection({
     required this.visitId,
@@ -44,15 +43,16 @@ class VisitTextSection extends ConsumerStatefulWidget {
 }
 
 class _VisitTextSectionState extends ConsumerState<VisitTextSection> {
-  late final AppRichTextEditorController _editorController;
+  late final QuillController _controller;
+  late final FocusNode _focusNode;
   late final VoidCallback _flushCallback;
+  var _syncingFromState = false;
 
   @override
   void initState() {
     super.initState();
-    _editorController = AppRichTextEditorController(
-      initialValue: AppRichTextValue.fromDraft(widget.richDelta, widget.value),
-    );
+    _controller = quillControllerFromDraft(widget.richDelta, widget.value, readOnly: widget.readOnly);
+    _focusNode = FocusNode();
     _flushCallback = _flushToNotifier;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -65,26 +65,49 @@ class _VisitTextSectionState extends ConsumerState<VisitTextSection> {
   @override
   void didUpdateWidget(covariant VisitTextSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final doc = ref.read(visitDocumentationProvider(widget.visitId)).value;
-    if (doc?.saveStatus == DocumentationSaveStatus.stale && oldWidget.value != widget.value) {
-      _editorController.value = AppRichTextValue.fromDraft(widget.richDelta, widget.value);
+    if (oldWidget.readOnly != widget.readOnly) {
+      _controller.readOnly = widget.readOnly;
+    }
+    if (_focusNode.hasFocus) {
+      return;
+    }
+    final currentPlain = plainTextFromQuillDocument(_controller.document);
+    final currentDelta = richDeltaFromQuillDocument(_controller.document);
+    final targetDelta = richDeltaIsEffectivelyEmpty(widget.richDelta) ? null : widget.richDelta;
+    if (currentPlain == widget.value && _deltaEquals(currentDelta, targetDelta)) {
+      return;
+    }
+    _syncingFromState = true;
+    try {
+      setQuillControllerFromDraft(_controller, widget.richDelta, widget.value);
+    } finally {
+      _syncingFromState = false;
     }
   }
 
   @override
   void dispose() {
     ref.read(visitDocumentationProvider(widget.visitId).notifier).unregisterClinicalNoteFlush(_flushCallback);
-    _editorController.dispose();
+    _focusNode.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _flushToNotifier() {
-    final value = _editorController.value;
-    widget.onChanged(value.toPlainText(), value.nullableDelta);
+  bool _deltaEquals(List<dynamic>? a, List<dynamic>? b) {
+    if (a == null && b == null) {
+      return true;
+    }
+    if (a == null || b == null) {
+      return false;
+    }
+    return a.toString() == b.toString();
   }
 
-  void _handleChanged(AppRichTextValue value) {
-    widget.onChanged(value.toPlainText(), value.nullableDelta);
+  void _flushToNotifier() {
+    widget.onChanged(
+      plainTextFromQuillDocument(_controller.document),
+      richDeltaFromQuillDocument(_controller.document),
+    );
   }
 
   @override
@@ -96,9 +119,18 @@ class _VisitTextSectionState extends ConsumerState<VisitTextSection> {
       hint: widget.hint,
       child: AppRichTextEditor(
         id: widget.id,
-        controller: _editorController,
-        onChanged: widget.readOnly ? null : _handleChanged,
-        minRows: widget.rows,
+        controller: _controller,
+        focusNode: _focusNode,
+        onChanged: widget.readOnly
+            ? null
+            : (plainText, richDelta) {
+                if (_syncingFromState) {
+                  return;
+                }
+                widget.onChanged(plainText, richDelta);
+              },
+        minLines: widget.rows,
+        autoGrow: true,
         placeholder: widget.placeholder,
         readOnly: widget.readOnly,
         disabled: widget.readOnly,

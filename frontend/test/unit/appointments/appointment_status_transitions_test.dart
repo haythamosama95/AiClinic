@@ -68,12 +68,8 @@ void main() {
         doctorId: 'doc-a',
         id: 'waiting',
       );
-      final inProgressBlocked =
-          (AppointmentListItem item, Iterable<AppointmentListItem> siblings) =>
-              AppointmentQueueStartDoctor.isForwardInProgressBlocked(
-                item: item,
-                siblingAppointments: siblings,
-              );
+      bool inProgressBlocked(AppointmentListItem item, Iterable<AppointmentListItem> siblings) =>
+          AppointmentQueueStartDoctor.isForwardInProgressBlocked(item: item, siblingAppointments: siblings);
       expect(
         forwardStatusTargetFor(
           waiting,
@@ -119,12 +115,11 @@ void main() {
           waiting,
           referenceUtc: referenceUtc,
           siblingAppointments: [active, waiting],
-          inProgressBlocked: (item, siblings) =>
-              AppointmentQueueStartDoctor.isForwardInProgressBlocked(
-                item: item,
-                siblingAppointments: siblings,
-                shiftLookup: shiftLookup,
-              ),
+          inProgressBlocked: (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
+            item: item,
+            siblingAppointments: siblings,
+            shiftLookup: shiftLookup,
+          ),
         ),
         AppointmentStatus.inProgress,
       );

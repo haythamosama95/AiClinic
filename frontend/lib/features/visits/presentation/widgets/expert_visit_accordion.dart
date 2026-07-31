@@ -37,12 +37,7 @@ class _ExpertVisitAccordionState extends ConsumerState<ExpertVisitAccordion> wit
     if (context == null) {
       return;
     }
-    Scrollable.ensureVisible(
-      context,
-      duration: AppMotion.base,
-      curve: AppMotionEasing.out,
-      alignment: 0.05,
-    );
+    Scrollable.ensureVisible(context, duration: AppMotion.base, curve: AppMotionEasing.out, alignment: 0.05);
   }
 
   @override
@@ -80,7 +75,9 @@ class _ExpertVisitAccordionState extends ConsumerState<ExpertVisitAccordion> wit
                       EncounterPhase.subjective => IntakeSection(visitId: widget.visitId),
                       EncounterPhase.objective => FindingsSection(visitId: widget.visitId),
                       EncounterPhase.plan => TreatmentSection(visitId: widget.visitId),
-                      EncounterPhase.review || EncounterPhase.context => const SizedBox.shrink(),
+                      EncounterPhase.review ||
+                      EncounterPhase.context ||
+                      EncounterPhase.billing => const SizedBox.shrink(),
                     },
                   ],
                 ),
@@ -105,10 +102,7 @@ class _PhaseHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.surfaceMuted,
-            borderRadius: BorderRadius.circular(AppRadius.full),
-          ),
+          decoration: BoxDecoration(color: colors.surfaceMuted, borderRadius: BorderRadius.circular(AppRadius.full)),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.space2),
             child: Icon(phase.icon, size: 18, color: colors.textSecondary),
@@ -122,7 +116,7 @@ class _PhaseHeader extends StatelessWidget {
               EncounterPhase.subjective => 'Chief complaint, history, and medical background.',
               EncounterPhase.objective => 'Examination findings, vital signs, and diagnosis.',
               EncounterPhase.plan => 'Treatment notes, investigations, prescriptions, and attachments.',
-              EncounterPhase.review || EncounterPhase.context => null,
+              EncounterPhase.review || EncounterPhase.context || EncounterPhase.billing => null,
             },
           ),
         ),

@@ -33,6 +33,10 @@ class _TreatmentSectionState extends ConsumerState<TreatmentSection> with Single
     final colors = context.appColors;
     final canEdit = state.canEditWorkspace(ref.read(permissionServiceProvider).canEditVisitSoap());
     final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+    final auth = ref.watch(authSessionProvider);
+    final staff = auth.context?.staffProfile;
+    final canUploadAttachments = canEdit && staff != null;
+    final attachments = state.effectiveVisit.attachments;
 
     return VisitStagger(
       vsync: this,
@@ -87,7 +91,15 @@ class _TreatmentSectionState extends ConsumerState<TreatmentSection> with Single
             id: 'documents',
             label: 'Attachments',
             helperText: 'Upload lab results, referrals, or other visit documents (PDF, JPG, PNG — max 10 MB).',
-            child: VisitAttachmentsEditor(visitId: widget.visitId),
+            child: VisitAttachmentsEditor(
+              attachments: attachments,
+              canEdit: canUploadAttachments,
+              uploadedBy: staff?.staffMemberId ?? '',
+              uploadedByName: staff?.fullName,
+              onStage: ({required pick, required label, required uploadedBy, uploadedByName}) => notifier
+                  .stageAttachment(pick: pick, label: label, uploadedBy: uploadedBy, uploadedByName: uploadedByName),
+              onDelete: notifier.stageDeleteAttachment,
+            ),
           ),
         ),
       ],

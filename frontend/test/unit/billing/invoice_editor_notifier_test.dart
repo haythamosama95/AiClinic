@@ -67,10 +67,7 @@ void main() {
 
       final asyncValue = container.read(provider);
       expect(asyncValue.hasError, isTrue);
-      expect(
-        asyncValue.error,
-        isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND'),
-      );
+      expect(asyncValue.error, isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND'));
     });
 
     test('reload refreshes invoice detail on success', () async {
@@ -111,11 +108,7 @@ void main() {
       final notifier = container.read(invoiceEditorProvider(invoiceId).notifier);
       await container.read(invoiceEditorProvider(invoiceId).future);
 
-      final mutation = notifier.addItem(
-        description: 'Consultation',
-        quantity: '1',
-        unitPrice: '100.00',
-      );
+      final mutation = notifier.addItem(description: 'Consultation', quantity: '1', unitPrice: '100.00');
       expect(container.read(invoiceEditorProvider(invoiceId)).value?.isMutating, isTrue);
 
       await mutation;
@@ -190,10 +183,7 @@ void main() {
       await container.read(provider.future);
       final before = container.read(provider).value!;
 
-      await expectLater(
-        notifier.addItemFromService(_sampleEligibleService()),
-        throwsA(isA<Exception>()),
-      );
+      await expectLater(notifier.addItemFromService(_sampleEligibleService()), throwsA(isA<Exception>()));
 
       expect(container.read(provider).value?.invoice.updatedAt, before.invoice.updatedAt);
       expect(container.read(provider).value?.isMutating, isFalse);
@@ -207,9 +197,7 @@ void main() {
 
       await expectLater(
         notifier.addItem(description: 'Too early', quantity: '1', unitPrice: '10.00'),
-        throwsA(
-          isA<StateError>().having((error) => error.message, 'message', 'Invoice not loaded.'),
-        ),
+        throwsA(isA<StateError>().having((error) => error.message, 'message', 'Invoice not loaded.')),
       );
     });
 
@@ -220,10 +208,7 @@ void main() {
       final notifier = container.read(invoiceEditorProvider(invoiceId).notifier);
       await container.read(invoiceEditorProvider(invoiceId).future);
 
-      await expectLater(
-        notifier.updateItemQuantity(itemId: 'missing-item', quantity: '2'),
-        throwsA(isA<StateError>()),
-      );
+      await expectLater(notifier.updateItemQuantity(itemId: 'missing-item', quantity: '2'), throwsA(isA<StateError>()));
     });
 
     test('addItemFromService uses the service catalog repository', () async {
@@ -277,12 +262,7 @@ void main() {
       expectRpcExpectedUpdatedAt('update_invoice_item', expectedUpdatedAt);
 
       expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
-      await notifier.updateItem(
-        itemId: itemId,
-        description: 'Updated item',
-        quantity: '2',
-        unitPrice: '45.00',
-      );
+      await notifier.updateItem(itemId: itemId, description: 'Updated item', quantity: '2', unitPrice: '45.00');
       expectRpcExpectedUpdatedAt('update_invoice_item', expectedUpdatedAt);
 
       expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
@@ -290,10 +270,7 @@ void main() {
       expectRpcExpectedUpdatedAt('apply_invoice_discount', expectedUpdatedAt);
 
       expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
-      await notifier.setInsuranceCoverage(
-        providerId: BillingRpcTestClient.insuranceProviderId,
-        coveredAmount: '5.00',
-      );
+      await notifier.setInsuranceCoverage(providerId: BillingRpcTestClient.insuranceProviderId, coveredAmount: '5.00');
       expectRpcExpectedUpdatedAt('set_insurance_coverage', expectedUpdatedAt);
 
       final removableItemId = container.read(provider).value!.invoice.items.last.id;
@@ -321,11 +298,7 @@ void main() {
       final itemId = discountContainer.read(discountProvider).value!.invoice.items.single.id;
       final expectedUpdatedAt = discountContainer.read(discountProvider).value!.invoice.updatedAt;
 
-      await discountNotifier.applyLineDiscount(
-        itemId: itemId,
-        kind: DiscountKind.fixed,
-        value: '10',
-      );
+      await discountNotifier.applyLineDiscount(itemId: itemId, kind: DiscountKind.fixed, value: '10');
       expect(
         discountClient.paramsForFunction('apply_line_discount')?['p_expected_updated_at'],
         expectedUpdatedAt.toUtc().toIso8601String(),
@@ -435,10 +408,7 @@ EligibleService _sampleEligibleService() {
   );
 }
 
-InvoiceDetail _minimalInvoiceDetail({
-  Money? discountAmount,
-  List<InvoiceItem> items = const [],
-}) {
+InvoiceDetail _minimalInvoiceDetail({Money? discountAmount, List<InvoiceItem> items = const []}) {
   final resolvedDiscountAmount = discountAmount ?? Money.zero;
   final timestamp = DateTime.utc(2026, 6, 1, 10);
   return InvoiceDetail(
@@ -462,6 +432,7 @@ InvoiceDetail _minimalInvoiceDetail({
 class _TrackingCatalogClient extends BillingRpcTestClient {
   final List<String> calls = <String>[];
 
+  @override
   Map<String, dynamic>? paramsForFunction(String fn) {
     for (var i = rpcCalls.length - 1; i >= 0; i--) {
       if (rpcCalls[i].fn == fn) {
@@ -479,14 +450,10 @@ class _TrackingCatalogClient extends BillingRpcTestClient {
     lastFunction = fn;
     lastParams = copied;
     return FakePostgrestRpc({
-      'success': true,
-      'data': {
-        'item_id': 'svc-item-1',
-        'quantity': '1',
-        'unit_price': '75.00',
-        'applied_rule': 'default',
-      },
-    }) as PostgrestFilterBuilder<T>;
+          'success': true,
+          'data': {'item_id': 'svc-item-1', 'quantity': '1', 'unit_price': '75.00', 'applied_rule': 'default'},
+        })
+        as PostgrestFilterBuilder<T>;
   }
 }
 

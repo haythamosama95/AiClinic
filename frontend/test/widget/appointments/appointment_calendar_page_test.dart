@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:skeletonizer/skeletonizer.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import 'package:ai_clinic/core/ui/components/app_skeletonizer_zone.dart';
@@ -28,18 +27,12 @@ void main() {
       auth: auth,
       calendarState: calendarState,
       rpcClient: rpcClient,
-      child: const SizedBox(
-        height: 900,
-        child: AppointmentCalendarPage(),
-      ),
+      child: const SizedBox(height: 900, child: AppointmentCalendarPage()),
     );
   }
 
   testWidgets('trivial: CAL-PAGE-01 builds successfully for a permitted user', (tester) async {
-    await pumpCalendarPage(
-      tester,
-      calendarState: defaultCalendarState(loading: false),
-    );
+    await pumpCalendarPage(tester, calendarState: defaultCalendarState(loading: false));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
@@ -63,10 +56,7 @@ void main() {
   });
 
   testWidgets('advanced: CAL-PAGE-03 loading state renders skeleton body', (tester) async {
-    await pumpCalendarPage(
-      tester,
-      calendarState: defaultCalendarState(loading: true),
-    );
+    await pumpCalendarPage(tester, calendarState: defaultCalendarState(loading: true));
     await tester.pump();
 
     expect(find.byType(AppSkeletonizerZone), findsOneWidget);
@@ -96,11 +86,7 @@ void main() {
     final sunday = DateTime(2026, 6, 7);
     await pumpCalendarPage(
       tester,
-      calendarState: defaultCalendarState(
-        mode: AppointmentCalendarMode.day,
-        focusDate: sunday,
-        loading: false,
-      ),
+      calendarState: defaultCalendarState(mode: AppointmentCalendarMode.day, focusDate: sunday, loading: false),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -109,10 +95,7 @@ void main() {
   });
 
   testWidgets('advanced: CAL-PAGE-06 success state renders toolbar and calendar host', (tester) async {
-    await pumpCalendarPage(
-      tester,
-      calendarState: defaultCalendarState(loading: false),
-    );
+    await pumpCalendarPage(tester, calendarState: defaultCalendarState(loading: false));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
@@ -124,10 +107,7 @@ void main() {
     await pumpCalendarPage(
       tester,
       auth: calendarAuthSession(permissions: RolePermissionSeed.administrator),
-      calendarState: defaultCalendarState(
-        loading: false,
-        selectedBranchId: calendarTestBranchAId,
-      ),
+      calendarState: defaultCalendarState(loading: false, selectedBranchId: calendarTestBranchAId),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -142,10 +122,7 @@ void main() {
     await pumpCalendarPage(
       tester,
       auth: calendarAuthSession(permissions: RolePermissionSeed.labStaff),
-      calendarState: defaultCalendarState(
-        loading: false,
-        selectedBranchId: calendarTestBranchAId,
-      ),
+      calendarState: defaultCalendarState(loading: false, selectedBranchId: calendarTestBranchAId),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -161,10 +138,7 @@ void main() {
         activeBranchId: null,
         branchIds: const [],
       ),
-      calendarState: defaultCalendarState(
-        loading: false,
-        selectedBranchId: null,
-      ),
+      calendarState: defaultCalendarState(loading: false, selectedBranchId: null),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -176,10 +150,7 @@ void main() {
     await pumpCalendarPage(
       tester,
       auth: calendarAuthSession(permissions: RolePermissionSeed.administrator),
-      calendarState: defaultCalendarState(
-        loading: false,
-        selectedBranchId: calendarTestBranchAId,
-      ),
+      calendarState: defaultCalendarState(loading: false, selectedBranchId: calendarTestBranchAId),
       rpcClient: AppointmentRpcTestClient(),
     );
     await tester.pump();
@@ -189,9 +160,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Book appointment'), findsWidgets);
-    expect(
-      find.text('Patient, branch, and optional doctor preference.'),
-      findsOneWidget,
-    );
+    expect(find.text('Patient, branch, and optional doctor preference.'), findsOneWidget);
   });
 }

@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/queue/domain/queue_display.dart';
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
@@ -42,10 +41,7 @@ void main() {
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
-          body: MediaQuery(
-            data: const MediaQueryData(disableAnimations: true),
-            child: child,
-          ),
+          body: MediaQuery(data: const MediaQueryData(disableAnimations: true), child: child),
         ),
       ),
     );
@@ -193,13 +189,7 @@ void main() {
               avgWaitMinutes: 18,
               avgVisitMinutes: 22,
             ),
-            trends: const QueueKpiCarouselTrends(
-              waiting: 3,
-              checkedIn: 3,
-              inProgress: 2,
-              cancelled: 1,
-              queueLength: 3,
-            ),
+            trends: const QueueKpiCarouselTrends(waiting: 3, checkedIn: 3, inProgress: 2, cancelled: 1, queueLength: 3),
           ),
         ),
       );
@@ -214,9 +204,7 @@ void main() {
 
   group('QueueAppointmentsTable', () {
     testWidgets('builds rows with patient, status badge, and actions', (tester) async {
-      final appointments = [
-        item(patientName: 'Alice Patient', status: AppointmentStatus.scheduled),
-      ];
+      final appointments = [item(patientName: 'Alice Patient', status: AppointmentStatus.scheduled)];
 
       await tester.binding.setSurfaceSize(const Size(1200, 700));
       await tester.pumpWidget(
@@ -226,7 +214,7 @@ void main() {
             siblingAppointments: appointments,
             shiftLookup: emptyShiftLookup,
             now: now,
-            onTransition: (_, __, {doctorId}) {},
+            onTransition: (_, _, {doctorId}) {},
           ),
         ),
       );
@@ -245,7 +233,7 @@ void main() {
             siblingAppointments: const [],
             shiftLookup: emptyShiftLookup,
             now: now,
-            onTransition: (_, __, {doctorId}) {},
+            onTransition: (_, _, {doctorId}) {},
           ),
         ),
       );
@@ -285,20 +273,9 @@ void main() {
 
   group('QueueDoctorsPanel', () {
     testWidgets('builds doctor names from doctors list', (tester) async {
-      const doctors = [
-        QueueShiftDoctor(id: 'd1', name: 'Dr Alpha'),
-        QueueShiftDoctor(id: 'd2', name: 'Dr Beta'),
-      ];
+      const doctors = [QueueShiftDoctor(id: 'd1', name: 'Dr Alpha'), QueueShiftDoctor(id: 'd2', name: 'Dr Beta')];
 
-      await tester.pumpWidget(
-        wrap(
-          QueueDoctorsPanel(
-            doctors: doctors,
-            appointments: const [],
-            now: now,
-          ),
-        ),
-      );
+      await tester.pumpWidget(wrap(QueueDoctorsPanel(doctors: doctors, appointments: const [], now: now)));
       await pumpShort(tester);
 
       expect(find.text('Dr Alpha'), findsOneWidget);
@@ -307,15 +284,7 @@ void main() {
     });
 
     testWidgets('shows empty state when no doctors on shift', (tester) async {
-      await tester.pumpWidget(
-        wrap(
-          QueueDoctorsPanel(
-            doctors: const [],
-            appointments: const [],
-            now: now,
-          ),
-        ),
-      );
+      await tester.pumpWidget(wrap(QueueDoctorsPanel(doctors: const [], appointments: const [], now: now)));
       await pumpShort(tester);
 
       expect(find.text('No providers on shift'), findsOneWidget);
@@ -337,11 +306,7 @@ void main() {
       await tester.pumpWidget(
         wrap(
           QueueFlowControlPanel(appointments: appointments, now: now),
-          overrides: [
-            appointmentQueueShiftDoctorLookupProvider.overrideWith(
-              (ref) async => emptyShiftLookup,
-            ),
-          ],
+          overrides: [appointmentQueueShiftDoctorLookupProvider.overrideWith((ref) async => emptyShiftLookup)],
         ),
       );
       await pumpShort(tester);
@@ -407,11 +372,7 @@ void main() {
       final appointment = item(status: AppointmentStatus.scheduled);
 
       expect(
-        forwardStatusTargetFor(
-          appointment,
-          organizationTimezone: 'UTC',
-          referenceUtc: now,
-        ),
+        forwardStatusTargetFor(appointment, organizationTimezone: 'UTC', referenceUtc: now),
         AppointmentStatus.confirmed,
       );
 
@@ -423,7 +384,7 @@ void main() {
             shiftLookup: emptyShiftLookup,
             organizationTimezone: 'UTC',
             referenceUtc: now,
-            onTransition: (_, __, {doctorId}) {},
+            onTransition: (_, _, {doctorId}) {},
           ),
         ),
       );
@@ -451,15 +412,12 @@ void main() {
         ProviderScope(
           overrides: [
             authSessionProvider.overrideWith(() => _StaticAuthNotifier(auth)),
-            appointmentQueueProvider.overrideWith(() => _StaticQueueController(
-              const AppointmentQueueState(
-                items: [],
-                error: 'Select an active branch before viewing the queue.',
+            appointmentQueueProvider.overrideWith(
+              () => _StaticQueueController(
+                const AppointmentQueueState(items: [], error: 'Select an active branch before viewing the queue.'),
               ),
-            )),
-            appointmentQueueShiftDoctorLookupProvider.overrideWith(
-              (ref) async => emptyShiftLookup,
             ),
+            appointmentQueueShiftDoctorLookupProvider.overrideWith((ref) async => emptyShiftLookup),
           ],
           child: MaterialApp(
             theme: AppTheme.light(),

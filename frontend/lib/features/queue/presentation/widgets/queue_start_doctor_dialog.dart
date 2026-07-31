@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:ai_clinic/core/ui/components/app_badge.dart';
-import 'package:ai_clinic/core/ui/components/app_input_styles.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 
