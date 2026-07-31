@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';

@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';

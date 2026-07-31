@@ -1,5 +1,5 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';

@@ -1,9 +1,31 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+
+/// Whether advancing [item] to in-progress is blocked by queue/doctor constraints.
+typedef AppointmentInProgressBlockedPredicate =
+    bool Function(
+      AppointmentListItem item,
+      Iterable<AppointmentListItem> siblingAppointments,
+    );
+
+bool _defaultInProgressBlocked(
+  AppointmentListItem item,
+  Iterable<AppointmentListItem> siblingAppointments,
+) {
+  final assignedDoctorId = item.doctorId?.trim();
+  if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
+    return false;
+  }
+
+  return siblingAppointments.any(
+    (other) =>
+        other.id != item.id &&
+        other.status == AppointmentStatus.inProgress &&
+        (other.doctorId == null || other.doctorId!.trim().isEmpty),
+  );
+}
 
 /// Previous lifecycle step for [item] when the user undoes the last status change.
 AppointmentStatus? previousStatusTargetFor(AppointmentListItem item) {
@@ -36,8 +58,8 @@ AppointmentStatus? forwardStatusTargetFor(
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
   Iterable<AppointmentListItem> siblingAppointments = const [],
-  AppointmentQueueShiftDoctorLookup shiftLookup =
-      AppointmentQueueShiftDoctorLookup.empty,
+  AppointmentInProgressBlockedPredicate inProgressBlocked =
+      _defaultInProgressBlocked,
 }) {
   final target = switch (item.status) {
     AppointmentStatus.scheduled => AppointmentStatus.confirmed,
@@ -54,31 +76,9 @@ AppointmentStatus? forwardStatusTargetFor(
       )) {
     return null;
   }
-  if (target == AppointmentStatus.inProgress) {
-    final assignedDoctorId = item.doctorId?.trim();
-    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      if (AppointmentQueueStartDoctor.isPreferredDoctorBusy(
-            item: item,
-            siblingAppointments: siblingAppointments,
-          ) &&
-          AppointmentQueueStartDoctor.availableShiftOptionsFor(
-            item: item,
-            siblingAppointments: siblingAppointments,
-            shiftLookup: shiftLookup,
-          ).isEmpty) {
-        return null;
-      }
-    } else {
-      final hasUnassignedInProgress = siblingAppointments.any(
-        (other) =>
-            other.id != item.id &&
-            other.status == AppointmentStatus.inProgress &&
-            (other.doctorId == null || other.doctorId!.trim().isEmpty),
-      );
-      if (hasUnassignedInProgress) {
-        return null;
-      }
-    }
+  if (target == AppointmentStatus.inProgress &&
+      inProgressBlocked(item, siblingAppointments)) {
+    return null;
   }
   return target;
 }
@@ -134,15 +134,15 @@ String forwardStatusActionLabelFor(
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
   Iterable<AppointmentListItem> siblingAppointments = const [],
-  AppointmentQueueShiftDoctorLookup shiftLookup =
-      AppointmentQueueShiftDoctorLookup.empty,
+  AppointmentInProgressBlockedPredicate inProgressBlocked =
+      _defaultInProgressBlocked,
 }) {
   return switch (forwardStatusTargetFor(
     item,
     organizationTimezone: organizationTimezone,
     referenceUtc: referenceUtc,
     siblingAppointments: siblingAppointments,
-    shiftLookup: shiftLookup,
+    inProgressBlocked: inProgressBlocked,
   )) {
     AppointmentStatus.confirmed => 'Confirm',
     AppointmentStatus.checkedIn => 'Check in',

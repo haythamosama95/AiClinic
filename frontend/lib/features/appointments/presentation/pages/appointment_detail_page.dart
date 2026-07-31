@@ -16,16 +16,18 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
@@ -154,6 +156,8 @@ class _AppointmentDetailContentView extends ConsumerWidget {
     final siblings = siblingsAsync.value ?? const <AppointmentListItem>[];
     final shiftLookup =
         shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
+    final listItem = detail.toListItem();
+    final doctorPresentation = shiftLookup.presentationFor(listItem);
 
     return _AppointmentDetailScaffold(
       title: detail.patientName,
@@ -180,9 +184,13 @@ class _AppointmentDetailContentView extends ConsumerWidget {
           const SizedBox(height: AppSpacing.space6),
           AppointmentStatusTimelineWidget(
             detail: detail,
-            siblingAppointments: siblings,
-            shiftLookup: shiftLookup,
-            onChanged: onChanged,
+            doctorPresentation: doctorPresentation,
+            statusActions: AppointmentDetailStatusActions(
+              detail: detail,
+              siblingAppointments: siblings,
+              shiftLookup: shiftLookup,
+              onChanged: onChanged,
+            ),
           ),
           if (detail.notes?.trim().isNotEmpty == true ||
               detail.cancelReason?.trim().isNotEmpty == true) ...[

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 
 /// Doctor picker shown before starting a checked-in appointment.
 class AppointmentStartDoctorDialog extends StatefulWidget {

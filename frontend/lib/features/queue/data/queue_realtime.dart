@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime_apply.dart';
 
 /// Realtime connection state for today's queue (FR-016).
 enum AppointmentQueueRealtimeConnection { connecting, live, degraded }

@@ -5,15 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/queue/domain/queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';

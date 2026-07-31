@@ -12,8 +12,8 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_disp
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
@@ -64,11 +64,18 @@ class _AppointmentDetailStatusActionsState
     ),
   );
 
+  AppointmentInProgressBlockedPredicate get _inProgressBlocked =>
+      (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
+        item: item,
+        siblingAppointments: siblings,
+        shiftLookup: widget.shiftLookup,
+      );
+
   AppointmentStatus? get _forwardTarget => forwardStatusTargetFor(
     _listItem,
     organizationTimezone: _organizationTimezone,
     siblingAppointments: widget.siblingAppointments,
-    shiftLookup: widget.shiftLookup,
+    inProgressBlocked: _inProgressBlocked,
   );
 
   AppointmentStatus? get _revertTarget => previousStatusTargetFor(_listItem);
@@ -79,7 +86,7 @@ class _AppointmentDetailStatusActionsState
     _listItem,
     organizationTimezone: _organizationTimezone,
     siblingAppointments: widget.siblingAppointments,
-    shiftLookup: widget.shiftLookup,
+    inProgressBlocked: _inProgressBlocked,
   );
 
   String get _displayForwardLabel {

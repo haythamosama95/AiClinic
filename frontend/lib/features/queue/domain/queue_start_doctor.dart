@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:flutter/foundation.dart';
 
@@ -106,6 +106,34 @@ abstract final class AppointmentQueueStartDoctor {
       ),
       ...options,
     ];
+  }
+
+  /// Whether [item] cannot advance to in-progress due to doctor/queue constraints.
+  static bool isForwardInProgressBlocked({
+    required AppointmentListItem item,
+    required Iterable<AppointmentListItem> siblingAppointments,
+    AppointmentQueueShiftDoctorLookup shiftLookup =
+        AppointmentQueueShiftDoctorLookup.empty,
+  }) {
+    final assignedDoctorId = item.doctorId?.trim();
+    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
+      return isPreferredDoctorBusy(
+            item: item,
+            siblingAppointments: siblingAppointments,
+          ) &&
+          availableShiftOptionsFor(
+            item: item,
+            siblingAppointments: siblingAppointments,
+            shiftLookup: shiftLookup,
+          ).isEmpty;
+    }
+
+    return siblingAppointments.any(
+      (other) =>
+          other.id != item.id &&
+          other.status == AppointmentStatus.inProgress &&
+          (other.doctorId == null || other.doctorId!.trim().isEmpty),
+    );
   }
 
   /// Whether [item]'s assigned preferred doctor already has another in-progress patient.

@@ -3,7 +3,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
