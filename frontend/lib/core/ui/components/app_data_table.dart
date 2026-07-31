@@ -836,6 +836,9 @@ class _AppDataTableColumnResizeHandleState extends State<_AppDataTableColumnResi
   var _hovered = false;
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (!mounted) {
+      return;
+    }
     setState(() => _dragging = true);
   }
 
@@ -850,7 +853,11 @@ class _AppDataTableColumnResizeHandleState extends State<_AppDataTableColumnResi
     if (!_dragging) {
       return;
     }
-    setState(() => _dragging = false);
+    if (mounted) {
+      setState(() => _dragging = false);
+    } else {
+      _dragging = false;
+    }
     widget.onDragEnd();
   }
 
@@ -866,8 +873,16 @@ class _AppDataTableColumnResizeHandleState extends State<_AppDataTableColumnResi
       onPointerCancel: (_) => _handlePointerEnd(),
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
+        onEnter: (_) {
+          if (mounted) {
+            setState(() => _hovered = true);
+          }
+        },
+        onExit: (_) {
+          if (mounted) {
+            setState(() => _hovered = false);
+          }
+        },
         child: Semantics(
           label: 'Resize column',
           child: Align(

@@ -43,10 +43,7 @@ class AppointmentQueueStats {
 
 /// Partition of today's queue into schedule and checked-in columns.
 class AppointmentQueuePartition {
-  const AppointmentQueuePartition({
-    required this.schedule,
-    required this.waiting,
-  });
+  const AppointmentQueuePartition({required this.schedule, required this.waiting});
 
   final List<AppointmentListItem> schedule;
   final List<AppointmentListItem> waiting;
@@ -87,45 +84,25 @@ abstract final class AppointmentQueueDisplay {
       noShow: current.noShow,
       avgWaitMinutes: current.avgWaitMinutes,
       avgVisitMinutes: current.avgVisitMinutes,
-      totalTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(current.total, previous.total),
-      ),
-      completedTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(current.completed, previous.completed),
-      ),
-      noShowTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChange(current.noShow, previous.noShow),
-      ),
+      totalTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.total, previous.total)),
+      completedTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.completed, previous.completed)),
+      noShowTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.noShow, previous.noShow)),
       avgWaitTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChangeNullable(
-          current.avgWaitMinutes,
-          previous.avgWaitMinutes,
-        ),
+        percentChange: _percentChangeNullable(current.avgWaitMinutes, previous.avgWaitMinutes),
       ),
       avgVisitTrend: AppointmentQueueStatTrend(
-        percentChange: _percentChangeNullable(
-          current.avgVisitMinutes,
-          previous.avgVisitMinutes,
-        ),
+        percentChange: _percentChangeNullable(current.avgVisitMinutes, previous.avgVisitMinutes),
       ),
     );
   }
 
-  static ({
-    int total,
-    int completed,
-    int noShow,
-    int? avgWaitMinutes,
-    int? avgVisitMinutes,
-  })
-  _rawStats(List<AppointmentListItem> items, {required DateTime now}) {
+  static ({int total, int completed, int noShow, int? avgWaitMinutes, int? avgVisitMinutes}) _rawStats(
+    List<AppointmentListItem> items, {
+    required DateTime now,
+  }) {
     final active = _activeToday(items);
-    final completed = active
-        .where((item) => item.status == AppointmentStatus.completed)
-        .length;
-    final noShow = items
-        .where((item) => item.status == AppointmentStatus.noShow)
-        .length;
+    final completed = active.where((item) => item.status == AppointmentStatus.completed).length;
+    final noShow = items.where((item) => item.status == AppointmentStatus.noShow).length;
     final avgWaitMinutes = _averageWaitMinutesAt(active, now);
     final avgVisitMinutes = _averageVisitMinutesAt(active, now);
 
@@ -139,10 +116,7 @@ abstract final class AppointmentQueueDisplay {
   }
 
   /// Average wait among patients in the waiting room at [referenceNow].
-  static int? _averageWaitMinutesAt(
-    List<AppointmentListItem> items,
-    DateTime referenceNow,
-  ) {
+  static int? _averageWaitMinutesAt(List<AppointmentListItem> items, DateTime referenceNow) {
     final waits = <Duration>[];
     for (final item in items) {
       final wait = _waitDurationAt(item, referenceNow);
@@ -153,16 +127,11 @@ abstract final class AppointmentQueueDisplay {
     if (waits.isEmpty) {
       return null;
     }
-    return (waits.map((d) => d.inMinutes).reduce((a, b) => a + b) /
-            waits.length)
-        .round();
+    return (waits.map((d) => d.inMinutes).reduce((a, b) => a + b) / waits.length).round();
   }
 
   /// Average visit length among appointments that started or finished a session.
-  static int? _averageVisitMinutesAt(
-    List<AppointmentListItem> items,
-    DateTime referenceNow,
-  ) {
+  static int? _averageVisitMinutesAt(List<AppointmentListItem> items, DateTime referenceNow) {
     final visits = <Duration>[];
     for (final item in items) {
       final visit = _visitDurationFor(item, referenceNow);
@@ -173,16 +142,11 @@ abstract final class AppointmentQueueDisplay {
     if (visits.isEmpty) {
       return null;
     }
-    return (visits.map((d) => d.inMinutes).reduce((a, b) => a + b) /
-            visits.length)
-        .round();
+    return (visits.map((d) => d.inMinutes).reduce((a, b) => a + b) / visits.length).round();
   }
 
   /// Visit duration for [item] at [referenceNow], or null when no session has started.
-  static Duration? _visitDurationFor(
-    AppointmentListItem item,
-    DateTime referenceNow,
-  ) {
+  static Duration? _visitDurationFor(AppointmentListItem item, DateTime referenceNow) {
     final startedAt = item.inProgressAt;
     if (startedAt == null) {
       return null;
@@ -201,9 +165,7 @@ abstract final class AppointmentQueueDisplay {
       if (endedAt == null || endedAt.isBefore(startedAt)) {
         return null;
       }
-      final effectiveEnd = endedAt.isAfter(referenceNow)
-          ? referenceNow
-          : endedAt;
+      final effectiveEnd = endedAt.isAfter(referenceNow) ? referenceNow : endedAt;
       if (effectiveEnd.isBefore(startedAt)) {
         return null;
       }
@@ -215,13 +177,8 @@ abstract final class AppointmentQueueDisplay {
   }
 
   /// Wait duration for [item] at [referenceNow], or null when not in the waiting room then.
-  static Duration? _waitDurationAt(
-    AppointmentListItem item,
-    DateTime referenceNow,
-  ) {
-    final checkedInAt =
-        item.checkedInAt ??
-        (item.status == AppointmentStatus.checkedIn ? item.updatedAt : null);
+  static Duration? _waitDurationAt(AppointmentListItem item, DateTime referenceNow) {
+    final checkedInAt = item.checkedInAt ?? (item.status == AppointmentStatus.checkedIn ? item.updatedAt : null);
     if (checkedInAt == null || referenceNow.isBefore(checkedInAt)) {
       return null;
     }
@@ -250,14 +207,9 @@ abstract final class AppointmentQueueDisplay {
     return _percentChange(current ?? 0, previous ?? 0);
   }
 
-  static AppointmentQueuePartition partition(
-    List<AppointmentListItem> items, {
-    DateTime? now,
-  }) {
+  static AppointmentQueuePartition partition(List<AppointmentListItem> items, {DateTime? now}) {
     final sorted = sortAppointmentsByStartTime(_activeToday(items));
-    final waiting = sorted
-        .where((item) => item.status == AppointmentStatus.checkedIn)
-        .toList(growable: false);
+    final waiting = sorted.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false);
 
     return AppointmentQueuePartition(schedule: sorted, waiting: waiting);
   }
@@ -265,8 +217,7 @@ abstract final class AppointmentQueueDisplay {
   /// Doctor column content for the queue appointments card.
   static QueueAppointmentDoctorPresentation queueDoctorPresentation(
     AppointmentListItem item, {
-    AppointmentQueueShiftDoctorLookup shiftLookup =
-        AppointmentQueueShiftDoctorLookup.empty,
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
   }) {
     return shiftLookup.presentationFor(item);
   }
@@ -274,25 +225,42 @@ abstract final class AppointmentQueueDisplay {
   /// Compact doctor label for queue summary rows.
   static String queueDoctorLabel(
     AppointmentListItem item, {
-    AppointmentQueueShiftDoctorLookup shiftLookup =
-        AppointmentQueueShiftDoctorLookup.empty,
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
   }) {
     return queueDoctorPresentation(item, shiftLookup: shiftLookup).displayNames;
+  }
+
+  /// Success toast after advancing an appointment in the queue.
+  static String statusTransitionToastMessage({required String patientName, required AppointmentStatus newStatus}) {
+    return switch (newStatus) {
+      AppointmentStatus.confirmed => '$patientName confirmed.',
+      AppointmentStatus.checkedIn => '$patientName checked in.',
+      AppointmentStatus.inProgress => 'Consultation started for $patientName.',
+      AppointmentStatus.cancelled => 'Appointment cancelled for $patientName.',
+      AppointmentStatus.noShow => '$patientName marked as no-show.',
+      _ => '$patientName is now ${newStatus.label.toLowerCase()}.',
+    };
+  }
+
+  /// Success toast after undoing the last queue status change.
+  static String statusRevertToastMessage({required String patientName, required AppointmentStatus revertedTo}) {
+    return switch (revertedTo) {
+      AppointmentStatus.scheduled => 'Confirmation undone for $patientName.',
+      AppointmentStatus.confirmed => 'Check-in undone for $patientName.',
+      AppointmentStatus.checkedIn => 'Consultation start undone for $patientName.',
+      _ => '$patientName is back to ${revertedTo.label.toLowerCase()}.',
+    };
   }
 
   /// In-progress appointment currently assigned to [doctorId], if any.
   ///
   /// When [doctorId] is null or empty, matches unassigned in-progress rows
   /// (they share a single server-side slot).
-  static AppointmentListItem? inProgressAppointmentForDoctor(
-    String? doctorId,
-    Iterable<AppointmentListItem> items,
-  ) {
+  static AppointmentListItem? inProgressAppointmentForDoctor(String? doctorId, Iterable<AppointmentListItem> items) {
     final normalizedId = doctorId?.trim();
     if (normalizedId == null || normalizedId.isEmpty) {
       for (final item in items) {
-        if (item.status == AppointmentStatus.inProgress &&
-            (item.doctorId == null || item.doctorId!.trim().isEmpty)) {
+        if (item.status == AppointmentStatus.inProgress && (item.doctorId == null || item.doctorId!.trim().isEmpty)) {
           return item;
         }
       }
@@ -300,8 +268,7 @@ abstract final class AppointmentQueueDisplay {
     }
 
     for (final item in items) {
-      if (item.status == AppointmentStatus.inProgress &&
-          item.doctorId == normalizedId) {
+      if (item.status == AppointmentStatus.inProgress && item.doctorId == normalizedId) {
         return item;
       }
     }
@@ -312,8 +279,7 @@ abstract final class AppointmentQueueDisplay {
   static String? doctorInProgressBlockReason(
     AppointmentListItem item,
     Iterable<AppointmentListItem> items, {
-    AppointmentQueueShiftDoctorLookup shiftLookup =
-        AppointmentQueueShiftDoctorLookup.empty,
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
   }) {
     return AppointmentQueueStartDoctor.blockReasonForStart(
       item: item,
@@ -323,25 +289,19 @@ abstract final class AppointmentQueueDisplay {
   }
 
   static bool isScheduleRowDimmed(AppointmentListItem item) {
-    return item.status == AppointmentStatus.completed ||
-        item.status == AppointmentStatus.cancelled;
+    return item.status == AppointmentStatus.completed || item.status == AppointmentStatus.cancelled;
   }
 
   /// Index of the schedule row whose time slot is nearest to [now].
   ///
   /// Returns 0 when [items] is empty. An in-progress appointment wins over slot
   /// proximity; otherwise the slot containing [now] or nearest edge is used.
-  static int indexClosestToNow(
-    List<AppointmentListItem> items, {
-    required DateTime now,
-  }) {
+  static int indexClosestToNow(List<AppointmentListItem> items, {required DateTime now}) {
     if (items.isEmpty) {
       return 0;
     }
 
-    final inProgressIndex = items.indexWhere(
-      (item) => item.status == AppointmentStatus.inProgress,
-    );
+    final inProgressIndex = items.indexWhere((item) => item.status == AppointmentStatus.inProgress);
     if (inProgressIndex >= 0) {
       return inProgressIndex;
     }
@@ -371,10 +331,7 @@ abstract final class AppointmentQueueDisplay {
     return offset;
   }
 
-  static Duration _scheduleTimeDistance(
-    AppointmentListItem item,
-    DateTime now,
-  ) {
+  static Duration _scheduleTimeDistance(AppointmentListItem item, DateTime now) {
     if (!now.isBefore(item.startTime) && now.isBefore(item.endTime)) {
       return Duration.zero;
     }
@@ -385,10 +342,7 @@ abstract final class AppointmentQueueDisplay {
   }
 
   /// Wait time since check-in when [checkedInAt] is known; otherwise falls back to slot start.
-  static Duration estimateWaitDuration(
-    AppointmentListItem item, {
-    required DateTime now,
-  }) {
+  static Duration estimateWaitDuration(AppointmentListItem item, {required DateTime now}) {
     if (item.status == AppointmentStatus.checkedIn) {
       final checkedInAt = item.checkedInAt ?? item.updatedAt;
       if (checkedInAt != null) {
@@ -398,15 +352,10 @@ abstract final class AppointmentQueueDisplay {
     }
 
     final anchor = item.startTime.isAfter(now) ? now : item.startTime;
-    return now.difference(anchor).isNegative
-        ? Duration.zero
-        : now.difference(anchor);
+    return now.difference(anchor).isNegative ? Duration.zero : now.difference(anchor);
   }
 
-  static Duration estimateSessionDuration(
-    AppointmentListItem item, {
-    required DateTime now,
-  }) {
+  static Duration estimateSessionDuration(AppointmentListItem item, {required DateTime now}) {
     if (item.status != AppointmentStatus.inProgress) {
       return Duration.zero;
     }
@@ -441,8 +390,7 @@ abstract final class AppointmentQueueDisplay {
     return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
   }
 
-  static String formatWaitLabel(Duration wait) =>
-      'Waiting: ${formatDurationLabel(wait)}';
+  static String formatWaitLabel(Duration wait) => 'Waiting: ${formatDurationLabel(wait)}';
 
   static String formatWaitedLabel(Duration wait) {
     final totalMinutes = wait.inMinutes;
@@ -452,13 +400,9 @@ abstract final class AppointmentQueueDisplay {
     return 'Waited: ${formatDurationLabel(wait)}';
   }
 
-  static String formatSessionLabel(Duration session) =>
-      'In session: ${formatDurationLabel(session)}';
+  static String formatSessionLabel(Duration session) => 'In session: ${formatDurationLabel(session)}';
 
-  static (String, AppointmentQueueWaitTier) waitPresentation(
-    AppointmentListItem item, {
-    required DateTime now,
-  }) {
+  static (String, AppointmentQueueWaitTier) waitPresentation(AppointmentListItem item, {required DateTime now}) {
     final wait = estimateWaitDuration(item, now: now);
     return (formatWaitLabel(wait), waitTierFor(wait));
   }
@@ -470,23 +414,16 @@ abstract final class AppointmentQueueDisplay {
       AppointmentStatus.checkedIn => AppBadgeTone.success,
       AppointmentStatus.inProgress => AppBadgeTone.warning,
       AppointmentStatus.completed => AppBadgeTone.muted,
-      AppointmentStatus.cancelled ||
-      AppointmentStatus.noShow => AppBadgeTone.destructive,
+      AppointmentStatus.cancelled || AppointmentStatus.noShow => AppBadgeTone.destructive,
       AppointmentStatus.unknown => AppBadgeTone.neutral,
     };
   }
 
   static String scheduleBadgeLabel(AppointmentStatus status) => status.label;
 
-  static List<AppointmentListItem> _activeToday(
-    List<AppointmentListItem> items,
-  ) {
+  static List<AppointmentListItem> _activeToday(List<AppointmentListItem> items) {
     return items
-        .where(
-          (item) =>
-              item.status != AppointmentStatus.cancelled &&
-              item.status != AppointmentStatus.unknown,
-        )
+        .where((item) => item.status != AppointmentStatus.cancelled && item.status != AppointmentStatus.unknown)
         .toList(growable: false);
   }
 }

@@ -92,6 +92,61 @@ void main() {
       expect(AppointmentQueueDisplay.queueDoctorLabel(assigned), 'Dr Alpha');
     });
 
+    test('status transition toasts describe the action taken', () {
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.confirmed,
+        ),
+        'Jane Doe confirmed.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.checkedIn,
+        ),
+        'Jane Doe checked in.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.inProgress,
+        ),
+        'Consultation started for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.cancelled,
+        ),
+        'Appointment cancelled for Jane Doe.',
+      );
+    });
+
+    test('status revert toasts describe the undo action', () {
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.scheduled,
+        ),
+        'Confirmation undone for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.confirmed,
+        ),
+        'Check-in undone for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.checkedIn,
+        ),
+        'Consultation start undone for Jane Doe.',
+      );
+    });
+
     test('doctorInProgressBlockReason blocks start when all shift doctors are busy', () {
       final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: 'UTC',

@@ -41,7 +41,7 @@ void main() {
     test('requiresDoctorPicker when assigned preferred doctor is available', () {
       final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd1', doctorName: 'Dr Alpha');
 
-      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isFalse);
+      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isTrue);
     });
 
     test('requiresDoctorPicker when only one doctor is on shift', () {
@@ -95,7 +95,7 @@ void main() {
       expect(options, hasLength(3));
     });
 
-    test('shiftOptionsFor marks busy doctors', () {
+    test('shiftOptionsFor marks busy doctors and includes current patient name', () {
       final start = DateTime.utc(2026, 6, 4, 11);
       final active = _item(
         status: AppointmentStatus.inProgress,
@@ -103,6 +103,7 @@ void main() {
         doctorId: 'd1',
         doctorName: 'Dr Alpha',
         id: 'active',
+        patientName: 'Sam Patient',
       );
       final waiting = _item(status: AppointmentStatus.checkedIn, startTime: start.add(const Duration(minutes: 30)));
 
@@ -113,7 +114,9 @@ void main() {
       );
 
       expect(options, hasLength(2));
-      expect(options.firstWhere((option) => option.id == 'd1').isBusy, isTrue);
+      final alpha = options.firstWhere((option) => option.id == 'd1');
+      expect(alpha.isBusy, isTrue);
+      expect(alpha.currentPatientName, 'Sam Patient');
       expect(options.firstWhere((option) => option.id == 'd2').isBusy, isFalse);
     });
 
@@ -281,12 +284,13 @@ AppointmentListItem _item({
   String? doctorId,
   String? doctorName,
   String id = 'a1',
+  String patientName = 'Pat',
 }) {
   final start = startTime ?? DateTime.utc(2026, 6, 4, 10);
   return AppointmentListItem(
     id: id,
     patientId: 'p1',
-    patientName: 'Pat',
+    patientName: patientName,
     doctorId: doctorId,
     doctorName: doctorName,
     startTime: start,

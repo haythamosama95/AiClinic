@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -6,6 +8,7 @@ import 'package:ai_clinic/core/ui/components/app_data_table.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
@@ -39,6 +42,49 @@ class QueueAppointmentsTable extends StatelessWidget {
 
   static final _timeFormat = DateFormat('h:mm a');
 
+  static const _cellHorizontalPadding = AppSpacing.space3 * 2;
+  static const _overdueBorderWidth = 4.0;
+
+  static double _measureTextWidth(BuildContext context, String text, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    return painter.width;
+  }
+
+  static double _patientColumnWidth(BuildContext context, List<AppointmentListItem> items) {
+    final headerStyle = AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600);
+    final nameStyle = AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500);
+    final mrnStyle = AppTypography.mono(context).copyWith(fontSize: 12);
+
+    var maxContent = _measureTextWidth(context, 'Patient', headerStyle);
+    for (final item in items) {
+      maxContent = math.max(maxContent, _measureTextWidth(context, item.patientName, nameStyle));
+      maxContent = math.max(maxContent, _measureTextWidth(context, item.patientMrn ?? '—', mrnStyle));
+    }
+
+    return math.max(160, maxContent.ceilToDouble() + _cellHorizontalPadding + _overdueBorderWidth);
+  }
+
+  static double _doctorColumnWidth(
+    BuildContext context,
+    List<AppointmentListItem> items,
+    AppointmentQueueShiftDoctorLookup shiftLookup,
+  ) {
+    final headerStyle = AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600);
+    final labelStyle = AppTypography.bodySm(context);
+
+    var maxContent = _measureTextWidth(context, 'Preferred doctor', headerStyle);
+    for (final item in items) {
+      final label = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
+      maxContent = math.max(maxContent, _measureTextWidth(context, label, labelStyle));
+    }
+
+    return math.max(160, maxContent.ceilToDouble() + _cellHorizontalPadding);
+  }
+
   @override
   Widget build(BuildContext context) {
     final sorted = sortAppointmentsByStartTime(appointments);
@@ -48,12 +94,12 @@ class QueueAppointmentsTable extends StatelessWidget {
     }
 
     final colors = context.appColors;
+    final patientColumnWidth = _patientColumnWidth(context, sorted);
+    final doctorColumnWidth = _doctorColumnWidth(context, sorted, shiftLookup);
 
     return AppDataTable<AppointmentListItem>(
       ariaLabel: "Today's appointments",
       animateRows: true,
-      resizableColumns: true,
-      columnWidthsStorageKey: 'queue-appointments-table',
       density: TableDensity.comfortable,
       rowHeightOverride: 56,
       headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
@@ -61,6 +107,8 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'patient',
           header: 'Patient',
+          align: TableAlign.start,
+          width: patientColumnWidth,
           minWidth: 160,
           accessor: (item) => _overdueCell(
             context,
@@ -73,6 +121,7 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'time',
           header: 'Time',
+          align: TableAlign.center,
           minWidth: 112,
           accessor: (item) => _overdueCell(
             context,
@@ -84,6 +133,7 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'status',
           header: 'Status',
+          align: TableAlign.center,
           minWidth: 120,
           accessor: (item) => _overdueCell(
             context,
@@ -95,6 +145,8 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'doctor',
           header: 'Preferred doctor',
+          align: TableAlign.start,
+          width: doctorColumnWidth,
           minWidth: 160,
           accessor: (item) => _overdueCell(
             context,
@@ -111,6 +163,7 @@ class QueueAppointmentsTable extends StatelessWidget {
         TableColumn(
           id: 'actions',
           header: 'Actions',
+          align: TableAlign.center,
           minWidth: 180,
           accessor: (item) => _overdueCell(
             context,
@@ -221,7 +274,7 @@ class _TimeCell extends StatelessWidget {
     final overdue = QueueAppointmentsTable._isOverdueScheduled(item, now);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(

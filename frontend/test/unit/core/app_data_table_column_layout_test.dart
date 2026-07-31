@@ -48,6 +48,27 @@ void main() {
       expect(widths['time'], 140);
       expect(widths.containsKey('actions'), isFalse);
     });
+
+    test('splits remaining width equally when explicit widths are present', () {
+      const explicitColumns = [
+        TableColumn<Object>(id: 'patient', header: 'Patient', accessor: _cell, width: 220, minWidth: 160),
+        TableColumn<Object>(id: 'time', header: 'Time', accessor: _cell, minWidth: 112),
+        TableColumn<Object>(id: 'doctor', header: 'Doctor', accessor: _cell, width: 200, minWidth: 160),
+        TableColumn<Object>(id: 'actions', header: 'Actions', accessor: _cell, minWidth: 180),
+      ];
+
+      final widths = AppDataTableColumnLayout.initialWidths(
+        columns: explicitColumns,
+        availableWidth: 900,
+        selectable: false,
+        hasRowActions: false,
+      );
+
+      expect(widths['patient'], 220);
+      expect(widths['doctor'], 200);
+      expect(widths['time'], closeTo(240, 0.01));
+      expect(widths.containsKey('actions'), isFalse);
+    });
   });
 
   group('AppDataTableColumnLayout.resizeColumn', () {

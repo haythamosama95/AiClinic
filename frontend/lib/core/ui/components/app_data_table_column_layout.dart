@@ -82,6 +82,7 @@ abstract final class AppDataTableColumnLayout {
 
     final fillColumn = columns.last;
     final fillMinWidth = fillColumn.minWidth ?? minColumnWidth;
+    final hasExplicitWidths = layoutColumns.any((column) => column.width != null);
 
     if (persisted != null) {
       for (final column in layoutColumns) {
@@ -93,10 +94,7 @@ abstract final class AppDataTableColumnLayout {
     }
 
     final reservedWidth = (selectable ? selectionColumnWidth : 0) + (hasRowActions ? actionsColumnWidth : 0);
-    var remaining = math.max(
-      availableWidth - reservedWidth - fillMinWidth - result.values.fold(0.0, (a, b) => a + b),
-      0,
-    );
+    var remaining = math.max(availableWidth - reservedWidth - result.values.fold(0.0, (a, b) => a + b), 0);
 
     final pending = layoutColumns.where((column) => !result.containsKey(column.id)).toList(growable: false);
     if (pending.isEmpty) {
@@ -116,6 +114,15 @@ abstract final class AppDataTableColumnLayout {
       return result;
     }
 
+    if (hasExplicitWidths) {
+      final share = math.max(minColumnWidth, remaining / (flexible.length + 1));
+      for (final column in flexible) {
+        result[column.id] = _clampWidth(share, minWidth: column.minWidth ?? minColumnWidth);
+      }
+      return result;
+    }
+
+    remaining = math.max(0, remaining - fillMinWidth);
     final share = math.max(minColumnWidth, remaining / flexible.length);
     for (final column in flexible) {
       result[column.id] = _clampWidth(share, minWidth: column.minWidth ?? minColumnWidth);

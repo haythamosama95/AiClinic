@@ -123,11 +123,7 @@ abstract final class DevClinicSeedSchedule {
     required int seedKey,
     DateTime? referenceUtc,
   }) {
-    final relation = calendarDayRelationFor(
-      startTimeUtc: startTimeUtc,
-      timezone: timezone,
-      referenceUtc: referenceUtc,
-    );
+    final relation = calendarDayRelationFor(startTimeUtc: startTimeUtc, timezone: timezone, referenceUtc: referenceUtc);
     final bucket = statusDistributionBucket(seedKey);
 
     return switch (relation) {
@@ -144,10 +140,7 @@ abstract final class DevClinicSeedSchedule {
   }
 
   /// Target status from [dayOffset] and [seedKey] (timezone-aware relation via [startTimeUtc]).
-  static AppointmentStatus appointmentStatusForDayOffset({
-    required int dayOffset,
-    required int seedKey,
-  }) {
+  static AppointmentStatus appointmentStatusForDayOffset({required int dayOffset, required int seedKey}) {
     final relation = switch (dayOffset) {
       < 0 => DevClinicSeedCalendarDayRelation.past,
       0 => DevClinicSeedCalendarDayRelation.today,
@@ -174,13 +167,20 @@ abstract final class DevClinicSeedSchedule {
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
-  /// Every seeded appointment gets an assigned doctor for clear calendar and queue views.
+  /// Roughly half of queue-facing appointments omit a preferred doctor.
+  ///
+  /// Past completed appointments always keep a doctor because visit seeding requires one.
   static bool shouldAssignDoctorForAppointment({
     required int dayOffset,
     required int patientIndex,
     required int seedKey,
+    required AppointmentStatus targetStatus,
+    required DevClinicSeedCalendarDayRelation dayRelation,
   }) {
-    return true;
+    if (requiresVisitAndInvoice(status: targetStatus, relation: dayRelation)) {
+      return true;
+    }
+    return seedKey.isEven;
   }
 
   /// Deterministic doctor assignment: odd patients → branch primary doctor, even → multi-branch doctor when available.
@@ -336,13 +336,7 @@ abstract final class DevClinicSeedSchedule {
   }) {
     final label = '$branchCode #$patientIndex day $dayOffset';
     return switch (kind) {
-      DevClinicVisitDocumentationKind.none => (
-        complaint: '',
-        history: '',
-        examination: '',
-        diagnosis: '',
-        plan: '',
-      ),
+      DevClinicVisitDocumentationKind.none => (complaint: '', history: '', examination: '', diagnosis: '', plan: ''),
       DevClinicVisitDocumentationKind.partial => (
         complaint: 'Patient $label reports mild symptoms for two days.',
         history: '',
@@ -386,7 +380,6 @@ abstract final class DevClinicSeedSchedule {
       notes: 'Take with food. Dev seed treatment plan for patient #$patientIndex.',
     );
   }
-
 }
 
 enum DevClinicSeedCalendarDayRelation { past, today, future }

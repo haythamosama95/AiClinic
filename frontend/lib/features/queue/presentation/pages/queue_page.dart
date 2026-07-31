@@ -255,12 +255,16 @@ class _QueuePageState extends ConsumerState<QueuePage> {
         return;
       }
 
+      final successMessage = AppointmentQueueDisplay.statusTransitionToastMessage(
+        patientName: patientName,
+        newStatus: update.status,
+      );
       final revertTarget = previousStatusTargetFor(appointment.copyWith(status: update.status));
       if (revertTarget != null && canRevertAppointmentStatus(appointment.copyWith(status: update.status))) {
         appToast(
           context,
           AppToastInput(
-            message: 'Status updated',
+            message: successMessage,
             variant: AppToastVariant.success,
             action: AppToastAction(
               label: 'Undo',
@@ -276,13 +280,7 @@ class _QueuePageState extends ConsumerState<QueuePage> {
           ),
         );
       } else {
-        appToast(
-          context,
-          AppToastInput(
-            message: '$patientName is now ${update.status.label.toLowerCase()}.',
-            variant: AppToastVariant.success,
-          ),
-        );
+        appToast(context, AppToastInput(message: successMessage, variant: AppToastVariant.success));
       }
     } on _QueueTransitionCancelled {
       return;
@@ -347,7 +345,10 @@ class _QueuePageState extends ConsumerState<QueuePage> {
         appToast(
           context,
           AppToastInput(
-            message: '$patientName is back to ${revertTarget.label.toLowerCase()}.',
+            message: AppointmentQueueDisplay.statusRevertToastMessage(
+              patientName: patientName,
+              revertedTo: revertTarget,
+            ),
             variant: AppToastVariant.success,
           ),
         );
@@ -394,7 +395,7 @@ class _QueuePageState extends ConsumerState<QueuePage> {
     final shiftLookup = shiftLookupAsync.maybeWhen(data: (lookup) => lookup, orElse: () => _emptyShiftLookup);
 
     if (queueState.loading && queueState.items.isEmpty) {
-      return const AppLoadingOverlay(loading: true, label: 'Loading queue', child: SizedBox.expand());
+      return const AppLoadingOverlay(loading: true, label: 'Loading queue', scoped: true, child: SizedBox.expand());
     }
 
     if (queueState.error != null && queueState.items.isEmpty) {
