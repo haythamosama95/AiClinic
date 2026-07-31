@@ -15,7 +15,7 @@ import 'package:ai_clinic/core/ui/components/app_command_bar.dart';
 import 'package:ai_clinic/core/ui/components/app_sidebar.dart';
 import 'package:ai_clinic/core/ui/components/app_top_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/queue/presentation/providers/queue_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_scope.dart';
 
 /// Authenticated route shell: sidebar, top bar, and feature content region.

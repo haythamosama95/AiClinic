@@ -18,7 +18,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_start_doctor_dialog.dart';
+import 'package:ai_clinic/features/queue/presentation/widgets/queue_start_doctor_dialog.dart';
 
 /// Inline outlined action buttons for managing an appointment from the status journey card.
 class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
@@ -217,7 +217,7 @@ class _AppointmentDetailStatusActionsState
     if (!mounted) {
       return null;
     }
-    return AppointmentStartDoctorDialog.show(context, options: options);
+    return QueueStartDoctorDialog.show(context, options: options);
   }
 
   Future<void> _handleAdvanceStatus() async {

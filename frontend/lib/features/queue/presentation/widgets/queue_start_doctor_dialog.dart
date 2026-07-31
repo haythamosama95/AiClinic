@@ -4,8 +4,8 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 
 /// Doctor picker shown before starting a checked-in appointment.
-class AppointmentStartDoctorDialog extends StatefulWidget {
-  const AppointmentStartDoctorDialog({required this.options, super.key});
+class QueueStartDoctorDialog extends StatefulWidget {
+  const QueueStartDoctorDialog({required this.options, super.key});
 
   final List<QueueStartDoctorOption> options;
 
@@ -19,17 +19,16 @@ class AppointmentStartDoctorDialog extends StatefulWidget {
       description: 'Choose the doctor taking this visit before you start.',
       size: AppDialogSize.sm,
       barrierDismissible: false,
-      child: AppointmentStartDoctorDialog(options: options),
+      child: QueueStartDoctorDialog(options: options),
     );
   }
 
   @override
-  State<AppointmentStartDoctorDialog> createState() =>
-      _AppointmentStartDoctorDialogState();
+  State<QueueStartDoctorDialog> createState() =>
+      _QueueStartDoctorDialogState();
 }
 
-class _AppointmentStartDoctorDialogState
-    extends State<AppointmentStartDoctorDialog> {
+class _QueueStartDoctorDialogState extends State<QueueStartDoctorDialog> {
   String? _selectedDoctorId;
 
   @override
