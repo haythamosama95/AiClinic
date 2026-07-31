@@ -138,7 +138,7 @@ test/control.test.ts`).
 **Purpose**: Delivery plan §3.10 — every prior suite stays green alongside the new one, not just the
 latest.
 
-- [ ] T015 [US1] Run `npx vitest run --config vitest.workers.config.ts test/control.test.ts` (this
+- [X] T015 [US1] Run `npx vitest run --config vitest.workers.config.ts test/control.test.ts` (this
   slice, 7 tests) and then `npx vitest run` (the default Node-pool config covering every prior
   band-A/band-B1 suite). Confirm every prior suite stays green. No new test is added here — this is
   the checkpoint gate, not extra work. **Satisfies**: the §3.10 checkpoint rule.
@@ -150,7 +150,7 @@ latest.
 **Purpose**: Plan → Documentation. The quickstart and the frozen contract artifact are named in the
 plan and must land before the slice closes; both are written after the suite is green.
 
-- [ ] T016 [US1] Create `specs/022-control-plane-enrollment/contracts/control-plane.md` — freeze the
+- [X] T016 [US1] Create `specs/022-control-plane-enrollment/contracts/control-plane.md` — freeze the
   `/control` HTTP surface, the five `control_audit.action` lifecycle values (`enroll`, `rotate`,
   `suspend`, `resume`, `delete`), the operator-auth requirement, the `pending` enroll entitlement
   initial values (§8.1 amendment), the entitlement status enum `pending`/`active`/`suspended` (§7.3
@@ -159,7 +159,7 @@ plan and must land before the slice closes; both are written after the suite is 
   (installation purge by lifecycle status) bind to an artifact, not prose (plan → Freezes → Consumes
   Binding). **Satisfies**: the Freeze live-wire-surface obligation; not traced to an FR (contract
   artifact).
-- [ ] T017 [US1] Create `specs/022-control-plane-enrollment/quickstart.md` from
+- [X] T017 [US1] Create `specs/022-control-plane-enrollment/quickstart.md` from
   `.specify/templates/ai-platform-quickstart-template.md` — sections **1. Architecture context**
   (§4.5 + §8.1; delivery plan §3.3 row B2; what the spec/plan scoped), **2. What was implemented**
   (the five lifecycle handlers, the `/control` route, the `OperatorAuth` port, the `pending`
