@@ -34,7 +34,7 @@ description: "Task list for AI platform slice B3 — Guard stages: identity, rat
 
 **Purpose**: Route the three new test files to the workers pool that provides the real Miniflare D1 binding B2 already wired (Clarification Q4; plan → Test Layout). Both edits must land before any test file is written.
 
-- [ ] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/identity.test.ts"`, `"test/entitlement.test.ts"`, `"test/rate-limit.test.ts"` to `include` alongside `"test/control.test.ts"`. Modify `ai-platform/vitest.config.ts` — add the same three files to `exclude` alongside `"test/control.test.ts"`, so the workers-pool-only files do not double-run in the default Node pool (plan → Files: vitest configs). No FR — harness; required by every named test. Prepares the Phase 2 substrates.
+- [X] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/identity.test.ts"`, `"test/entitlement.test.ts"`, `"test/rate-limit.test.ts"` to `include` alongside `"test/control.test.ts"`. Modify `ai-platform/vitest.config.ts` — add the same three files to `exclude` alongside `"test/control.test.ts"`, so the workers-pool-only files do not double-run in the default Node pool (plan → Files: vitest configs). No FR — harness; required by every named test. Prepares the Phase 2 substrates.
 
 **Checkpoint**: both configs resolve; `npx vitest run` (default) still runs every prior suite; `npx vitest run --config vitest.workers.config.ts test/control.test.ts` still passes (B2 unaffected).
 
