@@ -4,6 +4,7 @@ import {
   Building2,
   Calendar,
   ClipboardList,
+  Clock,
   FileText,
   FlaskConical,
   Home,
@@ -64,6 +65,7 @@ export const CLINIC_NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'patients', label: 'Patients', icon: Users, count: 128 },
       { id: 'appointments', label: 'Appointments', icon: Calendar, count: 12 },
+      { id: 'queue', label: 'Queue', icon: Clock, count: 3 },
       { id: 'encounters', label: 'Encounters', icon: Stethoscope },
       { id: 'workspace', label: 'Workspace', icon: ClipboardList },
     ],
