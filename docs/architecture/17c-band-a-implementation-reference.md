@@ -580,6 +580,7 @@ The next checkpoint, **CP2 (after B4)**, asks whether a request can be authentic
 | --- | --- |
 | [`17a-ai-platform-overview.md`](17a-ai-platform-overview.md) | You want the full architecture story in readable form |
 | [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | You need slice definitions, test requirements, or Band B+ ordering |
+| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | You need what Band B actually built (trust, guard, admission) |
 | [`17-ai-platform.md`](17-ai-platform.md) | You need the authoritative specification |
 | `specs/015` through `specs/020` | You need acceptance criteria for a specific slice |
 | `ai-platform/README.md` | You need to run tests or deploy the Worker |
@@ -603,4 +604,4 @@ curl http://localhost:8787/health
 
 ---
 
-*This document describes Band A as implemented. When Band B lands, add a sibling reference or extend this document's diagrams — do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band A as implemented. For Band B (trust, identity, admission), see [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

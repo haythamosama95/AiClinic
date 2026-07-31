@@ -3,7 +3,7 @@
 - Purpose: Decompose the AI platform architecture into small, individually specifiable, individually implementable slices, and define the rules that keep those slices from drifting away from the architecture.
 - Read this when: choosing what to build next on the AI platform, opening a new Spec Kit feature for AI platform work, or reviewing a completed AI platform slice.
 - Canonical for: AI platform build order, slice boundaries, slice completion criteria, and the authoring rules for AI platform feature specs.
-- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), `.specify/memory/constitution.md`.
+- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) and [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) (what is actually built), `.specify/memory/constitution.md`.
 - Not covered here: any architectural decision. This document sequences decisions made in `17-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `17-ai-platform.md` wins and this document is wrong.
 
 > **Status:** Delivery plan for an unimplemented architecture. Section references of the form
@@ -169,6 +169,10 @@ condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility
 
 Nothing in this band handles a real request. It exists so that everything after it is constrained.
 
+**What this band does:** Deploys the Worker shell (three isolated environments), then freezes every cross-slice contract — error taxonomy, canonical inference types, capability manifest schema, context-key vocabulary, D1 schema, config cache, and the HTTP/SSE wire protocol. No authentication, no quota, no prompts, no providers.
+
+**Useful to know:** A1–A4 are complete. Completing A6 satisfies checkpoint **CP1** — the earliest proof that the frozen contracts compose at build time. Every later band consumes these types; changing them after CP1 is a contract-change review, not a slice fix ([§2.3](#23-the-no-rework-rule)).
+
 
 | ID     | Slice                                                                     | Canonical                  | Needs | Done when                                                                                                                                                                                                                                                                                                   |
 | ------ | ------------------------------------------------------------------------- | -------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,6 +188,12 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.3 Band B — Trust, identity, and admission
 
+> **Implementation reference:** [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) — plain-language account of what B1–B4 built, with diagrams and test commands.
+
+**What this band does:** Answers "who is calling, are they allowed, and have they exceeded their budget?" before any inference work begins. It mints installation-scoped access tokens (AATs) from Supabase, enrolls and manages installations in the control plane, runs the guard pipeline stages (identity, rate limiting, entitlement, kill switches), and admits requests through a per-installation Quota Durable Object that tracks `jti` freshness, idempotency, budget, and concurrency.
+
+**Useful to know:** B1 can start in parallel with Band A once RBAC tables are stable ([§7](#7-dependencies-outside-the-platform)). B3 deliberately excludes replay rejection — that belongs to B4's Quota DO. Completing B4 satisfies checkpoint **CP2**: a request can be authenticated, admitted, and correctly rejected with no inference, at the §6.1 I/O budget (one Durable Object round trip, one D1 insert).
+
 
 | ID     | Slice                                               | Canonical                           | Needs      | Done when                                                                                                                                                                                                                                                                               |
 | ------ | --------------------------------------------------- | ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -197,6 +207,10 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.4 Band C — Capability, context, and the journal
 
+**What this band does:** Resolves which AI capabilities an installation may use, validates the clinic context payload against each capability's declared key requirements, and journals every admitted request from first touch through terminal state. The discovery endpoint lets the client learn what is available without hard-coding capability ids.
+
+**Useful to know:** C1 is the unlock for parallel work in bands D and E — both need a resolved manifest. C2 emits `context_required` with the missing-key manifest (the self-healing *behaviour* for stale clients is deferred to J2 under DP-5). C3's journal is the audit backbone that band F's support lookup and dashboards query. A guard rejection must produce **no** journal row.
+
 
 | ID     | Slice                                     | Canonical                            | Needs  | Done when                                                                                                                                                                                                                                          |
 | ------ | ----------------------------------------- | ------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -208,6 +222,10 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 
 ### 3.5 Band D — The inference path
+
+**What this band does:** The core AI pipeline: compose a prompt from immutable artifacts, route to a provider through a policy-driven chain, invoke with bounded retry and fallback, stream normalized chunks to the client, validate the assembled output (with optional repair), and adapt real providers behind a shared port. D1–D4 use the fake adapter; D5 adds the first real provider; D7 proves a second provider needs only an adapter and a routing-policy edit.
+
+**Useful to know:** D4 plus E4 together satisfy checkpoint **CP3** (the falsification / walking-skeleton thread, DP-7) — one button press through guard, prompt, fake provider, stream, and rendered draft. D7 plus F1 satisfy **CP4**: provider independence. Prompt text never lives in D1; context is rendered as delimited typed data, never merged into instructions (R-10).
 
 
 | ID      | Slice                                      | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                                                                                               |
@@ -225,8 +243,9 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.6 Band E — Client integration
 
-E1 must land before E2 (DP-6). The rest of the band may proceed in parallel with band D once C1
-exists.
+**What this band does:** Wires the Flutter desktop app to the platform without leaking AI internals. E1 installs the architecture guard (R-12) in CI; E2 is the AI Client SDK (token acquisition, idempotency, SSE consumption, cancel); E3 is the Context Resolver and the first clinic-side context RPC; E4 is the first user-visible AI surface with provisional-draft UX and degraded-mode behaviour.
+
+**Useful to know:** E1 must land before E2 (DP-6) — the guard must exist before any client AI code is written. The rest of the band may proceed in parallel with band D once C1 exists. E3's contract test fetches live manifests and fails if the Resolver cannot satisfy every declared key — this catches context-key drift early. E4 plus D4 is the CP3 falsification thread.
 
 
 | ID     | Slice                                  | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                   |
@@ -240,6 +259,10 @@ exists.
 
 
 ### 3.7 Band F — Hardening and operations
+
+**What this band does:** Makes the platform operationally honest after the inference path works. Eval harnesses block prompt regressions; the acceptance RPC ties AI output to clinical records with provenance; support lookup, retention purges, and usage rollups make every request explainable from its reference; soft-threshold routing degrades gracefully under quota pressure; load tests assert the metered footprint in §13.6.
+
+**Useful to know:** F2 (acceptance recording) is required before any capability may write to a clinical record, but is **not** a prerequisite for CP3 if the first capability uses `advisory_display` acceptance ([§7](#7-dependencies-outside-the-platform), Open Decision 1). F1 depends on D1 and D5 — evals need a real prompt and a real adapter. Completing F5 satisfies checkpoint **CP5**. Individual F slices may start as soon as their `Needs` column is met; the band as a whole is not strictly sequential.
 
 
 | ID     | Slice                                           | Canonical             | Needs  | Done when                                                                                                                                                                                                                                                                                                |
@@ -255,10 +278,9 @@ exists.
 
 ### 3.8 Band H — Conversational capabilities
 
-Everything amendment A14 introduces, and nothing before it: `interaction_mode` defaults to
-`single_shot`, so no button-invoked capability acquires behaviour from this band's existence. The
-band is fully determined by §6.7, §5.1, §5.2, §5.4, §5.5, and §8.10; it is placed late because it is
-the largest capability addition, not because it is under-specified.
+**What this band does:** Adds multi-turn conversational AI on top of the single-shot path. A capability may declare `interaction_mode: conversational` with transcript limits, permitted context keys, and a shared context-request schema; the validator enforces turn budgets; the composer renders prior turns as delimited typed data; the client holds the transcript locally and resupplies it per leg with a new idempotency key; journaling records `conversation_id` and `turn_ordinal` per leg without introducing a server-side conversation entity.
+
+**Useful to know:** Everything amendment A14 introduces, and nothing before it — `interaction_mode` defaults to `single_shot`, so no existing button-invoked capability acquires behaviour from this band's existence. The band is fully determined by §6.7, §5.1, §5.2, §5.4, §5.5, and §8.10; it is placed late because it is the largest capability addition, not because it is under-specified. The nullable `conversation_id` / `turn_ordinal` columns were reserved in A5 so H3 does not require a schema migration.
 
 
 | ID     | Slice                                       | Canonical                              | Needs          | Done when                                                                                                                                                                                                                                                    |
@@ -271,9 +293,9 @@ the largest capability addition, not because it is under-specified.
 
 ### 3.9 Band J — Deferred compatibility machinery
 
-Deferred under DP-5 because there are no deployed clients, not because it is undesigned. Each slice's
-contract surface already exists from bands A–D, so these are behaviour-only additions. Build a slice
-when its trigger fires; the triggers are in the `Build when` column.
+**What this band does:** Adds the runtime behaviour for compatibility scenarios that have no audience yet: capability deprecation overlap windows, `context_required` self-healing for stale manifest caches, staged rollout and canary cohorts, and token-contract rotation with overlapping `ver` acceptance. The error codes, lifecycle states, and journal columns these features need were frozen early (DP-5); this band wires up the behaviour.
+
+**Useful to know:** Deferred under DP-5 because there are no deployed clients, not because it is undesigned. Each slice's contract surface already exists from bands A–D, so these are behaviour-only additions. Build a slice when its trigger fires — the triggers are in the `Build when` column, not the band's position in the sequence. J2 explicitly does not apply to conversational capabilities.
 
 
 | ID     | Slice                                            | Canonical                | Needs          | Build when                                                                        | Done when                                                                                                                                                                                                                        |
