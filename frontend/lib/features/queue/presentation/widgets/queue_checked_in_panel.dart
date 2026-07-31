@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_segmented_control.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
@@ -9,6 +8,7 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/queue/domain/queue_display.dart';
+import 'package:ai_clinic/features/queue/presentation/widgets/queue_flow_card.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_flow_pulse.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_secretary_utils.dart';
 
@@ -156,22 +156,32 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
       );
     }
 
-    return ConstrainedBox(
-      constraints: widget.embedded ? const BoxConstraints(maxHeight: 448) : const BoxConstraints(),
-      child: ListView.separated(
-        shrinkWrap: widget.embedded,
-        physics: widget.embedded ? const ClampingScrollPhysics() : null,
-        padding: EdgeInsets.zero,
-        itemCount: sortedPatients.length,
-        separatorBuilder: (_, _) => Divider(height: 1, thickness: 1, color: colors.borderSubtle),
-        itemBuilder: (context, index) {
-          return _CheckedInPatientRow(
-            patient: sortedPatients[index],
-            index: index,
-            now: widget.now,
-            timeFormat: _timeFormat,
-          );
-        },
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        AppSpacing.space3,
+        AppSpacing.space2,
+        AppSpacing.space3,
+        AppSpacing.space3,
+      ),
+      child: ConstrainedBox(
+        constraints: widget.embedded ? const BoxConstraints(maxHeight: 448) : const BoxConstraints(),
+        child: QueueFlowList(
+          child: ListView.separated(
+            shrinkWrap: widget.embedded,
+            physics: widget.embedded ? const ClampingScrollPhysics() : null,
+            padding: EdgeInsets.zero,
+            itemCount: sortedPatients.length,
+            separatorBuilder: (_, _) => Divider(height: 1, thickness: 1, color: colors.borderDefault),
+            itemBuilder: (context, index) {
+              return _CheckedInPatientRow(
+                patient: sortedPatients[index],
+                index: index,
+                now: widget.now,
+                timeFormat: _timeFormat,
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -187,119 +197,17 @@ class _CheckedInPatientRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     final waitMinutes = queueWaitMinutes(patient, now);
     final wait = Duration(minutes: waitMinutes);
     final tier = AppointmentQueueDisplay.waitTierFor(wait);
-    final isWarning = tier == AppointmentQueueWaitTier.warning;
-    final isCritical = tier == AppointmentQueueWaitTier.critical;
 
-    final backgroundColor = isCritical
-        ? colors.statusDangerSurface.withValues(alpha: 0.5)
-        : isWarning
-        ? colors.statusWarningSurface.withValues(alpha: 0.5)
-        : null;
-
-    final waitColor = isCritical
-        ? colors.statusDangerFg
-        : isWarning
-        ? colors.statusWarningFg
-        : colors.actionPrimary;
-
-    final preferredDoctor = patient.doctorName?.trim().isNotEmpty == true ? patient.doctorName!.trim() : 'Any provider';
-
-    return ColoredBox(
-      color: backgroundColor ?? Colors.transparent,
-      child: AppCard(
-        variant: CardVariant.flat,
-        padding: CardPadding.sm,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        patient.patientName,
-                        style: AppTypography.bodySm(
-                          context,
-                        ).copyWith(fontWeight: FontWeight.w500, color: colors.textPrimary),
-                      ),
-                      Text(
-                        preferredDoctor,
-                        style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.surfaceSunken,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.symmetric(
-                      horizontal: AppSpacing.space2,
-                      vertical: AppSpacing.space1,
-                    ),
-                    child: Text(
-                      '#${index + 1}',
-                      style: AppTypography.mono(
-                        context,
-                      ).copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textSecondary),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.space2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  AppointmentQueueDisplay.formatDurationLabel(wait),
-                  style: AppTypography.mono(
-                    context,
-                  ).copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: waitColor),
-                ),
-                if (isWarning || isCritical)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.error_outline, size: 14, color: colors.statusDangerFg),
-                      const SizedBox(width: AppSpacing.space1),
-                      Text(
-                        isCritical ? 'Critical wait' : 'Long wait',
-                        style: AppTypography.caption(
-                          context,
-                        ).copyWith(fontWeight: FontWeight.w500, color: colors.statusDangerFg),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.space1),
-            Wrap(
-              spacing: AppSpacing.space3,
-              children: [
-                Text(
-                  'Appt ${timeFormat.format(patient.startTime.toLocal())}',
-                  style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-                ),
-                if (patient.checkedInAt != null)
-                  Text(
-                    'Arr ${timeFormat.format(patient.checkedInAt!.toLocal())}',
-                    style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return QueueWaitingPatientRow(
+      patientName: patient.patientName,
+      queuePosition: index + 1,
+      wait: wait,
+      tier: tier,
+      appointmentTimeLabel: 'Appt ${timeFormat.format(patient.startTime.toLocal())}',
+      arrivalTimeLabel: patient.checkedInAt != null ? 'Arr ${timeFormat.format(patient.checkedInAt!.toLocal())}' : null,
     );
   }
 }

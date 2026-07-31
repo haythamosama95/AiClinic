@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/components/app_progress.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -9,6 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/queue/domain/queue_display.dart';
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/presentation/widgets/queue_flow_card.dart';
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_secretary_utils.dart';
 
 enum _DoctorQueueStatus { available, withPatient }
@@ -81,10 +81,13 @@ class QueueDoctorsPanel extends StatelessWidget {
               ),
             ),
             if (embedded)
-              ConstrainedBox(constraints: const BoxConstraints(maxHeight: 448), child: _buildDoctorList(colors))
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 448),
+                child: _buildDoctorList(context, colors),
+              )
             else
               Flexible(
-                child: ConstrainedBox(constraints: const BoxConstraints(), child: _buildDoctorList(colors)),
+                child: ConstrainedBox(constraints: const BoxConstraints(), child: _buildDoctorList(context, colors)),
               ),
           ],
         ),
@@ -92,16 +95,41 @@ class QueueDoctorsPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildDoctorList(AppSemanticColors colors) {
-    return ListView.separated(
-      shrinkWrap: embedded,
-      physics: embedded ? const ClampingScrollPhysics() : null,
-      padding: const EdgeInsets.only(bottom: AppSpacing.space4),
-      itemCount: doctors.length,
-      separatorBuilder: (_, _) => Divider(height: 1, color: colors.borderSubtle),
-      itemBuilder: (context, index) {
-        return _DoctorRow(doctor: doctors[index], appointments: appointments, now: now);
-      },
+  Widget _buildDoctorList(BuildContext context, AppSemanticColors colors) {
+    if (doctors.isEmpty) {
+      return Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          AppSpacing.space3,
+          AppSpacing.space2,
+          AppSpacing.space3,
+          AppSpacing.space3,
+        ),
+        child: Text(
+          'No providers on shift',
+          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        AppSpacing.space3,
+        AppSpacing.space2,
+        AppSpacing.space3,
+        AppSpacing.space3,
+      ),
+      child: QueueFlowList(
+        child: ListView.separated(
+          shrinkWrap: embedded,
+          physics: embedded ? const ClampingScrollPhysics() : null,
+          padding: EdgeInsets.zero,
+          itemCount: doctors.length,
+          separatorBuilder: (_, _) => Divider(height: 1, thickness: 1, color: colors.borderDefault),
+          itemBuilder: (context, index) {
+            return _DoctorRow(doctor: doctors[index], appointments: appointments, now: now);
+          },
+        ),
+      ),
     );
   }
 }
@@ -115,7 +143,6 @@ class _DoctorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     final inProgress = AppointmentQueueDisplay.inProgressAppointmentForDoctor(doctor.id, appointments);
     final status = inProgress == null ? _DoctorQueueStatus.available : _DoctorQueueStatus.withPatient;
     final patientsSeenToday = appointments
@@ -124,120 +151,15 @@ class _DoctorRow extends StatelessWidget {
     final lag = queueDoctorLagMinutes(doctor, appointments, now: now);
     final idle = status == _DoctorQueueStatus.available ? queueDoctorIdleMinutes(doctor, appointments, now: now) : 0;
 
-    final badgeBackground = switch (status) {
-      _DoctorQueueStatus.available => colors.statusSuccessSurface,
-      _DoctorQueueStatus.withPatient => colors.statusInfoSurface,
-    };
-    final badgeForeground = switch (status) {
-      _DoctorQueueStatus.available => colors.statusSuccessFg,
-      _DoctorQueueStatus.withPatient => colors.statusInfoFg,
-    };
-    final badgeLabel = switch (status) {
-      _DoctorQueueStatus.available => 'Available',
-      _DoctorQueueStatus.withPatient => 'With patient',
-    };
-    final badgeIcon = switch (status) {
-      _DoctorQueueStatus.available => Icons.verified_user_outlined,
-      _DoctorQueueStatus.withPatient => Icons.medical_services_outlined,
-    };
-
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(
-        AppSpacing.space4,
-        AppSpacing.space3,
-        AppSpacing.space4,
-        AppSpacing.space3,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  doctor.name,
-                  style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500, color: colors.textPrimary),
-                ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(color: badgeBackground, borderRadius: BorderRadius.circular(AppRadius.full)),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(badgeIcon, size: 12, color: badgeForeground),
-                      const SizedBox(width: 4),
-                      Text(
-                        badgeLabel,
-                        style: AppTypography.caption(context).copyWith(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                          color: badgeForeground,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (inProgress != null) ...[
-            const SizedBox(height: AppSpacing.space2),
-            Text.rich(
-              TextSpan(
-                text: 'With ',
-                style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-                children: [
-                  TextSpan(
-                    text: inProgress.patientName,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.space2),
-          Wrap(
-            spacing: AppSpacing.space2,
-            runSpacing: AppSpacing.space1,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                '$patientsSeenToday seen today',
-                style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-              ),
-              if (status == _DoctorQueueStatus.available && idle > 0)
-                Text(
-                  'Idle ${AppointmentQueueDisplay.formatDurationLabel(Duration(minutes: idle))}',
-                  style: AppTypography.mono(context).copyWith(fontSize: 12, color: colors.statusSuccessFg),
-                ),
-              if (lag >= 15)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.statusWarningSurface,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    child: Text(
-                      '+$lag min behind',
-                      style: AppTypography.caption(context).copyWith(
-                        fontWeight: FontWeight.w500,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        color: colors.statusWarningFg,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.space2),
-          AppProgress(value: (patientsSeenToday * 12).clamp(0, 100).toDouble(), size: ProgressSize.sm),
-        ],
-      ),
+    return QueueDoctorShiftRow(
+      doctorName: doctor.name,
+      isAvailable: status == _DoctorQueueStatus.available,
+      patientsSeenToday: patientsSeenToday,
+      currentPatientName: inProgress?.patientName,
+      idleLabel: status == _DoctorQueueStatus.available && idle > 0
+          ? 'Idle ${AppointmentQueueDisplay.formatDurationLabel(Duration(minutes: idle))}'
+          : null,
+      lagMinutes: lag >= 15 ? lag : null,
     );
   }
 }
