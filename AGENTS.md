@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/014-visit-encounter-workspace/plan.md`
-Feature spec: `specs/014-visit-encounter-workspace/spec.md`
-Branch: (set per active feature)
+Active feature plan: `specs/019-ai-context-keys-d1-config/plan.md`
+Feature spec: `specs/019-ai-context-keys-d1-config/spec.md`
+Branch: `ai/019-a5-context-keys-d1-config`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
