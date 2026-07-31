@@ -450,6 +450,170 @@ no validated commit boundary, no journal for auditing, no routing policy, and pr
 inevitably leak back to the client the first time a feature needed a different prefix. The
 alternatives are examined properly in [§9](#9-alternatives-considered).
 
+#### 3.1.1 Layered architecture
+
+The style in [§3.1](#31-architecture-style-and-why-this-one) is easier to navigate as a stack. The
+diagram below is the same system as [§3.2](#32-system-context) and [§4](#4-components-and-responsibilities),
+read top-to-bottom as **trust and data flow**: the clinic owns identity and business data; the three
+contracts ([§3.4](#34-the-three-seams)) sit on the boundary; the Worker runs a fixed pipeline
+parameterized by capability manifests; storage and the Quota Durable Object sit beside the pipeline,
+not inside it.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  OPERATIONS CONTROL PLANE  (internal; operator auth — not clinic identity)       │
+│  enrollment · key rotation · entitlement · kill switches · routing policy ·      │
+│  capability gating · support lookup · dashboards                                   │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │ admin API
+═════════════════════════════════════════╪═══════════════════════════════════════════
+  LAYER 0 — CLINIC SITE  (LAN; may be offline; no arrow from platform into this box)
+═════════════════════════════════════════╧═══════════════════════════════════════════
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  PRESENTATION                                                                     │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │  AI Feature Surfaces          per-capability UI · draft/provisional styling  │  │
+│  │                               explicit accept/discard · degraded-mode UX   │  │
+│  │  Conversation store (chat)    local transcript · resupplied each turn      │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  CLIENT AI LAYER  (must not contain prompts, models, providers, or AI rules)      │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │  AI Client SDK                AAT acquisition · HTTPS submit · SSE consume │  │
+│  │                                 idempotency key · cancel · transport retry │  │
+│  │  Context Resolver               context key → existing RPC/query           │  │
+│  │                                 assemble declared shapes · screen cache    │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│         │ HTTPS + AAT + capability request + context payload (outbound only)      │
+│         │                                                                           │
+│  CLINIC BACKEND  (Supabase / PostgreSQL — additive AI components only)            │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │  AI token issuer RPC            session → short-lived AAT (aud=ai-platform)  │  │
+│  │  Installation keystore          installation private key (restricted schema) │  │
+│  │  AI availability flag           enrolled? · platform base URL              │  │
+│  │  Context provider RPCs          domain payloads under caller's RLS         │  │
+│  │  AI acceptance recording RPC    human accepted AI output + request ref     │  │
+│  │  ────────────────────────────────────────────────────────────────────────  │  │
+│  │  GoTrue · RBAC tables · business data · audit_log  (existing; unchanged)   │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                         │
+           ╔═════════════════════════════╧═══════════════════════════════════════╗
+           ║  THE THREE SEAMS  (contracts — see §3.4)                          ║
+           ║  ┌─────────────────┬─────────────────────┬──────────────────────┐  ║
+           ║  │ Token Contract  │ Context Contract    │ Capability Contract  │  ║
+           ║  │ who · scopes    │ which keys · shapes │ id · output schema   │  ║
+           ║  │ clinic issues   │ platform declares   │ platform declares    │  ║
+           ║  │ platform verifies│ client satisfies   │ client discovers     │  ║
+           ║  └─────────────────┴─────────────────────┴──────────────────────┘  ║
+           ╚═════════════════════════════╤═══════════════════════════════════════╝
+                                         ▼
+═════════════════════════════════════════╤═══════════════════════════════════════════
+  LAYER 1 — AI PLATFORM  (Cloudflare edge; single Worker deployable unit)
+═════════════════════════════════════════╧═══════════════════════════════════════════
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  GUARD SUBLAYER  (stages 1–10 — reject before paid work; see §6.1)               │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │  1. Protocol adapter          ingress · size limits · SSE framing ·      │  │
+│  │                                 idempotency/trace headers · HTTP errors    │  │
+│  │  2. Identity + tenant           verify AAT ──► Token verifier port *     │  │
+│  │                                 principal: installation · actor · scopes │  │
+│  │  3. Entitlement                 plan · capability scope · install status │  │
+│  │  4. Rate limit                  Rate Limiting binding (approximate)      │  │
+│  │  5. Capability resolver         manifest lookup · version pin · kills    │  │
+│  │  6. Context validator           required/permitted keys · shapes ·       │  │
+│  │                                 transcript budget (conversational)       │  │
+│  │  7. Cost pre-flight             estimated tokens vs capability ceiling   │  │
+│  │  8. Admission                   Quota DO round trip: jti · idempotency · │  │
+│  │                                 budget · concurrency                     │  │
+│  │  9. Journal (request row)       D1 insert — record exists before stream  │  │
+│  │ 10. Prompt composer             system + rules + context template +    │  │
+│  │                                 intent → canonical inference request     │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  INFERENCE SUBLAYER  (stage 11 — latency and cost dominate here)                 │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 11. Provider router + policy    ordered candidate chain · degraded tier    │  │
+│  │     Provider adapters ─────────► Provider port *  (one per provider)       │  │
+│  │                                 canonical ↔ wire · stream normalize      │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  COMMIT SUBLAYER  (stages 12–16 — delivery, validation, audit)                   │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 12. Stream broker               relay chunks · provisional semantics ·   │  │
+│  │                                 heartbeats · connection-scoped cancel    │  │
+│  │ 13. Response validator + repair schema · business rules · safety ·     │  │
+│  │                                 bounded single re-ask (if manifest allows) │  │
+│  │ 14. Terminal emit               exactly one terminal SSE event           │  │
+│  │ 15. Record outcome              D1 update · credit usage to Quota DO     │  │
+│  │ 16. Detail + payloads           attempt rows · usage ledger · one R2     │  │
+│  │                                 payload envelope per request             │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  CROSS-CUTTING MODULES  (plain modules — one implementation each; not ports)     │
+│  ┌──────────────────┬────────────────────┬───────────────────────────────────┐  │
+│  │ Capability       │ Prompt registry    │ Config cache (in-isolate, TTL)    │  │
+│  │ registry         │ versioned artifacts│ installations · keys · policy ·   │  │
+│  │ (bundled)        │ deployed w/ Worker │ entitlements · kill switches    │  │
+│  └──────────────────┴────────────────────┴───────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │ Telemetry emitter   trace id · per-stage spans · guard-rejection counters  │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  * ABSTRACTED PORTS  (several implementations — the only interfaces in the Worker)│
+│     Provider port          DeepSeek · Gemini · future providers                  │
+│     Token verifier port    enrolled installation key · OIDC/JWKS (Tier 3 future) │
+└──────────────────────────────────────────────────────────────────────────────────┘
+         │                    │                         │
+         ▼                    ▼                         ▼
+┌─────────────────┐  ┌─────────────────────┐  ┌─────────────────────────────────┐
+│ PERSISTENCE     │  │ STATEFUL SIDE-CAR   │  │ CREDENTIALS                     │
+│ D1              │  │ Quota Durable Object│  │ Secrets binding                 │
+│  authoritative  │  │  per installation   │  │  provider API keys              │
+│  metadata truth │  │  quota · concurrency│  │  (never logged or journaled)    │
+│ R2              │  │  jti replay set     │  └─────────────────────────────────┘
+│  one payload    │  │  idempotency keys   │
+│  envelope / req │  │  (not long-term     │
+└─────────────────┘  │   journal storage)  │
+                     └─────────────────────┘
+                                         │
+                                         ▼ HTTPS (platform-held keys only)
+═════════════════════════════════════════╤═══════════════════════════════════════════
+  LAYER 2 — AI PROVIDERS  (external; credentials never leave the edge box)
+═════════════════════════════════════════╧═══════════════════════════════════════════
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  DeepSeek · Gemini · future providers                                             │
+│  (optional egress: Cloudflare AI Gateway — evaluated in §9.9)                    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How to read this stack.**
+
+
+| Layer / sublayer | What it owns | What it must never know |
+| ---------------- | ------------ | ----------------------- |
+| **Presentation** | Rendering AI output, human acceptance UX, local chat transcript | Prompts, providers, which context keys a capability needs |
+| **Client AI** | Transport and context assembly | Capability selection from free text; AI business rules |
+| **Clinic backend** | Identity, RBAC, domain data, AAT minting, acceptance audit | Prompts, providers, quotas, AI request state |
+| **Three seams** | Stable contracts between clinic and platform | Implementation behind each side |
+| **Guard** | Auth, entitlement, validation, admission — everything before egress | Provider wire formats |
+| **Inference** | Routing policy execution and provider translation | Clinic schema; journaling policy |
+| **Commit** | Validated delivery, terminal semantics, durable audit trail | Clinical meaning of content |
+| **Persistence** | Platform-owned config, journal metadata, payload bytes | Clinic business tables |
+| **Providers** | Model inference | Clinic identity beyond the canonical request |
+
+Three properties the diagram is meant to make obvious:
+
+1. **Data flows up from the clinic, never back into it.** The platform has no inbound path to
+   Supabase; context is a transient payload the client sends ([§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database)).
+2. **The pipeline is fixed; capabilities parameterize it.** No capability adds, reorders, or skips a
+   stage — it supplies manifest fields that stages read ([§6.1](#61-the-pipeline)).
+3. **Only two boundaries are abstracted.** Everything else is a named module inside the monolith
+   ([§3.1](#31-architecture-style-and-why-this-one), property 3).
+
+Component-level detail for each box is in [§4](#4-components-and-responsibilities); stage ordering
+and rejection economics are in [§6](#6-request-lifecycle).
+
 ### 3.2 System context
 
 ```mermaid

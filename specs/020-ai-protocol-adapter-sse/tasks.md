@@ -41,7 +41,7 @@ adapter's event sink — no broker (D4), no provider (D2), no network.
 
 ### Test scaffolding (fail first)
 
-- [ ] T001 [US1] Create `ai-platform/test/adapter.test.ts` with the integration harness: an in-process
+- [X] T001 [US1] Create `ai-platform/test/adapter.test.ts` with the integration harness: an in-process
       stub event source that injects canned `accepted`, heartbeat, and terminal sequences directly
       into the adapter's event sink; a helper that builds a well-formed request (valid JSON body, the
       three headers `x-idempotency-key`, `x-trace-id`, `x-capability-version`); and a
@@ -51,33 +51,33 @@ adapter's event sink — no broker (D4), no provider (D2), no network.
 
 ### Ingress gate and header parsing (T1–T5)
 
-- [ ] T002 [US1] Case T1: assert a request whose body exceeds the ingress body-size config value (one
+- [X] T002 [US1] Case T1: assert a request whose body exceeds the ingress body-size config value (one
       byte larger than the shared limit constant) is rejected as `request_too_large` — HTTP 413, A2
       error body — before any other work: no header handled, no `accepted` event, no reference
       generated. Proves FR-002; spec Test plan T1. (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T003 [US1] Case T2: assert the `x-idempotency-key` header is parsed from a well-formed request
+- [X] T003 [US1] Case T2: assert the `x-idempotency-key` header is parsed from a well-formed request
       and made available to later stages. Proves FR-003; spec Test plan T2.
       (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T004 [US1] Case T3: assert the `x-trace-id` header is parsed and propagated; when absent, A2's
+- [X] T004 [US1] Case T3: assert the `x-trace-id` header is parsed and propagated; when absent, A2's
       `resolveTraceId` ULID is used (consumes `ai-platform/src/trace.ts`). Proves FR-003; spec Test
       plan T3. (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T005 [US1] Case T4: assert the `x-capability-version` header is parsed and made available to the
+- [X] T005 [US1] Case T4: assert the `x-capability-version` header is parsed and made available to the
       capability resolver (a later stage). Proves FR-003; spec Test plan T4.
       (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T006 [US1] Case T5: assert a malformed or missing required header (idempotency key, trace id,
+- [X] T006 [US1] Case T5: assert a malformed or missing required header (idempotency key, trace id,
       or version pin — one sub-case each) is rejected by the adapter's own parsing, produces no
       taxonomy-coded error body, and opens no stream. Proves FR-004; spec Test plan T5.
       (Lives in `ai-platform/test/adapter.test.ts`)
 
 ### SSE framing (T6–T7, T12)
 
-- [ ] T007 [US1] Case T6: assert a stream opens with an `accepted` event carrying the request
+- [X] T007 [US1] Case T6: assert a stream opens with an `accepted` event carrying the request
       reference, emitted exactly once and before any content or terminal event. Proves FR-007; spec
       Test plan T6. (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T008 [US1] Case T7: assert a heartbeat event is emitted while the stream is idle and receives no
+- [X] T008 [US1] Case T7: assert a heartbeat event is emitted while the stream is idle and receives no
       content, and that the heartbeat is neither a content nor a terminal event. Proves FR-009; spec
       Test plan T7. (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T009 [US1] Case T12: assert the `accepted` event's request reference matches A2's
+- [X] T009 [US1] Case T12: assert the `accepted` event's request reference matches A2's
       `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$` format (consumes
       `ai-platform/src/reference.ts`), and the trace id on every emitted event matches the parsed or
       A2-generated value. Proves FR-007, FR-006; spec Test plan T12.
@@ -85,18 +85,18 @@ adapter's event sink — no broker (D4), no provider (D2), no network.
 
 ### Terminal events and cancellation (T8–T11)
 
-- [ ] T010 [US1] Case T8: assert a stream whose request completes ends with exactly one `completed`
+- [X] T010 [US1] Case T8: assert a stream whose request completes ends with exactly one `completed`
       terminal event and no second terminal event. Proves FR-010, FR-012; spec Test plan T8.
       (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T011 [US1] Case T9: assert a stream whose request fails ends with exactly one `failed` terminal
+- [X] T011 [US1] Case T9: assert a stream whose request fails ends with exactly one `failed` terminal
       event carrying a §5.4 taxonomy code (consumes `ai-platform/src/errors.ts`), and no second
       terminal event. Proves FR-005, FR-006, FR-010, FR-012; spec Test plan T9.
       (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T012 [US1] Case T10: assert a stream whose client closes mid-stream ends with exactly one
+- [X] T012 [US1] Case T10: assert a stream whose client closes mid-stream ends with exactly one
       `cancelled` terminal event, and that `cancelled` / `499` is not written to the live socket as
       an HTTP status (uses A2's `liveHttpStatusForCode` returning null). Proves FR-011, FR-010, FR-012;
       spec Test plan T10. (Lives in `ai-platform/test/adapter.test.ts`)
-- [ ] T013 [US1] Case T11: assert a stream that has already emitted a terminal event does not emit a
+- [X] T013 [US1] Case T11: assert a stream that has already emitted a terminal event does not emit a
       second one under any subsequent path (completion, failure, abort, duplicate close arriving
       afterwards). Proves FR-012; spec Test plan T11. (Lives in `ai-platform/test/adapter.test.ts`)
 
