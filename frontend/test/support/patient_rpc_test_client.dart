@@ -58,7 +58,7 @@ class PatientRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'create_patient' => {
         'success': true,
-        'data': {'patient_id': '33333333-3333-4333-8333-333333333333'},
+        'data': {'patient_id': '33333333-3333-4333-8333-333333333333', 'mrn': 'MRN-000042'},
       },
       'update_patient' => {
         'success': true,
@@ -67,6 +67,13 @@ class PatientRpcTestClient extends RpcCaptureSupabaseClient {
       'archive_patient' => {
         'success': true,
         'data': {'patient_id': _param('p_patient_id')},
+      },
+      'reassign_patient_mrn' => {
+        'success': true,
+        'data': {
+          'patient_id': _param('p_patient_id'),
+          'mrn': _param('p_new_mrn'),
+        },
       },
       _ => {'success': true, 'data': {}},
     };

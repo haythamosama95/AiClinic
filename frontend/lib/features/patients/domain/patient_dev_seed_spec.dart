@@ -33,4 +33,9 @@ class PatientDevSeedSpec {
   final bool archiveAfterCreate;
 
   static const devNamePrefix = '[Dev] ';
+
+  /// Deterministic MRN for dev seed patients (`MRN-000001`, …).
+  static String mrnForSeedOrder(int oneBasedIndex) {
+    return 'MRN-${oneBasedIndex.toString().padLeft(6, '0')}';
+  }
 }

@@ -5,7 +5,11 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 /// Session fields that determine which branch appointments are loaded for.
 @immutable
 class AppointmentFetchScope {
-  const AppointmentFetchScope({this.activeBranchId, this.organizationId, this.organizationTimezone});
+  const AppointmentFetchScope({
+    this.activeBranchId,
+    this.organizationId,
+    this.organizationTimezone,
+  });
 
   final String? activeBranchId;
   final String? organizationId;
@@ -40,5 +44,6 @@ class AppointmentFetchScope {
   }
 
   @override
-  int get hashCode => Object.hash(activeBranchId, organizationId, organizationTimezone);
+  int get hashCode =>
+      Object.hash(activeBranchId, organizationId, organizationTimezone);
 }

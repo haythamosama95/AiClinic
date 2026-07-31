@@ -135,7 +135,7 @@ class FixtureFactory {
     await auth.refreshSession();
 
     final repo = PatientRepositoryImpl(client);
-    final id = await repo.createPatient(
+    final result = await repo.createPatient(
       CreatePatientInput(
         activeBranchId: clinic.branchId,
         fullName: fullName ?? 'Patient ${clinic.suffix}',
@@ -146,7 +146,7 @@ class FixtureFactory {
     );
 
     await auth.signOut();
-    return id;
+    return result.patientId;
   }
 
   Future<String> createPatientAsAdmin({
@@ -173,7 +173,7 @@ class FixtureFactory {
     await auth.refreshSession();
 
     final repo = PatientRepositoryImpl(client);
-    final id = await repo.createPatient(
+    final result = await repo.createPatient(
       CreatePatientInput(
         activeBranchId: clinic.branchId,
         fullName: 'Full Demo ${clinic.suffix}',
@@ -185,6 +185,6 @@ class FixtureFactory {
       ),
     );
     await auth.signOut();
-    return id;
+    return result.patientId;
   }
 }

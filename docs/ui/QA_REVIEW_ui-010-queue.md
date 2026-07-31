@@ -109,7 +109,7 @@ This branch delivers a full **clinic queue dashboard** at `/appointments/queue`:
 
 | Category | Detail |
 | -------- | ------ |
-| **Docs** | `specs/010-app-notched-card/*`, `docs/ui/notch_card_design.md`, feature.json cursor rules |
+| **Docs** | `docs/specs/010-app-notched-card/*`, `docs/ui/notch_card_design.md`, feature.json cursor rules |
 
 ---
 

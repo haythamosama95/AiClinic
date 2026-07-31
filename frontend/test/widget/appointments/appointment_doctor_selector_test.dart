@@ -1,97 +1,106 @@
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_selector.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../support/appointment_calendar_test_support.dart';
+import 'detail_widget_test_harness.dart';
 
 void main() {
   group('AppointmentDoctorSelector', () {
-    testWidgets('highlights doctors not assigned to the booking branch', (tester) async {
-      const assignedDoctor = StaffListItem(
-        id: calendarTestDoctorAId,
-        fullName: 'Dr. Ada',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(id: calendarTestBranchAId, name: 'Branch A', isPrimary: true)],
-      );
-      const unassignedDoctor = StaffListItem(
-        id: calendarTestDoctorBId,
-        fullName: 'Dr. Ben',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(id: calendarTestBranchBId, name: 'Branch B', isPrimary: true)],
-      );
-
+    testWidgets('trivial: renders options from AppointmentDoctorSelectItems', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          builder: (context, child) => ForuiAppScope(child: child!),
-          home: Scaffold(
+        harnessMaterialApp(
+          child: Scaffold(
             body: AppointmentDoctorSelector(
               branchId: calendarTestBranchAId,
-              doctors: const [assignedDoctor, unassignedDoctor],
+              doctors: buildTestDoctors(),
               value: null,
               onChanged: (_) {},
             ),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      await tester.tap(find.widgetWithText(AppSelect<String>, 'Doctor (optional)'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Not available at this branch'), findsOneWidget);
-      expect(find.byTooltip('Close'), findsOneWidget);
-
-      final doctorNames = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((text) => text.data)
-          .whereType<String>()
-          .where((label) => label == 'Dr. Ada' || label == 'Dr. Ben')
-          .toList();
-      expect(doctorNames, ['Dr. Ada', 'Dr. Ben']);
+      final options = AppointmentDoctorSelectItems.buildOptions(
+        branchId: calendarTestBranchAId,
+        doctors: buildTestDoctors(),
+        emptyLabel: 'No preference',
+      );
+      for (final option in options) {
+        expect(find.text(option.label), findsWidgets);
+      }
     });
 
-    testWidgets('close button dismisses the doctor dropdown', (tester) async {
-      const doctor = StaffListItem(
-        id: calendarTestDoctorAId,
-        fullName: 'Dr. Ada',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(id: calendarTestBranchAId, name: 'Branch A', isPrimary: true)],
-      );
+    testWidgets('advanced: selecting fires onChanged', (tester) async {
+      String? selected;
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          builder: (context, child) => ForuiAppScope(child: child!),
-          home: Scaffold(
+        harnessMaterialApp(
+          child: Scaffold(
+            body: AppointmentDoctorSelector(
+              key: const Key('doctor_selector'),
+              branchId: calendarTestBranchAId,
+              doctors: buildTestDoctors(),
+              value: null,
+              onChanged: (doctorId) => selected = doctorId,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tapAppSelectOption(tester, const Key('doctor_selector'), 'Dr. Ada');
+      expect(selected, calendarTestDoctorAId);
+    });
+
+    testWidgets('edge case: doctor unavailable at branch is disabled with reason', (tester) async {
+      final options = AppointmentDoctorSelectItems.buildOptions(
+        branchId: calendarTestBranchAId,
+        doctors: buildTestDoctors(),
+        emptyLabel: 'No preference',
+      );
+      final benOption = options.firstWhere((o) => o.label == 'Dr. Ben');
+      expect(benOption.disabled, isTrue);
+      expect(benOption.disabledReason, AppointmentDoctorSelectItems.unavailableReason);
+    });
+
+    testWidgets('edge case: empty doctor list renders hint without throwing', (tester) async {
+      await tester.pumpWidget(
+        harnessMaterialApp(
+          child: Scaffold(
             body: AppointmentDoctorSelector(
               branchId: calendarTestBranchAId,
-              doctors: const [doctor],
+              doctors: const [],
+              value: null,
+              hint: 'Any available doctor',
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('No preference'), findsOneWidget);
+    });
+
+    testWidgets('trivial: null value shows unselected placeholder', (tester) async {
+      await tester.pumpWidget(
+        harnessMaterialApp(
+          child: Scaffold(
+            body: AppointmentDoctorSelector(
+              key: const Key('doctor_selector'),
+              branchId: calendarTestBranchAId,
+              doctors: buildTestDoctors(),
               value: null,
               onChanged: (_) {},
             ),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      await tester.tap(find.widgetWithText(AppSelect<String>, 'Doctor (optional)'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Dr. Ada'), findsWidgets);
-
-      await tester.tap(find.byTooltip('Close'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Not available at this branch'), findsNothing);
+      expect(find.text('No preference'), findsWidgets);
     });
   });
 }

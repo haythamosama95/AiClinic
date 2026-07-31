@@ -130,7 +130,7 @@ Adds encrypted upload of dumps to cloud storage. Not implemented in V1-0 scaffol
 - Point-in-time recovery automation
 - Off-site sync verification
 
-Track production backup implementation in later deployment features (`specs/common/deployment-installer.spec.md` when available).
+Track production backup implementation in later deployment features (`docs/specs/common/deployment-installer.spec.md` when available).
 
 ## Security reminders for clinic operators
 

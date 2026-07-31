@@ -109,6 +109,10 @@ run_shell_test "Visit medical records suite" "run_visit_medical_records_tests.sh
 printf '\n--- Billing ---\n'
 run_shell_test "Billing suite" "run_billing_tests.sh"
 
+# --- Service Catalog ---
+printf '\n--- Service Catalog ---\n'
+run_shell_test "Service Catalog suite" "run_service_catalog_tests.sh"
+
 # --- Shift Management ---
 printf '\n--- Shift Management ---\n'
 run_shell_test "Shift management suite" "run_shift_management_tests.sh"

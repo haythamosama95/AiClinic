@@ -31,7 +31,12 @@ class CreateAppointmentResult {
     final status = AppointmentStatus.tryParse(data['status']?.toString());
     final type = AppointmentType.tryParse(data['type']?.toString());
 
-    if (id == null || id.isEmpty || startTime == null || endTime == null || status == null || type == null) {
+    if (id == null ||
+        id.isEmpty ||
+        startTime == null ||
+        endTime == null ||
+        status == null ||
+        type == null) {
       return null;
     }
 

@@ -2,7 +2,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +20,10 @@ class QueueShiftDoctor {
 /// One doctor row in the queue appointments card.
 @immutable
 class QueueAppointmentDoctorEntry {
-  const QueueAppointmentDoctorEntry({required this.name, required this.isPatientChoice});
+  const QueueAppointmentDoctorEntry({
+    required this.name,
+    required this.isPatientChoice,
+  });
 
   final String name;
   final bool isPatientChoice;
@@ -103,7 +106,9 @@ class AppointmentQueueShiftDoctorLookup {
   }
 
   static bool _isStaffedShift(ShiftListItem shift) {
-    return shift.status != ShiftStatus.cancelled && !shift.isUnassigned && shift.assigneeNames.isNotEmpty;
+    return shift.status != ShiftStatus.cancelled &&
+        !shift.isUnassigned &&
+        shift.assigneeNames.isNotEmpty;
   }
 
   /// Doctors on shifts covering [referenceUtc] in organization local time.
@@ -111,14 +116,21 @@ class AppointmentQueueShiftDoctorLookup {
   /// Falls back to all staffed shifts on the same calendar day when none cover
   /// [referenceUtc], so the queue sidebar still lists today's shift doctors.
   List<QueueShiftDoctor> doctorsOnCurrentShiftAt(DateTime referenceUtc) {
-    final covering = _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: true);
-    final names = covering.isEmpty ? _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: false) : covering;
+    final covering = _doctorNamesOnShiftAt(
+      referenceUtc,
+      requireCoveringInstant: true,
+    );
+    final names = covering.isEmpty
+        ? _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: false)
+        : covering;
     return _queueShiftDoctorsForNames(names);
   }
 
   /// Doctors on an active shift covering [appointmentStartUtc] in org local time.
   List<QueueShiftDoctor> doctorsOnShiftAt(DateTime appointmentStartUtc) {
-    return _queueShiftDoctorsForNames(_doctorNamesOnShiftAt(appointmentStartUtc));
+    return _queueShiftDoctorsForNames(
+      _doctorNamesOnShiftAt(appointmentStartUtc),
+    );
   }
 
   /// Doctor names on an active shift covering [appointmentStartUtc] in org local time.
@@ -135,15 +147,27 @@ class AppointmentQueueShiftDoctorLookup {
       }
       doctors.add(QueueShiftDoctor(id: id, name: name));
     }
-    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    doctors.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
     return doctors;
   }
 
-  List<String> _doctorNamesOnShiftAt(DateTime appointmentStartUtc, {bool requireCoveringInstant = true}) {
+  List<String> _doctorNamesOnShiftAt(
+    DateTime appointmentStartUtc, {
+    bool requireCoveringInstant = true,
+  }) {
     ensureAppointmentTimezonesInitialized();
     final location = tz.getLocation(organizationTimezone);
-    final localStart = tz.TZDateTime.from(appointmentStartUtc.toUtc(), location);
-    final appointmentDay = DateTime(localStart.year, localStart.month, localStart.day);
+    final localStart = tz.TZDateTime.from(
+      appointmentStartUtc.toUtc(),
+      location,
+    );
+    final appointmentDay = DateTime(
+      localStart.year,
+      localStart.month,
+      localStart.day,
+    );
     final appointmentMinutes = localStart.hour * 60 + localStart.minute;
 
     final names = <String>{};
@@ -156,7 +180,8 @@ class AppointmentQueueShiftDoctorLookup {
       if (shiftStart == null || shiftEnd == null) {
         continue;
       }
-      if (requireCoveringInstant && (appointmentMinutes < shiftStart || appointmentMinutes >= shiftEnd)) {
+      if (requireCoveringInstant &&
+          (appointmentMinutes < shiftStart || appointmentMinutes >= shiftEnd)) {
         continue;
       }
       for (final assignee in shift.assigneeNames) {
@@ -167,33 +192,49 @@ class AppointmentQueueShiftDoctorLookup {
       }
     }
 
-    final sorted = names.toList(growable: false)..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final sorted = names.toList(growable: false)
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return sorted;
   }
 
   QueueAppointmentDoctorPresentation presentationFor(AppointmentListItem item) {
     final assignedName = item.doctorName?.trim();
-    if (item.doctorId != null && assignedName != null && assignedName.isNotEmpty) {
+    if (item.doctorId != null &&
+        assignedName != null &&
+        assignedName.isNotEmpty) {
       final isPatientChoice = _isPatientChosenDoctor(item);
       return QueueAppointmentDoctorPresentation(
-        entries: [QueueAppointmentDoctorEntry(name: assignedName, isPatientChoice: isPatientChoice)],
+        entries: [
+          QueueAppointmentDoctorEntry(
+            name: assignedName,
+            isPatientChoice: isPatientChoice,
+          ),
+        ],
       );
     }
 
     return const QueueAppointmentDoctorPresentation(
-      entries: [QueueAppointmentDoctorEntry(name: 'No preferred doctor', isPatientChoice: false)],
+      entries: [
+        QueueAppointmentDoctorEntry(
+          name: 'No preferred doctor',
+          isPatientChoice: false,
+        ),
+      ],
     );
   }
 
   /// Patient-selected doctor at booking — still unassigned until visit starts.
   static bool _isPatientChosenDoctor(AppointmentListItem item) {
     return switch (item.status) {
-      AppointmentStatus.scheduled || AppointmentStatus.confirmed || AppointmentStatus.checkedIn => true,
+      AppointmentStatus.scheduled ||
+      AppointmentStatus.confirmed ||
+      AppointmentStatus.checkedIn => true,
       _ => false,
     };
   }
 
-  String summaryLabelFor(AppointmentListItem item) => presentationFor(item).displayNames;
+  String summaryLabelFor(AppointmentListItem item) =>
+      presentationFor(item).displayNames;
 
   String? _resolveDoctorName(String assigneeName) {
     return doctorNamesByNormalizedName[assigneeName.trim().toLowerCase()];
@@ -214,7 +255,12 @@ class AppointmentQueueShiftDoctorLookup {
     }
     final hour = int.tryParse(parts[0]);
     final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    if (hour == null ||
+        minute == null ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59) {
       return null;
     }
     return hour * 60 + minute;

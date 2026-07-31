@@ -8,7 +8,11 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 /// Realtime postgres change forwarded from the queue subscription.
 class AppointmentQueueRealtimeChange {
-  const AppointmentQueueRealtimeChange({required this.eventType, this.oldRecord, this.newRecord});
+  const AppointmentQueueRealtimeChange({
+    required this.eventType,
+    this.oldRecord,
+    this.newRecord,
+  });
 
   final PostgresChangeEvent eventType;
   final Map<String, dynamic>? oldRecord;
@@ -35,7 +39,10 @@ bool applyAppointmentQueueRealtimeChange({
   }
 }
 
-bool _removeByRecord(List<AppointmentListItem> items, Map<String, dynamic>? record) {
+bool _removeByRecord(
+  List<AppointmentListItem> items,
+  Map<String, dynamic>? record,
+) {
   final id = record?['id']?.toString();
   if (id == null || id.isEmpty) {
     return false;
@@ -45,7 +52,11 @@ bool _removeByRecord(List<AppointmentListItem> items, Map<String, dynamic>? reco
   return items.length != before;
 }
 
-bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record, AppointmentTodayRange todayRange) {
+bool _applyUpdate(
+  List<AppointmentListItem> items,
+  Map<String, dynamic>? record,
+  AppointmentTodayRange todayRange,
+) {
   if (record == null) {
     return false;
   }
@@ -68,7 +79,8 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
     return _removeByRecord(items, record);
   }
 
-  if (startTime != null && !appointmentStartTimeIsWithinRange(startTime, todayRange)) {
+  if (startTime != null &&
+      !appointmentStartTimeIsWithinRange(startTime, todayRange)) {
     return _removeByRecord(items, record);
   }
 
@@ -87,9 +99,15 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
     endTime: endTime,
     status: status ?? existing.status,
     type: type ?? existing.type,
-    updatedAt: record.containsKey('updated_at') ? updatedAt : existing.updatedAt,
-    checkedInAt: record.containsKey('checked_in_at') ? checkedInAt : existing.checkedInAt,
-    inProgressAt: record.containsKey('in_progress_at') ? inProgressAt : existing.inProgressAt,
+    updatedAt: record.containsKey('updated_at')
+        ? updatedAt
+        : existing.updatedAt,
+    checkedInAt: record.containsKey('checked_in_at')
+        ? checkedInAt
+        : existing.checkedInAt,
+    inProgressAt: record.containsKey('in_progress_at')
+        ? inProgressAt
+        : existing.inProgressAt,
   );
   return true;
 }

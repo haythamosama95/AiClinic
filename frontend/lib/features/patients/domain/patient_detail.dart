@@ -14,6 +14,7 @@ class PatientDetail {
     required this.branchName,
     required this.createdAt,
     required this.updatedAt,
+    this.mrn,
     this.phone,
     this.dateOfBirth,
     this.gender,
@@ -23,6 +24,7 @@ class PatientDetail {
   });
 
   final String id;
+  final String? mrn;
   final String fullName;
   final String? phone;
   final DateTime? dateOfBirth;
@@ -57,22 +59,28 @@ class PatientDetail {
 
     return PatientDetail(
       id: id,
+      mrn: parsePatientMrn(row),
       fullName: fullName,
       phone: optionalPatientString(row['phone']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
       gender: PatientGender.tryParse(row['gender']?.toString()),
-      maritalStatus: PatientMaritalStatus.tryParse(row['marital_status']?.toString()),
+      maritalStatus: PatientMaritalStatus.tryParse(
+        row['marital_status']?.toString(),
+      ),
       notes: optionalPatientString(row['notes']),
       branchId: branchId,
       branchName: branchName,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      createdByDisplay: optionalPatientString(row['created_by_display'] ?? row['created_by_name']),
+      createdByDisplay: optionalPatientString(
+        row['created_by_display'] ?? row['created_by_name'],
+      ),
     );
   }
 
   PatientDetail copyWith({
     String? id,
+    Object? mrn = copyWithSentinel,
     String? fullName,
     Object? phone = copyWithSentinel,
     Object? dateOfBirth = copyWithSentinel,
@@ -87,17 +95,26 @@ class PatientDetail {
   }) {
     return PatientDetail(
       id: id ?? this.id,
+      mrn: identical(mrn, copyWithSentinel) ? this.mrn : mrn as String?,
       fullName: fullName ?? this.fullName,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
-      dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
-      gender: identical(gender, copyWithSentinel) ? this.gender : gender as PatientGender?,
-      maritalStatus: identical(maritalStatus, copyWithSentinel) ? this.maritalStatus : maritalStatus as PatientMaritalStatus?,
+      dateOfBirth: identical(dateOfBirth, copyWithSentinel)
+          ? this.dateOfBirth
+          : dateOfBirth as DateTime?,
+      gender: identical(gender, copyWithSentinel)
+          ? this.gender
+          : gender as PatientGender?,
+      maritalStatus: identical(maritalStatus, copyWithSentinel)
+          ? this.maritalStatus
+          : maritalStatus as PatientMaritalStatus?,
       notes: identical(notes, copyWithSentinel) ? this.notes : notes as String?,
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      createdByDisplay: identical(createdByDisplay, copyWithSentinel) ? this.createdByDisplay : createdByDisplay as String?,
+      createdByDisplay: identical(createdByDisplay, copyWithSentinel)
+          ? this.createdByDisplay
+          : createdByDisplay as String?,
     );
   }
 
@@ -107,6 +124,7 @@ class PatientDetail {
         other is PatientDetail &&
             runtimeType == other.runtimeType &&
             id == other.id &&
+            mrn == other.mrn &&
             fullName == other.fullName &&
             phone == other.phone &&
             dateOfBirth == other.dateOfBirth &&
@@ -123,6 +141,7 @@ class PatientDetail {
   @override
   int get hashCode => Object.hash(
     id,
+    mrn,
     fullName,
     phone,
     dateOfBirth,

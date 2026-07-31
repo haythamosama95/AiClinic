@@ -11,6 +11,7 @@ class CreatePatientInput {
     this.gender,
     this.maritalStatus,
     this.notes,
+    this.mrn,
     this.acknowledgeDuplicate = false,
   });
 
@@ -21,5 +22,32 @@ class CreatePatientInput {
   final PatientGender? gender;
   final PatientMaritalStatus? maritalStatus;
   final String? notes;
+
+  /// Optional explicit MRN (validated server-side). Used by dev seed flows.
+  final String? mrn;
   final bool acknowledgeDuplicate;
+
+  CreatePatientInput copyWith({
+    String? activeBranchId,
+    String? fullName,
+    String? phone,
+    DateTime? dateOfBirth,
+    PatientGender? gender,
+    PatientMaritalStatus? maritalStatus,
+    String? notes,
+    String? mrn,
+    bool? acknowledgeDuplicate,
+  }) {
+    return CreatePatientInput(
+      activeBranchId: activeBranchId ?? this.activeBranchId,
+      fullName: fullName ?? this.fullName,
+      phone: phone ?? this.phone,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      gender: gender ?? this.gender,
+      maritalStatus: maritalStatus ?? this.maritalStatus,
+      notes: notes ?? this.notes,
+      mrn: mrn ?? this.mrn,
+      acknowledgeDuplicate: acknowledgeDuplicate ?? this.acknowledgeDuplicate,
+    );
+  }
 }

@@ -31,6 +31,15 @@ BEGIN
   IF to_regclass('public.visit_attachments') IS NOT NULL THEN
     DELETE FROM public.visit_attachments WHERE true;
   END IF;
+  IF to_regclass('public.visit_investigations') IS NOT NULL THEN
+    DELETE FROM public.visit_investigations WHERE true;
+  END IF;
+  IF to_regclass('public.visit_vital_signs') IS NOT NULL THEN
+    DELETE FROM public.visit_vital_signs WHERE true;
+  END IF;
+  IF to_regclass('public.visit_clinical_notes') IS NOT NULL THEN
+    DELETE FROM public.visit_clinical_notes WHERE true;
+  END IF;
   IF to_regclass('public.soap_notes') IS NOT NULL THEN
     DELETE FROM public.soap_notes WHERE true;
   END IF;
@@ -74,6 +83,18 @@ WHERE NOT EXISTS (
 DELETE FROM public.staff_branch_assignments WHERE true;
 DELETE FROM public.app_settings WHERE true;
 DELETE FROM public.subscription_cache WHERE true;
+
+-- Service catalog (015): branch assignments reference branches and services.
+DO $$
+BEGIN
+  IF to_regclass('public.service_branches') IS NOT NULL THEN
+    DELETE FROM public.service_branches WHERE true;
+  END IF;
+  IF to_regclass('public.services') IS NOT NULL THEN
+    DELETE FROM public.services WHERE true;
+  END IF;
+END $$;
+
 DELETE FROM public.branches WHERE true;
 DELETE FROM public.organizations WHERE true;
 

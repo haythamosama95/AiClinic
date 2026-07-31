@@ -31,12 +31,18 @@ DateTime _calendarDayInTimezone(DateTime instantUtc, String timezoneId) {
 }
 
 /// Calendar date (year/month/day) for [referenceUtc] in [organizationTimezone].
-DateTime calendarDayInOrganizationTimezone(String organizationTimezone, DateTime referenceUtc) {
+DateTime calendarDayInOrganizationTimezone(
+  String organizationTimezone,
+  DateTime referenceUtc,
+) {
   return _calendarDayInTimezone(referenceUtc, organizationTimezone);
 }
 
 /// Wall-clock local time for [instantUtc] in [organizationTimezone] (for display formatting).
-DateTime appointmentWallClockInOrganizationTimezone(String organizationTimezone, DateTime instantUtc) {
+DateTime appointmentWallClockInOrganizationTimezone(
+  String organizationTimezone,
+  DateTime instantUtc,
+) {
   ensureAppointmentTimezonesInitialized();
   final location = tz.getLocation(organizationTimezone);
   final local = tz.TZDateTime.from(instantUtc.toUtc(), location);
@@ -65,7 +71,10 @@ bool appointmentCalendarDayHasArrivedInTimezone(
 }
 
 /// Computes today's list_appointments bounds in [organizationTimezone], as UTC instants.
-AppointmentTodayRange appointmentTodayRangeInTimezone(String organizationTimezone, DateTime referenceUtc) {
+AppointmentTodayRange appointmentTodayRangeInTimezone(
+  String organizationTimezone,
+  DateTime referenceUtc,
+) {
   ensureAppointmentTimezonesInitialized();
   final location = tz.getLocation(organizationTimezone);
   final local = tz.TZDateTime.from(referenceUtc.toUtc(), location);

@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/role_permissions_notifier.dart';
-import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
+import 'package:ai_clinic/features/clinic-management/data/role_permissions_repository.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,0 +1,123 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/domain/payment_method.dart';
+
+/// Presentation helpers for billing amounts and dates (V1-6).
+abstract final class BillingFormatting {
+  static String formatMoney(
+    Money amount, {
+    String currency = 'USD',
+    String? locale,
+  }) {
+    final formatLocale = locale ?? 'en_US';
+    final symbol = _currencySymbol(currency);
+    try {
+      if (symbol != null) {
+        return NumberFormat.currency(
+          locale: formatLocale,
+          symbol: symbol,
+        ).format(amount.asDouble);
+      }
+      return NumberFormat.currency(
+        locale: formatLocale,
+        name: currency.toUpperCase(),
+      ).format(amount.asDouble);
+    } on Object {
+      final value = amount.wireValue;
+      if (symbol != null) {
+        return '$symbol$value';
+      }
+      return '$value $currency';
+    }
+  }
+
+  static String? _currencySymbol(String currency) {
+    return switch (currency.toUpperCase()) {
+      'USD' => '\$',
+      'EUR' => '€',
+      'GBP' => '£',
+      'EGP' => 'E£ ',
+      _ => null,
+    };
+  }
+
+  static final _dateFormat = DateFormat('MMM d, yyyy');
+  static final _dateTimeFormat = DateFormat('MMM d, yyyy · h:mm a');
+
+  static String formatDate(DateTime date) => _dateFormat.format(date.toLocal());
+
+  static String formatDateTime(DateTime date) =>
+      _dateTimeFormat.format(date.toLocal());
+
+  static String invoiceDisplayNumber(String? invoiceNumber, String invoiceId) {
+    final number = invoiceNumber?.trim();
+    if (number != null && number.isNotEmpty) {
+      return number;
+    }
+    return 'Draft · ${invoiceId.substring(0, 8)}';
+  }
+
+  static IconData paymentMethodIcon(PaymentMethod method) {
+    return switch (method) {
+      PaymentMethod.cash => Icons.payments_outlined,
+      PaymentMethod.card => Icons.credit_card_outlined,
+      PaymentMethod.bankTransfer => Icons.account_balance_outlined,
+      PaymentMethod.insuranceSettlement => Icons.health_and_safety_outlined,
+    };
+  }
+
+  static String discountLabel(DiscountKind? kind, String? value) {
+    if (kind == null || value == null || value.trim().isEmpty) {
+      return '—';
+    }
+
+    final parsed = double.tryParse(value);
+    if (parsed == null) {
+      return '—';
+    }
+
+    return switch (kind) {
+      DiscountKind.percentage => '${parsed.round()}% off',
+      DiscountKind.fixed => '${parsed.toStringAsFixed(2)} off',
+    };
+  }
+}
+
+/// Maps invoice status to semantic badge styling.
+InvoiceStatusBadgeStyle statusBadgeStyle(InvoiceStatus status) {
+  return switch (status) {
+    InvoiceStatus.draft => const InvoiceStatusBadgeStyle(
+      variant: InvoiceStatusBadgeVariant.muted,
+      icon: Icons.edit_note_outlined,
+    ),
+    InvoiceStatus.issued => const InvoiceStatusBadgeStyle(
+      variant: InvoiceStatusBadgeVariant.primary,
+      icon: Icons.receipt_long_outlined,
+    ),
+    InvoiceStatus.partiallyPaid => const InvoiceStatusBadgeStyle(
+      variant: InvoiceStatusBadgeVariant.accent,
+      icon: Icons.payments_outlined,
+    ),
+    InvoiceStatus.paid => const InvoiceStatusBadgeStyle(
+      variant: InvoiceStatusBadgeVariant.success,
+      icon: Icons.check_circle_outline,
+    ),
+    InvoiceStatus.voided => const InvoiceStatusBadgeStyle(
+      variant: InvoiceStatusBadgeVariant.destructive,
+      icon: Icons.block_outlined,
+    ),
+  };
+}
+
+enum InvoiceStatusBadgeVariant { muted, primary, accent, success, destructive }
+
+class InvoiceStatusBadgeStyle {
+  const InvoiceStatusBadgeStyle({required this.variant, required this.icon});
+
+  final InvoiceStatusBadgeVariant variant;
+  final IconData icon;
+}

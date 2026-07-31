@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/widgets/input/app_paragraph_field.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
@@ -278,6 +279,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           clearError: true,
         ),
       );
+      invalidateAppointmentAfterVisitCompleted(ref, appointmentId: result.appointmentId);
       return result;
     } on RpcFailure {
       rethrow;

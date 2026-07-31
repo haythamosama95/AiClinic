@@ -4,7 +4,11 @@ import 'package:flutter/foundation.dart';
 /// Visit attachment surfaced on the patient detail documents panel.
 @immutable
 class PatientVisitDocument {
-  const PatientVisitDocument({required this.visitId, required this.visitDate, required this.attachment});
+  const PatientVisitDocument({
+    required this.visitId,
+    required this.visitDate,
+    required this.attachment,
+  });
 
   final String visitId;
   final DateTime visitDate;

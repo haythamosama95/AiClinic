@@ -9,9 +9,7 @@ import 'package:syncfusion_flutter_core/theme.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart' hide CalendarView;
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
@@ -22,13 +20,18 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_fullscreen_overlay.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_tile.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_tile_context_menu.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_view_header.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_page_shell.dart';
+
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 
 const _skeletonRevealDelay = Duration(milliseconds: 180);
 
@@ -40,10 +43,12 @@ class AppointmentCalendarPage extends ConsumerStatefulWidget {
   const AppointmentCalendarPage({super.key});
 
   @override
-  ConsumerState<AppointmentCalendarPage> createState() => _AppointmentCalendarPageState();
+  ConsumerState<AppointmentCalendarPage> createState() =>
+      _AppointmentCalendarPageState();
 }
 
-class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPage> {
+class _AppointmentCalendarPageState
+    extends ConsumerState<AppointmentCalendarPage> {
   final CalendarController _calendarController = CalendarController();
   late AppointmentCalendarDataSource _dataSource;
   AppointmentCalendarMode? _lastMode;
@@ -51,12 +56,21 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   int _itemsFingerprint = 0;
   int _resourceFingerprint = 0;
   int _statusFilterFingerprint = 0;
+  int _themeFingerprint = -1;
+  Brightness _syncedBrightness = Brightness.light;
   Set<String> _revealedAppointmentIds = {};
   int _revealGeneration = 0;
   int _lastRevealSourceFingerprint = -1;
   bool _isProcessingDrag = false;
   _CalendarDragSession? _dragSession;
   _CalendarResizeSession? _resizeSession;
+  final GlobalKey _calendarHostKey = GlobalKey();
+  OverlayEntry? _fullscreenOverlay;
+  bool _isCalendarFullscreen = false;
+  double? _calendarHostHeight;
+  WidgetBuilder? _fullscreenCalendarBuilder;
+  Future<void> Function()? _closeFullscreenOverlay;
+  bool _calendarViewSyncScheduled = false;
 
   @override
   void initState() {
@@ -66,14 +80,70 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   @override
   void dispose() {
+    _fullscreenOverlay?.remove();
     _calendarController.dispose();
     super.dispose();
   }
 
+  void _toggleCalendarFullscreen({required bool isFullscreen}) {
+    if (isFullscreen) {
+      unawaited(_closeFullscreenOverlay?.call());
+    } else {
+      _openCalendarFullscreen();
+    }
+  }
+
+  void _openCalendarFullscreen() {
+    if (_isCalendarFullscreen || _fullscreenCalendarBuilder == null) {
+      return;
+    }
+
+    final hostContext = _calendarHostKey.currentContext;
+    final sourceRect = hostContext == null
+        ? null
+        : globalRectOnScreen(hostContext);
+    if (sourceRect == null) {
+      return;
+    }
+
+    final box = hostContext!.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      _calendarHostHeight = box.size.height;
+    }
+
+    _fullscreenOverlay = OverlayEntry(
+      builder: (overlayContext) {
+        return AppointmentCalendarFullscreenOverlay(
+          sourceRect: sourceRect,
+          onClose: _closeCalendarFullscreen,
+          onReady: (close) => _closeFullscreenOverlay = close,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.space4),
+            child: _fullscreenCalendarBuilder!(overlayContext),
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_fullscreenOverlay!);
+    setState(() => _isCalendarFullscreen = true);
+  }
+
+  void _closeCalendarFullscreen() {
+    _closeFullscreenOverlay = null;
+    _fullscreenOverlay?.remove();
+    _fullscreenOverlay = null;
+    if (mounted) {
+      setState(() => _isCalendarFullscreen = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final canAccess = ref.watch(permissionServiceProvider).canAccessAppointments();
+    final colors = context.appColors;
+    final canAccess = ref
+        .watch(permissionServiceProvider)
+        .canAccessAppointments();
     if (!canAccess) {
       return const _CalendarPermissionDenied();
     }
@@ -83,97 +153,186 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final authState = ref.watch(authSessionProvider);
     final branchesAsync = ref.watch(appointmentCalendarBranchesProvider);
     final doctorsAsync = ref.watch(appointmentCalendarDoctorsProvider);
-    final branches = branchesAsync.maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
-    final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
-    final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
+    final branches = branchesAsync.maybeWhen(
+      data: (items) => items,
+      orElse: () => const <BranchListItem>[],
+    );
+    final selectedBranch = branches
+        .where((item) => item.id == state.selectedBranchId)
+        .firstOrNull;
+    final schedule = AppointmentCalendarDisplay.resolveBranchSchedule(
+      selectedBranch?.workingSchedule,
+    );
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(
       state.items,
       schedule,
       selectedStatuses: state.selectedStatuses,
     );
-    final allDoctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
-    final doctors = _filteredDoctors(allDoctors, selectedDoctorId: state.selectedDoctorId, mode: state.mode);
-    final hasActiveFilters = state.hasActiveFilters(initialBranchId: authState.context?.activeBranchId);
-    final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
-    final oddResourceRowColor = colors.muted.withValues(alpha: 0.3);
+    final allDoctors = doctorsAsync.maybeWhen(
+      data: (items) => items,
+      orElse: () => const <StaffListItem>[],
+    );
+    final doctors = _filteredDoctors(
+      allDoctors,
+      selectedDoctorId: state.selectedDoctorId,
+      mode: state.mode,
+    );
+    final hasActiveFilters = state.hasActiveFilters(
+      initialBranchId: authState.context?.activeBranchId,
+    );
+    final canCreate = ref
+        .watch(permissionServiceProvider)
+        .canCreateAppointments();
+    final canCancel = ref
+        .watch(permissionServiceProvider)
+        .canCancelAppointments();
+    final oddResourceRowColor = colors.surfaceMuted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
     if (!state.loading) {
       if (_dragSession == null && _resizeSession == null) {
-        _syncDataSource(
+        _scheduleDataSourceSync(
           visibleItems,
           doctors: doctors,
           includeDoctorResources: _usesDoctorResources(state.mode),
-          evenResourceRowColor: colors.background,
+          evenResourceRowColor: colors.surfaceCanvas,
           oddResourceRowColor: oddResourceRowColor,
           highlightedStatuses: state.selectedStatuses,
+          brightness: Theme.of(context).brightness,
         );
       }
-      _syncCalendarView(state);
+      _scheduleCalendarViewSync();
     }
 
     final isClosedDay =
-        (state.mode == AppointmentCalendarMode.day || state.mode == AppointmentCalendarMode.doctors) &&
+        (state.mode == AppointmentCalendarMode.day ||
+            state.mode == AppointmentCalendarMode.doctors) &&
         AppointmentCalendarDisplay.isClosedOnDate(schedule, state.focusDate);
 
-    return Material(
-      color: colors.background,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!state.loading && state.error != null) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.sm, SpacingTokens.lg, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(state.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  const SizedBox(height: SpacingTokens.sm),
-                  AppButton(label: 'Retry', variant: AppButtonVariant.secondary, onPressed: controller.refresh),
-                ],
-              ),
+    _fullscreenCalendarBuilder = (overlayContext) {
+      final overlayHeight =
+          MediaQuery.sizeOf(overlayContext).height - (AppSpacing.space4 * 2);
+      return _buildCalendar(
+        context: overlayContext,
+        colors: overlayContext.appColors,
+        state: state,
+        controller: controller,
+        branchesAsync: branchesAsync,
+        doctorsAsync: doctorsAsync,
+        schedule: schedule,
+        doctors: doctors,
+        canCreate: canCreate,
+        canCancel: canCancel,
+        visibleItems: visibleItems,
+        oddResourceRowColor: oddResourceRowColor,
+        loading: state.loading,
+        viewportHeight: overlayHeight,
+        hasActiveFilters: hasActiveFilters,
+        isFullscreen: true,
+      );
+    };
+    if (_isCalendarFullscreen) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _fullscreenOverlay?.markNeedsBuild(),
+      );
+    }
+
+    final onBookAppointment = _bookAppointmentAction(
+      canCreate: canCreate,
+      state: state,
+      schedule: schedule,
+      doctors: doctors,
+    );
+
+    return AppointmentPageShell(
+      actions: onBookAppointment == null
+          ? null
+          : AppButton(
+              size: AppButtonSize.md,
+              onPressed: onBookAppointment,
+              child: const Text('Book appointment'),
             ),
-          ],
-          if (!state.loading && state.error == null && isClosedDay)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.sm, SpacingTokens.lg, 0),
-              child: Text(
-                'This branch is closed on ${_weekdayLabel(state.focusDate)}.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
+      child: LayoutBuilder(
+        builder: (context, outerConstraints) {
+          final hasBoundedHeight = outerConstraints.maxHeight.isFinite;
+          final fallbackCalendarHeight =
+              (MediaQuery.sizeOf(context).height * 0.65).clamp(480.0, 900.0);
+
+          final calendarHost = LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportHeight = hasBoundedHeight
+                  ? constraints.maxHeight
+                  : fallbackCalendarHeight;
+              final calendar = _buildCalendar(
+                context: context,
+                colors: colors,
+                state: state,
+                controller: controller,
+                branchesAsync: branchesAsync,
+                doctorsAsync: doctorsAsync,
+                schedule: schedule,
+                doctors: doctors,
+                canCreate: canCreate,
+                canCancel: canCancel,
+                visibleItems: visibleItems,
+                oddResourceRowColor: oddResourceRowColor,
+                loading: state.loading,
+                viewportHeight: viewportHeight,
+                hasActiveFilters: hasActiveFilters,
+                isFullscreen: false,
+              );
+
+              if (_isCalendarFullscreen) {
                 return SizedBox(
-                  height: constraints.maxHeight,
-                  child: _buildCalendar(
-                    context: context,
-                    colors: colors,
-                    state: state,
-                    controller: controller,
-                    branchesAsync: branchesAsync,
-                    doctorsAsync: doctorsAsync,
-                    schedule: schedule,
-                    doctors: doctors,
-                    canCreate: canCreate,
-                    visibleItems: visibleItems,
-                    oddResourceRowColor: oddResourceRowColor,
-                    loading: state.loading,
-                    viewportHeight: constraints.maxHeight - appointmentCalendarHeaderHeight,
-                    hasActiveFilters: hasActiveFilters,
-                  ),
+                  key: _calendarHostKey,
+                  height: _calendarHostHeight,
+                  child: const SizedBox.shrink(),
                 );
-              },
-            ),
-          ),
-        ],
+              }
+
+              return KeyedSubtree(key: _calendarHostKey, child: calendar);
+            },
+          );
+
+          final calendarArea = hasBoundedHeight
+              ? Expanded(child: calendarHost)
+              : SizedBox(height: fallbackCalendarHeight, child: calendarHost);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!state.loading && state.error != null) ...[
+                AppEmptyState(
+                  variant: AppEmptyStateVariant.error,
+                  title: 'Could not load calendar',
+                  description: state.error,
+                  action: EmptyStateAction(
+                    label: 'Retry',
+                    onPressed: controller.refresh,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.space4),
+              ],
+              if (!state.loading && state.error == null && isClosedDay)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+                  child: Text(
+                    'This branch is closed on ${_weekdayLabel(state.focusDate)}.',
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
+                  ),
+                ),
+              calendarArea,
+            ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildCalendar({
     required BuildContext context,
-    required SemanticColors colors,
+    required AppSemanticColors colors,
     required AppointmentCalendarState state,
     required AppointmentCalendarController controller,
     required AsyncValue<List<BranchListItem>> branchesAsync,
@@ -181,45 +340,72 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required BranchWorkingSchedule schedule,
     required List<StaffListItem> doctors,
     required bool canCreate,
+    required bool canCancel,
     required List<AppointmentListItem> visibleItems,
     required Color oddResourceRowColor,
     required bool loading,
     required double viewportHeight,
     required bool hasActiveFilters,
+    required bool isFullscreen,
   }) {
+    final availableHeight = (viewportHeight - appointmentCalendarToolbarHeight)
+        .clamp(0.0, viewportHeight);
+    final calendarBodyHeight = availableHeight < 240.0
+        ? availableHeight
+        : availableHeight.clamp(240.0, viewportHeight);
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
       mode: state.mode,
       focusDate: state.focusDate,
-      viewportHeight: viewportHeight,
+      viewportHeight: calendarBodyHeight,
+      timeIntervalMinutes: state.timeIntervalMinutes,
     );
-    final textTheme = Theme.of(context).textTheme;
-    final pageBackground = colors.background;
+    final timelineVisibleResourceCount =
+        state.mode == AppointmentCalendarMode.doctors
+        ? (calendarBodyHeight / _timelineResourceRowHeight).floor().clamp(1, 20)
+        : -1;
+    final calendarSurface = colors.surfaceDefault;
     final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);
+    final usesCustomViewHeader = AppointmentCalendarViewHeader.showsFor(
+      state.mode,
+    );
+    final syncfusionViewHeaderHeight = _syncfusionViewHeaderHeight(
+      state.mode,
+      usesCustomViewHeader,
+    );
+    final viewHeaderTextStyle = AppTypography.bodyStrong(context).copyWith(
+      color: colors.textPrimary,
+      fontSize: 14,
+      height: 18 / 14,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     final calendarTheme = SfCalendarThemeData(
-      backgroundColor: pageBackground,
-      headerBackgroundColor: pageBackground,
-      viewHeaderBackgroundColor: pageBackground,
-      agendaBackgroundColor: pageBackground,
-      allDayPanelColor: pageBackground,
-      cellBorderColor: colors.border,
-      headerTextStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
-      viewHeaderDayTextStyle: textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
-      viewHeaderDateTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
-      timeTextStyle: textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
-      todayHighlightColor: colors.primary,
+      backgroundColor: calendarSurface,
+      headerBackgroundColor: calendarSurface,
+      viewHeaderBackgroundColor: calendarSurface,
+      agendaBackgroundColor: calendarSurface,
+      allDayPanelColor: calendarSurface,
+      cellBorderColor: colors.borderSubtle,
+      headerTextStyle: AppTypography.bodyStrong(
+        context,
+      ).copyWith(color: colors.textPrimary),
+      viewHeaderDayTextStyle: viewHeaderTextStyle,
+      viewHeaderDateTextStyle: viewHeaderTextStyle,
+      timeTextStyle: AppTypography.caption(
+        context,
+      ).copyWith(color: colors.textSecondary),
+      todayHighlightColor: Colors.transparent,
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppointmentCalendarHeaderBar(
+        AppointmentCalendarToolbar(
           branchesAsync: branchesAsync,
           doctorsAsync: doctorsAsync,
           appliedBranchId: state.selectedBranchId,
           appliedDoctorId: state.selectedDoctorId,
           appliedStatuses: state.selectedStatuses,
-          showDoctorFilter: true,
           hasActiveFilters: hasActiveFilters,
           onApplyFilters: (filters) => controller.applyFilters(
             branchId: filters.branchId,
@@ -227,241 +413,365 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             statuses: filters.statuses,
           ),
           onClearFilters: controller.clearFilters,
-          onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
-              ? () {
-                  final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
-                    tappedDate: state.focusDate,
-                    schedule: schedule,
-                    mode: state.mode,
-                    slotMinutes: slotLayout.timeIntervalMinutes,
-                  );
-                  unawaited(
-                    _showBookingSheet(
-                      branchId: state.selectedBranchId!,
-                      schedule: schedule,
-                      slotStart: slotRange.start,
-                      slotEnd: slotRange.end,
-                      initialDoctorId: state.selectedDoctorId,
-                      doctors: doctors,
-                    ),
-                  );
-                }
-              : null,
+          isFullscreen: isFullscreen,
+          onToggleFullscreen: () =>
+              _toggleCalendarFullscreen(isFullscreen: isFullscreen),
         ),
+        const SizedBox(height: AppSpacing.space4),
         Expanded(
-          child: loading
-              ? const AppointmentCalendarSkeleton()
-              : SfCalendarTheme(
-                  data: calendarTheme,
-                  child: SfCalendar(
-                    controller: _calendarController,
-                    view: _calendarViewFor(state.mode),
-                    allowedViews: const [
-                      CalendarView.day,
-                      CalendarView.week,
-                      CalendarView.month,
-                      CalendarView.schedule,
-                      CalendarView.timelineDay,
-                    ],
-                    dataSource: _dataSource,
-                    initialDisplayDate: state.focusDate,
-                    backgroundColor: pageBackground,
-                    cellBorderColor: colors.border,
-                    headerHeight: 0,
-                    resourceViewSettings: ResourceViewSettings(
-                      showAvatar: false,
-                      size: _timelineResourceRowHeight,
-                      visibleResourceCount: -1,
-                      displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
-                    ),
-                    showNavigationArrow: false,
-                    showTodayButton: false,
-                    showDatePickerButton: false,
-                    allowViewNavigation: false,
-                    headerStyle: CalendarHeaderStyle(
-                      backgroundColor: pageBackground,
-                      textStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
-                    ),
-                    viewHeaderStyle: ViewHeaderStyle(backgroundColor: pageBackground),
-                    selectionDecoration: const BoxDecoration(
-                      color: Colors.transparent,
-                      border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
-                    ),
-                    blackoutDates: state.mode == AppointmentCalendarMode.month
-                        ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                        : const [],
-                    timeSlotViewSettings: TimeSlotViewSettings(
-                      startHour: slotLayout.startHour,
-                      endHour: slotLayout.endHour,
-                      timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                      timeIntervalHeight: slotLayout.timeIntervalHeight,
-                      timelineAppointmentHeight: _timelineResourceRowHeight,
-                      nonWorkingDays: slotLayout.nonWorkingDays,
-                      timeFormat: 'HH:mm',
-                      dateFormat: 'd',
-                      dayFormat: 'EEE',
-                    ),
-                    monthViewSettings: const MonthViewSettings(
-                      showAgenda: true,
-                      appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
-                    ),
-                    scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
-                    specialRegions: [
-                      for (final region in slotLayout.shadeRegions)
-                        TimeRegion(
-                          startTime: region.start,
-                          endTime: region.end,
-                          enablePointerInteraction: false,
-                          color: colors.muted.withValues(alpha: 0.45),
-                        ),
-                      if (state.mode == AppointmentCalendarMode.doctors)
-                        ...AppointmentCalendarDisplay.resourceRowStripeRegions(
-                          resourceIds: [
-                            for (final resource in _dataSource.resources ?? const <CalendarResource>[]) resource.id,
-                          ],
-                          focusDate: state.focusDate,
-                          startHour: slotLayout.startHour,
-                          endHour: slotLayout.endHour,
-                          stripeColor: oddResourceRowColor,
-                        ),
-                    ],
-                    appointmentBuilder: (context, details) {
-                      final id = appointmentIdFromAppointmentDetails(details);
-                      if (id != null &&
-                          (_dragSession?.item.id == id || _resizeSession?.item.id == id) &&
-                          !AppointmentCalendarDisplay.isAlignedToSlotGrid(
-                            details.bounds,
-                            slotLayout.timeIntervalHeight,
-                            timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
-                          )) {
-                        return const SizedBox.shrink();
-                      }
-                      final isRevealed = id == null || _revealedAppointmentIds.contains(id);
-                      final item = id == null ? null : state.items.where((entry) => entry.id == id).firstOrNull;
-                      final isDimmed =
-                          item != null &&
-                          !AppointmentCalendarDisplay.isStatusHighlighted(item.status, state.selectedStatuses);
-                      return Skeletonizer(
-                        enabled: !isRevealed,
-                        enableSwitchAnimation: true,
-                        effect: ShimmerEffect(
-                          baseColor: colors.muted,
-                          highlightColor: colors.muted.withValues(alpha: 0.55),
-                        ),
-                        containersColor: colors.muted,
-                        child: _AppointmentTile(
-                          details: details,
-                          isDimmed: isDimmed,
-                          onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
-                        ),
-                      );
-                    },
-                    onViewChanged: (details) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        unawaited(_onViewChanged(details, controller));
-                      });
-                    },
-                    allowDragAndDrop: allowDragAndDrop,
-                    allowAppointmentResize: allowDragAndDrop,
-                    dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
-                    onDragStart: allowDragAndDrop
-                        ? (details) => _onAppointmentDragStart(
-                            details,
-                            items: visibleItems,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.background,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onDragUpdate: allowDragAndDrop
-                        ? (details) => _onAppointmentDragUpdate(
-                            details,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.background,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onTap: (details) {
-                      _onCalendarSelectionTap(details, state.mode);
-                      _onCalendarTap(
-                        details,
-                        state.items,
-                        branchId: state.selectedBranchId,
-                        schedule: schedule,
-                        mode: state.mode,
-                        slotMinutes: slotLayout.timeIntervalMinutes,
-                        doctors: doctors,
-                        canCreate: canCreate,
-                      );
-                    },
-                    onDragEnd: allowDragAndDrop
-                        ? (details) {
-                            unawaited(
-                              _onAppointmentDragEnd(
-                                details,
-                                items: visibleItems,
-                                schedule: schedule,
-                                mode: state.mode,
-                                slotMinutes: slotLayout.timeIntervalMinutes,
-                                doctors: doctors,
-                                includeDoctorResources: _usesDoctorResources(state.mode),
-                                evenResourceRowColor: colors.background,
-                                oddResourceRowColor: oddResourceRowColor,
+          child: AppCard(
+            variant: CardVariant.flat,
+            padding: CardPadding.sm,
+            child: SizedBox.expand(
+              child: loading
+                  ? const _CalendarSkeletonBody()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (usesCustomViewHeader)
+                          AppointmentCalendarViewHeader(
+                            mode: state.mode,
+                            focusDate: state.focusDate,
+                            colors: colors,
+                          ),
+                        Expanded(
+                          child: SfCalendarTheme(
+                            data: calendarTheme,
+                            child: SfCalendar(
+                              controller: _calendarController,
+                              view: _calendarViewFor(state.mode),
+                              allowedViews: const [
+                                CalendarView.day,
+                                CalendarView.week,
+                                CalendarView.month,
+                                CalendarView.schedule,
+                                CalendarView.timelineDay,
+                              ],
+                              dataSource: _dataSource,
+                              initialDisplayDate: state.focusDate,
+                              backgroundColor: calendarSurface,
+                              cellBorderColor: colors.borderSubtle,
+                              headerHeight: 0,
+                              firstDayOfWeek: DateTime.monday,
+                              viewHeaderHeight: syncfusionViewHeaderHeight,
+                              todayHighlightColor: Colors.transparent,
+                              todayTextStyle: viewHeaderTextStyle.copyWith(
+                                color: colors.actionPrimary,
                               ),
-                            );
-                          }
-                        : null,
-                    onAppointmentResizeStart: allowDragAndDrop
-                        ? (details) => _onAppointmentResizeStart(
-                            details,
-                            items: visibleItems,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.background,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onAppointmentResizeUpdate: allowDragAndDrop
-                        ? (details) => _onAppointmentResizeUpdate(
-                            details,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.background,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onAppointmentResizeEnd: allowDragAndDrop
-                        ? (details) {
-                            unawaited(
-                              _onAppointmentResizeEnd(
-                                details,
-                                items: visibleItems,
-                                schedule: schedule,
-                                slotMinutes: slotLayout.timeIntervalMinutes,
-                                doctors: doctors,
-                                includeDoctorResources: _usesDoctorResources(state.mode),
-                                evenResourceRowColor: colors.background,
-                                oddResourceRowColor: oddResourceRowColor,
+                              resourceViewSettings: ResourceViewSettings(
+                                showAvatar: false,
+                                size: _timelineResourceRowHeight,
+                                visibleResourceCount:
+                                    timelineVisibleResourceCount,
+                                displayNameTextStyle:
+                                    AppTypography.bodySm(context).copyWith(
+                                      color: colors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
-                            );
-                          }
-                        : null,
-                  ),
-                ),
+                              showNavigationArrow: false,
+                              showTodayButton: false,
+                              showDatePickerButton: false,
+                              allowViewNavigation: false,
+                              headerStyle: CalendarHeaderStyle(
+                                backgroundColor: calendarSurface,
+                                textStyle: AppTypography.bodyStrong(
+                                  context,
+                                ).copyWith(color: colors.textPrimary),
+                              ),
+                              viewHeaderStyle: ViewHeaderStyle(
+                                backgroundColor: calendarSurface,
+                              ),
+                              selectionDecoration: const BoxDecoration(
+                                color: Colors.transparent,
+                                border: Border.fromBorderSide(
+                                  BorderSide(
+                                    color: Colors.transparent,
+                                    width: 0,
+                                  ),
+                                ),
+                              ),
+                              blackoutDates:
+                                  state.mode == AppointmentCalendarMode.month
+                                  ? AppointmentCalendarDisplay.closedDatesInMonth(
+                                      schedule,
+                                      state.focusDate,
+                                    )
+                                  : const [],
+                              timeSlotViewSettings: TimeSlotViewSettings(
+                                startHour: slotLayout.startHour,
+                                endHour: slotLayout.endHour,
+                                timeInterval: Duration(
+                                  minutes: slotLayout.timeIntervalMinutes,
+                                ),
+                                timeIntervalHeight:
+                                    slotLayout.timeIntervalHeight,
+                                timeIntervalWidth: slotLayout.timeIntervalWidth,
+                                timelineAppointmentHeight:
+                                    _timelineResourceRowHeight,
+                                nonWorkingDays: slotLayout.nonWorkingDays,
+                                timeFormat: 'HH:mm',
+                                dateFormat: '',
+                                dayFormat: 'd EEE',
+                              ),
+                              monthViewSettings: const MonthViewSettings(
+                                showAgenda: true,
+                                appointmentDisplayMode:
+                                    MonthAppointmentDisplayMode.indicator,
+                                agendaItemHeight: 56,
+                              ),
+                              scheduleViewSettings: const ScheduleViewSettings(
+                                appointmentItemHeight: 56,
+                              ),
+                              specialRegions: [
+                                for (final region in slotLayout.shadeRegions)
+                                  TimeRegion(
+                                    startTime: region.start,
+                                    endTime: region.end,
+                                    enablePointerInteraction: false,
+                                    color: colors.surfaceMuted.withValues(
+                                      alpha: 0.45,
+                                    ),
+                                  ),
+                                if (state.mode ==
+                                    AppointmentCalendarMode.doctors)
+                                  ...AppointmentCalendarDisplay.resourceRowStripeRegions(
+                                    resourceIds: [
+                                      for (final resource
+                                          in _dataSource.resources ??
+                                              const <CalendarResource>[])
+                                        resource.id,
+                                    ],
+                                    focusDate: state.focusDate,
+                                    startHour: slotLayout.startHour,
+                                    endHour: slotLayout.endHour,
+                                    stripeColor: oddResourceRowColor,
+                                  ),
+                              ],
+                              appointmentBuilder: (context, details) {
+                                final id = appointmentIdFromAppointmentDetails(
+                                  details,
+                                );
+                                if (id != null &&
+                                    (_dragSession?.item.id == id ||
+                                        _resizeSession?.item.id == id) &&
+                                    !AppointmentCalendarDisplay.isAlignedToSlotGrid(
+                                      details.bounds,
+                                      state.mode ==
+                                              AppointmentCalendarMode.doctors
+                                          ? slotLayout.timeIntervalWidth
+                                          : slotLayout.timeIntervalHeight,
+                                      timelineAxisIsHorizontal:
+                                          state.mode ==
+                                          AppointmentCalendarMode.doctors,
+                                    )) {
+                                  return const SizedBox.shrink();
+                                }
+                                final isRevealed =
+                                    id == null ||
+                                    _revealedAppointmentIds.contains(id);
+                                final item = id == null
+                                    ? null
+                                    : state.items
+                                          .where((entry) => entry.id == id)
+                                          .firstOrNull;
+                                final isDimmed =
+                                    item != null &&
+                                    !AppointmentCalendarDisplay.isStatusHighlighted(
+                                      item.status,
+                                      state.selectedStatuses,
+                                    );
+                                final menuEntries = item != null && isRevealed
+                                    ? appointmentCalendarTileMenuEntries(
+                                        item: item,
+                                        canEdit: canCreate,
+                                        canCancel: canCancel,
+                                        onEdit: () => _editAppointment(
+                                          item,
+                                          branchId: state.selectedBranchId,
+                                          schedule: schedule,
+                                          doctors: doctors,
+                                          branchName: branchesAsync.maybeWhen(
+                                            data: (branches) => branches
+                                                .where(
+                                                  (entry) =>
+                                                      entry.id ==
+                                                      state.selectedBranchId,
+                                                )
+                                                .firstOrNull
+                                                ?.name,
+                                            orElse: () => null,
+                                          ),
+                                        ),
+                                        onCancel: () =>
+                                            _cancelAppointment(item),
+                                      )
+                                    : null;
+                                return Skeletonizer(
+                                  enabled: !isRevealed,
+                                  enableSwitchAnimation: true,
+                                  effect: ShimmerEffect(
+                                    baseColor: colors.surfaceMuted,
+                                    highlightColor: colors.surfaceMuted
+                                        .withValues(alpha: 0.55),
+                                  ),
+                                  containersColor: colors.surfaceMuted,
+                                  child: AppointmentCalendarTile(
+                                    details: details,
+                                    item: item,
+                                    mode: state.mode,
+                                    isDimmed: isDimmed,
+                                    onTap: isRevealed
+                                        ? () => _onAppointmentTileTap(
+                                            details,
+                                            state.items,
+                                          )
+                                        : () {},
+                                    contextMenuEntries: menuEntries,
+                                  ),
+                                );
+                              },
+                              onViewChanged: (details) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
+                                  unawaited(
+                                    _onViewChanged(details, controller),
+                                  );
+                                });
+                              },
+                              allowDragAndDrop: allowDragAndDrop,
+                              allowAppointmentResize: allowDragAndDrop,
+                              dragAndDropSettings: const DragAndDropSettings(
+                                showTimeIndicator: false,
+                              ),
+                              onDragStart: allowDragAndDrop
+                                  ? (details) => _onAppointmentDragStart(
+                                      details,
+                                      items: visibleItems,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
+                                      doctors: doctors,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
+                                      oddResourceRowColor: oddResourceRowColor,
+                                    )
+                                  : null,
+                              onDragUpdate: allowDragAndDrop
+                                  ? (details) => _onAppointmentDragUpdate(
+                                      details,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
+                                      doctors: doctors,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
+                                      oddResourceRowColor: oddResourceRowColor,
+                                    )
+                                  : null,
+                              onTap: (details) {
+                                _onCalendarSelectionTap(details, state.mode);
+                                _onCalendarTap(
+                                  details,
+                                  state.items,
+                                  branchId: state.selectedBranchId,
+                                  schedule: schedule,
+                                  mode: state.mode,
+                                  slotMinutes: slotLayout.timeIntervalMinutes,
+                                  doctors: doctors,
+                                  canCreate: canCreate,
+                                );
+                              },
+                              onDragEnd: allowDragAndDrop
+                                  ? (details) {
+                                      unawaited(
+                                        _onAppointmentDragEnd(
+                                          details,
+                                          items: visibleItems,
+                                          schedule: schedule,
+                                          mode: state.mode,
+                                          slotMinutes:
+                                              slotLayout.timeIntervalMinutes,
+                                          doctors: doctors,
+                                          includeDoctorResources:
+                                              _usesDoctorResources(state.mode),
+                                          evenResourceRowColor:
+                                              colors.surfaceCanvas,
+                                          oddResourceRowColor:
+                                              oddResourceRowColor,
+                                        ),
+                                      );
+                                    }
+                                  : null,
+                              onAppointmentResizeStart: allowDragAndDrop
+                                  ? (details) => _onAppointmentResizeStart(
+                                      details,
+                                      items: visibleItems,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
+                                      doctors: doctors,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
+                                      oddResourceRowColor: oddResourceRowColor,
+                                    )
+                                  : null,
+                              onAppointmentResizeUpdate: allowDragAndDrop
+                                  ? (details) => _onAppointmentResizeUpdate(
+                                      details,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
+                                      doctors: doctors,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
+                                      oddResourceRowColor: oddResourceRowColor,
+                                    )
+                                  : null,
+                              onAppointmentResizeEnd: allowDragAndDrop
+                                  ? (details) {
+                                      unawaited(
+                                        _onAppointmentResizeEnd(
+                                          details,
+                                          items: visibleItems,
+                                          schedule: schedule,
+                                          slotMinutes:
+                                              slotLayout.timeIntervalMinutes,
+                                          doctors: doctors,
+                                          includeDoctorResources:
+                                              _usesDoctorResources(state.mode),
+                                          evenResourceRowColor:
+                                              colors.surfaceCanvas,
+                                          oddResourceRowColor:
+                                              oddResourceRowColor,
+                                        ),
+                                      );
+                                    }
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  void _scheduleRevealIfNeeded(List<AppointmentListItem> items, {required bool loading}) {
+  void _scheduleRevealIfNeeded(
+    List<AppointmentListItem> items, {
+    required bool loading,
+  }) {
     if (loading) {
-      if (_revealedAppointmentIds.isEmpty && _lastRevealSourceFingerprint == -1) {
+      if (_revealedAppointmentIds.isEmpty &&
+          _lastRevealSourceFingerprint == -1) {
         return;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -487,7 +797,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         return;
       }
       _lastRevealSourceFingerprint = sourceFingerprint;
-      _startSkeletonReveal(items.map((item) => item.id).toList(growable: false));
+      _startSkeletonReveal(
+        items.map((item) => item.id).toList(growable: false),
+      );
     });
   }
 
@@ -509,6 +821,31 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     });
   }
 
+  void _scheduleDataSourceSync(
+    List<AppointmentListItem> items, {
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+    required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _dragSession != null || _resizeSession != null) {
+        return;
+      }
+      _syncDataSource(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+        highlightedStatuses: highlightedStatuses,
+        brightness: brightness,
+      );
+    });
+  }
+
   void _syncDataSource(
     List<AppointmentListItem> items, {
     required List<StaffListItem> doctors,
@@ -516,6 +853,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
     required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
   }) {
     final itemsFingerprint = Object.hashAll(
       items.map(
@@ -539,14 +877,18 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final statusFilterFingerprint = Object.hashAll(
       highlightedStatuses.toList()..sort((a, b) => a.index.compareTo(b.index)),
     );
+    final themeFingerprint = brightness.index;
     if (itemsFingerprint == _itemsFingerprint &&
         resourceFingerprint == _resourceFingerprint &&
-        statusFilterFingerprint == _statusFilterFingerprint) {
+        statusFilterFingerprint == _statusFilterFingerprint &&
+        themeFingerprint == _themeFingerprint) {
       return;
     }
     _itemsFingerprint = itemsFingerprint;
     _resourceFingerprint = resourceFingerprint;
     _statusFilterFingerprint = statusFilterFingerprint;
+    _themeFingerprint = themeFingerprint;
+    _syncedBrightness = brightness;
     _dataSource.updateItems(
       items,
       doctors: doctors,
@@ -554,7 +896,22 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       evenResourceRowColor: evenResourceRowColor,
       oddResourceRowColor: oddResourceRowColor,
       highlightedStatuses: highlightedStatuses,
+      brightness: brightness,
     );
+  }
+
+  void _scheduleCalendarViewSync() {
+    if (_calendarViewSyncScheduled) {
+      return;
+    }
+    _calendarViewSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calendarViewSyncScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      _syncCalendarView(ref.read(appointmentCalendarProvider));
+    });
   }
 
   void _syncCalendarView(AppointmentCalendarState state) {
@@ -569,7 +926,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
   }
 
-  Future<void> _onViewChanged(ViewChangedDetails details, AppointmentCalendarController controller) async {
+  Future<void> _onViewChanged(
+    ViewChangedDetails details,
+    AppointmentCalendarController controller,
+  ) async {
     final visible = details.visibleDates;
     if (visible.isEmpty) {
       return;
@@ -587,17 +947,28 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
     final anchor = visible[visible.length ~/ 2];
     final normalized = DateTime(anchor.year, anchor.month, anchor.day);
-    final effectiveMode = syncedMode ?? ref.read(appointmentCalendarProvider).mode;
-    if (_isSameCalendarPeriod(normalized, ref.read(appointmentCalendarProvider).focusDate, effectiveMode)) {
+    final effectiveMode =
+        syncedMode ?? ref.read(appointmentCalendarProvider).mode;
+    if (_isSameCalendarPeriod(
+      normalized,
+      ref.read(appointmentCalendarProvider).focusDate,
+      effectiveMode,
+    )) {
       return;
     }
     await controller.setFocusDate(normalized);
   }
 
-  static bool _isSameCalendarPeriod(DateTime a, DateTime b, AppointmentCalendarMode mode) {
+  static bool _isSameCalendarPeriod(
+    DateTime a,
+    DateTime b,
+    AppointmentCalendarMode mode,
+  ) {
     return switch (mode) {
-      AppointmentCalendarMode.day => a.year == b.year && a.month == b.month && a.day == b.day,
-      AppointmentCalendarMode.doctors => a.year == b.year && a.month == b.month && a.day == b.day,
+      AppointmentCalendarMode.day =>
+        a.year == b.year && a.month == b.month && a.day == b.day,
+      AppointmentCalendarMode.doctors =>
+        a.year == b.year && a.month == b.month && a.day == b.day,
       AppointmentCalendarMode.week => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.schedule => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.month => a.year == b.year && a.month == b.month,
@@ -606,7 +977,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   static DateTime _weekStart(DateTime date) {
     final dayStart = DateTime(date.year, date.month, date.day);
-    return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+    return dayStart.subtract(
+      Duration(days: dayStart.weekday - DateTime.monday),
+    );
   }
 
   void _onAppointmentDragStart(
@@ -662,7 +1035,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final snappedStart = AppointmentCalendarDisplay.snapTimeToSlot(draggingTime, slotMinutes: slotMinutes);
+    final snappedStart = AppointmentCalendarDisplay.snapTimeToSlot(
+      draggingTime,
+      slotMinutes: slotMinutes,
+    );
     if (snappedStart == session.previewStart) {
       return;
     }
@@ -748,7 +1124,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
     final duration = item.endTime.difference(item.startTime);
     final newStart =
-        session?.previewStart ?? AppointmentCalendarDisplay.snapTimeToSlot(droppingTime, slotMinutes: slotMinutes);
+        session?.previewStart ??
+        AppointmentCalendarDisplay.snapTimeToSlot(
+          droppingTime,
+          slotMinutes: slotMinutes,
+        );
     final newEnd = newStart.add(duration);
 
     setState(() => _dragSession = null);
@@ -764,7 +1144,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       oddResourceRowColor: oddResourceRowColor,
     );
 
-    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: newStart)) {
+    if (AppointmentRescheduleValidation.isNoOpMove(
+      appointment: item,
+      newStart: newStart,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -776,10 +1159,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     if (mode == AppointmentCalendarMode.doctors) {
-      final resourceError = AppointmentRescheduleValidation.validateDoctorResourceMove(
-        appointment: item,
-        targetDoctorId: doctorIdFromCalendarResource(details.targetResource),
-      );
+      final resourceError =
+          AppointmentRescheduleValidation.validateDoctorResourceMove(
+            appointment: item,
+            targetDoctorId: doctorIdFromCalendarResource(
+              details.targetResource,
+            ),
+          );
       if (resourceError != null) {
         _revertCalendarItems(
           items,
@@ -789,7 +1175,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           oddResourceRowColor: oddResourceRowColor,
         );
         if (mounted) {
-          AppToast.error(context, message: resourceError);
+          appToast(
+            context,
+            AppToastInput(
+              message: resourceError,
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
         return;
       }
@@ -810,7 +1202,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: validationError);
+        appToast(
+          context,
+          AppToastInput(
+            message: validationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -848,7 +1246,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final finalStart = confirmed.start;
     final finalEnd = confirmed.end;
 
-    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: finalStart) &&
+    if (AppointmentRescheduleValidation.isNoOpMove(
+          appointment: item,
+          newStart: finalStart,
+        ) &&
         _isSameInstant(finalEnd, item.endTime)) {
       _revertCalendarItems(
         items,
@@ -860,13 +1261,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final postEditValidationError = AppointmentRescheduleValidation.validateMove(
-      appointment: item,
-      newStart: finalStart,
-      newEnd: finalEnd,
-      schedule: schedule,
-      branchAppointments: items,
-    );
+    final postEditValidationError =
+        AppointmentRescheduleValidation.validateMove(
+          appointment: item,
+          newStart: finalStart,
+          newEnd: finalEnd,
+          schedule: schedule,
+          branchAppointments: items,
+        );
     if (postEditValidationError != null) {
       _revertCalendarItems(
         items,
@@ -876,7 +1278,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: postEditValidationError);
+        appToast(
+          context,
+          AppToastInput(
+            message: postEditValidationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -885,7 +1293,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     try {
       await ref
           .read(appointmentRepositoryProvider)
-          .rescheduleAppointment(appointmentId: item.id, startTime: finalStart, endTime: finalEnd);
+          .rescheduleAppointment(
+            appointmentId: item.id,
+            startTime: finalStart,
+            endTime: finalEnd,
+          );
       if (!mounted) {
         return;
       }
@@ -893,7 +1305,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       if (!mounted) {
         return;
       }
-      AppToast.success(context, message: 'Appointment moved to ${_formatRange(finalStart, finalEnd)}.');
+      appToast(
+        context,
+        AppToastInput(
+          message:
+              'Appointment moved to ${_formatRange(finalStart, finalEnd)}.',
+          variant: AppToastVariant.success,
+        ),
+      );
     } on RpcFailure catch (error) {
       _revertCalendarItems(
         items,
@@ -903,7 +1322,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: appointmentMessageForRpc(error));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (error) {
       _revertCalendarItems(
@@ -914,7 +1339,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: 'Could not move the appointment. Please try again.');
+        appToast(
+          context,
+          AppToastInput(
+            message: 'Could not move the appointment. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } finally {
       _isProcessingDrag = false;
@@ -977,11 +1408,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final snapped = AppointmentCalendarDisplay.snapTimeToSlot(resizingTime, slotMinutes: slotMinutes);
+    final snapped = AppointmentCalendarDisplay.snapTimeToSlot(
+      resizingTime,
+      slotMinutes: slotMinutes,
+    );
     final localStart = session.item.startTime.toLocal();
     final localEnd = session.item.endTime.toLocal();
     session.resizeFromStart ??=
-        (snapped.difference(localStart).inMinutes).abs() <= (snapped.difference(localEnd).inMinutes).abs();
+        (snapped.difference(localStart).inMinutes).abs() <=
+        (snapped.difference(localEnd).inMinutes).abs();
 
     if (session.resizeFromStart!) {
       session.previewStart = snapped;
@@ -1007,7 +1442,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final previewItems = [
       for (final entry in session.baseItems)
         if (entry.id == session.item.id)
-          entry.copyWith(startTime: session.previewStart, endTime: session.previewEnd)
+          entry.copyWith(
+            startTime: session.previewStart,
+            endTime: session.previewEnd,
+          )
         else
           entry,
     ];
@@ -1053,7 +1491,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final calendarAppointment = details.appointment;
     final startTime = details.startTime;
     final endTime = details.endTime;
-    if (calendarAppointment is! Appointment || startTime == null || endTime == null) {
+    if (calendarAppointment is! Appointment ||
+        startTime == null ||
+        endTime == null) {
       _clearResizeSession(items: items);
       return;
     }
@@ -1070,8 +1510,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final newStart = AppointmentCalendarDisplay.snapTimeToSlot(startTime, slotMinutes: slotMinutes);
-    final newEnd = AppointmentCalendarDisplay.snapTimeToSlot(endTime, slotMinutes: slotMinutes);
+    final newStart = AppointmentCalendarDisplay.snapTimeToSlot(
+      startTime,
+      slotMinutes: slotMinutes,
+    );
+    final newEnd = AppointmentCalendarDisplay.snapTimeToSlot(
+      endTime,
+      slotMinutes: slotMinutes,
+    );
 
     setState(() => _resizeSession = null);
 
@@ -1086,7 +1532,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       oddResourceRowColor: oddResourceRowColor,
     );
 
-    if (AppointmentRescheduleValidation.isNoOpResize(appointment: item, newStart: newStart, newEnd: newEnd)) {
+    if (AppointmentRescheduleValidation.isNoOpResize(
+      appointment: item,
+      newStart: newStart,
+      newEnd: newEnd,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -1113,7 +1563,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: validationError);
+        appToast(
+          context,
+          AppToastInput(
+            message: validationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1151,7 +1607,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final finalStart = confirmed.start;
     final finalEnd = confirmed.end;
 
-    if (AppointmentRescheduleValidation.isNoOpResize(appointment: item, newStart: finalStart, newEnd: finalEnd)) {
+    if (AppointmentRescheduleValidation.isNoOpResize(
+      appointment: item,
+      newStart: finalStart,
+      newEnd: finalEnd,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -1162,13 +1622,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final postEditValidationError = AppointmentRescheduleValidation.validateMove(
-      appointment: item,
-      newStart: finalStart,
-      newEnd: finalEnd,
-      schedule: schedule,
-      branchAppointments: items,
-    );
+    final postEditValidationError =
+        AppointmentRescheduleValidation.validateMove(
+          appointment: item,
+          newStart: finalStart,
+          newEnd: finalEnd,
+          schedule: schedule,
+          branchAppointments: items,
+        );
     if (postEditValidationError != null) {
       _revertCalendarItems(
         items,
@@ -1178,7 +1639,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: postEditValidationError);
+        appToast(
+          context,
+          AppToastInput(
+            message: postEditValidationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1187,7 +1654,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     try {
       await ref
           .read(appointmentRepositoryProvider)
-          .rescheduleAppointment(appointmentId: item.id, startTime: finalStart, endTime: finalEnd);
+          .rescheduleAppointment(
+            appointmentId: item.id,
+            startTime: finalStart,
+            endTime: finalEnd,
+          );
       if (!mounted) {
         return;
       }
@@ -1195,7 +1666,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       if (!mounted) {
         return;
       }
-      AppToast.success(context, message: 'Appointment updated to ${_formatRange(finalStart, finalEnd)}.');
+      appToast(
+        context,
+        AppToastInput(
+          message:
+              'Appointment updated to ${_formatRange(finalStart, finalEnd)}.',
+          variant: AppToastVariant.success,
+        ),
+      );
     } on RpcFailure catch (error) {
       _revertCalendarItems(
         items,
@@ -1205,7 +1683,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: appointmentMessageForRpc(error));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (error) {
       _revertCalendarItems(
@@ -1216,7 +1700,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        AppToast.error(context, message: 'Could not update the appointment. Please try again.');
+        appToast(
+          context,
+          AppToastInput(
+            message: 'Could not update the appointment. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } finally {
       _isProcessingDrag = false;
@@ -1229,6 +1719,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool includeDoctorResources,
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
+    Brightness? brightness,
   }) {
     _dataSource.updateItems(
       items,
@@ -1236,6 +1727,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       includeDoctorResources: includeDoctorResources,
       evenResourceRowColor: evenResourceRowColor,
       oddResourceRowColor: oddResourceRowColor,
+      brightness: brightness ?? _syncedBrightness,
     );
   }
 
@@ -1251,7 +1743,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   }) {
     final previewItems = [
       for (final entry in items)
-        if (entry.id == appointmentId) entry.copyWith(startTime: newStart, endTime: newEnd) else entry,
+        if (entry.id == appointmentId)
+          entry.copyWith(startTime: newStart, endTime: newEnd)
+        else
+          entry,
     ];
     _revertCalendarItems(
       previewItems,
@@ -1271,7 +1766,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     };
   }
 
-  void _onCalendarSelectionTap(CalendarTapDetails details, AppointmentCalendarMode mode) {
+  void _onCalendarSelectionTap(
+    CalendarTapDetails details,
+    AppointmentCalendarMode mode,
+  ) {
     if (details.targetElement == CalendarElement.appointment) {
       return;
     }
@@ -1279,8 +1777,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     if (mode == AppointmentCalendarMode.month) {
       final tappedDate = details.date;
       if (tappedDate != null &&
-          (details.targetElement == CalendarElement.calendarCell || details.targetElement == CalendarElement.agenda)) {
-        _calendarController.selectedDate = DateTime(tappedDate.year, tappedDate.month, tappedDate.day);
+          (details.targetElement == CalendarElement.calendarCell ||
+              details.targetElement == CalendarElement.agenda)) {
+        _calendarController.selectedDate = DateTime(
+          tappedDate.year,
+          tappedDate.month,
+          tappedDate.day,
+        );
       }
       return;
     }
@@ -1308,11 +1811,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    if (mode != AppointmentCalendarMode.day && mode != AppointmentCalendarMode.week) {
+    if (mode != AppointmentCalendarMode.day &&
+        mode != AppointmentCalendarMode.week) {
       return;
     }
 
-    if (details.targetElement != CalendarElement.calendarCell && details.targetElement != CalendarElement.agenda) {
+    if (details.targetElement != CalendarElement.calendarCell &&
+        details.targetElement != CalendarElement.agenda) {
       return;
     }
 
@@ -1335,10 +1840,43 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         slotStart: slotRange.start,
         slotEnd: slotRange.end,
         initialDoctorId:
-            doctorIdFromCalendarResource(details.resource) ?? ref.read(appointmentCalendarProvider).selectedDoctorId,
+            doctorIdFromCalendarResource(details.resource) ??
+            ref.read(appointmentCalendarProvider).selectedDoctorId,
         doctors: doctors,
       ),
     );
+  }
+
+  VoidCallback? _bookAppointmentAction({
+    required bool canCreate,
+    required AppointmentCalendarState state,
+    required BranchWorkingSchedule schedule,
+    required List<StaffListItem> doctors,
+  }) {
+    if (!canCreate ||
+        state.selectedBranchId == null ||
+        state.selectedBranchId!.isEmpty) {
+      return null;
+    }
+
+    return () {
+      final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
+        tappedDate: state.focusDate,
+        schedule: schedule,
+        mode: state.mode,
+        slotMinutes: state.timeIntervalMinutes,
+      );
+      unawaited(
+        _showBookingSheet(
+          branchId: state.selectedBranchId!,
+          schedule: schedule,
+          slotStart: slotRange.start,
+          slotEnd: slotRange.end,
+          initialDoctorId: state.selectedDoctorId,
+          doctors: doctors,
+        ),
+      );
+    };
   }
 
   Future<void> _showBookingSheet({
@@ -1357,13 +1895,23 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       slotEnd: slotEnd,
       initialDoctorId: initialDoctorId,
       doctors: doctors,
+      branchName: ref
+          .read(appointmentCalendarBranchesProvider)
+          .maybeWhen(
+            data: (branches) =>
+                branches.where((item) => item.id == branchId).firstOrNull?.name,
+            orElse: () => null,
+          ),
     );
     if (booked == true && mounted) {
       await ref.read(appointmentCalendarProvider.notifier).refresh();
     }
   }
 
-  void _onAppointmentTileTap(CalendarAppointmentDetails details, List<AppointmentListItem> items) {
+  void _onAppointmentTileTap(
+    CalendarAppointmentDetails details,
+    List<AppointmentListItem> items,
+  ) {
     _openAppointmentById(appointmentIdFromAppointmentDetails(details), items);
   }
 
@@ -1378,6 +1926,113 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     context.nav.pushAppointmentDetail(item.id, preview: item);
   }
 
+  Future<void> _editAppointment(
+    AppointmentListItem item, {
+    required String? branchId,
+    required BranchWorkingSchedule schedule,
+    required List<StaffListItem> doctors,
+    String? branchName,
+  }) async {
+    if (branchId == null || branchId.isEmpty) {
+      return;
+    }
+
+    try {
+      final detail = await ref
+          .read(appointmentRepositoryProvider)
+          .getAppointment(appointmentId: item.id);
+      if (!mounted) {
+        return;
+      }
+
+      final updated = await AppointmentBookingSheet.show(
+        context,
+        branchId: branchId,
+        schedule: schedule,
+        slotStart: detail.startTime.toLocal(),
+        slotEnd: detail.endTime.toLocal(),
+        initialDoctorId: detail.doctorId,
+        doctors: doctors,
+        existingAppointment: detail,
+        branchName: branchName,
+      );
+      if (updated == true && mounted) {
+        await ref.read(appointmentCalendarProvider.notifier).refresh();
+      }
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        appToast(
+          context,
+          const AppToastInput(
+            message:
+                'Could not open the appointment for editing. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelAppointment(AppointmentListItem item) async {
+    final reason = await AppointmentCancelDialog.show(
+      context,
+      appointment: item,
+    );
+    if (reason == null || !mounted) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(appointmentRepositoryProvider)
+          .cancelAppointment(appointmentId: item.id, reason: reason);
+      if (!mounted) {
+        return;
+      }
+      await ref.read(appointmentCalendarProvider.notifier).refresh();
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        AppToastInput(
+          message: '${item.patientName}\'s appointment was cancelled.',
+          variant: AppToastVariant.success,
+        ),
+      );
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        appToast(
+          context,
+          const AppToastInput(
+            message: 'Could not cancel the appointment. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
+  }
+
   static bool _usesDoctorResources(AppointmentCalendarMode mode) {
     return mode == AppointmentCalendarMode.doctors;
   }
@@ -1387,10 +2042,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required String? selectedDoctorId,
     required AppointmentCalendarMode mode,
   }) {
-    if (mode != AppointmentCalendarMode.doctors || selectedDoctorId == null || selectedDoctorId.isEmpty) {
+    if (mode != AppointmentCalendarMode.doctors ||
+        selectedDoctorId == null ||
+        selectedDoctorId.isEmpty) {
       return doctors;
     }
-    return doctors.where((doctor) => doctor.id == selectedDoctorId).toList(growable: false);
+    return doctors
+        .where((doctor) => doctor.id == selectedDoctorId)
+        .toList(growable: false);
   }
 
   static CalendarView _calendarViewFor(AppointmentCalendarMode mode) {
@@ -1400,6 +2059,21 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       AppointmentCalendarMode.month => CalendarView.month,
       AppointmentCalendarMode.schedule => CalendarView.schedule,
       AppointmentCalendarMode.doctors => CalendarView.timelineDay,
+    };
+  }
+
+  static double _syncfusionViewHeaderHeight(
+    AppointmentCalendarMode mode,
+    bool usesCustomViewHeader,
+  ) {
+    if (usesCustomViewHeader) {
+      return 0;
+    }
+
+    return switch (mode) {
+      AppointmentCalendarMode.month => 25,
+      AppointmentCalendarMode.schedule => 0,
+      _ => AppointmentCalendarDisplay.viewHeaderHeight,
     };
   }
 
@@ -1478,71 +2152,26 @@ class _CalendarResizeSession {
   Color oddResourceRowColor;
 }
 
-class _AppointmentTile extends StatelessWidget {
-  const _AppointmentTile({required this.details, required this.isDimmed, required this.onTap});
-
-  final CalendarAppointmentDetails details;
-  final bool isDimmed;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final appointment = details.appointments.first;
-    final tileColor = appointment.color;
-    final brightness = ThemeData.estimateBrightnessForColor(tileColor);
-    final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
-    final bounds = details.bounds;
-    final doctorName = appointment.notes?.trim();
-    final nameStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: bounds.width,
-        height: bounds.height,
-        child: Opacity(
-          opacity: isDimmed ? AppointmentCalendarDisplay.filteredOutOpacity : 1,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
-            decoration: BoxDecoration(
-              color: tileColor.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: tileColor),
-            ),
-            alignment: Alignment.topLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppointmentScaleDownText(text: appointment.subject, style: nameStyle),
-                if (doctorName != null && doctorName.isNotEmpty && bounds.height >= 44) ...[
-                  const SizedBox(height: 2),
-                  AppointmentScaleDownText(
-                    text: doctorName,
-                    style: nameStyle.copyWith(fontWeight: FontWeight.w500, fontSize: 11),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CalendarPermissionDenied extends StatelessWidget {
   const _CalendarPermissionDenied();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.xl),
-        child: Text(
-          'You do not have permission to view appointments.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium,
+    return const AppointmentPageShell(
+      child: AppEmptyState(variant: AppEmptyStateVariant.noAccess),
+    );
+  }
+}
+
+class _CalendarSkeletonBody extends StatelessWidget {
+  const _CalendarSkeletonBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppSkeletonizerZone(
+      child: SizedBox.expand(
+        child: Bone(
+          borderRadius: BorderRadius.all(Radius.circular(AppRadius.xl)),
         ),
       ),
     );

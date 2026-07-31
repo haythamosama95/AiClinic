@@ -605,6 +605,110 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Status revert: undo one step backward in the main flow.
+  v_start := date_trunc('hour', now() + interval '18 days');
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'scheduled');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_revert_confirmed_to_scheduled',
+    v_result.success AND (v_result.data ->> 'status') = 'scheduled',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := pg_temp.test_appointment_same_day_slot(4);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 4;
+  v_result := public.create_appointment(
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_revert_checked_in_to_confirmed',
+    v_result.success AND (v_result.data ->> 'status') = 'confirmed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  INSERT INTO appointment_crud_results
+  SELECT
+    'status_revert_checked_in_clears_checked_in_at',
+    COALESCE(
+      (SELECT a.checked_in_at IS NULL FROM public.appointments a WHERE a.id = v_appt_second),
+      false
+    ),
+    'ok';
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.cancel_appointment(v_appt_second, 'Revert test cleanup');
+
+  v_start := pg_temp.test_appointment_same_day_slot(5);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;
+  v_result := public.create_appointment(
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_revert_in_progress_to_checked_in',
+    v_result.success AND (v_result.data ->> 'status') = 'checked_in',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  INSERT INTO appointment_crud_results
+  SELECT
+    'status_revert_in_progress_clears_in_progress_at',
+    COALESCE(
+      (
+        SELECT a.checked_in_at IS NOT NULL AND a.in_progress_at IS NULL
+        FROM public.appointments a
+        WHERE a.id = v_appt_second
+      ),
+      false
+    ),
+    'ok';
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.cancel_appointment(v_appt_second, 'Revert test cleanup');
+
+  v_start := pg_temp.test_appointment_same_day_slot(6);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
+  v_result := public.create_appointment(
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  v_result := public.create_visit(v_appt_second, NULL);
+  v_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_revert_in_progress_blocked_when_visit_exists',
+    NOT v_result.success AND v_result.error_code = 'VISIT_IN_PROGRESS',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
+  v_result := public.save_visit_documentation(
+    v_visit_id,
+    'Revert guard cleanup.',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    v_visit_updated_at
+  );
+  v_result := public.complete_visit(v_visit_id, NULL);
+
   -- Reschedule requires scheduled planned — use new appointment.
   -- Day-truncated slot (not date_trunc('hour', now()+N days)) so late-evening UTC runs
   -- do not roll into the next calendar day and collide with day+4 cancel/rebook tests.
@@ -863,9 +967,12 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Cannot cancel completed appointment.
-  v_start := pg_temp.test_appointment_same_day_slot(6);
-  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
+  -- Cannot cancel completed appointment (dedicated patient — slot 6 already used above).
+  v_result := public.create_patient(
+    v_main_branch_id, 'Cancel Completed Patient', '201000000147', NULL, NULL, NULL, NULL, false
+  );
+  v_sd_patient := (v_result.data ->> 'patient_id')::uuid;
+  v_start := pg_temp.test_appointment_same_day_slot(13);
   v_result := public.create_appointment(
     v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );

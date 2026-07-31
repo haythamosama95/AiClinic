@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
@@ -87,7 +88,7 @@ class FakePatientRepository implements PatientRepository {
     List<PatientListItem> patients = const [],
     this.detail,
     this.duplicates = const [],
-    this.createResult = '33333333-3333-4333-8333-333333333333',
+    this.createResult = const CreatePatientResult(patientId: '33333333-3333-4333-8333-333333333333', mrn: 'MRN-000001'),
     this.searchDelay = Duration.zero,
     this.createDelay = Duration.zero,
     this.archiveDelay = Duration.zero,
@@ -100,7 +101,7 @@ class FakePatientRepository implements PatientRepository {
   final List<PatientListItem> patients;
   final PatientDetail? detail;
   final List<DuplicateCandidate> duplicates;
-  final String createResult;
+  final CreatePatientResult createResult;
   final Duration searchDelay;
   final Duration createDelay;
   final Duration archiveDelay;
@@ -239,7 +240,7 @@ class FakePatientRepository implements PatientRepository {
   }
 
   @override
-  Future<String> createPatient(CreatePatientInput input) async {
+  Future<CreatePatientResult> createPatient(CreatePatientInput input) async {
     createCallCount++;
     lastCreateInput = input;
     if (createDelay > Duration.zero) {
@@ -273,5 +274,10 @@ class FakePatientRepository implements PatientRepository {
     if (patients.isNotEmpty) {
       patients.removeWhere((patient) => patient.id == patientId);
     }
+  }
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) async {
+    return newMrn;
   }
 }

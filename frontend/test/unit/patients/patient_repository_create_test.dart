@@ -18,7 +18,7 @@ void main() {
     });
 
     test('trivial: createPatient returns patient_id and sends branch + name + phone', () async {
-      final id = await repository.createPatient(
+      final result = await repository.createPatient(
         const CreatePatientInput(
           activeBranchId: '44444444-4444-4444-8444-444444444444',
           fullName: 'Ahmed Hassan',
@@ -26,12 +26,26 @@ void main() {
         ),
       );
 
-      expect(id, '33333333-3333-4333-8333-333333333333');
+      expect(result.patientId, '33333333-3333-4333-8333-333333333333');
+      expect(result.mrn, 'MRN-000042');
       expect(client.lastFunction, 'create_patient');
       expect(client.lastParams?['p_active_branch_id'], '44444444-4444-4444-8444-444444444444');
       expect(client.lastParams?['p_full_name'], 'Ahmed Hassan');
       expect(client.lastParams?['p_phone'], '201005551234');
       expect(client.lastParams?['p_acknowledge_duplicate'], false);
+    });
+
+    test('optional mrn is forwarded as p_mrn', () async {
+      await repository.createPatient(
+        const CreatePatientInput(
+          activeBranchId: '44444444-4444-4444-8444-444444444444',
+          fullName: 'Dev Seed Patient',
+          phone: '201005551234',
+          mrn: 'MRN-000099',
+        ),
+      );
+
+      expect(client.lastParams?['p_mrn'], 'MRN-000099');
     });
 
     test('advanced: optional fields are trimmed and encoded', () async {

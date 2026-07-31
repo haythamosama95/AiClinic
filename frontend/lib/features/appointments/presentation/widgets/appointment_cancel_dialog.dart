@@ -1,40 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:forui/forui.dart';
 
-import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 
-/// Confirms cancellation of an appointment with an optional reason.
+/// Confirms cancellation of an appointment with an optional reason (V1-4 US7).
 class AppointmentCancelDialog extends StatefulWidget {
-  const AppointmentCancelDialog({
-    required this.patientName,
-    required this.dialogStyle,
-    required this.animation,
-    super.key,
-  });
+  const AppointmentCancelDialog({required this.appointment, super.key});
 
-  final String patientName;
-  final FDialogStyle dialogStyle;
-  final Animation<double> animation;
+  final AppointmentListItem appointment;
 
-  static Future<String?> show(BuildContext context, {required String patientName}) {
-    final fTheme = context.theme;
-
-    return showFDialog<String?>(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (dialogContext, style, animation) {
-        return FTheme(
-          data: fTheme,
-          child: AppointmentCancelDialog(patientName: patientName, dialogStyle: style, animation: animation),
-        );
-      },
+  /// Returns the optional cancel reason when confirmed, or `null` when dismissed.
+  static Future<String?> show(
+    BuildContext context, {
+    required AppointmentListItem appointment,
+  }) {
+    return AppDialog.show<String?>(
+      context,
+      title: 'Cancel appointment?',
+      description:
+          'Cancel ${appointment.patientName}\'s visit? The time slot will become available again.',
+      size: AppDialogSize.sm,
+      child: AppointmentCancelDialog(appointment: appointment),
     );
   }
 
   @override
-  State<AppointmentCancelDialog> createState() => _AppointmentCancelDialogState();
+  State<AppointmentCancelDialog> createState() =>
+      _AppointmentCancelDialogState();
 }
 
 class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
@@ -47,53 +39,42 @@ class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
   }
 
   void _confirm() {
-    Navigator.of(context, rootNavigator: true).pop(_reasonController.text.trim());
+    Navigator.of(context).pop(_reasonController.text.trim());
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = context.semanticColors;
-
-    return FDialog(
-      style: widget.dialogStyle,
-      animation: widget.animation,
-      direction: Axis.horizontal,
-      title: Text('Cancel appointment?', style: theme.textTheme.titleMedium),
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '${widget.patientName} will be removed from the schedule. This cannot be undone.',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: SpacingTokens.md),
-          AppTextField(
-            key: const Key('appointment_cancel_reason'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppFormField(
+          id: 'cancel-reason',
+          label: 'Reason (optional)',
+          child: AppTextarea(
             controller: _reasonController,
-            label: 'Reason (optional)',
-            hintText: 'e.g. Patient requested',
-            maxLines: 3,
+            placeholder: 'e.g. Patient called to reschedule',
+            rows: 3,
+            maxLength: 2000,
+            showCounter: true,
           ),
-          const SizedBox(height: SpacingTokens.xs),
-          Text(
-            'Staff and the patient record will see this reason.',
-            style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-          ),
-        ],
-      ),
-      actions: [
-        AppButton(
-          key: const Key('appointment_cancel_confirm'),
-          label: 'Cancel appointment',
-          variant: AppButtonVariant.destructive,
-          onPressed: _confirm,
         ),
-        AppButton(
-          label: 'Keep appointment',
-          variant: AppButtonVariant.secondary,
-          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+        const SizedBox(height: AppSpacing.space4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Keep appointment'),
+            ),
+            const SizedBox(width: AppSpacing.space2),
+            AppButton(
+              variant: AppButtonVariant.danger,
+              onPressed: _confirm,
+              child: const Text('Cancel appointment'),
+            ),
+          ],
         ),
       ],
     );

@@ -65,11 +65,11 @@ BEGIN
     (v_staff_b, v_branch_b, true, v_user_b, v_user_b);
 
   INSERT INTO public.patients (
-    id, branch_id, organization_id, full_name, phone, created_by, updated_by
+    id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
   )
   VALUES
-    (v_patient_a, v_branch_a, v_org_a, 'Org A Patient', '201111111111', v_user_a, v_user_a),
-    (v_patient_b, v_branch_b, v_org_b, 'Org B Patient', '201234567890', v_user_b, v_user_b);
+    (v_patient_a, v_branch_a, v_org_a, 'Org A Patient', '201111111111', 'MRN-900001', v_user_a, v_user_a),
+    (v_patient_b, v_branch_b, v_org_b, 'Org B Patient', '201234567890', 'MRN-900002', v_user_b, v_user_b);
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -154,13 +154,14 @@ BEGIN
   v_dml_failed := false;
   BEGIN
     INSERT INTO public.patients (
-      id, branch_id, organization_id, full_name, created_by, updated_by
+      id, branch_id, organization_id, full_name, mrn, created_by, updated_by
     )
     VALUES (
       'a2000000-0000-4000-8000-000000000099',
       v_branch_a,
       v_org_a,
       'Direct Insert Attempt',
+      'MRN-900099',
       v_user_a,
       v_user_a
     );

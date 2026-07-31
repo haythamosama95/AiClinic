@@ -4,7 +4,7 @@ import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../widget/visits/visit_encounter_test_support.dart';
+import '../../support/visit_encounter_test_support.dart';
 
 void main() {
   const lengthErrorMessage = 'Each clinical note section must be 10,000 characters or fewer.';

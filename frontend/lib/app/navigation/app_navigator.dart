@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 
@@ -29,6 +28,8 @@ class AppNavigator {
   void goStaffPasswordReset() => _context.go(AppRoutes.staffPasswordReset);
   void goFoundationDemo() => _context.go(AppRoutes.foundationDemo);
 
+  void goDesignSystem() => _context.go(AppRoutes.foundationDemo);
+
   // Patient management
   void goPatients() => _context.go(AppRoutes.patients);
   void goPatientDetail(String id) => _context.go(AppRoutes.patientDetail(id));
@@ -40,22 +41,28 @@ class AppNavigator {
   void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
 
-  /// Opens the blurred patient registration modal over the current route.
-  Future<String?> showPatientRegister() => CreatePatientModal.show(_context);
+  /// Navigates to patient registration; returns when the route is popped.
+  Future<String?> showPatientRegister() async {
+    await _context.push<String?>(AppRoutes.patientsNew);
+    return null;
+  }
 
   // Appointments (V1-4)
   void goAppointments() => _context.go(AppRoutes.appointments);
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
   void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
-  void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
+  void goAppointmentsCalendar() => _context.go(AppRoutes.appointmentsCalendar);
   void pushAppointmentDetail(String appointmentId, {AppointmentListItem? preview}) =>
       _context.push(AppRoutes.appointmentDetail(appointmentId), extra: AppointmentDetailRouteExtra(preview: preview));
   void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
 
   // Billing (V1-6)
+  void goBilling() => _context.go(AppRoutes.billingInvoices);
   void goBillingInvoices() => _context.go(AppRoutes.billingInvoices);
   void pushBillingInvoiceDetail(String invoiceId) => _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
+  void pushBillingInvoiceReview(String invoiceId) => _context.push(AppRoutes.billingInvoiceReview(invoiceId));
   void pushBillingInvoiceEdit(String invoiceId) => _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
+  void pushVisitBilling(String visitId) => _context.push(AppRoutes.billingVisit(visitId));
 
   // Visits (V1-5)
   void goVisitDocument(String visitId) => _context.go(AppRoutes.visitDocument(visitId));

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/core/ui/components/app_form_field.dart';
+import 'package:ai_clinic/core/ui/components/app_select.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 
 /// Doctor picker for appointment booking with branch-availability highlighting.
 class AppointmentDoctorSelector extends StatelessWidget {
@@ -12,6 +13,7 @@ class AppointmentDoctorSelector extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.hint,
     super.key,
   });
 
@@ -20,31 +22,28 @@ class AppointmentDoctorSelector extends StatelessWidget {
   final String? value;
   final ValueChanged<String?> onChanged;
   final bool enabled;
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
-    return AppSelect<String>(
-      key: key,
-      label: 'Doctor (optional)',
-      richChildren: AppointmentDoctorSelectItems.build(
-        context: context,
-        branchId: branchId,
-        doctors: doctors,
-        emptyLabel: 'No doctor assigned',
+    return AppFormField(
+      id: 'appointment_doctor',
+      label: 'Preferred doctor',
+      hint:
+          hint ??
+          'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
+      child: AppSelect(
+        key: key,
+        options: AppointmentDoctorSelectItems.buildOptions(
+          branchId: branchId,
+          doctors: doctors,
+          emptyLabel: 'No preference',
+        ),
+        value: value ?? '',
+        disabled: !enabled,
+        placeholder: 'No preference',
+        onChanged: (doctorId) => onChanged(doctorId.isEmpty ? null : doctorId),
       ),
-      format: _formatValue,
-      value: value ?? '',
-      enabled: enabled,
-      showPopoverCloseButton: true,
-      onChanged: (doctorId) => onChanged(doctorId == null || doctorId.isEmpty ? null : doctorId),
     );
-  }
-
-  String _formatValue(String doctorId) {
-    if (doctorId.isEmpty) {
-      return 'No doctor assigned';
-    }
-    final doctor = doctors.where((entry) => entry.id == doctorId).firstOrNull;
-    return doctor?.fullName ?? 'No doctor assigned';
   }
 }

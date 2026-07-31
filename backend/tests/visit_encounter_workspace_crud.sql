@@ -16,11 +16,15 @@ CREATE OR REPLACE FUNCTION pg_temp.test_appointment_same_day_slot(p_offset_hours
 RETURNS timestamptz
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  v_tz text := 'UTC';
+  v_day_start timestamptz;
 BEGIN
   IF p_offset_hours < 1 OR p_offset_hours > 23 THEN
     RAISE EXCEPTION 'test_appointment_same_day_slot: offset must be 1..23, got %', p_offset_hours;
   END IF;
-  RETURN now() + make_interval(hours => p_offset_hours);
+  v_day_start := date_trunc('day', now() AT TIME ZONE v_tz) AT TIME ZONE v_tz;
+  RETURN v_day_start + make_interval(hours => p_offset_hours);
 END;
 $$;
 
@@ -329,7 +333,7 @@ BEGIN
   UPDATE public.visits SET status = 'completed', updated_at = now() WHERE id = v_visit_id;
   PERFORM set_config('role', 'authenticated', true);
 
-  v_start := pg_temp.test_appointment_same_day_slot(2);
+  v_start := pg_temp.test_appointment_same_day_slot(13);
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
   );

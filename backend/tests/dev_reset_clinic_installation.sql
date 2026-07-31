@@ -116,8 +116,8 @@ BEGIN
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
 
   PERFORM set_config('role', 'postgres', true);
-  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, created_by)
-  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', v_bootstrap_user)
+  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, mrn, created_by)
+  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', 'MRN-000099', v_bootstrap_user)
   RETURNING id INTO v_patient_id;
 
   IF to_regclass('public.patient_allergies') IS NOT NULL THEN
@@ -286,6 +286,215 @@ BEGIN
       'staff_deleted=' || COALESCE(v_result.data ->> 'staff_deleted', '?')
         || ' auth_users_deleted=' || COALESCE(v_result.data ->> 'auth_users_deleted', '?')
     )
+  );
+END;
+$$;
+
+-- Organizations must be removed before auth.users when created_by references a deleted staff user.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_creator_user uuid := 'e2700000-0000-4000-8000-0000000000a1';
+  v_org_id uuid := 'e2800000-0000-4000-8000-0000000000a1';
+  v_result public.rpc_result;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
+  DELETE FROM public.audit_log WHERE true;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+  DELETE FROM public.organizations WHERE true;
+  DELETE FROM public.branches WHERE true;
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_creator_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'former-owner@example.test',
+    extensions.crypt('test-password', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.organizations (id, name, currency_code, timezone, created_by)
+  VALUES (v_org_id, 'Legacy Creator Org', 'EGP', 'UTC', v_creator_user)
+  ON CONFLICT (id) DO UPDATE
+  SET created_by = EXCLUDED.created_by,
+      name = EXCLUDED.name;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+
+  PERFORM set_config('role', 'postgres', true);
+  v_passed := v_result.success
+    AND NOT auth_internal.organization_exists()
+    AND NOT EXISTS (
+      SELECT 1
+      FROM auth.users u
+      WHERE u.id = v_creator_user
+    );
+
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_deletes_orgs_before_auth_users',
+    v_passed,
+    COALESCE(v_result.error_code, 'ok')
+  );
+END;
+$$;
+
+-- Dev reset must reset patient_mrn_seq so the next created patient receives MRN-000001.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_owner_user uuid := 'a1000000-0000-4000-8000-000000000301';
+  v_owner_staff uuid := 'b1000000-0000-4000-8000-000000000301';
+  v_result public.rpc_result;
+  v_org_id uuid;
+  v_branch_id uuid;
+  v_mrn text;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
+  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_owner_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'mrn-reset-owner',
+    extensions.crypt('test-password', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.bootstrap_create_organization('MRN Reset Clinic', '{}'::jsonb, NULL, 'EGP', 'UTC');
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+  v_result := public.bootstrap_create_branch(v_org_id, 'Reset Branch', NULL, NULL, 'MRB', NULL);
+  v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
+  VALUES (v_owner_staff, v_owner_user, 'Reset Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user)
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
+  VALUES (v_owner_staff, v_branch_id, true, v_bootstrap_user, v_bootstrap_user);
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_result := public.create_patient(v_branch_id, 'Pre Reset Patient', '201000000301', NULL, NULL, NULL, NULL, false);
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_owner_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'mrn-reset-owner',
+    extensions.crypt('test-password', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.bootstrap_create_organization('MRN Reset Clinic 2', '{}'::jsonb, NULL, 'EGP', 'UTC');
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+  v_result := public.bootstrap_create_branch(v_org_id, 'Reset Branch 2', NULL, NULL, 'MR2', NULL);
+  v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
+  VALUES (v_owner_staff, v_owner_user, 'Reset Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user)
+  ON CONFLICT (id) DO UPDATE
+  SET is_deleted = false, is_active = true, auth_user_id = EXCLUDED.auth_user_id;
+
+  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
+  VALUES (v_owner_staff, v_branch_id, true, v_bootstrap_user, v_bootstrap_user)
+  ON CONFLICT (staff_member_id, branch_id) DO UPDATE
+  SET is_deleted = false, is_primary = true;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_result := public.create_patient(v_branch_id, 'Post Reset Patient', '201000000302', NULL, NULL, NULL, NULL, false);
+  v_mrn := v_result.data ->> 'mrn';
+  v_passed := v_result.success AND v_mrn = 'MRN-000001';
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_resets_patient_mrn_seq',
+    v_passed,
+    COALESCE(v_mrn, '<null>')
   );
 END;
 $$;

@@ -5,15 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
 export 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
@@ -27,6 +28,8 @@ class AppointmentCalendarState {
     this.selectedBranchId,
     this.selectedDoctorId,
     this.selectedStatuses = const {},
+    this.timeIntervalMinutes =
+        AppointmentCalendarDisplay.defaultTimeIntervalMinutes,
     this.loading = false,
     this.error,
   });
@@ -37,6 +40,7 @@ class AppointmentCalendarState {
   final String? selectedBranchId;
   final String? selectedDoctorId;
   final Set<AppointmentStatus> selectedStatuses;
+  final int timeIntervalMinutes;
   final bool loading;
   final String? error;
 
@@ -47,6 +51,7 @@ class AppointmentCalendarState {
     Object? selectedBranchId = _sentinel,
     Object? selectedDoctorId = _sentinel,
     Set<AppointmentStatus>? selectedStatuses,
+    int? timeIntervalMinutes,
     bool? loading,
     Object? error = _sentinel,
   }) {
@@ -54,9 +59,14 @@ class AppointmentCalendarState {
       mode: mode ?? this.mode,
       focusDate: focusDate ?? this.focusDate,
       items: items ?? this.items,
-      selectedBranchId: identical(selectedBranchId, _sentinel) ? this.selectedBranchId : selectedBranchId as String?,
-      selectedDoctorId: identical(selectedDoctorId, _sentinel) ? this.selectedDoctorId : selectedDoctorId as String?,
+      selectedBranchId: identical(selectedBranchId, _sentinel)
+          ? this.selectedBranchId
+          : selectedBranchId as String?,
+      selectedDoctorId: identical(selectedDoctorId, _sentinel)
+          ? this.selectedDoctorId
+          : selectedDoctorId as String?,
       selectedStatuses: selectedStatuses ?? this.selectedStatuses,
+      timeIntervalMinutes: timeIntervalMinutes ?? this.timeIntervalMinutes,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
@@ -64,8 +74,11 @@ class AppointmentCalendarState {
 
   /// Whether applied filters differ from the session's initial branch-only view.
   bool hasActiveFilters({required String? initialBranchId}) {
-    final baselineBranch = AppointmentCalendarController._normalizedOrNull(initialBranchId);
-    final doctorFiltered = selectedDoctorId != null && selectedDoctorId!.isNotEmpty;
+    final baselineBranch = AppointmentCalendarController._normalizedOrNull(
+      initialBranchId,
+    );
+    final doctorFiltered =
+        selectedDoctorId != null && selectedDoctorId!.isNotEmpty;
     final branchFiltered = selectedBranchId != baselineBranch;
     final statusFiltered = selectedStatuses.isNotEmpty;
     return doctorFiltered || branchFiltered || statusFiltered;
@@ -78,7 +91,9 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   @override
   AppointmentCalendarState build() {
     final today = DateTime.now();
-    final initialBranchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
+    final initialBranchId = _normalizedOrNull(
+      ref.read(authSessionProvider).context?.activeBranchId,
+    );
 
     ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
       final prevScope = AppointmentFetchScope.fromContext(previous?.context);
@@ -107,8 +122,15 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
     return initial;
   }
 
+  String? _effectiveBranchId() {
+    return _normalizedOrNull(state.selectedBranchId) ??
+        _normalizedOrNull(
+          ref.read(authSessionProvider).context?.activeBranchId,
+        );
+  }
+
   Future<void> refresh() async {
-    final branchId = _normalizedOrNull(state.selectedBranchId);
+    final branchId = _effectiveBranchId();
     if (branchId == null) {
       state = state.copyWith(
         loading: false,
@@ -118,15 +140,31 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       return;
     }
 
+    if (state.selectedBranchId != branchId) {
+      state = state.copyWith(selectedBranchId: branchId);
+    }
+
     state = state.copyWith(loading: true, error: null);
     try {
-      final bounds = appointmentCalendarFetchBounds(state.focusDate, state.mode);
+      final bounds = appointmentCalendarFetchBounds(
+        state.focusDate,
+        state.mode,
+      );
       final items = await ref
           .read(appointmentRepositoryProvider)
-          .listAppointments(branchId: branchId, from: bounds.$1, to: bounds.$2, doctorId: state.selectedDoctorId);
+          .listAppointments(
+            branchId: branchId,
+            from: bounds.$1,
+            to: bounds.$2,
+            doctorId: state.selectedDoctorId,
+          );
       state = state.copyWith(loading: false, items: items, error: null);
     } catch (_) {
-      state = state.copyWith(loading: false, items: const [], error: 'Could not load appointments. Please retry.');
+      state = state.copyWith(
+        loading: false,
+        items: const [],
+        error: 'Could not load appointments. Please retry.',
+      );
     }
   }
 
@@ -153,19 +191,33 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 
   Future<void> previousPeriod() async {
-    await setFocusDate(appointmentCalendarPreviousFocus(state.focusDate, state.mode));
+    await setFocusDate(
+      appointmentCalendarPreviousFocus(state.focusDate, state.mode),
+    );
   }
 
   Future<void> nextPeriod() async {
-    await setFocusDate(appointmentCalendarNextFocus(state.focusDate, state.mode));
+    await setFocusDate(
+      appointmentCalendarNextFocus(state.focusDate, state.mode),
+    );
   }
 
-  Future<void> applyFilters({String? branchId, String? doctorId, Set<AppointmentStatus>? statuses}) async {
-    final normalizedBranch = _normalizedOrNull(branchId ?? state.selectedBranchId);
+  Future<void> applyFilters({
+    String? branchId,
+    String? doctorId,
+    Set<AppointmentStatus>? statuses,
+  }) async {
+    final normalizedBranch = _normalizedOrNull(
+      branchId ?? state.selectedBranchId,
+    );
     final normalizedDoctor = (doctorId ?? state.selectedDoctorId)?.trim();
-    final nextDoctor = (normalizedDoctor == null || normalizedDoctor.isEmpty) ? null : normalizedDoctor;
+    final nextDoctor = (normalizedDoctor == null || normalizedDoctor.isEmpty)
+        ? null
+        : normalizedDoctor;
     final nextStatuses = statuses ?? state.selectedStatuses;
-    final branchOrDoctorChanged = normalizedBranch != state.selectedBranchId || nextDoctor != state.selectedDoctorId;
+    final branchOrDoctorChanged =
+        normalizedBranch != state.selectedBranchId ||
+        nextDoctor != state.selectedDoctorId;
     final statusesChanged = !setEquals(nextStatuses, state.selectedStatuses);
     if (!branchOrDoctorChanged && !statusesChanged) {
       return;
@@ -181,22 +233,48 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 
   Future<void> clearFilters() async {
-    final initialBranchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
-    if (initialBranchId == state.selectedBranchId && state.selectedDoctorId == null && state.selectedStatuses.isEmpty) {
+    final initialBranchId = _normalizedOrNull(
+      ref.read(authSessionProvider).context?.activeBranchId,
+    );
+    if (initialBranchId == state.selectedBranchId &&
+        state.selectedDoctorId == null &&
+        state.selectedStatuses.isEmpty) {
       return;
     }
-    state = state.copyWith(selectedBranchId: initialBranchId, selectedDoctorId: null, selectedStatuses: const {});
+    state = state.copyWith(
+      selectedBranchId: initialBranchId,
+      selectedDoctorId: null,
+      selectedStatuses: const {},
+    );
     await refresh();
   }
 
   /// Updates only the branch filter while preserving the current doctor filter.
   Future<void> setBranchFilter(String? branchId) async {
-    await applyFilters(branchId: branchId, doctorId: state.selectedDoctorId, statuses: state.selectedStatuses);
+    await applyFilters(
+      branchId: branchId,
+      doctorId: state.selectedDoctorId,
+      statuses: state.selectedStatuses,
+    );
   }
 
   /// Updates only the doctor filter while preserving the current branch filter.
   Future<void> setDoctorFilter(String? doctorId) async {
-    await applyFilters(branchId: state.selectedBranchId, doctorId: doctorId, statuses: state.selectedStatuses);
+    await applyFilters(
+      branchId: state.selectedBranchId,
+      doctorId: doctorId,
+      statuses: state.selectedStatuses,
+    );
+  }
+
+  void setTimeIntervalMinutes(int minutes) {
+    if (!AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(
+          minutes,
+        ) ||
+        minutes == state.timeIntervalMinutes) {
+      return;
+    }
+    state = state.copyWith(timeIntervalMinutes: minutes);
   }
 
   static String? _normalizedOrNull(String? value) {
@@ -208,21 +286,37 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 }
 
-final appointmentCalendarProvider = NotifierProvider<AppointmentCalendarController, AppointmentCalendarState>(
-  AppointmentCalendarController.new,
-);
+final appointmentCalendarProvider =
+    NotifierProvider<AppointmentCalendarController, AppointmentCalendarState>(
+      AppointmentCalendarController.new,
+    );
 
-final appointmentCalendarBranchesProvider = FutureProvider.autoDispose<List<BranchListItem>>((ref) async {
-  final auth = ref.watch(authSessionProvider).context;
-  final orgId = auth?.organizationId;
-  if (orgId == null || orgId.trim().isEmpty) {
-    return const [];
-  }
-  return ref.read(listBranchesUseCaseProvider)(organizationId: orgId, filter: BranchListFilter.active);
+/// Eagerly warms the calendar provider so appointment data is ready when the
+/// calendar page opens (mirrors [appointmentQueueShellWarmProvider]).
+final appointmentCalendarShellWarmProvider = Provider<void>((ref) {
+  ref.watch(appointmentCalendarProvider);
 });
 
-final appointmentCalendarDoctorsProvider = FutureProvider.autoDispose<List<StaffListItem>>((ref) async {
-  final staff = await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.active);
-  return staff.where((member) => member.role == StaffRole.doctor).toList(growable: false)
-    ..sort(StaffListItem.compareByFullName);
-});
+final appointmentCalendarBranchesProvider =
+    FutureProvider.autoDispose<List<BranchListItem>>((ref) async {
+      final auth = ref.watch(authSessionProvider).context;
+      final orgId = auth?.organizationId;
+      if (orgId == null || orgId.trim().isEmpty) {
+        return const [];
+      }
+      return ref.read(listBranchesUseCaseProvider)(
+        organizationId: orgId,
+        filter: BranchListFilter.active,
+      );
+    });
+
+final appointmentCalendarDoctorsProvider =
+    FutureProvider.autoDispose<List<StaffListItem>>((ref) async {
+      final staff = await ref.read(listStaffUseCaseProvider)(
+        filter: StaffListFilter.active,
+      );
+      return staff
+          .where((member) => member.role == StaffRole.doctor)
+          .toList(growable: false)
+        ..sort(StaffListItem.compareByFullName);
+    });

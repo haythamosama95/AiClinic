@@ -7,10 +7,10 @@ import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/features/settings/data/organization_repository.dart';
-import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/organization_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/role_permissions_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
 
 import 'fixture_factory.dart';

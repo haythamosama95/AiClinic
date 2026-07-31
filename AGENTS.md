@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/019-ai-context-keys-d1-config/plan.md`
-Feature spec: `specs/019-ai-context-keys-d1-config/spec.md`
-Branch: `ai/019-a5-context-keys-d1-config`
+Active feature plan: `specs/021-installation-keystore-aat-issuer/spec.md`
+Feature spec: `specs/021-installation-keystore-aat-issuer/spec.md`
+Branch: `ai/021-b1-installation-keystore-aat-issuer`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
@@ -15,7 +15,7 @@ Branch: `ai/019-a5-context-keys-d1-config`
 - `frontend/` — Flutter desktop app (presentation, orchestration).
 - `backend/` — Supabase (auth, storage, RPCs) + PostgreSQL migrations/functions.
 - `ai-platform/` — Cloudflare Worker AI gateway: source, D1 migrations, prompt artifacts, tests.
- Additive and non-primary; no domain logic, no business data, no write path into Supabase.
+  Additive and non-primary; no domain logic, no business data, no write path into Supabase.
 - `specs/` — Spec Kit feature working directories (`<NNN>-<short-name>/` with `spec.md`,
   `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `tasks.md`).
 - `.specify/` — Spec Kit configuration, templates, scripts, memory (`constitution.md`).

@@ -2,7 +2,10 @@
 enum AppointmentCalendarMode { day, week, month, doctors, schedule }
 
 /// UTC fetch window for [list_appointments] given focus date and view mode.
-(DateTime, DateTime) appointmentCalendarFetchBounds(DateTime focusDate, AppointmentCalendarMode mode) {
+(DateTime, DateTime) appointmentCalendarFetchBounds(
+  DateTime focusDate,
+  AppointmentCalendarMode mode,
+) {
   final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
   switch (mode) {
     case AppointmentCalendarMode.day:
@@ -10,8 +13,13 @@ enum AppointmentCalendarMode { day, week, month, doctors, schedule }
       return (dayStart.toUtc(), dayStart.add(const Duration(days: 1)).toUtc());
     case AppointmentCalendarMode.week:
     case AppointmentCalendarMode.schedule:
-      final weekStart = dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
-      return (weekStart.toUtc(), weekStart.add(const Duration(days: 7)).toUtc());
+      final weekStart = dayStart.subtract(
+        Duration(days: dayStart.weekday - DateTime.monday),
+      );
+      return (
+        weekStart.toUtc(),
+        weekStart.add(const Duration(days: 7)).toUtc(),
+      );
     case AppointmentCalendarMode.month:
       final monthStart = DateTime(dayStart.year, dayStart.month, 1);
       final monthEnd = DateTime(dayStart.year, dayStart.month + 1, 1);
@@ -20,7 +28,10 @@ enum AppointmentCalendarMode { day, week, month, doctors, schedule }
 }
 
 /// Focus date after navigating to the previous period.
-DateTime appointmentCalendarPreviousFocus(DateTime focusDate, AppointmentCalendarMode mode) {
+DateTime appointmentCalendarPreviousFocus(
+  DateTime focusDate,
+  AppointmentCalendarMode mode,
+) {
   switch (mode) {
     case AppointmentCalendarMode.day:
     case AppointmentCalendarMode.doctors:
@@ -35,7 +46,10 @@ DateTime appointmentCalendarPreviousFocus(DateTime focusDate, AppointmentCalenda
 }
 
 /// Focus date after navigating to the next period.
-DateTime appointmentCalendarNextFocus(DateTime focusDate, AppointmentCalendarMode mode) {
+DateTime appointmentCalendarNextFocus(
+  DateTime focusDate,
+  AppointmentCalendarMode mode,
+) {
   switch (mode) {
     case AppointmentCalendarMode.day:
     case AppointmentCalendarMode.doctors:

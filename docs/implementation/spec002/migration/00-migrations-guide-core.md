@@ -1,6 +1,6 @@
 # Auth & RBAC Migrations — Complete Guide
 
-**Feature**: `specs/002-auth-rbac` (V1-1 authentication and role-based access control)
+**Feature**: `docs/specs/002-auth-rbac` (V1-1 authentication and role-based access control)
 **Audience**: Anyone new to backends — no prior database or Supabase experience required
 **Source files**: `backend/supabase/migrations/` (five SQL files, run in order)
 

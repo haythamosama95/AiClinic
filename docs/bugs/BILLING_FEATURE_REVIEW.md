@@ -1,6 +1,6 @@
 # Billing Feature End‑to‑End Review (V1‑6)
 
-Scope: `frontend/lib/features/billing` and `backend/supabase/migrations/2026060518*…20260605270000_*` plus contracts in `specs/007-billing/contracts/`.
+Scope: `frontend/lib/features/billing` and `backend/supabase/migrations/2026060518*…20260605270000_*` plus contracts in `docs/specs/007-billing/contracts/`.
 
 Severity scale: Critical (data corruption / unhandled exception path), High (likely user-facing failure or contract drift), Medium (incorrect behavior under edge cases), Low (maintenance / UX consistency).
 
@@ -160,7 +160,7 @@ Backend `list_invoices` returns rows ordered by `created_at DESC` and does **not
 
 ## 13. MEDIUM — `list_invoices` accepts `visit_id` but contract does not document it
 
-**Files**: `specs/007-billing/contracts/billing-queries.md`, `20260605180500_billing_us1_rpcs.sql` (`v_visit_id` parsing), `invoice_repository.findForVisit`.
+**Files**: `docs/specs/007-billing/contracts/billing-queries.md`, `20260605180500_billing_us1_rpcs.sql` (`v_visit_id` parsing), `invoice_repository.findForVisit`.
 
 **Problem**: Frontend depends on this filter; if the contract is treated as source of truth and the param is dropped later, `findForVisit` silently degrades to a scan of all invoices.
 

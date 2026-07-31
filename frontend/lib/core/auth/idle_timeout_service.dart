@@ -6,10 +6,12 @@ import 'package:flutter/foundation.dart';
 const Duration kIdleTimeoutDuration = Duration(minutes: 15);
 
 /// Shown on login after automatic idle sign-out.
-const String kIdleTimeoutSignOutMessage = 'You were signed out due to inactivity. Sign in again to continue.';
+const String kIdleTimeoutSignOutMessage =
+    'You were signed out due to inactivity. Sign in again to continue.';
 
 /// Shown on login when the SDK ends the session (e.g. refresh failure).
-const String kSessionEndedMessage = 'Your session has ended. Sign in again to continue.';
+const String kSessionEndedMessage =
+    'Your session has ended. Sign in again to continue.';
 
 /// Tracks keyboard/pointer activity and signs out after [idleDuration] of inactivity.
 ///

@@ -5,14 +5,21 @@ import 'package:flutter/foundation.dart';
 /// Successful result from `update_appointment_status`, including server timestamps.
 @immutable
 class AppointmentStatusUpdateResult {
-  const AppointmentStatusUpdateResult({required this.status, this.updatedAt, this.checkedInAt, this.inProgressAt});
+  const AppointmentStatusUpdateResult({
+    required this.status,
+    this.updatedAt,
+    this.checkedInAt,
+    this.inProgressAt,
+  });
 
   final AppointmentStatus status;
   final DateTime? updatedAt;
   final DateTime? checkedInAt;
   final DateTime? inProgressAt;
 
-  static AppointmentStatusUpdateResult? fromRpcData(Map<String, dynamic>? data) {
+  static AppointmentStatusUpdateResult? fromRpcData(
+    Map<String, dynamic>? data,
+  ) {
     if (data == null) {
       return null;
     }

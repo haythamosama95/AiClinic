@@ -10,7 +10,7 @@
     "NCBI StatPearls — Overview on Ordering and Evaluation of Laboratory Tests",
     "Fullscript — Most Commonly Ordered Lab Tests",
     "Cleveland Clinic — Blood Tests Guide",
-    "AiClinic project seed data (specs/013-visits)"
+    "AiClinic project seed data (docs/specs/013-visits)"
   ],
   "disclaimer": "This catalog is a reference compilation, not medical advice. Test availability varies by country, facility, and clinical context. ICD-10/11 alone contains 70,000+ procedure codes; this list focuses on commonly ordered investigations.",
   "categories": {

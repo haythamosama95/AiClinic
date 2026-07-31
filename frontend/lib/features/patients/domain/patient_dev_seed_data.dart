@@ -34,7 +34,10 @@ abstract final class PatientDevSeedData {
       gender: PatientGender.female,
       maritalStatus: PatientMaritalStatus.widowed,
     ),
-    PatientDevSeedSpec(fullName: '${PatientDevSeedSpec.devNamePrefix}Hassan Ibrahim', phone: '2017000005'),
+    PatientDevSeedSpec(
+      fullName: '${PatientDevSeedSpec.devNamePrefix}Hassan Ibrahim',
+      phone: '2017000005',
+    ),
     PatientDevSeedSpec(
       fullName: '${PatientDevSeedSpec.devNamePrefix}Nadia Said',
       phone: '2017000006',
@@ -58,7 +61,8 @@ abstract final class PatientDevSeedData {
       phone: '2017000009',
       dateOfBirth: DateTime(1990, 5, 15),
       gender: PatientGender.male,
-      notes: 'Similar name/DOB to Ahmed Hassan — duplicate check on manual register.',
+      notes:
+          'Similar name/DOB to Ahmed Hassan — duplicate check on manual register.',
     ),
     PatientDevSeedSpec(
       fullName: '${PatientDevSeedSpec.devNamePrefix}100% Promo',
@@ -83,7 +87,8 @@ abstract final class PatientDevSeedData {
       fullName: '${PatientDevSeedSpec.devNamePrefix}Branch Two Patient',
       phone: '2017000013',
       branchTarget: PatientDevSeedBranchTarget.other,
-      notes: 'Registered at second branch — hidden in “this branch only” scope.',
+      notes:
+          'Registered at second branch — hidden in “this branch only” scope.',
     ),
     PatientDevSeedSpec(
       fullName: '${PatientDevSeedSpec.devNamePrefix}South Patient One',

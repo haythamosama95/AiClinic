@@ -6,6 +6,7 @@ void main() {
     test('empty query shows browse guidance', () {
       final helper = PatientSearchQuery.helperForDraft('');
       expect(helper, contains('Browse'));
+      expect(helper, contains('MRN'));
       expect(helper, contains('3+'));
       expect(helper, contains('2+'));
     });
@@ -15,21 +16,21 @@ void main() {
     });
 
     test('phone-like input shows phone helper', () {
-      expect(PatientSearchQuery.helperForDraft('20'), contains('Phone prefix'));
-      expect(PatientSearchQuery.helperForDraft('2010'), contains('Phone prefix'));
+      expect(PatientSearchQuery.helperForDraft('20'), contains('Phone or MRN'));
+      expect(PatientSearchQuery.helperForDraft('2010'), contains('Phone or MRN'));
     });
 
     test('name-like input shows name helper', () {
-      expect(PatientSearchQuery.helperForDraft('ahm'), contains('Name search'));
-      expect(PatientSearchQuery.helperForDraft('ahmed'), contains('Name search'));
+      expect(PatientSearchQuery.helperForDraft('ahm'), contains('Name or MRN'));
+      expect(PatientSearchQuery.helperForDraft('ahmed'), contains('Name or MRN'));
     });
 
     test('single digit shows phone helper', () {
-      expect(PatientSearchQuery.helperForDraft('2'), contains('Phone prefix'));
+      expect(PatientSearchQuery.helperForDraft('2'), contains('Phone or MRN'));
     });
 
     test('two letter name shows name helper', () {
-      expect(PatientSearchQuery.helperForDraft('ab'), contains('Name search'));
+      expect(PatientSearchQuery.helperForDraft('ab'), contains('Name or MRN'));
     });
   });
 

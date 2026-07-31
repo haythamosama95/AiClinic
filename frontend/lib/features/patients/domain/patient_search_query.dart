@@ -31,11 +31,11 @@ abstract final class PatientSearchQuery {
   static String helperForDraft(String? query) {
     final trimmed = query?.trim() ?? '';
     if (trimmed.isEmpty) {
-      return 'Browse all patients in scope, or search by name (3+ letters) or phone prefix (2+ digits).';
+      return 'Browse all patients in scope, or search by name (3+ letters), MRN, or phone prefix (2+ digits).';
     }
     if (isPhonePrefixQuery(trimmed)) {
-      return 'Phone prefix search — enter at least 2 digits.';
+      return 'Phone or MRN search — enter at least 2 digits.';
     }
-    return 'Name search — enter at least 3 characters.';
+    return 'Name or MRN search — enter at least 3 characters.';
   }
 }

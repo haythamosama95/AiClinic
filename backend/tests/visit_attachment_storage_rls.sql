@@ -80,13 +80,14 @@ BEGIN
     (v_admin_staff, v_branch_primary, true, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_branch_other, true, v_bootstrap_user, v_bootstrap_user);
 
-  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, created_by, updated_by)
+  INSERT INTO public.patients (id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by)
   VALUES (
     v_patient_id,
     v_branch_other,
     v_org_id,
     'Satellite Patient',
     '201111111301',
+    'MRN-301001',
     v_bootstrap_user,
     v_bootstrap_user
   );

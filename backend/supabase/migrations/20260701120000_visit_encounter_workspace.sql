@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Visit Encounter Workspace (014): US6 patient safety + US7 diagnosis/plan outputs
--- Spec: specs/014-visit-encounter-workspace/plan.md
+-- Spec: docs/specs/014-visit-encounter-workspace/plan.md
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
