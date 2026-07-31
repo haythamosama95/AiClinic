@@ -93,10 +93,11 @@ function base64urlDecode(segment: string): string {
 }
 
 async function generateTestKeypair(kid: string = FIXTURE_KID): Promise<TestKeypair> {
-  const keyPair = await crypto.subtle.generateKey("EdDSA", { name: "EdDSA" }, true, [
-    "sign",
-    "verify",
-  ]);
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "Ed25519" },
+    true,
+    ["sign", "verify"],
+  );
   const exportedJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   const rawPublicKey = await crypto.subtle.exportKey("raw", keyPair.publicKey);
 
@@ -142,7 +143,7 @@ export async function mintToken(
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const signature = await crypto.subtle.sign(
-    "EdDSA",
+    { name: "Ed25519" },
     keypair.privateKey,
     new TextEncoder().encode(signingInput),
   );
