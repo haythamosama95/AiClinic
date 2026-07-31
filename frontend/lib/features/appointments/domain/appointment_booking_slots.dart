@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
@@ -213,7 +214,7 @@ class AppointmentBookingSlots {
     List<DateTime> days,
   ) {
     if (days.isEmpty) {
-      final now = DateTime.now();
+      final now = clock.now();
       final start = DateTime(now.year, now.month, now.day);
       return (from: start, to: start.add(const Duration(days: 1)));
     }

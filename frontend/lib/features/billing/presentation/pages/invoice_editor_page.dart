@@ -4,12 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
-import 'package:ai_clinic/core/ui/components/app_page_header.dart';
-import 'package:ai_clinic/core/ui/components/app_search_input.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
@@ -140,26 +134,34 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
     ref.read(serviceSelectorProvider(branchId).notifier).search(query);
   }
 
+  Widget _buildLoadError(Object error) {
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load draft',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () =>
+              ref.invalidate(invoiceEditorProvider(widget.invoiceId)),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final editorAsync = ref.watch(invoiceEditorProvider(widget.invoiceId));
     final colors = context.appColors;
 
+    if (editorAsync.hasError && !editorAsync.hasValue) {
+      return _buildLoadError(editorAsync.error!);
+    }
+
     return editorAsync.when(
       loading: () =>
           const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (error, _) => Center(
-        child: AppEmptyState(
-          variant: AppEmptyStateVariant.error,
-          title: 'Could not load draft',
-          description: error.toString(),
-          action: EmptyStateAction(
-            label: 'Retry',
-            onPressed: () =>
-                ref.invalidate(invoiceEditorProvider(widget.invoiceId)),
-          ),
-        ),
-      ),
+      error: (error, _) => _buildLoadError(error),
       data: (state) {
         final invoice = state.invoice;
         final displayNumber = BillingFormatting.invoiceDisplayNumber(
@@ -380,6 +382,15 @@ class _CatalogResults extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(serviceSelectorProvider(branchId));
     final colors = context.appColors;
+
+    if (catalog.hasError && !catalog.hasValue) {
+      return Text(
+        catalog.error.toString(),
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
+      );
+    }
 
     return catalog.when(
       loading: () =>

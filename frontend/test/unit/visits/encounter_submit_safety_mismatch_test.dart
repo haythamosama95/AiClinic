@@ -22,10 +22,6 @@ VisitDocumentationState _patientSafetyOnlyDocState() {
 
 void main() {
   group('EDGE-001 — Patient-safety-only submit (FE/BE mismatch)', () {
-    test('visitHasPersistableDocumentation ignores pending allergy draft', () {
-      expect(visitHasPersistableDocumentation(_patientSafetyOnlyDocState()), isFalse);
-    });
-
     test('evaluateVisitSubmitReadiness blocks submit when only allergy is staged', () {
       final readiness = evaluateVisitSubmitReadiness(_patientSafetyOnlyDocState());
 

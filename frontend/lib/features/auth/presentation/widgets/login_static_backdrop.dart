@@ -45,80 +45,107 @@ class LoginStaticBackdrop extends StatelessWidget {
             ),
           ),
           Positioned.fill(child: CustomPaint(painter: _BackdropPatternPainter(isDark: isDark))),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: AppShellTokens.sidebarExpandedWidth,
-                child: ColoredBox(
-                  color: colors.surfaceDefault.withValues(alpha: isDark ? 0.72 : 0.88),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.space4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _SkeletonBlock(width: 120, height: 28, color: colors.surfaceMuted),
-                        const SizedBox(height: AppSpacing.space8),
-                        for (var i = 0; i < 6; i++) ...[
-                          _SkeletonBlock(width: double.infinity, height: AppShellTokens.navItemHeight, color: colors.surfaceMuted),
-                          const SizedBox(height: AppSpacing.space2),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final showSidebar = constraints.maxWidth >= AppShellTokens.sidebarExpandedWidth + 160;
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (showSidebar)
                     SizedBox(
-                      height: AppShellTokens.topBarHeight,
+                      width: AppShellTokens.sidebarExpandedWidth,
                       child: ColoredBox(
-                        color: colors.surfaceDefault.withValues(alpha: isDark ? 0.65 : 0.82),
+                        color: colors.surfaceDefault.withValues(alpha: isDark ? 0.72 : 0.88),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6),
-                          child: Row(
+                          padding: const EdgeInsets.all(AppSpacing.space4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _SkeletonBlock(width: 180, height: 20, color: colors.surfaceMuted),
-                              const Spacer(),
-                              _SkeletonBlock(width: 120, height: AppShellTokens.topBarActionHeight, color: colors.surfaceMuted),
+                              _SkeletonBlock(width: 120, height: 28, color: colors.surfaceMuted),
+                              const SizedBox(height: AppSpacing.space8),
+                              for (var i = 0; i < 6; i++) ...[
+                                _SkeletonBlock(
+                                  width: double.infinity,
+                                  height: AppShellTokens.navItemHeight,
+                                  color: colors.surfaceMuted,
+                                ),
+                                const SizedBox(height: AppSpacing.space2),
+                              ],
                             ],
                           ),
                         ),
                       ),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.space6),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _SkeletonBlock(width: 220, height: 28, color: colors.surfaceMuted),
-                            const SizedBox(height: AppSpacing.space2),
-                            _SkeletonBlock(width: 320, height: 16, color: colors.surfaceMuted),
-                            const SizedBox(height: AppSpacing.space6),
-                            Expanded(
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: AppShellTokens.topBarHeight,
+                          child: ColoredBox(
+                            color: colors.surfaceDefault.withValues(alpha: isDark ? 0.65 : 0.82),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6),
                               child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   Expanded(
-                                    flex: 2,
-                                    child: _SkeletonPanel(color: colors.surfaceMuted),
+                                    child: _SkeletonBlock(width: double.infinity, height: 20, color: colors.surfaceMuted),
                                   ),
-                                  const SizedBox(width: AppSpacing.space4),
-                                  Expanded(child: _SkeletonPanel(color: colors.surfaceMuted)),
+                                  const SizedBox(width: AppSpacing.space3),
+                                  _SkeletonBlock(
+                                    width: math.min(120, constraints.maxWidth * 0.35),
+                                    height: AppShellTokens.topBarActionHeight,
+                                    color: colors.surfaceMuted,
+                                  ),
                                 ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.space6),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _SkeletonBlock(
+                                  width: math.min(220, constraints.maxWidth * 0.6),
+                                  height: 28,
+                                  color: colors.surfaceMuted,
+                                ),
+                                const SizedBox(height: AppSpacing.space2),
+                                _SkeletonBlock(
+                                  width: math.min(320, constraints.maxWidth * 0.8),
+                                  height: 16,
+                                  color: colors.surfaceMuted,
+                                ),
+                                const SizedBox(height: AppSpacing.space6),
+                                Expanded(
+                                  child: showSidebar
+                                      ? Row(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            Expanded(
+                                              flex: 2,
+                                              child: _SkeletonPanel(color: colors.surfaceMuted),
+                                            ),
+                                            const SizedBox(width: AppSpacing.space4),
+                                            Expanded(child: _SkeletonPanel(color: colors.surfaceMuted)),
+                                          ],
+                                        )
+                                      : _SkeletonPanel(color: colors.surfaceMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

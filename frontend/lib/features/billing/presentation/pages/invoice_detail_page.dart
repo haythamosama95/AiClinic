@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -91,31 +93,38 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
     }
   }
 
+  Widget _buildDetailError(Object error) {
+    if (_isInvoiceNotFound(error)) {
+      return _InvoiceNotFoundView(onBack: _popToInvoicesList);
+    }
+
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load invoice',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(invoiceDetailViewProvider(widget.invoiceId));
 
-    final content = detailAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (error, _) {
-        if (_isInvoiceNotFound(error)) {
-          return _InvoiceNotFoundView(onBack: _popToInvoicesList);
-        }
-
-        return Center(
-          child: AppEmptyState(
-            variant: AppEmptyStateVariant.error,
-            title: 'Could not load invoice',
-            description: error.toString(),
-            action: EmptyStateAction(
-              label: 'Retry',
-              onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
-            ),
-          ),
-        );
-      },
-      data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
-    );
+    final Widget content;
+    if (detailAsync.hasError && !detailAsync.hasValue) {
+      content = _buildDetailError(detailAsync.error!);
+    } else {
+      content = detailAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        error: (error, _) => _buildDetailError(error),
+        data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
+      );
+    }
 
     return FadeTransition(
       opacity: _enterAnimation ?? _enterController,
@@ -398,6 +407,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
 
   late final AnimationController _controller;
   CurvedAnimation? _animation;
+  Timer? _startTimer;
   var _configured = false;
 
   @override
@@ -426,7 +436,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
     if (delay == Duration.zero) {
       _controller.forward();
     } else {
-      Future<void>.delayed(delay, () {
+      _startTimer = Timer(delay, () {
         if (mounted) {
           _controller.forward();
         }
@@ -436,6 +446,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
 
   @override
   void dispose() {
+    _startTimer?.cancel();
     _animation?.dispose();
     _controller.dispose();
     super.dispose();

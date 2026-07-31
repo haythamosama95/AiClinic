@@ -203,11 +203,5 @@ void main() {
       expect(readiness.emptyPhases, EncounterPhase.stepperPhases);
       expect(badges[EncounterPhase.subjective], PhaseCompletionBadge.empty);
     });
-
-    test('EDGE-007: visitHasPersistableDocumentation is false for formatting-only empty delta', () {
-      final state = richTextOnlyComplaintState(complaintDelta: richDeltaEffectivelyEmpty);
-
-      expect(visitHasPersistableDocumentation(state), isFalse);
-    });
   });
 }

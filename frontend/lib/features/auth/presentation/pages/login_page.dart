@@ -145,7 +145,13 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     _authSessionSub?.close();
     if (!_isAuthenticated) {
       final notifier = _authNotifier;
-      Future(() => notifier.resetSignInForm());
+      scheduleMicrotask(() {
+        try {
+          notifier.resetSignInForm();
+        } catch (_) {
+          // Provider scope may already be torn down during widget tests.
+        }
+      });
     }
     _enterController.dispose();
     _usernameController.dispose();
@@ -596,9 +602,7 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
     final previousIcon = textDirection == TextDirection.rtl ? Icons.arrow_forward : Icons.arrow_back;
     final nextIcon = textDirection == TextDirection.rtl ? Icons.arrow_back : Icons.arrow_forward;
 
-    return Semantics(
-      excludeSemantics: true,
-      child: Stack(
+    return Stack(
         fit: StackFit.expand,
         children: [
           Positioned.fill(
@@ -642,8 +646,7 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 }
 
@@ -792,6 +795,20 @@ class _TestimonialImageSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (reducedMotion) {
+      return Image(
+        key: ValueKey<int>(switchKey),
+        image: AssetImage(imageAsset),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          return ColoredBox(color: fallbackColor);
+        },
+      );
+    }
+
     return AnimatedSwitcher(
       duration: duration,
       switchInCurve: const Cubic(0.2, 0, 0.2, 1),
@@ -844,6 +861,12 @@ class _TestimonialSlideSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (reducedMotion) {
+      return ClipRect(
+        child: SizedBox(key: ValueKey<int>(switchKey), width: double.infinity, child: child),
+      );
+    }
+
     return ClipRect(
       child: AnimatedSize(
         duration: reducedMotion ? Duration.zero : duration,

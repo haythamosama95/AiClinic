@@ -1,12 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/components/app_money_display.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
-import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 

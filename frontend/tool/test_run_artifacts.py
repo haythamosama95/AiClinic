@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -22,6 +23,14 @@ _EXPECTED_ACTUAL = re.compile(
     r"Expected:\s*(.+?)\n\s*Actual:\s*(.+?)(?:\n|$)", re.DOTALL
 )
 _EXCEPTION_PREFIX = re.compile(r"^([A-Za-z][\w]*(?:Error|Exception|Failure)):")
+_SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _slugify(text: str, max_len: int = 80) -> str:
+    slug = _SLUG_UNSAFE.sub("_", text.strip()).strip("._-")
+    if not slug:
+        slug = "test"
+    return slug[:max_len]
 
 
 def utc_now_iso() -> str:
@@ -234,6 +243,15 @@ class MachineEventRecorder:
         self._tests: dict[int, TestRecord] = {}
         self._suites: dict[int, SuiteRecord] = {}
         self._test_id_by_name: dict[str, int] = {}
+        self._artifact_lock = threading.Lock()
+        self._incremental_enabled = False
+
+        if self.artifact_dir is not None:
+            self.artifact_dir.mkdir(parents=True, exist_ok=True)
+            (self.artifact_dir / "tests").mkdir(parents=True, exist_ok=True)
+            (self.artifact_dir / "raw.jsonl").write_text("", encoding="utf-8")
+            (self.artifact_dir / "raw.txt").write_text("", encoding="utf-8")
+            self._incremental_enabled = True
 
     def add_extra_step(
         self,
@@ -277,7 +295,17 @@ class MachineEventRecorder:
         if parsed is not None:
             record["event"] = parsed
         self._raw_records.append(record)
+        self._append_raw_record(record, line)
         return parsed
+
+    def _append_raw_record(self, record: dict[str, Any], line: str) -> None:
+        if not self._incremental_enabled or self.artifact_dir is None:
+            return
+        with self._artifact_lock:
+            with (self.artifact_dir / "raw.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            with (self.artifact_dir / "raw.txt").open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
 
     def _apply_event(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")
@@ -349,6 +377,7 @@ class MachineEventRecorder:
             rec.skipped = bool(event.get("skipped"))
             if rec.started_ms is not None and event.get("time") is not None:
                 rec.duration_ms = max(0, int(event["time"]) - int(rec.started_ms))
+            self._persist_test_completion(tid)
 
         elif event_type == "done":
             self.flutter_done_success = event.get("success")
@@ -359,33 +388,89 @@ class MachineEventRecorder:
         for rec in self._tests.values():
             if rec.errors and rec.status == "success":
                 rec.status = "failure"
+        self._write_summary_snapshot()
+        self._write_failures_snapshot()
+
+    def _persist_test_completion(self, test_id: int) -> None:
+        if not self._incremental_enabled or self.artifact_dir is None:
+            return
+        rec = self._tests.get(test_id)
+        if rec is None:
+            return
+
+        slug = _slugify(rec.name)
+        test_path = self.artifact_dir / "tests" / f"{test_id:05d}_{slug}.json"
+        payload = rec.to_summary_dict()
+        payload["finished_at"] = utc_now_iso()
+
+        with self._artifact_lock:
+            test_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            self._write_summary_snapshot_locked()
+            self._write_failures_snapshot_locked()
+
+    def _write_summary_snapshot(self) -> None:
+        if not self._incremental_enabled or self.artifact_dir is None:
+            return
+        with self._artifact_lock:
+            self._write_summary_snapshot_locked()
+
+    def _write_failures_snapshot(self) -> None:
+        if not self._incremental_enabled or self.artifact_dir is None:
+            return
+        with self._artifact_lock:
+            self._write_failures_snapshot_locked()
+
+    def _write_summary_snapshot_locked(self) -> None:
+        if self.artifact_dir is None:
+            return
+        summary = self.build_summary()
+        (self.artifact_dir / "summary.json").write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_failures_snapshot_locked(self) -> None:
+        if self.artifact_dir is None:
+            return
+        failures = self.build_failures()
+        (self.artifact_dir / "failures.json").write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
 
     def write_artifacts(self) -> Path | None:
         if self.artifact_dir is None:
             return None
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
 
-        raw_jsonl = self.artifact_dir / "raw.jsonl"
-        with raw_jsonl.open("w", encoding="utf-8") as fh:
-            for rec in self._raw_records:
-                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        if not self._incremental_enabled:
+            raw_jsonl = self.artifact_dir / "raw.jsonl"
+            with raw_jsonl.open("w", encoding="utf-8") as fh:
+                for rec in self._raw_records:
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-        raw_txt = self.artifact_dir / "raw.txt"
-        with raw_txt.open("w", encoding="utf-8") as fh:
-            for rec in self._raw_records:
-                fh.write(rec["raw"] + "\n")
+            raw_txt = self.artifact_dir / "raw.txt"
+            with raw_txt.open("w", encoding="utf-8") as fh:
+                for rec in self._raw_records:
+                    fh.write(rec["raw"] + "\n")
 
-        summary = self.build_summary()
-        failures = self.build_failures()
+            summary = self.build_summary()
+            failures = self.build_failures()
 
-        (self.artifact_dir / "summary.json").write_text(
-            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        (self.artifact_dir / "failures.json").write_text(
-            json.dumps(failures, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+            (self.artifact_dir / "summary.json").write_text(
+                json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            (self.artifact_dir / "failures.json").write_text(
+                json.dumps(failures, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            summary = self.build_summary()
+            failures = self.build_failures()
         (self.artifact_dir / "summary.md").write_text(
             render_summary_md(summary),
             encoding="utf-8",

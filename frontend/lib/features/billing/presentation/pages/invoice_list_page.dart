@@ -220,30 +220,42 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage>
     final isLoading = listAsync.isLoading;
     final hasInvoices = state?.hasInvoices ?? false;
 
-    final content = listAsync.when(
-      loading: () => _buildPageContent(
-        context: context,
-        state: state,
-        controls: controls,
-        isLoading: true,
-        hasInvoices: hasInvoices,
-      ),
-      error: (error, _) => _buildPageContent(
+    final Widget content;
+    if (listAsync.hasError && !listAsync.hasValue) {
+      content = _buildPageContent(
         context: context,
         state: state,
         controls: controls,
         isLoading: false,
         hasInvoices: hasInvoices,
-        error: error,
-      ),
-      data: (loadedState) => _buildPageContent(
-        context: context,
-        state: loadedState,
-        controls: controls,
-        isLoading: isLoading,
-        hasInvoices: loadedState.hasInvoices,
-      ),
-    );
+        error: listAsync.error,
+      );
+    } else {
+      content = listAsync.when(
+        loading: () => _buildPageContent(
+          context: context,
+          state: state,
+          controls: controls,
+          isLoading: true,
+          hasInvoices: hasInvoices,
+        ),
+        error: (error, _) => _buildPageContent(
+          context: context,
+          state: state,
+          controls: controls,
+          isLoading: false,
+          hasInvoices: hasInvoices,
+          error: error,
+        ),
+        data: (loadedState) => _buildPageContent(
+          context: context,
+          state: loadedState,
+          controls: controls,
+          isLoading: isLoading,
+          hasInvoices: loadedState.hasInvoices,
+        ),
+      );
+    }
 
     return FadeTransition(
       opacity: _enterAnimation ?? _enterController,

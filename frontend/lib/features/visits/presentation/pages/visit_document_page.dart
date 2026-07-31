@@ -94,7 +94,12 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
       return;
     }
     _appliedStartInEditMode = true;
-    ref.read(visitDocumentationProvider(visit.id).notifier).enterWorkspaceEditMode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.read(visitDocumentationProvider(visit.id).notifier).enterWorkspaceEditMode();
+    });
   }
 
   void _ensureCompletedVisitOpensOnSummary() {

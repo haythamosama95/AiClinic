@@ -391,5 +391,276 @@ void main() {
       container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(99);
       expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 15);
     });
+
+    test('refresh without branch ends in selection error state', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            branchIds: const [],
+            activeBranchId: null,
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+
+      expect(state.loading, isFalse);
+      expect(state.items, isEmpty);
+      expect(state.error, 'Select an active branch before viewing the calendar.');
+    });
+
+    test('refresh success clears loading and error', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final initial = container.read(appointmentCalendarProvider);
+      expect(initial.loading, isTrue);
+
+      final state = await readAfterInit(container);
+
+      expect(state.loading, isFalse);
+      expect(state.error, isNull);
+      expect(state.items, isNotEmpty);
+    });
+
+    test('refresh failure clears items and sets retry error', () async {
+      client = OfflineAppointmentRpcClient();
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+
+      expect(state.loading, isFalse);
+      expect(state.items, isEmpty);
+      expect(state.error, 'Could not load appointments. Please retry.');
+    });
+
+    test('setMode with same mode is a no-op', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).setMode(AppointmentCalendarMode.week);
+      await pumpEventQueue();
+
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
+    });
+
+    test('setFocusDate with same normalized date is a no-op', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).setFocusDate(state.focusDate);
+      await pumpEventQueue();
+
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
+    });
+
+    test('goToToday refetches appointments', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).setFocusDate(DateTime(2020, 1, 1));
+      await pumpEventQueue();
+      await container.read(appointmentCalendarProvider.notifier).goToToday();
+      await pumpEventQueue();
+
+      final today = DateTime.now();
+      final focus = container.read(appointmentCalendarProvider).focusDate;
+      expect(focus.year, today.year);
+      expect(focus.month, today.month);
+      expect(focus.day, today.day);
+      expect(client.rpcCallCounts['list_appointments'], greaterThan(callsBefore));
+    });
+
+    test('previousPeriod and nextPeriod move focus per mode', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      await container.read(appointmentCalendarProvider.notifier).setFocusDate(DateTime(2026, 6, 15));
+      await pumpEventQueue();
+
+      await container.read(appointmentCalendarProvider.notifier).previousPeriod();
+      await pumpEventQueue();
+      expect(container.read(appointmentCalendarProvider).focusDate, DateTime(2026, 6, 8));
+
+      await container.read(appointmentCalendarProvider.notifier).setMode(AppointmentCalendarMode.month);
+      await pumpEventQueue();
+      await container.read(appointmentCalendarProvider.notifier).setFocusDate(DateTime(2026, 6, 15));
+      await pumpEventQueue();
+
+      await container.read(appointmentCalendarProvider.notifier).nextPeriod();
+      await pumpEventQueue();
+      expect(container.read(appointmentCalendarProvider).focusDate, DateTime(2026, 7, 15));
+    });
+
+    test('applyFilters with no effective change is a no-op', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).applyFilters(
+            branchId: state.selectedBranchId,
+            doctorId: state.selectedDoctorId,
+            statuses: state.selectedStatuses,
+          );
+      await pumpEventQueue();
+
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
+    });
+
+    test('clearFilters when already default is a no-op', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).clearFilters();
+      await pumpEventQueue();
+
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
+    });
+
+    test('hasActiveFilters detects doctor, branch, and status filters', () async {
+      const initialBranchId = '00000000-0000-4000-8000-000000000001';
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: initialBranchId,
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(appointmentCalendarProvider.notifier);
+      await readAfterInit(container);
+
+      await notifier.applyFilters(doctorId: '00000000-0000-4000-8000-000000000099');
+      expect(
+        container.read(appointmentCalendarProvider).hasActiveFilters(initialBranchId: initialBranchId),
+        isTrue,
+      );
+
+      await notifier.clearFilters();
+      await pumpEventQueue();
+
+      await notifier.applyFilters(branchId: '00000000-0000-4000-8000-000000000002');
+      expect(
+        container.read(appointmentCalendarProvider).hasActiveFilters(initialBranchId: initialBranchId),
+        isTrue,
+      );
+
+      await notifier.clearFilters();
+      await pumpEventQueue();
+
+      await notifier.applyFilters(statuses: {AppointmentStatus.confirmed});
+      expect(
+        container.read(appointmentCalendarProvider).hasActiveFilters(initialBranchId: initialBranchId),
+        isTrue,
+      );
+    });
+
+    test('setTimeIntervalMinutes does not refetch appointments', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(30);
+      await pumpEventQueue();
+
+      expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 30);
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
+    });
   });
 }

@@ -65,7 +65,15 @@ class AppFormField extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.space2),
-        Semantics(container: true, textField: true, label: label, hint: helperText, value: error, child: child),
+        Semantics(
+          container: true,
+          textField: true,
+          explicitChildNodes: true,
+          label: label,
+          hint: helperText,
+          value: error,
+          child: child,
+        ),
         if (error != null) ...[
           const SizedBox(height: AppSpacing.space2),
           Semantics(

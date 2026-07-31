@@ -25,7 +25,7 @@ class CreateAppointmentResult {
       return null;
     }
 
-    final id = data['appointment_id']?.toString();
+    final id = optionalAppointmentString(data['appointment_id']);
     final startTime = parseAppointmentDateTime(data['start_time']);
     final endTime = parseAppointmentDateTime(data['end_time']);
     final status = AppointmentStatus.tryParse(data['status']?.toString());
