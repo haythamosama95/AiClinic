@@ -1,5 +1,6 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { handleAdapterRequest } from "./adapter";
+import { dispatchControlRequest, isControlRoute } from "./control";
 
 interface Env {
   DB: D1Database;
@@ -39,6 +40,11 @@ export default {
 
     if (url.pathname === "/v1/requests" && request.method === "POST") {
       return handleAdapterRequest(request);
+    }
+
+    if (request.method === "POST" && isControlRoute(url.pathname)) {
+      const runtimeEnv = env as Env;
+      return dispatchControlRequest(request, { DB: runtimeEnv.DB });
     }
 
     return new Response("Not Found", { status: 404 });

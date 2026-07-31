@@ -101,7 +101,7 @@ harness reason.
 **Purpose**: One task per implementation unit in `plan.md` → Files. Handlers and route wiring are the
 only code B2 adds; no migration, no binding, no `wrangler.toml` change (plan → Files note).
 
-- [ ] T010 [US1] Create `ai-platform/src/control/index.ts` — define the `OperatorAuth` port (a
+- [X] T010 [US1] Create `ai-platform/src/control/index.ts` — define the `OperatorAuth` port (a
   single-method seam resolving an operator principal or rejecting; Clarification Q2) and the
   **enroll** handler that transactionally writes `installation` + `installation_key` + `entitlement`
   (status `pending`, plan from payload, zeroed economics, closed empty period per §8.1 amendment,
@@ -109,20 +109,20 @@ only code B2 adds; no migration, no binding, no `wrangler.toml` change (plan →
   origin. Rejects a duplicate `org_id`/`installation` with no row write (FR-010). The same handler
   branch serves T-B2-01 and T-B2-07. **Satisfies**: FR-001, FR-004, FR-005, FR-006, FR-010; **proved
   by**: T-B2-01, T-B2-07.
-- [ ] T011 [US1] Add the **rotate** handler to `ai-platform/src/control/index.ts` — adds a new
+- [X] T011 [US1] Add the **rotate** handler to `ai-platform/src/control/index.ts` — adds a new
   `installation_key` row with a new `kid` without removing the previous one (overlap intact, §8.1),
   and writes `control_audit` (operator identity, `action = rotate`). Verifying both keys is the
   guard's concern (B3) and is not implemented here (plan → Out of Scope). **Satisfies**: FR-007; **proved
   by**: T-B2-04.
-- [ ] T012 [US1] Add the **suspend**, **resume**, and **delete** handlers to
+- [X] T012 [US1] Add the **suspend**, **resume**, and **delete** handlers to
   `ai-platform/src/control/index.ts` — each writes its `control_audit` row carrying the operator
   identity and transitions `installation.status` (suspend → `suspended`, resume → prior active status,
   delete → lifecycle-terminal status, not a row purge — the installation-by-`installation_id` purge is
   F3 per plan → Out of Scope). **Satisfies**: FR-008; **proved by**: T-B2-02, T-B2-03, T-B2-05.
-- [ ] T013 [US1] Add the non-operator rejection path to `ai-platform/src/control/index.ts` — every
+- [X] T013 [US1] Add the non-operator rejection path to `ai-platform/src/control/index.ts` — every
   handler consults `OperatorAuth` first and on `null` writes no row and returns a terminal rejection
   (no §5.4 code; spec → Edge Cases). **Satisfies**: FR-001, FR-009; **proved by**: T-B2-06.
-- [ ] T014 [US1] Modify `ai-platform/src/worker.ts` — add `/control` route dispatch with
+- [X] T014 [US1] Modify `ai-platform/src/worker.ts` — add `/control` route dispatch with
   operator-auth gating that routes to the handlers (Clarification Q1); the client-facing
   `/v1/requests` and `/health` routes are unchanged. A1's `assertRequiredBindings` is untouched.
   **Satisfies**: FR-001, FR-002; **proved by**: T-B2-01 (end-to-end route → handler → D1) and T-B2-06
