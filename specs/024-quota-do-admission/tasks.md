@@ -157,7 +157,7 @@ dispatch delegates to them, and the dispatch exists before the callers exercise 
 **Purpose**: The whole suite, including every prior slice's suite, green (delivery plan §3.10). A
 checkpoint requires every prior suite green, not just the latest.
 
-- [ ] T022 [US1] From `ai-platform/`, run `npx vitest run` (the full config), confirm this slice's 16
+- [X] T022 [US1] From `ai-platform/`, run `npx vitest run` (the full config), confirm this slice's 16
   tests pass and every prior slice's suite already registered in `vitest.workers.config.ts` /
   `vitest.config.ts` remains green. Assert no test was added to a layer §13.5 does not name. Satisfies
   the §3.10 coverage rule (every error code B4 emits — `unauthenticated`, `quota_exhausted` — every
@@ -170,7 +170,7 @@ checkpoint requires every prior suite green, not just the latest.
 
 **Purpose**: Always present. The quickstart documents this slice only.
 
-- [ ] T023 [US1] Write `specs/024-quota-do-admission/quickstart.md` per
+- [X] T023 [US1] Write `specs/024-quota-do-admission/quickstart.md` per
   `.specify/templates/ai-platform-quickstart-template.md`. **Slice-only scope**: list only this
   slice's files in the review table (`ai-platform/src/quota-do/index.ts`,
   `ai-platform/src/admission/index.ts`, `ai-platform/src/credit/index.ts`, the `worker.ts`
