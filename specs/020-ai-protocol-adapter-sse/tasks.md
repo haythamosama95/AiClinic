@@ -109,12 +109,12 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ### Ingress gate and header parsing
 
-- [ ] T014 [US1] Create `ai-platform/src/adapter.ts`: the §4.3.1 protocol adapter's request parsing
+- [X] T014 [US1] Create `ai-platform/src/adapter.ts`: the §4.3.1 protocol adapter's request parsing
       and ingress body-size gate. Read the request body, enforce the ingress body-size limit (the
       test-injectable constant T001 shares), and reject an oversized body as `request_too_large`
       (HTTP 413) via A2's `liveHttpStatusForCode` and `buildErrorBody` before any other work (§6.1
       stage 1; §5.4). Proves FR-002. Proven by T002 (T1).
-- [ ] T015 [US1] In `ai-platform/src/adapter.ts`, parse the three headers `x-idempotency-key`,
+- [X] T015 [US1] In `ai-platform/src/adapter.ts`, parse the three headers `x-idempotency-key`,
       `x-trace-id` (via A2's `resolveTraceId`), and `x-capability-version` from a well-formed request.
       Reject a malformed or missing required header by the adapter's own parsing, producing no
       taxonomy-coded body and opening no stream (§5.4 "no bare `400`"). Proves FR-003, FR-004. Proven
@@ -122,7 +122,7 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ### SSE event framing and accepted opening
 
-- [ ] T016 [US1] In `ai-platform/src/adapter.ts`, implement the SSE event sink and framing: the
+- [X] T016 [US1] In `ai-platform/src/adapter.ts`, implement the SSE event sink and framing: the
       `event:`/`data:` SSE encoding, the event vocabulary (`accepted`, heartbeat, `completed`,
       `failed`, `cancelled`), and the `accepted` opening event carrying A2's
       `generateRequestReference` value, emitted exactly once and before any content or terminal event
@@ -132,14 +132,14 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ### Heartbeat
 
-- [ ] T017 [US1] In `ai-platform/src/adapter.ts`, emit a heartbeat event while the stream is open and
+- [X] T017 [US1] In `ai-platform/src/adapter.ts`, emit a heartbeat event while the stream is open and
       idle (no content events), so intermediaries do not close the connection (§5.5 rule 3). The
       heartbeat carries no content and is neither a content nor a terminal event. Proves FR-009. Proven
       by T008 (T7).
 
 ### Terminal events and one-terminal-event guard
 
-- [ ] T018 [US1] In `ai-platform/src/adapter.ts`, implement the terminal-event state machine: emit
+- [X] T018 [US1] In `ai-platform/src/adapter.ts`, implement the terminal-event state machine: emit
       exactly one terminal event per stream (`completed` with the validated result, or `failed`
       carrying a §5.4 taxonomy code in A2's error body), never inferred from silence (§5.5 rule 4).
       Once a terminal event has been emitted, refuse to emit any further event under any path
@@ -148,7 +148,7 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ### Connection-scoped cancellation
 
-- [ ] T019 [US1] In `ai-platform/src/adapter.ts`, implement connection-scoped cancellation: a client
+- [X] T019 [US1] In `ai-platform/src/adapter.ts`, implement connection-scoped cancellation: a client
       closing the stream cancels the request and ends it as `cancelled`, with no separate endpoint and
       no per-request state. `cancelled` / `499` is never written to the live socket as an HTTP status
       (A2's `liveHttpStatusForCode` returns null for `cancelled`); `499` is the journaled terminal
@@ -157,7 +157,7 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ### Wire the adapter into the Worker
 
-- [ ] T020 [US1] Modify `ai-platform/src/worker.ts`: replace the placeholder `POST /v1/requests` JSON
+- [X] T020 [US1] Modify `ai-platform/src/worker.ts`: replace the placeholder `POST /v1/requests` JSON
       handler with a call into the adapter from T014–T019. The `/health` route and `GatewayObject`
       Durable Object class are unchanged (§4.3.1 owns the wire format; §13.4 the environment topology
       is A1's). Proves FR-001, FR-002, FR-007, FR-010, FR-011 (live wiring of the adapter into the

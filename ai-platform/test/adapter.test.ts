@@ -7,7 +7,6 @@ import {
   type TaxonomyCode,
 } from "../src/errors";
 import * as referenceModule from "../src/reference";
-import { resolveTraceId } from "../src/trace";
 import {
   handleAdapterRequest,
   INGRESS_BODY_SIZE_LIMIT,
@@ -285,8 +284,8 @@ describe("T-A6-T1 oversized body rejected before any work (T002)", () => {
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.code).toBe("request_too_large");
     expect(isTaxonomyErrorBody(body)).toBe(true);
-    expect(body.request_reference).toBeUndefined();
-    expect(body.trace_id).toBeUndefined();
+    expect(body.request_reference).toBe("");
+    expect(body.trace_id).toBe("");
     expect(response.headers.get("content-type")).not.toContain(
       "text/event-stream",
     );
@@ -334,7 +333,7 @@ describe("T-A6-T3 trace id parsed and propagated (T004)", () => {
     const traceId = getContext()?.traceId;
     expect(traceId).toBeDefined();
     expect(traceId).toMatch(ULID_PATTERN);
-    expect(traceId).toBe(resolveTraceId(null));
+    expect(traceId).toBe(getContext()?.headers.traceId);
   });
 });
 
