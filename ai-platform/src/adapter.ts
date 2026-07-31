@@ -77,9 +77,10 @@ function ingressTooLargeResponse(): Response {
   });
 }
 
-function headerParseFailureResponse(): Response {
+function adapterParseFailureResponse(): Response {
+  // §5.4: no taxonomy code maps to a bare 400; adapter-local parse failures use 422.
   return new Response(null, {
-    status: 400,
+    status: 422,
     headers: { "content-type": "text/plain" },
   });
 }
@@ -142,7 +143,7 @@ export async function handleAdapterRequest(
   try {
     bodyText = await request.text();
   } catch {
-    return headerParseFailureResponse();
+    return adapterParseFailureResponse();
   }
 
   if (bodyText.length > INGRESS_BODY_SIZE_LIMIT) {
@@ -151,7 +152,7 @@ export async function handleAdapterRequest(
 
   const parsedHeaders = parseRequiredHeaders(request);
   if (!parsedHeaders) {
-    return headerParseFailureResponse();
+    return adapterParseFailureResponse();
   }
 
   const requestReference = generateRequestReference();

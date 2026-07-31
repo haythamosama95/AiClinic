@@ -167,7 +167,7 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ## Phase 3: Verification
 
-- [ ] T021 [US1] Run `npx vitest run` from `ai-platform/` to execute the **whole** suite — this
+- [X] T021 [US1] Run `npx vitest run` from `ai-platform/` to execute the **whole** suite — this
       slice's `test/adapter.test.ts` plus every prior slice's suite
       (`canonical.test.ts`, `config-cache.test.ts`, `context.test.ts`, `env-deps.test.ts`,
       `error-body.test.ts`, `health.test.ts`, `log-redaction.test.ts`, `manifest.test.ts`,
@@ -181,7 +181,7 @@ order. Each unit is one file under `ai-platform/src/`.
 
 ## Phase 4: Documentation
 
-- [ ] T022 [US1] [P] Create `specs/020-ai-protocol-adapter-sse/quickstart.md` filled per
+- [X] T022 [US1] [P] Create `specs/020-ai-protocol-adapter-sse/quickstart.md` filled per
       `.specify/templates/ai-platform-quickstart-template.md`: Architecture context (row A6; §4.3.1,
       §5.5), What was implemented (the adapter module + Worker wiring), Files to review table
       (`ai-platform/src/adapter.ts`, `ai-platform/src/worker.ts`, `ai-platform/test/adapter.test.ts`
