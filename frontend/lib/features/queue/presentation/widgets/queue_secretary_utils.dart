@@ -103,7 +103,7 @@ String? queueAlertSummary(
   final shiftDoctors = shiftLookup.doctorsOnCurrentShiftAt(now);
   final laggingDoctors = <({QueueShiftDoctor doctor, int lag})>[];
   for (final doctor in shiftDoctors) {
-    final lag = _queueDoctorLagMinutes(doctor, appointments, now: now);
+    final lag = queueDoctorLagMinutes(doctor, appointments, now: now);
     if (lag >= 15) {
       laggingDoctors.add((doctor: doctor, lag: lag));
     }
@@ -209,7 +209,33 @@ int _triageStatusOrder(AppointmentStatus status) {
   };
 }
 
-int _queueDoctorLagMinutes(
+/// Idle minutes for an available doctor derived from their latest completed visit
+/// today (web `getIdleMinutes` analog when `idleSince` is unavailable).
+int queueDoctorIdleMinutes(
+  QueueShiftDoctor doctor,
+  List<AppointmentListItem> appointments, {
+  required DateTime now,
+}) {
+  DateTime? idleSince;
+  for (final item in appointments) {
+    if (item.doctorId != doctor.id ||
+        item.status != AppointmentStatus.completed) {
+      continue;
+    }
+    final endedAt = item.updatedAt ?? item.endTime;
+    if (idleSince == null || endedAt.isAfter(idleSince)) {
+      idleSince = endedAt;
+    }
+  }
+  if (idleSince == null) {
+    return 0;
+  }
+  final minutes = now.difference(idleSince).inMinutes;
+  return minutes > 0 ? minutes : 0;
+}
+
+/// Doctor lag minutes for the doctors panel (web `getDoctorLagMinutes`).
+int queueDoctorLagMinutes(
   QueueShiftDoctor doctor,
   List<AppointmentListItem> appointments, {
   required DateTime now,

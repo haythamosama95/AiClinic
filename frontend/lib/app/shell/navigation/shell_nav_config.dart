@@ -123,6 +123,9 @@ abstract final class ShellNavConfig {
     if (isDesignSystemLocation(location)) {
       return 'Design System';
     }
+    if (location == AppRoutes.appointmentsQueue) {
+      return 'Queue';
+    }
 
     final itemId = itemIdForLocation(location);
     return itemId != null ? labelFor(itemId) : null;
@@ -179,6 +182,9 @@ abstract final class ShellNavConfig {
     }
     if (location == AppRoutes.appointmentsCalendar) {
       return 'appointments-calendar';
+    }
+    if (location == AppRoutes.appointmentsQueue) {
+      return 'appointments';
     }
     if (location.startsWith(AppRoutes.appointments)) {
       return 'appointments';

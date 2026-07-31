@@ -25,6 +25,7 @@ import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dar
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
 import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
@@ -109,7 +110,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Appointments (V1-4)
           GoRoute(path: AppRoutes.appointments, redirect: (_, _) => AppRoutes.appointmentsCalendar),
           GoRoute(path: AppRoutes.appointmentsBook, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.appointmentsQueue, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const QueuePage()),
           GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(
             path: '${AppRoutes.appointments}/:appointmentId',

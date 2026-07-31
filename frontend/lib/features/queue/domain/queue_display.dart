@@ -54,7 +54,7 @@ class AppointmentQueuePartition {
 
 /// Pure display rules for the clinic queue dashboard.
 abstract final class AppointmentQueueDisplay {
-  static const waitWarningMinutes = 15;
+  static const waitWarningMinutes = 20;
   static const waitCriticalMinutes = 30;
 
   /// Fallback label when no shift doctors could be resolved.
