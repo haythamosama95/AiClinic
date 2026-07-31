@@ -126,6 +126,7 @@ class DevClinicSeedService {
   Future<void> run({
     required AuthSessionContext auth,
     required Future<void> Function() refreshSession,
+    required Future<void> Function() ensureRpcSession,
     DevClinicSeedProgress? onProgress,
   }) async {
     if (!auth.staffProfile.isBootstrapAdmin) {
@@ -140,6 +141,7 @@ class DevClinicSeedService {
     report('Wiping all clinic data from the server…');
     await _bootstrap.resetInstallationForDevelopment();
     await refreshSession();
+    await ensureRpcSession();
 
     final doctorIdsByBranch = <String, String>{};
     String? multiBranchDoctorId;

@@ -733,6 +733,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Widowed'**
   String get maritalStatusWidowed;
+
+  /// No description provided for @breadcrumbCalendar.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get breadcrumbCalendar;
+
+  /// No description provided for @breadcrumbQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Queue'**
+  String get breadcrumbQueue;
+
+  /// No description provided for @breadcrumbInvoices.
+  ///
+  /// In en, this message translates to:
+  /// **'Invoices'**
+  String get breadcrumbInvoices;
+
+  /// No description provided for @breadcrumbVisitDocumentation.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit documentation'**
+  String get breadcrumbVisitDocumentation;
+
+  /// No description provided for @breadcrumbVisitChronicle.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit chronicle'**
+  String get breadcrumbVisitChronicle;
+
+  /// No description provided for @breadcrumbVisitBilling.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing'**
+  String get breadcrumbVisitBilling;
+
+  /// No description provided for @breadcrumbNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Not found'**
+  String get breadcrumbNotFound;
 }
 
 class _AppLocalizationsDelegate

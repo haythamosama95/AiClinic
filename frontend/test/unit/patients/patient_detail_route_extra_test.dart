@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,6 +54,18 @@ void main() {
         PatientDetailRouteExtra.fromExtra({'id': 'p1'}).preview,
         isNull,
       );
+    });
+
+    test('preserves breadcrumbTrail when provided', () {
+      final trail = BreadcrumbTrail([
+        BreadcrumbEntries.hubPatients(),
+        BreadcrumbEntries.patient('p1', name: 'Sara Ali'),
+      ]);
+      final extra = PatientDetailRouteExtra(breadcrumbTrail: trail);
+
+      final parsed = PatientDetailRouteExtra.fromExtra(extra);
+
+      expect(parsed.breadcrumbTrail, trail);
     });
   });
 }

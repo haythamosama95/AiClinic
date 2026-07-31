@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -13,6 +14,7 @@ import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
@@ -21,9 +23,10 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_ban
 
 /// Read-only encounter chronicle for a single visit (web `VisitSummaryChronicle`).
 class VisitDetailPage extends ConsumerStatefulWidget {
-  const VisitDetailPage({required this.visitId, super.key});
+  const VisitDetailPage({required this.visitId, this.extra, super.key});
 
   final String visitId;
+  final VisitRouteExtra? extra;
 
   @override
   ConsumerState<VisitDetailPage> createState() => _VisitDetailPageState();
@@ -38,10 +41,7 @@ class _VisitDetailPageState extends ConsumerState<VisitDetailPage> with SingleTi
   void initState() {
     super.initState();
     _enterController = AnimationController(vsync: this);
-    _enterAnimation = CurvedAnimation(
-      parent: _enterController,
-      curve: AppMotionEasing.out,
-    );
+    _enterAnimation = CurvedAnimation(parent: _enterController, curve: AppMotionEasing.out);
   }
 
   @override
@@ -53,10 +53,7 @@ class _VisitDetailPageState extends ConsumerState<VisitDetailPage> with SingleTi
     _enterConfigured = true;
 
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    _enterController.duration = AppMotion.resolveDuration(
-      AppMotionPreset.fadeScale,
-      reducedMotion: reducedMotion,
-    );
+    _enterController.duration = AppMotion.resolveDuration(AppMotionPreset.fadeScale, reducedMotion: reducedMotion);
 
     if (reducedMotion) {
       _enterController.value = 1;
@@ -114,11 +111,13 @@ class _VisitDetailPageState extends ConsumerState<VisitDetailPage> with SingleTi
         final chronicle = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const BreadcrumbTrailView(),
+            const SizedBox(height: AppSpacing.space4),
             _ChronicleHeader(
               patientName: patientName,
               metaLine: '${visit.doctorName} · $formattedTimestamp',
               canEdit: view.canEditDocumentation,
-              onCardView: () => context.nav.goVisitDocument(widget.visitId),
+              onCardView: () => context.nav.goVisitDocumentFromDetail(widget.visitId),
               onEdit: view.canEditDocumentation ? () => _openDocumentForEdit(context) : null,
               onPrint: () {},
               onNewVisit: () => _startNewVisit(context, visit),
@@ -183,7 +182,7 @@ class _VisitDetailPageState extends ConsumerState<VisitDetailPage> with SingleTi
   }
 
   Future<void> _openDocumentForEdit(BuildContext context) async {
-    context.nav.goVisitDocument(widget.visitId);
+    context.nav.goVisitDocumentFromDetail(widget.visitId);
     try {
       await ref.read(visitDocumentationProvider(widget.visitId).future);
       ref.read(visitDocumentationProvider(widget.visitId).notifier).enterWorkspaceEditMode();
@@ -194,7 +193,7 @@ class _VisitDetailPageState extends ConsumerState<VisitDetailPage> with SingleTi
   }
 
   Future<void> _startNewVisit(BuildContext context, VisitDetail visit) async {
-    context.nav.goVisitDocument(widget.visitId);
+    context.nav.goVisitDocumentFromDetail(widget.visitId);
     try {
       await ref.read(visitDocumentationProvider(widget.visitId).future);
       final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
@@ -248,10 +247,7 @@ class _ChronicleHeader extends StatelessWidget {
               children: [
                 Text(patientName, style: AppTypography.h2(context)),
                 const SizedBox(height: AppSpacing.space1),
-                Text(
-                  metaLine,
-                  style: AppTypography.bodySm(context).copyWith(color: context.appColors.textSecondary),
-                ),
+                Text(metaLine, style: AppTypography.bodySm(context).copyWith(color: context.appColors.textSecondary)),
               ],
             ),
             Wrap(
@@ -356,12 +352,17 @@ List<TimelineEvent> _buildTimelineEvents({
       title: 'Treatment',
       description: _joinSections([
         _proseField('Treatment notes', documentation?.plan),
-        _labeledInlineList('Investigations ordered', visit.investigations.map(_investigationLine).toList(), emptyLabel: 'None ordered'),
-        _labeledInlineList('Prescriptions', visit.treatmentPlans.map(_treatmentLine).toList(), emptyLabel: 'None prescribed'),
-        _labeledAttachments(
-          'Attachments',
-          visit.attachments.map((item) => item.label ?? item.fileType.label).toList(),
+        _labeledInlineList(
+          'Investigations ordered',
+          visit.investigations.map(_investigationLine).toList(),
+          emptyLabel: 'None ordered',
         ),
+        _labeledInlineList(
+          'Prescriptions',
+          visit.treatmentPlans.map(_treatmentLine).toList(),
+          emptyLabel: 'None prescribed',
+        ),
+        _labeledAttachments('Attachments', visit.attachments.map((item) => item.label ?? item.fileType.label).toList()),
       ]),
     ),
   ];
@@ -408,7 +409,11 @@ String _investigationLine(VisitInvestigation investigation) {
 }
 
 String _treatmentLine(TreatmentPlanItem item) {
-  final details = [item.dosage, item.frequency, item.duration].where((part) => part?.trim().isNotEmpty ?? false).join(', ');
+  final details = [
+    item.dosage,
+    item.frequency,
+    item.duration,
+  ].where((part) => part?.trim().isNotEmpty ?? false).join(', ');
   if (details.isEmpty) {
     return item.medicationName;
   }

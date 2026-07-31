@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_resolver.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -26,17 +28,18 @@ bool canOpenVisitFromPatientHistory(WidgetRef ref, VisitListItem visit) {
 /// Opens the appropriate visit route for a patient history card.
 void openVisitFromPatientHistory(BuildContext context, WidgetRef ref, VisitListItem visit) {
   final auth = ref.read(authSessionProvider);
+  final parentTrail = BreadcrumbTrailResolver.inheritFrom(context);
 
   switch (visit.status) {
     case VisitStatus.inProgress:
       if (AuthRouteGuard.canAccessVisitDocumentation(auth)) {
-        context.nav.goVisitDocument(visit.id);
+        context.nav.goVisitDocument(visit.id, trail: parentTrail.append(BreadcrumbEntries.visitDocument(visit.id)));
       }
     case VisitStatus.completed:
       if (AuthRouteGuard.canAccessVisitDetail(auth)) {
-        context.nav.goVisitDetail(visit.id);
+        context.nav.goVisitDetail(visit.id, trail: parentTrail.append(BreadcrumbEntries.visitDetail(visit.id)));
       } else if (AuthRouteGuard.canAccessVisitDocumentation(auth)) {
-        context.nav.goVisitDocument(visit.id);
+        context.nav.goVisitDocument(visit.id, trail: parentTrail.append(BreadcrumbEntries.visitDocument(visit.id)));
       }
   }
 }
@@ -96,14 +99,15 @@ Future<void> openVisitForAppointment({
 
     final visitStatus = VisitStatus.tryParse(lookup.status);
     final openChronicle = detail.status == AppointmentStatus.completed || visitStatus == VisitStatus.completed;
+    final parentTrail = BreadcrumbTrailResolver.inheritFrom(context);
 
     if (openChronicle && AuthRouteGuard.canAccessVisitDetail(ref.read(authSessionProvider))) {
-      context.nav.goVisitDetail(visitId);
+      context.nav.goVisitDetail(visitId, trail: parentTrail.append(BreadcrumbEntries.visitDetail(visitId)));
       return;
     }
 
     if (AuthRouteGuard.canAccessVisitDocumentation(ref.read(authSessionProvider))) {
-      context.nav.goVisitDocument(visitId);
+      context.nav.goVisitDocument(visitId, trail: parentTrail.append(BreadcrumbEntries.visitDocument(visitId)));
     }
   } on RpcFailure catch (error) {
     if (context.mounted) {

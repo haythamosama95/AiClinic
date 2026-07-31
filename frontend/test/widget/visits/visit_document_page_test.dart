@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
@@ -23,6 +24,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_h
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_content.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_rail.dart';
 
+import '../../helpers/breadcrumb_test_support.dart';
 import 'visit_widget_test_harness.dart';
 
 const _patientName = 'Jane Doe';
@@ -68,6 +70,7 @@ List<Override> _documentPageOverrides({
   AuthSessionState? auth,
   SpyEncounterActivePhaseNotifier? activePhaseNotifier,
   List<Override> extraOverrides = const [],
+  BreadcrumbTrail? breadcrumbTrail,
 }) {
   final visit = docState?.visit ?? detailView?.visit ?? sampleEncounterVisit();
   return visitsProviderOverrides(
@@ -83,6 +86,7 @@ List<Override> _documentPageOverrides({
     patientId: visit.patientId,
     patientSafety: buildPatientSafetyContext(),
     activePhaseNotifier: activePhaseNotifier,
+    breadcrumbTrail: breadcrumbTrail,
     extraOverrides: [
       patientDetailProvider(visit.patientId).overrideWith((ref) async => _testPatient()),
       appointmentDetailProvider(visit.appointmentId).overrideWith((ref) async => _testAppointment()),
@@ -174,7 +178,7 @@ void main() {
       );
 
       expect(find.text('Visit documentation'), findsNWidgets(2));
-      expect(find.text('Appointment'), findsOneWidget);
+      expect(find.text('Calendar'), findsOneWidget);
       expect(find.byType(AppSkeleton), findsOneWidget);
       expect(find.byType(VisitEncounterStepContent), findsNothing);
     });
@@ -479,6 +483,87 @@ void main() {
         find.byKey(Key('route_appointment-$encounterTestAppointmentId')),
         findsOneWidget,
       );
+    });
+  });
+
+  group('VisitDocumentPage — breadcrumb trails', () {
+    testWidgets('invoice origin shows Invoices → invoice → visit documentation', (tester) async {
+      const invoiceNumber = 'INV-MAIN-000001';
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: invoiceToVisitTrail(
+            invoiceId: 'inv-1',
+            invoiceNumber: invoiceNumber,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+
+      expect(find.text('Invoices'), findsOneWidget);
+      expect(find.text(invoiceNumber), findsOneWidget);
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Calendar'), findsNothing);
+      expect(find.text(_appointmentBreadcrumbLabel), findsNothing);
+    });
+
+    testWidgets('invoice crumb navigates to invoice detail stub', (tester) async {
+      const invoiceId = 'inv-1';
+      const invoiceNumber = 'INV-MAIN-000001';
+
+      await pumpVisitsRouter(
+        tester,
+        home: VisitDocumentPage(visitId: encounterTestVisitId),
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: invoiceToVisitTrail(
+            invoiceId: invoiceId,
+            invoiceNumber: invoiceNumber,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+      await pumpVisitsFrames(tester);
+
+      await tester.tap(find.text(invoiceNumber));
+      await pumpVisitsFrames(tester);
+
+      expect(find.byKey(Key('route_invoice-$invoiceId')), findsOneWidget);
+      expect(find.text('stub:invoice-$invoiceId'), findsOneWidget);
+    });
+
+    testWidgets('deep link weak trail upgrades to calendar appointment path', (tester) async {
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: weakVisitDocumentTrail(encounterTestVisitId),
+        ),
+      );
+
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text(_appointmentBreadcrumbLabel), findsOneWidget);
+      expect(find.text('Invoices'), findsNothing);
+    });
+
+    testWidgets('patients origin shows Patients → name → visit documentation', (tester) async {
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: patientsToVisitTrail(
+            patientId: encounterTestPatientId,
+            patientName: _patientName,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+
+      expect(find.text('Patients'), findsOneWidget);
+      expect(find.text(_patientName), findsWidgets);
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Calendar'), findsNothing);
     });
   });
 

@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_back_navigation.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -78,11 +82,7 @@ class AppointmentDetailPage extends ConsumerWidget {
   }
 
   static void _goBack(BuildContext context) {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-      return;
-    }
-    context.nav.goAppointmentsCalendar();
+    context.navigateBack(fallback: () => context.nav.goAppointmentsCalendar());
   }
 
   static void _invalidateSurfaces(WidgetRef ref, AppointmentDetail detail) {
@@ -154,6 +154,12 @@ class _AppointmentDetailContentView extends ConsumerWidget {
         shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
     final listItem = detail.toListItem();
     final doctorPresentation = shiftLookup.presentationFor(listItem);
+
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'appointment:${detail.id}',
+      BreadcrumbLabel.fixed(detail.patientName),
+    );
 
     return _AppointmentDetailScaffold(
       title: detail.patientName,
@@ -774,15 +780,7 @@ class _AppointmentDetailScaffold extends StatelessWidget {
             AppPageHeader(
               title: title,
               description: subtitle,
-              breadcrumb: AppBreadcrumb(
-                items: [
-                  AppBreadcrumbItem(
-                    label: 'Calendar',
-                    onTap: () => context.nav.goAppointmentsCalendar(),
-                  ),
-                  AppBreadcrumbItem(label: title),
-                ],
-              ),
+              breadcrumb: const BreadcrumbTrailView(),
               actions: _buildHeaderActions(context),
             ),
             const SizedBox(height: AppSpacing.space6),

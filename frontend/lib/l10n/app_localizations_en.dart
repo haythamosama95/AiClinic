@@ -337,4 +337,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get maritalStatusWidowed => 'Widowed';
+
+  @override
+  String get breadcrumbCalendar => 'Calendar';
+
+  @override
+  String get breadcrumbQueue => 'Queue';
+
+  @override
+  String get breadcrumbInvoices => 'Invoices';
+
+  @override
+  String get breadcrumbVisitDocumentation => 'Visit documentation';
+
+  @override
+  String get breadcrumbVisitChronicle => 'Visit chronicle';
+
+  @override
+  String get breadcrumbVisitBilling => 'Billing';
+
+  @override
+  String get breadcrumbNotFound => 'Not found';
 }

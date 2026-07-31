@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'detail_widget_test_harness.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 
 void main() {
   group('AppointmentDetailPage', () {
@@ -273,6 +274,10 @@ void main() {
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
         detail: buildAppointmentDetail(),
+        breadcrumbTrail: calendarToAppointmentTrail(
+          appointmentId: detailTestAppointmentId,
+          appointmentLabel: 'Test Patient',
+        ),
       );
 
       final router = buildDetailTestRouter(
@@ -293,6 +298,37 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
+    });
+
+    testWidgets('advanced: queue origin shows Queue parent instead of Calendar', (tester) async {
+      final repo = HarnessAppointmentRepository();
+      final overrides = harnessDetailProviderOverrides(
+        appointmentRepo: repo,
+        detail: buildAppointmentDetail(patientName: 'Queue Patient'),
+        breadcrumbTrail: queueToAppointmentTrail(
+          appointmentId: detailTestAppointmentId,
+          appointmentLabel: 'Queue Patient',
+        ),
+      );
+
+      final router = buildDetailTestRouter(
+        appointmentId: detailTestAppointmentId,
+        detailPage: AppointmentDetailPage(appointmentId: detailTestAppointmentId),
+        initialLocation: AppRoutes.appointmentDetail(detailTestAppointmentId),
+      );
+
+      await pumpAppointmentDetail(
+        tester,
+        appointmentId: detailTestAppointmentId,
+        overrides: overrides,
+        router: router,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Calendar'), findsNothing);
+      expect(find.text('Queue Patient'), findsWidgets);
     });
 
     testWidgets('advanced: Patient profile pushes patient detail route', (tester) async {

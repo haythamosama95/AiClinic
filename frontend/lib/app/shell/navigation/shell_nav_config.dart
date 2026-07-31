@@ -173,6 +173,7 @@ abstract final class ShellNavConfig {
     return itemId != null ? labelFor(itemId) : null;
   }
 
+  @Deprecated('Use BreadcrumbTrailResolver and breadcrumbTrailProvider instead')
   static AppBreadcrumb? breadcrumbForLocation(String location, {Uri? uri, void Function(String route)? onNavigate}) {
     final itemId = itemIdForLocation(location);
     if (itemId == null) {
@@ -252,6 +253,9 @@ abstract final class ShellNavConfig {
       return 'dashboard';
     }
     if (location == AppRoutes.encounters) {
+      return 'encounters';
+    }
+    if (location.startsWith('${AppRoutes.visits}/')) {
       return 'encounters';
     }
     if (location == AppRoutes.workspace) {

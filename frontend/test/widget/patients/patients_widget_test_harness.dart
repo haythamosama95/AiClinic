@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
@@ -31,6 +32,7 @@ import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 
@@ -208,6 +210,7 @@ List<Override> patientsProviderOverrides({
   bool customPatientInvoices = false,
   bool customPatientVisitDocuments = false,
   bool customPatientPastVisits = false,
+  BreadcrumbTrail? breadcrumbTrail,
   List<Override> extraOverrides = const [],
 }) {
   final resolvedAuth = auth ?? patientsAuthSession();
@@ -220,6 +223,7 @@ List<Override> patientsProviderOverrides({
       );
 
   return [
+    if (breadcrumbTrail != null) breadcrumbTrailOverride(breadcrumbTrail),
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(resolvedAuth),
     ),

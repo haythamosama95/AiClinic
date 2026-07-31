@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -30,10 +31,13 @@ import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_
 import 'package:ai_clinic/features/service_catalog/domain/effective_price.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
 
@@ -443,12 +447,14 @@ List<Override> billingProviderOverrides({
   SpyVisitBillingFlowNotifier? visitBillingFlowNotifier,
   String? serviceSelectorBranchId,
   Override? serviceSelectorOverride,
+  BreadcrumbTrail? breadcrumbTrail,
   List<Override> extraOverrides = const [],
 }) {
   final client = rpcClient ?? BillingRpcTestClient();
   final resolvedAuth = auth ?? billingAuthSession();
 
   return [
+    if (breadcrumbTrail != null) breadcrumbTrailOverride(breadcrumbTrail),
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(resolvedAuth),
     ),
@@ -503,6 +509,7 @@ GoRouter createBillingTestRouter({
   Widget Function(BuildContext context, GoRouterState state)? invoiceEditBuilder,
   Widget Function(BuildContext context, GoRouterState state)? invoiceReviewBuilder,
   Widget Function(BuildContext context, GoRouterState state)? visitBillingBuilder,
+  Widget Function(BuildContext context, GoRouterState state)? visitDocumentBuilder,
 }) {
   Widget marker(String label) => Scaffold(
         key: Key('route_$label'),
@@ -552,9 +559,10 @@ GoRouter createBillingTestRouter({
       ),
       GoRoute(
         path: '/visits/:visitId/document',
-        builder: (context, state) => marker(
-          'visit-document-${state.pathParameters['visitId']}',
-        ),
+        builder: visitDocumentBuilder ??
+            (context, state) => marker(
+                  'visit-document-${state.pathParameters['visitId']}',
+                ),
       ),
       ...extraRoutes,
     ],
@@ -616,6 +624,7 @@ Future<GoRouter> pumpBillingRouter(
   Widget Function(BuildContext context, GoRouterState state)? invoiceEditBuilder,
   Widget Function(BuildContext context, GoRouterState state)? invoiceReviewBuilder,
   Widget Function(BuildContext context, GoRouterState state)? visitBillingBuilder,
+  Widget Function(BuildContext context, GoRouterState state)? visitDocumentBuilder,
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -628,6 +637,7 @@ Future<GoRouter> pumpBillingRouter(
     invoiceEditBuilder: invoiceEditBuilder,
     invoiceReviewBuilder: invoiceReviewBuilder,
     visitBillingBuilder: visitBillingBuilder,
+    visitDocumentBuilder: visitDocumentBuilder,
   );
 
   await tester.pumpWidget(

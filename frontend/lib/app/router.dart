@@ -27,11 +27,14 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_c
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
 import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/visit_billing_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_review_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 
@@ -127,12 +130,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
             builder: (context, state) => VisitDocumentPage(
               visitId: state.pathParameters['visitId']!,
+              extra: VisitRouteExtra.fromExtra(state.extra),
               startInEditMode: state.uri.queryParameters['edit'] == '1',
             ),
           ),
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
-            builder: (context, state) => VisitDetailPage(visitId: state.pathParameters['visitId']!),
+            builder: (context, state) => VisitDetailPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitRouteExtra.fromExtra(state.extra),
+            ),
           ),
 
           // Billing (V1-6)
@@ -148,11 +155,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
-            builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']!),
+            builder: (context, state) => InvoiceDetailPage(
+              invoiceId: state.pathParameters['invoiceId']!,
+              extra: InvoiceDetailRouteExtra.fromExtra(state.extra),
+            ),
           ),
           GoRoute(
             path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
-            builder: (context, state) => VisitBillingPage(visitId: state.pathParameters['visitId']!),
+            builder: (context, state) => VisitBillingPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitBillingRouteExtra.fromExtra(state.extra),
+            ),
           ),
           GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),

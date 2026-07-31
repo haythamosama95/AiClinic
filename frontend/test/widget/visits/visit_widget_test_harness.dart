@@ -27,10 +27,20 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_pr
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
+import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/visit_encounter_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
 
 export 'package:riverpod/misc.dart' show Override;
 export '../../support/visit_encounter_test_support.dart';
@@ -680,13 +690,21 @@ List<Override> visitsProviderOverrides({
   Object? patientSafetyError,
   bool patientSafetyLoading = false,
   SpyEncounterActivePhaseNotifier? activePhaseNotifier,
+  BreadcrumbTrail? breadcrumbTrail,
+  bool seedDefaultBreadcrumbTrail = true,
   List<Override> extraOverrides = const [],
 }) {
   final client = rpcClient ?? VisitRpcTestClient();
   final resolvedAuth = auth ?? visitsAuthSession();
   final visitRepo = VisitRepository(client);
 
+  final resolvedTrail = breadcrumbTrail ??
+      (seedDefaultBreadcrumbTrail && visitId != null
+          ? weakVisitDocumentTrail(visitId)
+          : null);
+
   return [
+    if (resolvedTrail != null) breadcrumbTrailOverride(resolvedTrail),
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(resolvedAuth),
     ),
@@ -742,6 +760,53 @@ List<Override> visitsProviderOverrides({
   ];
 }
 
+/// Visit document page providers without auth/repo shell overrides (for cross-feature router tests).
+List<Override> visitDocumentPageProviderOverrides({
+  required String visitId,
+  VisitDocumentationState? docState,
+  VisitDetailViewState? detailView,
+}) {
+  final visit = docState?.visit ?? detailView?.visit ?? sampleEncounterVisit();
+  return [
+    visitDocumentationProvider(visitId).overrideWith(
+      () => StubVisitDocumentationNotifier(visitId, docState ?? sampleEncounterDocState(visit: visit)),
+    ),
+    visitDetailViewProvider(visitId).overrideWith(
+      (ref) async => detailView ?? buildVisitDetailView(visit: visit),
+    ),
+    patientDetailProvider(visit.patientId).overrideWith(
+      (ref) async => PatientDetail(
+        id: visit.patientId,
+        fullName: 'Jane Doe',
+        dateOfBirth: DateTime.utc(1990, 1, 15),
+        branchId: encounterTestBranchId,
+        branchName: 'Main',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ),
+    appointmentDetailProvider(visit.appointmentId).overrideWith(
+      (ref) async => AppointmentDetail(
+        id: visit.appointmentId,
+        branchId: encounterTestBranchId,
+        patientId: visit.patientId,
+        patientName: 'Jane Doe',
+        doctorId: encounterTestDoctorId,
+        doctorName: 'Dr Test',
+        startTime: DateTime.utc(2026, 5, 31, 9),
+        endTime: DateTime.utc(2026, 5, 31, 9, 30),
+        type: AppointmentType.planned,
+        status: AppointmentStatus.inProgress,
+        createdAt: DateTime.utc(2026, 5, 31),
+        updatedAt: DateTime.utc(2026, 5, 31),
+      ),
+    ),
+    patientSafetyProvider(visit.patientId).overrideWith(
+      () => StubPatientSafetyNotifier(visit.patientId, buildPatientSafetyContext()),
+    ),
+  ];
+}
+
 /// GoRouter with stub destination markers for visit navigation assertions.
 GoRouter createVisitsTestRouter({
   required Widget home,
@@ -780,6 +845,12 @@ GoRouter createVisitsTestRouter({
         path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
         builder: (context, state) => marker(
           'visit-billing-${state.pathParameters['visitId']}',
+        ),
+      ),
+      GoRoute(
+        path: '${AppRoutes.billingInvoices}/:invoiceId',
+        builder: (context, state) => marker(
+          'invoice-${state.pathParameters['invoiceId']}',
         ),
       ),
       ...extraRoutes,
@@ -869,6 +940,7 @@ ProviderContainer visitsProviderContainer(WidgetTester tester) {
 Future<void> pumpVisitsFrames(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+  await tester.pump();
 }
 
 /// Deterministic attachment pick input for [StubVisitDocumentationNotifier] tests.

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,7 @@ import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
 import 'package:ai_clinic/core/ui/components/app_error_state.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
+import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/edit_patient/edit_patient_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
@@ -18,6 +20,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../helpers/patient_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import 'patients_widget_test_harness.dart';
 
 PatientDetail _detailWithMrn(String? mrn) {
@@ -352,6 +355,10 @@ void main() {
           overrides: patientsProviderOverrides(
             patientId: patientsTestPatientId,
             patientDetail: samplePatientDetail(id: patientsTestPatientId),
+            breadcrumbTrail: patientDetailTrail(
+              patientId: patientsTestPatientId,
+              patientName: 'Test Patient',
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -362,6 +369,45 @@ void main() {
 
         expect(navigationLog.visitedLocations, contains(AppRoutes.patients));
         expect(find.byKey(const Key('patients_home')), findsOneWidget);
+      });
+
+      testWidgets('breadcrumb patients segment uses localized label', (tester) async {
+        await tester.binding.setSurfaceSize(patientsWideSurfaceSize);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: patientsProviderOverrides(
+              patientId: patientsTestPatientId,
+              patientDetail: samplePatientDetail(
+                id: patientsTestPatientId,
+                fullName: 'Jordan Lee',
+              ),
+              breadcrumbTrail: patientDetailTrail(
+                patientId: patientsTestPatientId,
+                patientName: 'Jordan Lee',
+              ),
+            ),
+            child: MaterialApp(
+              theme: AppTheme.light(),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('ar'),
+              home: PatientDetailPage(
+                patientId: patientsTestPatientId,
+                extra: PatientDetailRouteExtra(
+                  breadcrumbTrail: patientDetailTrail(
+                    patientId: patientsTestPatientId,
+                    patientName: 'Jordan Lee',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('المرضى'), findsOneWidget);
       });
     });
   });

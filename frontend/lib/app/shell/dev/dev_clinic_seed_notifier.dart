@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_service.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
@@ -90,12 +91,19 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
     state = state.copyWith(inProgress: true, clearError: true, progressMessage: 'Preparing…');
     AppLog.info('dev_clinic_seed.start');
 
+    ref.read(authSessionProvider.notifier).suppressClinicSetupLostSignOut();
     try {
       await ref
           .read(devClinicSeedServiceProvider)
           .run(
             auth: auth,
             refreshSession: () => ref.read(authSessionProvider.notifier).refreshSessionContext(),
+            ensureRpcSession: () async {
+              final signInError = await ShellDevBootstrapSignIn.ensureSignedInWithRef(ref);
+              if (signInError != null) {
+                throw StateError(signInError);
+              }
+            },
             onProgress: (message) {
               state = state.copyWith(progressMessage: message);
             },
@@ -126,6 +134,8 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
             : 'Unable to fill dummy clinic data. Try again.',
       );
       return false;
+    } finally {
+      ref.read(authSessionProvider.notifier).releaseClinicSetupLostSignOut();
     }
   }
 }
