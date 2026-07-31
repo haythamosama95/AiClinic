@@ -93,6 +93,8 @@ class AppDataTable<T> extends StatefulWidget {
     this.columnWidthsStorageKey,
     this.minColumnWidth = AppDataTableColumnLayout.defaultMinColumnWidth,
     this.ariaLabel = 'Data table',
+    this.rowBackgroundColor,
+    this.rowBorder,
     super.key,
   });
 
@@ -123,6 +125,12 @@ class AppDataTable<T> extends StatefulWidget {
   final String? columnWidthsStorageKey;
   final double minColumnWidth;
   final String ariaLabel;
+
+  /// Optional per-row background applied across the full row height.
+  final Color? Function(T row, int index)? rowBackgroundColor;
+
+  /// Optional per-row border (e.g. overdue left accent on the patient column edge).
+  final BoxBorder? Function(T row, int index)? rowBorder;
 
   double get rowHeight =>
       rowHeightOverride ??
@@ -954,10 +962,11 @@ class _AppDataGridSource<T> extends DataGridSource {
     required Widget child,
     required TableAlign align,
     Color? backgroundColor,
+    BoxBorder? border,
     EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
   }) {
-    return ColoredBox(
-      color: backgroundColor ?? Colors.transparent,
+    return DecoratedBox(
+      decoration: BoxDecoration(color: backgroundColor, border: border),
       child: Container(alignment: _cellAlignment(align), padding: padding, child: child),
     );
   }
@@ -977,7 +986,11 @@ class _AppDataGridSource<T> extends DataGridSource {
     final isLoadingRow = item == null;
     final selected = !isLoadingRow && table.selectedIds.contains(table.getRowId(item as T));
     final zebraRow = table.zebra && rowIndex.isOdd;
-    final rowBackground = selected ? _colors.surfaceSelected : (zebraRow ? _colors.surfaceMuted : null);
+    final customBackground = !isLoadingRow ? table.rowBackgroundColor?.call(item as T, rowIndex) : null;
+    final rowBackground = selected
+        ? _colors.surfaceSelected
+        : (customBackground ?? (zebraRow ? _colors.surfaceMuted : null));
+    final rowBorder = !isLoadingRow ? table.rowBorder?.call(item as T, rowIndex) : null;
 
     return DataGridRowAdapter(
       color: rowBackground,
@@ -1036,9 +1049,11 @@ class _AppDataGridSource<T> extends DataGridSource {
         }
 
         final column = table.columns.firstWhere((col) => col.id == cell.columnName);
+        final isFirstDataColumn = table.columns.first.id == column.id;
         return _wrapCell(
           align: column.align,
           backgroundColor: rowBackground,
+          border: isFirstDataColumn ? rowBorder : null,
           child: DefaultTextStyle(
             style: AppTypography.bodySm(context).copyWith(color: _colors.textPrimary),
             textAlign: _textAlign(column.align),

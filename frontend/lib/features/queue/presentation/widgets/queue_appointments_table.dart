@@ -103,6 +103,20 @@ class QueueAppointmentsTable extends StatelessWidget {
       density: TableDensity.comfortable,
       rowHeightOverride: 56,
       headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
+      rowBackgroundColor: (item, _) {
+        if (_isOverdueScheduled(item, now)) {
+          return colors.statusDangerSurface.withValues(alpha: 0.3);
+        }
+        return _statusRowSurface(colors, item.status);
+      },
+      rowBorder: (item, _) {
+        if (_isOverdueScheduled(item, now)) {
+          return Border(
+            left: BorderSide(color: colors.statusDangerFg, width: _overdueBorderWidth),
+          );
+        }
+        return null;
+      },
       columns: [
         TableColumn(
           id: 'patient',
@@ -110,37 +124,21 @@ class QueueAppointmentsTable extends StatelessWidget {
           align: TableAlign.start,
           width: patientColumnWidth,
           minWidth: 160,
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            isFirstColumn: true,
-            child: _PatientCell(item: item),
-          ),
+          accessor: (item) => _PatientCell(item: item),
         ),
         TableColumn(
           id: 'time',
           header: 'Time',
           align: TableAlign.center,
           minWidth: 112,
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: _TimeCell(item: item, now: now),
-          ),
+          accessor: (item) => _TimeCell(item: item, now: now),
         ),
         TableColumn(
           id: 'status',
           header: 'Status',
           align: TableAlign.center,
           minWidth: 120,
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: QueueStatusBadge(status: item.status),
-          ),
+          accessor: (item) => QueueStatusBadge(status: item.status),
         ),
         TableColumn(
           id: 'doctor',
@@ -148,16 +146,11 @@ class QueueAppointmentsTable extends StatelessWidget {
           align: TableAlign.start,
           width: doctorColumnWidth,
           minWidth: 160,
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: Text(
-              AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-            ),
+          accessor: (item) => Text(
+            AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
           ),
         ),
         TableColumn(
@@ -165,18 +158,13 @@ class QueueAppointmentsTable extends StatelessWidget {
           header: 'Actions',
           align: TableAlign.center,
           minWidth: 180,
-          accessor: (item) => _overdueCell(
-            context,
-            item,
-            now: now,
-            child: QueueRowActions(
-              appointment: item,
-              siblingAppointments: siblingAppointments,
-              shiftLookup: shiftLookup,
-              onTransition: onTransition,
-              organizationTimezone: organizationTimezone,
-              referenceUtc: referenceUtc,
-            ),
+          accessor: (item) => QueueRowActions(
+            appointment: item,
+            siblingAppointments: siblingAppointments,
+            shiftLookup: shiftLookup,
+            onTransition: onTransition,
+            organizationTimezone: organizationTimezone,
+            referenceUtc: referenceUtc,
           ),
         ),
       ],
@@ -208,26 +196,16 @@ class QueueAppointmentsTable extends StatelessWidget {
     return queueIsOverdue(item, now) && item.status == AppointmentStatus.scheduled;
   }
 
-  static Widget _overdueCell(
-    BuildContext context,
-    AppointmentListItem item, {
-    required DateTime now,
-    required Widget child,
-    bool isFirstColumn = false,
-  }) {
-    if (!_isOverdueScheduled(item, now)) {
-      return child;
-    }
-
-    final colors = context.appColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.statusDangerSurface.withValues(alpha: 0.3),
-        border: isFirstColumn ? Border(left: BorderSide(color: colors.statusDangerFg, width: 4)) : null,
-      ),
-      child: child,
-    );
+  static Color? _statusRowSurface(AppSemanticColors colors, AppointmentStatus status) {
+    return switch (status) {
+      AppointmentStatus.scheduled => null,
+      AppointmentStatus.confirmed => colors.statusInfoSurface.withValues(alpha: 0.28),
+      AppointmentStatus.checkedIn => colors.statusSuccessSurface.withValues(alpha: 0.28),
+      AppointmentStatus.inProgress => colors.statusWarningSurface.withValues(alpha: 0.28),
+      AppointmentStatus.completed => colors.surfaceMuted.withValues(alpha: 0.55),
+      AppointmentStatus.cancelled || AppointmentStatus.noShow => colors.statusDangerSurface.withValues(alpha: 0.22),
+      AppointmentStatus.unknown => null,
+    };
   }
 }
 

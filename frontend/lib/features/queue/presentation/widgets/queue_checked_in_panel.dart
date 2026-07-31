@@ -29,7 +29,7 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
   static const _sortLongestWait = 'longest_wait';
   static const _sortNextInOrder = 'next_in_order';
 
-  String _sort = _sortLongestWait;
+  String _sort = _sortNextInOrder;
 
   static final _timeFormat = DateFormat('h:mm a');
 
@@ -112,8 +112,8 @@ class _QueueCheckedInPanelState extends State<QueueCheckedInPanel> {
       value: _sort,
       onChanged: (value) => setState(() => _sort = value),
       options: const [
-        SegmentedOption(value: _sortLongestWait, label: Text('Longest wait')),
         SegmentedOption(value: _sortNextInOrder, label: Text('Next in order')),
+        SegmentedOption(value: _sortLongestWait, label: Text('Longest wait')),
       ],
     );
 

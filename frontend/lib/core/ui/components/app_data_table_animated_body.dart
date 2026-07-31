@@ -245,15 +245,20 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
   Color? _rowBackground(int index, T item) {
     final colors = context.appColors;
     final selected = table.selectable && table.selectedIds.contains(table.getRowId(item));
-    final zebraRow = table.zebra && index.isOdd;
     if (selected) {
       return colors.surfaceSelected;
     }
-    if (zebraRow) {
+    final custom = table.rowBackgroundColor?.call(item, index);
+    if (custom != null) {
+      return custom;
+    }
+    if (table.zebra && index.isOdd) {
       return colors.surfaceMuted;
     }
     return null;
   }
+
+  BoxBorder? _rowBorder(int index, T item) => table.rowBorder?.call(item, index);
 
   @override
   Widget build(BuildContext context) {
@@ -289,8 +294,16 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
     final inlineEnter = direction == TextDirection.rtl ? 6.0 : -6.0;
     final dataIndex = (slot.visualTop / rowHeight).round();
     final background = _rowBackground(dataIndex, slot.item);
+    final border = _rowBorder(dataIndex, slot.item);
 
     Widget row = widget.buildRow(context, slot.item, dataIndex, backgroundColor: background);
+
+    if (border != null) {
+      row = DecoratedBox(
+        decoration: BoxDecoration(border: border),
+        child: row,
+      );
+    }
 
     if (table.onRowClick != null) {
       row = MouseRegion(
