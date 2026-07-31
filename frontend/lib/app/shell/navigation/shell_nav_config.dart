@@ -110,7 +110,19 @@ abstract final class ShellNavConfig {
         location == AppRoutes.clinicManagement ||
         location == AppRoutes.appointmentsCalendar ||
         location == AppRoutes.appointmentsQueue ||
+        _isAppointmentDetailLocation(location) ||
         _isVisitWorkspaceLocation(location);
+  }
+
+  /// `/appointments/:appointmentId` detail (excludes book, queue, calendar, schedule).
+  static bool _isAppointmentDetailLocation(String location) {
+    if (!location.startsWith('${AppRoutes.appointments}/')) {
+      return false;
+    }
+    if (AppRoutes.appointmentStaticPaths.contains(location)) {
+      return false;
+    }
+    return !location.startsWith('${AppRoutes.appointments}/schedule/');
   }
 
   /// Encounter documentation and chronicle routes (web `encounters` full-width layout).

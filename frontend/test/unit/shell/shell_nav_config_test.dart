@@ -33,6 +33,22 @@ void main() {
     });
   });
 
+  group('ShellNavConfig.isFullWidthLocation', () {
+    test('appointment detail uses full-width shell layout', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentDetail('apt-1')), isTrue);
+    });
+
+    test('appointment hub routes stay full width', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsCalendar), isTrue);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsQueue), isTrue);
+    });
+
+    test('non-detail appointment routes are not treated as detail', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsBook), isFalse);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsSchedule('doc-1')), isFalse);
+    });
+  });
+
   group('ShellNavConfig.isFillViewportLocation', () {
     test('billing routes fill the shell viewport', () {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
