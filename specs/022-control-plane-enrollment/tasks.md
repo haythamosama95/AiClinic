@@ -38,12 +38,12 @@ is a task, written to fail before the code exists.
 **Purpose**: The real-Miniflare-D1 + fake-`OperatorAuth` harness the named tests run in (plan
 Sequencing steps 1–2; Clarification Q3). Both files must exist before any named test is written.
 
-- [ ] T001 [US1] Create `ai-platform/vitest.workers.config.ts` — scoped
+- [X] T001 [US1] Create `ai-platform/vitest.workers.config.ts` — scoped
   `@cloudflare/vitest-pool-workers` pool with an ephemeral Miniflare `DB` D1 binding,
   `compatibilityDate` matching `ai-platform/wrangler.toml`, and `include: ["test/control.test.ts"]`.
   The shared `ai-platform/vitest.config.ts` (A1's default Node pool used by every prior suite) is not
   modified. (No FR — harness; required by SC-001…004 test harness.)
-- [ ] T002 [US1] Create `ai-platform/test/control.test.ts` skeleton — `beforeAll` that reads
+- [X] T002 [US1] Create `ai-platform/test/control.test.ts` skeleton — `beforeAll` that reads
   `ai-platform/migrations/20260731120000_platform_schema.sql` and applies it to `env.DB` (A5
   migration, unmodified), plus a fake `OperatorAuth` factory returning a fixed operator principal or
   `null` (Clarification Q3). No assertions yet; the named tests hang off this skeleton in Phase 2.
@@ -60,33 +60,33 @@ applies).
 Integration layer). All assert real D1 rows via read-back queries; the fake `OperatorAuth` supplies
 the principal or `null`. None is optional.
 
-- [ ] T003 [US1] Add `enroll_writes_all_four_tables` (T-B2-01) to
+- [X] T003 [US1] Add `enroll_writes_all_four_tables` (T-B2-01) to
   `ai-platform/test/control.test.ts` — assert that enroll with operator credentials + org info +
   public key + plan writes exactly one row each in `installation`, `installation_key`,
   `entitlement` (status `pending`, zeroed economics, closed empty period per §8.1 amendment), and
   `control_audit` (`operator_id` = the fake principal, `action = enroll`), and the reply carries the
   gateway origin. **Proves**: FR-005, FR-006, the enroll half of FR-003, FR-004 (one-time, first
   enroll); **satisfies**: SC-001. Fails before `src/control/` exists.
-- [ ] T004 [US1] Add `lifecycle_suspend_audit` (T-B2-02) to
+- [X] T004 [US1] Add `lifecycle_suspend_audit` (T-B2-02) to
   `ai-platform/test/control.test.ts` — assert suspend writes `control_audit` with the operator
   identity and sets `installation.status = suspended`. **Proves**: FR-008 (suspend), the suspend half
   of FR-003; **satisfies**: SC-002.
-- [ ] T005 [US1] Add `lifecycle_resume_audit` (T-B2-03) to
+- [X] T005 [US1] Add `lifecycle_resume_audit` (T-B2-03) to
   `ai-platform/test/control.test.ts` — assert resume writes `control_audit` with the operator identity
   and restores the prior active lifecycle status. **Proves**: FR-008 (resume); **satisfies**: SC-002.
-- [ ] T006 [US1] Add `lifecycle_rotate_audit` (T-B2-04) to
+- [X] T006 [US1] Add `lifecycle_rotate_audit` (T-B2-04) to
   `ai-platform/test/control.test.ts` — assert rotate adds a new `installation_key` row with a new
   `kid`, leaves the previous row present (overlap intact, §8.1), and writes `control_audit` with the
   operator identity. **Proves**: FR-007, the rotate half of FR-003; **satisfies**: SC-002.
-- [ ] T007 [US1] Add `lifecycle_delete_audit` (T-B2-05) to
+- [X] T007 [US1] Add `lifecycle_delete_audit` (T-B2-05) to
   `ai-platform/test/control.test.ts` — assert delete writes `control_audit` with the operator
   identity and transitions lifecycle status; the row purge itself is out of scope (F3, plan → Out of
   Scope). **Proves**: FR-008 (delete); **satisfies**: SC-002.
-- [ ] T008 [US1] Add `non_operator_credentials_rejected` (T-B2-06) to
+- [X] T008 [US1] Add `non_operator_credentials_rejected` (T-B2-06) to
   `ai-platform/test/control.test.ts` — with `OperatorAuth` returning `null`, each of the five
   mutations produces no D1 row write (read-back counts unchanged) and a terminal rejection. Emits no
   §5.4 code (spec → Edge Cases). **Proves**: FR-001, FR-009; **satisfies**: SC-003.
-- [ ] T009 [US1] Add `duplicate_enrollment_deterministic` (T-B2-07) to
+- [X] T009 [US1] Add `duplicate_enrollment_deterministic` (T-B2-07) to
   `ai-platform/test/control.test.ts` — a second enroll for an existing `installation`/`org_id` leaves
   D1 row counts unchanged and returns a terminal non-2xx rejection; both sides asserted per
   Clarification Q4. **Proves**: FR-004 (one-time), FR-010; **satisfies**: SC-004.
