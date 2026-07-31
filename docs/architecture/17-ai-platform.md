@@ -463,49 +463,49 @@ not inside it.
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │  OPERATIONS CONTROL PLANE  (internal; operator auth — not clinic identity)       │
 │  enrollment · key rotation · entitlement · kill switches · routing policy ·      │
-│  capability gating · support lookup · dashboards                                   │
+│  capability gating · support lookup · dashboards                                 │
 └────────────────────────────────────────┬─────────────────────────────────────────┘
                                          │ admin API
 ═════════════════════════════════════════╪═══════════════════════════════════════════
   LAYER 0 — CLINIC SITE  (LAN; may be offline; no arrow from platform into this box)
 ═════════════════════════════════════════╧═══════════════════════════════════════════
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│  PRESENTATION                                                                     │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │  AI Feature Surfaces          per-capability UI · draft/provisional styling  │  │
-│  │                               explicit accept/discard · degraded-mode UX   │  │
-│  │  Conversation store (chat)    local transcript · resupplied each turn      │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                   │
-│  CLIENT AI LAYER  (must not contain prompts, models, providers, or AI rules)      │
+│  PRESENTATION                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │  AI Feature Surfaces          per-capability UI · draft/provisional styling │ │
+│  │                               explicit accept/discard · degraded-mode UX    │ │
+│  │  Conversation store (chat)    local transcript · resupplied each turn       │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  CLIENT AI LAYER  (must not contain prompts, models, providers, or AI rules)     │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
 │  │  AI Client SDK                AAT acquisition · HTTPS submit · SSE consume │  │
 │  │                                 idempotency key · cancel · transport retry │  │
 │  │  Context Resolver               context key → existing RPC/query           │  │
 │  │                                 assemble declared shapes · screen cache    │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
-│         │ HTTPS + AAT + capability request + context payload (outbound only)      │
-│         │                                                                           │
-│  CLINIC BACKEND  (Supabase / PostgreSQL — additive AI components only)            │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │  AI token issuer RPC            session → short-lived AAT (aud=ai-platform)  │  │
-│  │  Installation keystore          installation private key (restricted schema) │  │
-│  │  AI availability flag           enrolled? · platform base URL              │  │
-│  │  Context provider RPCs          domain payloads under caller's RLS         │  │
-│  │  AI acceptance recording RPC    human accepted AI output + request ref     │  │
-│  │  ────────────────────────────────────────────────────────────────────────  │  │
-│  │  GoTrue · RBAC tables · business data · audit_log  (existing; unchanged)   │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
+│         │ HTTPS + AAT + capability request + context payload (outbound only)     │
+│         │                                                                        │
+│  CLINIC BACKEND  (Supabase / PostgreSQL — additive AI components only)           │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │  AI token issuer RPC            session → short-lived AAT (aud=ai-platform) │ │
+│  │  Installation keystore          installation private key (restricted schema)│ │
+│  │  AI availability flag           enrolled? · platform base URL               │ │
+│  │  Context provider RPCs          domain payloads under caller's RLS          │ │
+│  │  AI acceptance recording RPC    human accepted AI output + request ref      │ │
+│  │  ────────────────────────────────────────────────────────────────────────   │ │
+│  │  GoTrue · RBAC tables · business data · audit_log  (existing; unchanged)    │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────────┘
                                          │
            ╔═════════════════════════════╧═══════════════════════════════════════╗
-           ║  THE THREE SEAMS  (contracts — see §3.4)                          ║
-           ║  ┌─────────────────┬─────────────────────┬──────────────────────┐  ║
-           ║  │ Token Contract  │ Context Contract    │ Capability Contract  │  ║
-           ║  │ who · scopes    │ which keys · shapes │ id · output schema   │  ║
-           ║  │ clinic issues   │ platform declares   │ platform declares    │  ║
-           ║  │ platform verifies│ client satisfies   │ client discovers     │  ║
-           ║  └─────────────────┴─────────────────────┴──────────────────────┘  ║
+           ║  THE THREE SEAMS  (contracts — see §3.4)                            ║
+           ║  ┌──────────────────┬─────────────────────┬──────────────────────┐  ║
+           ║  │ Token Contract   │ Context Contract    │ Capability Contract  │  ║
+           ║  │ who · scopes     │ which keys · shapes │ id · output schema   │  ║
+           ║  │ clinic issues    │ platform declares   │ platform declares    │  ║
+           ║  │ platform verifies│ client satisfies    │ client discovers     │  ║
+           ║  └──────────────────┴─────────────────────┴──────────────────────┘  ║
            ╚═════════════════════════════╤═══════════════════════════════════════╝
                                          ▼
 ═════════════════════════════════════════╤═══════════════════════════════════════════
@@ -514,53 +514,53 @@ not inside it.
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │  GUARD SUBLAYER  (stages 1–10 — reject before paid work; see §6.1)               │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │  1. Protocol adapter          ingress · size limits · SSE framing ·      │  │
+│  │  1. Protocol adapter            ingress · size limits · SSE framing ·      │  │
 │  │                                 idempotency/trace headers · HTTP errors    │  │
-│  │  2. Identity + tenant           verify AAT ──► Token verifier port *     │  │
-│  │                                 principal: installation · actor · scopes │  │
-│  │  3. Entitlement                 plan · capability scope · install status │  │
-│  │  4. Rate limit                  Rate Limiting binding (approximate)      │  │
-│  │  5. Capability resolver         manifest lookup · version pin · kills    │  │
-│  │  6. Context validator           required/permitted keys · shapes ·       │  │
-│  │                                 transcript budget (conversational)       │  │
-│  │  7. Cost pre-flight             estimated tokens vs capability ceiling   │  │
-│  │  8. Admission                   Quota DO round trip: jti · idempotency · │  │
-│  │                                 budget · concurrency                     │  │
-│  │  9. Journal (request row)       D1 insert — record exists before stream  │  │
-│  │ 10. Prompt composer             system + rules + context template +    │  │
-│  │                                 intent → canonical inference request     │  │
+│  │  2. Identity + tenant           verify AAT ──► Token verifier port *       │  │
+│  │                                 principal: installation · actor · scopes   │  │
+│  │  3. Entitlement                 plan · capability scope · install status   │  │
+│  │  4. Rate limit                  Rate Limiting binding (approximate)        │  │
+│  │  5. Capability resolver         manifest lookup · version pin · kills      │  │
+│  │  6. Context validator           required/permitted keys · shapes ·         │  │
+│  │                                 transcript budget (conversational)         │  │
+│  │  7. Cost pre-flight             estimated tokens vs capability ceiling     │  │
+│  │  8. Admission                   Quota DO round trip: jti · idempotency ·   │  │
+│  │                                 budget · concurrency                       │  │
+│  │  9. Journal (request row)       D1 insert — record exists before stream    │  │
+│  │ 10. Prompt composer             system + rules + context template +        │  │
+│  │                                 intent → canonical inference request       │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                   │
+│                                                                                  │
 │  INFERENCE SUBLAYER  (stage 11 — latency and cost dominate here)                 │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
 │  │ 11. Provider router + policy    ordered candidate chain · degraded tier    │  │
 │  │     Provider adapters ─────────► Provider port *  (one per provider)       │  │
-│  │                                 canonical ↔ wire · stream normalize      │  │
+│  │                                 canonical ↔ wire · stream normalize        │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                   │
+│                                                                                  │
 │  COMMIT SUBLAYER  (stages 12–16 — delivery, validation, audit)                   │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │ 12. Stream broker               relay chunks · provisional semantics ·   │  │
-│  │                                 heartbeats · connection-scoped cancel    │  │
-│  │ 13. Response validator + repair schema · business rules · safety ·     │  │
+│  │ 12. Stream broker               relay chunks · provisional semantics ·     │  │
+│  │                                 heartbeats · connection-scoped cancel      │  │
+│  │ 13. Response validator + repair schema · business rules · safety ·         │  │
 │  │                                 bounded single re-ask (if manifest allows) │  │
-│  │ 14. Terminal emit               exactly one terminal SSE event           │  │
-│  │ 15. Record outcome              D1 update · credit usage to Quota DO     │  │
-│  │ 16. Detail + payloads           attempt rows · usage ledger · one R2     │  │
-│  │                                 payload envelope per request             │  │
+│  │ 14. Terminal emit               exactly one terminal SSE event             │  │
+│  │ 15. Record outcome              D1 update · credit usage to Quota DO       │  │
+│  │ 16. Detail + payloads           attempt rows · usage ledger · one R2       │  │
+│  │                                 payload envelope per request               │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                   │
+│                                                                                  │
 │  CROSS-CUTTING MODULES  (plain modules — one implementation each; not ports)     │
-│  ┌──────────────────┬────────────────────┬───────────────────────────────────┐  │
-│  │ Capability       │ Prompt registry    │ Config cache (in-isolate, TTL)    │  │
-│  │ registry         │ versioned artifacts│ installations · keys · policy ·   │  │
-│  │ (bundled)        │ deployed w/ Worker │ entitlements · kill switches    │  │
-│  └──────────────────┴────────────────────┴───────────────────────────────────┘  │
+│  ┌──────────────────┬────────────────────┬───────────────────────────────────┐   │
+│  │ Capability       │ Prompt registry    │ Config cache (in-isolate, TTL)    │   │
+│  │ registry         │ versioned artifacts│ installations · keys · policy ·   │   │
+│  │ (bundled)        │ deployed w/ Worker │ entitlements · kill switches      │   │
+│  └──────────────────┴────────────────────┴───────────────────────────────────┘   │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Telemetry emitter   trace id · per-stage spans · guard-rejection counters  │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                   │
-│  * ABSTRACTED PORTS  (several implementations — the only interfaces in the Worker)│
+│                                                                                  │
+│  * ABSTRACTED PORTS  (several implementations — only interfaces in the Worker)   │
 │     Provider port          DeepSeek · Gemini · future providers                  │
 │     Token verifier port    enrolled installation key · OIDC/JWKS (Tier 3 future) │
 └──────────────────────────────────────────────────────────────────────────────────┘
@@ -582,7 +582,7 @@ not inside it.
   LAYER 2 — AI PROVIDERS  (external; credentials never leave the edge box)
 ═════════════════════════════════════════╧═══════════════════════════════════════════
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│  DeepSeek · Gemini · future providers                                             │
+│  DeepSeek · Gemini · future providers                                            │
 │  (optional egress: Cloudflare AI Gateway — evaluated in §9.9)                    │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
