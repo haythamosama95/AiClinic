@@ -210,6 +210,98 @@ The first context RPC (E3) MUST return a payload that passes `validatePayload("v
 under the caller's RLS. The Flutter contract test suite asserts every declared key of every active
 manifest is resolvable to its published shape.
 
+### 5.3 Full JSON representation
+
+Machine-readable snapshot of the A5 context-key contract as implemented in
+`ai-platform/src/context/index.ts`. Shapes, vocabulary, and validation codes below are normative
+for binding tests and downstream slices (C2, C3, E3).
+
+```json
+{
+  "contract": "context-key-schema",
+  "slice": "A5",
+  "naming": {
+    "format": "domain.concept@vN",
+    "pattern": "^([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)@v([1-9]\\d*)$"
+  },
+  "storage_named_rejection": {
+    "rules": [
+      { "pattern": "*_table", "example": "visits_vitals_table@v1", "code": "storage_named_key" },
+      { "pattern": "get_*_rpc", "example": "get_visit_vitals_rpc@v1", "code": "storage_named_key" }
+    ]
+  },
+  "vocabulary": [
+    "patient.demographics@v1",
+    "visit.vitals@v1",
+    "visit.chief_complaint@v1",
+    "medication.active_list@v1",
+    "lab.recent_results@v1",
+    "clinic.branch_profile@v1"
+  ],
+  "published_shapes": {
+    "visit.chief_complaint@v1": {
+      "key": "visit.chief_complaint@v1",
+      "fields": [
+        {
+          "name": "visit_id",
+          "type": "string",
+          "cardinality": "required",
+          "units": "uuid"
+        },
+        {
+          "name": "complaint",
+          "type": "string",
+          "cardinality": { "maxLength": 10000 },
+          "units": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "string",
+          "cardinality": "optional",
+          "units": "iso8601"
+        }
+      ]
+    }
+  },
+  "field_types": ["string", "number", "boolean"],
+  "cardinality_forms": [
+    "required",
+    "optional",
+    { "maxLength": "<positive integer>" }
+  ],
+  "units": {
+    "uuid": "RFC 4122 UUID string (lowercase hex with hyphens)",
+    "iso8601": "UTC timestamp YYYY-MM-DDTHH:MM:SS[.sss]Z",
+    "null": "No unit constraint beyond type and cardinality"
+  },
+  "validation_result": {
+    "success": { "ok": true },
+    "failure": { "ok": false, "code": "<code>", "field": "<optional field name>" }
+  },
+  "validation_codes": [
+    "malformed_key",
+    "storage_named_key",
+    "unknown_version",
+    "unknown_shape",
+    "type",
+    "cardinality",
+    "units",
+    "missing_field"
+  ],
+  "conforming_payload_example": {
+    "visit.chief_complaint@v1": {
+      "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+      "complaint": "Persistent headache for three days.",
+      "recorded_at": "2026-07-31T12:00:00.000Z"
+    }
+  }
+}
+```
+
+Only `visit.chief_complaint@v1` has a `published_shapes` entry in A5; the other vocabulary keys
+accept `validateKey` but return `unknown_shape` from `validatePayload` until a later slice
+registers their shapes.
+
 ---
 
 ## 6. Backward-compatible evolution
