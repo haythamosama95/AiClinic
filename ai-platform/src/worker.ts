@@ -1,6 +1,8 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { handleAdapterRequest } from "./adapter";
 import { dispatchControlRequest, isControlRoute } from "./control";
+import { getRequest } from "./journal";
+import { normalizeRequestReference } from "./reference";
 import {
   admissionRPC,
   creditRPC,
@@ -81,6 +83,39 @@ export default {
     if (request.method === "POST" && isControlRoute(url.pathname)) {
       const runtimeEnv = env as Env;
       return dispatchControlRequest(request, { DB: runtimeEnv.DB });
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname.startsWith("/v1/requests/")
+    ) {
+      const reference = url.pathname.slice("/v1/requests/".length);
+      if (!reference) {
+        return new Response(null, { status: 404 });
+      }
+      const runtimeEnv = env as Env;
+      const normalizedRef = normalizeRequestReference(reference);
+      const result = await getRequest(normalizedRef, {
+        db: runtimeEnv.DB,
+        r2: runtimeEnv.R2,
+      });
+
+      if (!result.found) {
+        return new Response(null, { status: 404 });
+      }
+
+      if (result.state === "Completed") {
+        return Response.json({ state: "Completed", result: result.result });
+      }
+
+      if (result.state === "Failed") {
+        return Response.json({
+          state: "Failed",
+          terminal_error_code: result.terminalErrorCode,
+        });
+      }
+
+      return Response.json({ state: "Cancelled" });
     }
 
     return new Response("Not Found", { status: 404 });
