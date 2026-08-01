@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import {
   ConfigCache,
+  ConfigCacheMissError,
   loadConfig,
   type ConfigEntityKind,
   type D1Reader,
@@ -434,12 +435,18 @@ async function warmDiscoveryCache(
   await loadConfig(cache, scoped("entitlements"), "entitlements", installationId);
 
   for (const capabilityId of capabilityIds) {
-    await loadConfig(
-      cache,
-      scoped("grants"),
-      "grants",
-      `${installationId}/${capabilityId}`,
-    );
+    try {
+      await loadConfig(
+        cache,
+        scoped("grants"),
+        "grants",
+        `${installationId}/${capabilityId}`,
+      );
+    } catch (error) {
+      if (!(error instanceof ConfigCacheMissError)) {
+        throw error;
+      }
+    }
   }
 }
 

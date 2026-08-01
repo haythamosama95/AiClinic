@@ -1,0 +1,342 @@
+/**
+ * Capability registry, resolver stage, and discovery (C1 §4.3.4, §5.5).
+ */
+
+import {
+  type ConfigCache,
+  type ConfigEntityKind,
+  ConfigCacheMissError,
+  type D1Reader,
+  loadConfig,
+} from "../config-cache";
+import type { Principal } from "../identity";
+import { hashManifest, type Manifest } from "../manifest";
+
+export type CapabilityRegistry = Map<string, Manifest>;
+
+export type ResolveResult =
+  | { ok: true; manifest: Manifest }
+  | {
+      ok: false;
+      code: "capability_unknown" | "capability_retired" | "capability_disabled";
+    };
+
+export type DiscoveryResult = {
+  manifests: Manifest[];
+  etag: string;
+};
+
+const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
+
+let capabilityRegistry: CapabilityRegistry = new Map();
+
+function registryKey(capabilityId: string, version: string): string {
+  return `${capabilityId}@${version}`;
+}
+
+function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
+  return {
+    read(key: string) {
+      return reader.read(`${kind}:${key}`);
+    },
+  };
+}
+
+function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] {
+  const raw = entitlement.allowed_capabilities;
+  if (Array.isArray(raw)) {
+    return raw as string[];
+  }
+  if (typeof raw === "string") {
+    return JSON.parse(raw) as string[];
+  }
+  return [];
+}
+
+function planTierMeetsMinimum(plan: string, minimum: string): boolean {
+  const planRank = PLAN_TIER_ORDER.indexOf(plan as (typeof PLAN_TIER_ORDER)[number]);
+  const minimumRank = PLAN_TIER_ORDER.indexOf(
+    minimum as (typeof PLAN_TIER_ORDER)[number],
+  );
+  if (planRank === -1 || minimumRank === -1) {
+    return false;
+  }
+  return planRank >= minimumRank;
+}
+
+function isKillSwitchActive(row: Record<string, unknown>): boolean {
+  return row.active === true;
+}
+
+async function loadKillSwitch(
+  cache: ConfigCache,
+  reader: D1Reader,
+  key: string,
+): Promise<Record<string, unknown>> {
+  return loadConfig(
+    cache,
+    scopeReaderForKind(reader, "kill_switches"),
+    "kill_switches",
+    key,
+  );
+}
+
+async function resolveProviderId(
+  manifest: Manifest,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<string | undefined> {
+  const policyRef = manifest.Routing.routingPolicyRef;
+  if (typeof policyRef !== "string") {
+    return undefined;
+  }
+
+  try {
+    const policy = await loadConfig(
+      cache,
+      scopeReaderForKind(reader, "active_routing_policy"),
+      "active_routing_policy",
+      policyRef,
+    );
+    const providerId = policy.provider_id ?? policy.providerId;
+    return typeof providerId === "string" ? providerId : undefined;
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function isCapabilityDisabled(
+  principal: Principal,
+  capabilityId: string,
+  manifest: Manifest,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<boolean> {
+  const installationId = principal.installationId;
+  const killSwitchKeys = [
+    "global",
+    `capability:${capabilityId}`,
+    `installation:${installationId}`,
+  ];
+
+  const providerId = await resolveProviderId(manifest, cache, reader);
+  if (providerId !== undefined) {
+    killSwitchKeys.push(`provider:${providerId}`);
+  }
+
+  for (const key of killSwitchKeys) {
+    const row = await loadKillSwitch(cache, reader, key);
+    if (isKillSwitchActive(row)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function manifestToHashInput(manifest: Manifest): Record<string, unknown> {
+  return {
+    Identity: manifest.Identity,
+    Access: manifest.Access,
+    Interaction: manifest.Interaction,
+    Input: manifest.Input,
+    "Context requirements": manifest["Context requirements"],
+    "Prompt binding": manifest["Prompt binding"],
+    Output: manifest.Output,
+    Routing: manifest.Routing,
+    Economics: manifest.Economics,
+    Governance: manifest.Governance,
+  };
+}
+
+function sortManifests(manifests: Manifest[]): Manifest[] {
+  return [...manifests].sort((left, right) =>
+    registryKey(left.Identity.capabilityId as string, left.Identity.version as string).localeCompare(
+      registryKey(right.Identity.capabilityId as string, right.Identity.version as string),
+    ),
+  );
+}
+
+function deepFreeze<T extends object>(value: T): T {
+  Object.freeze(value);
+  for (const key of Object.keys(value)) {
+    const entry = (value as Record<string, unknown>)[key];
+    if (entry !== null && typeof entry === "object" && !Object.isFrozen(entry)) {
+      deepFreeze(entry as object);
+    }
+  }
+  return value;
+}
+
+function freezeManifest(manifest: Manifest): Manifest {
+  for (const entry of manifest["Context requirements"]) {
+    deepFreeze(entry);
+  }
+  deepFreeze(manifest.Identity);
+  deepFreeze(manifest.Access);
+  deepFreeze(manifest.Interaction);
+  deepFreeze(manifest.Input);
+  deepFreeze(manifest["Context requirements"]);
+  deepFreeze(manifest["Prompt binding"]);
+  deepFreeze(manifest.Output);
+  deepFreeze(manifest.Routing);
+  deepFreeze(manifest.Economics);
+  deepFreeze(manifest.Governance);
+  return deepFreeze(manifest);
+}
+
+export function createCapabilityRegistry(manifests: Manifest[]): CapabilityRegistry {
+  const registry: CapabilityRegistry = new Map();
+  for (const manifest of manifests) {
+    const capabilityId = manifest.Identity.capabilityId;
+    const version = manifest.Identity.version;
+    if (typeof capabilityId !== "string" || typeof version !== "string") {
+      continue;
+    }
+    registry.set(registryKey(capabilityId, version), freezeManifest(manifest));
+  }
+  return registry;
+}
+
+export function setCapabilityRegistry(registry: CapabilityRegistry): void {
+  capabilityRegistry = registry;
+}
+
+export async function resolve(
+  principal: Principal,
+  capabilityId: string,
+  version: string,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<ResolveResult> {
+  const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
+  if (manifest === undefined) {
+    return { ok: false, code: "capability_unknown" };
+  }
+
+  if (manifest.Identity.lifecycleState === "retired") {
+    return { ok: false, code: "capability_retired" };
+  }
+
+  if (await isCapabilityDisabled(principal, capabilityId, manifest, cache, reader)) {
+    return { ok: false, code: "capability_disabled" };
+  }
+
+  return { ok: true, manifest };
+}
+
+export function computeDiscoveryEtag(manifestList: Manifest[]): string {
+  const sorted = sortManifests(manifestList);
+  return hashManifest({
+    manifests: sorted.map(manifestToHashInput),
+  });
+}
+
+export async function discover(
+  principal: Principal,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<DiscoveryResult> {
+  const installationId = principal.installationId;
+
+  let entitlement: Record<string, unknown>;
+  try {
+    entitlement = await loadConfig(
+      cache,
+      scopeReaderForKind(reader, "entitlements"),
+      "entitlements",
+      installationId,
+    );
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      const manifests: Manifest[] = [];
+      return { manifests, etag: computeDiscoveryEtag(manifests) };
+    }
+    throw error;
+  }
+
+  if (entitlement.status !== "active") {
+    const manifests: Manifest[] = [];
+    return { manifests, etag: computeDiscoveryEtag(manifests) };
+  }
+
+  const plan = entitlement.plan;
+  if (typeof plan !== "string") {
+    const manifests: Manifest[] = [];
+    return { manifests, etag: computeDiscoveryEtag(manifests) };
+  }
+
+  const allowedCapabilities = parseAllowedCapabilities(entitlement);
+  const manifests: Manifest[] = [];
+
+  for (const manifest of capabilityRegistry.values()) {
+    if (manifest.Identity.lifecycleState !== "active") {
+      continue;
+    }
+
+    const capabilityId = manifest.Identity.capabilityId;
+    if (typeof capabilityId !== "string") {
+      continue;
+    }
+
+    if (!allowedCapabilities.includes(capabilityId)) {
+      continue;
+    }
+
+    const minimumPlanTier = manifest.Access.minimumPlanTier;
+    if (
+      typeof minimumPlanTier !== "string" ||
+      !planTierMeetsMinimum(plan, minimumPlanTier)
+    ) {
+      continue;
+    }
+
+    const grantKey = `${installationId}/${capabilityId}`;
+    try {
+      const grant = await loadConfig(
+        cache,
+        scopeReaderForKind(reader, "grants"),
+        "grants",
+        grantKey,
+      );
+      if (grant.revoked_at != null) {
+        continue;
+      }
+    } catch (error) {
+      if (error instanceof ConfigCacheMissError) {
+        continue;
+      }
+      throw error;
+    }
+
+    manifests.push(manifest);
+  }
+
+  const sorted = sortManifests(manifests);
+  return { manifests: sorted, etag: computeDiscoveryEtag(sorted) };
+}
+
+export function buildDiscoveryResponse(
+  request: Request,
+  manifestList: Manifest[],
+  etag: string,
+): Response {
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  if (ifNoneMatch === etag) {
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: etag },
+    });
+  }
+
+  return new Response(JSON.stringify({ manifests: manifestList }), {
+    status: 200,
+    headers: {
+      ETag: etag,
+      "Content-Type": "application/json",
+    },
+  });
+}
