@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -26,6 +29,7 @@ import 'package:ai_clinic/features/patients/presentation/widgets/patient_invoice
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_notes_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_grid.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_record_card.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_navigation.dart';
 
 /// Patient profile route (`/patients/:patientId`).
 class PatientDetailPage extends ConsumerStatefulWidget {
@@ -168,16 +172,12 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
   }
 
   Widget _buildBreadcrumb(BuildContext context, String patientName) {
-    final l10n = context.l10n;
-    return AppBreadcrumb(
-      items: [
-        AppBreadcrumbItem(
-          label: l10n.patients,
-          onTap: () => context.nav.goPatients(),
-        ),
-        AppBreadcrumbItem(label: patientName),
-      ],
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'patient:${widget.patientId}',
+      BreadcrumbLabel.fixed(patientName),
     );
+    return const BreadcrumbTrailView();
   }
 
   /// Centers tab placeholder states (empty / error) within the full content width.
@@ -197,15 +197,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
       children: [
         AppPageHeader(
           title: l10n.patientNotFound,
-          breadcrumb: AppBreadcrumb(
-            items: [
-              AppBreadcrumbItem(
-                label: l10n.patients,
-                onTap: () => context.nav.goPatients(),
-              ),
-              AppBreadcrumbItem(label: l10n.patientDetailBreadcrumb),
-            ],
-          ),
+          breadcrumb: const BreadcrumbTrailView(),
         ),
         AppEmptyState(
           variant: AppEmptyStateVariant.error,
@@ -358,6 +350,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
           card: PatientVisitRecordCard.fromVisit(
             visit,
             key: ValueKey('visit-${visit.id}'),
+            onTap: canOpenVisitFromPatientHistory(ref, visit)
+                ? () => openVisitFromPatientHistory(context, ref, visit)
+                : null,
           ),
         ),
     ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));

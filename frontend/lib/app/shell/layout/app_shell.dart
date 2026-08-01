@@ -52,7 +52,9 @@ class AppShell extends StatelessWidget {
                         builder: (context, pageContent, activePageKey) {
                           final framed = _buildFrame(pageContent);
                           final effectiveFillViewport =
-                              fillViewport || ShellNavConfig.isDesignSystemLocation(activePageKey.toString());
+                              fillViewport ||
+                              ShellNavConfig.isFillViewportLocation(activePageKey.toString()) ||
+                              ShellNavConfig.isDesignSystemLocation(activePageKey.toString());
                           if (effectiveFillViewport) {
                             return SizedBox.expand(child: framed);
                           }

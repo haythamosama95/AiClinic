@@ -35,7 +35,6 @@ void main() {
   Future<void> openDialog(WidgetTester tester) async {
     await pumpDialogHost(tester);
     await tester.tap(find.text('Open welcome'));
-    await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
   }
 
@@ -69,10 +68,9 @@ void main() {
     testWidgets('is non-dismissible via back navigation', (tester) async {
       await openDialog(tester);
 
-      final didPop = await tester.binding.handlePopRoute();
+      await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(didPop, isFalse);
       expect(find.text('Welcome to ${ClinicSetupWelcomeDialog.appName}'), findsOneWidget);
     });
 

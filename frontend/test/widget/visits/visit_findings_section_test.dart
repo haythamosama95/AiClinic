@@ -1,5 +1,6 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -7,15 +8,14 @@ import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_findings_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_vital_signs_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_entry_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 
 import 'visit_widget_test_harness.dart';
 
 const _bpCatalogId = 'vvvvvvvv-vvvv-4vvv-8vvv-vvvvvvvvvvvv';
 
-final _bloodPressureCatalog = [
-  const CatalogItem(id: _bpCatalogId, name: 'Blood Pressure', defaultUnit: 'mmHg'),
-];
+final _bloodPressureCatalog = [const CatalogItem(id: _bpCatalogId, name: 'Blood Pressure', defaultUnit: 'mmHg')];
 
 Future<StubVisitDocumentationNotifier> _pumpFindingsSection(
   WidgetTester tester, {
@@ -35,7 +35,14 @@ Future<StubVisitDocumentationNotifier> _pumpFindingsSection(
   );
   await pumpVisitsFrames(tester);
   await pumpVisitsFrames(tester);
+  await tester.pumpAndSettle();
   return docNotifier;
+}
+
+AppRichTextEditor _richTextEditor(WidgetTester tester, String semanticsId) {
+  final finder = find.ancestor(of: find.bySemanticsIdentifier(semanticsId), matching: find.byType(AppRichTextEditor));
+  expect(finder, findsOneWidget);
+  return tester.widget<AppRichTextEditor>(finder);
 }
 
 StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
@@ -46,12 +53,7 @@ StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
 }
 
 void _driveRichText(WidgetTester tester, String semanticsId, String text) {
-  final finder = find.descendant(
-    of: find.bySemanticsIdentifier(semanticsId),
-    matching: find.byType(AppRichTextEditor),
-  );
-  expect(finder, findsOneWidget);
-  final editor = tester.widget<AppRichTextEditor>(finder);
+  final editor = _richTextEditor(tester, semanticsId);
   expect(editor.controller, isNotNull);
   setQuillControllerPlainText(editor.controller!, text);
 }
@@ -59,11 +61,10 @@ void _driveRichText(WidgetTester tester, String semanticsId, String text) {
 Future<void> _submitVitalSignDialog(WidgetTester tester, {required String value}) async {
   final dialog = find.byType(VitalSignFormDialog);
   expect(dialog, findsOneWidget);
-  await tester.enterText(
-    find.descendant(of: dialog, matching: find.byType(EditableText)),
-    value,
-  );
-  await tester.tap(find.widgetWithText(AppButton, 'Add vital sign'));
+  await tester.enterText(find.descendant(of: dialog, matching: find.byType(EditableText)), value);
+  final submitButton = find.descendant(of: dialog, matching: find.widgetWithText(AppButton, 'Add vital sign'));
+  await tester.ensureVisible(submitButton);
+  await tester.tap(submitButton);
   await pumpVisitsFrames(tester);
 }
 
@@ -83,10 +84,7 @@ void main() {
       expect(find.text('Physical examination'), findsOneWidget);
       expect(find.text('Vital signs'), findsOneWidget);
       expect(find.text('Diagnosis'), findsOneWidget);
-      expect(
-        find.text('Add each measurement via the dialog; recorded values appear as cards below.'),
-        findsOneWidget,
-      );
+      expect(find.text('Add each measurement via the dialog; recorded values appear as cards below.'), findsOneWidget);
     });
 
     testWidgets('trivial: contains rich-text editors and vital signs editor', (tester) async {
@@ -112,8 +110,14 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('Lungs clear bilaterally'), findsOneWidget);
-      expect(find.textContaining('Acute pharyngitis'), findsOneWidget);
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'physical-examination-input').controller!.document),
+        'Lungs clear bilaterally',
+      );
+      expect(
+        plainTextFromQuillDocument(_richTextEditor(tester, 'diagnosis-input').controller!.document),
+        'Acute pharyngitis',
+      );
     });
 
     testWidgets('trivial: renders existing vital sign cards', (tester) async {
@@ -128,7 +132,8 @@ void main() {
       );
 
       expect(find.text('BLOOD PRESSURE'), findsOneWidget);
-      expect(find.text('118/76'), findsOneWidget);
+      expect(find.byType(VitalSignEntryCard), findsOneWidget);
+      expect(tester.widget<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).value, '118/76');
       expect(find.text('1 vital sign documented'), findsOneWidget);
     });
 
@@ -156,10 +161,10 @@ void main() {
       await _pumpFindingsSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final examSemantics = tester.getSemantics(find.bySemanticsIdentifier('physical-examination-input'));
-      expect(examSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(examSemantics.flagsCollection.isEnabled, Tristate.isFalse);
 
       final diagnosisSemantics = tester.getSemantics(find.bySemanticsIdentifier('diagnosis-input'));
-      expect(diagnosisSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
+      expect(diagnosisSemantics.flagsCollection.isEnabled, Tristate.isFalse);
     });
 
     testWidgets('trivial: canEdit false hides vital sign add and remove affordances', (tester) async {
@@ -268,10 +273,7 @@ void main() {
       await pumpVisitsFrames(tester);
 
       final dialog = find.byType(VitalSignFormDialog);
-      await tester.enterText(
-        find.descendant(of: dialog, matching: find.byType(EditableText)),
-        '122/82',
-      );
+      await tester.enterText(find.descendant(of: dialog, matching: find.byType(EditableText)), '122/82');
       await tester.tap(find.widgetWithText(AppButton, 'Save changes'));
       await pumpVisitsFrames(tester);
 

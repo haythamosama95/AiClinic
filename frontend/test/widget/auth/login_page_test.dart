@@ -57,6 +57,7 @@ void main() {
     testWidgets('error state shows danger alert with generic sign-in failure message', (tester) async {
       await pumpLoginPage(
         tester,
+        surfaceSize: loginNarrowSurfaceSize,
         authUiState: const AuthUiState(
           errorMessage: kGenericSignInFailureMessage,
           isInfoMessage: false,
@@ -96,27 +97,32 @@ void main() {
   group('LoginPage session states', () {
     testWidgets('unknown session status renders without error', (tester) async {
       final session = TestAuthSessionNotifier();
-      session.setSession(AuthSessionState.initial());
 
       await pumpLoginPage(tester, sessionNotifier: session);
+      session.setSession(AuthSessionState.initial());
+      await tester.pump();
 
       expect(tester.takeException(), isNull);
       expect(loginSubmitButton(), findsOneWidget);
     });
 
     testWidgets('loading session status renders without error', (tester) async {
-      final session = TestAuthSessionNotifier()..setLoading();
+      final session = TestAuthSessionNotifier();
 
       await pumpLoginPage(tester, sessionNotifier: session);
+      session.setLoading();
+      await tester.pump();
 
       expect(tester.takeException(), isNull);
       expect(loginSubmitButton(), findsOneWidget);
     });
 
     testWidgets('authenticated session still renders login form (no in-widget redirect)', (tester) async {
-      final session = TestAuthSessionNotifier()..setAuthenticated();
+      final session = TestAuthSessionNotifier();
 
       await pumpLoginPage(tester, sessionNotifier: session);
+      session.setAuthenticated();
+      await tester.pump();
 
       expect(tester.takeException(), isNull);
       expect(loginSubmitButton(), findsOneWidget);
@@ -125,10 +131,11 @@ void main() {
 
     testWidgets('does not surface authSessionProvider failure message in the UI', (tester) async {
       const failure = 'Session bootstrap failed.';
-      final session = TestAuthSessionNotifier()
-        ..setUnauthenticated(failureMessage: failure);
+      final session = TestAuthSessionNotifier();
 
       await pumpLoginPage(tester, sessionNotifier: session);
+      session.setUnauthenticated(failureMessage: failure);
+      await tester.pump();
 
       expect(find.text(failure), findsNothing);
       expect(find.byType(AppAlert), findsNothing);

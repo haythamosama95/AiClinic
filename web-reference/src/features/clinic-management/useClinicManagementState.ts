@@ -2,14 +2,16 @@ import { useCallback, useState } from 'react'
 import {
   INITIAL_BRANCHES,
   INITIAL_ORGANIZATION,
+  INITIAL_SERVICES,
   INITIAL_STAFF,
 } from './mock-data'
-import type { BranchRecord, OrganizationProfile, StaffRecord } from './types'
+import type { BranchRecord, OrganizationProfile, ServiceRecord, StaffRecord } from './types'
 
 export function useClinicManagementState() {
   const [organization, setOrganization] = useState<OrganizationProfile>(INITIAL_ORGANIZATION)
   const [branches, setBranches] = useState<BranchRecord[]>(INITIAL_BRANCHES)
   const [staff, setStaff] = useState<StaffRecord[]>(INITIAL_STAFF)
+  const [services, setServices] = useState<ServiceRecord[]>(INITIAL_SERVICES)
 
   const updateOrganization = useCallback((next: OrganizationProfile) => {
     setOrganization(next)
@@ -53,10 +55,23 @@ export function useClinicManagementState() {
     setStaff((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
+  const addService = useCallback((service: ServiceRecord) => {
+    setServices((prev) => [...prev, service])
+  }, [])
+
+  const updateService = useCallback((id: string, patch: Partial<ServiceRecord>) => {
+    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }, [])
+
+  const removeService = useCallback((id: string) => {
+    setServices((prev) => prev.filter((s) => s.id !== id))
+  }, [])
+
   return {
     organization,
     branches,
     staff,
+    services,
     updateOrganization,
     addBranch,
     updateBranch,
@@ -64,6 +79,9 @@ export function useClinicManagementState() {
     addStaff,
     updateStaff,
     removeStaff,
+    addService,
+    updateService,
+    removeService,
   }
 }
 

@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/components/app_segmented_control.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
@@ -39,12 +35,7 @@ class _VisitServiceSelectionStepState
     extends ConsumerState<VisitServiceSelectionStep> {
   final _searchController = TextEditingController();
   _ServiceSelectionView _view = _ServiceSelectionView.grid;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCatalog(''));
-  }
+  String? _loadedCatalogBranchId;
 
   @override
   void dispose() {
@@ -80,6 +71,17 @@ class _VisitServiceSelectionStepState
     final catalogAsync = branchId == null
         ? const AsyncValue<List<EligibleService>>.loading()
         : ref.watch(serviceSelectorProvider(branchId));
+
+    if (branchId != null &&
+        branchId.isNotEmpty &&
+        branchId != _loadedCatalogBranchId) {
+      _loadedCatalogBranchId = branchId;
+      Future.microtask(() {
+        if (mounted) {
+          _loadCatalog(_searchController.text);
+        }
+      });
+    }
 
     final currency = ref.watch(organizationCurrencyProvider);
     final selectedIds = billing.selectedLines
@@ -132,54 +134,12 @@ class _VisitServiceSelectionStepState
                             ],
                           ),
                         ),
-                        catalogAsync.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.all(AppSpacing.space6),
-                            child: AppSkeleton(
-                              variant: SkeletonVariant.rectangular,
-                              height: 220,
-                            ),
-                          ),
-                          error: (_, _) => _ServiceSelectionEmpty(
-                            message:
-                                'Could not load services. Try searching again.',
-                          ),
-                          data: (services) {
-                            if (services.isEmpty) {
-                              return _ServiceSelectionEmpty(
-                                message: _searchController.text.trim().isEmpty
-                                    ? 'No services in the catalog yet.'
-                                    : 'No services match your search.',
-                              );
-                            }
-
-                            if (_view == _ServiceSelectionView.grid) {
-                              return VisitServiceSelectionGridView(
-                                services: services,
-                                selectedIds: selectedIds,
-                                selectedLines: billing.selectedLines,
-                                currency: currency,
-                                onToggle: (service, selected) => billingNotifier
-                                    .toggleService(service, selected: selected),
-                                onQuantityChange:
-                                    billingNotifier.updateQuantity,
-                              );
-                            }
-
-                            return ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 448),
-                              child: VisitServiceSelectionListView(
-                                services: services,
-                                selectedIds: selectedIds,
-                                selectedLines: billing.selectedLines,
-                                currency: currency,
-                                onToggle: (service, selected) => billingNotifier
-                                    .toggleService(service, selected: selected),
-                                onQuantityChange:
-                                    billingNotifier.updateQuantity,
-                              ),
-                            );
-                          },
+                        _buildCatalogBody(
+                          catalogAsync,
+                          billing,
+                          billingNotifier,
+                          currency,
+                          selectedIds,
                         ),
                       ],
                     ),
@@ -221,6 +181,67 @@ class _VisitServiceSelectionStepState
           onContinue: widget.onContinue,
         ),
       ],
+    );
+  }
+
+  Widget _buildCatalogBody(
+    AsyncValue<List<EligibleService>> catalogAsync,
+    VisitBillingFlowState billing,
+    VisitBillingFlowNotifier billingNotifier,
+    String currency,
+    Set<String> selectedIds,
+  ) {
+    if (catalogAsync.hasError) {
+      return const _ServiceSelectionEmpty(
+        message: 'Could not load services. Try searching again.',
+      );
+    }
+
+    return catalogAsync.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.all(AppSpacing.space6),
+        child: AppSkeleton(
+          variant: SkeletonVariant.rectangular,
+          height: 220,
+        ),
+      ),
+      error: (_, _) => const _ServiceSelectionEmpty(
+        message: 'Could not load services. Try searching again.',
+      ),
+      data: (services) {
+        if (services.isEmpty) {
+          return _ServiceSelectionEmpty(
+            message: _searchController.text.trim().isEmpty
+                ? 'No services in the catalog yet.'
+                : 'No services match your search.',
+          );
+        }
+
+        if (_view == _ServiceSelectionView.grid) {
+          return VisitServiceSelectionGridView(
+            services: services,
+            selectedIds: selectedIds,
+            selectedLines: billing.selectedLines,
+            currency: currency,
+            onToggle: (service, selected) =>
+                billingNotifier.toggleService(service, selected: selected),
+            onQuantityChange: billingNotifier.updateQuantity,
+          );
+        }
+
+        return ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 448),
+          child: VisitServiceSelectionListView(
+            services: services,
+            selectedIds: selectedIds,
+            selectedLines: billing.selectedLines,
+            currency: currency,
+            onToggle: (service, selected) =>
+                billingNotifier.toggleService(service, selected: selected),
+            onQuantityChange: billingNotifier.updateQuantity,
+          ),
+        );
+      },
     );
   }
 }

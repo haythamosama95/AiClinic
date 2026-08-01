@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_badge.dart';
-import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
@@ -17,6 +21,7 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
@@ -34,9 +39,10 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 
 /// Invoice detail surface (`/billing/invoices/:id`).
 class InvoiceDetailPage extends ConsumerStatefulWidget {
-  const InvoiceDetailPage({required this.invoiceId, super.key});
+  const InvoiceDetailPage({required this.invoiceId, this.extra, super.key});
 
   final String invoiceId;
+  final InvoiceDetailRouteExtra? extra;
 
   @override
   ConsumerState<InvoiceDetailPage> createState() => _InvoiceDetailPageState();
@@ -91,31 +97,38 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
     }
   }
 
+  Widget _buildDetailError(Object error) {
+    if (_isInvoiceNotFound(error)) {
+      return _InvoiceNotFoundView(onBack: _popToInvoicesList);
+    }
+
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load invoice',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(invoiceDetailViewProvider(widget.invoiceId));
 
-    final content = detailAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (error, _) {
-        if (_isInvoiceNotFound(error)) {
-          return _InvoiceNotFoundView(onBack: _popToInvoicesList);
-        }
-
-        return Center(
-          child: AppEmptyState(
-            variant: AppEmptyStateVariant.error,
-            title: 'Could not load invoice',
-            description: error.toString(),
-            action: EmptyStateAction(
-              label: 'Retry',
-              onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
-            ),
-          ),
-        );
-      },
-      data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
-    );
+    final Widget content;
+    if (detailAsync.hasError && !detailAsync.hasValue) {
+      content = _buildDetailError(detailAsync.error!);
+    } else {
+      content = detailAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        error: (error, _) => _buildDetailError(error),
+        data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
+      );
+    }
 
     return FadeTransition(
       opacity: _enterAnimation ?? _enterController,
@@ -141,12 +154,7 @@ class _InvoiceNotFoundView extends StatelessWidget {
       children: [
         AppPageHeader(
           title: 'Invoice not found',
-          breadcrumb: AppBreadcrumb(
-            items: [
-              AppBreadcrumbItem(label: 'Invoices', onTap: onBack),
-              const AppBreadcrumbItem(label: 'Not found'),
-            ],
-          ),
+          breadcrumb: const BreadcrumbTrailView(),
         ),
         AppEmptyState(
           variant: AppEmptyStateVariant.error,
@@ -279,6 +287,12 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       status: invoice.status,
     );
 
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'invoice:${invoice.id}',
+      BreadcrumbLabel.fixed(displayNumber),
+    );
+
     final linkCards = [
       InvoiceLinkCard(
         eyebrow: 'Patient',
@@ -297,12 +311,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       mainAxisSize: MainAxisSize.min,
       spacing: AppSpacing.space6,
       children: [
-        AppBreadcrumb(
-          items: [
-            AppBreadcrumbItem(label: 'Invoices', onTap: widget.onPopToInvoicesList),
-            AppBreadcrumbItem(label: displayNumber),
-          ],
-        ),
+        const BreadcrumbTrailView(),
         InvoiceHeroCard(
           invoice: invoice,
           patientName: patientName,
@@ -398,6 +407,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
 
   late final AnimationController _controller;
   CurvedAnimation? _animation;
+  Timer? _startTimer;
   var _configured = false;
 
   @override
@@ -426,7 +436,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
     if (delay == Duration.zero) {
       _controller.forward();
     } else {
-      Future<void>.delayed(delay, () {
+      _startTimer = Timer(delay, () {
         if (mounted) {
           _controller.forward();
         }
@@ -436,6 +446,7 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
 
   @override
   void dispose() {
+    _startTimer?.cancel();
     _animation?.dispose();
     _controller.dispose();
     super.dispose();

@@ -1,4 +1,3 @@
-import type { ComboboxItem } from '@/components/ui/combobox/Combobox'
 import type { FileItem } from '@/components/ui/file-dropzone/FileDropzone'
 
 export type VisitPhase = 'intake' | 'findings' | 'treatment' | 'summary' | 'billing' | 'completed'
@@ -30,12 +29,18 @@ export type InvestigationEntry = {
   note: string
 }
 
+export type MedicalBackgroundEntry = {
+  id: string
+  itemId: string
+  note: string
+}
+
 export type VisitFormData = {
   complaint: string
   history: string
-  chronicConditions: ComboboxItem[]
-  allergies: ComboboxItem[]
-  currentMedications: ComboboxItem[]
+  chronicConditions: MedicalBackgroundEntry[]
+  allergies: MedicalBackgroundEntry[]
+  currentMedications: MedicalBackgroundEntry[]
   examination: string
   diagnosis: string
   vitalSigns: VitalSignEntry[]

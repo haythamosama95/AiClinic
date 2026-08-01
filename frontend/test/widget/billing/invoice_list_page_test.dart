@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_pagination.dart';
@@ -22,6 +21,11 @@ class RetryableErrorInvoiceListNotifier extends InvoiceListNotifier {
       throw Exception('load failed');
     }
     return buildBillingListState();
+  }
+
+  @override
+  Future<void> reload() async {
+    // InvoiceListPage calls reload on mount; keep the initial build() error.
   }
 }
 

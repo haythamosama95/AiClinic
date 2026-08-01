@@ -24,7 +24,17 @@ abstract final class AppRoutes {
 
   /// Clinic workstation settings (authenticated, setup complete).
   static const settings = '/settings';
+  static const settingsAppearance = '/settings/appearance';
+  static const settingsNotifications = '/settings/notifications';
+  static const settingsSecurity = '/settings/security';
   static const settingsIdleTimeout = '/settings/idle-timeout';
+
+  /// Personal settings screens (web `SETTINGS_SCREENS`).
+  static const personalSettingsPaths = <String>[
+    settingsAppearance,
+    settingsNotifications,
+    settingsSecurity,
+  ];
 
   /// Clinic management hub (organization, branches, staff, roles).
   static const clinicManagement = '/clinic-management';

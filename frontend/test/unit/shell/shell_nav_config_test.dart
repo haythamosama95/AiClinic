@@ -33,12 +33,55 @@ void main() {
     });
   });
 
+  group('ShellNavConfig.isFullWidthLocation', () {
+    test('appointment detail uses full-width shell layout', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentDetail('apt-1')), isTrue);
+    });
+
+    test('appointment hub routes stay full width', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsCalendar), isTrue);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsQueue), isTrue);
+    });
+
+    test('non-detail appointment routes are not treated as detail', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsBook), isFalse);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsSchedule('doc-1')), isFalse);
+    });
+  });
+
   group('ShellNavConfig.isFillViewportLocation', () {
     test('billing routes fill the shell viewport', () {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoiceDetail('inv-1')), isTrue);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
+    });
+
+    test('personal settings routes use shell scroll (content-sized)', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsAppearance), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsNotifications), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsSecurity), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsOrganization), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.itemIdForLocation', () {
+    test('maps pushed visit billing routes to invoices nav item', () {
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.billingVisit('visit-1')), 'invoices');
+    });
+  });
+
+  group('ShellNavConfig.shellPageKeyForLocation', () {
+    test('personal settings sub-routes share stable shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsAppearance), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsNotifications), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsSecurity), AppRoutes.settings);
+    });
+
+    test('other routes keep location as shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.home), AppRoutes.home);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.patients), AppRoutes.patients);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.clinicManagement), AppRoutes.clinicManagement);
     });
   });
 

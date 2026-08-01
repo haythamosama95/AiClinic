@@ -3,7 +3,6 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,11 +80,18 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final future = container.read(appointmentDetailProvider('missing').future);
+      final provider = appointmentDetailProvider('missing');
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
 
-      await expectLater(
-        future,
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND')),
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND'),
       );
     });
 

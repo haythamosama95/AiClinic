@@ -70,8 +70,11 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
   Future<RolePermissionsUiState> build() async {
     final auth = ref.read(authSessionProvider);
     if (!AuthRouteGuard.canAccessPermissionMatrix(auth)) {
-      const empty = PermissionMatrixView(permissionKeys: [], grantsByRoleAndKey: {});
-      return const RolePermissionsUiState(savedMatrix: empty, workingMatrix: empty, permissionDenied: true);
+      return RolePermissionsUiState(
+        savedMatrix: PermissionMatrixView.empty,
+        workingMatrix: PermissionMatrixView.empty,
+        permissionDenied: true,
+      );
     }
 
     final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();

@@ -21,6 +21,7 @@ psql_run() {
 
 sql_tests=(
   service_catalog_crud.sql
+  service_catalog_list.sql
   service_catalog_rls.sql
   service_catalog_pricing.sql
   service_catalog_concurrency.sql

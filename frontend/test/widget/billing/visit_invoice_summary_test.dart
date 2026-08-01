@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
@@ -39,7 +39,7 @@ InvoiceDetail _issuedInvoice() {
     createdAt: DateTime.parse('2026-06-01T10:00:00.000Z'),
     updatedAt: DateTime.parse('2026-06-02T12:00:00.000Z'),
     issuedAt: DateTime.parse('2026-06-02T11:00:00.000Z'),
-    items: const [
+    items: [
       InvoiceItem(
         id: 'item-1',
         description: 'Consultation',
@@ -108,36 +108,31 @@ Future<void> _pumpPanel(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: child),
+        home: Scaffold(
+          body: SingleChildScrollView(child: child),
+        ),
       ),
     ),
   );
 }
 
-GoRouter _dialogRouter({required Set<String> permissions}) {
+Future<void> _tapVisibleButton(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(AppButton, label);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+}
+
+GoRouter _dialogRouter() {
   return GoRouter(
     initialLocation: '/',
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => ProviderScope(
-          overrides: [
-            authSessionProvider.overrideWith(
-              () => MutableAuthSessionNotifier(
-                AuthSessionState(
-                  status: AuthSessionStatus.authenticated,
-                  context: sampleAuthSessionContext(permissions: permissions),
-                ),
-              ),
-            ),
-            ..._currencyOverrides(),
-          ],
-          child: Scaffold(
-            body: Center(
-              child: AppButton(
-                onPressed: () => VisitInvoiceSummaryDialog.show(context, invoice: _issuedInvoice()),
-                child: const Text('Show summary'),
-              ),
+        builder: (context, state) => Scaffold(
+          body: Center(
+            child: AppButton(
+              onPressed: () => VisitInvoiceSummaryDialog.show(context, invoice: _issuedInvoice()),
+              child: const Text('Show summary'),
             ),
           ),
         ),
@@ -160,11 +155,24 @@ Future<void> _pumpDialogHost(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
-    MaterialApp.router(
-      theme: AppTheme.light(),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      routerConfig: _dialogRouter(permissions: permissions),
+    ProviderScope(
+      overrides: [
+        authSessionProvider.overrideWith(
+          () => MutableAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(permissions: permissions),
+            ),
+          ),
+        ),
+        ..._currencyOverrides(),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: _dialogRouter(),
+      ),
     ),
   );
 }
@@ -290,7 +298,7 @@ void main() {
       expect(find.text('Consultation'), findsOneWidget);
       expect(find.text('Issued'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(AppButton, 'Back'));
+      await _tapVisibleButton(tester, 'Back');
       await tester.pump();
 
       expect(backTapped, isTrue);

@@ -69,7 +69,7 @@ void main() {
     test('trivial: build loads get_patient_safety_context with patient id param', () async {
       final container = _createContainer(client);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      container.listen(patientSafetyProvider(_patientIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       final context = await container.read(patientSafetyProvider(_patientIdA).future);
 
@@ -120,15 +120,21 @@ void main() {
         'error_message': 'Patient missing',
       };
       final container = _createContainer(client);
+      final provider = patientSafetyProvider(_patientIdA);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      final subscription = container.listen(provider, (_, next) => transitions.add(next), fireImmediately: true);
+      addTearDown(subscription.close);
 
-      await expectLater(
-        container.read(patientSafetyProvider(_patientIdA).future),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND')),
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND'),
       );
       expect(transitions.any((value) => value is AsyncLoading), isTrue);
-      expect(container.read(patientSafetyProvider(_patientIdA)), isA<AsyncError>());
     });
 
     test('stupid usage: blank patient id throws StateError', () async {
@@ -148,7 +154,7 @@ void main() {
 
       client.rpcResults['get_patient_safety_context'] = _safetyRpcPayload(includeStructuredData: false);
       final transitions = <AsyncValue<PatientSafetyContext>>[];
-      container.listen(patientSafetyProvider(_patientIdA), transitions.add, fireImmediately: true);
+      container.listen(patientSafetyProvider(_patientIdA), (_, next) => transitions.add(next), fireImmediately: true);
 
       await container.read(patientSafetyProvider(_patientIdA).notifier).refresh();
 

@@ -25,7 +25,7 @@ export type UserMenuProps = {
 }
 
 export function UserMenu({ user, appVersion = '0.1.0', className }: UserMenuProps) {
-  const { theme, toggleTheme } = useTheme()
+  const { resolvedTheme, toggleTheme } = useTheme()
   const { locale, setLocale } = useDirection()
 
   return (
@@ -63,7 +63,7 @@ export function UserMenu({ user, appVersion = '0.1.0', className }: UserMenuProp
         </DropdownMenuItem>
         <DropdownMenuItem
           icon={
-            theme === 'light' ? (
+            resolvedTheme === 'light' ? (
               <Moon size={16} strokeWidth={1.5} />
             ) : (
               <Sun size={16} strokeWidth={1.5} />
@@ -71,7 +71,7 @@ export function UserMenu({ user, appVersion = '0.1.0', className }: UserMenuProp
           }
           onSelect={toggleTheme}
         >
-          {theme === 'light' ? 'Dark theme' : 'Light theme'}
+          {resolvedTheme === 'light' ? 'Dark theme' : 'Light theme'}
         </DropdownMenuItem>
         <DropdownMenuItem
           icon={<Languages size={16} strokeWidth={1.5} />}

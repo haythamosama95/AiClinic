@@ -33,32 +33,32 @@ void main() {
       notifier = container.read(visitBillingFlowProvider(_visitId).notifier);
     });
 
-    VisitBillingFlowState get state => container.read(visitBillingFlowProvider(_visitId));
+    VisitBillingFlowState readState() => container.read(visitBillingFlowProvider(_visitId));
 
     test('initial state uses documented defaults', () {
-      expect(state.step, VisitBillingStep.services);
-      expect(state.selectedLines, isEmpty);
-      expect(state.discountType, VisitBillingDiscountType.none);
-      expect(state.discountValue, 0);
-      expect(state.invoicePreviewNumber, isNull);
-      expect(state.isSubmitting, isFalse);
-      expect(state.invoicePreview, isNull);
+      expect(readState().step, VisitBillingStep.services);
+      expect(readState().selectedLines, isEmpty);
+      expect(readState().discountType, VisitBillingDiscountType.none);
+      expect(readState().discountValue, 0);
+      expect(readState().invoicePreviewNumber, isNull);
+      expect(readState().isSubmitting, isFalse);
+      expect(readState().invoicePreview, isNull);
     });
 
     test('beginBilling populates invoicePreviewNumber matching INV-YYYYMMDD-####', () {
       notifier.beginBilling();
 
-      final number = state.invoicePreviewNumber;
+      final number = readState().invoicePreviewNumber;
       expect(number, isNotNull);
       expect(number, matches(RegExp(r'^INV-\d{8}-\d{4}$')));
-      expect(state.invoicePreview, isNotNull);
-      expect(state.invoicePreview?.number, number);
+      expect(readState().invoicePreview, isNotNull);
+      expect(readState().invoicePreview?.number, number);
     });
 
     test('setStep updates the workflow step', () {
       notifier.setStep(VisitBillingStep.invoice);
 
-      expect(state.step, VisitBillingStep.invoice);
+      expect(readState().step, VisitBillingStep.invoice);
     });
 
     test('toggleService(selected: true) appends a line and ignores duplicates', () {
@@ -67,8 +67,8 @@ void main() {
       notifier.toggleService(service, selected: true);
       notifier.toggleService(service, selected: true);
 
-      expect(state.selectedLines, hasLength(1));
-      expect(state.selectedLines.single.serviceId, service.serviceId);
+      expect(readState().selectedLines, hasLength(1));
+      expect(readState().selectedLines.single.serviceId, service.serviceId);
     });
 
     test('toggleService(selected: false) removes by serviceId and ignores missing lines', () {
@@ -76,46 +76,46 @@ void main() {
       notifier.toggleService(service, selected: true);
 
       notifier.toggleService(_service(serviceId: 'missing'), selected: false);
-      expect(state.selectedLines, hasLength(1));
+      expect(readState().selectedLines, hasLength(1));
 
       notifier.toggleService(service, selected: false);
-      expect(state.selectedLines, isEmpty);
+      expect(readState().selectedLines, isEmpty);
     });
 
     test('updateQuantity clamps to the supported bounds', () {
       notifier.toggleService(_service(), selected: true);
 
       notifier.updateQuantity('svc-1', 0);
-      expect(state.selectedLines.single.quantity, 1);
+      expect(readState().selectedLines.single.quantity, 1);
 
       notifier.updateQuantity('svc-1', 100);
-      expect(state.selectedLines.single.quantity, 99);
+      expect(readState().selectedLines.single.quantity, 99);
 
       notifier.updateQuantity('svc-1', 3);
-      expect(state.selectedLines.single.quantity, 3);
+      expect(readState().selectedLines.single.quantity, 3);
     });
 
     test('setDiscountType resets discountValue to zero', () {
       notifier.setDiscountValue(25);
       notifier.setDiscountType(VisitBillingDiscountType.percentage);
 
-      expect(state.discountType, VisitBillingDiscountType.percentage);
-      expect(state.discountValue, 0);
+      expect(readState().discountType, VisitBillingDiscountType.percentage);
+      expect(readState().discountValue, 0);
     });
 
     test('setDiscountValue updates the discount amount', () {
       notifier.setDiscountType(VisitBillingDiscountType.fixed);
       notifier.setDiscountValue(15);
 
-      expect(state.discountValue, 15);
+      expect(readState().discountValue, 15);
     });
 
     test('setSubmitting toggles submission state', () {
       notifier.setSubmitting(true);
-      expect(state.isSubmitting, isTrue);
+      expect(readState().isSubmitting, isTrue);
 
       notifier.setSubmitting(false);
-      expect(state.isSubmitting, isFalse);
+      expect(readState().isSubmitting, isFalse);
     });
 
     test('reset returns to the initial state after progress', () {
@@ -128,12 +128,12 @@ void main() {
 
       notifier.reset();
 
-      expect(state.step, VisitBillingStep.services);
-      expect(state.selectedLines, isEmpty);
-      expect(state.discountType, VisitBillingDiscountType.none);
-      expect(state.discountValue, 0);
-      expect(state.invoicePreviewNumber, isNull);
-      expect(state.isSubmitting, isFalse);
+      expect(readState().step, VisitBillingStep.services);
+      expect(readState().selectedLines, isEmpty);
+      expect(readState().discountType, VisitBillingDiscountType.none);
+      expect(readState().discountValue, 0);
+      expect(readState().invoicePreviewNumber, isNull);
+      expect(readState().isSubmitting, isFalse);
     });
 
     test('totals matches computeVisitBillingTotals', () {
@@ -144,19 +144,19 @@ void main() {
       notifier.setDiscountValue(10);
 
       final expected = computeVisitBillingTotals(
-        state.selectedLines,
-        state.discountType,
-        state.discountValue,
+        readState().selectedLines,
+        readState().discountType,
+        readState().discountValue,
       );
 
-      expect(state.totals.subtotal, expected.subtotal);
-      expect(state.totals.discountAmount, expected.discountAmount);
-      expect(state.totals.total, expected.total);
+      expect(readState().totals.subtotal, expected.subtotal);
+      expect(readState().totals.discountAmount, expected.discountAmount);
+      expect(readState().totals.total, expected.total);
     });
 
     test('copyWith clearInvoicePreviewNumber clears the preview number', () {
       notifier.beginBilling();
-      final withNumber = state.copyWith(isSubmitting: true);
+      final withNumber = readState().copyWith(isSubmitting: true);
       final cleared = withNumber.copyWith(clearInvoicePreviewNumber: true);
 
       expect(withNumber.invoicePreviewNumber, isNotNull);
@@ -173,7 +173,7 @@ void main() {
       notifier.setDiscountType(VisitBillingDiscountType.percentage);
       notifier.setDiscountValue(10);
 
-      final preview = state.invoicePreview;
+      final preview = readState().invoicePreview;
       expect(preview, isNotNull);
       expect(preview!.lines, hasLength(2));
       expect(preview.subtotal, 180);

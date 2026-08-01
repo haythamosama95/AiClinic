@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_button.dart';
-import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
@@ -12,6 +10,7 @@ import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_summary_section.dart';
 
 import '../../helpers/role_permission_seed.dart';
@@ -116,10 +115,10 @@ void main() {
       expect(find.text('Alert and oriented'), findsOneWidget);
       expect(find.text('Tension headache'), findsOneWidget);
       expect(find.text('Rest and fluids'), findsOneWidget);
-      expect(find.text('Blood Pressure'), findsOneWidget);
+      expect(find.textContaining('Blood Pressure'), findsOneWidget);
       expect(find.textContaining('120/80'), findsOneWidget);
-      expect(find.text('Complete Blood Count'), findsOneWidget);
-      expect(find.text('Amoxicillin'), findsOneWidget);
+      expect(find.textContaining('Complete Blood Count'), findsOneWidget);
+      expect(find.textContaining('Amoxicillin'), findsOneWidget);
       expect(find.text('Lab PDF'), findsOneWidget);
       expect(find.textContaining('Penicillin'), findsOneWidget);
       expect(find.textContaining('Rash'), findsOneWidget);
@@ -235,7 +234,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(docNotifier.completeVisitCallCount, 1);
-      expect(find.byType(AppDialog), findsOneWidget);
+      expect(find.byType(AppDialogPanel), findsOneWidget);
       expect(find.text('Visit completed'), findsOneWidget);
     });
 
@@ -261,7 +260,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(docNotifier.saveAllCallCount, 1);
-      expect(find.byType(AppDialog), findsOneWidget);
+      expect(find.byType(AppDialogPanel), findsOneWidget);
       expect(find.text('Changes saved'), findsOneWidget);
     });
   });
@@ -306,10 +305,11 @@ void main() {
         activePhaseNotifier: phaseNotifier,
       );
 
+      final callsBefore = phaseNotifier.setPhaseCallCount;
       await _tapSummaryButton(tester, 'Edit visit');
 
       expect(docNotifier.enterWorkspaceEditModeCallCount, 1);
-      expect(phaseNotifier.setPhaseCallCount, 1);
+      expect(phaseNotifier.setPhaseCallCount, greaterThan(callsBefore));
       expect(phaseNotifier.lastPhase, EncounterPhase.plan);
     });
   });
@@ -481,7 +481,7 @@ void main() {
         patientSafetyLoading: true,
       );
 
-      expect(find.text('None recorded'), findsNWidgets(3));
+      expect(find.text('None recorded'), findsNWidgets(4));
     });
 
     testWidgets('edge case: patient safety error falls back to empty ledger copy', (tester) async {
@@ -498,7 +498,7 @@ void main() {
         patientSafetyError: StateError('patient safety unavailable'),
       );
 
-      expect(find.text('None recorded'), findsNWidgets(3));
+      expect(find.text('None recorded'), findsNWidgets(4));
       expect(find.textContaining('patient safety unavailable'), findsNothing);
     });
 

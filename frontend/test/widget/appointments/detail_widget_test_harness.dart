@@ -4,16 +4,15 @@
 import 'dart:async';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_update_result.dart';
@@ -42,10 +41,12 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/appointment_calendar_test_support.dart';
@@ -158,9 +159,10 @@ List<StaffListItem> buildTestDoctors() {
 }
 
 AppointmentQueueShiftDoctorLookup buildShiftLookup({
-  DateTime shiftDate = DateTime(2026, 6, 15),
+  DateTime? shiftDate,
   List<StaffListItem> doctors = const [],
 }) {
+  final resolvedShiftDate = shiftDate ?? DateTime(2026, 6, 15);
   final doctorList = doctors.isEmpty ? buildTestDoctors() : doctors;
   return AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
     organizationTimezone: 'UTC',
@@ -168,7 +170,7 @@ AppointmentQueueShiftDoctorLookup buildShiftLookup({
       ShiftListItem(
         id: 'shift-1',
         branchId: calendarTestBranchAId,
-        shiftDate: shiftDate,
+        shiftDate: resolvedShiftDate,
         startTime: '06:00',
         endTime: '23:59',
         status: ShiftStatus.active,
@@ -270,6 +272,8 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required DateTime from,
     required DateTime to,
     String? doctorId,
+    List<AppointmentStatus>? statuses,
+    String? patientId,
   }) async {
     return listAppointmentsResult;
   }
@@ -280,8 +284,9 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required String patientId,
     String? doctorId,
     required AppointmentType type,
-    required DateTime startTime,
-    required int durationMinutes,
+    DateTime? startTime,
+    int? durationMinutes,
+    DateTime? endTime,
     String? notes,
   }) async {
     createCallCount++;
@@ -291,29 +296,40 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (createAppointmentCompleter != null) {
       return createAppointmentCompleter!.future;
     }
+    final resolvedStart = startTime ?? DateTime.utc(2026, 6, 15, 10);
+    final resolvedDuration = durationMinutes ?? 30;
     return CreateAppointmentResult(
       appointmentId: 'new-appointment-id',
-      startTime: startTime,
-      endTime: startTime.add(Duration(minutes: durationMinutes)),
+      startTime: resolvedStart,
+      endTime: endTime ?? resolvedStart.add(Duration(minutes: resolvedDuration)),
       status: AppointmentStatus.scheduled,
       type: type,
     );
   }
 
   @override
-  Future<void> updateAppointment({
+  Future<CreateAppointmentResult> updateAppointment({
     required String appointmentId,
     required String patientId,
     String? doctorId,
     String? branchId,
     required DateTime startTime,
     int? durationMinutes,
+    DateTime? endTime,
     String? notes,
   }) async {
     updateCallCount++;
     if (updateFailure != null) {
       throw updateFailure!;
     }
+    final resolvedDuration = durationMinutes ?? 30;
+    return CreateAppointmentResult(
+      appointmentId: appointmentId,
+      startTime: startTime,
+      endTime: endTime ?? startTime.add(Duration(minutes: resolvedDuration)),
+      status: AppointmentStatus.scheduled,
+      type: AppointmentType.planned,
+    );
   }
 
   @override
@@ -333,7 +349,7 @@ class HarnessAppointmentRepository extends AppointmentRepository {
   }
 
   @override
-  Future<void> cancelAppointment({
+  Future<AppointmentStatus> cancelAppointment({
     required String appointmentId,
     String? reason,
   }) async {
@@ -341,14 +357,16 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (cancelFailure != null) {
       throw cancelFailure!;
     }
+    return AppointmentStatus.cancelled;
   }
 
   @override
-  Future<void> markAppointmentNoShow({required String appointmentId}) async {
+  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) async {
     noShowCallCount++;
     if (noShowFailure != null) {
       throw noShowFailure!;
     }
+    return AppointmentStatus.noShow;
   }
 }
 
@@ -470,8 +488,9 @@ List<Override> harnessDetailProviderOverrides({
   List<BranchListItem>? branches,
   List<StaffListItem>? doctors,
   String appointmentId = detailTestAppointmentId,
-  Future<AppointmentDetail>? loadingDetailFuture,
+  bool loadingDetail = false,
   Object? detailError,
+  BreadcrumbTrail? breadcrumbTrail,
 }) {
   final resolvedDetail = detail ?? buildAppointmentDetail();
   final siblingsQuery = AppointmentDetailSiblingsQuery(
@@ -486,6 +505,7 @@ List<Override> harnessDetailProviderOverrides({
   appointmentRepo.detailOverride = resolvedDetail;
 
   return [
+    if (breadcrumbTrail != null) breadcrumbTrailOverride(breadcrumbTrail),
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(auth ?? harnessAuthSession()),
     ),
@@ -505,14 +525,12 @@ List<Override> harnessDetailProviderOverrides({
     appointmentCalendarDoctorsProvider.overrideWith(
       (ref) async => doctors ?? buildTestDoctors(),
     ),
-    if (loadingDetailFuture != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) => loadingDetailFuture)
+    if (loadingDetail)
+      appointmentDetailProvider(appointmentId).overrideWithValue(
+        const AsyncLoading<AppointmentDetail>(),
+      )
     else if (detailError != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError!)
-    else
-      appointmentDetailProvider(appointmentId).overrideWith(
-        (ref) async => appointmentRepo.getAppointment(appointmentId: appointmentId),
-      ),
+      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError),
     appointmentDetailSiblingsProvider(siblingsQuery).overrideWith(
       (ref) async => siblings ?? const [],
     ),
@@ -572,6 +590,14 @@ GoRouter buildDetailTestRouter({
         ),
       ),
       GoRoute(
+        path: AppRoutes.appointmentsQueue,
+        builder: (context, state) => Scaffold(
+          body: Center(
+            child: Text('Queue stub', key: const Key('queue_stub')),
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/appointments/:appointmentId',
         builder: (context, state) => detailPage,
       ),
@@ -608,7 +634,7 @@ Future<void> pumpAppointmentDetail(
   await tester.binding.setSurfaceSize(surfaceSize);
   tester.binding.platformDispatcher.textScaleFactorTestValue = 1.0;
   addTearDown(() {
-    tester.binding.resetTextScaleFactor();
+    tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
     tester.binding.setSurfaceSize(null);
   });
 
@@ -647,6 +673,7 @@ Future<void> pumpBookingSheetHost(
   String? initialDoctorId,
   List<StaffListItem>? doctors,
   String? branchName = 'Main',
+  Duration settleAfterOpen = const Duration(milliseconds: 300),
 }) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -691,7 +718,9 @@ Future<void> pumpBookingSheetHost(
 
   await tester.tap(find.byKey(const Key('open_booking_sheet')));
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
+  if (settleAfterOpen > Duration.zero) {
+    await tester.pump(settleAfterOpen);
+  }
 }
 
 Future<void> tapAppSelectOption(
@@ -699,7 +728,16 @@ Future<void> tapAppSelectOption(
   Key selectKey,
   String optionLabel,
 ) async {
-  await tester.tap(find.byKey(selectKey));
+  final keyFinder = find.byKey(selectKey);
+  final descendantSelect = find.descendant(
+    of: keyFinder,
+    matching: find.byType(AppSelect),
+  );
+  // Key may be on the AppSelect itself (branch) or a parent wrapper (doctor).
+  final select = descendantSelect.evaluate().isNotEmpty
+      ? descendantSelect
+      : keyFinder;
+  await tester.tap(select);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.tap(find.text(optionLabel).last);
@@ -721,30 +759,41 @@ Future<void> selectPatientAndAdvanceToStep2(
   String patientSearch = 'Booking',
   String patientName = 'Booking Patient',
 }) async {
-  await tester.enterText(
-    find.byKey(const Key('appointment_booking_patient_search')),
-    patientSearch,
+  final searchField = find.descendant(
+    of: find.bySemanticsIdentifier('patient_picker_search'),
+    matching: find.byType(TextField),
   );
-  await tester.pump(const Duration(milliseconds: 100));
-  await tester.tap(find.text(patientName));
+  await tester.tap(searchField);
+  await tester.pump();
+  await tester.enterText(searchField, patientSearch);
+  await tester.pump(const Duration(milliseconds: 350));
+  await tester.pump();
+  await tester.tap(find.text(patientName).last);
   await tester.pump();
   await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
+  await tester.pump(const Duration(milliseconds: 50));
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+    if (find.bySemanticsLabel('Available time slots').evaluate().isNotEmpty) {
+      break;
+    }
+  }
 }
 
 Future<void> enterBookingNotes(WidgetTester tester, String text) async {
-  await tester.enterText(
-    find.descendant(
-      of: find.text('Notes (optional)'),
-      matching: find.byType(TextField),
-    ),
-    text,
+  final notesField = find.descendant(
+    of: find.bySemanticsLabel('Notes (optional)'),
+    matching: find.byType(TextField),
   );
+  await tester.tap(notesField);
+  await tester.pump();
+  await tester.enterText(notesField, text);
   await tester.pump(const Duration(milliseconds: 50));
 }
 
 Future<void> tapBookingDialogBackdrop(WidgetTester tester) async {
   await tester.tapAt(const Offset(5, 5));
+  await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
 }

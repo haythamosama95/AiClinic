@@ -5,16 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/branches_tab.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_settings_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/organization_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/roles_tab.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/services_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/branch_form_values.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/clinic_management_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/staff_form_values.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/clinic_management_notifier.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
 
 /// Clinic management hub: organization, branches, staff, and roles (web `ClinicManagementPage`).
 class ClinicManagementPage extends ConsumerStatefulWidget {
@@ -50,6 +54,10 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
       final current = ref.read(clinicManagementProvider);
       if (current.hasValue) {
         ref.read(clinicManagementProvider.notifier).reload();
+      }
+      final auth = ref.read(authSessionProvider);
+      if (AuthRouteGuard.canAccessPermissionMatrix(auth)) {
+        ref.read(rolePermissionsProvider.future);
       }
     });
   }
@@ -229,7 +237,7 @@ class _ClinicManagementShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -251,6 +259,15 @@ class _ClinicManagementShell extends StatelessWidget {
         const SizedBox(height: AppSpacing.space8),
         SizedBox(width: double.infinity, child: body),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.hasBoundedHeight) {
+          return SingleChildScrollView(child: content);
+        }
+        return content;
+      },
     );
   }
 }
@@ -303,6 +320,8 @@ class _ActiveTabBody extends StatelessWidget {
             onRemove: onRemoveStaff,
           ),
           'roles' => const RolesTab(),
+          'services' => _buildServicesTab(),
+          'settings' => const ClinicSettingsTab(),
           _ => const SizedBox.shrink(),
         },
       ],
@@ -327,6 +346,19 @@ class _ActiveTabBody extends StatelessWidget {
       activeBranchCount: state.branches.where((branch) => branch.isActive).length,
     );
   }
+
+  Widget _buildServicesTab() {
+    final organization = state.organization;
+    if (organization == null) {
+      return const AppEmptyState(
+        variant: AppEmptyStateVariant.firstRun,
+        title: 'No organization profile',
+        description: 'Organization details are not available for this session.',
+      );
+    }
+
+    return ServicesTab(branches: state.branches, organization: organization);
+  }
 }
 
 class _TabSkeletonBody extends StatelessWidget {
@@ -342,6 +374,8 @@ class _TabSkeletonBody extends StatelessWidget {
         'branches' => const _BranchesTabSkeleton(),
         'staff' => const _StaffTabSkeleton(),
         'roles' => const _RolesTabSkeleton(),
+        'services' => const _ServicesTabSkeleton(),
+        'settings' => const _ClinicSettingsTabSkeleton(),
         _ => const _OrganizationTabSkeleton(),
       },
     );
@@ -498,6 +532,59 @@ class _RolesTabSkeleton extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space6),
         Bone(height: 320, borderRadius: BorderRadius.circular(AppRadius.xl)),
+      ],
+    );
+  }
+}
+
+class _ServicesTabSkeleton extends StatelessWidget {
+  const _ServicesTabSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _ListTabSkeleton(),
+        const SizedBox(height: AppSpacing.space4),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columnCount = constraints.maxWidth >= 1024 ? 4 : (constraints.maxWidth >= 640 ? 2 : 1);
+
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columnCount,
+                crossAxisSpacing: AppSpacing.space3,
+                mainAxisSpacing: AppSpacing.space3,
+                mainAxisExtent: 120,
+              ),
+              itemCount: columnCount,
+              itemBuilder: (context, index) => Bone(height: 120, borderRadius: BorderRadius.circular(AppRadius.lg)),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ClinicSettingsTabSkeleton extends StatelessWidget {
+  const _ClinicSettingsTabSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Bone(height: 24, width: 180),
+        const SizedBox(height: AppSpacing.space1),
+        Bone(height: 16, width: 420),
+        const SizedBox(height: AppSpacing.space6),
+        Bone(height: 220, borderRadius: BorderRadius.circular(AppRadius.x2l)),
       ],
     );
   }

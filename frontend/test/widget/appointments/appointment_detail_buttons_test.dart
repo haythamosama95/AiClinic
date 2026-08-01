@@ -1,6 +1,4 @@
-import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
@@ -41,7 +39,7 @@ void main() {
       final router = GoRouter(
         initialLocation: '/test',
         routes: [
-          GoRoute(path: '/test', builder: (_, __) => home),
+          GoRoute(path: '/test', builder: (_, _) => home),
           GoRoute(
             path: '/visits/:visitId/document',
             builder: (context, state) => Scaffold(

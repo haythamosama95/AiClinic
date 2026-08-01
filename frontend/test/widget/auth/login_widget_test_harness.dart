@@ -14,10 +14,12 @@ import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/auth_repository.dart' as domain;
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -202,8 +204,8 @@ Widget _loginTestMediaQuery({required Size surfaceSize, required Widget child}) 
   );
 }
 
-Widget _loginMaterialApp({required Widget child}) {
-  return MaterialApp(
+Widget _loginRouterMaterialApp({required GoRouter router}) {
+  return MaterialApp.router(
     theme: AppTheme.light(),
     builder: (context, appChild) {
       return MediaQuery(
@@ -211,7 +213,7 @@ Widget _loginMaterialApp({required Widget child}) {
         child: appChild!,
       );
     },
-    home: child,
+    routerConfig: router,
   );
 }
 
@@ -223,11 +225,11 @@ GoRouter createLoginTestRouter({
     routes: [
       GoRoute(
         path: AppRoutes.login,
-        builder: (_, __) => const LoginPage(),
+        builder: (_, _) => const LoginPage(),
       ),
       GoRoute(
         path: '/home',
-        builder: (_, __) => const Scaffold(body: Text('Home stub')),
+        builder: (_, _) => const Scaffold(body: Text('Home stub')),
       ),
     ],
   );
@@ -248,6 +250,7 @@ Future<LoginPumpResult> pumpLoginPage(
 
   final session = sessionNotifier ?? TestAuthSessionNotifier();
   final repository = authRepository ?? RecordingAuthRepository();
+  final router = createLoginTestRouter();
 
   await tester.pumpWidget(
     ProviderScope(
@@ -259,7 +262,7 @@ Future<LoginPumpResult> pumpLoginPage(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
-        child: _loginMaterialApp(child: const LoginPage()),
+        child: _loginRouterMaterialApp(router: router),
       ),
     ),
   );
@@ -296,16 +299,7 @@ Future<LoginPumpResult> pumpLoginRouter(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
-        child: MaterialApp.router(
-          theme: AppTheme.light(),
-          builder: (context, child) {
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child!,
-            );
-          },
-          routerConfig: router,
-        ),
+        child: _loginRouterMaterialApp(router: router),
       ),
     ),
   );
@@ -390,18 +384,12 @@ bool loginPasswordIsObscured(WidgetTester tester) {
 }
 
 bool loginSubmitButtonIsLoading(WidgetTester tester) {
-  return find
-      .descendant(
-        of: loginSubmitButton(),
-        matching: find.bySemanticsLabel('Loading'),
-      )
-      .evaluate()
-      .isNotEmpty;
+  return tester.widget<AppButton>(loginSubmitButton()).loading;
 }
 
 bool loginSubmitButtonIsEnabled(WidgetTester tester) {
   final semantics = tester.getSemantics(loginSubmitButton());
-  return semantics.hasFlag(SemanticsFlag.isEnabled);
+  return semantics.flagsCollection.isEnabled == Tristate.isTrue;
 }
 
 Future<void> enterLoginCredentials(
@@ -437,9 +425,7 @@ Future<void> triggerUsernameFieldNext(WidgetTester tester) async {
 Future<void> navigateAwayFromLogin(WidgetTester tester) async {
   final router = GoRouter.of(tester.element(find.byType(LoginPage)));
   router.go('/home');
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 50));
-  await tester.pump();
+  await tester.pumpAndSettle();
 }
 
 String loginRouteWithForgotPasswordIntent() => LoginQueryParams.loginWithForgotPasswordIntent();

@@ -8,13 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
@@ -27,27 +27,35 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_pr
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
+import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/breadcrumb_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/visit_encounter_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 
-export '../../support/visit_encounter_test_support.dart'
-    show encounterTestBranchId, encounterTestPatientId, encounterTestVisitId;
+export 'package:riverpod/misc.dart' show Override;
+export '../../support/visit_encounter_test_support.dart';
 
 const visitsWideSurfaceSize = Size(1400, 1000);
 
 /// Fixed documentation state that records mutation calls for widget assertions.
 class StubVisitDocumentationNotifier extends VisitDocumentationNotifier {
   StubVisitDocumentationNotifier(
-    String visitId,
+    super.visitId,
     VisitDocumentationState initialState, {
     this.onSave,
     this.onSaveAll,
     this.onCompleteVisit,
     this.completeVisitError,
-  })  : _state = initialState,
-        super(visitId);
+  })  : _state = initialState;
 
   VisitDocumentationState _state;
   final Future<void> Function()? onSave;
@@ -574,7 +582,7 @@ class StubVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Never completes so [visitDocumentationProvider] stays in loading.
 class LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  LoadingVisitDocumentationNotifier(String visitId) : super(visitId);
+  LoadingVisitDocumentationNotifier(super.visitId);
 
   @override
   Future<VisitDocumentationState> build() async {
@@ -584,7 +592,7 @@ class LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Throws on build to surface the documentation error state.
 class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  ErrorVisitDocumentationNotifier(String visitId, this._error) : super(visitId);
+  ErrorVisitDocumentationNotifier(super.visitId, this._error);
 
   final Object _error;
 
@@ -593,7 +601,7 @@ class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
 }
 
 class StubPatientSafetyNotifier extends PatientSafetyNotifier {
-  StubPatientSafetyNotifier(String patientId, this._context) : super(patientId);
+  StubPatientSafetyNotifier(super.patientId, this._context);
 
   final PatientSafetyContext _context;
 
@@ -602,7 +610,7 @@ class StubPatientSafetyNotifier extends PatientSafetyNotifier {
 }
 
 class LoadingPatientSafetyNotifier extends PatientSafetyNotifier {
-  LoadingPatientSafetyNotifier(String patientId) : super(patientId);
+  LoadingPatientSafetyNotifier(super.patientId);
 
   @override
   Future<PatientSafetyContext> build() async {
@@ -611,7 +619,7 @@ class LoadingPatientSafetyNotifier extends PatientSafetyNotifier {
 }
 
 class ErrorPatientSafetyNotifier extends PatientSafetyNotifier {
-  ErrorPatientSafetyNotifier(String patientId, this._error) : super(patientId);
+  ErrorPatientSafetyNotifier(super.patientId, this._error);
 
   final Object _error;
 
@@ -621,7 +629,7 @@ class ErrorPatientSafetyNotifier extends PatientSafetyNotifier {
 
 /// Records [EncounterActivePhaseNotifier.setPhase] calls.
 class SpyEncounterActivePhaseNotifier extends EncounterActivePhaseNotifier {
-  SpyEncounterActivePhaseNotifier(String visitId) : super(visitId);
+  SpyEncounterActivePhaseNotifier(super.visitId);
 
   var setPhaseCallCount = 0;
   EncounterPhase? lastPhase;
@@ -675,18 +683,27 @@ List<Override> visitsProviderOverrides({
   StubVisitDocumentationNotifier? docNotifier,
   VisitDetailViewState? detailView,
   Object? detailError,
+  Override? detailViewProviderOverride,
   String? patientId,
   PatientSafetyContext? patientSafety,
   Object? patientSafetyError,
   bool patientSafetyLoading = false,
   SpyEncounterActivePhaseNotifier? activePhaseNotifier,
+  BreadcrumbTrail? breadcrumbTrail,
+  bool seedDefaultBreadcrumbTrail = true,
   List<Override> extraOverrides = const [],
 }) {
   final client = rpcClient ?? VisitRpcTestClient();
   final resolvedAuth = auth ?? visitsAuthSession();
   final visitRepo = VisitRepository(client);
 
+  final resolvedTrail = breadcrumbTrail ??
+      (seedDefaultBreadcrumbTrail && visitId != null
+          ? weakVisitDocumentTrail(visitId)
+          : null);
+
   return [
+    if (resolvedTrail != null) breadcrumbTrailOverride(resolvedTrail),
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(resolvedAuth),
     ),
@@ -713,7 +730,9 @@ List<Override> visitsProviderOverrides({
           () => StubVisitDocumentationNotifier(visitId, docState),
         ),
     if (visitId != null)
-      if (detailError != null)
+      if (detailViewProviderOverride != null)
+        detailViewProviderOverride
+      else if (detailError != null)
         visitDetailViewProvider(visitId).overrideWith(
           (ref) async => throw detailError,
         )
@@ -740,6 +759,53 @@ List<Override> visitsProviderOverrides({
   ];
 }
 
+/// Visit document page providers without auth/repo shell overrides (for cross-feature router tests).
+List<Override> visitDocumentPageProviderOverrides({
+  required String visitId,
+  VisitDocumentationState? docState,
+  VisitDetailViewState? detailView,
+}) {
+  final visit = docState?.visit ?? detailView?.visit ?? sampleEncounterVisit();
+  return [
+    visitDocumentationProvider(visitId).overrideWith(
+      () => StubVisitDocumentationNotifier(visitId, docState ?? sampleEncounterDocState(visit: visit)),
+    ),
+    visitDetailViewProvider(visitId).overrideWith(
+      (ref) async => detailView ?? buildVisitDetailView(visit: visit),
+    ),
+    patientDetailProvider(visit.patientId).overrideWith(
+      (ref) async => PatientDetail(
+        id: visit.patientId,
+        fullName: 'Jane Doe',
+        dateOfBirth: DateTime.utc(1990, 1, 15),
+        branchId: encounterTestBranchId,
+        branchName: 'Main',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ),
+    appointmentDetailProvider(visit.appointmentId).overrideWith(
+      (ref) async => AppointmentDetail(
+        id: visit.appointmentId,
+        branchId: encounterTestBranchId,
+        patientId: visit.patientId,
+        patientName: 'Jane Doe',
+        doctorId: encounterTestDoctorId,
+        doctorName: 'Dr Test',
+        startTime: DateTime.utc(2026, 5, 31, 9),
+        endTime: DateTime.utc(2026, 5, 31, 9, 30),
+        type: AppointmentType.planned,
+        status: AppointmentStatus.inProgress,
+        createdAt: DateTime.utc(2026, 5, 31),
+        updatedAt: DateTime.utc(2026, 5, 31),
+      ),
+    ),
+    patientSafetyProvider(visit.patientId).overrideWith(
+      () => StubPatientSafetyNotifier(visit.patientId, buildPatientSafetyContext()),
+    ),
+  ];
+}
+
 /// GoRouter with stub destination markers for visit navigation assertions.
 GoRouter createVisitsTestRouter({
   required Widget home,
@@ -756,11 +822,11 @@ GoRouter createVisitsTestRouter({
     routes: [
       GoRoute(
         path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-        builder: (_, __) => home,
+        builder: (_, _) => home,
       ),
       GoRoute(
         path: AppRoutes.appointmentsCalendar,
-        builder: (_, __) => marker('appointments-calendar'),
+        builder: (_, _) => marker('appointments-calendar'),
       ),
       GoRoute(
         path: '${AppRoutes.appointments}/:appointmentId',
@@ -778,6 +844,12 @@ GoRouter createVisitsTestRouter({
         path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
         builder: (context, state) => marker(
           'visit-billing-${state.pathParameters['visitId']}',
+        ),
+      ),
+      GoRoute(
+        path: '${AppRoutes.billingInvoices}/:invoiceId',
+        builder: (context, state) => marker(
+          'invoice-${state.pathParameters['invoiceId']}',
         ),
       ),
       ...extraRoutes,
@@ -867,6 +939,7 @@ ProviderContainer visitsProviderContainer(WidgetTester tester) {
 Future<void> pumpVisitsFrames(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+  await tester.pump();
 }
 
 /// Deterministic attachment pick input for [StubVisitDocumentationNotifier] tests.

@@ -1,4 +1,5 @@
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime_apply.dart';
+import 'package:ai_clinic/features/queue/data/queue_realtime.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

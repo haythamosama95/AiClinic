@@ -1,7 +1,6 @@
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
-import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';

@@ -39,4 +39,14 @@ void main() {
       }
     });
   });
+
+  group('PatientGender.label', () {
+    test('trivial: exposes display label for every enum value', () {
+      expect(PatientGender.male.label, 'Male');
+      expect(PatientGender.female.label, 'Female');
+      expect(PatientGender.other.label, 'Other');
+      expect(PatientGender.preferNotToSay.label, 'Prefer not to say');
+      expect(PatientGender.unknown.label, 'Unknown');
+    });
+  });
 }

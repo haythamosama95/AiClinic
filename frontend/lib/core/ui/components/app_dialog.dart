@@ -88,9 +88,51 @@ class AppDialog extends StatefulWidget {
   State<AppDialog> createState() => _AppDialogState();
 }
 
+/// Live snapshot of [AppDialog] props for the presented overlay route.
+///
+/// Controlled [AppDialog] captures [child] when `showDialog` runs; this notifier
+/// pushes prop updates into the overlay while the dialog stays open.
+class _AppDialogPresentation extends ChangeNotifier {
+  _AppDialogPresentation(AppDialog dialog) {
+    _sync(dialog);
+  }
+
+  late String title;
+  String? description;
+  late AppDialogSize size;
+  late Widget child;
+  Widget? footer;
+  late bool barrierDismissible;
+  late bool blur;
+  late bool showCloseButton;
+  late bool showHeader;
+
+  void syncFrom(AppDialog dialog) {
+    _sync(dialog);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (hasListeners) {
+        notifyListeners();
+      }
+    });
+  }
+
+  void _sync(AppDialog dialog) {
+    title = dialog.title;
+    description = dialog.description;
+    size = dialog.size;
+    child = dialog.child;
+    footer = dialog.footer;
+    barrierDismissible = dialog.barrierDismissible;
+    blur = dialog.blur;
+    showCloseButton = dialog.showCloseButton;
+    showHeader = dialog.showHeader;
+  }
+}
+
 class _AppDialogState extends State<AppDialog> {
   var _presented = false;
   NavigatorState? _navigator;
+  _AppDialogPresentation? _presentation;
 
   @override
   void initState() {
@@ -109,11 +151,17 @@ class _AppDialogState extends State<AppDialog> {
         if (!mounted) return;
         _syncPresentation();
       });
+      return;
+    }
+
+    if (widget.open && _presented) {
+      _presentation?.syncFrom(widget);
     }
   }
 
   @override
   void dispose() {
+    _presentation?.dispose();
     if (_presented) {
       _navigator?.maybePop();
     }
@@ -124,22 +172,34 @@ class _AppDialogState extends State<AppDialog> {
     if (!mounted) return;
 
     if (widget.open && !_presented) {
+      _presentation = _AppDialogPresentation(widget);
       _presented = true;
       _navigator = Navigator.of(context, rootNavigator: true);
-      await AppDialog.show<void>(
-        context,
-        title: widget.title,
-        description: widget.description,
-        size: widget.size,
-        barrierDismissible: widget.barrierDismissible,
-        blur: widget.blur,
-        showCloseButton: widget.showCloseButton,
-        showHeader: widget.showHeader,
-        footer: widget.footer,
-        child: widget.child,
+      final presentation = _presentation!;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: presentation.barrierDismissible,
+        barrierColor: Colors.transparent,
+        builder: (dialogContext) => ListenableBuilder(
+          listenable: presentation,
+          builder: (context, _) => _AppDialogShell(
+            title: presentation.title,
+            description: presentation.description,
+            size: presentation.size,
+            footer: presentation.footer,
+            barrierDismissible: presentation.barrierDismissible,
+            blur: presentation.blur,
+            showCloseButton: presentation.showCloseButton,
+            showHeader: presentation.showHeader,
+            onClose: () => Navigator.of(dialogContext).pop(),
+            child: presentation.child,
+          ),
+        ),
       );
       _presented = false;
       _navigator = null;
+      _presentation?.dispose();
+      _presentation = null;
       if (mounted && widget.open) {
         widget.onOpenChange(false);
       }
@@ -386,24 +446,27 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.zero,
-      child: _AppDialogTransition(
-        animation: _animation,
-        barrierDismissible: widget.barrierDismissible,
-        blur: widget.blur,
-        child: AppDialogPanel(
-          title: widget.title,
-          description: widget.description,
-          size: widget.size,
-          maxWidth: widget.maxWidth,
-          footer: widget.footer,
-          onClose: widget.onClose,
-          showCloseButton: widget.showCloseButton,
-          showHeader: widget.showHeader,
-          child: widget.child,
+    return PopScope(
+      canPop: widget.barrierDismissible,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: EdgeInsets.zero,
+        child: _AppDialogTransition(
+          animation: _animation,
+          barrierDismissible: widget.barrierDismissible,
+          blur: widget.blur,
+          child: AppDialogPanel(
+            title: widget.title,
+            description: widget.description,
+            size: widget.size,
+            maxWidth: widget.maxWidth,
+            footer: widget.footer,
+            onClose: widget.onClose,
+            showCloseButton: widget.showCloseButton,
+            showHeader: widget.showHeader,
+            child: widget.child,
+          ),
         ),
       ),
     );

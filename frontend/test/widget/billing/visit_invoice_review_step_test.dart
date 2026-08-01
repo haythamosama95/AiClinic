@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/organization_currency_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
@@ -148,7 +148,7 @@ void main() {
     testWidgets('builds invoice card and discount sidebar', (tester) async {
       await _pumpReviewStep(tester, overrides: _reviewOverrides());
 
-      expect(find.text('Review invoice'), findsOneWidget);
+      expect(find.textContaining('Review invoice'), findsOneWidget);
       expect(find.text('Discount'), findsWidgets);
       expect(find.text('Consultation'), findsOneWidget);
       expect(find.text('Discount type'), findsOneWidget);
@@ -162,6 +162,11 @@ void main() {
 
       expect(find.text('Discount type'), findsOneWidget);
       expect(find.text('No discount'), findsOneWidget);
+
+      // Force a fresh provider scope so permission overrides from the first pump
+      // do not leak into the receptionist session.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
 
       await _pumpReviewStep(
         tester,

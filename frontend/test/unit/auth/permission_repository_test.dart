@@ -6,7 +6,6 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/permission_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _RolesPermissionsQueryRecorder {
@@ -19,7 +18,7 @@ class _RolesPermissionsQueryRecorder {
 class _RolesPermissionsTestClient extends Fake implements SupabaseClient {
   _RolesPermissionsTestClient(this._tables, {this.queryError, this.recorder});
 
-  final Map<String, List<Map<String, dynamic>>> _tables;
+  final Map<String, List<dynamic>> _tables;
   final Object? queryError;
   final _RolesPermissionsQueryRecorder? recorder;
 
@@ -27,7 +26,7 @@ class _RolesPermissionsTestClient extends Fake implements SupabaseClient {
   SupabaseQueryBuilder from(String table) {
     recorder?.table = table;
     return _RolesPermissionsQueryBuilder(
-      List<Map<String, dynamic>>.from(_tables[table] ?? []),
+      List<dynamic>.from(_tables[table] ?? []),
       queryError: queryError,
       recorder: recorder,
     );
@@ -37,7 +36,7 @@ class _RolesPermissionsTestClient extends Fake implements SupabaseClient {
 class _RolesPermissionsQueryBuilder extends Fake implements SupabaseQueryBuilder {
   _RolesPermissionsQueryBuilder(this._rows, {this.queryError, this.recorder});
 
-  final List<Map<String, dynamic>> _rows;
+  final List<dynamic> _rows;
   final Object? queryError;
   final _RolesPermissionsQueryRecorder? recorder;
 
@@ -55,24 +54,24 @@ class _RolesPermissionsQueryBuilder extends Fake implements SupabaseQueryBuilder
 class _RolesPermissionsFilterBuilder extends Fake implements PostgrestFilterBuilder<List<Map<String, dynamic>>> {
   _RolesPermissionsFilterBuilder(this._rows, {this.queryError, this.recorder});
 
-  final List<Map<String, dynamic>> _rows;
+  final List<dynamic> _rows;
   final Object? queryError;
   final _RolesPermissionsQueryRecorder? recorder;
 
   @override
   PostgrestFilterBuilder<List<Map<String, dynamic>>> eq(String column, Object value) {
     recorder?.filters.add(MapEntry(column, value));
-    _rows.retainWhere((row) => row[column] == value);
+    _rows.retainWhere((row) => row is Map && row[column] == value);
     return this;
   }
 
   @override
-  Future<R> then<R>(FutureOr<R> Function(List<Map<String, dynamic>> value) onValue, {Function? onError}) {
+  Future<U> then<U>(FutureOr<U> Function(List<Map<String, dynamic>> value) onValue, {Function? onError}) {
     if (queryError != null) {
-      return Future<R>.error(queryError!).then(onValue, onError: onError);
+      return Future<List<Map<String, dynamic>>>.error(queryError!).then(onValue, onError: onError);
     }
     return Future<List<Map<String, dynamic>>>.value(
-      List<Map<String, dynamic>>.from(_rows),
+      List<Map<String, dynamic>>.from(_rows.whereType<Map>()),
     ).then(onValue, onError: onError);
   }
 }
@@ -210,11 +209,13 @@ void main() {
       expect(grants, {'patients.view', 'ai.access'});
       expect(recorder.table, 'roles_permissions');
       expect(recorder.selectColumns, 'permission_key');
-      expect(recorder.filters, [
-        const MapEntry('role', 'lab_staff'),
-        const MapEntry('is_granted', true),
-        const MapEntry('is_deleted', false),
-      ]);
+      expect(recorder.filters, hasLength(3));
+      expect(recorder.filters[0].key, 'role');
+      expect(recorder.filters[0].value, 'lab_staff');
+      expect(recorder.filters[1].key, 'is_granted');
+      expect(recorder.filters[1].value, isTrue);
+      expect(recorder.filters[2].key, 'is_deleted');
+      expect(recorder.filters[2].value, isFalse);
     });
 
     test('returns empty set when query returns zero rows', () async {

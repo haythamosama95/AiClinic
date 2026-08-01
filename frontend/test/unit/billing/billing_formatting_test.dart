@@ -16,10 +16,10 @@ void main() {
     });
 
     test('uses currency name path for unknown codes', () {
-      final formatted = BillingFormatting.formatMoney(Money.parse('12.50'), currency: 'jpy');
+      final formatted = BillingFormatting.formatMoney(Money.parse('12.50'), currency: 'chf');
 
       expect(formatted, contains('12.50'));
-      expect(formatted.toUpperCase(), contains('JPY'));
+      expect(formatted.toUpperCase(), contains('CHF'));
     });
 
     test('formats zero and negative amounts', () {

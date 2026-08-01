@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -20,10 +21,15 @@ import '../../helpers/auth_test_support.dart';
 const scopeChildSentinelKey = Key('clinic-setup-welcome-scope-child');
 
 /// Controllable [ClinicSetupState] for scope tests — no network or persistence.
-class TestClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
-  TestClinicSetupNotifier(ClinicSetupState initial) : super(initial);
+class TestClinicSetupNotifier extends ClinicSetupNotifier {
+  TestClinicSetupNotifier(super.ref, ClinicSetupState initial) {
+    state = initial;
+  }
 
   void replace(ClinicSetupState next) => state = next;
+
+  @override
+  Future<void> loadDraft() async {}
 }
 
 /// Builds an [AuthSessionContext] with a specific staff member id.
@@ -56,7 +62,7 @@ List<Override> clinicSetupWelcomeScopeOverrides({
   final setup = setupState ?? defaultTestClinicSetupState();
   return [
     authSessionProvider.overrideWith(() => auth),
-    clinicSetupProvider.overrideWith((ref) => TestClinicSetupNotifier(setup)),
+    clinicSetupProvider.overrideWith((ref) => TestClinicSetupNotifier(ref, setup)),
     clinicSetupHydrationProvider.overrideWith((ref) async {}),
     ...extraOverrides,
   ];
@@ -111,14 +117,15 @@ Future<void> dismissActiveSetupWelcomeFlow(
   WidgetTester tester,
   TestAuthSessionNotifier auth,
 ) async {
+  auth.setAuthenticated(setupRequired: false);
+  await tester.pump();
+
   if (find.text('Continue').evaluate().isNotEmpty) {
     await tester.tap(find.text('Continue'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
   }
 
-  auth.setAuthenticated(setupRequired: false);
-  await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
 
   if (find.text('Start exploring').evaluate().isNotEmpty) {

@@ -52,6 +52,105 @@ void main() {
 
       expect(input.acknowledgeDuplicate, isFalse);
     });
+
+    test('advanced: constructor carries optional mrn', () {
+      const input = CreatePatientInput(
+        activeBranchId: 'b1',
+        fullName: 'Dev Seed',
+        phone: '201000000001',
+        mrn: 'MRN-000099',
+      );
+
+      expect(input.mrn, 'MRN-000099');
+    });
+  });
+
+  group('CreatePatientInput.copyWith', () {
+    final base = CreatePatientInput(
+      activeBranchId: 'b1',
+      fullName: 'Ahmed',
+      phone: '201000000001',
+      dateOfBirth: DateTime(1990, 5, 15),
+      gender: PatientGender.male,
+      maritalStatus: PatientMaritalStatus.single,
+      notes: 'Notes',
+      mrn: 'MRN-000001',
+      acknowledgeDuplicate: true,
+    );
+
+    test('advanced: overriding activeBranchId preserves other fields', () {
+      final updated = base.copyWith(activeBranchId: 'b2');
+
+      expect(updated.activeBranchId, 'b2');
+      expect(updated.fullName, base.fullName);
+      expect(updated.phone, base.phone);
+      expect(updated.dateOfBirth, base.dateOfBirth);
+      expect(updated.gender, base.gender);
+      expect(updated.maritalStatus, base.maritalStatus);
+      expect(updated.notes, base.notes);
+      expect(updated.mrn, base.mrn);
+      expect(updated.acknowledgeDuplicate, base.acknowledgeDuplicate);
+    });
+
+    test('advanced: overriding fullName preserves other fields', () {
+      final updated = base.copyWith(fullName: 'Sara');
+
+      expect(updated.fullName, 'Sara');
+      expect(updated.activeBranchId, base.activeBranchId);
+      expect(updated.mrn, base.mrn);
+    });
+
+    test('advanced: overriding phone preserves other fields', () {
+      final updated = base.copyWith(phone: '201999999999');
+
+      expect(updated.phone, '201999999999');
+      expect(updated.fullName, base.fullName);
+    });
+
+    test('advanced: overriding dateOfBirth preserves other fields', () {
+      final newDob = DateTime(1985, 3, 20);
+      final updated = base.copyWith(dateOfBirth: newDob);
+
+      expect(updated.dateOfBirth, newDob);
+      expect(updated.fullName, base.fullName);
+    });
+
+    test('advanced: overriding gender preserves other fields', () {
+      final updated = base.copyWith(gender: PatientGender.female);
+
+      expect(updated.gender, PatientGender.female);
+      expect(updated.maritalStatus, base.maritalStatus);
+    });
+
+    test('advanced: overriding maritalStatus preserves other fields', () {
+      final updated = base.copyWith(maritalStatus: PatientMaritalStatus.married);
+
+      expect(updated.maritalStatus, PatientMaritalStatus.married);
+      expect(updated.gender, base.gender);
+    });
+
+    test('advanced: overriding notes preserves other fields', () {
+      final updated = base.copyWith(notes: 'Updated notes');
+
+      expect(updated.notes, 'Updated notes');
+      expect(updated.phone, base.phone);
+    });
+
+    test('advanced: overriding mrn preserves other fields', () {
+      final updated = base.copyWith(mrn: 'MRN-000099');
+
+      expect(updated.mrn, 'MRN-000099');
+      expect(updated.fullName, base.fullName);
+      expect(updated.acknowledgeDuplicate, base.acknowledgeDuplicate);
+    });
+
+    test('advanced: overriding acknowledgeDuplicate preserves other fields', () {
+      final updated = base.copyWith(acknowledgeDuplicate: false);
+
+      expect(updated.acknowledgeDuplicate, isFalse);
+      expect(updated.mrn, base.mrn);
+      expect(updated.fullName, base.fullName);
+    });
   });
 
   group('UpdatePatientInput', () {

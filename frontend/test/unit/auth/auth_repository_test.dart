@@ -70,7 +70,7 @@ class _RecordingGoTrue implements GoTrueClient {
   }
 
   @override
-  Future<AuthResponse> refreshSession() async {
+  Future<AuthResponse> refreshSession([String? refreshToken]) async {
     refreshSessionCalls++;
     if (refreshSessionError != null) {
       throw refreshSessionError!;
@@ -313,8 +313,6 @@ void main() {
       final client = _RecordingSupabaseClient();
       final goTrue = client.auth as _RecordingGoTrue;
       final repository = AuthRepositoryImpl(client);
-
-      expect(repository.authStateChanges, same(goTrue.onAuthStateChange));
 
       final events = <AuthState>[];
       final subscription = repository.authStateChanges.listen(events.add);

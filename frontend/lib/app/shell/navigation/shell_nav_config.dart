@@ -5,16 +5,36 @@ import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
 abstract final class ShellNavConfig {
-  static const List<AppNavGroup> groups = kClinicNavGroups;
+  static List<AppNavGroup> groups = kClinicNavGroups;
+
+  /// Sidebar groups with live badge counts (e.g. checked-in patients on Queue).
+  static List<AppNavGroup> groupsWithCounts({int queueCheckedInCount = 0}) {
+    return [
+      for (final group in kClinicNavGroups)
+        AppNavGroup(
+          id: group.id,
+          label: group.label,
+          items: [
+            for (final item in group.items)
+              if (item.id == 'appointments-queue' && queueCheckedInCount > 0)
+                AppNavItem(id: item.id, label: item.label, icon: item.icon, count: queueCheckedInCount)
+              else
+                item,
+          ],
+        ),
+    ];
+  }
 
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
     'dashboard': AppRoutes.dashboard,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
+    'appointments-queue': AppRoutes.appointmentsQueue,
     'appointments-calendar': AppRoutes.appointmentsCalendar,
     'encounters': AppRoutes.encounters,
     'workspace': AppRoutes.workspace,
@@ -79,6 +99,19 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
   }
 
+  static bool isPersonalSettingsLocation(String location) {
+    return AppRoutes.personalSettingsPaths.contains(location);
+  }
+
+  /// Stable shell transition key so personal settings sub-routes swap in-place
+  /// (web `settingsRoute` keeps one page mounted; design system uses one path).
+  static Object shellPageKeyForLocation(String location) {
+    if (isPersonalSettingsLocation(location)) {
+      return AppRoutes.settings;
+    }
+    return location;
+  }
+
   static bool isDesignSystemLocation(String location) {
     return location == AppRoutes.foundationDemo;
   }
@@ -89,7 +122,30 @@ abstract final class ShellNavConfig {
         location == AppRoutes.billingInvoices ||
         location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
-        location == AppRoutes.appointmentsCalendar;
+        location == AppRoutes.appointmentsCalendar ||
+        location == AppRoutes.appointmentsQueue ||
+        _isAppointmentDetailLocation(location) ||
+        _isVisitWorkspaceLocation(location);
+  }
+
+  /// `/appointments/:appointmentId` detail (excludes book, queue, calendar, schedule).
+  static bool _isAppointmentDetailLocation(String location) {
+    if (!location.startsWith('${AppRoutes.appointments}/')) {
+      return false;
+    }
+    if (AppRoutes.appointmentStaticPaths.contains(location)) {
+      return false;
+    }
+    return !location.startsWith('${AppRoutes.appointments}/schedule/');
+  }
+
+  /// Encounter documentation and chronicle routes (web `encounters` full-width layout).
+  static bool _isVisitWorkspaceLocation(String location) {
+    if (!location.startsWith('${AppRoutes.visits}/')) {
+      return false;
+    }
+    return location.endsWith('/${AppRoutes.visitDocumentSegment}') ||
+        location.endsWith('/${AppRoutes.visitDetailSegment}');
   }
 
   /// Routes whose content should fill the shell viewport (no outer scroll).
@@ -123,11 +179,19 @@ abstract final class ShellNavConfig {
     if (isDesignSystemLocation(location)) {
       return 'Design System';
     }
+    if (location == AppRoutes.appointmentsQueue) {
+      return 'Queue';
+    }
+    final settingsScreen = SettingsScreens.byId(_settingsScreenIdFromLocation(location));
+    if (settingsScreen != null) {
+      return settingsScreen.label;
+    }
 
     final itemId = itemIdForLocation(location);
     return itemId != null ? labelFor(itemId) : null;
   }
 
+  @Deprecated('Use BreadcrumbTrailResolver and breadcrumbTrailProvider instead')
   static AppBreadcrumb? breadcrumbForLocation(String location, {Uri? uri, void Function(String route)? onNavigate}) {
     final itemId = itemIdForLocation(location);
     if (itemId == null) {
@@ -186,6 +250,9 @@ abstract final class ShellNavConfig {
     if (location.startsWith(AppRoutes.billingInvoices)) {
       return 'invoices';
     }
+    if (location.startsWith('${AppRoutes.billing}/')) {
+      return 'invoices';
+    }
     if (location.startsWith(AppRoutes.settingsServices)) {
       return 'services';
     }
@@ -206,6 +273,9 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.encounters) {
       return 'encounters';
     }
+    if (location.startsWith('${AppRoutes.visits}/')) {
+      return 'encounters';
+    }
     if (location == AppRoutes.workspace) {
       return 'workspace';
     }
@@ -215,8 +285,22 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.foundationDemo) {
       return 'dev';
     }
+    if (AppRoutes.personalSettingsPaths.contains(location) || location == AppRoutes.settingsIdleTimeout) {
+      return 'settings';
+    }
 
     return ShellDevNav.itemIdForLocation(location);
+  }
+
+  static String? _settingsScreenIdFromLocation(String location) {
+    if (!location.startsWith('${AppRoutes.settings}/')) {
+      return null;
+    }
+    final segment = location.substring('${AppRoutes.settings}/'.length);
+    if (segment.contains('/')) {
+      return null;
+    }
+    return SettingsScreens.byId(segment) == null ? null : segment;
   }
 
   static String? labelFor(String itemId) {

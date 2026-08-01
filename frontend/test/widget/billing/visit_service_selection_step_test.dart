@@ -1,12 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/core/ui/components/app_button.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
-import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/organization_currency_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_grid_view.dart';
@@ -64,7 +64,12 @@ class _SpyServiceSelectorNotifier extends ServiceSelectorNotifier {
   final List<EligibleService> _services;
 
   @override
-  Future<List<EligibleService>> build() async => const [];
+  Future<List<EligibleService>> build() async {
+    if (_mode == _CatalogMode.loading) {
+      return Completer<List<EligibleService>>().future;
+    }
+    return const [];
+  }
 
   @override
   void search(String query, {Duration debounce = const Duration(milliseconds: 300)}) {
@@ -190,6 +195,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
 
       expect(find.byType(AppSkeleton), findsOneWidget);
+      expect(find.text('No services in the catalog yet.'), findsNothing);
     });
 
     testWidgets('shows catalog error state', (tester) async {

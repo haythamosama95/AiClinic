@@ -6,7 +6,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
-import 'package:fake_async/fake_async.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -354,19 +354,19 @@ void main() {
     });
 
     group('resolveAssignedDoctorId', () {
-      const preferredSlot = AppointmentBookingTimeSlot(
+      final preferredSlot = AppointmentBookingTimeSlot(
         start: DateTime(2026, 7, 13, 9),
         label: '9:00 AM',
         status: AppointmentBookingSlotStatus.preferred,
-        availableDoctorIds: ['doc-1', 'doc-2'],
+        availableDoctorIds: const ['doc-1', 'doc-2'],
       );
 
       test('returns null for locked slots', () {
-        const locked = AppointmentBookingTimeSlot(
+        final locked = AppointmentBookingTimeSlot(
           start: DateTime(2026, 7, 13, 9),
           label: '9:00 AM',
           status: AppointmentBookingSlotStatus.locked,
-          availableDoctorIds: [],
+          availableDoctorIds: const [],
         );
 
         expect(
@@ -376,11 +376,11 @@ void main() {
       });
 
       test('returns null when no doctors are available', () {
-        const emptyDoctors = AppointmentBookingTimeSlot(
+        final emptyDoctors = AppointmentBookingTimeSlot(
           start: DateTime(2026, 7, 13, 9),
           label: '9:00 AM',
           status: AppointmentBookingSlotStatus.available,
-          availableDoctorIds: [],
+          availableDoctorIds: const [],
         );
 
         expect(AppointmentBookingSlots.resolveAssignedDoctorId(slot: emptyDoctors), isNull);
@@ -402,24 +402,24 @@ void main() {
     });
 
     test('trivial: openSlotCount excludes locked slots', () {
-      const slots = [
+      final slots = [
         AppointmentBookingTimeSlot(
           start: DateTime(2026, 7, 13, 9),
           label: '9:00 AM',
           status: AppointmentBookingSlotStatus.locked,
-          availableDoctorIds: [],
+          availableDoctorIds: const [],
         ),
         AppointmentBookingTimeSlot(
           start: DateTime(2026, 7, 13, 9, 30),
           label: '9:30 AM',
           status: AppointmentBookingSlotStatus.available,
-          availableDoctorIds: ['doc-1'],
+          availableDoctorIds: const ['doc-1'],
         ),
         AppointmentBookingTimeSlot(
           start: DateTime(2026, 7, 13, 10),
           label: '10:00 AM',
           status: AppointmentBookingSlotStatus.preferred,
-          availableDoctorIds: ['doc-1'],
+          availableDoctorIds: const ['doc-1'],
         ),
       ];
 
@@ -435,10 +435,8 @@ void main() {
     });
 
     test('edge case: multiDayFetchRange empty defaults to today', () {
-      FakeAsync().run((async) {
-        final anchor = DateTime(2026, 7, 15, 14, 30);
-        async.elapse(anchor.difference(DateTime(1970, 1, 1)));
-
+      final anchor = DateTime(2026, 7, 15, 14, 30);
+      withClock(Clock.fixed(anchor), () {
         final range = AppointmentBookingSlots.multiDayFetchRange([]);
 
         expect(range.from, DateTime(anchor.year, anchor.month, anchor.day));

@@ -34,47 +34,51 @@ class RolePermissionsMatrix extends StatelessWidget {
     final colors = context.appColors;
     final groups = matrix.categoryGroups;
 
+    if (groups.isEmpty) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surfaceDefault,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: colors.borderSubtle),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(AppSpacing.space6),
+          child: AppEmptyState(
+            title: 'No permissions configured',
+            description: 'Permission keys are not available for this organization.',
+          ),
+        ),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final tableWidth = _matrixTableWidth(constraints.maxWidth);
 
-        return SizedBox(
-          width: double.infinity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MatrixColumnHeaders(tableWidth: tableWidth),
-              const SizedBox(height: AppSpacing.space4),
-              for (final group in groups) ...[
-                _CategoryCard(
-                  category: group.category,
-                  permissionKeys: group.permissionKeys,
-                  matrix: matrix,
-                  savedMatrix: savedMatrix,
-                  editable: editable,
-                  onToggle: onToggle,
-                  isCellDirty: isCellDirty,
-                  tableWidth: tableWidth,
-                ),
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: tableWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _MatrixColumnHeaders(tableWidth: tableWidth),
                 const SizedBox(height: AppSpacing.space4),
+                for (final group in groups) ...[
+                  _CategoryCard(
+                    category: group.category,
+                    permissionKeys: group.permissionKeys,
+                    matrix: matrix,
+                    savedMatrix: savedMatrix,
+                    editable: editable,
+                    onToggle: onToggle,
+                    isCellDirty: isCellDirty,
+                  ),
+                  const SizedBox(height: AppSpacing.space4),
+                ],
               ],
-              if (groups.isEmpty)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.surfaceDefault,
-                    borderRadius: BorderRadius.circular(AppRadius.xl),
-                    border: Border.all(color: colors.borderSubtle),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(AppSpacing.space6),
-                    child: AppEmptyState(
-                      title: 'No permissions configured',
-                      description: 'Permission keys are not available for this organization.',
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         );
       },
@@ -104,64 +108,58 @@ class _MatrixColumnHeaders extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: colors.borderSubtle),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: tableWidth,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 192,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
-                  child: Text(
-                    'Permission',
-                    style: AppTypography.caption(
-                      context,
-                    ).copyWith(color: colors.textTertiary, fontWeight: FontWeight.w600, letterSpacing: 1.2),
+      child: SizedBox(
+        width: tableWidth,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 192,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+                child: Text(
+                  'Permission',
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textTertiary, fontWeight: FontWeight.w600, letterSpacing: 1.2),
+                ),
+              ),
+            ),
+            for (final role in PermissionMatrixView.displayRoles) ...[
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(left: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.7))),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: 4,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: kRoleAccents[role]?.gradient,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space3),
+                        child: AppTooltip(
+                          message: kRoleSummaries[role] ?? '',
+                          preferBelow: false,
+                          child: Text(
+                            PermissionMatrixView.roleLabel(role),
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              for (final role in PermissionMatrixView.displayRoles) ...[
-                Expanded(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.7))),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          height: 4,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: kRoleAccents[role]?.gradient,
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.space2,
-                            vertical: AppSpacing.space3,
-                          ),
-                          child: AppTooltip(
-                            message: kRoleSummaries[role] ?? '',
-                            preferBelow: false,
-                            child: Text(
-                              PermissionMatrixView.roleLabel(role),
-                              textAlign: TextAlign.center,
-                              style: AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -176,7 +174,6 @@ class _CategoryCard extends StatelessWidget {
     required this.savedMatrix,
     required this.editable,
     required this.onToggle,
-    required this.tableWidth,
     this.isCellDirty,
   });
 
@@ -186,7 +183,6 @@ class _CategoryCard extends StatelessWidget {
   final PermissionMatrixView savedMatrix;
   final bool editable;
   final RoleGrantToggleCallback onToggle;
-  final double tableWidth;
   final bool Function(StaffRole role, String permissionKey)? isCellDirty;
 
   @override
@@ -215,27 +211,21 @@ class _CategoryCard extends StatelessWidget {
               style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w600),
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: tableWidth,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var index = 0; index < permissionKeys.length; index++) ...[
-                    if (index > 0) Divider(height: 1, color: colors.borderSubtle),
-                    _PermissionRow(
-                      permissionKey: permissionKeys[index],
-                      matrix: matrix,
-                      savedMatrix: savedMatrix,
-                      editable: editable,
-                      onToggle: onToggle,
-                      isCellDirty: isCellDirty,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var index = 0; index < permissionKeys.length; index++) ...[
+                if (index > 0) Divider(height: 1, color: colors.borderSubtle),
+                _PermissionRow(
+                  permissionKey: permissionKeys[index],
+                  matrix: matrix,
+                  savedMatrix: savedMatrix,
+                  editable: editable,
+                  onToggle: onToggle,
+                  isCellDirty: isCellDirty,
+                ),
+              ],
+            ],
           ),
         ],
       ),

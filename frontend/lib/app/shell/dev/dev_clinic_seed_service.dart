@@ -126,6 +126,7 @@ class DevClinicSeedService {
   Future<void> run({
     required AuthSessionContext auth,
     required Future<void> Function() refreshSession,
+    required Future<void> Function() ensureRpcSession,
     DevClinicSeedProgress? onProgress,
   }) async {
     if (!auth.staffProfile.isBootstrapAdmin) {
@@ -140,6 +141,7 @@ class DevClinicSeedService {
     report('Wiping all clinic data from the server…');
     await _bootstrap.resetInstallationForDevelopment();
     await refreshSession();
+    await ensureRpcSession();
 
     final doctorIdsByBranch = <String, String>{};
     String? multiBranchDoctorId;
@@ -410,11 +412,6 @@ class DevClinicSeedService {
           }
 
           final seedKey = patientIndex + dayOffset;
-          final doctorId = DevClinicSeedSchedule.doctorIdForAppointment(
-            primaryDoctorId: branch.primaryDoctorId,
-            secondaryDoctorId: branch.secondaryDoctorId,
-            patientIndex: patientIndex,
-          );
           final startTime = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
@@ -432,11 +429,27 @@ class DevClinicSeedService {
             seedKey: seedKey,
             referenceUtc: referenceUtc,
           );
-          final doctorLabel = DevClinicSeedSchedule.doctorAssignmentLabel(
-            primaryDoctorId: branch.primaryDoctorId,
-            secondaryDoctorId: branch.secondaryDoctorId,
+          final assignDoctor = DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
+            dayOffset: dayOffset,
             patientIndex: patientIndex,
+            seedKey: seedKey,
+            targetStatus: targetStatus,
+            dayRelation: dayRelation,
           );
+          final doctorId = assignDoctor
+              ? DevClinicSeedSchedule.doctorIdForAppointment(
+                  primaryDoctorId: branch.primaryDoctorId,
+                  secondaryDoctorId: branch.secondaryDoctorId,
+                  patientIndex: patientIndex,
+                )
+              : null;
+          final doctorLabel = assignDoctor
+              ? DevClinicSeedSchedule.doctorAssignmentLabel(
+                  primaryDoctorId: branch.primaryDoctorId,
+                  secondaryDoctorId: branch.secondaryDoctorId,
+                  patientIndex: patientIndex,
+                )
+              : 'no preferred doctor';
 
           final created = await _appointments.createAppointment(
             branchId: branch.branchId,

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 PatientDetail _makeDetail({
   String id = 'p1',
+  String? mrn,
   String fullName = 'Ahmed',
   String branchId = 'b1',
   String branchName = 'Main',
@@ -17,6 +18,7 @@ PatientDetail _makeDetail({
 }) {
   return PatientDetail(
     id: id,
+    mrn: mrn,
     fullName: fullName,
     branchId: branchId,
     branchName: branchName,
@@ -47,6 +49,17 @@ void main() {
 
     test('not equal when fullName differs', () {
       expect(_makeDetail(fullName: 'Ahmed') == _makeDetail(fullName: 'Sara'), isFalse);
+    });
+
+    test('not equal when mrn differs', () {
+      expect(
+        _makeDetail(mrn: 'MRN-000001') == _makeDetail(mrn: 'MRN-000002'),
+        isFalse,
+      );
+    });
+
+    test('not equal when one has mrn and other does not', () {
+      expect(_makeDetail(mrn: 'MRN-000001') == _makeDetail(), isFalse);
     });
 
     test('not equal when phone differs', () {
@@ -144,6 +157,50 @@ void main() {
 
       expect(updated.createdAt, newCreated);
       expect(updated.updatedAt, newUpdated);
+    });
+
+    test('advanced: omitted nullable fields are preserved', () {
+      final withOptionals = _makeDetail(
+        mrn: 'MRN-000001',
+        phone: '201000000001',
+        notes: 'Keep me',
+      );
+      final updated = withOptionals.copyWith(fullName: 'Updated');
+
+      expect(updated.mrn, 'MRN-000001');
+      expect(updated.phone, '201000000001');
+      expect(updated.notes, 'Keep me');
+    });
+
+    test('advanced: explicitly clears nullable fields with null', () {
+      final withOptionals = _makeDetail(
+        mrn: 'MRN-000001',
+        phone: '201000000001',
+        dateOfBirth: DateTime(1990, 5, 15),
+        gender: PatientGender.male,
+        maritalStatus: PatientMaritalStatus.single,
+        notes: 'Notes',
+        createdByDisplay: 'Dr. Test',
+      );
+
+      final cleared = withOptionals.copyWith(
+        mrn: null,
+        phone: null,
+        dateOfBirth: null,
+        gender: null,
+        maritalStatus: null,
+        notes: null,
+        createdByDisplay: null,
+      );
+
+      expect(cleared.mrn, isNull);
+      expect(cleared.phone, isNull);
+      expect(cleared.dateOfBirth, isNull);
+      expect(cleared.gender, isNull);
+      expect(cleared.maritalStatus, isNull);
+      expect(cleared.notes, isNull);
+      expect(cleared.createdByDisplay, isNull);
+      expect(cleared.fullName, withOptionals.fullName);
     });
   });
 

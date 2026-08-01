@@ -59,6 +59,25 @@ class _VisitSubmittedDialogBody extends ConsumerWidget {
   final VisitBillingInvoicePreview? invoicePreview;
   final InvoiceDetail? persistedInvoice;
 
+  VisitSubmittedConfirmationData _buildConfirmationData({
+    required String patientName,
+    required String branchName,
+    required DateTime appointmentStart,
+    required DateTime appointmentEnd,
+  }) {
+    return VisitSubmittedConfirmationData.fromVisit(
+      visit: visit,
+      patientName: patientName,
+      branchName: branchName,
+      appointmentStart: appointmentStart,
+      appointmentEnd: appointmentEnd,
+      kind: kind,
+      actionAt: actionAt,
+      invoicePreview: invoicePreview,
+      persistedInvoice: persistedInvoice,
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
@@ -72,33 +91,37 @@ class _VisitSubmittedDialogBody extends ConsumerWidget {
       orElse: () => 'Branch',
     );
 
+    if (appointmentAsync.hasError) {
+      final fallbackEnd = visit.visitDate.add(const Duration(minutes: 30));
+      return VisitSubmittedCombinedConfirmation(
+        data: _buildConfirmationData(
+          patientName: patientName,
+          branchName: branchName,
+          appointmentStart: visit.visitDate,
+          appointmentEnd: fallbackEnd,
+        ),
+      );
+    }
+
     return appointmentAsync.when(
       loading: () => const AppSkeleton(variant: SkeletonVariant.rectangular, height: 340),
       error: (_, _) {
         final fallbackEnd = visit.visitDate.add(const Duration(minutes: 30));
         return VisitSubmittedCombinedConfirmation(
-          data: VisitSubmittedConfirmationData.fromVisit(
-            visit: visit,
+          data: _buildConfirmationData(
             patientName: patientName,
             branchName: branchName,
             appointmentStart: visit.visitDate,
             appointmentEnd: fallbackEnd,
-            kind: kind,
-            actionAt: actionAt,
-            invoicePreview: invoicePreview,
-            persistedInvoice: persistedInvoice,
           ),
         );
       },
       data: (appointment) => VisitSubmittedCombinedConfirmation(
-        data: VisitSubmittedConfirmationData.fromVisit(
-          visit: visit,
+        data: _buildConfirmationData(
           patientName: patientName,
           branchName: branchName,
           appointmentStart: appointment.startTime,
           appointmentEnd: appointment.endTime,
-          kind: kind,
-          actionAt: actionAt,
         ),
       ),
     );
@@ -119,7 +142,7 @@ class _VisitSubmittedDialogFooter extends StatelessWidget {
           variant: AppButtonVariant.secondary,
           leadingIcon: const Icon(Icons.event_note_outlined, size: 16),
           onPressed: () {
-            Navigator.of(context).pop();
+            Navigator.of(context, rootNavigator: true).pop();
             context.nav.pushAppointmentDetail(visit.appointmentId);
           },
           child: const Text('View appointment'),
@@ -127,7 +150,7 @@ class _VisitSubmittedDialogFooter extends StatelessWidget {
         final backToCalendar = AppButton(
           trailingIcon: const Icon(Icons.calendar_month_outlined, size: 16),
           onPressed: () {
-            Navigator.of(context).pop();
+            Navigator.of(context, rootNavigator: true).pop();
             context.nav.goAppointmentsCalendar();
           },
           child: const Text('Back to calendar'),

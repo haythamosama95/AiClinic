@@ -7,7 +7,7 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'calendar_widget_test_harness.dart';
 
 void main() {
-  Future<String?> openDialog(WidgetTester tester) async {
+  Future<PendingDialogResult<String?>> openDialog(WidgetTester tester) async {
     late Future<String?> result;
     await pumpDialogShell(
       tester,
@@ -26,7 +26,7 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    return result;
+    return PendingDialogResult(result);
   }
 
   testWidgets('trivial: CAL-CANCEL-01 reason AppTextarea is present with maxLength 2000', (tester) async {
@@ -39,44 +39,44 @@ void main() {
   });
 
   testWidgets('advanced: CAL-CANCEL-02 Keep appointment pops null', (tester) async {
-    final resultFuture = await openDialog(tester);
+    final dialog = await openDialog(tester);
 
     await tester.tap(find.text('Keep appointment'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, isNull);
+    expect(await dialog.result, isNull);
   });
 
   testWidgets('advanced: CAL-CANCEL-03 Cancel appointment pops trimmed reason', (tester) async {
-    final resultFuture = await openDialog(tester);
+    final dialog = await openDialog(tester);
 
     await tester.enterText(find.byType(AppTextarea), '  Patient rescheduled  ');
     await tester.tap(find.text('Cancel appointment'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, 'Patient rescheduled');
+    expect(await dialog.result, 'Patient rescheduled');
   });
 
   testWidgets('edge case: CAL-CANCEL-04 empty reason is allowed', (tester) async {
-    final resultFuture = await openDialog(tester);
+    final dialog = await openDialog(tester);
 
     await tester.tap(find.text('Cancel appointment'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, '');
+    expect(await dialog.result, '');
   });
 
   testWidgets('edge case: CAL-CANCEL-05 whitespace-only reason trims to empty', (tester) async {
-    final resultFuture = await openDialog(tester);
+    final dialog = await openDialog(tester);
 
     await tester.enterText(find.byType(AppTextarea), '   ');
     await tester.tap(find.text('Cancel appointment'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(await resultFuture, '');
+    expect(await dialog.result, '');
   });
 }

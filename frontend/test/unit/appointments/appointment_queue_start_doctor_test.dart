@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -41,7 +41,7 @@ void main() {
     test('requiresDoctorPicker when assigned preferred doctor is available', () {
       final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd1', doctorName: 'Dr Alpha');
 
-      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isFalse);
+      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isTrue);
     });
 
     test('requiresDoctorPicker when only one doctor is on shift', () {
@@ -95,7 +95,7 @@ void main() {
       expect(options, hasLength(3));
     });
 
-    test('shiftOptionsFor marks busy doctors', () {
+    test('shiftOptionsFor marks busy doctors and includes current patient name', () {
       final start = DateTime.utc(2026, 6, 4, 11);
       final active = _item(
         status: AppointmentStatus.inProgress,
@@ -103,6 +103,7 @@ void main() {
         doctorId: 'd1',
         doctorName: 'Dr Alpha',
         id: 'active',
+        patientName: 'Sam Patient',
       );
       final waiting = _item(status: AppointmentStatus.checkedIn, startTime: start.add(const Duration(minutes: 30)));
 
@@ -113,7 +114,9 @@ void main() {
       );
 
       expect(options, hasLength(2));
-      expect(options.firstWhere((option) => option.id == 'd1').isBusy, isTrue);
+      final alpha = options.firstWhere((option) => option.id == 'd1');
+      expect(alpha.isBusy, isTrue);
+      expect(alpha.currentPatientName, 'Sam Patient');
       expect(options.firstWhere((option) => option.id == 'd2').isBusy, isFalse);
     });
 
@@ -272,6 +275,159 @@ void main() {
         'Another visit without an assigned doctor is already in progress. Complete that visit or assign a doctor before starting another.',
       );
     });
+
+    test('isDoctorBusy detects shared unassigned in-progress slot', () {
+      final active = _item(
+        id: 'active',
+        status: AppointmentStatus.inProgress,
+        doctorId: null,
+        doctorName: null,
+      );
+      final waiting = _item(id: 'waiting', status: AppointmentStatus.checkedIn);
+
+      expect(
+        AppointmentQueueStartDoctor.isDoctorBusy(
+          doctorId: '',
+          excludeAppointmentId: waiting.id,
+          items: [active, waiting],
+        ),
+        isTrue,
+      );
+      expect(
+        AppointmentQueueStartDoctor.isDoctorBusy(
+          doctorId: 'd1',
+          excludeAppointmentId: waiting.id,
+          items: [active, waiting],
+        ),
+        isFalse,
+      );
+    });
+
+    test('isDoctorBusy detects assigned doctor already in session', () {
+      final active = _item(id: 'active', status: AppointmentStatus.inProgress, doctorId: 'd1', doctorName: 'Dr Alpha');
+      final waiting = _item(id: 'waiting', status: AppointmentStatus.checkedIn, doctorId: 'd1');
+
+      expect(
+        AppointmentQueueStartDoctor.isDoctorBusy(
+          doctorId: 'd1',
+          excludeAppointmentId: waiting.id,
+          items: [active, waiting],
+        ),
+        isTrue,
+      );
+    });
+
+    test('isPreferredDoctorBusy is false when appointment has no preferred doctor', () {
+      final active = _item(status: AppointmentStatus.inProgress, doctorId: 'd1');
+      final waiting = _item(status: AppointmentStatus.checkedIn);
+
+      expect(
+        AppointmentQueueStartDoctor.isPreferredDoctorBusy(item: waiting, siblingAppointments: [active, waiting]),
+        isFalse,
+      );
+    });
+
+    test('isPreferredDoctorBusy is true when preferred doctor is busy', () {
+      final active = _item(id: 'active', status: AppointmentStatus.inProgress, doctorId: 'd1');
+      final waiting = _item(id: 'waiting', status: AppointmentStatus.checkedIn, doctorId: 'd1');
+
+      expect(
+        AppointmentQueueStartDoctor.isPreferredDoctorBusy(item: waiting, siblingAppointments: [active, waiting]),
+        isTrue,
+      );
+    });
+
+    test('availableShiftOptionsFor excludes busy doctors', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        id: 'active',
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+      );
+      final waiting = _item(status: AppointmentStatus.checkedIn, startTime: start.add(const Duration(minutes: 30)));
+
+      final available = AppointmentQueueStartDoctor.availableShiftOptionsFor(
+        item: waiting,
+        siblingAppointments: [active, waiting],
+        shiftLookup: lookup,
+      );
+
+      expect(available, hasLength(1));
+      expect(available.single.id, 'd2');
+    });
+
+    test('blockReasonForStart reports no doctor on shift', () {
+      final emptyLookup = AppointmentQueueShiftDoctorLookup.empty;
+      final waiting = _item(status: AppointmentStatus.checkedIn);
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [waiting],
+          shiftLookup: emptyLookup,
+        ),
+        'No doctor is on shift for this appointment time.',
+      );
+    });
+
+    test('blockReasonForStart reports single busy doctor on shift', () {
+      final singleDoctorLookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [
+          ShiftListItem(
+            id: 's1',
+            branchId: 'b1',
+            shiftDate: DateTime(2026, 6, 4),
+            startTime: '09:00',
+            endTime: '17:00',
+            status: ShiftStatus.active,
+            isUnassigned: false,
+            assigneeNames: const ['Dr Alpha'],
+            assigneeCount: 1,
+          ),
+        ],
+        doctors: const [StaffListItem(id: 'd1', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true)],
+      );
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        id: 'active',
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+      );
+      final waiting = _item(status: AppointmentStatus.checkedIn, startTime: start.add(const Duration(minutes: 30)));
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [active, waiting],
+          shiftLookup: singleDoctorLookup,
+        ),
+        'Dr Alpha already has a patient in progress. Complete that visit before starting another.',
+      );
+    });
+
+    test('requiresDoctorPicker is false when blocked', () {
+      final emptyLookup = AppointmentQueueShiftDoctorLookup.empty;
+      final waiting = _item(status: AppointmentStatus.checkedIn);
+
+      expect(
+        AppointmentQueueStartDoctor.requiresDoctorPicker(item: waiting, shiftLookup: emptyLookup),
+        isFalse,
+      );
+    });
+
+    test('requiresDoctorPicker is false when appointment is not checked in', () {
+      final scheduled = _item(status: AppointmentStatus.scheduled);
+
+      expect(
+        AppointmentQueueStartDoctor.requiresDoctorPicker(item: scheduled, shiftLookup: lookup),
+        isFalse,
+      );
+    });
   });
 }
 
@@ -281,12 +437,13 @@ AppointmentListItem _item({
   String? doctorId,
   String? doctorName,
   String id = 'a1',
+  String patientName = 'Pat',
 }) {
   final start = startTime ?? DateTime.utc(2026, 6, 4, 10);
   return AppointmentListItem(
     id: id,
     patientId: 'p1',
-    patientName: 'Pat',
+    patientName: patientName,
     doctorId: doctorId,
     doctorName: doctorName,
     startTime: start,

@@ -109,8 +109,8 @@ extension InvoiceSortDirectionWire on SortDirection {
 
 /// Client-side sort over a loaded invoice page.
 ///
-/// TODO(invoices-page-implementation-plan §6): remove when `list_invoices` honours
-/// `sort_field` / `sort_direction` server-side.
+/// Remove when `list_invoices` honours `sort_field` / `sort_direction`
+/// server-side (invoices-page-implementation-plan §6).
 List<InvoiceListItem> sortInvoiceListItemsClientSide(
   List<InvoiceListItem> items,
   InvoiceListFilters filters,

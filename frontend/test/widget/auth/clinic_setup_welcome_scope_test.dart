@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
 import '../../helpers/auth_test_support.dart';
 import 'clinic_setup_welcome_test_harness.dart';
@@ -38,9 +37,10 @@ void main() {
   group('ClinicSetupWelcomeScope welcome dialog gating', () {
     testWidgets('does not show welcome while session is unknown', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setSession(const AuthSessionState(status: AuthSessionStatus.unknown));
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setSession(const AuthSessionState(status: AuthSessionStatus.unknown));
+      await tester.pump();
       await drainPendingFrames(tester);
 
       expect(welcomeDialogTitleFinder(), findsNothing);
@@ -48,9 +48,10 @@ void main() {
 
     testWidgets('does not show welcome while session is loading', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setLoading();
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setLoading();
+      await tester.pump();
       await drainPendingFrames(tester);
 
       expect(welcomeDialogTitleFinder(), findsNothing);
@@ -58,9 +59,10 @@ void main() {
 
     testWidgets('does not show welcome while session is unauthenticated', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setUnauthenticated();
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setUnauthenticated();
+      await tester.pump();
       await drainPendingFrames(tester);
 
       expect(welcomeDialogTitleFinder(), findsNothing);
@@ -68,9 +70,10 @@ void main() {
 
     testWidgets('does not show welcome when authenticated without clinic setup required', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setAuthenticated(setupRequired: false);
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setAuthenticated(setupRequired: false);
+      await tester.pump();
       await drainPendingFrames(tester);
 
       expect(welcomeDialogTitleFinder(), findsNothing);
@@ -78,9 +81,10 @@ void main() {
 
     testWidgets('shows welcome when authenticated with needsClinicSetup', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setAuthenticated(setupRequired: true);
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setAuthenticated(setupRequired: true);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
 
       expect(welcomeDialogTitleFinder(), findsOneWidget);
@@ -91,9 +95,9 @@ void main() {
 
     testWidgets('does not show welcome on the first frame before session resolves', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setLoading();
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setLoading();
       await tester.pump();
 
       expect(welcomeDialogTitleFinder(), findsNothing);
@@ -105,41 +109,50 @@ void main() {
   group('ClinicSetupWelcomeScope once-per-staff latch', () {
     testWidgets('shows welcome only once per staffMemberId until latch reset', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setAuthenticated(setupRequired: true);
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setAuthenticated(setupRequired: true);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
       expect(welcomeDialogTitleFinder(), findsOneWidget);
 
+      auth.setAuthenticated(setupRequired: false);
+      await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      auth.setAuthenticated(setupRequired: false);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      auth.setSession(
+        AuthSessionState(
+          status: AuthSessionStatus.loading,
+          context: sampleAuthSessionContext(setupRequired: false),
+        ),
+      );
+      await tester.pump();
+      auth.setAuthenticated(setupRequired: true);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      auth.setLoading();
-      await tester.pump();
-      auth.setAuthenticated(setupRequired: true);
-      await drainPendingFrames(tester);
-
       expect(welcomeDialogTitleFinder(), findsNothing);
 
-      await dismissActiveSetupWelcomeFlow(tester, auth);
-      await drainPendingFrames(tester);
+      auth.setAuthenticated(setupRequired: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
     });
 
     testWidgets('shows welcome again for a different staffMemberId that needs setup', (tester) async {
       final auth = TestAuthSessionNotifier();
+
+      await pumpClinicSetupWelcomeScope(tester, auth: auth);
       auth.setSession(
         AuthSessionState(
           status: AuthSessionStatus.authenticated,
           context: authContextWithStaff(staffMemberId: staffMemberA, setupRequired: true),
         ),
       );
-
-      await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
       expect(welcomeDialogTitleFinder(), findsOneWidget);
 
@@ -164,23 +177,24 @@ void main() {
 
     testWidgets('sign-out invalidates latch so welcome shows again on next sign-in', (tester) async {
       final auth = TestAuthSessionNotifier();
+
+      await pumpClinicSetupWelcomeScope(tester, auth: auth);
       auth.setSession(
         AuthSessionState(
           status: AuthSessionStatus.authenticated,
           context: authContextWithStaff(staffMemberId: staffMemberA, setupRequired: true),
         ),
       );
-
-      await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
       expect(welcomeDialogTitleFinder(), findsOneWidget);
 
+      auth.setAuthenticated(setupRequired: false);
+      await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      auth.setAuthenticated(setupRequired: false);
-      await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
       auth.setUnauthenticated();
@@ -206,9 +220,10 @@ void main() {
   group('ClinicSetupWelcomeScope flow guards', () {
     testWidgets('single-flight guard prevents concurrent welcome dialogs', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setAuthenticated(setupRequired: true);
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setAuthenticated(setupRequired: true);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
 
       expect(welcomeDialogTitleFinder(), findsOneWidget);
@@ -220,9 +235,10 @@ void main() {
 
     testWidgets('out-of-dialog setup completion during welcome does not throw or strand dialogs', (tester) async {
       final auth = TestAuthSessionNotifier();
-      auth.setAuthenticated(setupRequired: true);
 
       await pumpClinicSetupWelcomeScope(tester, auth: auth);
+      auth.setAuthenticated(setupRequired: true);
+      await tester.pump();
       await pumpUntilWelcomeVisible(tester);
       expect(welcomeDialogTitleFinder(), findsOneWidget);
 

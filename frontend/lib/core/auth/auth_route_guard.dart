@@ -309,11 +309,17 @@ abstract final class AuthRouteGuard {
   }
 
   static bool isSettingsRoute(String location) {
-    return location == AppRoutes.settings ||
-        location == AppRoutes.settingsIdleTimeout ||
+    return isPersonalSettingsRoute(location) ||
         location == AppRoutes.settingsBilling ||
         isServiceCatalogRoute(location) ||
         isAdminSettingsRoute(location);
+  }
+
+  /// Personal workstation settings (appearance, notifications, security).
+  static bool isPersonalSettingsRoute(String location) {
+    return location == AppRoutes.settings ||
+        location == AppRoutes.settingsIdleTimeout ||
+        AppRoutes.personalSettingsPaths.contains(location);
   }
 
   /// Service catalog administration routes (015).

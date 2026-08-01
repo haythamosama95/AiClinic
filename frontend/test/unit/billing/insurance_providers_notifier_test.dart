@@ -197,7 +197,7 @@ void main() {
       );
 
       expect(providerId, existingId);
-      expect(client.lastParams?['p_id'], existingId);
+      expect(client.rpcLog, contains('insurance_provider_upsert'));
       expect(
         container.read(insuranceProvidersProvider).value?.singleWhere((provider) => provider.id == existingId).name,
         'Renamed Insurance',
