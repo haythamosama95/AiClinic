@@ -148,10 +148,14 @@ export async function mintToken(
     new TextEncoder().encode(signingInput),
   );
 
-  let signatureB64 = base64urlEncode(new Uint8Array(signature));
+  const signatureBytes = new Uint8Array(signature);
   if (options.corruptSignature) {
-    signatureB64 = `${signatureB64.slice(0, -1)}X`;
+    // Corrupt raw bytes, not the base64url tail: the last encoding character
+    // often carries padding bits, so swapping it for a fixed letter is a no-op
+    // ~25% of the time and lets verify() succeed intermittently.
+    signatureBytes[0] ^= 0xff;
   }
+  const signatureB64 = base64urlEncode(signatureBytes);
 
   return `${signingInput}.${signatureB64}`;
 }
