@@ -144,7 +144,7 @@ is slice H1.
 | --- | --- |
 | `maxInputTokens` | Per-request (per-turn for `conversational`) input token ceiling. |
 | `maxOutputTokens` | Per-request output token ceiling. |
-| `perRequestCostCeiling` | Maximum cost per request (per turn for `conversational`). |
+| `perRequestCostCeiling` | Maximum billable **tokens** per request (per turn for `conversational`): `estimatedInputTokens + maxOutputTokens` must not exceed it. Token-denominated, no currency (§13.6.2). |
 | `quotaWeight` | Weight applied in quota accounting. |
 
 For `conversational`, the per-request ceiling applies per turn; the conversation is bounded by

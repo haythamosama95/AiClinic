@@ -81,7 +81,7 @@ function validManifest(): ManifestWire {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 0.05,
+      perRequestCostCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
