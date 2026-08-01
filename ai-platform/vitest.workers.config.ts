@@ -10,6 +10,7 @@ export default defineWorkersConfig({
       "test/quota-do.test.ts",
       "test/admission-credit.test.ts",
       "test/capability.test.ts",
+      "test/journal.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,

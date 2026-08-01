@@ -11,6 +11,7 @@ export default defineConfig({
       "test/quota-do.test.ts",
       "test/admission-credit.test.ts",
       "test/capability.test.ts",
+      "test/journal.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,
