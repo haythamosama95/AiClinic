@@ -10,6 +10,7 @@ export default defineConfig({
       "test/rate-limit.test.ts",
       "test/quota-do.test.ts",
       "test/admission-credit.test.ts",
+      "test/capability.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,
