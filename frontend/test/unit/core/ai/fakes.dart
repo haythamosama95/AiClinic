@@ -219,3 +219,116 @@ List<SseEvent> failedStreamWithRawWireCode(String wireCode) => [
         traceId: 'trace-raw',
       ),
     ];
+
+/// In-memory clinic-read port for context resolver unit and contract tests.
+class FakeContextProviderPort {
+  FakeContextProviderPort({
+    Map<String, Object?>? chiefComplaintPayload,
+  }) : _chiefComplaintPayload = chiefComplaintPayload ??
+            const {
+              'visit_id': '550e8400-e29b-41d4-a716-446655440000',
+              'complaint': 'Headache for two days.',
+              'recorded_at': '2026-07-31T12:00:00.000Z',
+            };
+
+  final Map<String, Object?> _chiefComplaintPayload;
+  int fetchVisitChiefComplaintCallCount = 0;
+
+  @override
+  Future<Map<String, Object?>> fetchVisitChiefComplaint() async {
+    fetchVisitChiefComplaintCallCount++;
+    return Map<String, Object?>.from(_chiefComplaintPayload);
+  }
+}
+
+/// Injectable C1-shaped active-manifest source returning `{ manifests }`.
+class FakeActiveManifestSource {
+  FakeActiveManifestSource({required this.manifests});
+
+  final List<Map<String, Object?>> manifests;
+
+  Map<String, Object?> discoveryBody() => {'manifests': manifests};
+}
+
+Map<String, Object?> sampleActiveManifest({
+  List<Map<String, Object?>>? contextRequirements,
+}) =>
+    {
+      'Identity': {
+        'capabilityId': 'clinic.visit_summary',
+        'version': '1.0.0',
+        'title': 'Visit summary',
+        'lifecycleState': 'active',
+        'successorId': null,
+      },
+      'Access': {
+        'requiredCapabilityScope': 'ai.visit_summary',
+        'minimumPlanTier': 'standard',
+        'allowedStaffRoles': ['clinician', 'nurse'],
+        'killSwitchFlag': false,
+      },
+      'Interaction': {
+        'interactionMode': 'single_shot',
+      },
+      'Input': {
+        'userIntentShape': 'plain_text',
+        'priorTurnShape': null,
+        'sizeLimits': {'maxChars': 8000},
+        'allowedLanguages': ['en'],
+      },
+      'Context requirements': contextRequirements ??
+          [
+            {
+              'key': 'visit.chief_complaint@v1',
+              'required': true,
+              'shapeRef': 'visit.chief_complaint@v1',
+              'maxSize': 4096,
+              'freshnessHint': 'session',
+            },
+          ],
+      'Prompt binding': {
+        'systemInstructionArtifactRef': 'prompt/visit-summary-system@v1',
+        'businessRuleFragmentRefs': ['rules/visit-summary@v1'],
+        'contextRenderingTemplateRef': 'templates/visit-summary@v1',
+        'outputFormatInstructionDerivationRule': 'derive_from_output_mode',
+      },
+      'Output': {
+        'mode': 'prose',
+        'outputSchemaRef': null,
+        'businessValidationRuleRefs': [],
+        'repairPolicy': {'allowed': false, 'maxAttempts': 0},
+      },
+      'Routing': {
+        'routingPolicyRef': 'routing/standard@v1',
+        'requiredProviderFeatures': {
+          'structuredOutput': false,
+          'contextWindow': 32000,
+          'language': 'en',
+        },
+        'latencyClass': 'standard',
+        'degradedTierPolicy': 'fallback_chain',
+      },
+      'Economics': {
+        'maxInputTokens': 8000,
+        'maxOutputTokens': 1024,
+        'perRequestCostCeiling': 9024,
+        'quotaWeight': 1,
+      },
+      'Governance': {
+        'acceptanceMode': 'advisory_display',
+        'retentionClass': 'diagnostic_30d',
+        'evalSuiteRef': 'evals/visit-summary@v1',
+      },
+    };
+
+Map<String, Object?> manifestWithUnknownContextKey() => sampleActiveManifest(
+      contextRequirements: [
+        {
+          'key': 'patient.demographics@v1',
+          'required': true,
+          'shapeRef': 'patient.demographics@v1',
+          'maxSize': 4096,
+          'freshnessHint': 'session',
+        },
+      ],
+    );
