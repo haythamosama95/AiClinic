@@ -1,6 +1,12 @@
 import type { AdapterSseEvent } from "../adapter";
 import type { TaxonomyCode } from "../errors";
 import {
+  runValidationPhases,
+  type BusinessRuleRegistry,
+  type SafetyMarkers,
+  type SchemaRegistry,
+} from "../validate";
+import {
   checkIncrementalGuards,
   runFullGuardSet,
   type ProseGuardThresholds,
@@ -9,6 +15,8 @@ import {
 export type { ProseGuardThresholds } from "./prose-guards";
 
 export type StreamChunk = string | { kind: "regenerating" };
+
+export type OutputMode = "prose" | "structured" | "structured_atomic";
 
 export interface ChunkSource {
   partialUsage?: { tokens: number; cost: number };
@@ -39,6 +47,15 @@ export interface JournalTerminalSink {
   }): void;
 }
 
+export interface StructuredValidationConfig {
+  outputSchemaRef: string | null;
+  businessValidationRuleRefs: readonly string[];
+  schemaRegistry: SchemaRegistry;
+  ruleRegistry: BusinessRuleRegistry;
+  context?: unknown;
+  safetyMarkers?: SafetyMarkers;
+}
+
 export interface StreamBrokerOptions {
   traceId: string;
   requestId: string;
@@ -48,6 +65,8 @@ export interface StreamBrokerOptions {
   creditSink: CreditSink;
   journalTerminalSink: JournalTerminalSink;
   guardThresholds: ProseGuardThresholds;
+  outputMode?: OutputMode;
+  structuredValidation?: StructuredValidationConfig;
 }
 
 export interface StreamBrokerController {
@@ -62,9 +81,18 @@ function isRegeneratingChunk(
   return typeof chunk === "object" && chunk !== null && chunk.kind === "regenerating";
 }
 
+function tryParsePartialStructured(assembled: string): unknown | null {
+  try {
+    return JSON.parse(assembled) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export function createStreamBroker(
   options: StreamBrokerOptions,
 ): StreamBrokerController {
+  const outputMode = options.outputMode ?? "prose";
   const abortController = new AbortController();
   let disconnected = false;
   let terminalEmitted = false;
@@ -112,7 +140,7 @@ export function createStreamBroker(
     });
   };
 
-  const handleGuardFailure = (): void => {
+  const handleValidationFailure = (): void => {
     emitTerminalOnce({
       type: "failed",
       data: { code: "validation_failed" },
@@ -120,7 +148,52 @@ export function createStreamBroker(
     });
   };
 
-  const run = async (): Promise<void> => {
+  const handleGuardFailure = (): void => {
+    handleValidationFailure();
+  };
+
+  const completeStructured = (assembled: string): void => {
+    const config = options.structuredValidation;
+    if (!config) {
+      handleValidationFailure();
+      return;
+    }
+
+    const validation = runValidationPhases({
+      output: { raw: assembled, transportValid: true },
+      mode: outputMode === "structured_atomic" ? "structured_atomic" : "structured",
+      outputSchemaRef: config.outputSchemaRef,
+      businessValidationRuleRefs: config.businessValidationRuleRefs,
+      schemaRegistry: config.schemaRegistry,
+      ruleRegistry: config.ruleRegistry,
+      context: config.context,
+      safetyMarkers: config.safetyMarkers,
+    });
+
+    if (!validation.ok) {
+      handleValidationFailure();
+      return;
+    }
+
+    const validatedDocument = validation.validated;
+
+    emitTerminalOnce({
+      type: "completed",
+      data: {
+        result: {
+          "final content": {
+            document: validatedDocument,
+            authoritative: true,
+            _assembledFromChunks: false,
+          },
+        },
+        trace_id: options.traceId,
+      },
+      trace_id: options.traceId,
+    });
+  };
+
+  const runProse = async (): Promise<void> => {
     const { traceId, chunkSource, heartbeatTicker, guardThresholds } = options;
     let assembled = "";
     let sequence = 0;
@@ -209,6 +282,97 @@ export function createStreamBroker(
     } finally {
       heartbeatHandle?.cancel();
     }
+  };
+
+  const runStructured = async (): Promise<void> => {
+    const { traceId, chunkSource, heartbeatTicker } = options;
+    let assembled = "";
+    let sequence = 0;
+    const emitPartials = outputMode === "structured";
+
+    heartbeatHandle = heartbeatTicker.schedule(() => {
+      emitEvent({
+        type: "heartbeat",
+        data: { trace_id: traceId },
+        trace_id: traceId,
+      });
+    });
+
+    try {
+      for await (const chunk of chunkSource.stream({
+        signal: abortController.signal,
+      })) {
+        if (terminalEmitted) {
+          return;
+        }
+
+        if (disconnected || abortController.signal.aborted) {
+          handleCancel();
+          return;
+        }
+
+        if (isRegeneratingChunk(chunk)) {
+          emitEvent({
+            type: "regenerating",
+            data: { trace_id: traceId },
+            trace_id: traceId,
+          });
+          assembled = "";
+          sequence = 0;
+          continue;
+        }
+
+        assembled += chunk;
+
+        if (outputMode === "structured_atomic") {
+          emitEvent({
+            type: "progress",
+            data: { trace_id: traceId, bytesReceived: assembled.length },
+            trace_id: traceId,
+          });
+        } else if (emitPartials) {
+          const partialDocument = tryParsePartialStructured(assembled);
+          emitEvent({
+            type: "partial_structured",
+            data: {
+              sequence,
+              provisional: true,
+              document: partialDocument ?? { _partial: true },
+              committed: false,
+              committable: false,
+            },
+            trace_id: traceId,
+          });
+          sequence += 1;
+        }
+
+        if (disconnected || abortController.signal.aborted) {
+          handleCancel();
+          return;
+        }
+      }
+
+      if (!terminalEmitted && (disconnected || abortController.signal.aborted)) {
+        handleCancel();
+        return;
+      }
+
+      if (terminalEmitted) {
+        return;
+      }
+
+      completeStructured(assembled);
+    } finally {
+      heartbeatHandle?.cancel();
+    }
+  };
+
+  const run = async (): Promise<void> => {
+    if (outputMode === "prose") {
+      await runProse();
+      return;
+    }
+    await runStructured();
   };
 
   return {
