@@ -3,7 +3,7 @@
 - Purpose: Decompose the AI platform architecture into small, individually specifiable, individually implementable slices, and define the rules that keep those slices from drifting away from the architecture.
 - Read this when: choosing what to build next on the AI platform, opening a new Spec Kit feature for AI platform work, or reviewing a completed AI platform slice.
 - Canonical for: AI platform build order, slice boundaries, slice completion criteria, and the authoring rules for AI platform feature specs.
-- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) and [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) (what is actually built), `.specify/memory/constitution.md`.
+- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md), [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md), and [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) (what is actually built), `.specify/memory/constitution.md`.
 - Not covered here: any architectural decision. This document sequences decisions made in `17-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `17-ai-platform.md` wins and this document is wrong.
 
 > **Status:** Delivery plan for an unimplemented architecture. Section references of the form
@@ -210,6 +210,8 @@ Nothing in this band handles a real request. It exists so that everything after 
 **What this band does:** Resolves which AI capabilities an installation may use, validates the clinic context payload against each capability's declared key requirements, and journals every admitted request from first touch through terminal state. The discovery endpoint lets the client learn what is available without hard-coding capability ids.
 
 **Useful to know:** C1 is the unlock for parallel work in bands D and E — both need a resolved manifest. C2 emits `context_required` with the missing-key manifest (the self-healing *behaviour* for stale clients is deferred to J2 under DP-5). C3's journal is the audit backbone that band F's support lookup and dashboards query. A guard rejection must produce **no** journal row.
+
+> **Implementation reference:** [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) — plain-language account of what C1–C3 built, with diagrams and test commands.
 
 
 | ID     | Slice                                     | Canonical                            | Needs  | Done when                                                                                                                                                                                                                                          |

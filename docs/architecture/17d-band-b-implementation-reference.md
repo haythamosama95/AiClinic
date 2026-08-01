@@ -48,7 +48,7 @@ Before Band B, the platform had no way to know:
 - Whether the same request is being replayed or double-submitted
 - Whether the installation has quota left
 
-Band B builds the **machinery** to answer those questions. Band C will connect much of it to the live request path and start journaling.
+Band B builds the **machinery** to answer those questions. Band C modules (resolve, validate, journal) are built — see [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md); wiring them into the live `POST /v1/requests` path is still pending.
 
 ### 2.3 Enrollment and daily use (plain language)
 
@@ -757,6 +757,7 @@ The next major milestone, **CP3 (after D4 + E4)**, is the first full Flutter-to-
 | Document | Use when |
 | --- | --- |
 | [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | You need Band A baseline and frozen contracts |
+| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | You need Band C capability/context/journal status |
 | [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | You need slice definitions, §3.11.2 test floors, or Band C+ ordering |
 | [`17-ai-platform.md`](17-ai-platform.md) | You need the authoritative architecture spec |
 | `specs/021` … `specs/024` | Acceptance criteria and quickstarts per Band B slice |
