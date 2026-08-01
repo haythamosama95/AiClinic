@@ -1,0 +1,16 @@
+{
+  "ordered role-tagged message parts": [
+    { "role": "user", "content": "Summarise the visit." }
+  ],
+  "output format directive": { "type": "text" },
+  "sampling constraints": { "temperature": 0.2 },
+  "max output tokens": 256,
+  "stop conditions": [],
+  "tool/function declarations (reserved for future)": [],
+  "stream flag": false,
+  "deadline": 30000,
+  "correlation ids": {
+    "request_reference": "7QK4-2B9F",
+    "trace_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+  }
+}

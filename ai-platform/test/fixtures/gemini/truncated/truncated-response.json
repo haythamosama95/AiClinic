@@ -1,0 +1,16 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{ "text": "Partial output that hit the token limit…" }],
+        "role": "model"
+      },
+      "finishReason": "MAX_TOKENS"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 30,
+    "candidatesTokenCount": 256,
+    "totalTokenCount": 286
+  }
+}
