@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Architecture guard (E1) — stubbed in Phase 1 Tests; completed in Phase 2 (T007).
+      - name: Architecture guard (client R-12 lint)
+        run: |
+          dart tool/architecture_guard/architecture_guard.dart --assert-coverage
+
       - name: Analyze
         run: flutter analyze
 
