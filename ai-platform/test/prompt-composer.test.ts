@@ -220,6 +220,7 @@ function composeFixture(options: {
     filteredContext: options.filteredContext ?? fixtureFilteredContext(),
     userIntent: options.userIntent ?? FIXTURE_USER_INTENT,
     principal: options.principal ?? fixturePrincipal(),
+    requestReference: FIXTURE_REQUEST_REFERENCE,
   });
 }
 
