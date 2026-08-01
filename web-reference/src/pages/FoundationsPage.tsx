@@ -96,7 +96,7 @@ function Swatch({
 }
 
 function ColorSection() {
-  const { theme } = useTheme()
+  const { resolvedTheme: theme } = useTheme()
 
   return (
     <Section
