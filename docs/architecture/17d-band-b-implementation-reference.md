@@ -125,6 +125,57 @@ Band A already introduced the Worker, D1, R2, and Durable Objects. Band B adds t
 
 **In simple terms:** Each clinic installation gets a signing keypair. Private keys live in a schema no normal user can read. When a logged-in staff member needs AI, Supabase mints a 15-minute token whose claims describe org, branch, role, and derived capability scopes.
 
+#### The installation keypair
+
+Each clinic installation has one **Ed25519 signing keypair** (`alg: EdDSA`). The pair is created **inside clinic Postgres** by `pgsodium.crypto_sign_new_keypair()` — neither half is generated on the client or on the AI platform. The private key **never leaves the clinic database**; only the public half is copied to the platform during operator enrollment (B2).
+
+| Key | Size | Stored where | Who can read it | Used for |
+| --- | --- | --- | --- | --- |
+| **Secret (private) key** | 64 bytes | `ai_internal.installation_keys.secret_key` (clinic Postgres) | Only `SECURITY DEFINER` functions (`issue_ai_token`, `verify_aat`) — RLS denies `anon` and `authenticated` | Signing each minted AAT |
+| **Public key** | 32 bytes | `ai_internal.installation_keys.public_key` (clinic Postgres) **and** D1 `installation_key.public_key` (AI platform) | Clinic: same restricted path as above. Platform: config cache / identity verifier (B3) | Verifying AAT signatures on the gateway |
+
+Each key row also carries a **`kid`** (key id, UUID text) and an **`installation_id`** (UUID). The AAT JWS header's `kid` tells the platform which enrolled public key to verify against; payload `iss` carries the `installation_id`.
+
+**Who generates the keypair, and when:**
+
+| Event | Who acts | RPC / route | What happens |
+| --- | --- | --- | --- |
+| **Initial enrollment** (once per clinic deployment) | Clinic **owner or administrator** | `public.enroll_installation_keypair()` | Postgres generates a fresh Ed25519 pair, assigns a new `installation_id`, stores both halves in `ai_internal.installation_keys`, returns `kid` + `installation_id`. The operator then reads the **public** key from the keystore and calls B2 `POST /control/installations/{id}/enroll` with `kid`, `public_key`, and org metadata. |
+| **Rotation** (periodic or after suspected compromise) | Clinic **owner or administrator** | `public.rotate_installation_key()` | Postgres generates a **new** pair and inserts a **new** row (additive — the previous row stays until revoked). New AATs are signed with the latest non-revoked key. The operator repeats the B2 rotate route with the new `kid` + `public_key`. In-flight AATs signed with the old key still verify until they expire. |
+| **Revocation** | Clinic **owner or administrator** | `public.revoke_installation_key(kid)` | Sets `revoked_at` on that key row. The platform rejects any AAT whose header `kid` maps to a revoked key, regardless of `exp`. |
+| **Daily token minting** (per AI request) | Any logged-in **staff member** with `ai.*` RBAC scopes | `public.issue_ai_token()` | Does **not** generate a keypair. Loads the latest active signing key from the keystore, signs a short-lived AAT, records the `jti` in `ai_token_issuance`. |
+
+Staff members mint tokens; only owners/administrators manage the installation keypair.
+
+**Trust bootstrap (one-time, operator-driven):**
+
+```text
+  Clinic owner/admin                         Operator                         AI platform (B2/B3)
+  ──────────────────                         ────────                         ─────────────────────
+
+  enroll_installation_keypair()
+         │
+         ▼
+  ┌─────────────────────────────┐
+  │  Clinic Postgres            │
+  │  ai_internal.installation_  │
+  │  keys                       │
+  │    secret_key  ◄── NEVER    │──── public_key + kid + installation_id ────►  POST /control/.../enroll
+  │    leaves clinic            │                                              D1: installation
+  │    public_key               │                                                   installation_key
+  └─────────────────────────────┘
+
+  Later — staff daily use (B1 only on clinic side):
+
+  issue_ai_token()  ──signs with secret_key──►  AAT (JWS, header.kid)
+                                                         │
+                                                         ▼
+                                              Gateway verifies signature
+                                              against D1 public_key (B3)
+```
+
+The clinic keystore and the platform registry are **separate stores** with no automated sync — the operator is the bridge that copies the public key across at enroll and rotate time (see §5.2).
+
 **What was implemented:**
 
 - **Restricted schema** `ai_internal` with `installation_keys` (public + **secret** key material) and `aat_issuance` ledger.
