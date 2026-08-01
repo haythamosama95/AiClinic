@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/031-stream-broker/plan.md`
-Feature spec: `specs/031-stream-broker/spec.md`
-Branch: `ai/031-d4-stream-broker`
+Active feature plan: `specs/033-response-validator/plan.md`
+Feature spec: `specs/033-response-validator/spec.md`
+Branch: `ai/033-d6-response-validator`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
