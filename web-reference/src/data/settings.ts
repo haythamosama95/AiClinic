@@ -42,27 +42,10 @@ export const NOTIFICATION_PREFS_DEFAULT: NotificationPrefs = {
   productUpdates: false,
 }
 
-export const PRINT_DEFAULTS_STORAGE_KEY = 'aiclinic:print-defaults'
-
-export type PrintDefaults = {
-  receiptFooter: string
-  includeClinicLogo: boolean
-}
-
-export const PRINT_DEFAULTS_DEFAULT: PrintDefaults = {
-  receiptFooter: 'Thank you for choosing our clinic.',
-  includeClinicLogo: true,
-}
-
-export const KEYBOARD_SHORTCUTS_STORAGE_KEY = 'aiclinic:keyboard-shortcuts-enabled'
-export const KEYBOARD_SHORTCUTS_DEFAULT = true
-
 export const SETTINGS_SCREENS = [
   { id: 'appearance', label: 'Appearance', description: 'Theme, language, and display formats' },
   { id: 'notifications', label: 'Notifications', description: 'Alerts and delivery preferences' },
   { id: 'security', label: 'Security', description: 'Workstation idle sign-out' },
-  { id: 'printing', label: 'Printing', description: 'Receipt and document defaults' },
-  { id: 'privacy', label: 'Privacy', description: 'Data export and account privacy' },
 ] as const
 
 export type SettingsScreenId = (typeof SETTINGS_SCREENS)[number]['id']

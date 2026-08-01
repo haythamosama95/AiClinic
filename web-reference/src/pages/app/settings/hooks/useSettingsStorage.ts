@@ -7,14 +7,9 @@ import {
   IDLE_TIMEOUT_MAX,
   IDLE_TIMEOUT_MIN,
   IDLE_TIMEOUT_STORAGE_KEY,
-  KEYBOARD_SHORTCUTS_DEFAULT,
-  KEYBOARD_SHORTCUTS_STORAGE_KEY,
   NOTIFICATION_PREFS_DEFAULT,
   NOTIFICATION_PREFS_STORAGE_KEY,
   type NotificationPrefs,
-  PRINT_DEFAULTS_DEFAULT,
-  PRINT_DEFAULTS_STORAGE_KEY,
-  type PrintDefaults,
   TIME_FORMAT_DEFAULT,
   TIME_FORMAT_STORAGE_KEY,
   type TimeFormat,
@@ -115,63 +110,4 @@ export function useNotificationPrefs() {
   }, [])
 
   return { prefs, setPref }
-}
-
-function loadPrintDefaults(): PrintDefaults {
-  if (typeof window === 'undefined') return PRINT_DEFAULTS_DEFAULT
-  try {
-    const raw = localStorage.getItem(PRINT_DEFAULTS_STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PrintDefaults>
-      return { ...PRINT_DEFAULTS_DEFAULT, ...parsed }
-    }
-  } catch {
-    /* use default */
-  }
-  return PRINT_DEFAULTS_DEFAULT
-}
-
-export function usePrintDefaults() {
-  const [defaults, setDefaultsState] = useState<PrintDefaults>(loadPrintDefaults)
-
-  const setReceiptFooter = useCallback((value: string) => {
-    setDefaultsState((prev) => {
-      const next = { ...prev, receiptFooter: value }
-      localStorage.setItem(PRINT_DEFAULTS_STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
-  }, [])
-
-  const setIncludeClinicLogo = useCallback((value: boolean) => {
-    setDefaultsState((prev) => {
-      const next = { ...prev, includeClinicLogo: value }
-      localStorage.setItem(PRINT_DEFAULTS_STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
-  }, [])
-
-  return { defaults, setReceiptFooter, setIncludeClinicLogo }
-}
-
-function loadKeyboardShortcutsEnabled(): boolean {
-  if (typeof window === 'undefined') return KEYBOARD_SHORTCUTS_DEFAULT
-  try {
-    const raw = localStorage.getItem(KEYBOARD_SHORTCUTS_STORAGE_KEY)
-    if (raw === 'true') return true
-    if (raw === 'false') return false
-  } catch {
-    /* use default */
-  }
-  return KEYBOARD_SHORTCUTS_DEFAULT
-}
-
-export function useKeyboardShortcuts() {
-  const [enabled, setEnabledState] = useState(loadKeyboardShortcutsEnabled)
-
-  const setEnabled = useCallback((value: boolean) => {
-    setEnabledState(value)
-    localStorage.setItem(KEYBOARD_SHORTCUTS_STORAGE_KEY, String(value))
-  }, [])
-
-  return { enabled, setEnabled }
 }

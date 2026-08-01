@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
 abstract final class ShellNavConfig {
@@ -98,6 +99,19 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
   }
 
+  static bool isPersonalSettingsLocation(String location) {
+    return AppRoutes.personalSettingsPaths.contains(location);
+  }
+
+  /// Stable shell transition key so personal settings sub-routes swap in-place
+  /// (web `settingsRoute` keeps one page mounted; design system uses one path).
+  static Object shellPageKeyForLocation(String location) {
+    if (isPersonalSettingsLocation(location)) {
+      return AppRoutes.settings;
+    }
+    return location;
+  }
+
   static bool isDesignSystemLocation(String location) {
     return location == AppRoutes.foundationDemo;
   }
@@ -155,6 +169,10 @@ abstract final class ShellNavConfig {
     }
     if (location == AppRoutes.appointmentsQueue) {
       return 'Queue';
+    }
+    final settingsScreen = SettingsScreens.byId(_settingsScreenIdFromLocation(location));
+    if (settingsScreen != null) {
+      return settingsScreen.label;
     }
 
     final itemId = itemIdForLocation(location);
@@ -251,8 +269,22 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.foundationDemo) {
       return 'dev';
     }
+    if (AppRoutes.personalSettingsPaths.contains(location) || location == AppRoutes.settingsIdleTimeout) {
+      return 'settings';
+    }
 
     return ShellDevNav.itemIdForLocation(location);
+  }
+
+  static String? _settingsScreenIdFromLocation(String location) {
+    if (!location.startsWith('${AppRoutes.settings}/')) {
+      return null;
+    }
+    final segment = location.substring('${AppRoutes.settings}/'.length);
+    if (segment.contains('/')) {
+      return null;
+    }
+    return SettingsScreens.byId(segment) == null ? null : segment;
   }
 
   static String? labelFor(String itemId) {

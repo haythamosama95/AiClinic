@@ -70,7 +70,7 @@ class AuthenticatedShell extends ConsumerWidget {
       ),
       child: ShellDevShellWrapper(
         child: AppShell(
-          pageKey: location,
+          pageKey: ShellNavConfig.shellPageKeyForLocation(location),
           fullWidth: fullWidth,
           fillViewport: fillViewport,
           sidebar: AppSidebar(

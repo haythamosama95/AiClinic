@@ -1,4 +1,4 @@
-import { Bell, Palette, Printer, Shield, Sparkles } from 'lucide-react'
+import { Bell, Palette, Shield } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SETTINGS_SCREENS, type SettingsScreenId } from '@/data/settings'
 import { cn } from '@/lib/cn'
@@ -6,8 +6,6 @@ import { ScreenPanel } from './components/AnimatedPanels'
 import {
   AppearanceScreen,
   NotificationsScreen,
-  PrintingScreen,
-  PrivacyScreen,
   SecurityScreen,
 } from './screens/SettingsScreens'
 import './settings-layout.css'
@@ -21,8 +19,6 @@ export const SETTINGS_NAV_ICONS = {
   appearance: Palette,
   notifications: Bell,
   security: Shield,
-  printing: Printer,
-  privacy: Sparkles,
 } as const
 
 function resolveScreen(screen?: string): SettingsScreenId {
@@ -73,10 +69,6 @@ function SettingsContent({ screen }: { screen: SettingsScreenId }) {
       return <AppearanceScreen />
     case 'notifications':
       return <NotificationsScreen />
-    case 'printing':
-      return <PrintingScreen />
-    case 'privacy':
-      return <PrivacyScreen />
     case 'security':
     default:
       return <SecurityScreen />
@@ -91,7 +83,7 @@ export function SettingsPage({ screen: screenParam, onNavigate }: SettingsPagePr
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Personal preferences for this workstation — theme, alerts, security, and printing."
+        description="Personal preferences for this workstation — theme, alerts, and security."
       />
 
       <div className="settings-layout">

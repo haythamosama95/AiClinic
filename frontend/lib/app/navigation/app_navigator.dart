@@ -71,7 +71,10 @@ class AppNavigator {
   void pushVisitDetail(String visitId) => _context.push(AppRoutes.visitDetail(visitId));
 
   // Settings
-  void goSettings() => _context.go(AppRoutes.settings);
+  void goSettings() => _context.go(AppRoutes.settingsAppearance);
+  void goSettingsAppearance() => _context.go(AppRoutes.settingsAppearance);
+  void goSettingsNotifications() => _context.go(AppRoutes.settingsNotifications);
+  void goSettingsSecurity() => _context.go(AppRoutes.settingsSecurity);
   void goSettingsOrganization() => _context.go(AppRoutes.settingsOrganization);
   void goSettingsBranches() => _context.go(AppRoutes.settingsBranches);
   void goSettingsBranchesNew() => _context.go(AppRoutes.settingsBranchesNew);
@@ -81,7 +84,7 @@ class AppNavigator {
   void goSettingsStaffDetail(String id) => _context.go(AppRoutes.settingsStaffDetail(id));
   void goSettingsStaffResetPassword(String id) => _context.go(AppRoutes.settingsStaffResetPassword(id));
   void goSettingsPermissions() => _context.go(AppRoutes.settingsPermissions);
-  void goSettingsIdleTimeout() => _context.go(AppRoutes.settingsIdleTimeout);
+  void goSettingsIdleTimeout() => _context.go(AppRoutes.settingsSecurity);
 
   // Utility
   void pop() => _context.pop();
