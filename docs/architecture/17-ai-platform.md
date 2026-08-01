@@ -1250,7 +1250,9 @@ cost, validation results, terminal state, and the payload pointers. Two rules di
 
 - **The request row is written synchronously, before the stream opens.** A request that a user saw
 must always have a record, so the record is created at the moment the request is accepted and updated
-with the terminal state when it finishes. One D1 insert costs single-digit milliseconds against an
+in place as the state advances — each transition overwrites `state` and stamps `updated_at`, and the
+terminal one stamps `completed_at` ([§6.3](#63-request-state-machine)). The journal keeps one row per
+request, never one per transition. One D1 insert costs single-digit milliseconds against an
 inference measured in seconds, so deferring it to a post-response continuation would trade audit
 completeness for latency nobody can perceive — the wrong way round for a platform whose hardest
 requirement is explaining a failure after the fact. Bulk detail (per-attempt rows, the usage ledger
@@ -1694,6 +1696,23 @@ stateDiagram-v2
 state transition is journaled with a timestamp, which is what makes the support flow in
 [§8.9](#89-support-audit-trace) a lookup rather than an investigation.
 
+**What "journaled with a timestamp" means precisely.** A transition writes the new state to the
+`ai_request` row's `state` column and stamps `updated_at`; a transition into a terminal state also
+stamps `completed_at`. There is **no per-intermediate-state timestamp history** — no transition table
+and no timeline column. The row therefore carries three milestones (`created_at` at `Accepted`,
+`updated_at` at the most recent transition, `completed_at` at the terminal one), and the states
+between them are recovered by reading those milestones against this graph, which is deterministic:
+every path from `Accepted` to a given terminal state passes through a known sequence of states, and
+the only branching that costs real time — retry and fallback in `Invoking` — is already timestamped
+per attempt on `ai_attempt`. Adding a row or column per transition would multiply the platform's
+dominant table's write volume by the length of the pipeline to recover ordering the graph already
+gives and durations the attempt rows already give ([§7.5](#75-write-path-economics)).
+
+The honest limit of this choice: the exact instant a request entered, say, `Validating` is not
+recoverable. Should a diagnosis ever need per-stage durations, they belong in the trace spans the
+telemetry emitter already produces ([§4.3.12](#4312-telemetry-emitter)), joined by trace id — not in
+the journal.
+
 `AwaitingContext` is reachable only for `conversational` capabilities (A14) and is terminal in the same
 sense as the others: **that request is over**. The conversation continues as a new request with a new
 idempotency key, linked by `conversation_id` ([§6.7](#67-conversational-capabilities)). Naming it a
@@ -1934,7 +1953,7 @@ schema definition.
 | `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
 | `capability_grant` | Which capability versions a plan or installation may use                       | scope, capability id, version, granted/revoked, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
 | `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer, active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
-| `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, timestamps, terminal error code, trace id, payload pointers, plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
+| `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
 | `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
 | `usage_event`      | Append-only quota/billing ledger                                               | installation, period, request id, quota weight, tokens, cost, recorded_at                                                                                                                                                                                                    | ~1 per request           | Longer than requests — billing evidence |
 | `usage_rollup`     | Pre-aggregated per installation/period/capability                              | dimensions, counts, tokens, cost                                                                                                                                                                                                                                             | Small                    | Long                                    |
@@ -2415,7 +2434,7 @@ sequenceDiagram
     U->>SUP: "My AI draft failed. Reference 7QK4-2B9F."
     SUP->>GW: support lookup (reference)
     GW->>D1: indexed lookup on request_reference
-    D1-->>GW: request row: installation, actor, branch,<br/>capability@version, prompt artifact hash,<br/>state timeline, terminal error code, trace id
+    D1-->>GW: request row: installation, actor, branch,<br/>capability@version, prompt artifact hash,<br/>state + milestone timestamps, terminal error code, trace id
     GW->>D1: attempts for the request
     D1-->>GW: provider, model, latency, tokens,<br/>provider request ids, error codes
     GW->>R2: fetch the payload envelope

@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/021-installation-keystore-aat-issuer/spec.md`
-Feature spec: `specs/021-installation-keystore-aat-issuer/spec.md`
-Branch: `ai/021-b1-installation-keystore-aat-issuer`
+Active feature plan: `specs/027-journal-writer-get-request/spec.md`
+Feature spec: `specs/027-journal-writer-get-request/spec.md`
+Branch: `ai/027-c3-journal-writer-get-request`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
