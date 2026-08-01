@@ -2,7 +2,6 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/setup/application/provisioning_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';

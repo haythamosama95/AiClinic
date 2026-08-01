@@ -5,7 +5,6 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
-import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/billing_settings_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

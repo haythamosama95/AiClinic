@@ -486,7 +486,7 @@ class _ReloadTrackingAuthNotifier extends TestAuthSessionNotifier {
   _ReloadTrackingAuthNotifier(this.initial) : _state = initial;
 
   final AuthSessionState initial;
-  AuthSessionState _state;
+  final AuthSessionState _state;
   var reloadCount = 0;
 
   @override

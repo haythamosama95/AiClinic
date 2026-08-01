@@ -132,7 +132,7 @@ class FakeBootstrapRepository implements BootstrapRepository {
     if (_onFinishSetup == null) {
       throw StateError('finishSetup not stubbed');
     }
-    return _onFinishSetup!(input);
+    return _onFinishSetup(input);
   }
 
   @override
@@ -140,7 +140,7 @@ class FakeBootstrapRepository implements BootstrapRepository {
     if (_onResetInstallation == null) {
       throw StateError('resetInstallation not stubbed');
     }
-    return _onResetInstallation!();
+    return _onResetInstallation();
   }
 }
 

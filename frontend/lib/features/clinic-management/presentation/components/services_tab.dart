@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';

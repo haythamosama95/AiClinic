@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
-import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/billing_settings_notifier.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_settings_tab.dart';
 

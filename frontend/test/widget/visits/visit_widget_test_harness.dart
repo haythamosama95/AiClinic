@@ -40,7 +40,6 @@ import '../../helpers/role_permission_seed.dart';
 import '../../support/visit_encounter_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
-import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
 
 export 'package:riverpod/misc.dart' show Override;
 export '../../support/visit_encounter_test_support.dart';

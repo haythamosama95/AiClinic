@@ -1,5 +1,4 @@
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/branch_form_values.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/utils/working_schedule.dart';
 import 'package:flutter_test/flutter_test.dart';

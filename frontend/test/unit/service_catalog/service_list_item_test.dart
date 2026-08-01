@@ -14,7 +14,7 @@ void main() {
       'global_status': 'active',
       'assigned_branch_count': 3,
       'updated_at': '2026-01-02T10:00:00.000Z',
-      if (branchSummary != null) 'branch_summary': branchSummary,
+      'branch_summary': ?branchSummary,
     };
   }
 

@@ -1,5 +1,4 @@
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
-import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

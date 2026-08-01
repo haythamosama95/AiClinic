@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/clinic-management/presentation/components/branch_form_dialog.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/branches_tab.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/models/branch_form_values.dart';
 
 import 'clinic_management_widget_test_harness.dart';
 

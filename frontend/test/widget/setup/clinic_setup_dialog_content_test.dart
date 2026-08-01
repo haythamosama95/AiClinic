@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_hydration_provider.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_wizard.dart';
 
 import '../../helpers/auth_test_support.dart';

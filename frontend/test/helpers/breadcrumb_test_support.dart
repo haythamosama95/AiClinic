@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';

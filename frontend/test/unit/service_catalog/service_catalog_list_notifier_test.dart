@@ -208,16 +208,14 @@ void main() {
 
 class _ConfigurableListServicesRpcClient extends RpcCaptureSupabaseClient {
   _ConfigurableListServicesRpcClient({
-    this.shouldFail = false,
     this.total = 1,
     this.itemCount = 1,
-    this.itemName = 'Consultation',
   });
 
-  bool shouldFail;
+  bool shouldFail = false;
   final int total;
   final int itemCount;
-  String itemName;
+  String itemName = 'Consultation';
   int listCallCount = 0;
 
   @override

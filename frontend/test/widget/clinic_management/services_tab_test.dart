@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';

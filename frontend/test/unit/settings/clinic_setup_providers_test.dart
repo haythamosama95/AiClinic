@@ -1,6 +1,5 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';

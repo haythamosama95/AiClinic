@@ -1,8 +1,6 @@
 // Reusable pump helpers and fakes for setup presentation widget tests.
 // ignore_for_file: depend_on_referenced_packages
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';

@@ -31,8 +31,6 @@ import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_
 import 'package:ai_clinic/features/service_catalog/domain/effective_price.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
-import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
