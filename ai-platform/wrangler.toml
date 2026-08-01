@@ -2,6 +2,11 @@ name = "ai-platform-gateway"
 main = "src/worker.ts"
 compatibility_date = "2026-05-03"
 
+[[rules]]
+type = "Text"
+globs = ["prompts/**/*.md"]
+fallthrough = true
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GatewayObject"]
