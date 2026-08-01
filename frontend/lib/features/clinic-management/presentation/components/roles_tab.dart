@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/clinic-management/domain/permission_matrix_view.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/role_permissions_matrix.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
@@ -68,7 +70,7 @@ class RolesTab extends ConsumerWidget {
             const SizedBox(height: AppSpacing.space6),
             SizedBox(
               width: double.infinity,
-              child: RolePermissionsMatrix(
+              child: _DeferredRolePermissionsMatrix(
                 matrix: state.workingMatrix,
                 savedMatrix: state.savedMatrix,
                 editable: state.editable,
@@ -91,6 +93,75 @@ class RolesTab extends ConsumerWidget {
   }
 }
 
+/// Defers mounting the heavy grant matrix until after the tab transition frame.
+class _DeferredRolePermissionsMatrix extends StatefulWidget {
+  const _DeferredRolePermissionsMatrix({
+    required this.matrix,
+    required this.savedMatrix,
+    required this.editable,
+    required this.onToggle,
+    required this.isCellDirty,
+  });
+
+  final PermissionMatrixView matrix;
+  final PermissionMatrixView savedMatrix;
+  final bool editable;
+  final RoleGrantToggleCallback onToggle;
+  final bool Function(StaffRole role, String permissionKey) isCellDirty;
+
+  @override
+  State<_DeferredRolePermissionsMatrix> createState() => _DeferredRolePermissionsMatrixState();
+}
+
+class _DeferredRolePermissionsMatrixState extends State<_DeferredRolePermissionsMatrix> {
+  var _matrixReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _matrixReady = true);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_matrixReady) {
+      return const _RolePermissionsMatrixSkeleton();
+    }
+
+    return RolePermissionsMatrix(
+      matrix: widget.matrix,
+      savedMatrix: widget.savedMatrix,
+      editable: widget.editable,
+      isCellDirty: widget.isCellDirty,
+      onToggle: widget.onToggle,
+    );
+  }
+}
+
+class _RolePermissionsMatrixSkeleton extends StatelessWidget {
+  const _RolePermissionsMatrixSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const AppSkeleton(height: 56),
+        const SizedBox(height: AppSpacing.space4),
+        for (var index = 0; index < 3; index++) ...[
+          if (index > 0) const SizedBox(height: AppSpacing.space4),
+          const AppSkeleton(height: 160),
+        ],
+      ],
+    );
+  }
+}
+
 class _RolesTabLoadingBody extends StatelessWidget {
   const _RolesTabLoadingBody();
 
@@ -104,7 +175,7 @@ class _RolesTabLoadingBody extends StatelessWidget {
         const SizedBox(height: AppSpacing.space2),
         const AppSkeleton(height: 16, width: 480),
         const SizedBox(height: AppSpacing.space6),
-        const AppSkeleton(height: 320),
+        const _RolePermissionsMatrixSkeleton(),
       ],
     );
   }

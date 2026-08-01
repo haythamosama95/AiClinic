@@ -56,11 +56,32 @@ void main() {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
     });
+
+    test('personal settings routes use shell scroll (content-sized)', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsAppearance), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsNotifications), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsSecurity), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsOrganization), isFalse);
+    });
   });
 
   group('ShellNavConfig.itemIdForLocation', () {
     test('maps pushed visit billing routes to invoices nav item', () {
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.billingVisit('visit-1')), 'invoices');
+    });
+  });
+
+  group('ShellNavConfig.shellPageKeyForLocation', () {
+    test('personal settings sub-routes share stable shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsAppearance), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsNotifications), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsSecurity), AppRoutes.settings);
+    });
+
+    test('other routes keep location as shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.home), AppRoutes.home);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.patients), AppRoutes.patients);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.clinicManagement), AppRoutes.clinicManagement);
     });
   });
 

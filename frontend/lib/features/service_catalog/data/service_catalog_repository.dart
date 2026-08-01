@@ -446,7 +446,7 @@ class ServiceCatalogRepository with AppRpcInvoker {
             items.add(item);
           }
         } else if (raw is Map) {
-          final item = ServiceListItem.fromRow(Map<String, dynamic>.from(raw));
+          final item = ServiceListItem.fromRow(_coerceStringKeyMap(raw));
           if (item != null) {
             items.add(item);
           }
@@ -527,6 +527,10 @@ class ServiceCatalogRepository with AppRpcInvoker {
       createdCount: createdRaw is num ? createdRaw.toInt() : 0,
       overwrittenCount: overwrittenRaw is num ? overwrittenRaw.toInt() : 0,
     );
+  }
+
+  Map<String, dynamic> _coerceStringKeyMap(Map raw) {
+    return raw.map((key, value) => MapEntry(key.toString(), value));
   }
 
   List<String> _parseStringList(Object? raw) {

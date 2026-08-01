@@ -69,3 +69,11 @@ export type StaffFormValues = {
   branchIds: string[]
   primaryBranchId: string | null
 }
+
+export type ServiceRecord = {
+  id: string
+  name: string
+  price: number | null
+  allBranches: boolean
+  branchIds: string[]
+}

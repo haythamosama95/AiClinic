@@ -25,10 +25,7 @@ void main() {
             () => _PresetAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  role: StaffRole.doctor,
-                  permissions: RolePermissionSeed.doctor,
-                ),
+                context: sampleAuthSessionContext(role: StaffRole.doctor, permissions: RolePermissionSeed.doctor),
               ),
             ),
           ),
@@ -85,9 +82,7 @@ void main() {
             () => _PresetAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-                context: sampleAuthSessionContext(
-                  permissions: {PermissionKeys.paymentsRecord},
-                ),
+                context: sampleAuthSessionContext(permissions: {PermissionKeys.paymentsRecord}),
               ),
             ),
           ),
@@ -104,10 +99,7 @@ void main() {
 
       final state = container.read(billingSettingsProvider);
       expect(state.hasError, isTrue);
-      expect(
-        state.error,
-        isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR'),
-      );
+      expect(state.error, isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR'));
     });
 
     test('reload refreshes settings on success', () async {
@@ -168,7 +160,7 @@ void main() {
       expect(state.error, isA<RpcFailure>());
     });
 
-    test('updateAllowPartialPayments sends RPC, refreshes state, and shows loading', () async {
+    test('updateAllowPartialPayments optimistically updates while pending', () async {
       final client = _DelayedUpdateBillingRpcClient(updateDelay: const Duration(milliseconds: 50));
       final container = ProviderContainer(
         overrides: [
@@ -190,7 +182,8 @@ void main() {
 
       final updateFuture = container.read(billingSettingsProvider.notifier).updateAllowPartialPayments(true);
       await Future<void>.delayed(Duration.zero);
-      expect(container.read(billingSettingsProvider), isA<AsyncLoading<BillingSettings>>());
+      expect(container.read(billingSettingsProvider).value?.allowPartialPayments, isTrue);
+      expect(container.read(billingSettingsProvider).isLoading, isFalse);
 
       await updateFuture;
 
@@ -304,13 +297,11 @@ class _DelayedUpdateBillingRpcClient extends BillingRpcTestClient {
       lastFunction = fn;
       lastParams = params == null ? null : Map<String, dynamic>.from(params);
       allowPartialPayments = lastParams?['p_allow_partial_payments'] == true;
-      return _DelayedFakePostgrestRpc(
-        {
-          'success': true,
-          'data': {'allow_partial_payments': allowPartialPayments},
-        },
-        updateDelay,
-      ) as PostgrestFilterBuilder<T>;
+      return _DelayedFakePostgrestRpc({
+            'success': true,
+            'data': {'allow_partial_payments': allowPartialPayments},
+          }, updateDelay)
+          as PostgrestFilterBuilder<T>;
     }
     return super.rpc<T>(fn, params: params, get: get);
   }

@@ -37,6 +37,8 @@ import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page
 import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -182,8 +184,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.clinicManagement, builder: (context, state) => const ClinicManagementPage()),
 
           // Settings
-          GoRoute(path: AppRoutes.settings, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsIdleTimeout, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settings, redirect: (_, _) => AppRoutes.settingsAppearance),
+          GoRoute(path: AppRoutes.settingsIdleTimeout, redirect: (_, _) => AppRoutes.settingsSecurity),
           GoRoute(path: AppRoutes.settingsOrganization, redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsBranches, redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsBranchesNew, redirect: _redirectToClinicManagement),
@@ -193,6 +195,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', redirect: _redirectToClinicManagement),
           GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsPermissions, redirect: _redirectToClinicManagement),
+          GoRoute(
+            path: '${AppRoutes.settings}/:screenId',
+            redirect: (context, state) {
+              final screenId = state.pathParameters['screenId'];
+              if (screenId == null || SettingsScreens.byId(screenId) == null) {
+                return AppRoutes.settingsAppearance;
+              }
+              return null;
+            },
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: const ValueKey('settings-personal'),
+              child: SettingsPage(screenId: state.pathParameters['screenId']),
+            ),
+          ),
         ],
       ),
     ],

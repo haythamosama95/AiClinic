@@ -36,7 +36,7 @@ export function AppTopBar({
   toolbarSlot,
 }: AppTopBarProps) {
   const { openCommandBar, registerTrigger } = useCommandBar()
-  const { theme, toggleTheme } = useTheme()
+  const { resolvedTheme, toggleTheme } = useTheme()
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -108,13 +108,13 @@ export function AppTopBar({
         </div>
 
         <IconButton
-          label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+          label={resolvedTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
           variant="ghost"
           size="lg"
           className={TOPBAR_ICON_CLASS}
           onClick={toggleTheme}
           icon={
-            theme === 'light' ? (
+            resolvedTheme === 'light' ? (
               <Moon size={24} strokeWidth={1.5} />
             ) : (
               <Sun size={24} strokeWidth={1.5} />
