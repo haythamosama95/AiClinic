@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/033-response-validator/plan.md`
-Feature spec: `specs/033-response-validator/spec.md`
-Branch: `ai/033-d6-response-validator`
+Active feature plan: `specs/034-second-provider-adapter/plan.md`
+Feature spec: `specs/034-second-provider-adapter/spec.md`
+Branch: `ai/034-d7-second-provider-adapter`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
