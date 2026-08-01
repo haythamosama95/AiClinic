@@ -12,6 +12,7 @@ import {
   type ProviderPort,
   type ScriptedOutcome,
 } from "../src/provider/port";
+import { runInvocation } from "../src/invocation";
 import {
   type ChainEntry,
   type RoutingDecision,
@@ -60,35 +61,6 @@ type InvocationInput = {
   sleeper: (ms: number) => Promise<void>;
   providerHistoryStore?: ProviderHistoryStore;
 };
-
-type InvocationResult =
-  | { ok: true; result: CanonicalResult }
-  | { ok: false; error: CanonicalError };
-
-// Phase 1 scaffolding: vi.mock stands in for `src/invocation/index.ts` (T014).
-// Phase 2 removes this block once the real attempt loop module exists.
-const { runInvocationMock } = vi.hoisted(() => ({
-  runInvocationMock: vi.fn(
-    async (): Promise<InvocationResult> => ({
-      ok: false,
-      error: {
-        "taxonomy code": "internal_error",
-        retryability: true,
-        "provider-native code and message": {
-          code: "NOT_IMPLEMENTED",
-          message: "D3 invocation attempt loop not implemented",
-        },
-        "whether the attempt consumed budget": false,
-      },
-    }),
-  ),
-}));
-
-vi.mock("../src/invocation", () => ({
-  runInvocation: runInvocationMock,
-}));
-
-import { runInvocation } from "../src/invocation";
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
