@@ -37,6 +37,16 @@ Execute the complete AI Platform specification workflow for the provided specifi
 - Assign **each workflow stage** to a dedicated **Cursor Grok 4.5** subagent (`model: "cursor-grok-4.5-medium"`, `subagent_type: "generalPurpose"`).
 - Do **not** begin the next stage until the current stage has completed successfully.
 
+### Escalation Handling
+
+When any stage reports an escalation:
+
+1. Spawn a dedicated **Claude Opus 5.0 (low thinking)** subagent (`model: "claude-opus-5-thinking-low"`, `subagent_type: "generalPurpose"`) to resolve the escalation.
+2. After the escalation is resolved, **re-run the stage** that reported it.
+3. Only proceed to the next stage once that stage completes successfully without a new escalation.
+
+Do **not** stop the workflow on escalation unless the Opus subagent cannot resolve it after a reasonable attempt.
+
 ---
 
 ## Workflow
@@ -51,7 +61,7 @@ Run:
 
 Read and follow `.cursor/skills/ai-platform-specify/SKILL.md`.
 
-If the skill reports an escalation, stop the workflow.
+If the skill reports an escalation, follow **Escalation Handling** above.
 
 ---
 
@@ -71,7 +81,7 @@ Rules:
 - Answer **each question** using a dedicated **Cursor Grok 4.5** subagent (`model: "cursor-grok-4.5-medium"`).
 - Wait until all questions have been answered before allowing the clarification stage to complete.
 
-If the skill reports an escalation, stop the workflow.
+If the skill reports an escalation, follow **Escalation Handling** above.
 
 ---
 
@@ -85,7 +95,7 @@ Run:
 
 Read and follow `.cursor/skills/ai-platform-plan/SKILL.md`.
 
-If the skill reports an escalation, stop the workflow.
+If the skill reports an escalation, follow **Escalation Handling** above.
 
 ---
 
@@ -102,7 +112,7 @@ Read and follow `.cursor/skills/ai-platform-tasks/SKILL.md`.
 If the skill reports an escalation:
 
 - If the escalation indicates that the maximum task count was exceeded, instruct the subagent to **combine related tasks** and regenerate the task list.
-- For any other escalation, stop the workflow.
+- For any other escalation, follow **Escalation Handling** above.
 
 ---
 
@@ -120,11 +130,17 @@ Resolve `<specifications path>` from the branch created during Stage 1 (e.g. `sp
 
 Wait until the implementation completes successfully.
 
+If the skill reports an escalation, follow **Escalation Handling** above.
+
 ---
 
 ## Failure Handling
 
-Immediately stop the workflow if any stage reports an escalation, except for the task-count escalation during **Generate Tasks**, which should be resolved by combining related tasks and rerunning that stage.
+When a stage reports an escalation, follow **Escalation Handling** above: spawn a Claude Opus 5.0 (low thinking) subagent to fix it, then re-run that stage.
+
+For the task-count escalation during **Generate Tasks**, first try combining related tasks and regenerating the task list before invoking escalation handling.
+
+Stop the workflow only if the Opus subagent cannot resolve the escalation.
 
 ---
 
@@ -133,7 +149,7 @@ Immediately stop the workflow if any stage reports an escalation, except for the
 The workflow is complete only when:
 
 1. Specification has been created.
-2. Clarification has completed without escalations.
+2. Clarification has completed successfully.
 3. Planning has completed.
 4. Tasks have been generated successfully.
 5. All implementation phases have been completed successfully by `/ai-platform-implement-all-tasks`.
