@@ -59,6 +59,26 @@ class NotificationPreferences {
       productUpdates: json['productUpdates'] as bool? ?? defaults.productUpdates,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is NotificationPreferences &&
+            appointmentReminders == other.appointmentReminders &&
+            billingAlerts == other.billingAlerts &&
+            labResults == other.labResults &&
+            shiftHandoffs == other.shiftHandoffs &&
+            productUpdates == other.productUpdates;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    appointmentReminders,
+    billingAlerts,
+    labResults,
+    shiftHandoffs,
+    productUpdates,
+  );
 }
 
 enum NotificationPreferenceKey {
