@@ -93,7 +93,7 @@ outcome; persisting it into D1/R2 is C3's concern and must not invent a new
 | `cost_class_source` | `manifest` / `entitlement_cap` / `installation_override` |
 | `routing_tier` | `standard` / `degraded` |
 | `required_features` | Capability requirements applied |
-| `chain` | Ordered `{ ordinal, provider_id, model_id }[]` |
+| `chain` | Ordered `{ ordinal, provider_id, model_id, max_attempts, timeout_ms }[]` — `max_attempts` / `timeout_ms` are carried through unchanged from the matched rule's `targets[]` (§2), so D3 bounds attempts without re-reading policy or inventing caps |
 | `excluded` | `{ provider_id, model_id, reason_code }[]` |
 | `max_parallel_attempts` | Integer `1`–`6` |
 

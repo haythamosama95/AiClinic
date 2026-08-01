@@ -46,6 +46,9 @@ export type ChainEntry = {
   ordinal: number;
   provider_id: string;
   model_id: string;
+  /** Attempt bounds carried through from the matched rule's target (§4.3.7). */
+  max_attempts: number;
+  timeout_ms: number;
 };
 
 export type ExcludedEntry = {
@@ -351,6 +354,8 @@ function filterTargets(
       ordinal,
       provider_id: target.provider_id,
       model_id: target.model_id,
+      max_attempts: target.max_attempts,
+      timeout_ms: target.timeout_ms,
     });
     ordinal += 1;
   }
