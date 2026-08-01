@@ -1214,6 +1214,55 @@ fallback chain on each request, which costs a little latency during an outage bu
 "why did this request go to Gemini?" fully contained in one request's own journal entry. Health-based
 routing is a deliberate deferral, not an oversight ([§9.14](#914-mechanisms-deliberately-simplified)).
 
+**Policy content and where it resolves.** `routing_policy.content_pointer`
+([§7.3](#73-d1-logical-model)) is an R2 key under the control-plane prefix,
+`control/routing-policy/{policy_id}/{version}.json`, written once and never mutated — a new policy
+version is a new object plus a new `routing_policy` row, which is what makes rollback an activation
+change rather than an edit. The active version's document is held in the config cache
+([§4.4](#44-storage-ownership)) alongside kill switches and grants, so the router reads it without
+touching D1 or R2 on the request path. The document is:
+
+| Field                             | Type / values                                                                                                                                        | Notes                                                                                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version`                  | integer                                                                                                                                              | Document format version; independent of `policy_version`                                                                                     |
+| `policy_id`, `policy_version`     | string, integer                                                                                                                                      | Must equal the owning `routing_policy` row                                                                                                   |
+| `defaults`                        | `{ cost_class, max_parallel_attempts }`                                                                                                              | Applied when a rule omits them                                                                                                               |
+| `rules[]`                         | ordered, **first match wins**                                                                                                                        | An empty match set matches everything; a document must end with a catch-all rule                                                             |
+| `rules[].rule_id`                 | string, unique in document                                                                                                                           | Recorded in the selection reason                                                                                                             |
+| `rules[].match`                   | `{ capability_ids[], installation_ids[], cost_classes[], tiers[], languages[], latency_classes[] }` — all optional, all present clauses must hold      | `tiers[]` takes `standard` / `degraded`                                                                                                      |
+| `rules[].requires`                | `{ structured_output: bool, min_context_window: int, languages[] }`                                                                                  | Feature floor a target must satisfy; the capability manifest's Routing group supplies the request-side values compared against it            |
+| `rules[].targets[]`               | ordered chain of `{ provider_id, model_id, features, max_attempts, timeout_ms }`                                                                     | `model_id` is a **pinned version, never a floating alias** (R-4); `features` mirrors the `requires` shape and is what the filter reads        |
+| `rules[].max_parallel_attempts`   | integer `1`–`6`, default `1`                                                                                                                         | Speculative parallelism, hard-bounded by the per-request outgoing-connection cap of six ([§1.4](#14-verified-platform-capability-budget))     |
+| `overrides[]`                     | `{ installation_id, exclude_providers[], pin_target, force_cost_class }`                                                                             | Applied after rule selection, before feature filtering; an override may narrow the chain but never widen it beyond the matched rule's targets |
+
+**Cost class** is an ordered enum — `economy` < `standard` < `premium`. It is never supplied by the
+request; clients must not learn routing ([§3.4](#34-the-three-seams)). The effective class is the
+**lowest** of three sources, and the router records which one bound it: the capability manifest's
+Routing group (the class the feature is designed for), the entitlement's `max_cost_class` (the plan
+ceiling), and an installation `force_cost_class` override in the policy document. Taking the minimum
+means a cheaper plan can never be routed above what it pays for, and a premium plan never lifts a
+capability above what its manifest declares safe.
+
+**The degraded signal is internal, not a wire field.** The quota check
+([§8.8](#88-quota-and-rate-limit-rejection)) returns `{ allowed, degraded }`; when `degraded` is true
+the gateway sets `routing_tier = degraded` (otherwise `standard`) on the in-memory request context and
+persists it as `ai_request.routing_tier`. The router matches it against `rules[].match.tiers`. Nothing
+about the tier is accepted from the client — the client only ever *receives* the boolean
+`degraded_notice` on the accepted event, and cannot send it.
+
+**The selection reason** is recorded in two places. `ai_request.routing_decision` holds one object per
+request — `policy_id`, `policy_version`, `rule_id`, `effective_cost_class`, `cost_class_source`
+(`manifest` / `entitlement_cap` / `installation_override`), `routing_tier`, `required_features`,
+`chain` as an ordered list of `{ ordinal, provider_id, model_id }`, `excluded` as a list of
+`{ provider_id, model_id, reason_code }`, and `max_parallel_attempts`. A `reason_code` takes
+`feature_unsupported`, `context_window_too_small`, `language_unsupported`, `kill_switch`,
+`installation_excluded`, or `cost_class_excluded`. Each
+`ai_attempt` row then carries a `selection_reason` enum saying why *that* target was tried:
+`primary`, `fallback_after_retryable_error`, `fallback_after_timeout`, `speculative`, or
+`repair_retry`. The split matters — the request-level object explains the chain, the attempt-level
+enum explains the walk through it, and support needs both to answer "why this provider?" from one
+journal entry.
+
 #### 4.3.8 Provider adapters and egress
 
 One adapter per provider, each translating the **canonical inference request** ([§5.3](#53-canonical-inference-representation))
@@ -1402,7 +1451,7 @@ anything semantically meaningful produces a new version.
 | **Context requirements** | Ordered list of context keys with `required`/`optional`, shape reference, max size, freshness hint. A `conversational` capability instead declares a **permitted key set** the assistant may request during a turn                                                                                                                                                                                                                                                                     | Context validator, client Context Resolver ([§5.2](#52-context-contract)) |
 | **Prompt binding**       | System instruction artifact ref, business-rule fragment refs, context rendering template ref, output-format instruction derivation rule                                                                                                                                                                                                                                                                                                                                                | Prompt composer                                                           |
 | **Output**               | Mode (`prose` / `structured` / `structured_atomic`), output schema ref, business validation rule refs, repair policy (allowed, max attempts)                                                                                                                                                                                                                                                                                                                                           | Validator, stream broker                                                  |
-| **Routing**              | Routing policy ref, required provider features (structured output, context window, language), latency class, degraded-tier policy                                                                                                                                                                                                                                                                                                                                                      | Provider router                                                           |
+| **Routing**              | Routing policy ref, cost class (`economy` / `standard` / `premium` — the class this feature is designed for; see [§4.3.7](#437-provider-router-and-policy-engine)), required provider features (structured output, context window, language), latency class, degraded-tier policy                                                                                                                                                                                                                                                                                                                                                      | Provider router                                                           |
 | **Economics**            | Max input tokens, max output tokens, per-request cost ceiling, quota weight. **The per-request cost ceiling is denominated in tokens** — it is the maximum billable token count for one request, that is estimated input tokens plus max output tokens; it carries no currency and the gateway holds no price table. For `conversational`, the per-request ceiling applies per turn, and the conversation is bounded by the turn and round limits above rather than by a running total | Entitlement stage                                                         |
 | **Governance**           | Acceptance mode (`advisory_display`, `human_accept_required`, `auto_apply` — the last one disallowed for clinical content per A5), retention class, eval suite ref                                                                                                                                                                                                                                                                                                                     | Client, journal, CI                                                       |
 
@@ -1983,11 +2032,11 @@ schema definition.
 | ------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | --------------------------------------- |
 | `installation`     | An enrolled clinic deployment                                                  | installation id, org id, display name, status, region, enrolled_at                                                                                                                                                                                                           | Tens–thousands of rows   | Life of customer                        |
 | `installation_key` | Verification material and rotation history                                     | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                  | Few per installation     | History kept for audit                  |
-| `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
+| `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
 | `capability_grant` | Which capability versions a plan or installation may use                       | scope, capability id, version, granted/revoked, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
-| `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer, active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
-| `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
-| `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
+| `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer (R2 key for the immutable policy document — schema in [§4.3.7](#437-provider-router-and-policy-engine)), active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
+| `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, `routing_tier` (`standard` / `degraded`), `routing_decision` ([§4.3.7](#437-provider-router-and-policy-engine)), plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
+| `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, `selection_reason` ([§4.3.7](#437-provider-router-and-policy-engine)), outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
 | `usage_event`      | Append-only quota/billing ledger                                               | installation, period, request id, quota weight, tokens, cost, recorded_at                                                                                                                                                                                                    | ~1 per request           | Longer than requests — billing evidence |
 | `usage_rollup`     | Pre-aggregated per installation/period/capability                              | dimensions, counts, tokens, cost                                                                                                                                                                                                                                             | Small                    | Long                                    |
 | `platform_counter` | Bucketed counts for events that are never journaled — chiefly guard rejections | dimension set, time bucket, count                                                                                                                                                                                                                                            | Bounded, low cardinality | Months                                  |
@@ -2438,7 +2487,8 @@ sequenceDiagram
             Note over C: AI affordance disabled with a clear reason.<br/>All non-AI workflows remain fully usable (A11).
         else soft threshold crossed
             QDO-->>GW: yes {degraded: true}
-            GW->>GW: router selects cheaper target tier
+            GW->>GW: set routing_tier = degraded<br/>on the request context
+            GW->>GW: router matches rules[].match.tiers
             GW-->>C: accepted {degraded_notice}
         else normal
             QDO-->>GW: yes
@@ -2450,7 +2500,9 @@ sequenceDiagram
 
 
 The soft-threshold branch is the constitutional requirement in action: subscription and quota limits
-degrade the service, they never lock the product (constitution principle V).
+degrade the service, they never lock the product (constitution principle V). `routing_tier` is
+gateway-set and internal — the client sends nothing to trigger it and receives only the
+`degraded_notice` boolean ([§4.3.7](#437-provider-router-and-policy-engine)).
 
 ### 8.9 Support audit trace
 

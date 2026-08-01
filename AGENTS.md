@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/027-journal-writer-get-request/spec.md`
-Feature spec: `specs/027-journal-writer-get-request/spec.md`
-Branch: `ai/027-c3-journal-writer-get-request`
+Active feature plan: `specs/029-provider-port-routing/plan.md`
+Feature spec: `specs/029-provider-port-routing/spec.md`
+Branch: `ai/029-d2-provider-port-routing`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
