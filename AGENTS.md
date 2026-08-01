@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/030-invocation-retry-fallback/plan.md`
-Feature spec: `specs/030-invocation-retry-fallback/spec.md`
-Branch: `ai/030-d3-invocation-retry-fallback`
+Active feature plan: `specs/031-stream-broker/plan.md`
+Feature spec: `specs/031-stream-broker/spec.md`
+Branch: `ai/031-d4-stream-broker`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
