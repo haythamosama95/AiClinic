@@ -1167,6 +1167,23 @@ typed data on the same footing as ordinary context — the composer draws no dis
 text that arrived from a clinical note and free text a clinician typed into a chat box, because neither
 may act as an instruction (R-10).
 
+The composer emits its parts using the closed canonical role-tag set frozen in
+[§5.3](#53-canonical-inference-representation) — `system` for the system instruction, the
+business-rule fragments and the derived output-format instruction; `user` for the user intent and a
+transcript's user turns; `assistant` for a transcript's prior model turns; `data` for context. It
+invents no tag of its own.
+
+**"Delimited, typed data" has one rendering**, so that R-10 is a property of the shape rather than of
+the wording: every context part is a single `data` part whose payload is the manifest-declared keys
+rendered one per block, each block opened and closed by a tag naming the key and declaring the key's
+published shape, and the value emitted verbatim inside it. Nothing else is placed in a `data` part —
+no preamble, no instruction, no explanation of what to do with the content. Any delimiter-like text
+occurring inside a value is neutralized so a value cannot close its own block or open another; that
+escaping, not a plea in the system instruction, is what stops an embedded instruction from acting as
+one. **The payload of a `data` part is opaque to adapters**: adapters bind to the role tag only and
+forward the payload unread, so the block format can change with a capability build without touching
+a provider adapter.
+
 Two decisions worth defending:
 
 - **Prompt artifacts are versioned, immutable assets deployed with the Worker, and the version in
@@ -1442,11 +1459,27 @@ upstream of the adapters speaks only this; nothing upstream may contain a provid
 
 | Element                | Contents                                                                                                                                                                                                                                      |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Canonical request      | Ordered role-tagged message parts, output format directive (free text / JSON with schema), sampling constraints, max output tokens, stop conditions, tool/function declarations (reserved for future), stream flag, deadline, correlation ids |
+| Canonical request      | Ordered role-tagged message parts (role tags from the closed set below), output format directive (free text / JSON with schema), sampling constraints, max output tokens, stop conditions, tool/function declarations (reserved for future), stream flag, deadline, correlation ids |
 | Canonical stream chunk | Sequence number, kind (`text_delta`, `partial_structured`, `usage`, `provider_note`), payload, terminal flag                                                                                                                                  |
 | Canonical result       | Final content, usage counters (input/output/cached tokens), provider+model actually used, finish reason, provider request id, timing breakdown                                                                                                |
 | Canonical error        | Taxonomy code, retryability, provider-native code and message (for diagnostics only), whether the attempt consumed budget                                                                                                                     |
 
+
+**Message-part role tags are a closed set**, owned by this section and frozen with the canonical
+representation — not invented by the composer and not extended by an adapter:
+
+| Role tag    | Carries                                                                                                            | Adapter obligation                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `system`    | The system instruction artifact, the capability's business-rule fragments, and the derived output-format instruction | Maps to the provider's system/developer role; where a provider has none, the parts are emitted first and are never merged with a `data` part |
+| `user`      | The user intent, and a user turn of a supplied transcript (conversational capabilities)                              | Maps to the provider's user role                                                                                                          |
+| `assistant` | A prior model turn of a supplied transcript (conversational capabilities only)                                       | Maps to the provider's assistant role                                                                                                     |
+| `data`      | The validated context payload rendered through the capability's template, as delimited typed data (R-10)             | Emitted as a non-instruction part — never as system/developer content and never concatenated into a `system` part                          |
+
+A part carrying a `data` role is data, never command: no provider mapping may promote it to an
+instruction role, which is what makes R-10 enforceable at the boundary rather than by prompt wording.
+`data` has no direct equivalent in most provider wire formats; an adapter that lacks one emits it in
+the provider's user role as its own message, keeping it separate from the user intent part.
+The composer (§4.3.6) assembles parts using these tags; it does not define them.
 
 **Why not simply use an OpenAI-compatible shape as the internal format**, given that most providers
 accept it? Because "OpenAI-compatible" is a moving target defined by another vendor: adopting it means
