@@ -171,7 +171,7 @@ function createCapturingTransport(
 ): CapturingTransport {
   const captured: CapturedWireRequest[] = [];
   const transport: DeepSeekTransport = {
-    async fetch(url, init) {
+    fetch(url, init) {
       const request: CapturedWireRequest = {
         url,
         method: init.method,
