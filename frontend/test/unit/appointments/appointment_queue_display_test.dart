@@ -1,8 +1,8 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/queue/domain/queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
@@ -30,6 +30,95 @@ void main() {
 
     test('formatWaitedLabel renders minutes for short waits', () {
       expect(AppointmentQueueDisplay.formatWaitedLabel(const Duration(minutes: 15)), 'Waited: 15 mins');
+    });
+
+    test('formatWaitedLabel uses hour branch for waits at or above 60 minutes', () {
+      expect(AppointmentQueueDisplay.formatWaitedLabel(const Duration(minutes: 75)), 'Waited: 1h 15m');
+    });
+
+    test('waitTierFor classifies wait urgency thresholds', () {
+      expect(AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 10)), AppointmentQueueWaitTier.normal);
+      expect(AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 20)), AppointmentQueueWaitTier.warning);
+      expect(AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 30)), AppointmentQueueWaitTier.critical);
+    });
+
+    test('waitPresentation combines wait label and tier', () {
+      final now = DateTime.utc(2026, 6, 4, 10, 25);
+      final checkedIn = item(
+        status: AppointmentStatus.checkedIn,
+        checkedInAt: DateTime.utc(2026, 6, 4, 10),
+      );
+
+      final (label, tier) = AppointmentQueueDisplay.waitPresentation(checkedIn, now: now);
+
+      expect(label, 'Waiting: 25m');
+      expect(tier, AppointmentQueueWaitTier.warning);
+    });
+
+    test('formatDurationLabel renders minutes, hours, and mixed durations', () {
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(minutes: 45)), '45m');
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(hours: 2)), '2h');
+      expect(AppointmentQueueDisplay.formatDurationLabel(const Duration(hours: 1, minutes: 15)), '1h 15m');
+    });
+
+    test('formatWaitLabel prefixes waiting duration', () {
+      expect(AppointmentQueueDisplay.formatWaitLabel(const Duration(minutes: 12)), 'Waiting: 12m');
+    });
+
+    test('scheduleBadgeTone maps every queue status', () {
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.scheduled), AppBadgeTone.neutral);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.confirmed), AppBadgeTone.info);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.checkedIn), AppBadgeTone.success);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.inProgress), AppBadgeTone.warning);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.completed), AppBadgeTone.muted);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.cancelled), AppBadgeTone.destructive);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.noShow), AppBadgeTone.destructive);
+      expect(AppointmentQueueDisplay.scheduleBadgeTone(AppointmentStatus.unknown), AppBadgeTone.neutral);
+    });
+
+    test('isScheduleRowDimmed dims completed and cancelled rows only', () {
+      expect(AppointmentQueueDisplay.isScheduleRowDimmed(item(status: AppointmentStatus.completed)), isTrue);
+      expect(AppointmentQueueDisplay.isScheduleRowDimmed(item(status: AppointmentStatus.cancelled)), isTrue);
+      expect(AppointmentQueueDisplay.isScheduleRowDimmed(item(status: AppointmentStatus.scheduled)), isFalse);
+    });
+
+    test('indexClosestToNow returns 0 for an empty list', () {
+      expect(AppointmentQueueDisplay.indexClosestToNow([], now: DateTime.utc(2026, 6, 4, 12)), 0);
+    });
+
+    test('computeStats omits trends when comparison items are absent', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final stats = AppointmentQueueDisplay.computeStats(
+        [item(status: AppointmentStatus.checkedIn, checkedInAt: now.subtract(const Duration(minutes: 10)))],
+        now: now,
+      );
+
+      expect(stats.totalTrend, isNull);
+      expect(stats.completedTrend, isNull);
+      expect(stats.avgWaitTrend, isNull);
+    });
+
+    test('estimateWaitDuration uses slot anchor for non-checked-in patients', () {
+      final now = DateTime.utc(2026, 6, 4, 10, 20);
+      final scheduled = item(
+        status: AppointmentStatus.scheduled,
+        startTime: DateTime.utc(2026, 6, 4, 10),
+      );
+
+      expect(
+        AppointmentQueueDisplay.estimateWaitDuration(scheduled, now: now),
+        const Duration(minutes: 20),
+      );
+    });
+
+    test('estimateSessionDuration returns zero for non-in-progress appointments', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final checkedIn = item(
+        status: AppointmentStatus.checkedIn,
+        inProgressAt: now.subtract(const Duration(minutes: 15)),
+      );
+
+      expect(AppointmentQueueDisplay.estimateSessionDuration(checkedIn, now: now), Duration.zero);
     });
 
     test('indexClosestToNow prefers the slot containing now', () {
@@ -90,6 +179,61 @@ void main() {
     test('queueDoctorLabel shows assigned doctor name when present', () {
       final assigned = item(doctorId: 'doctor-a', doctorName: 'Dr Alpha');
       expect(AppointmentQueueDisplay.queueDoctorLabel(assigned), 'Dr Alpha');
+    });
+
+    test('status transition toasts describe the action taken', () {
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.confirmed,
+        ),
+        'Jane Doe confirmed.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.checkedIn,
+        ),
+        'Jane Doe checked in.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.inProgress,
+        ),
+        'Consultation started for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusTransitionToastMessage(
+          patientName: 'Jane Doe',
+          newStatus: AppointmentStatus.cancelled,
+        ),
+        'Appointment cancelled for Jane Doe.',
+      );
+    });
+
+    test('status revert toasts describe the undo action', () {
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.scheduled,
+        ),
+        'Confirmation undone for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.confirmed,
+        ),
+        'Check-in undone for Jane Doe.',
+      );
+      expect(
+        AppointmentQueueDisplay.statusRevertToastMessage(
+          patientName: 'Jane Doe',
+          revertedTo: AppointmentStatus.checkedIn,
+        ),
+        'Consultation start undone for Jane Doe.',
+      );
     });
 
     test('doctorInProgressBlockReason blocks start when all shift doctors are busy', () {
@@ -524,11 +668,19 @@ void main() {
 
     test('edge case: waitTierFor boundaries at warning and critical thresholds', () {
       expect(
+<<<<<<< HEAD
         AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 14)),
         AppointmentQueueWaitTier.normal,
       );
       expect(
         AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 15)),
+=======
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 19)),
+        AppointmentQueueWaitTier.normal,
+      );
+      expect(
+        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 20)),
+>>>>>>> master
         AppointmentQueueWaitTier.warning,
       );
       expect(

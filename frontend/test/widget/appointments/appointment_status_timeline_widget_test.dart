@@ -1,5 +1,9 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+=======
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_timeline.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
@@ -32,9 +36,19 @@ void main() {
           child: Scaffold(
             body: AppointmentStatusTimelineWidget(
               detail: detail,
+<<<<<<< HEAD
               siblingAppointments: const [],
               shiftLookup: AppointmentQueueShiftDoctorLookup.empty,
               onChanged: () {},
+=======
+              doctorPresentation: null,
+              statusActions: AppointmentDetailStatusActions(
+                detail: detail,
+                siblingAppointments: const [],
+                shiftLookup: AppointmentQueueShiftDoctorLookup.empty,
+                onChanged: () {},
+              ),
+>>>>>>> master
             ),
           ),
         ),

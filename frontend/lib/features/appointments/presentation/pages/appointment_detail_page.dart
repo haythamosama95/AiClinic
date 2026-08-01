@@ -5,27 +5,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_back_navigation.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+=======
+>>>>>>> master
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+=======
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
+=======
+import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
@@ -80,11 +99,28 @@ class AppointmentDetailPage extends ConsumerWidget {
   }
 
   static void _goBack(BuildContext context) {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-      return;
-    }
-    context.nav.goAppointmentsCalendar();
+    context.navigateBack(fallback: () => context.nav.goAppointmentsCalendar());
+  }
+
+  static void _invalidateSurfaces(WidgetRef ref, AppointmentDetail detail) {
+    ref.invalidate(appointmentDetailProvider(detail.id));
+    ref.invalidate(
+      appointmentDetailSiblingsProvider(
+        AppointmentDetailSiblingsQuery(
+          branchId: detail.branchId,
+          startTime: detail.startTime,
+        ),
+      ),
+    );
+    ref.invalidate(
+      appointmentDetailShiftLookupProvider(
+        AppointmentDetailShiftQuery(
+          branchId: detail.branchId,
+          appointmentStart: detail.startTime,
+        ),
+      ),
+    );
+    ref.invalidate(appointmentCalendarProvider);
   }
 
   static void _invalidateSurfaces(WidgetRef ref, AppointmentDetail detail) {
@@ -154,6 +190,17 @@ class _AppointmentDetailContentView extends ConsumerWidget {
     final siblings = siblingsAsync.value ?? const <AppointmentListItem>[];
     final shiftLookup =
         shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
+<<<<<<< HEAD
+=======
+    final listItem = detail.toListItem();
+    final doctorPresentation = shiftLookup.presentationFor(listItem);
+
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'appointment:${detail.id}',
+      BreadcrumbLabel.fixed(detail.patientName),
+    );
+>>>>>>> master
 
     return _AppointmentDetailScaffold(
       title: detail.patientName,
@@ -180,9 +227,19 @@ class _AppointmentDetailContentView extends ConsumerWidget {
           const SizedBox(height: AppSpacing.space6),
           AppointmentStatusTimelineWidget(
             detail: detail,
+<<<<<<< HEAD
             siblingAppointments: siblings,
             shiftLookup: shiftLookup,
             onChanged: onChanged,
+=======
+            doctorPresentation: doctorPresentation,
+            statusActions: AppointmentDetailStatusActions(
+              detail: detail,
+              siblingAppointments: siblings,
+              shiftLookup: shiftLookup,
+              onChanged: onChanged,
+            ),
+>>>>>>> master
           ),
           if (detail.notes?.trim().isNotEmpty == true ||
               detail.cancelReason?.trim().isNotEmpty == true) ...[
@@ -761,6 +818,7 @@ class _AppointmentDetailScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     final header = AppPageHeader(
       title: title,
       description: subtitle,
@@ -780,15 +838,38 @@ class _AppointmentDetailScaffold extends StatelessWidget {
       builder: (context, constraints) {
         final hasBoundedHeight = constraints.maxHeight.isFinite;
 
+=======
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppPageHeader(
+              title: title,
+              description: subtitle,
+              breadcrumb: const BreadcrumbTrailView(),
+              actions: _buildHeaderActions(context),
+            ),
+            const SizedBox(height: AppSpacing.space6),
+          ],
+        );
+
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
+>>>>>>> master
         if (!hasBoundedHeight) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
+<<<<<<< HEAD
             children: [
               header,
               const SizedBox(height: AppSpacing.space6),
               body,
             ],
+=======
+            children: [header, body],
+>>>>>>> master
           );
         }
 
@@ -796,7 +877,10 @@ class _AppointmentDetailScaffold extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             header,
+<<<<<<< HEAD
             const SizedBox(height: AppSpacing.space6),
+=======
+>>>>>>> master
             Expanded(child: SingleChildScrollView(child: body)),
           ],
         );

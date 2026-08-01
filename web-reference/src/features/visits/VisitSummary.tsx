@@ -6,13 +6,23 @@ import { Card } from '@/components/card/Card'
 import { cn } from '@/lib/cn'
 import { motionPresets, resolveTransition, staggerChildren } from '@/lib/motion'
 import {
+<<<<<<< HEAD
+=======
+  getAllergyById,
+  getChronicConditionById,
+  getCurrentMedicationById,
+>>>>>>> master
   getDurationLabel,
   getFrequencyLabel,
   getInvestigationLabel,
   getMedicationLabel,
   getVitalSignById,
 } from './mock-data'
+<<<<<<< HEAD
 import type { VisitFormData } from './types'
+=======
+import type { MedicalBackgroundEntry, VisitFormData } from './types'
+>>>>>>> master
 
 export type VisitSummaryProps = {
   form: VisitFormData
@@ -34,6 +44,7 @@ function LedgerText({ value }: { value: string }) {
   return <span className="whitespace-pre-wrap">{value}</span>
 }
 
+<<<<<<< HEAD
 function LedgerInlineList({
   items,
   emptyLabel = '—',
@@ -42,10 +53,23 @@ function LedgerInlineList({
   emptyLabel?: string
 }) {
   if (items.length === 0) {
+=======
+function LedgerBackgroundList({
+  entries,
+  resolveItem,
+  emptyLabel,
+}: {
+  entries: MedicalBackgroundEntry[]
+  resolveItem: (id: string) => { label: string; meta?: string } | undefined
+  emptyLabel: string
+}) {
+  if (entries.length === 0) {
+>>>>>>> master
     return <span className="text-text-tertiary">{emptyLabel}</span>
   }
 
   return (
+<<<<<<< HEAD
     <span>
       {items.map((item, index) => (
         <span key={item.id}>
@@ -57,6 +81,25 @@ function LedgerInlineList({
         </span>
       ))}
     </span>
+=======
+    <ul className="space-y-1.5">
+      {entries.map((entry) => {
+        const item = resolveItem(entry.itemId)
+        if (!item) return null
+        return (
+          <li key={entry.id}>
+            <span className="font-medium">{item.label}</span>
+            {item.meta ? (
+              <span className="text-text-secondary"> ({item.meta})</span>
+            ) : null}
+            {entry.note ? (
+              <span className="text-text-secondary"> — {entry.note}</span>
+            ) : null}
+          </li>
+        )
+      })}
+    </ul>
+>>>>>>> master
   )
 }
 
@@ -159,6 +202,7 @@ export function VisitSummary({ form, onEdit, onFinalize }: VisitSummaryProps) {
     { label: 'History', value: <LedgerText value={form.history} /> },
     {
       label: 'Chronic conditions',
+<<<<<<< HEAD
       value: <LedgerInlineList items={form.chronicConditions} emptyLabel="None recorded" />,
     },
     {
@@ -168,6 +212,35 @@ export function VisitSummary({ form, onEdit, onFinalize }: VisitSummaryProps) {
     {
       label: 'Current medications',
       value: <LedgerInlineList items={form.currentMedications} emptyLabel="None recorded" />,
+=======
+      value: (
+        <LedgerBackgroundList
+          entries={form.chronicConditions}
+          resolveItem={getChronicConditionById}
+          emptyLabel="None recorded"
+        />
+      ),
+    },
+    {
+      label: 'Allergies',
+      value: (
+        <LedgerBackgroundList
+          entries={form.allergies}
+          resolveItem={getAllergyById}
+          emptyLabel="None recorded"
+        />
+      ),
+    },
+    {
+      label: 'Current medications',
+      value: (
+        <LedgerBackgroundList
+          entries={form.currentMedications}
+          resolveItem={getCurrentMedicationById}
+          emptyLabel="None recorded"
+        />
+      ),
+>>>>>>> master
     },
   ]
 

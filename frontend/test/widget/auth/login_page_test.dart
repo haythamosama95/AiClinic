@@ -57,6 +57,10 @@ void main() {
     testWidgets('error state shows danger alert with generic sign-in failure message', (tester) async {
       await pumpLoginPage(
         tester,
+<<<<<<< HEAD
+=======
+        surfaceSize: loginNarrowSurfaceSize,
+>>>>>>> master
         authUiState: const AuthUiState(
           errorMessage: kGenericSignInFailureMessage,
           isInfoMessage: false,
@@ -78,6 +82,7 @@ void main() {
 
       expect(find.byType(AppAlert), findsOneWidget);
       expect(find.text(kForgotPasswordMessage), findsOneWidget);
+<<<<<<< HEAD
     });
 
     testWidgets('submitting state disables submit button and shows loading', (tester) async {
@@ -117,6 +122,52 @@ void main() {
       final session = TestAuthSessionNotifier()..setAuthenticated();
 
       await pumpLoginPage(tester, sessionNotifier: session);
+=======
+    });
+
+    testWidgets('submitting state disables submit button and shows loading', (tester) async {
+      await pumpLoginPage(
+        tester,
+        authUiState: const AuthUiState(isSubmitting: true),
+      );
+
+      expect(loginSubmitButtonIsLoading(tester), isTrue);
+      expect(loginSubmitButtonIsEnabled(tester), isFalse);
+      expect(tester.widget<TextField>(loginUsernameField()).enabled, isTrue);
+      expect(tester.widget<TextField>(loginPasswordField()).enabled, isTrue);
+    });
+  });
+
+  group('LoginPage session states', () {
+    testWidgets('unknown session status renders without error', (tester) async {
+      final session = TestAuthSessionNotifier();
+
+      await pumpLoginPage(tester, sessionNotifier: session);
+      session.setSession(AuthSessionState.initial());
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(loginSubmitButton(), findsOneWidget);
+    });
+
+    testWidgets('loading session status renders without error', (tester) async {
+      final session = TestAuthSessionNotifier();
+
+      await pumpLoginPage(tester, sessionNotifier: session);
+      session.setLoading();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(loginSubmitButton(), findsOneWidget);
+    });
+
+    testWidgets('authenticated session still renders login form (no in-widget redirect)', (tester) async {
+      final session = TestAuthSessionNotifier();
+
+      await pumpLoginPage(tester, sessionNotifier: session);
+      session.setAuthenticated();
+      await tester.pump();
+>>>>>>> master
 
       expect(tester.takeException(), isNull);
       expect(loginSubmitButton(), findsOneWidget);
@@ -125,10 +176,18 @@ void main() {
 
     testWidgets('does not surface authSessionProvider failure message in the UI', (tester) async {
       const failure = 'Session bootstrap failed.';
+<<<<<<< HEAD
       final session = TestAuthSessionNotifier()
         ..setUnauthenticated(failureMessage: failure);
 
       await pumpLoginPage(tester, sessionNotifier: session);
+=======
+      final session = TestAuthSessionNotifier();
+
+      await pumpLoginPage(tester, sessionNotifier: session);
+      session.setUnauthenticated(failureMessage: failure);
+      await tester.pump();
+>>>>>>> master
 
       expect(find.text(failure), findsNothing);
       expect(find.byType(AppAlert), findsNothing);

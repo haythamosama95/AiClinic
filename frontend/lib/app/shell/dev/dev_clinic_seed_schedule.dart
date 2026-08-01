@@ -123,11 +123,15 @@ abstract final class DevClinicSeedSchedule {
     required int seedKey,
     DateTime? referenceUtc,
   }) {
+<<<<<<< HEAD
     final relation = calendarDayRelationFor(
       startTimeUtc: startTimeUtc,
       timezone: timezone,
       referenceUtc: referenceUtc,
     );
+=======
+    final relation = calendarDayRelationFor(startTimeUtc: startTimeUtc, timezone: timezone, referenceUtc: referenceUtc);
+>>>>>>> master
     final bucket = statusDistributionBucket(seedKey);
 
     return switch (relation) {
@@ -144,10 +148,14 @@ abstract final class DevClinicSeedSchedule {
   }
 
   /// Target status from [dayOffset] and [seedKey] (timezone-aware relation via [startTimeUtc]).
+<<<<<<< HEAD
   static AppointmentStatus appointmentStatusForDayOffset({
     required int dayOffset,
     required int seedKey,
   }) {
+=======
+  static AppointmentStatus appointmentStatusForDayOffset({required int dayOffset, required int seedKey}) {
+>>>>>>> master
     final relation = switch (dayOffset) {
       < 0 => DevClinicSeedCalendarDayRelation.past,
       0 => DevClinicSeedCalendarDayRelation.today,
@@ -174,12 +182,21 @@ abstract final class DevClinicSeedSchedule {
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
+<<<<<<< HEAD
   /// Every seeded appointment gets an assigned doctor for clear calendar and queue views.
+=======
+  /// Roughly half of queue-facing appointments omit a preferred doctor.
+  ///
+  /// Past completed appointments always keep a doctor because visit seeding requires one.
+>>>>>>> master
   static bool shouldAssignDoctorForAppointment({
     required int dayOffset,
     required int patientIndex,
     required int seedKey,
+    required AppointmentStatus targetStatus,
+    required DevClinicSeedCalendarDayRelation dayRelation,
   }) {
+<<<<<<< HEAD
     return true;
   }
 
@@ -193,6 +210,24 @@ abstract final class DevClinicSeedSchedule {
     if (primary.isEmpty) {
       throw ArgumentError.value(primaryDoctorId, 'primaryDoctorId', 'must not be empty');
     }
+=======
+    if (requiresVisitAndInvoice(status: targetStatus, relation: dayRelation)) {
+      return true;
+    }
+    return seedKey.isEven;
+  }
+
+  /// Deterministic doctor assignment: odd patients → branch primary doctor, even → multi-branch doctor when available.
+  static String doctorIdForAppointment({
+    required String primaryDoctorId,
+    required String? secondaryDoctorId,
+    required int patientIndex,
+  }) {
+    final primary = primaryDoctorId.trim();
+    if (primary.isEmpty) {
+      throw ArgumentError.value(primaryDoctorId, 'primaryDoctorId', 'must not be empty');
+    }
+>>>>>>> master
     final secondary = secondaryDoctorId?.trim();
     if (secondary == null || secondary.isEmpty || patientIndex.isOdd) {
       return primary;
@@ -336,16 +371,17 @@ abstract final class DevClinicSeedSchedule {
   }) {
     final label = '$branchCode #$patientIndex day $dayOffset';
     return switch (kind) {
-      DevClinicVisitDocumentationKind.none => (
-        complaint: '',
+      DevClinicVisitDocumentationKind.none => (complaint: '', history: '', examination: '', diagnosis: '', plan: ''),
+      DevClinicVisitDocumentationKind.partial => (
+        complaint: 'Patient $label reports mild symptoms for two days.',
         history: '',
         examination: '',
         diagnosis: '',
         plan: '',
       ),
-      DevClinicVisitDocumentationKind.partial => (
-        complaint: 'Patient $label reports mild symptoms for two days.',
-        history: '',
+      DevClinicVisitDocumentationKind.partialWithHistory => (
+        complaint: 'Patient $label reports recurring discomfort.',
+        history: 'Symptoms began one week ago; no prior hospitalization.',
         examination: '',
         diagnosis: '',
         plan: '',
@@ -386,7 +422,10 @@ abstract final class DevClinicSeedSchedule {
       notes: 'Take with food. Dev seed treatment plan for patient #$patientIndex.',
     );
   }
+<<<<<<< HEAD
 
+=======
+>>>>>>> master
 }
 
 enum DevClinicSeedCalendarDayRelation { past, today, future }

@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/core/ui/components/app_button.dart';
+>>>>>>> master
 import 'package:ai_clinic/core/ui/components/app_money_field.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
@@ -20,7 +24,12 @@ import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../support/billing_rpc_test_client.dart';
 
+<<<<<<< HEAD
 InvoiceDetail _issuedInvoice({Money balance = Money.parse('100.00')}) {
+=======
+InvoiceDetail _issuedInvoice({Money? balance}) {
+  final resolvedBalance = balance ?? Money.parse('100.00');
+>>>>>>> master
   return InvoiceDetail(
     id: BillingRpcTestClient.issuedInvoiceId,
     invoiceNumber: 'INV-MAIN-000001',
@@ -32,7 +41,11 @@ InvoiceDetail _issuedInvoice({Money balance = Money.parse('100.00')}) {
     discountAmount: Money.zero,
     insuranceCoveredAmount: Money.zero,
     currency: 'USD',
+<<<<<<< HEAD
     balance: balance,
+=======
+    balance: resolvedBalance,
+>>>>>>> master
     createdAt: DateTime.parse('2026-06-01T10:00:00.000Z'),
     updatedAt: DateTime.parse('2026-06-02T12:00:00.000Z'),
     items: const [],
@@ -75,6 +88,11 @@ Future<void> _pumpPaymentForm(
   required bool allowPartialPayments,
   Future<void> Function()? onRecorded,
 }) async {
+<<<<<<< HEAD
+=======
+  client.allowPartialPayments = allowPartialPayments;
+
+>>>>>>> master
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -152,8 +170,14 @@ void main() {
 
     await tester.enterText(find.byType(TextField).first, '50');
     await tester.pump();
+<<<<<<< HEAD
     await tester.tap(find.text('Record payment'));
     await tester.pumpAndSettle();
+=======
+    await tester.tap(find.widgetWithText(AppButton, 'Record payment'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+>>>>>>> master
 
     expect(recorded, isTrue);
     expect(client.lastFunction, 'record_payment');

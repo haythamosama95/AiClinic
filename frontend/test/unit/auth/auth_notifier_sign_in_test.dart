@@ -29,7 +29,11 @@ class _SignInHarness {
   AuthUiState get uiState => container.read(authNotifierProvider);
 }
 
+<<<<<<< HEAD
 _SignInHarness createSignInHarness({_SignInSessionNotifier? sessionNotifier}) {
+=======
+_SignInHarness _createSignInHarness({_SignInSessionNotifier? sessionNotifier}) {
+>>>>>>> master
   final callOrder = <String>[];
   final session = sessionNotifier ?? _SignInSessionNotifier(callOrder: callOrder);
   final repository = _SignInAuthRepository(callOrder: callOrder);
@@ -80,7 +84,11 @@ void main() {
 
   group('AuthNotifier.signIn validation short-circuit', () {
     test('invalid username sets error without calling repository', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       await harness.authNotifier.signIn(username: 'ab', password: 'secret');
 
@@ -95,7 +103,11 @@ void main() {
     // banner is still flagged as informational. Pinned to catch a change either
     // way; the error path arguably should clear the flag.
     test('validation failure after forgot-password keeps the info flag set', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       harness.authNotifier.showForgotPasswordMessage();
       expect(harness.uiState.isInfoMessage, isTrue);
@@ -108,7 +120,11 @@ void main() {
     });
 
     test('successful submission clears a lingering info flag', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.sessionNotifier.authenticateOnSync = true;
 
       harness.authNotifier.showForgotPasswordMessage();
@@ -119,7 +135,11 @@ void main() {
     });
 
     test('empty password sets required message without calling repository', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       await harness.authNotifier.signIn(username: 'staff1', password: '');
 
@@ -131,7 +151,11 @@ void main() {
 
   group('AuthNotifier.signIn happy path', () {
     test('submits, calls session and repository in order, then resets UI state', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.sessionNotifier.authenticateOnSync = true;
 
       final signInFuture = harness.authNotifier.signIn(username: '  Staff1  ', password: 'secret');
@@ -152,7 +176,11 @@ void main() {
 
   group('AuthNotifier.signIn AuthException invalid credentials', () {
     Future<void> expectInvalidCredentialsMessage(AuthException error) async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.repository.signInError = error;
 
       await expectCompletesNormally(harness.authNotifier.signIn(username: 'staff1', password: 'secret'));
@@ -181,7 +209,11 @@ void main() {
 
   group('AuthNotifier.signIn AuthException unavailable', () {
     Future<void> expectUnavailableMessage(AuthException error) async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.repository.signInError = error;
 
       await expectCompletesNormally(harness.authNotifier.signIn(username: 'staff1', password: 'secret'));
@@ -242,7 +274,11 @@ void main() {
 
   group('AuthNotifier.signIn other failures', () {
     test('maps StateError from ensureReadyForSignIn to not-ready message', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.sessionNotifier.ensureReadyError = StateError('Startup configuration is not ready for sign-in.');
 
       await expectCompletesNormally(harness.authNotifier.signIn(username: 'staff1', password: 'secret'));
@@ -254,7 +290,11 @@ void main() {
     });
 
     Future<void> expectUnexpectedUnavailable(Object error) async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.repository.signInError = error;
 
       await expectCompletesNormally(harness.authNotifier.signIn(username: 'staff1', password: 'secret'));
@@ -292,7 +332,11 @@ void main() {
   group('AuthNotifier.signIn post-login resolution', () {
     test('surfaces session failureMessage verbatim when unauthenticated after sync', () async {
       const failureMessage = 'Could not load staff profile.';
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.sessionNotifier.failureMessageOnSync = failureMessage;
 
       await harness.authNotifier.signIn(username: 'staff1', password: 'secret');
@@ -304,7 +348,11 @@ void main() {
 
     test('waits for timeout then signs out when session stays unauthenticated without failure', () {
       FakeAsync().run((async) {
+<<<<<<< HEAD
         final harness = createSignInHarness();
+=======
+        final harness = _createSignInHarness();
+>>>>>>> master
         var completed = false;
 
         harness.authNotifier.signIn(username: 'staff1', password: 'secret').then((_) => completed = true);
@@ -327,7 +375,11 @@ void main() {
 
   group('AuthNotifier.signIn concurrency', () {
     test('allows overlapping signIn calls without a guard', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       final gate = Completer<void>();
       harness.repository.signInGate = gate;
       harness.sessionNotifier.authenticateOnSync = true;
@@ -336,7 +388,13 @@ void main() {
       final second = harness.authNotifier.signIn(username: 'staff2', password: 'second');
 
       await Future<void>.delayed(Duration.zero);
+<<<<<<< HEAD
       expect(harness.repository.signInCalls, 1);
+=======
+      // Without a notifier-level guard, both signIn calls reach the repository
+      // before the gate is released.
+      expect(harness.repository.signInCalls, 2);
+>>>>>>> master
       expect(harness.uiState.isSubmitting, isTrue);
 
       gate.complete();
@@ -349,7 +407,11 @@ void main() {
 
   group('AuthNotifier forgot-password and form helpers', () {
     test('showForgotPasswordMessage sets info banner copy', () {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       harness.authNotifier.showForgotPasswordMessage();
 
@@ -358,7 +420,11 @@ void main() {
     });
 
     test('clearSignInError clears message and info flag', () {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       harness.authNotifier.showForgotPasswordMessage();
       harness.authNotifier.clearSignInError();
@@ -368,7 +434,11 @@ void main() {
     });
 
     test('clearSignInError is a no-op when there is no error', () {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       final before = harness.uiState;
 
       harness.authNotifier.clearSignInError();
@@ -377,7 +447,11 @@ void main() {
     });
 
     test('resetSignInForm clears sign-in error state', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.repository.signInError = const AuthException('bad', code: 'invalid_credentials');
       await harness.authNotifier.signIn(username: 'staff1', password: 'secret');
 
@@ -387,7 +461,11 @@ void main() {
     });
 
     test('resetSignInForm clears info state', () {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       harness.authNotifier.showForgotPasswordMessage();
 
       harness.authNotifier.resetSignInForm();
@@ -396,7 +474,11 @@ void main() {
     });
 
     test('resetSignInForm clears submitting state', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
       final gate = Completer<void>();
       harness.repository.signInGate = gate;
 
@@ -414,7 +496,11 @@ void main() {
 
   group('AuthNotifier.signOut', () {
     test('delegates to auth session notifier signOut', () async {
+<<<<<<< HEAD
       final harness = createSignInHarness();
+=======
+      final harness = _createSignInHarness();
+>>>>>>> master
 
       await harness.authNotifier.signOut();
 

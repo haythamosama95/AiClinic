@@ -140,9 +140,24 @@ void main() {
       );
       addTearDown(container.dispose);
 
+<<<<<<< HEAD
       await expectLater(
         container.read(invoiceDetailViewProvider(issuedInvoiceId).future),
         throwsA(isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND')),
+=======
+      final provider = invoiceDetailViewProvider(issuedInvoiceId);
+      final subscription = container.listen(provider, (_, _) {});
+      addTearDown(subscription.close);
+
+      container.read(provider);
+      await pumpEventQueue();
+
+      final asyncValue = container.read(provider);
+      expect(asyncValue.hasError, isTrue);
+      expect(
+        asyncValue.error,
+        isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND'),
+>>>>>>> master
       );
     });
   });

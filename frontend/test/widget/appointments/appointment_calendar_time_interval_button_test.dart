@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+=======
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
@@ -17,7 +20,11 @@ void main() {
       tester,
       calendarState: state,
       child: const Center(child: AppointmentCalendarTimeIntervalButton()),
+<<<<<<< HEAD
       surfaceSize: const Size(600, 300),
+=======
+      surfaceSize: const Size(600, 450),
+>>>>>>> master
     );
   }
 

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter_riverpod/misc.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,15 +13,23 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
+=======
+import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_billing_flow.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_invoice_review_step.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_step.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';

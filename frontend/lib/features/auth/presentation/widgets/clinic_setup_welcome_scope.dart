@@ -94,12 +94,26 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
+=======
+    final staffMemberId = ref.watch(
+      authSessionProvider.select((auth) => auth.context?.staffProfile.staffMemberId),
+    );
+    if (staffMemberId != null) {
+      ref.watch(clinicSetupWelcomeShownProvider(staffMemberId));
+    }
+
+>>>>>>> master
     ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
       if (!mounted) {
         return;
       }
 
+<<<<<<< HEAD
       if (previous?.isAuthenticated == true && !next.isAuthenticated) {
+=======
+      if (previous?.isAuthenticated == true && next.status == AuthSessionStatus.unauthenticated) {
+>>>>>>> master
         final staffMemberId = previous?.context?.staffProfile.staffMemberId;
         if (staffMemberId != null) {
           ref.invalidate(clinicSetupWelcomeShownProvider(staffMemberId));

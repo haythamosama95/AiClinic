@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
@@ -11,9 +15,19 @@ import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/i
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_payments_card.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_voided_notice.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
+<<<<<<< HEAD
 
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
+=======
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
+
+import '../../helpers/role_permission_seed.dart';
+import '../../helpers/breadcrumb_test_support.dart';
+import '../../support/billing_rpc_test_client.dart';
+import '../../widget/visits/visit_widget_test_harness.dart' as visits_harness;
+>>>>>>> master
 import 'billing_widget_test_harness.dart';
 
 void main() {
@@ -24,11 +38,16 @@ void main() {
         child: const InvoiceDetailPage(invoiceId: billingTestIssuedInvoiceId),
         overrides: billingProviderOverrides(
           extraOverrides: [
+<<<<<<< HEAD
             invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWith(
               (ref) => Future<InvoiceDetailViewState>.delayed(
                 const Duration(days: 1),
                 () => buildBillingDetailView(),
               ),
+=======
+            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWithValue(
+              const AsyncLoading<InvoiceDetailViewState>(),
+>>>>>>> master
             ),
           ],
         ),
@@ -123,6 +142,7 @@ void main() {
         tester,
         child: const InvoiceDetailPage(invoiceId: billingTestIssuedInvoiceId),
         overrides: billingProviderOverrides(
+<<<<<<< HEAD
           detailInvoiceId: billingTestIssuedInvoiceId,
           detailView: buildBillingDetailView(
             invoice: buildBillingInvoiceDetail(
@@ -131,6 +151,21 @@ void main() {
               voidedAt: DateTime.utc(2026, 6, 3),
             ),
           ),
+=======
+          extraOverrides: [
+            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWithValue(
+              AsyncData(
+                buildBillingDetailView(
+                  invoice: buildBillingInvoiceDetail(
+                    status: InvoiceStatus.voided,
+                    voidReason: 'Entered in error',
+                    voidedAt: DateTime.utc(2026, 6, 3),
+                  ),
+                ),
+              ),
+            ),
+          ],
+>>>>>>> master
         ),
       );
       await pumpBillingFrames(tester);
@@ -144,6 +179,13 @@ void main() {
         overrides: billingProviderOverrides(
           detailInvoiceId: billingTestIssuedInvoiceId,
           detailView: buildBillingDetailView(),
+<<<<<<< HEAD
+=======
+          breadcrumbTrail: invoiceDetailTrail(
+            invoiceId: billingTestIssuedInvoiceId,
+            invoiceNumber: 'INV-MAIN-000001',
+          ),
+>>>>>>> master
         ),
         invoiceDetailBuilder: (context, state) => InvoiceDetailPage(
           invoiceId: state.pathParameters['invoiceId']!,
@@ -175,7 +217,11 @@ void main() {
       );
       await pumpBillingFrames(tester);
 
+<<<<<<< HEAD
       await tester.tap(find.text('View patient profile'));
+=======
+      await tester.tap(find.bySemanticsLabel('View patient profile'));
+>>>>>>> master
       await pumpBillingFrames(tester);
 
       expect(find.text('stub:patient-$billingTestPatientId'), findsOneWidget);
@@ -189,19 +235,77 @@ void main() {
         overrides: billingProviderOverrides(
           detailInvoiceId: billingTestIssuedInvoiceId,
           detailView: buildBillingDetailView(),
+<<<<<<< HEAD
+=======
+          breadcrumbTrail: invoiceDetailTrail(
+            invoiceId: billingTestIssuedInvoiceId,
+            invoiceNumber: 'INV-MAIN-000001',
+          ),
+>>>>>>> master
         ),
         invoiceDetailBuilder: (context, state) => InvoiceDetailPage(
           invoiceId: state.pathParameters['invoiceId']!,
         ),
       );
       await pumpBillingFrames(tester);
+<<<<<<< HEAD
 
       await tester.tap(find.text('View visit in patient record'));
+=======
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.bySemanticsLabel('View visit in patient record'));
+>>>>>>> master
       await pumpBillingFrames(tester);
 
       expect(find.text('stub:visit-document-$billingTestVisitId'), findsOneWidget);
     });
 
+<<<<<<< HEAD
+=======
+    testWidgets('visit link preserves invoice breadcrumb trail on visit page', (tester) async {
+      const invoiceNumber = 'INV-MAIN-000001';
+
+      await pumpBillingRouter(
+        tester,
+        home: const SizedBox.shrink(),
+        initialLocation: AppRoutes.billingInvoiceDetail(billingTestIssuedInvoiceId),
+        overrides: billingProviderOverrides(
+          detailInvoiceId: billingTestIssuedInvoiceId,
+          detailView: buildBillingDetailView(),
+          breadcrumbTrail: invoiceDetailTrail(
+            invoiceId: billingTestIssuedInvoiceId,
+            invoiceNumber: invoiceNumber,
+          ),
+          extraOverrides: visits_harness.visitDocumentPageProviderOverrides(
+            visitId: billingTestVisitId,
+            docState: visits_harness.sampleEncounterDocState(),
+          ),
+        ),
+        invoiceDetailBuilder: (context, state) => InvoiceDetailPage(
+          invoiceId: state.pathParameters['invoiceId']!,
+        ),
+        visitDocumentBuilder: (context, state) {
+          final extra = VisitRouteExtra.fromExtra(state.extra);
+          return VisitDocumentPage(
+            visitId: state.pathParameters['visitId']!,
+            extra: extra,
+          );
+        },
+      );
+      await pumpBillingFrames(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.bySemanticsLabel('View visit in patient record'));
+      await visits_harness.pumpVisitsFrames(tester);
+
+      expect(find.text('Invoices'), findsWidgets);
+      expect(find.text(invoiceNumber), findsWidgets);
+      expect(find.text('Visit documentation'), findsWidgets);
+      expect(find.text('Calendar'), findsNothing);
+    });
+
+>>>>>>> master
     testWidgets('Void action opens VoidInvoiceDialog', (tester) async {
       await pumpBillingSurface(
         tester,
@@ -235,8 +339,14 @@ void main() {
       await pumpBillingFrames(tester);
       await tester.pump(const Duration(milliseconds: 300));
 
+<<<<<<< HEAD
       expect(find.text('Record payment'), findsOneWidget);
       expect(find.byType(PaymentForm), findsOneWidget);
+=======
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.byType(PaymentForm), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Record payment'), findsOneWidget);
+>>>>>>> master
     });
 
     testWidgets('permission-gated actions are disabled without grants', (tester) async {

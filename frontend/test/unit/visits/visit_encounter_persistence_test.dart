@@ -1,16 +1,30 @@
 import 'dart:typed_data';
 
+<<<<<<< HEAD
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+=======
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+<<<<<<< HEAD
+=======
+import '../../helpers/auth_test_support.dart';
+>>>>>>> master
 import '../../support/visit_encounter_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
 
@@ -63,6 +77,27 @@ VisitAttachmentPickInput _samplePick() => VisitAttachmentPickInput(
   bytes: Uint8List.fromList([1, 2, 3]),
 );
 
+<<<<<<< HEAD
+=======
+class _StaticPatientSafetyNotifier extends PatientSafetyNotifier {
+  _StaticPatientSafetyNotifier(this._context) : super(encounterTestPatientId);
+
+  final PatientSafetyContext _context;
+
+  @override
+  Future<PatientSafetyContext> build() async => _context;
+}
+
+class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
+  _PresetAuthSessionNotifier(this.initial);
+
+  final AuthSessionState initial;
+
+  @override
+  AuthSessionState build() => initial;
+}
+
+>>>>>>> master
 class _SeededVisitDocumentationNotifier extends VisitDocumentationNotifier {
   _SeededVisitDocumentationNotifier(this._state) : super(encounterTestVisitId);
 
@@ -72,8 +107,15 @@ class _SeededVisitDocumentationNotifier extends VisitDocumentationNotifier {
   Future<VisitDocumentationState> build() async => _state;
 }
 
+<<<<<<< HEAD
 class _RecordingVisitAttachmentService extends VisitAttachmentService {
   _RecordingVisitAttachmentService(VisitRepository repository) : super(Fake(), repository);
+=======
+class _FakeSupabaseClient extends Fake implements SupabaseClient {}
+
+class _RecordingVisitAttachmentService extends VisitAttachmentService {
+  _RecordingVisitAttachmentService(VisitRepository repository) : super(_FakeSupabaseClient(), repository);
+>>>>>>> master
 
   int uploadCalls = 0;
   String? lastVisitId;
@@ -108,7 +150,26 @@ Future<({WidgetRef ref, ProviderContainer container, VisitRpcTestClient client})
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+<<<<<<< HEAD
         visitRepositoryProvider.overrideWith((ref) => VisitRepository(client)),
+=======
+        authSessionProvider.overrideWith(
+          () => _PresetAuthSessionNotifier(
+            AuthSessionState(
+              status: AuthSessionStatus.authenticated,
+              context: sampleAuthSessionContext(
+                branchIds: [encounterTestBranchId],
+                activeBranchId: encounterTestBranchId,
+                permissions: {PermissionKeys.visitsEditSoap, PermissionKeys.visitsCreate},
+              ),
+            ),
+          ),
+        ),
+        visitRepositoryProvider.overrideWith((ref) => VisitRepository(client)),
+        patientSafetyProvider(encounterTestPatientId).overrideWith(
+          () => _StaticPatientSafetyNotifier(buildPatientSafetyContext()),
+        ),
+>>>>>>> master
         visitDocumentationProvider(encounterTestVisitId).overrideWith(
           () => _SeededVisitDocumentationNotifier(seedState ?? sampleEncounterDocState()),
         ),
@@ -117,13 +178,24 @@ Future<({WidgetRef ref, ProviderContainer container, VisitRpcTestClient client})
       child: Consumer(
         builder: (context, ref, child) {
           widgetRef = ref;
+<<<<<<< HEAD
+=======
+          ref.watch(visitDocumentationProvider(encounterTestVisitId));
+>>>>>>> master
           return const SizedBox.shrink();
         },
       ),
     ),
   );
+<<<<<<< HEAD
   container = ProviderScope.containerOf(tester.element(find.byType(Consumer)));
   addTearDown(container.dispose);
+=======
+  await tester.pumpAndSettle();
+  container = ProviderScope.containerOf(tester.element(find.byType(Consumer)));
+  addTearDown(container.dispose);
+  await container.read(visitDocumentationProvider(encounterTestVisitId).future);
+>>>>>>> master
 
   return (ref: widgetRef, container: container, client: client);
 }
@@ -281,7 +353,16 @@ void main() {
       );
       await persistence.archiveVisitInvestigation(investigationLineId: _investigationLineId);
       await persistence.recordInvestigationResult(investigationLineId: _investigationLineId, result: 'Normal');
+<<<<<<< HEAD
       await persistence.createTreatmentPlan(medicationName: 'Ibuprofen');
+=======
+      await persistence.createTreatmentPlan(
+        medicationName: 'Ibuprofen',
+        dosage: '400mg',
+        frequency: 'daily',
+        duration: '5 days',
+      );
+>>>>>>> master
       await persistence.updateTreatmentPlan(treatmentPlanId: _treatmentPlanId, notes: 'With food');
       await persistence.archiveTreatmentPlan(treatmentPlanId: _treatmentPlanId);
       await persistence.deleteVisitAttachment(attachmentId: _attachmentId);
@@ -334,7 +415,11 @@ void main() {
 
       expect(harness.client.paramsForFunction('create_visit_vital_sign')?['p_visit_id'], encounterTestVisitId);
       expect(harness.client.paramsForFunction('create_visit_vital_sign')?['p_name'], 'BP');
+<<<<<<< HEAD
       expect(harness.client.paramsForFunction('create_treatment_plan')?['p_dosage'], '');
+=======
+      expect(harness.client.paramsForFunction('create_treatment_plan')?['p_dosage'], '400mg');
+>>>>>>> master
       expect(harness.client.paramsForFunction('create_patient_allergy')?['p_patient_id'], encounterTestPatientId);
 
       final draft = harness.container.read(visitDocumentationProvider(encounterTestVisitId)).requireValue.encounterDraft;

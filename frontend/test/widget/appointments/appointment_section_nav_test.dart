@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
+=======
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
@@ -18,16 +21,29 @@ void main() {
     expect(find.bySemanticsLabel('Appointments sections'), findsOneWidget);
   });
 
+<<<<<<< HEAD
   testWidgets('advanced: CAL-NAV-02 tapping Hub navigates to /appointments', (tester) async {
     final router = await pumpAppointmentSectionNav(tester, activeSection: AppointmentSection.calendar);
+=======
+  testWidgets('advanced: CAL-NAV-02 tapping Hub navigates to /appointments/calendar', (tester) async {
+    final router = await pumpAppointmentSectionNav(
+      tester,
+      activeSection: AppointmentSection.queue,
+      initialLocation: AppRoutes.appointmentsQueue,
+    );
+>>>>>>> master
     await tester.pump();
 
     await tester.tap(find.text('Hub'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
+<<<<<<< HEAD
     expect(router.state.uri.toString(), AppRoutes.appointments);
     expect(find.text('stub:hub'), findsOneWidget);
+=======
+    expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
+>>>>>>> master
   });
 
   testWidgets('advanced: CAL-NAV-03 tapping Queue navigates to /appointments/queue', (tester) async {

@@ -6,4 +6,8 @@ import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_not
 /// when the settings setup screen is opened.
 final clinicSetupHydrationProvider = FutureProvider.autoDispose<void>((ref) async {
   await ref.read(clinicSetupProvider.notifier).hydrateFromBackend();
+<<<<<<< HEAD
 });
+=======
+}, retry: (_, _) => null);
+>>>>>>> master

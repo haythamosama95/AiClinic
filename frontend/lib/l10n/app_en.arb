@@ -105,5 +105,16 @@
   "maritalStatusSingle": "Single",
   "maritalStatusMarried": "Married",
   "maritalStatusDivorced": "Divorced",
+<<<<<<< HEAD
   "maritalStatusWidowed": "Widowed"
+=======
+  "maritalStatusWidowed": "Widowed",
+  "breadcrumbCalendar": "Calendar",
+  "breadcrumbQueue": "Queue",
+  "breadcrumbInvoices": "Invoices",
+  "breadcrumbVisitDocumentation": "Visit documentation",
+  "breadcrumbVisitChronicle": "Visit chronicle",
+  "breadcrumbVisitBilling": "Billing",
+  "breadcrumbNotFound": "Not found"
+>>>>>>> master
 }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+<<<<<<< HEAD
 import 'package:syncfusion_flutter_calendar/calendar.dart';
+=======
+>>>>>>> master
 
 import 'package:ai_clinic/core/ui/components/app_menu.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';

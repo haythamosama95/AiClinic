@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+=======
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 
@@ -78,7 +81,11 @@ void main() {
 
       expect(find.text('Visit completed'), findsOneWidget);
       expect(find.textContaining('The visit for'), findsOneWidget);
+<<<<<<< HEAD
       expect(find.text('Jane Doe'), findsWidgets);
+=======
+      expect(find.textContaining('Jane Doe'), findsWidgets);
+>>>>>>> master
       expect(find.text('Filing reference'), findsOneWidget);
       expect(find.text(data.filingReference), findsOneWidget);
       expect(find.text('Visit details'), findsOneWidget);

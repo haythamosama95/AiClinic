@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+=======
+import 'dart:ui' show Tristate;
+
+import 'package:flutter/material.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
@@ -63,7 +69,14 @@ void main() {
       );
 
       expect(find.byType(VisitEncounterStepRail), findsOneWidget);
+<<<<<<< HEAD
       expect(find.bySemanticsLabel('Visit progress'), findsOneWidget);
+=======
+      expect(
+        tester.getSemantics(find.byType(VisitEncounterStepRail)).label,
+        startsWith('Visit progress'),
+      );
+>>>>>>> master
     });
 
     testWidgets('advanced: forwards onPhaseSelected from the embedded step rail', (tester) async {
@@ -99,16 +112,29 @@ void main() {
     testWidgets('advanced: marks the current phase as selected in semantics', (tester) async {
       await _pumpChromeSurface(
         tester,
+<<<<<<< HEAD
         child: VisitEncounterStepRail(currentPhase: EncounterPhase.objective),
+=======
+        child: VisitEncounterStepRail(
+          currentPhase: EncounterPhase.objective,
+          onPhaseSelected: (_) {},
+        ),
+>>>>>>> master
       );
 
       final intakeSemantics = tester.getSemantics(find.bySemanticsLabel('Intake'));
       final findingsSemantics = tester.getSemantics(find.bySemanticsLabel('Findings & Diagnosis'));
       final treatmentSemantics = tester.getSemantics(find.bySemanticsLabel('Treatment'));
 
+<<<<<<< HEAD
       expect(intakeSemantics.hasFlag(SemanticsFlag.isSelected), isFalse);
       expect(findingsSemantics.hasFlag(SemanticsFlag.isSelected), isTrue);
       expect(treatmentSemantics.hasFlag(SemanticsFlag.isSelected), isFalse);
+=======
+      expect(intakeSemantics.flagsCollection.isSelected, isNot(Tristate.isTrue));
+      expect(findingsSemantics.flagsCollection.isSelected, Tristate.isTrue);
+      expect(treatmentSemantics.flagsCollection.isSelected, isNot(Tristate.isTrue));
+>>>>>>> master
     });
 
     testWidgets('advanced: tapping a step invokes onPhaseSelected with that phase', (tester) async {
@@ -144,10 +170,19 @@ void main() {
       testWidgets('regression: routes ${phase.name} to the expected child widget', (tester) async {
         await _pumpChromeSurface(
           tester,
+<<<<<<< HEAD
           child: VisitEncounterStepContent(
             visitId: encounterTestVisitId,
             phase: phase,
             canEdit: true,
+=======
+          child: SingleChildScrollView(
+            child: VisitEncounterStepContent(
+              visitId: encounterTestVisitId,
+              phase: phase,
+              canEdit: true,
+            ),
+>>>>>>> master
           ),
           overrides: _docOverrides(),
         );
@@ -281,15 +316,28 @@ void main() {
           await _pumpChromeSurface(
             tester,
             child: VisitEncounterStepRail(currentPhase: phase),
+<<<<<<< HEAD
+=======
+            overrides: _docOverrides(),
+>>>>>>> master
           );
           expect(find.text(phase.label), findsOneWidget);
         } else {
           await _pumpChromeSurface(
             tester,
+<<<<<<< HEAD
             child: VisitEncounterStepContent(
               visitId: encounterTestVisitId,
               phase: phase,
               canEdit: true,
+=======
+            child: SingleChildScrollView(
+              child: VisitEncounterStepContent(
+                visitId: encounterTestVisitId,
+                phase: phase,
+                canEdit: true,
+              ),
+>>>>>>> master
             ),
             overrides: _docOverrides(),
           );

@@ -24,11 +24,13 @@ sql_tests=(
   patient_mrn_reassign.sql
   invoices_patient_mrn_payload_test.sql
   patient_management_crud.sql
+  patient_transfer_restore.sql
   patient_management_rls.sql
   patient_management_extended.sql
   patient_management_roles.sql
   patient_management_search_advanced.sql
   patient_management_search_filters.sql
+  patient_management_concurrent.sql
 )
 
 for f in "${sql_tests[@]}"; do

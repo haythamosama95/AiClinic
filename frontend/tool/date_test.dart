@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+// ignore_for_file: avoid_print
+
+>>>>>>> master
 import 'package:intl/intl.dart';
 
 void main() {

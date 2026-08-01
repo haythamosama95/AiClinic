@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+<<<<<<< HEAD
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+=======
+>>>>>>> master
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
@@ -11,23 +14,33 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_timeline.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 
 /// Visual timeline of appointment lifecycle statuses with the current step highlighted.
 class AppointmentStatusTimelineWidget extends StatelessWidget {
   const AppointmentStatusTimelineWidget({
     required this.detail,
+<<<<<<< HEAD
     required this.siblingAppointments,
     required this.shiftLookup,
     required this.onChanged,
+=======
+    required this.doctorPresentation,
+    required this.statusActions,
+>>>>>>> master
     super.key,
   });
 
   final AppointmentDetail detail;
+<<<<<<< HEAD
   final List<AppointmentListItem> siblingAppointments;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
   final VoidCallback onChanged;
+=======
+  final QueueAppointmentDoctorPresentation? doctorPresentation;
+  final Widget statusActions;
+>>>>>>> master
 
   AppointmentStatus get currentStatus => detail.status;
 
@@ -103,12 +116,16 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                     children: [
                       titleSection,
                       const SizedBox(height: AppSpacing.space2),
+<<<<<<< HEAD
                       AppointmentDetailStatusActions(
                         detail: detail,
                         siblingAppointments: siblingAppointments,
                         shiftLookup: shiftLookup,
                         onChanged: onChanged,
                       ),
+=======
+                      statusActions,
+>>>>>>> master
                     ],
                   );
                 }
@@ -145,12 +162,16 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                     const SizedBox(width: AppSpacing.space2),
                     Expanded(
                       flex: 3,
+<<<<<<< HEAD
                       child: AppointmentDetailStatusActions(
                         detail: detail,
                         siblingAppointments: siblingAppointments,
                         shiftLookup: shiftLookup,
                         onChanged: onChanged,
                       ),
+=======
+                      child: statusActions,
+>>>>>>> master
                     ),
                   ],
                 );

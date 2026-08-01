@@ -93,6 +93,76 @@ void main() {
   });
 
   group('PatientListItem equality', () {
+    const base = PatientListItem(
+      id: 'p1',
+      mrn: 'MRN-000001',
+      fullName: 'Ahmed',
+      phone: '201000000001',
+      dateOfBirth: null,
+      gender: PatientGender.male,
+      lastVisitAt: null,
+      nextAppointmentAt: null,
+      registeringBranchId: 'b1',
+      registeringBranchName: 'Main',
+    );
+
+    test('trivial: equal instances share hashCode', () {
+      const a = base;
+      const b = base;
+
+      expect(a, equals(b));
+      expect(a.hashCode, b.hashCode);
+    });
+
+    test('edge case: differing id is unequal', () {
+      expect(base.copyWith(id: 'p2') == base, isFalse);
+    });
+
+    test('edge case: differing mrn is unequal', () {
+      expect(base.copyWith(mrn: 'MRN-000002') == base, isFalse);
+    });
+
+    test('edge case: differing fullName is unequal', () {
+      expect(base.copyWith(fullName: 'Sara') == base, isFalse);
+    });
+
+    test('edge case: differing phone is unequal', () {
+      expect(base.copyWith(phone: '201999999999') == base, isFalse);
+    });
+
+    test('edge case: differing dateOfBirth is unequal', () {
+      expect(
+        base.copyWith(dateOfBirth: DateTime.utc(1990, 1, 1)) == base,
+        isFalse,
+      );
+    });
+
+    test('edge case: differing gender is unequal', () {
+      expect(base.copyWith(gender: PatientGender.female) == base, isFalse);
+    });
+
+    test('edge case: differing lastVisitAt is unequal', () {
+      expect(
+        base.copyWith(lastVisitAt: DateTime.utc(2026, 1, 1)) == base,
+        isFalse,
+      );
+    });
+
+    test('edge case: differing nextAppointmentAt is unequal', () {
+      expect(
+        base.copyWith(nextAppointmentAt: DateTime.utc(2026, 6, 1)) == base,
+        isFalse,
+      );
+    });
+
+    test('edge case: differing registeringBranchId is unequal', () {
+      expect(base.copyWith(registeringBranchId: 'b2') == base, isFalse);
+    });
+
+    test('edge case: differing registeringBranchName is unequal', () {
+      expect(base.copyWith(registeringBranchName: 'South') == base, isFalse);
+    });
+
     test('copyWith preserves unchanged fields', () {
       const original = PatientListItem(
         id: 'p1',
@@ -105,6 +175,42 @@ void main() {
       expect(updated.fullName, 'B');
       expect(updated.id, original.id);
       expect(original == updated, isFalse);
+    });
+
+    test('advanced: omitted nullable fields are preserved', () {
+      final withPhone = base.copyWith(phone: '201111111111');
+      final updated = withPhone.copyWith(fullName: 'Updated');
+
+      expect(updated.phone, '201111111111');
+      expect(updated.mrn, base.mrn);
+    });
+
+    test('advanced: explicitly clears nullable fields with null', () {
+      final withOptionals = base.copyWith(
+        mrn: 'MRN-000010',
+        phone: '201111111111',
+        dateOfBirth: DateTime.utc(1990, 5, 15),
+        gender: PatientGender.female,
+        lastVisitAt: DateTime.utc(2026, 1, 1),
+        nextAppointmentAt: DateTime.utc(2026, 6, 1),
+      );
+
+      final cleared = withOptionals.copyWith(
+        mrn: null,
+        phone: null,
+        dateOfBirth: null,
+        gender: null,
+        lastVisitAt: null,
+        nextAppointmentAt: null,
+      );
+
+      expect(cleared.mrn, isNull);
+      expect(cleared.phone, isNull);
+      expect(cleared.dateOfBirth, isNull);
+      expect(cleared.gender, isNull);
+      expect(cleared.lastVisitAt, isNull);
+      expect(cleared.nextAppointmentAt, isNull);
+      expect(cleared.fullName, withOptionals.fullName);
     });
   });
 }

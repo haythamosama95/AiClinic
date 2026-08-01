@@ -14,6 +14,10 @@ void main() {
 
     setUp(() {
       client = BillingRpcTestClient();
+<<<<<<< HEAD
+=======
+      client.allowPartialPayments = true;
+>>>>>>> master
       container = ProviderContainer(
         overrides: [
           paymentRepositoryProvider.overrideWithValue(PaymentRepository(client)),
@@ -25,10 +29,17 @@ void main() {
       container.dispose();
     });
 
+<<<<<<< HEAD
     PaymentNotifier get notifier => container.read(paymentNotifierProvider);
 
     test('recordPayment forwards trimmed arguments to the repository', () async {
       final paymentId = await notifier.recordPayment(
+=======
+    PaymentNotifier readNotifier() => container.read(paymentNotifierProvider);
+
+    test('recordPayment forwards trimmed arguments to the repository', () async {
+      final paymentId = await readNotifier().recordPayment(
+>>>>>>> master
         invoiceId: '  ${BillingRpcTestClient.issuedInvoiceId}  ',
         method: PaymentMethod.card,
         amount: ' 50.00 ',
@@ -53,14 +64,22 @@ void main() {
         'recorded_at': '2026-06-01T12:00:00.000Z',
       });
 
+<<<<<<< HEAD
       final paymentId = await notifier.recordRefund(
+=======
+      final paymentId = await readNotifier().recordRefund(
+>>>>>>> master
         invoiceId: '  ${BillingRpcTestClient.issuedInvoiceId}  ',
         method: PaymentMethod.bankTransfer,
         amount: ' 25.00 ',
         note: '  Patient overpaid  ',
       );
 
+<<<<<<< HEAD
       expect(paymentId, 'ref-1');
+=======
+      expect(paymentId, 'ref-2');
+>>>>>>> master
       expect(client.lastFunction, 'record_refund');
       expect(client.lastParams?['p_invoice_id'], BillingRpcTestClient.issuedInvoiceId);
       expect(client.lastParams?['p_method'], 'bank_transfer');
@@ -70,7 +89,11 @@ void main() {
 
     test('recordPayment propagates empty invoiceId validation errors', () {
       expect(
+<<<<<<< HEAD
         () => notifier.recordPayment(
+=======
+        () => readNotifier().recordPayment(
+>>>>>>> master
           invoiceId: '   ',
           method: PaymentMethod.cash,
           amount: '10',
@@ -82,7 +105,11 @@ void main() {
 
     test('recordPayment propagates zero amount validation errors', () {
       expect(
+<<<<<<< HEAD
         () => notifier.recordPayment(
+=======
+        () => readNotifier().recordPayment(
+>>>>>>> master
           invoiceId: BillingRpcTestClient.issuedInvoiceId,
           method: PaymentMethod.cash,
           amount: '0',
@@ -100,7 +127,11 @@ void main() {
 
     test('recordPayment propagates negative amount validation errors', () {
       expect(
+<<<<<<< HEAD
         () => notifier.recordPayment(
+=======
+        () => readNotifier().recordPayment(
+>>>>>>> master
           invoiceId: BillingRpcTestClient.issuedInvoiceId,
           method: PaymentMethod.cash,
           amount: '-5',
@@ -118,7 +149,11 @@ void main() {
 
     test('recordRefund propagates missing note validation errors', () {
       expect(
+<<<<<<< HEAD
         () => notifier.recordRefund(
+=======
+        () => readNotifier().recordRefund(
+>>>>>>> master
           invoiceId: BillingRpcTestClient.issuedInvoiceId,
           method: PaymentMethod.cash,
           amount: '10',

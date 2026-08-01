@@ -3,11 +3,20 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'detail_widget_test_harness.dart';
+=======
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'detail_widget_test_harness.dart';
+import '../../helpers/breadcrumb_test_support.dart';
+>>>>>>> master
 
 void main() {
   group('AppointmentDetailPage', () {
@@ -34,7 +43,11 @@ void main() {
       final repo = HarnessAppointmentRepository();
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
+<<<<<<< HEAD
         loadingDetailFuture: Future<Never>.delayed(const Duration(days: 1)),
+=======
+        loadingDetail: true,
+>>>>>>> master
       );
 
       await pumpAppointmentDetail(
@@ -44,8 +57,13 @@ void main() {
       );
       await tester.pump();
 
+<<<<<<< HEAD
       expect(find.text('Loading…'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
+=======
+      expect(find.text('Loading…'), findsWidgets);
+      expect(find.byType(AppProgress), findsWidgets);
+>>>>>>> master
     });
 
     testWidgets('advanced: loading with preview shows patient name', (tester) async {
@@ -53,7 +71,11 @@ void main() {
       final preview = buildAppointmentListItem(patientName: 'Preview Patient');
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
+<<<<<<< HEAD
         loadingDetailFuture: Future<Never>.delayed(const Duration(days: 1)),
+=======
+        loadingDetail: true,
+>>>>>>> master
       );
 
       await pumpAppointmentDetail(
@@ -95,7 +117,11 @@ void main() {
       );
       await tester.pump();
 
+<<<<<<< HEAD
       expect(router.location, AppRoutes.appointmentDetail(detailTestAppointmentId));
+=======
+      expect(router.state.uri.toString(), AppRoutes.appointmentDetail(detailTestAppointmentId));
+>>>>>>> master
       expect(find.text('Appointment not found'), findsWidgets);
       expect(find.text('Back to calendar'), findsOneWidget);
 
@@ -103,7 +129,11 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
+<<<<<<< HEAD
       expect(router.location, AppRoutes.appointmentsCalendar);
+=======
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
+>>>>>>> master
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
     });
 
@@ -133,28 +163,47 @@ void main() {
       );
       await tester.pump();
 
+<<<<<<< HEAD
       expect(router.location, AppRoutes.appointmentsCalendar);
+=======
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
+>>>>>>> master
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
 
       router.push(AppRoutes.appointmentDetail(detailTestAppointmentId));
       await tester.pump();
+<<<<<<< HEAD
 
       expect(router.location, AppRoutes.appointmentDetail(detailTestAppointmentId));
+=======
+      await tester.pump();
+
+      expect(router.state.uri.toString(), AppRoutes.appointmentDetail(detailTestAppointmentId));
+>>>>>>> master
       expect(find.text('Back to calendar'), findsOneWidget);
 
       await tester.tap(find.text('Back to calendar'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
+<<<<<<< HEAD
       expect(router.location, AppRoutes.appointmentsCalendar);
+=======
+      expect(router.state.uri.toString(), AppRoutes.appointmentsCalendar);
+>>>>>>> master
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
     });
 
     testWidgets('invalid state: other error shows message and Retry refetches', (tester) async {
       final repo = HarnessAppointmentRepository();
       repo.failGetAppointmentTimes = 1;
+<<<<<<< HEAD
       repo.detailOverride = buildAppointmentDetail(patientName: 'Reloaded Patient');
       final overrides = harnessDetailProviderOverrides(appointmentRepo: repo);
+=======
+      final overrides = harnessDetailProviderOverrides(appointmentRepo: repo);
+      repo.detailOverride = buildAppointmentDetail(patientName: 'Reloaded Patient');
+>>>>>>> master
 
       await pumpAppointmentDetail(
         tester,
@@ -272,6 +321,13 @@ void main() {
       final overrides = harnessDetailProviderOverrides(
         appointmentRepo: repo,
         detail: buildAppointmentDetail(),
+<<<<<<< HEAD
+=======
+        breadcrumbTrail: calendarToAppointmentTrail(
+          appointmentId: detailTestAppointmentId,
+          appointmentLabel: 'Test Patient',
+        ),
+>>>>>>> master
       );
 
       final router = buildDetailTestRouter(
@@ -294,6 +350,40 @@ void main() {
       expect(find.byKey(const Key('calendar_stub')), findsOneWidget);
     });
 
+<<<<<<< HEAD
+=======
+    testWidgets('advanced: queue origin shows Queue parent instead of Calendar', (tester) async {
+      final repo = HarnessAppointmentRepository();
+      final overrides = harnessDetailProviderOverrides(
+        appointmentRepo: repo,
+        detail: buildAppointmentDetail(patientName: 'Queue Patient'),
+        breadcrumbTrail: queueToAppointmentTrail(
+          appointmentId: detailTestAppointmentId,
+          appointmentLabel: 'Queue Patient',
+        ),
+      );
+
+      final router = buildDetailTestRouter(
+        appointmentId: detailTestAppointmentId,
+        detailPage: AppointmentDetailPage(appointmentId: detailTestAppointmentId),
+        initialLocation: AppRoutes.appointmentDetail(detailTestAppointmentId),
+      );
+
+      await pumpAppointmentDetail(
+        tester,
+        appointmentId: detailTestAppointmentId,
+        overrides: overrides,
+        router: router,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Calendar'), findsNothing);
+      expect(find.text('Queue Patient'), findsWidgets);
+    });
+
+>>>>>>> master
     testWidgets('advanced: Patient profile pushes patient detail route', (tester) async {
       final repo = HarnessAppointmentRepository();
       final overrides = harnessDetailProviderOverrides(

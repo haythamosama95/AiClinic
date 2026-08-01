@@ -2,7 +2,11 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+=======
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 import 'package:flutter/material.dart';
@@ -118,7 +122,11 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
+<<<<<<< HEAD
       await tester.tap(find.text('Undo confirm'));
+=======
+      await tester.tap(find.text('Undo confirm').last);
+>>>>>>> master
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -143,7 +151,11 @@ void main() {
       await tester.tap(find.byKey(const Key('appointment_control_no_show')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+<<<<<<< HEAD
       await tester.tap(find.text('Mark no-show'));
+=======
+      await tester.tap(find.text('Mark no-show').last);
+>>>>>>> master
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -185,7 +197,11 @@ void main() {
       expect(find.text('Who will see this patient?'), findsOneWidget);
     });
 
+<<<<<<< HEAD
     testWidgets('advanced: checked-in with assigned doctor skips picker', (tester) async {
+=======
+    testWidgets('advanced: checked-in with assigned doctor shows confirmation picker', (tester) async {
+>>>>>>> master
       final repo = HarnessAppointmentRepository();
       final detail = buildAppointmentDetail(status: AppointmentStatus.checkedIn);
       await pumpStatusActions(tester, repo: repo, detail: detail);
@@ -194,9 +210,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
+<<<<<<< HEAD
       expect(find.text('Who will see this patient?'), findsNothing);
       expect(repo.statusUpdateCallCount, 1);
       expect(repo.lastStatusUpdate, AppointmentStatus.inProgress);
+=======
+      expect(find.text('Who will see this patient?'), findsOneWidget);
+      expect(find.text('Dr. Ada'), findsWidgets);
+      expect(find.text('Preferred'), findsOneWidget);
+      expect(repo.statusUpdateCallCount, 0);
+>>>>>>> master
     });
 
     testWidgets('invalid state: disabled advance shows toast with disabledReason', (tester) async {

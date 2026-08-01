@@ -337,4 +337,28 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get maritalStatusWidowed => 'أرمل';
+<<<<<<< HEAD
+=======
+
+  @override
+  String get breadcrumbCalendar => 'التقويم';
+
+  @override
+  String get breadcrumbQueue => 'الطابور';
+
+  @override
+  String get breadcrumbInvoices => 'الفواتير';
+
+  @override
+  String get breadcrumbVisitDocumentation => 'توثيق الزيارة';
+
+  @override
+  String get breadcrumbVisitChronicle => 'سجل الزيارة';
+
+  @override
+  String get breadcrumbVisitBilling => 'الفوترة';
+
+  @override
+  String get breadcrumbNotFound => 'غير موجود';
+>>>>>>> master
 }

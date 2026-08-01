@@ -1,5 +1,11 @@
 import 'dart:async';
+<<<<<<< HEAD
 
+=======
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
+>>>>>>> master
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +13,10 @@ import 'package:ai_clinic/core/ui/components/app_input_styles.dart';
 import 'package:ai_clinic/core/ui/components/app_popover.dart';
 import 'package:ai_clinic/core/ui/components/app_pressable.dart';
 import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/core/ui/theme/app_radius.dart';
+>>>>>>> master
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -203,10 +213,14 @@ class _AppComboboxState extends State<AppCombobox> {
       _highlight = 0;
     });
     _focusNode.unfocus();
+<<<<<<< HEAD
     // Defer so the popover closes before a parent may remove this combobox.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onValueChange?.call(item);
     });
+=======
+    widget.onValueChange?.call(item);
+>>>>>>> master
   }
 
   void _clearSelection() {
@@ -269,6 +283,11 @@ class _AppComboboxState extends State<AppCombobox> {
 
   String _createLabel(String query) => widget.createLabel?.call(query) ?? 'Create "$query"';
 
+<<<<<<< HEAD
+=======
+  bool get _useInlineListbox => !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+
+>>>>>>> master
   @override
   Widget build(BuildContext context) {
     final metrics = appInputMetrics(context, widget.size);
@@ -328,6 +347,49 @@ class _AppComboboxState extends State<AppCombobox> {
       },
     );
 
+<<<<<<< HEAD
+=======
+    final inputShell = _ComboboxInputShell(
+      size: widget.size,
+      invalid: widget.invalid,
+      disabled: widget.disabled,
+      focused: _focusNode.hasFocus,
+      trailing: trailing,
+      child: field,
+    );
+
+    if (_useInlineListbox) {
+      final colors = context.appColors;
+      return Semantics(
+        identifier: widget.id,
+        textField: true,
+        enabled: !widget.disabled,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            inputShell,
+            if (_open && !widget.disabled) ...[
+              const SizedBox(height: AppSpacing.space1),
+              Material(
+                elevation: 0,
+                color: colors.surfaceRaised,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: colors.borderDefault),
+                  ),
+                  child: listbox,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+>>>>>>> master
     return Semantics(
       identifier: widget.id,
       textField: true,
@@ -337,6 +399,7 @@ class _AppComboboxState extends State<AppCombobox> {
         onOpenChange: _setOpen,
         minWidth: appPopoverListboxMinWidth,
         child: listbox,
+<<<<<<< HEAD
         triggerBuilder: (context, isOpen, onToggle) => _ComboboxInputShell(
           size: widget.size,
           invalid: widget.invalid,
@@ -345,6 +408,9 @@ class _AppComboboxState extends State<AppCombobox> {
           trailing: trailing,
           child: field,
         ),
+=======
+        triggerBuilder: (context, isOpen, onToggle) => inputShell,
+>>>>>>> master
       ),
     );
   }

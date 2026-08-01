@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/core/ui/components/app_tooltip.dart';
+>>>>>>> master
 import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
@@ -45,6 +49,11 @@ class _AppIconButtonState extends State<AppIconButton> {
 
   double get _dimension => widget.dimension ?? widget.size.dimension;
 
+<<<<<<< HEAD
+=======
+  double get _outerDimension => widget.error && !widget.disabled ? _dimension + 4 : _dimension;
+
+>>>>>>> master
   double get _iconSize => widget.size == AppIconButtonSize.lg ? 20 : 16;
 
   @override
@@ -55,6 +64,7 @@ class _AppIconButtonState extends State<AppIconButton> {
     final reducedMotion = AppMotion.prefersReducedMotion(context);
     final scale = !widget.disabled && _pressed && !reducedMotion ? 0.98 : 1.0;
 
+<<<<<<< HEAD
     Widget button = Semantics(
       label: widget.label,
       button: true,
@@ -79,6 +89,36 @@ class _AppIconButtonState extends State<AppIconButton> {
               duration: AppMotion.instant,
               curve: AppMotion.standardCurve,
               child: _buildButtonSurface(colors, isDark, style),
+=======
+    Widget button = SizedBox(
+      width: _outerDimension,
+      height: _outerDimension,
+      child: Semantics(
+        label: widget.label,
+        button: true,
+        enabled: !widget.disabled,
+        child: Focus(
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          child: MouseRegion(
+            cursor: widget.disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() {
+              _hovered = false;
+              _pressed = false;
+            }),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: widget.disabled ? null : (_) => setState(() => _pressed = true),
+              onTapUp: widget.disabled ? null : (_) => setState(() => _pressed = false),
+              onTapCancel: widget.disabled ? null : () => setState(() => _pressed = false),
+              onTap: widget.onPressed,
+              child: AnimatedScale(
+                scale: scale,
+                duration: AppMotion.instant,
+                curve: AppMotion.standardCurve,
+                child: _buildButtonSurface(colors, isDark, style),
+              ),
+>>>>>>> master
             ),
           ),
         ),
@@ -86,7 +126,15 @@ class _AppIconButtonState extends State<AppIconButton> {
     );
 
     if (!widget.tooltipDisabled && !widget.disabled) {
+<<<<<<< HEAD
       button = Tooltip(message: widget.tooltip ?? widget.label, child: button);
+=======
+      button = AppTooltip(
+        message: widget.tooltip ?? widget.label,
+        preferBelow: false,
+        child: button,
+      );
+>>>>>>> master
     }
 
     return button;

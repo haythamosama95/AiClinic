@@ -72,7 +72,11 @@ Future<void> _openMedicalBackgroundDialog(
           onShow(
             MedicalBackgroundFormDialog.show(
               context,
+<<<<<<< HEAD
               dialogTitle: spec.dialogTitle,
+=======
+              dialogTitle: initialTitle != null ? spec.editDialogTitle : spec.dialogTitle,
+>>>>>>> master
               dialogDescription: spec.dialogDescription,
               itemLabel: spec.itemLabel,
               noteLabel: spec.noteLabel,

@@ -64,6 +64,10 @@ Future<void> refreshInvoiceBillingSurfaces(
 
   await Future.wait<void>([
     ref.read(invoiceDetailViewProvider(invoiceId).future),
+<<<<<<< HEAD
+=======
+    ref.read(patientInvoicesProvider(patientId).future),
+>>>>>>> master
     ref.read(invoiceListProvider.notifier).reload(),
   ]);
 }

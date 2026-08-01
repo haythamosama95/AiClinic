@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
+=======
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
@@ -7,7 +10,10 @@ import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_entry_
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_vital_signs_editor.dart';
 
+<<<<<<< HEAD
 import '../../support/visit_encounter_test_support.dart';
+=======
+>>>>>>> master
 import 'visit_widget_test_harness.dart';
 
 const _catalog = <CatalogItem>[
@@ -32,8 +38,15 @@ Future<void> _pumpEditor(
       entries: entries,
       catalog: catalog,
       canEdit: canEdit,
+<<<<<<< HEAD
       onCreate: onCreate ?? (_) {},
       onUpdate: onUpdate ?? (_, {required name, required value, unit, predefinedVitalSignId}) {},
+=======
+      onCreate: onCreate ??
+          ({required name, required value, unit, predefinedVitalSignId}) {},
+      onUpdate: onUpdate ??
+          (id, {required name, required value, unit, predefinedVitalSignId}) {},
+>>>>>>> master
       onArchive: onArchive ?? (_) {},
     ),
   );
@@ -71,11 +84,18 @@ void main() {
         expect(find.text('2 vital signs documented'), findsOneWidget);
         expect(find.byType(VitalSignEntryCard), findsNWidgets(2));
         expect(find.text('BLOOD PRESSURE'), findsOneWidget);
+<<<<<<< HEAD
         expect(find.text('120/80'), findsOneWidget);
         expect(find.text('HEART RATE'), findsOneWidget);
         expect(find.text('72'), findsOneWidget);
         expect(find.textContaining('mmHg'), findsOneWidget);
         expect(find.textContaining('bpm'), findsOneWidget);
+=======
+        expect(find.text('HEART RATE'), findsOneWidget);
+        final cards = tester.widgetList<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).toList();
+        expect(cards.map((card) => card.value), containsAll(['120/80', '72']));
+        expect(cards.map((card) => card.unit), containsAll(['mmHg', 'bpm']));
+>>>>>>> master
         expect(find.text('Add another vital sign'), findsOneWidget);
       });
 

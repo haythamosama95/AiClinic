@@ -7,10 +7,26 @@ abstract final class PromotionValidation {
     if (trimmed.isEmpty) {
       return 'Promotion price is required.';
     }
+<<<<<<< HEAD
+=======
+    if (trimmed.contains(',')) {
+      return 'Enter a valid non-negative price with at most two decimal places.';
+    }
+    final dotIndex = trimmed.indexOf('.');
+    if (dotIndex >= 0 && trimmed.length - dotIndex - 1 > 2) {
+      return 'Enter a valid non-negative price with at most two decimal places.';
+    }
+>>>>>>> master
     final parsed = Money.tryParse(trimmed);
     if (parsed == null) {
       return 'Enter a valid non-negative price with at most two decimal places.';
     }
+<<<<<<< HEAD
+=======
+    if (parsed.isNegative) {
+      return 'Enter a valid non-negative price with at most two decimal places.';
+    }
+>>>>>>> master
     return null;
   }
 

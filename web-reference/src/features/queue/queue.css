@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+.queue-page {
+  font-family: 'Source Sans 3', var(--font-sans), system-ui, sans-serif;
+  color: var(--text-primary);
+}
+
+.queue-page h1,
+.queue-page h2,
+.queue-page h3,
+.queue-page .queue-heading {
+  font-family: 'DM Sans', var(--font-display), system-ui, sans-serif;
+}
+
+.queue-page .queue-mono {
+  font-family: 'IBM Plex Mono', var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-page *,
+  .queue-page *::before,
+  .queue-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,15 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+<<<<<<< HEAD
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
+=======
+import 'package:flutter_riverpod/misc.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:syncfusion_flutter_calendar/calendar.dart' hide AppointmentType;
+>>>>>>> master
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
+=======
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -104,11 +114,15 @@ class SpyAppointmentCalendarController extends AppointmentCalendarController {
 }
 
 /// Default authenticated session with full appointment access.
+<<<<<<< HEAD
 AuthSessionState calendarAuthSession({
   Set<String>? permissions,
   String? activeBranchId,
   List<String>? branchIds,
 }) {
+=======
+AuthSessionState calendarAuthSession({Set<String>? permissions, String? activeBranchId, List<String>? branchIds}) {
+>>>>>>> master
   final branch = activeBranchId ?? calendarTestBranchAId;
   return AuthSessionState(
     status: AuthSessionStatus.authenticated,
@@ -219,6 +233,7 @@ CalendarAppointmentDetails calendarTileDetails({
   required DateTime end,
   Rect bounds = const Rect.fromLTWH(0, 0, 300, 56),
 }) {
+<<<<<<< HEAD
   final appointment = Appointment(
     id: id,
     subject: subject,
@@ -230,6 +245,10 @@ CalendarAppointmentDetails calendarTileDetails({
     bounds,
     isMoreAppointmentRegion: false,
   );
+=======
+  final appointment = Appointment(id: id, subject: subject, startTime: start, endTime: end);
+  return CalendarAppointmentDetails(start, [appointment], bounds, isMoreAppointmentRegion: false);
+>>>>>>> master
 }
 
 /// Branch repository that always throws (filter error-state tests).
@@ -268,13 +287,17 @@ List<Override> calendarProviderOverrides({
 }) {
   final state = calendarState ?? defaultCalendarState();
   final spy = calendarController ?? SpyAppointmentCalendarController(state);
+<<<<<<< HEAD
   if (calendarController == null && calendarState != null) {
     spy.replaceState(state);
   }
+=======
+>>>>>>> master
 
   final client = rpcClient ?? AppointmentRpcTestClient();
 
   return [
+<<<<<<< HEAD
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(auth ?? calendarAuthSession()),
     ),
@@ -285,6 +308,12 @@ List<Override> calendarProviderOverrides({
     appointmentCalendarDoctorsProvider.overrideWith(
       (ref) async => doctors ?? calendarTestDoctorsWithBranches(),
     ),
+=======
+    authSessionProvider.overrideWith(() => MutableAuthSessionNotifier(auth ?? calendarAuthSession())),
+    appointmentCalendarProvider.overrideWith(() => spy),
+    appointmentCalendarBranchesProvider.overrideWith((ref) async => branches ?? calendarTestBranches()),
+    appointmentCalendarDoctorsProvider.overrideWith((ref) async => doctors ?? calendarTestDoctorsWithBranches()),
+>>>>>>> master
     appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
     branchRepositoryProvider.overrideWithValue(CalendarStubBranchRepository(branches: branches)),
     staffAdminRepositoryProvider.overrideWithValue(
@@ -312,9 +341,12 @@ Future<SpyAppointmentCalendarController> pumpCalendarSurface(
 
   final state = calendarState ?? defaultCalendarState();
   final spy = calendarController ?? SpyAppointmentCalendarController(state);
+<<<<<<< HEAD
   if (calendarController == null && calendarState != null) {
     spy.replaceState(state);
   }
+=======
+>>>>>>> master
 
   await tester.pumpWidget(
     ProviderScope(
@@ -339,12 +371,24 @@ Future<SpyAppointmentCalendarController> pumpCalendarSurface(
   return spy;
 }
 
+<<<<<<< HEAD
 /// Minimal Material shell for dialog-only widget tests.
 Future<void> pumpDialogShell(
   WidgetTester tester, {
   required Widget home,
   List<Override> overrides = const [],
 }) async {
+=======
+/// Holds the pending `showDialog` future without awaiting dismissal.
+class PendingDialogResult<T> {
+  const PendingDialogResult(this.result);
+
+  final Future<T?> result;
+}
+
+/// Minimal Material shell for dialog-only widget tests.
+Future<void> pumpDialogShell(WidgetTester tester, {required Widget home, List<Override> overrides = const []}) async {
+>>>>>>> master
   await tester.binding.setSurfaceSize(const Size(800, 700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -363,16 +407,35 @@ Future<void> pumpDialogShell(
 
 /// GoRouter with lightweight stub pages for [AppointmentSectionNav] tests.
 GoRouter createAppointmentSectionNavRouter({
+<<<<<<< HEAD
   required Widget navHost,
   String initialLocation = AppRoutes.appointmentsCalendar,
 }) {
   Widget stub(String label) => Scaffold(body: Center(child: Text('stub:$label')));
+=======
+  required AppointmentSection activeSection,
+  String initialLocation = AppRoutes.appointmentsCalendar,
+}) {
+  Widget stub(String label) => Center(child: Text('stub:$label'));
+
+  Widget sectionPage(AppointmentSection section, Widget body) {
+    return Scaffold(
+      body: Column(
+        children: [
+          AppointmentSectionNav(activeSection: section),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+>>>>>>> master
 
   return GoRouter(
     initialLocation: initialLocation,
     routes: [
       GoRoute(
         path: AppRoutes.appointments,
+<<<<<<< HEAD
         builder: (_, __) => stub('hub'),
         routes: [
           GoRoute(
@@ -386,6 +449,15 @@ GoRouter createAppointmentSectionNavRouter({
           GoRoute(
             path: 'calendar',
             builder: (_, __) => navHost,
+=======
+        builder: (_, _) => sectionPage(AppointmentSection.hub, stub('hub')),
+        routes: [
+          GoRoute(path: 'book', builder: (_, _) => sectionPage(AppointmentSection.book, stub('book'))),
+          GoRoute(path: 'queue', builder: (_, _) => sectionPage(AppointmentSection.queue, stub('queue'))),
+          GoRoute(
+            path: 'calendar',
+            builder: (_, _) => AppointmentSectionNav(activeSection: activeSection),
+>>>>>>> master
           ),
         ],
       ),
@@ -401,10 +473,14 @@ Future<GoRouter> pumpAppointmentSectionNav(
   await tester.binding.setSurfaceSize(const Size(1280, 200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
+<<<<<<< HEAD
   final router = createAppointmentSectionNavRouter(
     navHost: AppointmentSectionNav(activeSection: activeSection),
     initialLocation: initialLocation,
   );
+=======
+  final router = createAppointmentSectionNavRouter(activeSection: activeSection, initialLocation: initialLocation);
+>>>>>>> master
 
   await tester.pumpWidget(
     ProviderScope(

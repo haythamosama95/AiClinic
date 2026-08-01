@@ -1,6 +1,10 @@
 import { MOCK_ORG } from '@/components/navigation/nav-model'
 import { defaultWorkingSchedule } from './working-schedule'
+<<<<<<< HEAD
 import type { BranchRecord, OrganizationProfile, StaffRecord } from './types'
+=======
+import type { BranchRecord, OrganizationProfile, ServiceRecord, StaffRecord } from './types'
+>>>>>>> master
 
 export const INITIAL_ORGANIZATION: OrganizationProfile = {
   name: MOCK_ORG,
@@ -84,3 +88,30 @@ export const INITIAL_STAFF: StaffRecord[] = [
     isActive: true,
   },
 ]
+<<<<<<< HEAD
+=======
+
+export const INITIAL_SERVICES: ServiceRecord[] = [
+  {
+    id: 'svc-consult',
+    name: 'General consultation',
+    price: 350,
+    allBranches: true,
+    branchIds: [],
+  },
+  {
+    id: 'svc-cleaning',
+    name: 'Dental cleaning',
+    price: 500,
+    allBranches: false,
+    branchIds: ['downtown', 'nasr-city'],
+  },
+  {
+    id: 'svc-xray',
+    name: 'X-ray imaging',
+    price: 200,
+    allBranches: false,
+    branchIds: ['downtown'],
+  },
+]
+>>>>>>> master

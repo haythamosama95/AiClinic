@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
@@ -16,11 +20,16 @@ void main() {
         child: const InvoiceReviewPage(invoiceId: billingTestIssuedInvoiceId),
         overrides: billingProviderOverrides(
           extraOverrides: [
+<<<<<<< HEAD
             invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWith(
               (ref) => Future<InvoiceDetailViewState>.delayed(
                 const Duration(days: 1),
                 () => buildBillingDetailView(),
               ),
+=======
+            invoiceDetailViewProvider(billingTestIssuedInvoiceId).overrideWithValue(
+              const AsyncLoading<InvoiceDetailViewState>(),
+>>>>>>> master
             ),
           ],
         ),
@@ -54,6 +63,10 @@ void main() {
 
       await tester.tap(find.text('Retry'));
       await pumpBillingFrames(tester);
+<<<<<<< HEAD
+=======
+      await pumpBillingFrames(tester);
+>>>>>>> master
 
       expect(loadCount, greaterThan(1));
       expect(find.byType(VisitInvoiceReadOnlyReview), findsOneWidget);
@@ -70,10 +83,18 @@ void main() {
       );
       await pumpBillingFrames(tester);
 
+<<<<<<< HEAD
       expect(find.text('INV-MAIN-000001'), findsOneWidget);
       expect(find.textContaining('Test Patient'), findsOneWidget);
       expect(find.textContaining('Main'), findsOneWidget);
       expect(find.byType(VisitInvoiceReadOnlyReview), findsOneWidget);
+=======
+      expect(find.text('INV-MAIN-000001'), findsNWidgets(2));
+      expect(find.textContaining('Test Patient'), findsWidgets);
+      expect(find.textContaining('Main'), findsWidgets);
+      expect(find.byType(VisitInvoiceReadOnlyReview), findsOneWidget);
+      await pumpBillingFrames(tester);
+>>>>>>> master
     });
 
     testWidgets('Back control pops the route', (tester) async {

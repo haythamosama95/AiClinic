@@ -134,6 +134,165 @@ BEGIN
 END;
 $$;
 
+-- RLS write-deny: authenticated role cannot mutate audit_log or subscription_cache.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_bootstrap_staff uuid := 'b0000000-0000-4000-8000-000000000001';
+  v_org_id uuid;
+  v_insert_failed boolean;
+  v_rows int;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  SELECT o.id
+  INTO v_org_id
+  FROM public.organizations o
+  JOIN public.staff_members sm ON sm.auth_user_id = v_bootstrap_user
+  WHERE sm.is_deleted = false
+  LIMIT 1;
+
+  IF v_org_id IS NULL THEN
+    SELECT id INTO v_org_id FROM public.organizations LIMIT 1;
+  END IF;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user::text,
+      'role', 'authenticated',
+      'organization_id', COALESCE(v_org_id::text, ''),
+      'branch_ids', '',
+      'staff_member_id', v_bootstrap_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_insert_failed := false;
+  BEGIN
+    INSERT INTO public.audit_log (user_id, organization_id, action, table_name)
+    VALUES (v_bootstrap_user, v_org_id, 'test.insert', 'organizations');
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_insert_failed := true;
+  END;
+  IF NOT v_insert_failed THEN
+    SELECT count(*)::int INTO v_rows
+    FROM public.audit_log
+    WHERE action = 'test.insert' AND user_id = v_bootstrap_user;
+    v_insert_failed := v_rows = 0;
+  END IF;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO auth_security_results VALUES (
+    'authenticated_audit_log_insert_denied',
+    v_insert_failed,
+    'insert blocked or 0 rows'
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user::text,
+      'role', 'authenticated',
+      'organization_id', COALESCE(v_org_id::text, ''),
+      'branch_ids', '',
+      'staff_member_id', v_bootstrap_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_insert_failed := false;
+  v_rows := 0;
+  BEGIN
+    UPDATE public.audit_log
+    SET action = 'test.update'
+    WHERE organization_id = v_org_id;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_insert_failed := true;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO auth_security_results VALUES (
+    'authenticated_audit_log_update_denied',
+    v_insert_failed OR v_rows = 0,
+    'updated_rows=' || v_rows::text
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user::text,
+      'role', 'authenticated',
+      'organization_id', COALESCE(v_org_id::text, ''),
+      'branch_ids', '',
+      'staff_member_id', v_bootstrap_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_insert_failed := false;
+  v_rows := 0;
+  BEGIN
+    DELETE FROM public.audit_log WHERE organization_id = v_org_id;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_insert_failed := true;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO auth_security_results VALUES (
+    'authenticated_audit_log_delete_denied',
+    v_insert_failed OR v_rows = 0,
+    'deleted_rows=' || v_rows::text
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user::text,
+      'role', 'authenticated',
+      'organization_id', COALESCE(v_org_id::text, ''),
+      'branch_ids', '',
+      'staff_member_id', v_bootstrap_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_insert_failed := false;
+  BEGIN
+    INSERT INTO public.subscription_cache (organization_id, tier, valid_until, last_checked_at)
+    VALUES (v_org_id, 'test-tier', now() + interval '30 days', now());
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_insert_failed := true;
+  END;
+  IF NOT v_insert_failed THEN
+    SELECT count(*)::int INTO v_rows
+    FROM public.subscription_cache
+    WHERE organization_id = v_org_id AND tier = 'test-tier';
+    v_insert_failed := v_rows = 0;
+  END IF;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO auth_security_results VALUES (
+    'authenticated_subscription_cache_insert_denied',
+    v_insert_failed,
+    'insert blocked or 0 rows'
+  );
+END;
+$$;
+
 -- Anon cannot execute privileged RPCs.
 DO $$
 BEGIN

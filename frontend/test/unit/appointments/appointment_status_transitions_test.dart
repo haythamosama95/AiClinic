@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -67,8 +68,15 @@ void main() {
         doctorId: 'doc-a',
         id: 'waiting',
       );
+      bool inProgressBlocked(AppointmentListItem item, Iterable<AppointmentListItem> siblings) =>
+          AppointmentQueueStartDoctor.isForwardInProgressBlocked(item: item, siblingAppointments: siblings);
       expect(
-        forwardStatusTargetFor(waiting, referenceUtc: referenceUtc, siblingAppointments: [active, waiting]),
+        forwardStatusTargetFor(
+          waiting,
+          referenceUtc: referenceUtc,
+          siblingAppointments: [active, waiting],
+          inProgressBlocked: inProgressBlocked,
+        ),
         isNull,
       );
     });
@@ -107,7 +115,11 @@ void main() {
           waiting,
           referenceUtc: referenceUtc,
           siblingAppointments: [active, waiting],
-          shiftLookup: shiftLookup,
+          inProgressBlocked: (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
+            item: item,
+            siblingAppointments: siblings,
+            shiftLookup: shiftLookup,
+          ),
         ),
         AppointmentStatus.inProgress,
       );

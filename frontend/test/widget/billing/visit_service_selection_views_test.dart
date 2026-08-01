@@ -48,8 +48,19 @@ Future<void> _pumpWide(WidgetTester tester, Widget child) async {
   );
 }
 
+<<<<<<< HEAD
 AppIconButton _iconButton(WidgetTester tester, String label) {
   return tester.widget<AppIconButton>(find.bySemanticsLabel(label));
+=======
+Finder _iconButtonFinder(String label) {
+  return find.byWidgetPredicate(
+    (widget) => widget is AppIconButton && widget.label == label,
+  );
+}
+
+AppIconButton _iconButton(WidgetTester tester, String label) {
+  return tester.widget<AppIconButton>(_iconButtonFinder(label));
+>>>>>>> master
 }
 
 void main() {
@@ -64,8 +75,13 @@ void main() {
           selectedIds: const {'svc-1'},
           selectedLines: [_line()],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
           onQuantityChange: (_, __) {},
+=======
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -90,7 +106,11 @@ void main() {
             toggledService = candidate;
             toggledSelected = selected;
           },
+<<<<<<< HEAD
           onQuantityChange: (_, __) {},
+=======
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -112,7 +132,11 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line()],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
+=======
+          onToggle: (_, _) {},
+>>>>>>> master
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );
@@ -122,7 +146,11 @@ void main() {
         isTrue,
       );
 
+<<<<<<< HEAD
       await tester.tap(find.bySemanticsLabel('Increase quantity for Consultation'));
+=======
+      await tester.tap(_iconButtonFinder('Increase quantity for Consultation'));
+>>>>>>> master
       await tester.pump();
 
       expect(changes, contains((service.serviceId, 2)));
@@ -138,8 +166,13 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line(quantity: 99)],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
           onQuantityChange: (_, __) {},
+=======
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -159,8 +192,13 @@ void main() {
           selectedIds: const {'svc-1'},
           selectedLines: [_line()],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
           onQuantityChange: (_, __) {},
+=======
+          onToggle: (_, _) {},
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -184,7 +222,11 @@ void main() {
               toggledService = candidate;
             }
           },
+<<<<<<< HEAD
           onQuantityChange: (_, __) {},
+=======
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -210,7 +252,11 @@ void main() {
               toggledService = candidate;
             }
           },
+<<<<<<< HEAD
           onQuantityChange: (_, __) {},
+=======
+          onQuantityChange: (_, _) {},
+>>>>>>> master
         ),
       );
 
@@ -231,7 +277,11 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line()],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
+=======
+          onToggle: (_, _) {},
+>>>>>>> master
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );
@@ -241,7 +291,11 @@ void main() {
         isTrue,
       );
 
+<<<<<<< HEAD
       await tester.tap(find.bySemanticsLabel('Increase quantity for Consultation'));
+=======
+      await tester.tap(_iconButtonFinder('Increase quantity for Consultation'));
+>>>>>>> master
       await tester.pump();
 
       expect(changes, contains((service.serviceId, 2)));
@@ -253,7 +307,11 @@ void main() {
           selectedIds: {service.serviceId},
           selectedLines: [_line(quantity: 99)],
           currency: 'USD',
+<<<<<<< HEAD
           onToggle: (_, __) {},
+=======
+          onToggle: (_, _) {},
+>>>>>>> master
           onQuantityChange: (serviceId, next) => changes.add((serviceId, next)),
         ),
       );

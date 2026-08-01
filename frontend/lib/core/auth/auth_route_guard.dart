@@ -309,11 +309,75 @@ abstract final class AuthRouteGuard {
   }
 
   static bool isSettingsRoute(String location) {
-    return location == AppRoutes.settings ||
-        location == AppRoutes.settingsIdleTimeout ||
+    return isPersonalSettingsRoute(location) ||
         location == AppRoutes.settingsBilling ||
         isServiceCatalogRoute(location) ||
         isAdminSettingsRoute(location);
+  }
+
+  /// Personal workstation settings (appearance, notifications, security).
+  static bool isPersonalSettingsRoute(String location) {
+    return location == AppRoutes.settings ||
+        location == AppRoutes.settingsIdleTimeout ||
+<<<<<<< HEAD
+        location == AppRoutes.settingsBilling ||
+        isServiceCatalogRoute(location) ||
+        isAdminSettingsRoute(location);
+=======
+        AppRoutes.personalSettingsPaths.contains(location);
+  }
+
+  /// Service catalog administration routes (015).
+  static bool isServiceCatalogRoute(String location) {
+    if (AppRoutes.serviceCatalogStaticPaths.contains(location)) {
+      return true;
+    }
+    return location.startsWith('/settings/services/');
+  }
+
+  static bool canAccessServiceEditor(AuthSessionState auth) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
+      return false;
+    }
+    return PermissionService(auth.context).canManageServices();
+  }
+
+  static bool canAccessServiceCatalogList(AuthSessionState auth) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
+      return false;
+    }
+    final permissions = PermissionService(auth.context);
+    return permissions.canViewServices() || permissions.canManageServices();
+  }
+
+  /// Returns redirect when [location] is a service catalog route the session cannot access.
+  static String? serviceCatalogRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isServiceCatalogRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if ((auth.context?.needsClinicSetup ?? true)) {
+      return clinicSetupRoute;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.settingsServices => canAccessServiceCatalogList(auth),
+      AppRoutes.settingsServicesNew => canAccessServiceEditor(auth),
+      _ when location.startsWith('/settings/services/') => canAccessServiceEditor(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.settings;
+  }
+
+  /// V1-2 clinic management hub at `/clinic-management`.
+  static bool isClinicManagementRoute(String location) {
+    return location == AppRoutes.clinicManagement;
+>>>>>>> master
   }
 
   /// Service catalog administration routes (015).

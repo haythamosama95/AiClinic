@@ -14,10 +14,19 @@ import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/auth_repository.dart' as domain;
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+=======
+import 'dart:ui' show Tristate;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -202,8 +211,13 @@ Widget _loginTestMediaQuery({required Size surfaceSize, required Widget child}) 
   );
 }
 
+<<<<<<< HEAD
 Widget _loginMaterialApp({required Widget child}) {
   return MaterialApp(
+=======
+Widget _loginRouterMaterialApp({required GoRouter router}) {
+  return MaterialApp.router(
+>>>>>>> master
     theme: AppTheme.light(),
     builder: (context, appChild) {
       return MediaQuery(
@@ -211,7 +225,11 @@ Widget _loginMaterialApp({required Widget child}) {
         child: appChild!,
       );
     },
+<<<<<<< HEAD
     home: child,
+=======
+    routerConfig: router,
+>>>>>>> master
   );
 }
 
@@ -223,11 +241,19 @@ GoRouter createLoginTestRouter({
     routes: [
       GoRoute(
         path: AppRoutes.login,
+<<<<<<< HEAD
         builder: (_, __) => const LoginPage(),
       ),
       GoRoute(
         path: '/home',
         builder: (_, __) => const Scaffold(body: Text('Home stub')),
+=======
+        builder: (_, _) => const LoginPage(),
+      ),
+      GoRoute(
+        path: '/home',
+        builder: (_, _) => const Scaffold(body: Text('Home stub')),
+>>>>>>> master
       ),
     ],
   );
@@ -248,6 +274,10 @@ Future<LoginPumpResult> pumpLoginPage(
 
   final session = sessionNotifier ?? TestAuthSessionNotifier();
   final repository = authRepository ?? RecordingAuthRepository();
+<<<<<<< HEAD
+=======
+  final router = createLoginTestRouter();
+>>>>>>> master
 
   await tester.pumpWidget(
     ProviderScope(
@@ -259,7 +289,11 @@ Future<LoginPumpResult> pumpLoginPage(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
+<<<<<<< HEAD
         child: _loginMaterialApp(child: const LoginPage()),
+=======
+        child: _loginRouterMaterialApp(router: router),
+>>>>>>> master
       ),
     ),
   );
@@ -296,6 +330,7 @@ Future<LoginPumpResult> pumpLoginRouter(
       ),
       child: _loginTestMediaQuery(
         surfaceSize: surfaceSize,
+<<<<<<< HEAD
         child: MaterialApp.router(
           theme: AppTheme.light(),
           builder: (context, child) {
@@ -306,6 +341,9 @@ Future<LoginPumpResult> pumpLoginRouter(
           },
           routerConfig: router,
         ),
+=======
+        child: _loginRouterMaterialApp(router: router),
+>>>>>>> master
       ),
     ),
   );
@@ -390,6 +428,7 @@ bool loginPasswordIsObscured(WidgetTester tester) {
 }
 
 bool loginSubmitButtonIsLoading(WidgetTester tester) {
+<<<<<<< HEAD
   return find
       .descendant(
         of: loginSubmitButton(),
@@ -397,11 +436,18 @@ bool loginSubmitButtonIsLoading(WidgetTester tester) {
       )
       .evaluate()
       .isNotEmpty;
+=======
+  return tester.widget<AppButton>(loginSubmitButton()).loading;
+>>>>>>> master
 }
 
 bool loginSubmitButtonIsEnabled(WidgetTester tester) {
   final semantics = tester.getSemantics(loginSubmitButton());
+<<<<<<< HEAD
   return semantics.hasFlag(SemanticsFlag.isEnabled);
+=======
+  return semantics.flagsCollection.isEnabled == Tristate.isTrue;
+>>>>>>> master
 }
 
 Future<void> enterLoginCredentials(
@@ -437,9 +483,13 @@ Future<void> triggerUsernameFieldNext(WidgetTester tester) async {
 Future<void> navigateAwayFromLogin(WidgetTester tester) async {
   final router = GoRouter.of(tester.element(find.byType(LoginPage)));
   router.go('/home');
+<<<<<<< HEAD
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
   await tester.pump();
+=======
+  await tester.pumpAndSettle();
+>>>>>>> master
 }
 
 String loginRouteWithForgotPasswordIntent() => LoginQueryParams.loginWithForgotPasswordIntent();

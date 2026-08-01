@@ -75,7 +75,10 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   Widget build(BuildContext context) {
     final state = ref.watch(patientRegistrationProvider);
     final notifier = ref.read(patientRegistrationProvider.notifier);
+<<<<<<< HEAD
     final reducedMotion = AppMotion.prefersReducedMotion(context);
+=======
+>>>>>>> master
 
     ref.listen<String?>(
       patientRegistrationProvider.select((s) => s.pendingOpenPatientId),
@@ -98,6 +101,7 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
           title: 'Add patient',
           description: 'Register a new patient at your active branch.',
           size: AppDialogSize.lg,
+<<<<<<< HEAD
           footer: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -128,6 +132,51 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
             autoFocus: widget.open,
             onSubmit: _handleSubmit,
             onFieldChange: notifier.updateField,
+=======
+          footer: Consumer(
+            builder: (context, ref, _) {
+              final submitting = ref.watch(
+                patientRegistrationProvider.select((state) => state.submitting),
+              );
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  AppButton(
+                    variant: AppButtonVariant.secondary,
+                    disabled: submitting,
+                    onPressed: submitting ? null : () => _handleOpenChange(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: AppSpacing.space2),
+                  AppButton(
+                    variant: AppButtonVariant.primary,
+                    loading: submitting,
+                    leadingIcon: const Icon(Icons.person_add, size: 16),
+                    onPressed: submitting ? null : _handleSubmit,
+                    child: const Text('Register patient'),
+                  ),
+                ],
+              );
+            },
+          ),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final registrationState = ref.watch(patientRegistrationProvider);
+              final registrationNotifier = ref.read(
+                patientRegistrationProvider.notifier,
+              );
+              return AddPatientFormFields(
+                values: registrationState.values,
+                errors: registrationState.errors,
+                trimmedName: registrationState.trimmedName,
+                showPreview: registrationState.showPreview,
+                reducedMotion: AppMotion.prefersReducedMotion(context),
+                autoFocus: widget.open,
+                onSubmit: _handleSubmit,
+                onFieldChange: registrationNotifier.updateField,
+              );
+            },
+>>>>>>> master
           ),
         ),
         DuplicatePatientDialog(

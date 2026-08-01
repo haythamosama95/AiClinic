@@ -3,6 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_back_navigation.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
+>>>>>>> master
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -16,6 +25,10 @@ import 'package:ai_clinic/features/patients/presentation/utils/patient_presentat
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -24,9 +37,16 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_s
 
 /// Doctor visit documentation workspace (`/visits/:visitId/document`).
 class VisitDocumentPage extends ConsumerWidget {
+<<<<<<< HEAD
   const VisitDocumentPage({required this.visitId, this.startInEditMode = false, super.key});
 
   final String visitId;
+=======
+  const VisitDocumentPage({required this.visitId, this.extra, this.startInEditMode = false, super.key});
+
+  final String visitId;
+  final VisitRouteExtra? extra;
+>>>>>>> master
   final bool startInEditMode;
 
   @override
@@ -54,26 +74,47 @@ class VisitDocumentPage extends ConsumerWidget {
       data: (view) => _VisitDocumentContentView(
         visit: view.visit,
         startInEditMode: startInEditMode,
+<<<<<<< HEAD
+=======
+        upgradeWeakTrail: extra?.breadcrumbTrail == null,
+>>>>>>> master
         onBack: () => _goBack(context),
       ),
     );
   }
 
   static void _goBack(BuildContext context) {
+<<<<<<< HEAD
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
       return;
     }
     context.nav.goAppointmentsCalendar();
+=======
+    context.navigateBack(fallback: () => context.nav.goAppointmentsCalendar());
+>>>>>>> master
   }
 }
 
 class _VisitDocumentContentView extends ConsumerStatefulWidget {
+<<<<<<< HEAD
   const _VisitDocumentContentView({required this.visit, required this.onBack, this.startInEditMode = false});
+=======
+  const _VisitDocumentContentView({
+    required this.visit,
+    required this.onBack,
+    this.startInEditMode = false,
+    this.upgradeWeakTrail = false,
+  });
+>>>>>>> master
 
   final VisitDetail visit;
   final VoidCallback onBack;
   final bool startInEditMode;
+<<<<<<< HEAD
+=======
+  final bool upgradeWeakTrail;
+>>>>>>> master
 
   @override
   ConsumerState<_VisitDocumentContentView> createState() => _VisitDocumentContentViewState();
@@ -94,7 +135,16 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
       return;
     }
     _appliedStartInEditMode = true;
+<<<<<<< HEAD
     ref.read(visitDocumentationProvider(visit.id).notifier).enterWorkspaceEditMode();
+=======
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.read(visitDocumentationProvider(visit.id).notifier).enterWorkspaceEditMode();
+    });
+>>>>>>> master
   }
 
   void _ensureCompletedVisitOpensOnSummary() {
@@ -114,6 +164,10 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
   Widget build(BuildContext context) {
     _ensureCompletedVisitOpensOnSummary();
     _ensureStartInEditMode();
+<<<<<<< HEAD
+=======
+    _syncBreadcrumbLabels();
+>>>>>>> master
 
     final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
     final appointmentAsync = ref.watch(appointmentDetailProvider(visit.appointmentId));
@@ -221,6 +275,33 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
     final date = _appointmentDateFormat.format(appointment.startTime.toLocal());
     return '${appointment.patientName} · $date';
   }
+<<<<<<< HEAD
+=======
+
+  void _syncBreadcrumbLabels() {
+    final appointmentAsync = ref.read(appointmentDetailProvider(visit.appointmentId));
+    appointmentAsync.whenData((appointment) {
+      final trail = ref.read(breadcrumbTrailProvider);
+      final appointmentEntryId = 'appointment:${visit.appointmentId}';
+      final label = BreadcrumbLabel.fixed(_appointmentBreadcrumbLabel(appointment));
+
+      if (trail.entries.any((entry) => entry.id == appointmentEntryId)) {
+        scheduleBreadcrumbEntryLabelUpdate(ref, appointmentEntryId, label);
+        return;
+      }
+
+      if (trail.isWeakVisitDocumentDefault && widget.upgradeWeakTrail) {
+        scheduleBreadcrumbTrailUpdate(
+          ref,
+          BreadcrumbTrail([
+            BreadcrumbEntries.hubCalendar(),
+            BreadcrumbEntries.appointment(visit.appointmentId, label: _appointmentBreadcrumbLabel(appointment)),
+          ]).append(BreadcrumbEntries.visitDocument(visit.id)),
+        );
+      }
+    });
+  }
+>>>>>>> master
 }
 
 class _VisitDocumentScaffold extends StatelessWidget {
@@ -254,6 +335,7 @@ class _VisitDocumentScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+<<<<<<< HEAD
         final breadcrumb = AppBreadcrumb(
           items: [
             AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
@@ -261,6 +343,9 @@ class _VisitDocumentScaffold extends StatelessWidget {
             AppBreadcrumbItem(label: title),
           ],
         );
+=======
+        final breadcrumb = const BreadcrumbTrailView();
+>>>>>>> master
 
         final pageHeader = AppPageHeader(title: title, description: description, breadcrumb: breadcrumb);
 
@@ -517,6 +602,7 @@ class _VisitDocumentErrorView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+<<<<<<< HEAD
         AppPageHeader(
           title: 'Visit documentation',
           breadcrumb: AppBreadcrumb(
@@ -526,6 +612,9 @@ class _VisitDocumentErrorView extends StatelessWidget {
             ],
           ),
         ),
+=======
+        AppPageHeader(title: 'Visit documentation', breadcrumb: const BreadcrumbTrailView()),
+>>>>>>> master
         const SizedBox(height: AppSpacing.space8),
         Expanded(
           child: Center(
@@ -572,6 +661,7 @@ class _VisitDocumentNotFoundView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+<<<<<<< HEAD
         AppPageHeader(
           title: 'Visit not found',
           breadcrumb: AppBreadcrumb(
@@ -581,6 +671,9 @@ class _VisitDocumentNotFoundView extends StatelessWidget {
             ],
           ),
         ),
+=======
+        AppPageHeader(title: 'Visit not found', breadcrumb: const BreadcrumbTrailView()),
+>>>>>>> master
         const SizedBox(height: AppSpacing.space8),
         Expanded(
           child: Center(
@@ -613,7 +706,11 @@ class _VisitDocumentPermissionDenied extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+<<<<<<< HEAD
         const AppPageHeader(title: 'Visit documentation'),
+=======
+        const AppPageHeader(title: 'Visit documentation', breadcrumb: BreadcrumbTrailView()),
+>>>>>>> master
         const SizedBox(height: AppSpacing.space8),
         Expanded(
           child: Center(

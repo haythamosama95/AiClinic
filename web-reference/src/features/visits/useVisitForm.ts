@@ -2,6 +2,10 @@ import { useCallback, useMemo, useState } from 'react'
 import type { Patient } from '@/data/patients'
 import { MOCK_PATIENTS } from '@/data/patients'
 import type { VisitInvoice } from './billing/types'
+<<<<<<< HEAD
+=======
+import { ALLERGY_OPTIONS, CHRONIC_CONDITION_OPTIONS } from './mock-data'
+>>>>>>> master
 import {
   EMPTY_VISIT_FORM,
   type VisitFormData,
@@ -142,6 +146,7 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
 }
 
 function seedFromPatient(patient: Patient): VisitFormData {
+<<<<<<< HEAD
   return {
     ...EMPTY_VISIT_FORM,
     allergies: patient.allergies.map((label, i) => ({
@@ -156,5 +161,46 @@ function seedFromPatient(patient: Patient): VisitFormData {
         label: d.name,
         meta: d.code,
       })),
+=======
+  const allergies = patient.allergies
+    .map((label, index) => {
+      const match = ALLERGY_OPTIONS.find(
+        (option) =>
+          option.label.toLowerCase() === label.toLowerCase() ||
+          label.toLowerCase().includes(option.label.toLowerCase()) ||
+          option.label.toLowerCase().includes(label.toLowerCase().split(' ')[0] ?? ''),
+      )
+      if (!match) return null
+      return {
+        id: `seed-allergy-${index}`,
+        itemId: match.id,
+        note: 'Imported from patient record',
+      }
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+
+  const chronicConditions = patient.diagnoses
+    .filter((diagnosis) => diagnosis.status === 'active')
+    .map((diagnosis) => {
+      const match = CHRONIC_CONDITION_OPTIONS.find(
+        (option) =>
+          option.meta === diagnosis.code ||
+          diagnosis.name.toLowerCase().includes(option.label.toLowerCase()) ||
+          option.label.toLowerCase().includes(diagnosis.name.toLowerCase().split(' ')[0] ?? ''),
+      )
+      if (!match) return null
+      return {
+        id: diagnosis.id,
+        itemId: match.id,
+        note: 'Imported from patient record',
+      }
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+
+  return {
+    ...EMPTY_VISIT_FORM,
+    allergies,
+    chronicConditions,
+>>>>>>> master
   }
 }

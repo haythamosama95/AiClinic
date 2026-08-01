@@ -1,9 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+=======
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+>>>>>>> master
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
@@ -23,6 +30,10 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_h
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_content.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_rail.dart';
 
+<<<<<<< HEAD
+=======
+import '../../helpers/breadcrumb_test_support.dart';
+>>>>>>> master
 import 'visit_widget_test_harness.dart';
 
 const _patientName = 'Jane Doe';
@@ -62,11 +73,19 @@ List<Override> _documentPageOverrides({
   StubVisitDocumentationNotifier? docNotifier,
   VisitDetailViewState? detailView,
   Object? detailError,
+<<<<<<< HEAD
+=======
+  Override? detailViewProviderOverride,
+>>>>>>> master
   bool docLoading = false,
   Object? docError,
   AuthSessionState? auth,
   SpyEncounterActivePhaseNotifier? activePhaseNotifier,
   List<Override> extraOverrides = const [],
+<<<<<<< HEAD
+=======
+  BreadcrumbTrail? breadcrumbTrail,
+>>>>>>> master
 }) {
   final visit = docState?.visit ?? detailView?.visit ?? sampleEncounterVisit();
   return visitsProviderOverrides(
@@ -78,9 +97,17 @@ List<Override> _documentPageOverrides({
     docError: docError,
     detailView: detailView ?? buildVisitDetailView(visit: visit),
     detailError: detailError,
+<<<<<<< HEAD
     patientId: visit.patientId,
     patientSafety: buildPatientSafetyContext(),
     activePhaseNotifier: activePhaseNotifier,
+=======
+    detailViewProviderOverride: detailViewProviderOverride,
+    patientId: visit.patientId,
+    patientSafety: buildPatientSafetyContext(),
+    activePhaseNotifier: activePhaseNotifier,
+    breadcrumbTrail: breadcrumbTrail,
+>>>>>>> master
     extraOverrides: [
       patientDetailProvider(visit.patientId).overrideWith((ref) async => _testPatient()),
       appointmentDetailProvider(visit.appointmentId).overrideWith((ref) async => _testAppointment()),
@@ -109,6 +136,21 @@ AppButton _button(WidgetTester tester, String label) {
   return tester.widget<AppButton>(find.widgetWithText(AppButton, label));
 }
 
+<<<<<<< HEAD
+=======
+Future<void> _tapVisibleButton(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(AppButton, label);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+}
+
+Future<void> _tapStepRailPhase(WidgetTester tester, String phaseLabel) async {
+  final finder = find.bySemanticsLabel(phaseLabel);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+}
+
+>>>>>>> master
 class _FlakyVisitDetailOverride {
   _FlakyVisitDetailOverride(this.visit);
 
@@ -117,9 +159,14 @@ class _FlakyVisitDetailOverride {
 }
 
 class _FlakyDocNotifier extends VisitDocumentationNotifier {
+<<<<<<< HEAD
   _FlakyDocNotifier(this._visitId, this._successState);
 
   final String _visitId;
+=======
+  _FlakyDocNotifier(super.visitId, this._successState);
+
+>>>>>>> master
   final VisitDocumentationState _successState;
   var loadAttempts = 0;
 
@@ -141,7 +188,11 @@ void main() {
         overrides: _documentPageOverrides(docState: sampleEncounterDocState()),
       );
 
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+>>>>>>> master
       expect(find.text('Calendar'), findsOneWidget);
       expect(find.text(_appointmentBreadcrumbLabel), findsOneWidget);
       expect(find.text(_patientName), findsWidgets);
@@ -154,6 +205,7 @@ void main() {
       await _pumpVisitDocumentPage(
         tester,
         overrides: _documentPageOverrides(
+<<<<<<< HEAD
           extraOverrides: [
             visitDetailViewProvider(encounterTestVisitId).overrideWith(
               (ref) => Completer<VisitDetailViewState>().future,
@@ -164,6 +216,16 @@ void main() {
 
       expect(find.text('Visit documentation'), findsOneWidget);
       expect(find.text('Appointment'), findsOneWidget);
+=======
+          detailViewProviderOverride: visitDetailViewProvider(encounterTestVisitId).overrideWith(
+            (ref) => Completer<VisitDetailViewState>().future,
+          ),
+        ),
+      );
+
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Calendar'), findsOneWidget);
+>>>>>>> master
       expect(find.byType(AppSkeleton), findsOneWidget);
       expect(find.byType(VisitEncounterStepContent), findsNothing);
     });
@@ -174,8 +236,13 @@ void main() {
         overrides: _documentPageOverrides(docLoading: true),
       );
 
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
       expect(find.text(_patientName), findsWidgets);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Loading…'), findsOneWidget);
+>>>>>>> master
       expect(find.byType(VisitEncounterHeader), findsOneWidget);
       expect(find.byType(AppSkeleton), findsOneWidget);
       expect(find.byType(VisitEncounterStepContent), findsNothing);
@@ -188,6 +255,7 @@ void main() {
         tester,
         overrides: _documentPageOverrides(
           docState: sampleEncounterDocState(),
+<<<<<<< HEAD
           extraOverrides: [
             visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) async {
               flaky.loadAttempts++;
@@ -197,11 +265,27 @@ void main() {
               return flaky.visit;
             }),
           ],
+=======
+          detailViewProviderOverride: visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) async {
+            flaky.loadAttempts++;
+            if (flaky.loadAttempts < 2) {
+              throw visitsRpcFailure(
+                code: 'UNAVAILABLE',
+                message: 'Temporary detail failure.',
+              );
+            }
+            return flaky.visit;
+          }),
+>>>>>>> master
         ),
       );
 
       expect(find.text('Could not load visit'), findsOneWidget);
+<<<<<<< HEAD
       expect(find.text('RpcFailure(NOT_FOUND): Temporary detail failure.'), findsOneWidget);
+=======
+      expect(find.text('RpcFailure(UNAVAILABLE): Temporary detail failure.'), findsOneWidget);
+>>>>>>> master
       expect(find.text('Retry'), findsOneWidget);
       expect(flaky.loadAttempts, 1);
 
@@ -209,7 +293,11 @@ void main() {
       await pumpVisitsFrames(tester);
 
       expect(flaky.loadAttempts, 2);
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+>>>>>>> master
       expect(find.text('Could not load visit'), findsNothing);
     });
 
@@ -259,7 +347,11 @@ void main() {
         ),
       );
 
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+>>>>>>> master
       expect(find.byType(VisitEncounterHeader), findsOneWidget);
       expect(find.byType(VisitEncounterStepContent), findsOneWidget);
       expect(find.text('You do not have permission to document visits.'), findsNothing);
@@ -291,7 +383,11 @@ void main() {
       await pumpVisitsFrames(tester);
 
       expect(flakyDoc.loadAttempts, 2);
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+>>>>>>> master
       expect(find.text('Could not load visit'), findsNothing);
     });
   });
@@ -328,7 +424,11 @@ void main() {
         overrides: _documentPageOverrides(docState: sampleEncounterDocState()),
       );
 
+<<<<<<< HEAD
       await tester.tap(find.text('Continue'));
+=======
+      await _tapVisibleButton(tester, 'Continue');
+>>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(_button(tester, 'Back').onPressed, isNotNull);
@@ -366,7 +466,11 @@ void main() {
       );
 
       final callsBefore = phaseSpy.setPhaseCallCount;
+<<<<<<< HEAD
       await tester.tap(find.text('Continue'));
+=======
+      await _tapVisibleButton(tester, 'Continue');
+>>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(phaseSpy.setPhaseCallCount, callsBefore + 1);
@@ -384,11 +488,19 @@ void main() {
         ),
       );
 
+<<<<<<< HEAD
       await tester.tap(find.text('Continue'));
       await pumpVisitsFrames(tester);
       expect(phaseSpy.lastPhase, EncounterPhase.objective);
 
       await tester.tap(find.text('Back'));
+=======
+      await _tapVisibleButton(tester, 'Continue');
+      await pumpVisitsFrames(tester);
+      expect(phaseSpy.lastPhase, EncounterPhase.objective);
+
+      await _tapVisibleButton(tester, 'Back');
+>>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(phaseSpy.lastPhase, EncounterPhase.subjective);
@@ -406,7 +518,11 @@ void main() {
       );
 
       final callsBefore = phaseSpy.setPhaseCallCount;
+<<<<<<< HEAD
       await tester.tap(find.text('Treatment'));
+=======
+      await _tapStepRailPhase(tester, 'Treatment');
+>>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(phaseSpy.setPhaseCallCount, greaterThan(callsBefore));
@@ -427,7 +543,11 @@ void main() {
       phaseSpy.setPhase(EncounterPhase.plan);
       await pumpVisitsFrames(tester);
 
+<<<<<<< HEAD
       await tester.tap(find.text('Review visit'));
+=======
+      await _tapVisibleButton(tester, 'Review visit');
+>>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(phaseSpy.lastPhase, EncounterPhase.review);
@@ -470,6 +590,90 @@ void main() {
     });
   });
 
+<<<<<<< HEAD
+=======
+  group('VisitDocumentPage — breadcrumb trails', () {
+    testWidgets('invoice origin shows Invoices → invoice → visit documentation', (tester) async {
+      const invoiceNumber = 'INV-MAIN-000001';
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: invoiceToVisitTrail(
+            invoiceId: 'inv-1',
+            invoiceNumber: invoiceNumber,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+
+      expect(find.text('Invoices'), findsOneWidget);
+      expect(find.text(invoiceNumber), findsOneWidget);
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Calendar'), findsNothing);
+      expect(find.text(_appointmentBreadcrumbLabel), findsNothing);
+    });
+
+    testWidgets('invoice crumb navigates to invoice detail stub', (tester) async {
+      const invoiceId = 'inv-1';
+      const invoiceNumber = 'INV-MAIN-000001';
+
+      await pumpVisitsRouter(
+        tester,
+        home: VisitDocumentPage(visitId: encounterTestVisitId),
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: invoiceToVisitTrail(
+            invoiceId: invoiceId,
+            invoiceNumber: invoiceNumber,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+      await pumpVisitsFrames(tester);
+
+      await tester.tap(find.text(invoiceNumber));
+      await pumpVisitsFrames(tester);
+
+      expect(find.byKey(Key('route_invoice-$invoiceId')), findsOneWidget);
+      expect(find.text('stub:invoice-$invoiceId'), findsOneWidget);
+    });
+
+    testWidgets('deep link weak trail upgrades to calendar appointment path', (tester) async {
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: weakVisitDocumentTrail(encounterTestVisitId),
+        ),
+      );
+
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text(_appointmentBreadcrumbLabel), findsOneWidget);
+      expect(find.text('Invoices'), findsNothing);
+    });
+
+    testWidgets('patients origin shows Patients → name → visit documentation', (tester) async {
+      await _pumpVisitDocumentPage(
+        tester,
+        overrides: _documentPageOverrides(
+          docState: sampleEncounterDocState(),
+          breadcrumbTrail: patientsToVisitTrail(
+            patientId: encounterTestPatientId,
+            patientName: _patientName,
+            visitId: encounterTestVisitId,
+          ),
+        ),
+      );
+
+      expect(find.text('Patients'), findsOneWidget);
+      expect(find.text(_patientName), findsWidgets);
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+      expect(find.text('Calendar'), findsNothing);
+    });
+  });
+
+>>>>>>> master
   group('VisitDocumentPage — query-param & visit status behavior', () {
     testWidgets('advanced: startInEditMode enters workspace edit mode', (tester) async {
       final docNotifier = StubVisitDocumentationNotifier(
@@ -478,6 +682,10 @@ void main() {
       );
 
       await _pumpVisitDocumentPage(
+<<<<<<< HEAD
+=======
+        tester,
+>>>>>>> master
         startInEditMode: true,
         overrides: _documentPageOverrides(docNotifier: docNotifier),
       );
@@ -519,7 +727,11 @@ void main() {
         overrides: _documentPageOverrides(docState: sampleEncounterDocState()),
       );
 
+<<<<<<< HEAD
       expect(find.text('Visit documentation'), findsOneWidget);
+=======
+      expect(find.text('Visit documentation'), findsNWidgets(2));
+>>>>>>> master
       expect(find.byType(VisitEncounterHeader), findsOneWidget);
       expect(find.text('Intake'), findsOneWidget);
       expect(find.text('Verify intake, findings, and treatment before finalizing this encounter.'), findsNothing);

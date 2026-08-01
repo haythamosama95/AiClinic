@@ -5,16 +5,27 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter_riverpod/misc.dart';
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
+>>>>>>> master
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+=======
+>>>>>>> master
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
@@ -34,9 +45,15 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 import 'package:ai_clinic/l10n/app_localizations.dart';
 
 import '../../helpers/auth_test_support.dart';
+<<<<<<< HEAD
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
 import '../../support/visit_encounter_test_support.dart';
+=======
+import '../../helpers/breadcrumb_test_support.dart';
+import '../../helpers/role_permission_seed.dart';
+import '../../support/billing_rpc_test_client.dart';
+>>>>>>> master
 
 const billingTestBranchId = '44444444-4444-4444-8444-444444444444';
 const billingTestPatientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -90,6 +107,14 @@ class LoadingInvoiceListNotifier extends InvoiceListNotifier {
     );
     return Completer<InvoiceListUiState>().future;
   }
+<<<<<<< HEAD
+=======
+
+  @override
+  Future<void> reload() async {
+    // InvoiceListPage calls reload on mount; keep the loading build() pending.
+  }
+>>>>>>> master
 }
 
 /// Throws on build to surface the list error state.
@@ -134,7 +159,11 @@ class SpyVisitBillingFlowNotifier extends VisitBillingFlowNotifier {
 
 /// Fixed visit documentation snapshot for [VisitBillingPage].
 class FixedVisitDocumentationNotifier extends VisitDocumentationNotifier {
+<<<<<<< HEAD
   FixedVisitDocumentationNotifier(this._state);
+=======
+  FixedVisitDocumentationNotifier(super.visitId, this._state);
+>>>>>>> master
 
   final VisitDocumentationState _state;
 
@@ -144,7 +173,11 @@ class FixedVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
 /// Surfaces visit documentation load errors on [VisitBillingPage].
 class ErrorVisitDocumentationNotifier extends VisitDocumentationNotifier {
+<<<<<<< HEAD
   ErrorVisitDocumentationNotifier(this._error);
+=======
+  ErrorVisitDocumentationNotifier(super.visitId, this._error);
+>>>>>>> master
 
   final Object _error;
 
@@ -431,7 +464,11 @@ List<Override> billingProviderOverrides({
   InvoiceDetailViewState? detailView,
   Object? detailError,
   String? editorInvoiceId,
+<<<<<<< HEAD
   SpyInvoiceEditorNotifier? editorNotifier,
+=======
+  InvoiceEditorNotifier? editorNotifier,
+>>>>>>> master
   Override? editorOverride,
   String? visitId,
   VisitDocumentationState? visitDocState,
@@ -439,12 +476,20 @@ List<Override> billingProviderOverrides({
   SpyVisitBillingFlowNotifier? visitBillingFlowNotifier,
   String? serviceSelectorBranchId,
   Override? serviceSelectorOverride,
+<<<<<<< HEAD
+=======
+  BreadcrumbTrail? breadcrumbTrail,
+>>>>>>> master
   List<Override> extraOverrides = const [],
 }) {
   final client = rpcClient ?? BillingRpcTestClient();
   final resolvedAuth = auth ?? billingAuthSession();
 
   return [
+<<<<<<< HEAD
+=======
+    if (breadcrumbTrail != null) breadcrumbTrailOverride(breadcrumbTrail),
+>>>>>>> master
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(resolvedAuth),
     ),
@@ -472,11 +517,19 @@ List<Override> billingProviderOverrides({
     if (visitId != null)
       if (visitDocError != null)
         visitDocumentationProvider(visitId).overrideWith(
+<<<<<<< HEAD
           () => ErrorVisitDocumentationNotifier(visitDocError),
         )
       else if (visitDocState != null)
         visitDocumentationProvider(visitId).overrideWith(
           () => FixedVisitDocumentationNotifier(visitDocState),
+=======
+          () => ErrorVisitDocumentationNotifier(visitId, visitDocError),
+        )
+      else if (visitDocState != null)
+        visitDocumentationProvider(visitId).overrideWith(
+          () => FixedVisitDocumentationNotifier(visitId, visitDocState),
+>>>>>>> master
         ),
     if (visitId != null && visitBillingFlowNotifier != null)
       visitBillingFlowProvider(visitId).overrideWith(() => visitBillingFlowNotifier),
@@ -499,6 +552,10 @@ GoRouter createBillingTestRouter({
   Widget Function(BuildContext context, GoRouterState state)? invoiceEditBuilder,
   Widget Function(BuildContext context, GoRouterState state)? invoiceReviewBuilder,
   Widget Function(BuildContext context, GoRouterState state)? visitBillingBuilder,
+<<<<<<< HEAD
+=======
+  Widget Function(BuildContext context, GoRouterState state)? visitDocumentBuilder,
+>>>>>>> master
 }) {
   Widget marker(String label) => Scaffold(
         key: Key('route_$label'),
@@ -510,7 +567,11 @@ GoRouter createBillingTestRouter({
     routes: [
       GoRoute(
         path: AppRoutes.billingInvoices,
+<<<<<<< HEAD
         builder: (_, __) => home,
+=======
+        builder: (_, _) => home,
+>>>>>>> master
       ),
       GoRoute(
         path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
@@ -548,9 +609,16 @@ GoRouter createBillingTestRouter({
       ),
       GoRoute(
         path: '/visits/:visitId/document',
+<<<<<<< HEAD
         builder: (context, state) => marker(
           'visit-document-${state.pathParameters['visitId']}',
         ),
+=======
+        builder: visitDocumentBuilder ??
+            (context, state) => marker(
+                  'visit-document-${state.pathParameters['visitId']}',
+                ),
+>>>>>>> master
       ),
       ...extraRoutes,
     ],
@@ -588,6 +656,10 @@ Future<void> pumpBillingSurface(
 
   await tester.pumpWidget(
     ProviderScope(
+<<<<<<< HEAD
+=======
+      key: UniqueKey(),
+>>>>>>> master
       overrides: overrides,
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -611,6 +683,10 @@ Future<GoRouter> pumpBillingRouter(
   Widget Function(BuildContext context, GoRouterState state)? invoiceEditBuilder,
   Widget Function(BuildContext context, GoRouterState state)? invoiceReviewBuilder,
   Widget Function(BuildContext context, GoRouterState state)? visitBillingBuilder,
+<<<<<<< HEAD
+=======
+  Widget Function(BuildContext context, GoRouterState state)? visitDocumentBuilder,
+>>>>>>> master
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -623,16 +699,32 @@ Future<GoRouter> pumpBillingRouter(
     invoiceEditBuilder: invoiceEditBuilder,
     invoiceReviewBuilder: invoiceReviewBuilder,
     visitBillingBuilder: visitBillingBuilder,
+<<<<<<< HEAD
+=======
+    visitDocumentBuilder: visitDocumentBuilder,
+>>>>>>> master
   );
 
   await tester.pumpWidget(
     ProviderScope(
+<<<<<<< HEAD
       overrides: overrides,
       child: MaterialApp.router(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: router,
+=======
+      key: UniqueKey(),
+      overrides: overrides,
+      child: AppToastHost(
+        child: MaterialApp.router(
+          theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
+>>>>>>> master
       ),
     ),
   );

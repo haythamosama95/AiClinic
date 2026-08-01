@@ -4,14 +4,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_filters.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+>>>>>>> master
 
 import '../../support/appointment_calendar_test_support.dart';
 import 'calendar_widget_test_harness.dart';
 
 void main() {
   Widget buildFilterButton({
+<<<<<<< HEAD
     required AsyncValue branchesAsync,
     required AsyncValue doctorsAsync,
+=======
+    required AsyncValue<List<BranchListItem>> branchesAsync,
+    required AsyncValue<List<StaffListItem>> doctorsAsync,
+>>>>>>> master
     required ValueChanged<AppointmentCalendarFilters> onApplyFilters,
     required VoidCallback onClearFilters,
     bool showDoctorFilter = true,
@@ -175,6 +185,12 @@ void main() {
     expect(applied, isNotNull);
     expect(applied!.branchId, calendarTestBranchAId);
     expect(applied!.doctorId, isNull);
+<<<<<<< HEAD
     expect(applied!.statuses, contains(AppointmentStatus.confirmed));
+=======
+    // Default filter shows all workflow chips selected; tapping Confirmed deselects it.
+    expect(applied!.statuses, isNot(contains(AppointmentStatus.confirmed)));
+    expect(applied!.statuses, contains(AppointmentStatus.scheduled));
+>>>>>>> master
   });
 }

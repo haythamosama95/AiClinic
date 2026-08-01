@@ -1,8 +1,14 @@
+<<<<<<< HEAD
+=======
+import 'dart:async';
+
+>>>>>>> master
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/core/ui/components/app_form_field.dart';
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/core/ui/components/app_money_field.dart';
@@ -17,6 +23,10 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
+=======
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
@@ -53,6 +63,10 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
   late final Animation<double> _sidebarAnimation;
+<<<<<<< HEAD
+=======
+  Timer? _sidebarStartTimer;
+>>>>>>> master
 
   @override
   void initState() {
@@ -83,7 +97,11 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
     if (reducedMotion) {
       _sidebarController.forward();
     } else {
+<<<<<<< HEAD
       Future<void>.delayed(const Duration(milliseconds: 50), () {
+=======
+      _sidebarStartTimer = Timer(const Duration(milliseconds: 50), () {
+>>>>>>> master
         if (mounted) {
           _sidebarController.forward();
         }
@@ -93,6 +111,10 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
 
   @override
   void dispose() {
+<<<<<<< HEAD
+=======
+    _sidebarStartTimer?.cancel();
+>>>>>>> master
     _mainController.dispose();
     _sidebarController.dispose();
     super.dispose();
@@ -254,6 +276,10 @@ class _VisitInvoiceReadOnlyReviewState
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
   late final Animation<double> _sidebarAnimation;
+<<<<<<< HEAD
+=======
+  Timer? _sidebarStartTimer;
+>>>>>>> master
 
   @override
   void initState() {
@@ -284,7 +310,11 @@ class _VisitInvoiceReadOnlyReviewState
     if (reducedMotion) {
       _sidebarController.forward();
     } else {
+<<<<<<< HEAD
       Future<void>.delayed(const Duration(milliseconds: 50), () {
+=======
+      _sidebarStartTimer = Timer(const Duration(milliseconds: 50), () {
+>>>>>>> master
         if (mounted) {
           _sidebarController.forward();
         }
@@ -294,6 +324,10 @@ class _VisitInvoiceReadOnlyReviewState
 
   @override
   void dispose() {
+<<<<<<< HEAD
+=======
+    _sidebarStartTimer?.cancel();
+>>>>>>> master
     _mainController.dispose();
     _sidebarController.dispose();
     super.dispose();
@@ -667,12 +701,19 @@ class _InvoiceDocumentCard extends StatelessWidget {
                             discountType == VisitBillingDiscountType.percentage
                             ? 'Discount (${discountValue.round()}%)'
                             : 'Discount',
+<<<<<<< HEAD
+=======
+                        labelColor: colors.statusSuccessFg,
+>>>>>>> master
                         child: AppMoneyDisplay(
                           amount: totals.discountAmount,
                           currency: currency,
                           negative: true,
                         ),
+<<<<<<< HEAD
                         labelColor: colors.statusSuccessFg,
+=======
+>>>>>>> master
                       ),
                     ],
                     const SizedBox(height: AppSpacing.space3),

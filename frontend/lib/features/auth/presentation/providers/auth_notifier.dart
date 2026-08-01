@@ -54,6 +54,17 @@ class AuthUiState {
       isInfoMessage: isInfoMessage ?? this.isInfoMessage,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AuthUiState &&
+        other.isSubmitting == isSubmitting &&
+        other.errorMessage == errorMessage &&
+        other.isInfoMessage == isInfoMessage;
+  }
+
+  @override
+  int get hashCode => Object.hash(isSubmitting, errorMessage, isInfoMessage);
 }
 
 final authNotifierProvider = NotifierProvider<AuthNotifier, AuthUiState>(AuthNotifier.new);

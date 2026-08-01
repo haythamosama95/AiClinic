@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/core/ui/components/app_button.dart';
+>>>>>>> master
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/billing/data/payment_repository.dart';
@@ -75,7 +79,11 @@ void main() {
 
     await _pumpRefundForm(tester, client: client);
 
+<<<<<<< HEAD
     expect(find.text('Record refund'), findsOneWidget);
+=======
+    expect(find.widgetWithText(AppButton, 'Record refund'), findsOneWidget);
+>>>>>>> master
     expect(find.text('Method'), findsOneWidget);
     expect(find.text('Amount'), findsOneWidget);
     expect(find.text('Reason'), findsOneWidget);
@@ -88,7 +96,11 @@ void main() {
 
     await tester.enterText(find.byType(TextField).last, 'Patient requested refund');
     await tester.pump();
+<<<<<<< HEAD
     await tester.tap(find.text('Record refund'));
+=======
+    await tester.tap(find.widgetWithText(AppButton, 'Record refund'));
+>>>>>>> master
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
@@ -103,7 +115,11 @@ void main() {
 
     await tester.enterText(find.byType(TextField).first, '25');
     await tester.pump();
+<<<<<<< HEAD
     await tester.tap(find.text('Record refund'));
+=======
+    await tester.tap(find.widgetWithText(AppButton, 'Record refund'));
+>>>>>>> master
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
@@ -135,7 +151,11 @@ void main() {
     await tester.enterText(find.byType(TextField).at(1), 'Patient overpaid');
     await tester.pump();
 
+<<<<<<< HEAD
     await tester.tap(find.text('Record refund'));
+=======
+    await tester.tap(find.widgetWithText(AppButton, 'Record refund'));
+>>>>>>> master
     await tester.pumpAndSettle();
 
     expect(recorded, isTrue);

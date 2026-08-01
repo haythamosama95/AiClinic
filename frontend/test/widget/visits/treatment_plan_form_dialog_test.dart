@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_options.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_form_dialog.dart';
 
 import '../../support/visit_rpc_test_client.dart';
@@ -10,14 +14,51 @@ import 'visit_widget_test_harness.dart';
 
 const _catalogMedicationId = 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm';
 
+<<<<<<< HEAD
 Future<void> _tapAppSelectOption(WidgetTester tester, Key selectKey, String optionLabel) async {
   await tester.tap(find.byKey(selectKey));
+=======
+Future<void> _tapAppSelectOption(WidgetTester tester, String selectId, String optionLabel) async {
+  final select = find.bySemanticsIdentifier(selectId);
+  await tester.ensureVisible(select);
+  await tester.pump();
+  await tester.tap(select);
+>>>>>>> master
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.tap(find.text(optionLabel).last);
   await tester.pump();
 }
 
+<<<<<<< HEAD
+=======
+Future<void> _tapDialogButton(WidgetTester tester, String label) async {
+  final button = find.widgetWithText(AppButton, label);
+  await tester.ensureVisible(button);
+  await tester.pump();
+  await tester.tap(button);
+  await tester.pump();
+}
+
+Future<void> _expectSelectOptionLabelsVisible(WidgetTester tester, Iterable<String> labels) async {
+  final scrollable = find.descendant(
+    of: find.byType(Overlay),
+    matching: find.byType(Scrollable),
+  ).last;
+
+  for (final label in labels) {
+    final optionFinder = find.text(label);
+    await tester.scrollUntilVisible(
+      optionFinder,
+      50,
+      scrollable: scrollable,
+    );
+    await tester.pump();
+    expect(optionFinder, findsOneWidget);
+  }
+}
+
+>>>>>>> master
 Future<void> _tapComboboxOption(
   WidgetTester tester, {
   required String comboboxId,
@@ -63,7 +104,11 @@ Future<void> _openTreatmentPlanDialog(
 
 Finder _dosageField() {
   return find.descendant(
+<<<<<<< HEAD
     of: find.byType(TreatmentPlanFormDialog),
+=======
+    of: find.bySemanticsIdentifier('treatment-dosage'),
+>>>>>>> master
     matching: find.byType(TextField),
   );
 }
@@ -102,11 +147,18 @@ void main() {
       );
       await tester.enterText(_dosageField(), '500 mg');
       await tester.pump();
+<<<<<<< HEAD
       await _tapAppSelectOption(tester, const Key('treatment-frequency-select'), 'Twice daily');
       await _tapAppSelectOption(tester, const Key('treatment-duration-select'), '7 days');
 
       await tester.tap(find.widgetWithText(AppButton, 'Add prescription'));
       await tester.pump();
+=======
+      await _tapAppSelectOption(tester, 'treatment-frequency-select', 'Twice daily');
+      await _tapAppSelectOption(tester, 'treatment-duration-select', '7 days');
+
+      await _tapDialogButton(tester, 'Add prescription');
+>>>>>>> master
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(captured, isNotNull);
@@ -132,10 +184,16 @@ void main() {
       );
       await tester.enterText(_dosageField(), '  250 mg  ');
       await tester.pump();
+<<<<<<< HEAD
       await _tapAppSelectOption(tester, const Key('treatment-frequency-select'), 'Once daily');
       await _tapAppSelectOption(tester, const Key('treatment-duration-select'), '5 days');
       await tester.tap(find.widgetWithText(AppButton, 'Add prescription'));
       await tester.pump();
+=======
+      await _tapAppSelectOption(tester, 'treatment-frequency-select', 'Once daily');
+      await _tapAppSelectOption(tester, 'treatment-duration-select', '5 days');
+      await _tapDialogButton(tester, 'Add prescription');
+>>>>>>> master
 
       expect(captured?.dosage, '250 mg');
     });
@@ -201,10 +259,16 @@ void main() {
       );
       await tester.enterText(_dosageField(), '   ');
       await tester.pump();
+<<<<<<< HEAD
       await _tapAppSelectOption(tester, const Key('treatment-frequency-select'), 'Once daily');
       await _tapAppSelectOption(tester, const Key('treatment-duration-select'), '3 days');
       await tester.tap(find.widgetWithText(AppButton, 'Add prescription'));
       await tester.pump();
+=======
+      await _tapAppSelectOption(tester, 'treatment-frequency-select', 'Once daily');
+      await _tapAppSelectOption(tester, 'treatment-duration-select', '3 days');
+      await _tapDialogButton(tester, 'Add prescription');
+>>>>>>> master
 
       expect(find.text('Enter the dosage.'), findsOneWidget);
       expect(captured, isNull);
@@ -278,6 +342,7 @@ void main() {
     testWidgets('trivial: frequency select offers treatmentFrequencyOptions labels', (tester) async {
       await _openTreatmentPlanDialog(tester, onShow: (_) {});
 
+<<<<<<< HEAD
       await tester.tap(find.byKey(const Key('treatment-frequency-select')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -285,11 +350,25 @@ void main() {
       for (final option in treatmentFrequencyOptions) {
         expect(find.text(option.label), findsOneWidget);
       }
+=======
+      final frequencySelect = find.bySemanticsIdentifier('treatment-frequency-select');
+      await tester.ensureVisible(frequencySelect);
+      await tester.pump();
+      await tester.tap(frequencySelect);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await _expectSelectOptionLabelsVisible(
+        tester,
+        treatmentFrequencyOptions.map((option) => option.label),
+      );
+>>>>>>> master
     });
 
     testWidgets('trivial: duration select offers treatmentDurationOptions labels', (tester) async {
       await _openTreatmentPlanDialog(tester, onShow: (_) {});
 
+<<<<<<< HEAD
       await tester.tap(find.byKey(const Key('treatment-duration-select')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -297,6 +376,19 @@ void main() {
       for (final option in treatmentDurationOptions) {
         expect(find.text(option.label), findsOneWidget);
       }
+=======
+      final durationSelect = find.bySemanticsIdentifier('treatment-duration-select');
+      await tester.ensureVisible(durationSelect);
+      await tester.pump();
+      await tester.tap(durationSelect);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await _expectSelectOptionLabelsVisible(
+        tester,
+        treatmentDurationOptions.map((option) => option.label),
+      );
+>>>>>>> master
     });
   });
 
@@ -308,9 +400,14 @@ void main() {
         onShow: (future) async => captured = await future,
       );
 
+<<<<<<< HEAD
       await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+=======
+      await _tapDialogButton(tester, 'Cancel');
+      await tester.pumpAndSettle();
+>>>>>>> master
 
       expect(captured, isNull);
       expect(find.byType(TreatmentPlanFormDialog), findsNothing);
@@ -353,7 +450,11 @@ void main() {
       await tester.pump();
 
       final exception = tester.takeException();
+<<<<<<< HEAD
       expect(exception, isNotNull);
+=======
+      expect(exception, isNull);
+>>>>>>> master
       expect(find.text('Could not search medications.'), findsNothing);
     });
   });

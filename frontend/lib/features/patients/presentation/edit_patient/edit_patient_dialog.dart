@@ -25,6 +25,11 @@ class EditPatientDialog extends ConsumerStatefulWidget {
 }
 
 class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
+<<<<<<< HEAD
+=======
+  var _exitCompleted = false;
+
+>>>>>>> master
   @override
   void initState() {
     super.initState();
@@ -46,14 +51,32 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
     }
   }
 
+<<<<<<< HEAD
   void _close() {
     ref.read(patientEditProvider(widget.patientId).notifier).reset();
     Navigator.of(context).pop();
+=======
+  void _completeExit() {
+    if (_exitCompleted || !mounted) {
+      return;
+    }
+    _exitCompleted = true;
+    ref.read(patientEditProvider(widget.patientId).notifier).reset();
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  void _dismissInnerOverlay() {
+    Navigator.of(context, rootNavigator: true).pop();
+>>>>>>> master
   }
 
   void _handleOpenChange(bool open) {
     if (!open) {
+<<<<<<< HEAD
       _close();
+=======
+      WidgetsBinding.instance.addPostFrameCallback((_) => _completeExit());
+>>>>>>> master
     }
   }
 
@@ -65,7 +88,11 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
       return;
     }
     ref.invalidate(patientDetailProvider(widget.patientId));
+<<<<<<< HEAD
     _close();
+=======
+    _dismissInnerOverlay();
+>>>>>>> master
   }
 
   Future<void> _handleSaveAnyway() async {
@@ -76,6 +103,7 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
       return;
     }
     ref.invalidate(patientDetailProvider(widget.patientId));
+<<<<<<< HEAD
     _close();
   }
 
@@ -84,6 +112,21 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
         .read(patientEditProvider(widget.patientId).notifier)
         .confirmStaleReload();
     _close();
+=======
+    _dismissInnerOverlay();
+  }
+
+  Future<void> _handleStaleReload() async {
+    final notifier = ref.read(patientEditProvider(widget.patientId).notifier);
+    notifier.confirmStaleReload();
+    await ref.read(patientDetailProvider(widget.patientId).future);
+    if (!mounted) {
+      return;
+    }
+    notifier.setStaleUpdateOpen(false);
+    Navigator.of(context, rootNavigator: true).pop();
+    _dismissInnerOverlay();
+>>>>>>> master
   }
 
   @override
@@ -100,6 +143,7 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
         if (next == null) {
           return;
         }
+<<<<<<< HEAD
         _close();
         context.nav.pushPatientDetail(next);
         notifier.clearPendingOpenPatient();
@@ -109,6 +153,19 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
     final identitySubtitle = state.showPreview
         ? '${context.l10n.editingSuffix} · ${state.trimmedName}'
         : null;
+=======
+        _dismissInnerOverlay();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          context.nav.pushPatientDetail(next);
+          notifier.clearPendingOpenPatient();
+        });
+      },
+    );
+
+>>>>>>> master
     final l10n = context.l10n;
 
     return Column(
@@ -120,6 +177,7 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
           title: l10n.editPatient,
           description: l10n.editPatientDescription,
           size: AppDialogSize.lg,
+<<<<<<< HEAD
           footer: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -157,6 +215,46 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
                   onFieldChange: notifier.updateField,
                 )
               : const AppSkeletonizerZone(
+=======
+          footer: Consumer(
+            builder: (context, ref, _) {
+              final editState = ref.watch(patientEditProvider(widget.patientId));
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  AppButton(
+                    variant: AppButtonVariant.secondary,
+                    disabled: editState.submitting,
+                    onPressed: editState.submitting ? null : _dismissInnerOverlay,
+                    child: Text(l10n.cancel),
+                  ),
+                  const SizedBox(width: AppSpacing.space2),
+                  AppButton(
+                    variant: AppButtonVariant.primary,
+                    loading: editState.submitting,
+                    leadingIcon: const Icon(Icons.save, size: 16),
+                    onPressed: editState.submitting || !editState.hydrated
+                        ? null
+                        : _handleSubmit,
+                    child: Text(l10n.saveChanges),
+                  ),
+                ],
+              );
+            },
+          ),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final editState = ref.watch(patientEditProvider(widget.patientId));
+              final editNotifier = ref.read(
+                patientEditProvider(widget.patientId).notifier,
+              );
+              final identitySubtitle = editState.showPreview
+                  ? '${context.l10n.editingSuffix} · ${editState.trimmedName}'
+                  : null;
+
+              if (!editState.hydrated) {
+                return const AppSkeletonizerZone(
+>>>>>>> master
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
@@ -177,7 +275,29 @@ class _EditPatientDialogState extends ConsumerState<EditPatientDialog> {
                       ),
                     ],
                   ),
+<<<<<<< HEAD
                 ),
+=======
+                );
+              }
+
+              return AddPatientFormFields(
+                values: editState.values,
+                errors: editState.errors,
+                trimmedName: editState.trimmedName,
+                showPreview: editState.showPreview,
+                reducedMotion: reducedMotion,
+                autoFocus: true,
+                branchName: editState.branchName,
+                branchBannerLabel: '${l10n.registeredAt} ',
+                identityPreviewSubtitle: identitySubtitle,
+                fieldIdPrefix: 'edit-patient',
+                onSubmit: _handleSubmit,
+                onFieldChange: editNotifier.updateField,
+              );
+            },
+          ),
+>>>>>>> master
         ),
         DuplicatePatientDialog(
           open: state.duplicateOpen,

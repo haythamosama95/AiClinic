@@ -16,8 +16,13 @@ Map<String, dynamic> appointmentListRow({
     'end_time': '2026-05-27T09:20:00.000Z',
     'type': 'planned',
     'status': 'scheduled',
+<<<<<<< HEAD
     if (patientMrn != null) 'patient_mrn': patientMrn,
     if (mrnAlias != null) 'mrn': mrnAlias,
+=======
+    'patient_mrn': ?patientMrn,
+    'mrn': ?mrnAlias,
+>>>>>>> master
   };
 }
 

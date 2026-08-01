@@ -1,11 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+=======
+>>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_editor_notifier.dart';
@@ -23,12 +30,16 @@ void main() {
         overrides: billingProviderOverrides(
           extraOverrides: [
             invoiceEditorProvider(billingTestDraftInvoiceId).overrideWith(
+<<<<<<< HEAD
               () => _DelayedInvoiceEditorNotifier(
                 Future<InvoiceEditorState>.delayed(
                   const Duration(days: 1),
                   () => buildBillingEditorState(),
                 ),
               ),
+=======
+              () => _LoadingInvoiceEditorNotifier(billingTestDraftInvoiceId),
+>>>>>>> master
             ),
           ],
         ),
@@ -47,7 +58,14 @@ void main() {
         overrides: billingProviderOverrides(
           extraOverrides: [
             invoiceEditorProvider(billingTestDraftInvoiceId).overrideWith(
+<<<<<<< HEAD
               () => _CountingErrorInvoiceEditorNotifier(retryState),
+=======
+              () => _CountingErrorInvoiceEditorNotifier(
+                billingTestDraftInvoiceId,
+                retryState,
+              ),
+>>>>>>> master
             ),
           ],
         ),
@@ -306,8 +324,13 @@ void main() {
       );
       await pumpBillingFrames(tester);
 
+<<<<<<< HEAD
       await tester.enterText(find.byType(TextField), 'consult');
       await pumpBillingFrames(tester);
+=======
+      await tester.enterText(find.bySemanticsLabel('Search services'), 'consult');
+      await tester.pump(const Duration(milliseconds: 300));
+>>>>>>> master
 
       expect(catalogSpy?.searchCallCount, greaterThan(0));
       expect(catalogSpy?.lastQuery, 'consult');
@@ -344,7 +367,20 @@ void main() {
       await tester.tap(find.text('Add'));
       await pumpBillingFrames(tester);
 
+<<<<<<< HEAD
       expect(find.text('Consultation'), findsOneWidget);
+=======
+      expect(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Line items'),
+            matching: find.byType(DecoratedBox),
+          ).first,
+          matching: find.text('Consultation'),
+        ),
+        findsOneWidget,
+      );
+>>>>>>> master
     });
 
     testWidgets('Remove removes a line item', (tester) async {
@@ -373,7 +409,19 @@ void main() {
 
       expect(find.text('To remove'), findsOneWidget);
 
+<<<<<<< HEAD
       await tester.tap(find.bySemanticsLabel('Remove line'));
+=======
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Line items'),
+            matching: find.byType(DecoratedBox),
+          ).first,
+          matching: find.byType(AppIconButton),
+        ),
+      );
+>>>>>>> master
       await pumpBillingFrames(tester);
 
       expect(find.text('To remove'), findsNothing);
@@ -385,6 +433,7 @@ void main() {
   });
 }
 
+<<<<<<< HEAD
 class _DelayedInvoiceEditorNotifier extends InvoiceEditorNotifier {
   _DelayedInvoiceEditorNotifier(this._future);
 
@@ -392,6 +441,15 @@ class _DelayedInvoiceEditorNotifier extends InvoiceEditorNotifier {
 
   @override
   Future<InvoiceEditorState> build() async => _future;
+=======
+class _LoadingInvoiceEditorNotifier extends InvoiceEditorNotifier {
+  _LoadingInvoiceEditorNotifier(super.invoiceId);
+
+  @override
+  Future<InvoiceEditorState> build() async {
+    return Completer<InvoiceEditorState>().future;
+  }
+>>>>>>> master
 }
 
 class _EditorRetryState {
@@ -400,7 +458,11 @@ class _EditorRetryState {
 }
 
 class _CountingErrorInvoiceEditorNotifier extends InvoiceEditorNotifier {
+<<<<<<< HEAD
   _CountingErrorInvoiceEditorNotifier(this._retryState);
+=======
+  _CountingErrorInvoiceEditorNotifier(super.invoiceId, this._retryState);
+>>>>>>> master
 
   final _EditorRetryState _retryState;
 

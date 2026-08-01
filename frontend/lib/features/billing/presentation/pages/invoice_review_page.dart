@@ -15,10 +15,28 @@ class InvoiceReviewPage extends ConsumerWidget {
 
   final String invoiceId;
 
+<<<<<<< HEAD
+=======
+  Widget _buildDetailError(WidgetRef ref, Object error) {
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load invoice',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () => ref.invalidate(invoiceDetailViewProvider(invoiceId)),
+        ),
+      ),
+    );
+  }
+
+>>>>>>> master
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(invoiceDetailViewProvider(invoiceId));
 
+<<<<<<< HEAD
     return detailAsync.when(
       loading: () =>
           const Center(child: CircularProgressIndicator(strokeWidth: 2)),
@@ -34,6 +52,16 @@ class InvoiceReviewPage extends ConsumerWidget {
           ),
         ),
       ),
+=======
+    if (detailAsync.hasError && !detailAsync.hasValue) {
+      return _buildDetailError(ref, detailAsync.error!);
+    }
+
+    return detailAsync.when(
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (error, _) => _buildDetailError(ref, error),
+>>>>>>> master
       data: (view) {
         final invoice = view.invoice;
         final displayNumber = BillingFormatting.invoiceDisplayNumber(

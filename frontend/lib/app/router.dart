@@ -25,13 +25,28 @@ import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dar
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+=======
+import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
+import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/visit_billing_route_extra.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_review_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
+=======
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+>>>>>>> master
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -109,7 +124,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Appointments (V1-4)
           GoRoute(path: AppRoutes.appointments, redirect: (_, _) => AppRoutes.appointmentsCalendar),
           GoRoute(path: AppRoutes.appointmentsBook, builder: shellPlaceholderPage),
+<<<<<<< HEAD
           GoRoute(path: AppRoutes.appointmentsQueue, builder: shellPlaceholderPage),
+=======
+          GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const QueuePage()),
+>>>>>>> master
           GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(
             path: '${AppRoutes.appointments}/:appointmentId',
@@ -125,8 +144,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
             builder: (context, state) => VisitDocumentPage(
               visitId: state.pathParameters['visitId']!,
+<<<<<<< HEAD
               startInEditMode: state.uri.queryParameters['edit'] == '1',
             ),
+=======
+              extra: VisitRouteExtra.fromExtra(state.extra),
+              startInEditMode: state.uri.queryParameters['edit'] == '1',
+            ),
+          ),
+          GoRoute(
+            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
+            builder: (context, state) => VisitDetailPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitRouteExtra.fromExtra(state.extra),
+            ),
+>>>>>>> master
           ),
           GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 
@@ -143,11 +175,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
+<<<<<<< HEAD
             builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']!),
           ),
           GoRoute(
             path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
             builder: (context, state) => VisitBillingPage(visitId: state.pathParameters['visitId']!),
+=======
+            builder: (context, state) => InvoiceDetailPage(
+              invoiceId: state.pathParameters['invoiceId']!,
+              extra: InvoiceDetailRouteExtra.fromExtra(state.extra),
+            ),
+          ),
+          GoRoute(
+            path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
+            builder: (context, state) => VisitBillingPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitBillingRouteExtra.fromExtra(state.extra),
+            ),
+>>>>>>> master
           ),
           GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
@@ -164,8 +210,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.clinicManagement, builder: (context, state) => const ClinicManagementPage()),
 
           // Settings
+<<<<<<< HEAD
           GoRoute(path: AppRoutes.settings, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsIdleTimeout, builder: shellPlaceholderPage),
+=======
+          GoRoute(path: AppRoutes.settings, redirect: (_, _) => AppRoutes.settingsAppearance),
+          GoRoute(path: AppRoutes.settingsIdleTimeout, redirect: (_, _) => AppRoutes.settingsSecurity),
+>>>>>>> master
           GoRoute(path: AppRoutes.settingsOrganization, redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsBranches, redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsBranchesNew, redirect: _redirectToClinicManagement),
@@ -175,6 +226,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', redirect: _redirectToClinicManagement),
           GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', redirect: _redirectToClinicManagement),
           GoRoute(path: AppRoutes.settingsPermissions, redirect: _redirectToClinicManagement),
+<<<<<<< HEAD
+=======
+          GoRoute(
+            path: '${AppRoutes.settings}/:screenId',
+            redirect: (context, state) {
+              final screenId = state.pathParameters['screenId'];
+              if (screenId == null || SettingsScreens.byId(screenId) == null) {
+                return AppRoutes.settingsAppearance;
+              }
+              return null;
+            },
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: const ValueKey('settings-personal'),
+              child: SettingsPage(screenId: state.pathParameters['screenId']),
+            ),
+          ),
+>>>>>>> master
         ],
       ),
     ],

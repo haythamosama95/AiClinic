@@ -180,7 +180,7 @@ void main() {
     test('patients.createPatient.acknowledgeDuplicate', () async {
       const ManifestScenario('patients.createPatient.acknowledgeDuplicate');
       final clinic = await ctx.ensureClinic(label: 'pat_ack_dup');
-      await ctx.signInAdmin();
+      await ctx.signInAdminForClinic(clinic);
       await ctx.patients.createPatient(
         CreatePatientInput(
           activeBranchId: clinic.branchId,

@@ -19,7 +19,11 @@ void main() {
       final items = await repository.listPredefinedVitalSigns();
 
       expect(client.lastFunction, 'list_predefined_vital_signs');
+<<<<<<< HEAD
       expect(client.lastParams, isEmpty);
+=======
+      expect(client.lastParams, isNull);
+>>>>>>> master
       expect(items, hasLength(1));
       expect(items.first.name, 'Blood Pressure');
       expect(items.first.defaultUnit, 'mmHg');

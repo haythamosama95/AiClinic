@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+<<<<<<< HEAD
 import 'package:ai_clinic/core/ui/components/app_form_field.dart';
 import 'package:ai_clinic/core/ui/components/app_money_field.dart';
 import 'package:ai_clinic/core/ui/components/app_select.dart';
 import 'package:ai_clinic/core/ui/components/app_textarea.dart';
+=======
+>>>>>>> master
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';

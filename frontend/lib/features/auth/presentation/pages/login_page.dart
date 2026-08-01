@@ -145,7 +145,17 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     _authSessionSub?.close();
     if (!_isAuthenticated) {
       final notifier = _authNotifier;
+<<<<<<< HEAD
       Future(() => notifier.resetSignInForm());
+=======
+      scheduleMicrotask(() {
+        try {
+          notifier.resetSignInForm();
+        } catch (_) {
+          // Provider scope may already be torn down during widget tests.
+        }
+      });
+>>>>>>> master
     }
     _enterController.dispose();
     _usernameController.dispose();
@@ -241,6 +251,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
                           ),
                         ),
                       ),
+<<<<<<< HEAD
                     ),
                   );
                 },
@@ -638,6 +649,11 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
                     ),
                   ],
                 ),
+=======
+                    ),
+                  );
+                },
+>>>>>>> master
               ),
             ),
           ),
@@ -647,6 +663,400 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
   }
 }
 
+<<<<<<< HEAD
+=======
+class _LoginBackdrop extends StatelessWidget {
+  const _LoginBackdrop({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backdropColor = isDark ? AppColorPrimitives.surfaceBackdropDark : AppColorPrimitives.surfaceBackdropLight;
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final showBlur = !reducedMotion;
+
+    return FadeTransition(
+      opacity: animation,
+      child: ExcludeSemantics(
+        child: showBlur
+            ? BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                child: ColoredBox(color: backdropColor),
+              )
+            : ColoredBox(color: backdropColor),
+      ),
+    );
+  }
+}
+
+class _LoginPanel extends StatelessWidget {
+  const _LoginPanel({
+    required this.authState,
+    required this.usernameController,
+    required this.passwordController,
+    required this.passwordFocusNode,
+    required this.submitFocusNode,
+    required this.onFieldChanged,
+    required this.onForgotPassword,
+    required this.onSubmit,
+  });
+
+  final AuthUiState authState;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final FocusNode passwordFocusNode;
+  final FocusNode submitFocusNode;
+  final VoidCallback onFieldChanged;
+  final VoidCallback onForgotPassword;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final maxHeight = math.min(screenHeight * 0.9, 680.0);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isLarge = constraints.maxWidth >= _lgBreakpoint;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _lgBreakpoint, maxHeight: maxHeight),
+          child: Semantics(
+            scopesRoute: true,
+            explicitChildNodes: true,
+            child: Material(
+              color: colors.surfaceDefault,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.x2l),
+                side: BorderSide(color: colors.borderDefault),
+              ),
+              child: DecoratedBox(
+                decoration: context.appElevation.decoration(
+                  level: 3,
+                  color: colors.surfaceDefault,
+                  borderRadius: BorderRadius.circular(AppRadius.x2l),
+                  border: Border.all(color: colors.borderDefault),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.x2l),
+                  child: isLarge
+                      ? SizedBox(
+                          height: maxHeight,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _LoginFormColumn(
+                                  fillHeight: true,
+                                  authState: authState,
+                                  usernameController: usernameController,
+                                  passwordController: passwordController,
+                                  passwordFocusNode: passwordFocusNode,
+                                  submitFocusNode: submitFocusNode,
+                                  onFieldChanged: onFieldChanged,
+                                  onForgotPassword: onForgotPassword,
+                                  onSubmit: onSubmit,
+                                ),
+                              ),
+                              const Expanded(child: _TestimonialCarousel()),
+                            ],
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: _LoginFormColumn(
+                            authState: authState,
+                            usernameController: usernameController,
+                            passwordController: passwordController,
+                            passwordFocusNode: passwordFocusNode,
+                            submitFocusNode: submitFocusNode,
+                            onFieldChanged: onFieldChanged,
+                            onForgotPassword: onForgotPassword,
+                            onSubmit: onSubmit,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LoginFormColumn extends StatelessWidget {
+  const _LoginFormColumn({
+    this.fillHeight = false,
+    required this.authState,
+    required this.usernameController,
+    required this.passwordController,
+    required this.passwordFocusNode,
+    required this.submitFocusNode,
+    required this.onFieldChanged,
+    required this.onForgotPassword,
+    required this.onSubmit,
+  });
+
+  final bool fillHeight;
+  final AuthUiState authState;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final FocusNode passwordFocusNode;
+  final FocusNode submitFocusNode;
+  final VoidCallback onFieldChanged;
+  final VoidCallback onForgotPassword;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final horizontalPadding = MediaQuery.sizeOf(context).width >= 640 ? AppSpacing.space8 : AppSpacing.space6;
+
+    final formBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AppBrandMark(),
+        const SizedBox(height: AppSpacing.space8),
+        Semantics(
+          header: true,
+          child: Text('Welcome back', style: AppTypography.h1(context).copyWith(color: colors.textPrimary)),
+        ),
+        const SizedBox(height: AppSpacing.space2),
+        Text(
+          'Sign in with your clinic credentials to continue.',
+          style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+        ),
+        const SizedBox(height: AppSpacing.space6),
+        if (authState.errorMessage != null) ...[
+          AppAlert(
+            variant: authState.isInfoMessage ? AppAlertVariant.info : AppAlertVariant.danger,
+            title: authState.errorMessage!,
+          ),
+          const SizedBox(height: AppSpacing.space6),
+        ],
+        FocusTraversalGroup(
+          policy: OrderedTraversalPolicy(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(1),
+                    child: AppFormField(
+                      id: 'login-username',
+                      label: 'Username',
+                      requiredMark: true,
+                      child: AppTextInput(
+                        id: 'login-username',
+                        controller: usernameController,
+                        size: AppInputSize.lg,
+                        placeholder: 'Enter your username',
+                        keyboardType: TextInputType.text,
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => onFieldChanged(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.space5),
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(2),
+                    child: AppFormField(
+                      id: 'login-password',
+                      label: 'Password',
+                      requiredMark: true,
+                      child: AppPasswordInput(
+                        id: 'login-password',
+                        controller: passwordController,
+                        focusNode: passwordFocusNode,
+                        size: AppInputSize.lg,
+                        placeholder: 'Enter your password',
+                        onChanged: (_) => onFieldChanged(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.space6),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: FocusTraversalOrder(
+                  order: const NumericFocusOrder(3),
+                  child: AppButton(
+                    variant: AppButtonVariant.link,
+                    size: AppButtonSize.md,
+                    onPressed: onForgotPassword,
+                    child: const Text('Forgot your password?'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.space6),
+              FocusTraversalOrder(
+                order: const NumericFocusOrder(4),
+                child: Focus(
+                  focusNode: submitFocusNode,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent &&
+                        (event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey == LogicalKeyboardKey.space)) {
+                      onSubmit();
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: AppButton(
+                      variant: AppButtonVariant.primary,
+                      size: AppButtonSize.lg,
+                      loading: authState.isSubmitting,
+                      onPressed: onSubmit,
+                      child: const Text('Log in'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final footer = Text(
+      '© AiClinic Health Group',
+      style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+    );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: AppSpacing.space8),
+      child: fillHeight
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: SingleChildScrollView(child: formBody)),
+                footer,
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                formBody,
+                const SizedBox(height: AppSpacing.space8),
+                footer,
+              ],
+            ),
+    );
+  }
+}
+
+class _TestimonialCarousel extends StatefulWidget {
+  const _TestimonialCarousel();
+
+  @override
+  State<_TestimonialCarousel> createState() => _TestimonialCarouselState();
+}
+
+class _TestimonialCarouselState extends State<_TestimonialCarousel> {
+  static const _autoAdvanceInterval = Duration(seconds: 6);
+
+  var _page = 0;
+  var _direction = 0;
+  var _switchCount = 0;
+  Timer? _autoAdvanceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAutoAdvance();
+  }
+
+  @override
+  void dispose() {
+    _autoAdvanceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleAutoAdvance() {
+    _autoAdvanceTimer?.cancel();
+    _autoAdvanceTimer = Timer(_autoAdvanceInterval, () {
+      if (!mounted) return;
+      _navigate(1);
+    });
+  }
+
+  void _navigate(int nextDirection) {
+    setState(() {
+      _direction = nextDirection;
+      _page += nextDirection;
+      _switchCount++;
+    });
+    _scheduleAutoAdvance();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final currentIndex = _wrapIndex(0, _testimonials.length, _page);
+    final testimonial = _testimonials[currentIndex];
+    final textDirection = Directionality.of(context);
+    final previousIcon = textDirection == TextDirection.rtl ? Icons.arrow_forward : Icons.arrow_back;
+    final nextIcon = textDirection == TextDirection.rtl ? Icons.arrow_back : Icons.arrow_forward;
+
+    return Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: _TestimonialImageSwitcher(
+              switchKey: _switchCount,
+              imageAsset: testimonial.imageAsset,
+              duration: reducedMotion ? AppMotion.fast : const Duration(milliseconds: 800),
+              reducedMotion: reducedMotion,
+              enterOffset: _direction > 0 ? const Offset(0.12, 0) : const Offset(-0.12, 0),
+              fallbackColor: colors.surfaceMuted,
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0x73000000), Colors.transparent],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.space6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TestimonialGlassCard(
+                      reducedMotion: reducedMotion,
+                      switchCount: _switchCount,
+                      direction: _direction,
+                      testimonial: testimonial,
+                      previousIcon: previousIcon,
+                      nextIcon: nextIcon,
+                      onPrevious: () => _navigate(-1),
+                      onNext: () => _navigate(1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+  }
+}
+
+>>>>>>> master
 class _TestimonialGlassCard extends StatelessWidget {
   const _TestimonialGlassCard({
     required this.reducedMotion,
@@ -792,6 +1202,23 @@ class _TestimonialImageSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
+=======
+    if (reducedMotion) {
+      return Image(
+        key: ValueKey<int>(switchKey),
+        image: AssetImage(imageAsset),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          return ColoredBox(color: fallbackColor);
+        },
+      );
+    }
+
+>>>>>>> master
     return AnimatedSwitcher(
       duration: duration,
       switchInCurve: const Cubic(0.2, 0, 0.2, 1),
@@ -844,6 +1271,15 @@ class _TestimonialSlideSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
+=======
+    if (reducedMotion) {
+      return ClipRect(
+        child: SizedBox(key: ValueKey<int>(switchKey), width: double.infinity, child: child),
+      );
+    }
+
+>>>>>>> master
     return ClipRect(
       child: AnimatedSize(
         duration: reducedMotion ? Duration.zero : duration,

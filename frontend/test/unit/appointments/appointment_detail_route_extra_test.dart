@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
+>>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -38,5 +43,20 @@ void main() {
       expect(AppointmentDetailRouteExtra.fromExtra(42).preview, isNull);
       expect(AppointmentDetailRouteExtra.fromExtra({'id': 'a1'}).preview, isNull);
     });
+<<<<<<< HEAD
+=======
+
+    test('preserves breadcrumbTrail when provided', () {
+      final trail = BreadcrumbTrail([
+        BreadcrumbEntries.hubQueue(),
+        BreadcrumbEntries.appointment('a1', label: 'Pat · Jun 4, 2026'),
+      ]);
+      final extra = AppointmentDetailRouteExtra(breadcrumbTrail: trail);
+
+      final parsed = AppointmentDetailRouteExtra.fromExtra(extra);
+
+      expect(parsed.breadcrumbTrail, trail);
+    });
+>>>>>>> master
   });
 }

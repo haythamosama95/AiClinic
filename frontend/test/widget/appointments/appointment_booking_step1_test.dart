@@ -4,7 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+<<<<<<< HEAD
 import '../../helpers/patient_test_support.dart';
+=======
+import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import '../../helpers/patient_test_support.dart';
+import '../../support/appointment_calendar_test_support.dart';
+>>>>>>> master
 import 'detail_widget_test_harness.dart';
 
 void main() {
@@ -86,8 +92,13 @@ void main() {
       await tester.pump();
 
       await tester.enterText(find.byKey(const Key('appointment_booking_patient_search')), 'Picker');
+<<<<<<< HEAD
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Picker Patient'));
+=======
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Picker Patient').last);
+>>>>>>> master
       await tester.pump();
 
       expect(selected?.fullName, 'Picker Patient');

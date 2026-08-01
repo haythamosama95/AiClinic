@@ -1,6 +1,13 @@
+import 'dart:async';
+
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
 import 'package:ai_clinic/features/clinic-management/data/role_permissions_repository.dart';
+<<<<<<< HEAD
+=======
+import 'package:ai_clinic/features/clinic-management/domain/permission_matrix_view.dart';
+import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
+>>>>>>> master
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,6 +175,166 @@ void main() {
       expect(state.hasUnsavedChanges, isFalse);
     });
 
+    test('clearSaveMessage clears success banner', () async {
+      final rpcClient = _RolePermissionsTestClient(matrixTables);
+      final c = container(rpcClient: rpcClient);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+      await notifier.saveChanges();
+
+      expect(c.read(rolePermissionsProvider).value?.saveMessage, isNotNull);
+      notifier.clearSaveMessage();
+      expect(c.read(rolePermissionsProvider).value?.saveMessage, isNull);
+    });
+
+    test('clearSaveMessage is a no-op when message already absent', () async {
+      final c = container();
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.clearSaveMessage();
+
+      expect(c.read(rolePermissionsProvider).value?.saveMessage, isNull);
+    });
+
+    test('isCellDirty reflects only changed cells', () async {
+      final c = container();
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final state = c.read(rolePermissionsProvider).value!;
+      expect(state.isCellDirty(StaffRole.doctor, 'patients.view'), isTrue);
+      expect(state.isCellDirty(StaffRole.doctor, 'settings.manage_branches'), isFalse);
+      expect(state.isCellDirty(StaffRole.administrator, 'patients.view'), isFalse);
+    });
+
+    test('setLocalGrant no-ops when permission denied', () async {
+      final c = container(role: StaffRole.doctor);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      c
+          .read(rolePermissionsProvider.notifier)
+          .setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final state = c.read(rolePermissionsProvider).value!;
+      expect(state.hasUnsavedChanges, isFalse);
+      expect(state.workingMatrix, state.savedMatrix);
+    });
+
+    test('setLocalGrant no-ops when not editable', () async {
+      final c = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(role: StaffRole.administrator),
+              ),
+            ),
+          ),
+          rolePermissionsRepositoryProvider.overrideWithValue(
+            RolePermissionsRepositoryImpl(_RolePermissionsTestClient(matrixTables)),
+          ),
+          rolePermissionsProvider.overrideWith(_ReadOnlyMatrixNotifier.new),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      c
+          .read(rolePermissionsProvider.notifier)
+          .setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final state = c.read(rolePermissionsProvider).value!;
+      expect(state.editable, isFalse);
+      expect(state.hasUnsavedChanges, isFalse);
+    });
+
+    test('setLocalGrant no-ops while save is in progress', () async {
+      final rpcClient = _DelayedSaveRpcClient(matrixTables);
+      final c = container(rpcClient: rpcClient);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final saveFuture = notifier.saveChanges();
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'settings.manage_branches', isGranted: true);
+
+      final savingState = c.read(rolePermissionsProvider).value!;
+      expect(savingState.isSaving, isTrue);
+      expect(savingState.workingMatrix.isGranted(StaffRole.doctor, 'settings.manage_branches'), isFalse);
+
+      await rpcClient.releaseSave();
+      await saveFuture;
+    });
+
+    test('discardChanges no-ops when permission denied', () async {
+      final c = container(role: StaffRole.doctor);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final before = c.read(rolePermissionsProvider).value!;
+      c.read(rolePermissionsProvider.notifier).discardChanges();
+
+      final after = c.read(rolePermissionsProvider).value!;
+      expect(after.workingMatrix, before.workingMatrix);
+      expect(after.hasUnsavedChanges, isFalse);
+    });
+
+    test('saveChanges success reloads auth context', () async {
+      final auth = _ReloadTrackingAuthNotifier(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(role: StaffRole.administrator),
+        ),
+      );
+      final rpcClient = _RolePermissionsTestClient(matrixTables);
+      final c = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(() => auth),
+          rolePermissionsRepositoryProvider.overrideWithValue(RolePermissionsRepositoryImpl(rpcClient)),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final saved = await notifier.saveChanges();
+      expect(saved, isTrue);
+      expect(auth.reloadCount, 1);
+      expect(c.read(rolePermissionsProvider).value?.saveMessage, contains('saved'));
+    });
+
+    test('saveChanges surfaces generic failure for non-RPC errors', () async {
+      final rpcClient = _GenericFailureRpcClient(matrixTables);
+      final c = container(rpcClient: rpcClient);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier.setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
+
+      final saved = await notifier.saveChanges();
+      expect(saved, isFalse);
+
+      final state = c.read(rolePermissionsProvider).value!;
+      expect(state.isSaving, isFalse);
+      expect(state.errorMessage, contains('Unable to save role permissions'));
+      expect(state.workingMatrix.isGranted(StaffRole.doctor, 'patients.view'), isFalse);
+    });
+
     test('saveChanges surfaces PERMISSION_NOT_DELEGABLE for billing.manage', () async {
       final tables = {
         'roles_permissions': [
@@ -249,6 +416,88 @@ class _BillingDeniedRpcClient extends _RolePermissionsTestClient {
       }
     }
     return false;
+  }
+}
+
+class _ReadOnlyMatrixNotifier extends RolePermissionsNotifier {
+  @override
+  Future<RolePermissionsUiState> build() async {
+    final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
+    final matrix = PermissionMatrixView.fromRows(rows);
+    return RolePermissionsUiState(savedMatrix: matrix, workingMatrix: matrix, editable: false);
+  }
+}
+
+class _DelayedSaveRpcClient extends _RolePermissionsTestClient {
+  _DelayedSaveRpcClient(super._tables);
+
+  Completer<void>? _saveGate;
+
+  Future<void> releaseSave() {
+    final gate = _saveGate;
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
+    return gate?.future ?? Future<void>.value();
+  }
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'update_role_permissions') {
+      _saveGate = Completer<void>();
+      return _DelayedPostgrestRpc(_saveGate!.future, {'success': true, 'data': {}}) as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc<T>(fn, params: params, get: get);
+  }
+}
+
+class _DelayedPostgrestRpc extends FakePostgrestRpc {
+  _DelayedPostgrestRpc(this._delay, super.result);
+
+  final Future<void> _delay;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
+    return _delay.then((_) => Future<dynamic>.value(result).then(onValue, onError: onError));
+  }
+}
+
+class _GenericFailureRpcClient extends _RolePermissionsTestClient {
+  _GenericFailureRpcClient(super._tables);
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'update_role_permissions') {
+      return _ThrowingPostgrestRpc(Exception('network down')) as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc<T>(fn, params: params, get: get);
+  }
+}
+
+class _ThrowingPostgrestRpc extends Fake implements PostgrestFilterBuilder<dynamic> {
+  _ThrowingPostgrestRpc(this.error);
+
+  final Object error;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
+    return Future<dynamic>.error(error).then(onValue, onError: onError);
+  }
+}
+
+class _ReloadTrackingAuthNotifier extends TestAuthSessionNotifier {
+  _ReloadTrackingAuthNotifier(this.initial) : _state = initial;
+
+  final AuthSessionState initial;
+  final AuthSessionState _state;
+  var reloadCount = 0;
+
+  @override
+  AuthSessionState build() => _state;
+
+  @override
+  Future<void> reloadContext() async {
+    reloadCount++;
   }
 }
 

@@ -398,6 +398,10 @@ void main() {
       );
       addTearDown(container.dispose);
       final notifier = await loadNotifier(container);
+<<<<<<< HEAD
+=======
+      await container.read(patientSafetyProvider(encounterTestPatientId).future);
+>>>>>>> master
 
       notifier.stageUpdateAllergy(allergyId: encounterTestAllergyId, reaction: 'Anaphylaxis');
 

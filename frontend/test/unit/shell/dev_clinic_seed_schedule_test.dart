@@ -95,6 +95,7 @@ void main() {
           );
         }
       }
+<<<<<<< HEAD
       expect(pastStatuses.toSet(), {AppointmentStatus.completed, AppointmentStatus.cancelled, AppointmentStatus.noShow});
       expect(pastStatuses.where((status) => status == AppointmentStatus.completed).length, 22);
       expect(pastStatuses.where((status) => status == AppointmentStatus.noShow).length, 4);
@@ -135,6 +136,50 @@ void main() {
         69,
       );
 
+=======
+      expect(pastStatuses.toSet(), {
+        AppointmentStatus.completed,
+        AppointmentStatus.cancelled,
+        AppointmentStatus.noShow,
+      });
+      expect(pastStatuses.where((status) => status == AppointmentStatus.completed).length, 22);
+      expect(pastStatuses.where((status) => status == AppointmentStatus.noShow).length, 4);
+      expect(pastStatuses.where((status) => status == AppointmentStatus.cancelled).length, 6);
+
+      final todayAndFutureStatuses = <AppointmentStatus>[];
+      for (var patientIndex = 1; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+        for (final dayOffset in [0, 1, 2, 3, 4, 5]) {
+          final seedKey = patientIndex + dayOffset;
+          final startTime = DevClinicSeedSchedule.appointmentStartUtc(
+            timezone: timezone,
+            dayOffset: dayOffset,
+            patientIndex: patientIndex,
+            referenceUtc: referenceUtc,
+          );
+          todayAndFutureStatuses.add(
+            DevClinicSeedSchedule.appointmentStatusFor(
+              startTimeUtc: startTime,
+              timezone: timezone,
+              seedKey: seedKey,
+              referenceUtc: referenceUtc,
+            ),
+          );
+        }
+      }
+      expect(todayAndFutureStatuses.toSet(), {
+        AppointmentStatus.scheduled,
+        AppointmentStatus.confirmed,
+        AppointmentStatus.cancelled,
+      });
+      expect(todayAndFutureStatuses.where((status) => status == AppointmentStatus.cancelled).length, 27);
+      expect(
+        todayAndFutureStatuses
+            .where((status) => status == AppointmentStatus.scheduled || status == AppointmentStatus.confirmed)
+            .length,
+        69,
+      );
+
+>>>>>>> master
       for (final dayOffset in [0, 1, 2, 3, 4, 5]) {
         final startTime = DevClinicSeedSchedule.appointmentStartUtc(
           timezone: timezone,
@@ -183,6 +228,7 @@ void main() {
           relation: DevClinicSeedCalendarDayRelation.past,
         ),
         isFalse,
+<<<<<<< HEAD
       );
       expect(
         DevClinicSeedSchedule.requiresVisitAndInvoice(
@@ -238,7 +284,58 @@ void main() {
       expect(
         DevClinicSeedSchedule.completedVisitAppointmentTransitions,
         isNot(contains(AppointmentStatus.completed)),
+=======
+>>>>>>> master
       );
+      expect(
+        DevClinicSeedSchedule.requiresVisitAndInvoice(
+          status: AppointmentStatus.scheduled,
+          relation: DevClinicSeedCalendarDayRelation.future,
+        ),
+        isFalse,
+      );
+    });
+
+    test('completed visits cycle through documentation field combinations', () {
+      final kinds = <DevClinicVisitDocumentationKind>{};
+      for (var seedKey = 0; seedKey < 20; seedKey++) {
+        kinds.add(DevClinicSeedSchedule.visitDocumentationFor(seedKey: seedKey));
+      }
+      expect(kinds, DevClinicSeedSchedule.completedVisitDocumentationKinds.toSet());
+
+      final partial = DevClinicSeedSchedule.clinicalNoteContentFor(
+        kind: DevClinicVisitDocumentationKind.partial,
+        branchCode: 'DTWN',
+        patientIndex: 1,
+        dayOffset: -1,
+      );
+      expect(partial.complaint, isNotEmpty);
+      expect(partial.history, isEmpty);
+
+      final partialHistory = DevClinicSeedSchedule.clinicalNoteContentFor(
+        kind: DevClinicVisitDocumentationKind.partialWithHistory,
+        branchCode: 'DTWN',
+        patientIndex: 1,
+        dayOffset: -1,
+      );
+      expect(partialHistory.complaint, isNotEmpty);
+      expect(partialHistory.history, isNotEmpty);
+      expect(partialHistory.examination, isEmpty);
+
+      expect(
+        DevClinicSeedSchedule.shouldIncludeTreatmentPlan(DevClinicVisitDocumentationKind.completedWithTreatment),
+        isTrue,
+      );
+      expect(DevClinicSeedSchedule.shouldIncludeTreatmentPlan(DevClinicVisitDocumentationKind.full), isFalse);
+    });
+
+    test('completed visit path uses only the minimal in-progress transitions', () {
+      expect(DevClinicSeedSchedule.completedVisitAppointmentTransitions, const [
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+        AppointmentStatus.inProgress,
+      ]);
+      expect(DevClinicSeedSchedule.completedVisitAppointmentTransitions, isNot(contains(AppointmentStatus.completed)));
     });
 
     test('appointment durations range from 30 to 90 minutes', () {
@@ -248,6 +345,7 @@ void main() {
       }
     });
 
+<<<<<<< HEAD
     test('every seeded appointment is assigned a doctor', () {
       for (var seedKey = 0; seedKey < 60; seedKey++) {
         expect(
@@ -257,6 +355,44 @@ void main() {
       }
     });
 
+=======
+    test('half of queue-facing appointments omit a preferred doctor', () {
+      var assigned = 0;
+      var unassigned = 0;
+      for (var seedKey = 0; seedKey < 100; seedKey++) {
+        final targetStatus = seedKey.isEven ? AppointmentStatus.scheduled : AppointmentStatus.confirmed;
+        if (DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
+          dayOffset: 1,
+          patientIndex: 1,
+          seedKey: seedKey,
+          targetStatus: targetStatus,
+          dayRelation: DevClinicSeedCalendarDayRelation.future,
+        )) {
+          assigned++;
+        } else {
+          unassigned++;
+        }
+      }
+      expect(assigned, 50);
+      expect(unassigned, 50);
+    });
+
+    test('completed past appointments always get a doctor for visit seeding', () {
+      for (var seedKey = 0; seedKey < 100; seedKey++) {
+        expect(
+          DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
+            dayOffset: -1,
+            patientIndex: 1,
+            seedKey: seedKey,
+            targetStatus: AppointmentStatus.completed,
+            dayRelation: DevClinicSeedCalendarDayRelation.past,
+          ),
+          isTrue,
+        );
+      }
+    });
+
+>>>>>>> master
     test('doctor assignment alternates branch primary and multi-branch doctors', () {
       expect(
         DevClinicSeedSchedule.doctorIdForAppointment(
@@ -366,10 +502,14 @@ void main() {
             referenceUtc: referenceUtc,
           );
 
+<<<<<<< HEAD
           expect(
             DevClinicSeedSchedule.requiresVisitAndInvoice(status: target, relation: relation),
             isFalse,
           );
+=======
+          expect(DevClinicSeedSchedule.requiresVisitAndInvoice(status: target, relation: relation), isFalse);
+>>>>>>> master
           expect(target, isNot(AppointmentStatus.checkedIn));
           expect(target, isNot(AppointmentStatus.inProgress));
           expect(target, isNot(AppointmentStatus.completed));

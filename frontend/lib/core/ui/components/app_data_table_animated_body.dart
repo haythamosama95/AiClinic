@@ -9,6 +9,10 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 import 'app_data_table.dart';
+<<<<<<< HEAD
+=======
+import 'app_data_table_column_layout.dart';
+>>>>>>> master
 
 const _maxEnterStagger = Duration(milliseconds: 120);
 const _enterStaggerStep = Duration(milliseconds: 25);
@@ -244,16 +248,32 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
   Color? _rowBackground(int index, T item) {
     final colors = context.appColors;
     final selected = table.selectable && table.selectedIds.contains(table.getRowId(item));
+<<<<<<< HEAD
     final zebraRow = table.zebra && index.isOdd;
     if (selected) {
       return colors.surfaceSelected;
     }
     if (zebraRow) {
+=======
+    if (selected) {
+      return colors.surfaceSelected;
+    }
+    final custom = table.rowBackgroundColor?.call(item, index);
+    if (custom != null) {
+      return custom;
+    }
+    if (table.zebra && index.isOdd) {
+>>>>>>> master
       return colors.surfaceMuted;
     }
     return null;
   }
 
+<<<<<<< HEAD
+=======
+  BoxBorder? _rowBorder(int index, T item) => table.rowBorder?.call(item, index);
+
+>>>>>>> master
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -288,9 +308,23 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
     final inlineEnter = direction == TextDirection.rtl ? 6.0 : -6.0;
     final dataIndex = (slot.visualTop / rowHeight).round();
     final background = _rowBackground(dataIndex, slot.item);
+<<<<<<< HEAD
 
     Widget row = widget.buildRow(context, slot.item, dataIndex, backgroundColor: background);
 
+=======
+    final border = _rowBorder(dataIndex, slot.item);
+
+    Widget row = widget.buildRow(context, slot.item, dataIndex, backgroundColor: background);
+
+    if (border != null) {
+      row = DecoratedBox(
+        decoration: BoxDecoration(border: border),
+        child: row,
+      );
+    }
+
+>>>>>>> master
     if (table.onRowClick != null) {
       row = MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -363,6 +397,7 @@ Widget buildAppDataTableRowContent<T>({
   required T item,
   required int rowIndex,
   Color? backgroundColor,
+<<<<<<< HEAD
 }) {
   final colors = context.appColors;
   final cells = <Widget>[];
@@ -375,6 +410,31 @@ Widget buildAppDataTableRowContent<T>({
     cells.add(
       layoutAppDataTableColumn(
         width: column.width,
+=======
+  Map<String, double>? columnWidths,
+  bool fillColumnExpanded = false,
+}) {
+  final colors = context.appColors;
+  final cells = <Widget>[];
+  final useFixedWidths = columnWidths != null;
+
+  if (table.selectable) {
+    final selectionCell = _buildSelectionCell(context, table, item, backgroundColor);
+    cells.add(
+      useFixedWidths
+          ? SizedBox(width: AppDataTableColumnLayout.selectionColumnWidth, child: selectionCell)
+          : Expanded(child: selectionCell),
+    );
+  }
+
+  for (final column in table.columns) {
+    final isFillColumn = fillColumnExpanded && AppDataTableColumnLayout.isFillColumn(table.columns, column.id);
+    final width = isFillColumn ? null : (columnWidths?[column.id] ?? column.width);
+    cells.add(
+      layoutAppDataTableColumn(
+        width: width,
+        fill: isFillColumn,
+>>>>>>> master
         child: _buildDataCell(
           context: context,
           align: column.align,
@@ -390,7 +450,16 @@ Widget buildAppDataTableRowContent<T>({
   }
 
   if (table.rowActions != null) {
+<<<<<<< HEAD
     cells.add(SizedBox(width: 48, child: _buildActionsCell(context, table, item, backgroundColor)));
+=======
+    cells.add(
+      SizedBox(
+        width: AppDataTableColumnLayout.actionsColumnWidth,
+        child: _buildActionsCell(context, table, item, backgroundColor),
+      ),
+    );
+>>>>>>> master
   }
 
   return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells);

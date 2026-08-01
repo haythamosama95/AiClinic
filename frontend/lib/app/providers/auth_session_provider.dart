@@ -72,6 +72,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<void>? _ensureSupabaseReadyTask;
   bool _clearedPersistedSessionOnColdStart = false;
   bool? _hadProperClinicSetup;
+<<<<<<< HEAD
+=======
+  int _clinicSetupLostSignOutSuppressDepth = 0;
+>>>>>>> master
   String? _pendingContextLoadToken;
   Future<AuthSessionContext>? _pendingContextLoad;
 
@@ -284,6 +288,19 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     state = state.copyWith(clearFailure: true);
   }
 
+  /// Keeps the Supabase session alive while dev tooling wipes and re-seeds clinic data.
+  void suppressClinicSetupLostSignOut() {
+    _clinicSetupLostSignOutSuppressDepth++;
+  }
+
+  void releaseClinicSetupLostSignOut() {
+    if (_clinicSetupLostSignOutSuppressDepth > 0) {
+      _clinicSetupLostSignOutSuppressDepth--;
+    }
+  }
+
+  bool _shouldSuppressClinicSetupLostSignOut() => _clinicSetupLostSignOutSuppressDepth > 0;
+
   Future<void> signOut() async {
     _intentionalSignOut = true;
     _hadProperClinicSetup = null;
@@ -358,9 +375,19 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     _hadProperClinicSetup = hasSetup;
 
     if (hadSetup == true && !hasSetup) {
+<<<<<<< HEAD
       AppLog.info('auth.session.clinic_setup_lost');
       await signOut();
       return;
+=======
+      if (_shouldSuppressClinicSetupLostSignOut()) {
+        AppLog.info('auth.session.clinic_setup_lost_suppressed');
+      } else {
+        AppLog.info('auth.session.clinic_setup_lost');
+        await signOut();
+        return;
+      }
+>>>>>>> master
     }
 
     state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);

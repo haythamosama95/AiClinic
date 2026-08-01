@@ -132,7 +132,14 @@ class EncounterActivePhaseNotifier extends Notifier<EncounterPhase> {
     }
 
     if (initialPhase == EncounterPhase.review) {
+<<<<<<< HEAD
       Future.microtask(() => ref.read(visitDocumentationProvider(_visitId).notifier).prepareEncounterReview());
+=======
+      Future.microtask(() {
+        if (!ref.mounted) return;
+        ref.read(visitDocumentationProvider(_visitId).notifier).prepareEncounterReview();
+      });
+>>>>>>> master
     }
 
     return initialPhase;
