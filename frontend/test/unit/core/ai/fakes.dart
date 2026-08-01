@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
+import 'package:ai_clinic/core/ai/context_provider_port.dart';
 
 /// In-memory mint fake with call counting.
 class FakeMintPort implements AatMintPort {
@@ -221,7 +222,7 @@ List<SseEvent> failedStreamWithRawWireCode(String wireCode) => [
     ];
 
 /// In-memory clinic-read port for context resolver unit and contract tests.
-class FakeContextProviderPort {
+class FakeContextProviderPort implements ContextProviderPort {
   FakeContextProviderPort({
     Map<String, Object?>? chiefComplaintPayload,
   }) : _chiefComplaintPayload = chiefComplaintPayload ??

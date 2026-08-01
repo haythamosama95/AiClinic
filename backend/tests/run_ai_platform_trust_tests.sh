@@ -22,6 +22,7 @@ psql_run() {
 sql_tests=(
   ai_keystore_rls.sql
   ai_token_issuer.sql
+  context_provider_rpc.sql
 )
 
 for f in "${sql_tests[@]}"; do

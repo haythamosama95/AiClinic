@@ -9,7 +9,13 @@ CREATE TEMP TABLE context_provider_rpc_results (
   detail text
 );
 
-CREATE OR REPLACE FUNCTION pg_temp.set_authenticated_session(p_user_id uuid)
+CREATE OR REPLACE FUNCTION pg_temp.set_authenticated_session(
+  p_user_id uuid,
+  p_org_id uuid,
+  p_branch_id uuid,
+  p_staff_id uuid,
+  p_staff_role text DEFAULT 'doctor'
+)
 RETURNS void
 LANGUAGE plpgsql
 AS $$
@@ -17,7 +23,15 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
-    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    json_build_object(
+      'sub', p_user_id::text,
+      'role', 'authenticated',
+      'organization_id', p_org_id::text,
+      'branch_ids', p_branch_id::text,
+      'staff_member_id', p_staff_id::text,
+      'staff_role', p_staff_role,
+      'setup_required', false
+    )::text,
     true
   );
 END;
@@ -124,7 +138,9 @@ BEGIN
      '2026-07-31T12:00:00+00'::timestamptz);
 
   -- E3-T05 context_rpc_returns_declared_shape
-  PERFORM pg_temp.set_authenticated_session(v_doctor_user_a);
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
   v_result := public.get_visit_chief_complaint(v_visit_a);
   v_payload := v_result.data;
   v_passed := v_result.success
@@ -141,7 +157,9 @@ BEGIN
   );
 
   -- E3-T06 context_rpc_rls_denies_out_of_scope
-  PERFORM pg_temp.set_authenticated_session(v_doctor_user_a);
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
   v_result := public.get_visit_chief_complaint(v_visit_b);
   v_passed := (NOT v_result.success)
     OR (v_result.data IS NULL)
@@ -184,7 +202,9 @@ BEGIN
   );
 
   -- E3-T08 context_rpc_shape_matches_a5_published_key
-  PERFORM pg_temp.set_authenticated_session(v_doctor_user_a);
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
   v_result := public.get_visit_chief_complaint(v_visit_a);
   v_payload := v_result.data;
   v_passed := v_result.success
