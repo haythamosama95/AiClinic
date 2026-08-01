@@ -14,7 +14,13 @@ class PermissionCategoryGroup {
 /// Matrix rows grouped by permission key with grant lookup per role (V1-2).
 @immutable
 class PermissionMatrixView {
-  const PermissionMatrixView({required this.permissionKeys, required this.grantsByRoleAndKey});
+  PermissionMatrixView({
+    required this.permissionKeys,
+    required this.grantsByRoleAndKey,
+    List<PermissionCategoryGroup>? categoryGroups,
+  }) : categoryGroups = categoryGroups ?? _buildCategoryGroups(permissionKeys);
+
+  static final empty = PermissionMatrixView(permissionKeys: [], grantsByRoleAndKey: {}, categoryGroups: const []);
 
   static const displayRoles = <StaffRole>[
     StaffRole.administrator,
@@ -25,6 +31,7 @@ class PermissionMatrixView {
 
   final List<String> permissionKeys;
   final Map<String, Map<StaffRole, bool>> grantsByRoleAndKey;
+  final List<PermissionCategoryGroup> categoryGroups;
 
   static PermissionMatrixView fromRows(List<PermissionMatrixRow> rows) {
     final grants = <String, Map<StaffRole, bool>>{};
@@ -44,8 +51,7 @@ class PermissionMatrixView {
     return PermissionMatrixView(permissionKeys: keys, grantsByRoleAndKey: grants);
   }
 
-  /// Permission keys grouped by the segment before the first dot (e.g. `patients.view` → `patients`).
-  List<PermissionCategoryGroup> get categoryGroups {
+  static List<PermissionCategoryGroup> _buildCategoryGroups(List<String> permissionKeys) {
     final byCategory = <String, List<String>>{};
     for (final key in permissionKeys) {
       final category = permissionCategory(key);
@@ -107,7 +113,11 @@ class PermissionMatrixView {
     nextGrants[permissionKey]![role] = isGranted;
 
     final keys = nextGrants.keys.toList()..sort();
-    return PermissionMatrixView(permissionKeys: keys, grantsByRoleAndKey: nextGrants);
+    return PermissionMatrixView(
+      permissionKeys: keys,
+      grantsByRoleAndKey: nextGrants,
+      categoryGroups: listEquals(keys, permissionKeys) ? categoryGroups : null,
+    );
   }
 
   /// Cells whose grant differs from [other] across the full role × permission grid.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
@@ -135,6 +137,47 @@ void main() {
       expect(state.value?.detail?.service.name, 'General Consultation');
     });
 
+    test('updateService reloads detail when provider state was disposed', () async {
+      final rpcClient = _ServiceCatalogRpcClient();
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  permissions: {'services.manage', 'services.view'},
+                ),
+              ),
+            ),
+          ),
+          serviceCatalogRepositoryProvider.overrideWithValue(ServiceCatalogRepository(rpcClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final subscription = container.listen(serviceEditorProvider('service-1'), (_, _) {});
+      await container.read(serviceEditorProvider('service-1').future);
+      subscription.close();
+
+      await container
+          .read(serviceEditorProvider('service-1').notifier)
+          .updateService(
+            name: 'General Consultation',
+            defaultPrice: '220.00',
+            globalStatus: GlobalStatus.inactive,
+            assignAllBranches: false,
+            selectedBranchIds: const {'branch-1'},
+            allBranchIds: const ['branch-1', 'branch-2'],
+          );
+
+      expect(rpcClient.calls.where((call) => call == 'get_service').length, greaterThanOrEqualTo(2));
+      expect(rpcClient.calls, contains('update_service'));
+      final state = container.read(serviceEditorProvider('service-1'));
+      expect(state.value?.detail?.service.name, 'General Consultation');
+    });
+
     test('softDeleteService calls soft delete RPC', () async {
       final rpcClient = _ServiceCatalogRpcClient();
       final container = ProviderContainer(
@@ -161,6 +204,36 @@ void main() {
       expect(rpcClient.calls, contains('soft_delete_service'));
       final state = container.read(serviceEditorProvider('service-1'));
       expect(state.value?.detail, isNull);
+    });
+
+    test('softDeleteService skips state updates when provider is disposed during load', () async {
+      final rpcClient = _DelayedGetServiceRpcClient();
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  permissions: {'services.manage', 'services.view'},
+                ),
+              ),
+            ),
+          ),
+          serviceCatalogRepositoryProvider.overrideWithValue(ServiceCatalogRepository(rpcClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final subscription = container.listen(serviceEditorProvider('service-1'), (_, _) {});
+      final notifier = container.read(serviceEditorProvider('service-1').notifier);
+      final deleteFuture = notifier.softDeleteService();
+      subscription.close();
+      await rpcClient.releaseGetService();
+
+      await expectLater(deleteFuture, completes);
+      expect(rpcClient.calls, contains('soft_delete_service'));
     });
   });
 }
@@ -233,6 +306,38 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
         ],
       },
     };
+  }
+}
+
+class _DelayedGetServiceRpcClient extends _ServiceCatalogRpcClient {
+  Completer<void>? _getServiceGate;
+
+  Future<void> releaseGetService() {
+    final gate = _getServiceGate;
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
+    return gate?.future ?? Future<void>.value();
+  }
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'get_service') {
+      _getServiceGate = Completer<void>();
+      return _DelayedPostgrestRpc(_getServiceGate!.future, _getServicePayload()) as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc<T>(fn, params: params, get: get);
+  }
+}
+
+class _DelayedPostgrestRpc extends FakePostgrestRpc {
+  _DelayedPostgrestRpc(this._delay, super.result);
+
+  final Future<void> _delay;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
+    return _delay.then((_) => Future<dynamic>.value(result).then(onValue, onError: onError));
   }
 }
 
