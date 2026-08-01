@@ -51,6 +51,7 @@ void main() {
 
       expect(client.lastParams?.containsKey('p_query'), isFalse);
       expect(client.lastParams?['p_scope'], 'organization');
+      expect(client.lastParams?.containsKey('p_branch_id'), isFalse);
     });
 
     test('advanced: parses paginated items', () async {

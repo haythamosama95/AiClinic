@@ -1023,7 +1023,7 @@ Included in Fix 15 above — the public wrapper `public.update_patient` must als
 
 **Action**: Add a comment block in the function and an architecture decision record.
 
-**File**: Add to `specs/architecture-decisions.md` or equivalent:
+**File**: Add to `docs/specs/architecture-decisions.md` or equivalent:
 
 ```markdown
 ## ADR-001: Single Organization Per Staff Member

@@ -460,7 +460,7 @@ Before any real PHI or production clinic use:
 
 ## What is intentionally out of scope
 
-Aligned with `specs/001-project-scaffolding/` and constitution checks:
+Aligned with `docs/specs/001-project-scaffolding/` and constitution checks:
 
 - Custom Node/Go/Dart API servers
 - Domain migrations, seeds, and business RPCs
@@ -534,7 +534,7 @@ The backend implementation is a **self-hosted Supabase-compatible stack** under 
 
 ## Purpose and scope
 
-Phase 3 in `specs/001-project-scaffolding/tasks.md` covers **User Story 1** on the Flutter client only (T011–T017). There are **no Phase 3 backend tasks**: no new Compose services, SQL migrations, Kong routes, environment variables, or changes to `backend/tests/connectivity_smoke.sh`.
+Phase 3 in `docs/specs/001-project-scaffolding/tasks.md` covers **User Story 1** on the Flutter client only (T011–T017). There are **no Phase 3 backend tasks**: no new Compose services, SQL migrations, Kong routes, environment variables, or changes to `backend/tests/connectivity_smoke.sh`.
 
 The clinic-local stack delivered in Phase 1 and Phase 2 is the **runtime dependency** for Phase 3 acceptance testing. Phase 3 frontend behavior assumes the gateway URLs and reachability semantics documented above remain stable.
 
@@ -624,7 +624,7 @@ Phase 3 does not modify the backend implementation. The existing clinic-local Su
 
 ## Purpose and scope
 
-Phase 4 implements **User Story 2 — Prepare a Workstation Consistently** (`specs/001-project-scaffolding/tasks.md`, T018–T024). The backend contribution is **operational validation and documentation**, not new Compose services or application SQL.
+Phase 4 implements **User Story 2 — Prepare a Workstation Consistently** (`docs/specs/001-project-scaffolding/tasks.md`, T018–T024). The backend contribution is **operational validation and documentation**, not new Compose services or application SQL.
 
 Goals:
 
@@ -646,9 +646,9 @@ Goals:
 | `docs/setup/client-workstation.md`                              | **NEW** — client profile and connectivity (T022)    |
 | `docs/setup/troubleshooting.md`                                 | **NEW** — backups and troubleshooting (T023)        |
 | `docs/setup/verification-checklist.md`                          | **NEW** — acceptance checklist (T019)               |
-| `specs/001-project-scaffolding/quickstart.md`                   | Updated to reference setup docs and validate script |
-| `specs/001-project-scaffolding/contracts/deployment-profile.md` | Expanded contract alignment (T024)                  |
-| `specs/001-project-scaffolding/tasks.md`                        | T018–T024 marked complete                           |
+| `docs/specs/001-project-scaffolding/quickstart.md`                   | Updated to reference setup docs and validate script |
+| `docs/specs/001-project-scaffolding/contracts/deployment-profile.md` | Expanded contract alignment (T024)                  |
+| `docs/specs/001-project-scaffolding/tasks.md`                        | T018–T024 marked complete                           |
 
 No changes under `backend/local/` runtime definitions. Phase 4 adds **how to run and verify** the existing stack, not new services.
 
@@ -711,7 +711,7 @@ Phase 4 setup guides live outside `backend/` but define how the stack is install
 | `troubleshooting.md`        | All               | Logs, ports, volume reset, backup expectations                      |
 | `verification-checklist.md` | Acceptance        | Step-by-step US2 independent test                                   |
 
-`specs/001-project-scaffolding/quickstart.md` now points to these paths instead of duplicating full setup prose.
+`docs/specs/001-project-scaffolding/quickstart.md` now points to these paths instead of duplicating full setup prose.
 
 ## Testing matrix (Phase 4)
 

@@ -97,7 +97,7 @@ Authentication uses **usernames** (not email). Usernames are stored in GoTrue's 
 | `patient_medications`        | `id`, `patient_id`, `medication_id` (nullable FK), `name`, `note` | Current/home medications, distinct from `treatment_plans` (which are visit-scoped prescriptions).                            |
 | `patient_chronic_conditions` | `id`, `patient_id`, `name`, `note`                          | Originally had a `diagnosis_code_id` FK to a coded-diagnosis catalog; that column and the catalog were **dropped** (see Visits domain below). Free-text only today. |
 
-Key differences from the original product spec (`specs/004-patient-management`):
+Key differences from the original product spec (`docs/specs/004-patient-management`):
 - `national_id` was removed (not required for this clinic context).
 - `phone` is NOT NULL (required for patient registration) and globally unique per organization.
 - `gender` enum restricted to `male`, `female` (no `other`/`unknown`).
@@ -142,7 +142,7 @@ RLS: SELECT for assigned branches; INSERT/UPDATE/DELETE denied at the table leve
 **Tables that existed briefly and were removed** (do not resurrect without re-reading the removal migrations for rationale):
 - `soap_notes` → replaced by `visit_clinical_notes` (013-visits redesign).
 - `diagnosis_codes` (org catalog) and `visit_diagnosis_codes` (visit lines) → added in the 014 plan (P3) then **dropped** in `20260702120000_remove_coded_diagnosis.sql`. Coded diagnosis was scoped out; diagnosis remains a free-text field on `visit_clinical_notes.diagnosis`. `patient_chronic_conditions.diagnosis_code_id` was dropped in the same migration.
-- `visit_plan_details` (structured follow-up/instructions/referral/certificate fields, 1:1 with a visit) → added in 014 P3 then **dropped** in `20260705120000_remove_structured_plan_outputs.sql`. Structured plan output was scoped out; the free-text `visit_clinical_notes.plan` field remains the only Plan-phase text field. **`specs/014-visit-encounter-workspace/plan.md` still describes `diagnosis_codes` and `visit_plan_details` as if they will be built — that plan document is now partially superseded by these two removal migrations and should not be read as current schema.**
+- `visit_plan_details` (structured follow-up/instructions/referral/certificate fields, 1:1 with a visit) → added in 014 P3 then **dropped** in `20260705120000_remove_structured_plan_outputs.sql`. Structured plan output was scoped out; the free-text `visit_clinical_notes.plan` field remains the only Plan-phase text field. **`docs/specs/014-visit-encounter-workspace/plan.md` still describes `diagnosis_codes` and `visit_plan_details` as if they will be built — that plan document is now partially superseded by these two removal migrations and should not be read as current schema.**
 
 Visit completion rule history: an initial migration required non-empty `visit_clinical_notes` fields to complete a visit; `20260708120000_allow_empty_visit_documentation_on_complete.sql` relaxed this to allow empty documentation, and `20260709120000_require_visit_documentation_on_complete.sql` / `20260710120000_visit_documentation_any_field_on_complete.sql` re-tightened it to the current rule: **at least one of the five clinical-note fields must be non-empty** (`auth_internal.clinical_note_has_content`) to call `complete_visit`. A vestigial `soap_note_has_content` helper function of the same shape still exists in `public` from before the rename — dead code, harmless but confusing (see flaws doc).
 

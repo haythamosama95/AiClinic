@@ -164,7 +164,7 @@ Commits in `5548354` move org/branch/staff to in-memory drafts; `finishSetup()` 
 | Item                           | Notes                                                                                                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Last-admin guard               | See §1.1                                                                                                                                                                 |
-| Stale owner references         | `docs/tests/test-coverage-backend.md`, `specs/002-auth-rbac/contracts/bootstrap-provisioning.md` (`FORBIDDEN_OWNER_CREATE`), seed migration comments still mention owner |
+| Stale owner references         | `docs/tests/test-coverage-backend.md`, `docs/specs/002-auth-rbac/contracts/bootstrap-provisioning.md` (`FORBIDDEN_OWNER_CREATE`), seed migration comments still mention owner |
 | `patient_management_roles.sql` | Fixture uses `role IN ('administrator', 'administrator', ...)` — duplicate entry (harmless typo)                                                                         |
 | Test names                     | Many SQL tests still use variable names like `v_owner_*` while role is `administrator`                                                                                   |
 
@@ -250,7 +250,7 @@ Backend migration is thorough. Critical regression is last-admin protection (§1
 
 ### Documentation hygiene (non-blocking)
 
-- [ ] Update `specs/002-auth-rbac/contracts/bootstrap-provisioning.md` (remove `FORBIDDEN_OWNER_CREATE`)
+- [ ] Update `docs/specs/002-auth-rbac/contracts/bootstrap-provisioning.md` (remove `FORBIDDEN_OWNER_CREATE`)
 - [ ] Update `docs/tests/test-coverage-backend.md` (last-owner → last-administrator)
 - [ ] Rename or clarify `patientRole.owner.*` rows in `boundary_coverage_manifest.md`
 

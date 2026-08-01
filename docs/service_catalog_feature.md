@@ -258,10 +258,10 @@ A null promotion indicates that no promotional pricing is currently configured.
 
 Delivered in feature branch `015-service-catalog`. Authoritative design artifacts:
 
-- Specification: [`specs/015-service-catalog/spec.md`](../specs/015-service-catalog/spec.md)
-- Plan & tasks: [`specs/015-service-catalog/plan.md`](../specs/015-service-catalog/plan.md), [`specs/015-service-catalog/tasks.md`](../specs/015-service-catalog/tasks.md)
-- RPC contracts: [`specs/015-service-catalog/contracts/`](../specs/015-service-catalog/contracts/)
-- Verification walkthrough: [`specs/015-service-catalog/quickstart.md`](../specs/015-service-catalog/quickstart.md)
+- Specification: [`docs/specs/015-service-catalog/spec.md`](specs/015-service-catalog/spec.md)
+- Plan & tasks: [`docs/specs/015-service-catalog/plan.md`](specs/015-service-catalog/plan.md), [`docs/specs/015-service-catalog/tasks.md`](specs/015-service-catalog/tasks.md)
+- RPC contracts: [`docs/specs/015-service-catalog/contracts/`](specs/015-service-catalog/contracts/)
+- Verification walkthrough: [`docs/specs/015-service-catalog/quickstart.md`](specs/015-service-catalog/quickstart.md)
 
 Key code locations:
 

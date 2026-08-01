@@ -6,7 +6,10 @@ DateTime? parseVisitDate(Object? value) {
   if (value is DateTime) {
     return DateTime.utc(value.year, value.month, value.day);
   }
-  final text = value.toString().trim();
+  if (value is! String) {
+    return null;
+  }
+  final text = value.trim();
   if (text.isEmpty) {
     return null;
   }

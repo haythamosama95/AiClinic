@@ -134,6 +134,23 @@ void main() {
       );
     });
 
+    test('PGRST202 on reassign_patient_mrn mentions correct function name', () async {
+      final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'reassign_patient_mrn'));
+      final repository = PatientRepositoryImpl(client);
+
+      expect(
+        () => repository.reassignPatientMrn(
+          patientId: '11111111-1111-4111-8111-111111111111',
+          newMrn: 'MRN-000099',
+        ),
+        throwsA(
+          isA<RpcFailure>()
+              .having((e) => e.code, 'code', 'RPC_NOT_APPLIED')
+              .having((e) => e.message, 'message', contains('reassign_patient_mrn')),
+        ),
+      );
+    });
+
     test('"Could not find the function" message without PGRST202 code still triggers', () async {
       final exception = PostgrestException(
         message: 'Could not find the function public.search_patients(...)',
@@ -166,7 +183,7 @@ void main() {
         await repository.searchPatients(scope: PatientListScope.allBranches);
         fail('Expected RpcFailure');
       } on RpcFailure catch (e) {
-        expect(e.message, contains('20260523140000_patient_management.sql'));
+        expect(e.message, contains('20260724125000_create_patient_optional_mrn_param.sql'));
         expect(e.message, contains('search_patients'));
       }
     });

@@ -1,74 +1,103 @@
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
-import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
+import 'package:ai_clinic/app/navigation/login_query_params.dart';
+import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('ShellNavConfig', () {
-    test('routeFor returns path for wired items', () {
-      expect(ShellNavConfig.routeFor('dashboard'), AppRoutes.home);
-      expect(ShellNavConfig.routeFor('patients'), AppRoutes.patients);
-      expect(ShellNavConfig.routeFor('appointments-calendar'), AppRoutes.appointmentsCalendar);
-      expect(ShellNavConfig.routeFor('appointments-book'), AppRoutes.appointmentsBook);
-      expect(ShellNavConfig.routeFor('appointments-queue'), AppRoutes.appointmentsQueue);
-      expect(ShellNavConfig.routeFor(ShellDevNav.themeShowcaseId), AppRoutes.foundationDemo);
+  group('ShellNavConfig.allowsUnauthenticatedPreview', () {
+    test('allows clinic shell placeholder routes without login', () {
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.home), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.dashboard), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.patients), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.appointments), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.settings), isTrue);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.billingInvoices), isTrue);
     });
 
-    test('routeFor returns null for unknown id', () {
-      expect(ShellNavConfig.routeFor('unknown-item'), isNull);
+    test('allows design system route for router bypass', () {
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.foundationDemo), isTrue);
     });
 
-    test('itemIdForLocation resolves exact paths', () {
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.home), 'dashboard');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patients), 'patients');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patientsNew), 'patients');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patientDetail('abc')), 'patients');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsCalendar), 'appointments-calendar');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsBook), 'appointments-book');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsQueue), 'appointments-queue');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.foundationDemo), ShellDevNav.themeShowcaseId);
+    test('blocks auth and unknown routes', () {
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.login), isFalse);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.bootstrap), isFalse);
+      expect(ShellNavConfig.allowsUnauthenticatedPreview('/unknown'), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder', () {
+    test('uses placeholders for shell preview routes but not design system', () {
+      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.home), isTrue);
+      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.settings), isTrue);
+      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.foundationDemo), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.isFullWidthLocation', () {
+    test('appointment detail uses full-width shell layout', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentDetail('apt-1')), isTrue);
     });
 
-    test('itemIdForLocation returns null for unrelated path', () {
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.settings), isNull);
-      expect(ShellNavConfig.isSettingsLocation(AppRoutes.settings), isTrue);
-      expect(ShellNavConfig.isSettingsLocation(AppRoutes.settingsOrganization), isTrue);
-      expect(ShellNavConfig.isSettingsLocation(AppRoutes.home), isFalse);
+    test('appointment hub routes stay full width', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsCalendar), isTrue);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsQueue), isTrue);
     });
 
-    test('labelFor resolves top-level single', () {
-      expect(ShellNavConfig.labelFor('dashboard'), 'Dashboard');
-      expect(ShellNavConfig.labelFor('patients'), 'Patients');
+    test('non-detail appointment routes are not treated as detail', () {
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsBook), isFalse);
+      expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsSchedule('doc-1')), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.isFillViewportLocation', () {
+    test('billing routes fill the shell viewport', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoiceDetail('inv-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
     });
 
-    test('labelFor resolves group child', () {
-      expect(ShellNavConfig.labelFor('appointments-queue'), 'Queue');
+    test('personal settings routes use shell scroll (content-sized)', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsAppearance), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsNotifications), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsSecurity), isFalse);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsOrganization), isFalse);
+    });
+  });
+
+  group('ShellNavConfig.itemIdForLocation', () {
+    test('maps pushed visit billing routes to invoices nav item', () {
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.billingVisit('visit-1')), 'invoices');
+    });
+  });
+
+  group('ShellNavConfig.shellPageKeyForLocation', () {
+    test('personal settings sub-routes share stable shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsAppearance), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsNotifications), AppRoutes.settings);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.settingsSecurity), AppRoutes.settings);
     });
 
-    test('labelFor resolves dev theme showcase item', () {
-      expect(ShellNavConfig.labelFor(ShellDevNav.themeShowcaseId), 'Theme Showcase');
+    test('other routes keep location as shell page key', () {
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.home), AppRoutes.home);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.patients), AppRoutes.patients);
+      expect(ShellNavConfig.shellPageKeyForLocation(AppRoutes.clinicManagement), AppRoutes.clinicManagement);
     });
+  });
 
-    test('labelFor returns null for unknown id', () {
-      expect(ShellNavConfig.labelFor('missing'), isNull);
-    });
-
-    test('groupIdFor returns appointments for child items', () {
-      expect(ShellNavConfig.groupIdFor('appointments-calendar'), 'appointments');
-      expect(ShellNavConfig.groupIdFor('appointments-book'), 'appointments');
-      expect(ShellNavConfig.groupIdFor('appointments-queue'), 'appointments');
-    });
-
-    test('groupIdFor returns null for top-level single', () {
-      expect(ShellNavConfig.groupIdFor('dashboard'), isNull);
-    });
-
-    test('defaultSelectedId returns first entry id', () {
-      expect(ShellNavConfig.defaultSelectedId(), 'dashboard');
-    });
-
-    test('defaultExpandedGroupIds is empty when default is top-level', () {
-      expect(ShellNavConfig.defaultExpandedGroupIds(), isEmpty);
+  group('LoginQueryParams', () {
+    test('forgot-password intent redirect preserves query contract', () {
+      expect(
+        LoginQueryParams.loginWithForgotPasswordIntent(),
+        '${AppRoutes.login}?${LoginQueryParams.forgotPasswordQueryKey}=${LoginQueryParams.forgotPasswordQueryValue}',
+      );
+      expect(
+        LoginQueryParams.isForgotPasswordIntent({
+          LoginQueryParams.forgotPasswordQueryKey: LoginQueryParams.forgotPasswordQueryValue,
+        }),
+        isTrue,
+      );
+      expect(LoginQueryParams.isForgotPasswordIntent(const {}), isFalse);
     });
   });
 }

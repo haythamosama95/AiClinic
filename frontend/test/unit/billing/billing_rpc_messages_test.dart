@@ -22,10 +22,31 @@ void main() {
       );
     });
 
+    test('VISIT_NOT_COMPLETED returns completed-visit message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'VISIT_NOT_COMPLETED')),
+        'Invoices can only be created from completed visits.',
+      );
+    });
+
     test('BRANCH_CODE_MISSING returns branch code guidance', () {
       expect(
         billingMessageForRpc(_failure(code: 'BRANCH_CODE_MISSING')),
         'Assign a branch code in Settings before issuing invoices.',
+      );
+    });
+
+    test('NO_ITEMS returns line item guidance', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'NO_ITEMS')),
+        'Add at least one line item before issuing.',
+      );
+    });
+
+    test('INVOICE_NOT_IN_DRAFT returns edit lock message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVOICE_NOT_IN_DRAFT')),
+        'This invoice can no longer be edited.',
       );
     });
 
@@ -37,6 +58,27 @@ void main() {
       expect(
         billingMessageForRpc(_failure(code: 'PARTIAL_PAYMENTS_DISABLED')),
         contains('Partial payments are not allowed'),
+      );
+    });
+
+    test('INVOICE_VOIDED returns voided payment message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVOICE_VOIDED')),
+        'This invoice is voided and cannot accept payments.',
+      );
+    });
+
+    test('INVOICE_NOT_VOIDABLE returns void eligibility message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVOICE_NOT_VOIDABLE')),
+        'Only issued or partially paid invoices can be voided. Refund paid invoices first.',
+      );
+    });
+
+    test('INVOICE_NOT_PAYABLE returns payable state message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVOICE_NOT_PAYABLE')),
+        'Payments cannot be recorded on this invoice in its current state.',
       );
     });
 
@@ -69,8 +111,29 @@ void main() {
       );
     });
 
+    test('INVALID_INPUT with empty message uses generic billing fallback', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVALID_INPUT', message: '')),
+        'The billing input was invalid. Check the form and try again.',
+      );
+    });
+
     test('NOT_FOUND returns friendly message', () {
       expect(billingMessageForRpc(_failure(code: 'NOT_FOUND')), 'The requested billing record was not found.');
+    });
+
+    test('RPC_NOT_APPLIED returns retry message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'RPC_NOT_APPLIED')),
+        'The billing action could not be applied. Please try again.',
+      );
+    });
+
+    test('RPC_NOT_CONFIGURED returns administrator message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'RPC_NOT_CONFIGURED')),
+        'Billing is not configured correctly. Contact your administrator.',
+      );
     });
 
     test('AUTH_ERROR returns session message', () {
@@ -79,6 +142,7 @@ void main() {
         'Your session has expired or is invalid. Sign in again and retry.',
       );
     });
+
     test('UNEXPECTED_RESPONSE returns refresh guidance', () {
       expect(
         billingMessageForRpc(_failure(code: 'UNEXPECTED_RESPONSE')),

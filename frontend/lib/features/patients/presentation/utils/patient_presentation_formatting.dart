@@ -8,6 +8,11 @@ abstract final class PatientPresentationFormatting {
   static final date = DateFormat.yMMMd();
   static final dateTime = DateFormat('MMM d, y · h:mm a');
 
+  /// Formats a patient calendar date without timezone day-shift.
+  static String formatCalendarDate(DateTime value) {
+    return date.format(DateTime(value.year, value.month, value.day));
+  }
+
   static String displayId(String id) {
     return id.length > 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase();
   }
@@ -18,12 +23,17 @@ abstract final class PatientPresentationFormatting {
     }
     final now = clock.now();
     final today = DateTime(now.year, now.month, now.day);
-    final birthDate = DateTime(dateOfBirth.year, dateOfBirth.month, dateOfBirth.day);
+    final birthDate = DateTime(
+      dateOfBirth.year,
+      dateOfBirth.month,
+      dateOfBirth.day,
+    );
     if (birthDate.isAfter(today)) {
       return null;
     }
     var years = today.year - birthDate.year;
-    if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
+    if (today.month < birthDate.month ||
+        (today.month == birthDate.month && today.day < birthDate.day)) {
       years--;
     }
     return years;
@@ -49,12 +59,24 @@ abstract final class PatientPresentationFormatting {
       return '—';
     }
     final age = ageYears(dateOfBirth);
-    final formatted = date.format(dateOfBirth);
+    final formatted = formatCalendarDate(dateOfBirth);
     if (age == null) {
       return formatted;
     }
     return '$formatted ($age yrs)';
   }
 
-  static String orDash(String? value) => value == null || value.trim().isEmpty ? '—' : value;
+  static String orDash(String? value) =>
+      value == null || value.trim().isEmpty ? '—' : value;
+
+  /// Human-readable file size (web `formatFileSize` port).
+  static String formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 }

@@ -25,13 +25,18 @@ class CreateAppointmentResult {
       return null;
     }
 
-    final id = data['appointment_id']?.toString();
+    final id = optionalAppointmentString(data['appointment_id']);
     final startTime = parseAppointmentDateTime(data['start_time']);
     final endTime = parseAppointmentDateTime(data['end_time']);
     final status = AppointmentStatus.tryParse(data['status']?.toString());
     final type = AppointmentType.tryParse(data['type']?.toString());
 
-    if (id == null || id.isEmpty || startTime == null || endTime == null || status == null || type == null) {
+    if (id == null ||
+        id.isEmpty ||
+        startTime == null ||
+        endTime == null ||
+        status == null ||
+        type == null) {
       return null;
     }
 

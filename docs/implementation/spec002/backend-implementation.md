@@ -1,6 +1,6 @@
 # Phase 2 Implementation
 
-**Feature**: `specs/002-auth-rbac` — Auth and RBAC (V1-1)
+**Feature**: `docs/specs/002-auth-rbac` — Auth and RBAC (V1-1)
 **Phase**: 2 — Foundational (blocking prerequisites)
 **Scope**: Backend only (PostgreSQL migrations, GoTrue hook, verification scripts)
 
@@ -96,7 +96,7 @@ After migration or hook changes, restart GoTrue so the custom access token hook 
 | Supabase CLI   | `supabase stop` then `supabase start`             |
 | Docker Compose | `cd backend/local && docker compose restart auth` |
 
-See `backend/README.md` and `specs/002-auth-rbac/quickstart.md` for the full verification flow.
+See `backend/README.md` and `docs/specs/002-auth-rbac/quickstart.md` for the full verification flow.
 
 ## Migration breakdown
 

@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Validates appointment slots against a branch [BranchWorkingSchedule].
 class AppointmentBranchWorkingHours {
@@ -16,7 +16,10 @@ class AppointmentBranchWorkingHours {
     };
   }
 
-  static BranchWorkingDayHours? hoursForDate(BranchWorkingSchedule schedule, DateTime date) {
+  static BranchWorkingDayHours? hoursForDate(
+    BranchWorkingSchedule schedule,
+    DateTime date,
+  ) {
     final weekday = weekdayFromDate(date);
     for (final day in schedule.days) {
       if (day.day == weekday) {
@@ -34,8 +37,15 @@ class AppointmentBranchWorkingHours {
   /// Calendar date of the most recent working day strictly before [date].
   ///
   /// Walks backward up to 14 days to skip weekends and configured closures.
-  static DateTime? previousWorkingDay(BranchWorkingSchedule schedule, DateTime date) {
-    var candidate = DateTime(date.year, date.month, date.day).subtract(const Duration(days: 1));
+  static DateTime? previousWorkingDay(
+    BranchWorkingSchedule schedule,
+    DateTime date,
+  ) {
+    var candidate = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).subtract(const Duration(days: 1));
     for (var i = 0; i < 14; i++) {
       if (isWorkingDay(schedule, candidate)) {
         return candidate;
@@ -50,7 +60,9 @@ class AppointmentBranchWorkingHours {
     if (text == null || text.isEmpty) {
       return null;
     }
-    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$').firstMatch(text);
+    final match = RegExp(
+      r'^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$',
+    ).firstMatch(text);
     if (match == null) {
       return null;
     }
@@ -64,7 +76,9 @@ class AppointmentBranchWorkingHours {
   }) {
     final localStart = startTime.toLocal();
     final localEnd = localStart.add(Duration(minutes: durationMinutes));
-    if (localStart.year != localEnd.year || localStart.month != localEnd.month || localStart.day != localEnd.day) {
+    if (localStart.year != localEnd.year ||
+        localStart.month != localEnd.month ||
+        localStart.day != localEnd.day) {
       return 'Appointment must start and end on the same day.';
     }
 
@@ -75,7 +89,9 @@ class AppointmentBranchWorkingHours {
 
     final openMinutes = parseHm(dayHours.openTime);
     final closeMinutes = parseHm(dayHours.closeTime);
-    if (openMinutes == null || closeMinutes == null || openMinutes >= closeMinutes) {
+    if (openMinutes == null ||
+        closeMinutes == null ||
+        openMinutes >= closeMinutes) {
       return 'Branch working hours are not configured for the selected day.';
     }
 
@@ -93,10 +109,18 @@ class AppointmentBranchWorkingHours {
     required DateTime startTime,
     required int durationMinutes,
   }) {
-    return validationMessage(schedule: schedule, startTime: startTime, durationMinutes: durationMinutes) == null;
+    return validationMessage(
+          schedule: schedule,
+          startTime: startTime,
+          durationMinutes: durationMinutes,
+        ) ==
+        null;
   }
 
-  static String? hoursLabelForDate(BranchWorkingSchedule schedule, DateTime date) {
+  static String? hoursLabelForDate(
+    BranchWorkingSchedule schedule,
+    DateTime date,
+  ) {
     final dayHours = hoursForDate(schedule, date);
     if (dayHours == null || !dayHours.isWorkingDay) {
       return 'Closed';

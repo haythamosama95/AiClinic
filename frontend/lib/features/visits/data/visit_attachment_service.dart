@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
+import 'package:ai_clinic/features/visits/data/visit_attachment_opener.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 
@@ -159,6 +160,18 @@ class VisitAttachmentService {
 
   Future<VisitAttachmentDownloadResult> getVisitAttachmentDownload({required String attachmentId}) {
     return _visitRepository.getVisitAttachmentDownload(attachmentId: attachmentId);
+  }
+
+  /// Resolves download access, fetches bytes, and opens the file locally.
+  Future<void> downloadAndOpen({
+    required String attachmentId,
+    required VisitAttachmentFileType fileType,
+    String? preferredName,
+    http.Client? client,
+  }) async {
+    final download = await getVisitAttachmentDownload(attachmentId: attachmentId);
+    final bytes = await downloadAttachmentBytes(download, client: client);
+    await openVisitAttachmentBytes(bytes: bytes, fileType: fileType, preferredName: preferredName ?? download.filename);
   }
 
   Future<void> deleteAttachment({required String attachmentId}) {

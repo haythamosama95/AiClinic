@@ -2,339 +2,442 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
-import 'package:ai_clinic/features/service_catalog/application/service_catalog_rpc_messages.dart';
-import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_editor_notifier.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/insurance_panel.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_discount_panel.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_items_editor.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_perforation_divider.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_totals_panel.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
+import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
 
-/// Draft invoice editor: items, discounts, insurance, issue (V1-6 US1/US3/US4).
-class InvoiceEditorPage extends ConsumerWidget {
+/// Draft invoice editor (`/billing/invoices/:id/edit`).
+class InvoiceEditorPage extends ConsumerStatefulWidget {
   const InvoiceEditorPage({required this.invoiceId, super.key});
 
   final String invoiceId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authSessionProvider);
-    if (!AuthRouteGuard.canAccessInvoiceDetail(auth)) {
-      return const Scaffold(body: Center(child: Text('You do not have permission to edit invoices.')));
-    }
+  ConsumerState<InvoiceEditorPage> createState() => _InvoiceEditorPageState();
+}
 
-    final editorAsync = ref.watch(invoiceEditorProvider(invoiceId));
-    final permissions = ref.watch(permissionServiceProvider);
+class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
+  final _searchController = TextEditingController();
+  var _issuing = false;
 
-    return editorAsync.when(
-      skipLoadingOnReload: true,
-      loading: () => const AppFullPageLoading(message: 'Loading invoice…'),
-      error: (error, _) => Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Unable to load invoice: $error'),
-              const SizedBox(height: SpacingTokens.md),
-              AppButton(
-                label: 'Retry',
-                expand: false,
-                onPressed: () => ref.invalidate(invoiceEditorProvider(invoiceId)),
-              ),
-            ],
-          ),
-        ),
-      ),
-      data: (state) {
-        final invoice = state.invoice;
-        if (!invoice.status.isDraft) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) {
-              context.go(AppRoutes.billingInvoiceDetail(invoiceId));
-            }
-          });
-          return const Scaffold(body: Center(child: AppCircularProgress()));
-        }
-
-        return _InvoiceEditorScaffold(
-          invoiceId: invoiceId,
-          state: state,
-          canApplyDiscount: permissions.canApplyDiscount(),
-          canCreate: permissions.canCreateInvoices(),
-          onIssue: () => _issue(context, ref),
-          onDiscard: () => _discard(context, ref),
-          onPreview: () => ReceiptPrintPreview.show(context, invoice),
-          onClearLineDiscounts: () => _clearLineDiscounts(ref, state),
-          onClearInvoiceDiscount: () => ref.read(invoiceEditorProvider(invoiceId).notifier).applyInvoiceDiscount(),
-        );
-      },
-    );
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  Future<void> _issue(BuildContext context, WidgetRef ref) async {
+  Future<void> _issue() async {
+    if (_issuing) {
+      return;
+    }
+    setState(() => _issuing = true);
     try {
-      await ref.read(invoiceEditorProvider(invoiceId).notifier).issue();
-      if (!context.mounted) return;
-      AppToast.success(context, message: 'Invoice issued.');
-      context.go(AppRoutes.billingInvoiceDetail(invoiceId));
+      await ref.read(invoiceEditorProvider(widget.invoiceId).notifier).issue();
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Invoice issued.',
+          variant: AppToastVariant.success,
+        ),
+      );
+      context.nav.pushBillingInvoiceDetail(widget.invoiceId);
     } on InvoiceStaleException {
-      if (!context.mounted) return;
-      await _showStaleDialog(context, ref);
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: 'This invoice was updated elsewhere. Reloading…',
+            variant: AppToastVariant.info,
+          ),
+        );
+        ref.invalidate(invoiceEditorProvider(widget.invoiceId));
+      }
     } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: billingMessageForRpc(error));
-    } catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: error.toString());
-    }
-  }
-
-  Future<void> _discard(BuildContext context, WidgetRef ref) async {
-    await AppDialog.showConfirmation(
-      context: context,
-      title: 'Discard draft',
-      message: 'This removes the draft invoice. The visit can be invoiced again.',
-      confirmLabel: 'Discard',
-      destructive: true,
-      onConfirm: () async {
-        try {
-          await ref.read(invoiceEditorProvider(invoiceId).notifier).discardDraft();
-          if (!context.mounted) return;
-          AppToast.success(context, message: 'Draft discarded.');
-          context.pop();
-        } on RpcFailure catch (error) {
-          if (!context.mounted) return;
-          AppToast.error(context, message: billingMessageForRpc(error));
-        }
-      },
-    );
-  }
-
-  Future<void> _clearLineDiscounts(WidgetRef ref, InvoiceEditorState state) async {
-    final notifier = ref.read(invoiceEditorProvider(invoiceId).notifier);
-    for (final item in state.invoice.items) {
-      if (!item.lineDiscountAmount.isZero) {
-        await notifier.applyLineDiscount(itemId: item.id);
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        appToast(
+          context,
+          const AppToastInput(
+            message: 'Could not issue the invoice. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _issuing = false);
       }
     }
   }
 
-  Future<void> _showStaleDialog(BuildContext context, WidgetRef ref) async {
-    await AppDialog.show(
-      context: context,
-      title: 'Invoice updated elsewhere',
-      body: const Text('Another user changed this invoice. Reload to continue editing.'),
-      actionsBuilder: (dialogContext) => [
-        AppButton(
-          label: 'Reload',
-          expand: false,
-          onPressed: () {
-            Navigator.of(dialogContext).pop();
-            ref.invalidate(invoiceEditorProvider(invoiceId));
-          },
+  Future<void> _addService(EligibleService service) async {
+    try {
+      await ref
+          .read(invoiceEditorProvider(widget.invoiceId).notifier)
+          .addItemFromService(service);
+    } on InvoiceStaleException {
+      if (mounted) {
+        ref.invalidate(invoiceEditorProvider(widget.invoiceId));
+      }
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeItem(String itemId) async {
+    try {
+      await ref
+          .read(invoiceEditorProvider(widget.invoiceId).notifier)
+          .removeItem(itemId);
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  void _searchCatalog(String branchId, String query) {
+    ref.read(serviceSelectorProvider(branchId).notifier).search(query);
+  }
+
+  Widget _buildLoadError(Object error) {
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load draft',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () =>
+              ref.invalidate(invoiceEditorProvider(widget.invoiceId)),
         ),
-      ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editorAsync = ref.watch(invoiceEditorProvider(widget.invoiceId));
+    final colors = context.appColors;
+
+    if (editorAsync.hasError && !editorAsync.hasValue) {
+      return _buildLoadError(editorAsync.error!);
+    }
+
+    return editorAsync.when(
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (error, _) => _buildLoadError(error),
+      data: (state) {
+        final invoice = state.invoice;
+        final displayNumber = BillingFormatting.invoiceDisplayNumber(
+          invoice.invoiceNumber,
+          invoice.id,
+        );
+        final netTotal = invoice.subtotal - invoice.discountAmount;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppPageHeader(
+              title: 'Edit $displayNumber',
+              description:
+                  'Add services from the catalog, then issue when ready.',
+              actions: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppButton(
+                    variant: AppButtonVariant.secondary,
+                    onPressed: () => context.pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: AppSpacing.space2),
+                  AppButton(
+                    loading: _issuing || state.isMutating,
+                    onPressed: invoice.items.isEmpty || _issuing
+                        ? null
+                        : _issue,
+                    child: const Text('Issue invoice'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.space3),
+            InvoiceStatusBadge(status: invoice.status),
+            const SizedBox(height: AppSpacing.space5),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceDefault,
+                        borderRadius: BorderRadius.circular(AppRadius.x2l),
+                        border: Border.all(color: colors.borderSubtle),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.space5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Line items',
+                              style: AppTypography.bodyStrong(context),
+                            ),
+                            const SizedBox(height: AppSpacing.space3),
+                            if (invoice.items.isEmpty)
+                              Text(
+                                'No services added yet. Search the catalog on the right.',
+                                style: AppTypography.bodySm(
+                                  context,
+                                ).copyWith(color: colors.textSecondary),
+                              )
+                            else
+                              Expanded(
+                                child: ListView.separated(
+                                  itemCount: invoice.items.length,
+                                  separatorBuilder: (_, _) => Divider(
+                                    height: 1,
+                                    color: colors.borderSubtle,
+                                  ),
+                                  itemBuilder: (context, index) =>
+                                      _EditorLineRow(
+                                        item: invoice.items[index],
+                                        currency: invoice.currency,
+                                        onRemove: state.isMutating
+                                            ? null
+                                            : () => _removeItem(
+                                                invoice.items[index].id,
+                                              ),
+                                      ),
+                                ),
+                              ),
+                            const InvoicePerforationDivider(),
+                            Row(
+                              children: [
+                                Text(
+                                  'Total',
+                                  style: AppTypography.bodyStrong(context),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  BillingFormatting.formatMoney(
+                                    netTotal,
+                                    currency: invoice.currency,
+                                  ),
+                                  style: AppTypography.bodyStrong(context),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.space5),
+                  Expanded(
+                    flex: 2,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSunken.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(AppRadius.x2l),
+                        border: Border.all(color: colors.borderSubtle),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.space5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Add from catalog',
+                              style: AppTypography.bodyStrong(context),
+                            ),
+                            const SizedBox(height: AppSpacing.space3),
+                            AppSearchInput(
+                              controller: _searchController,
+                              placeholder: 'Search services',
+                              onValueChange: (query) =>
+                                  _searchCatalog(invoice.branchId, query),
+                            ),
+                            const SizedBox(height: AppSpacing.space4),
+                            Expanded(
+                              child: _CatalogResults(
+                                branchId: invoice.branchId,
+                                currency: invoice.currency,
+                                onAdd: state.isMutating ? null : _addService,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _InvoiceEditorScaffold extends ConsumerWidget {
-  const _InvoiceEditorScaffold({
-    required this.invoiceId,
-    required this.state,
-    required this.canApplyDiscount,
-    required this.canCreate,
-    required this.onIssue,
-    required this.onDiscard,
-    required this.onPreview,
-    required this.onClearLineDiscounts,
-    required this.onClearInvoiceDiscount,
+class _EditorLineRow extends StatelessWidget {
+  const _EditorLineRow({
+    required this.item,
+    required this.currency,
+    this.onRemove,
   });
 
-  final String invoiceId;
-  final InvoiceEditorState state;
-  final bool canApplyDiscount;
-  final bool canCreate;
-  final VoidCallback onIssue;
-  final VoidCallback onDiscard;
-  final VoidCallback onPreview;
-  final Future<void> Function() onClearLineDiscounts;
-  final Future<void> Function() onClearInvoiceDiscount;
-
-  Future<void> _handleMutation(BuildContext context, WidgetRef ref, Future<void> Function() action) async {
-    try {
-      await action();
-    } on InvoiceStaleException {
-      if (!context.mounted) return;
-      AppToast.error(context, message: 'Invoice was updated elsewhere. Reloading…');
-      ref.invalidate(invoiceEditorProvider(invoiceId));
-    } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: billingMessageForRpc(error));
-    }
-  }
-
-  Future<void> _handleCatalogMutation(BuildContext context, WidgetRef ref, Future<void> Function() action) async {
-    try {
-      await action();
-    } on InvoiceStaleException {
-      if (!context.mounted) return;
-      AppToast.error(context, message: 'Invoice was updated elsewhere. Reloading…');
-      ref.invalidate(invoiceEditorProvider(invoiceId));
-    } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: serviceCatalogMessageForRpc(error));
-    }
-  }
+  final InvoiceItem item;
+  final String currency;
+  final VoidCallback? onRemove;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final invoice = state.invoice;
-    final notifier = ref.read(invoiceEditorProvider(invoiceId).notifier);
-
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Column(
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space2),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md),
-            child: Row(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppIconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: () => context.pop()),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Edit invoice', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text(
-                        invoice.patientDisplayName ?? 'Patient',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                      ),
-                    ],
-                  ),
+                Text(item.description, style: AppTypography.body(context)),
+                Text(
+                  'Qty ${item.quantity} · ${BillingFormatting.formatMoney(item.unitPrice, currency: currency)} each',
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: context.appColors.textSecondary),
                 ),
-                InvoiceStatusBadge(status: InvoiceStatus.draft),
-                const SizedBox(width: SpacingTokens.sm),
-                AppButton(
-                  label: 'Preview receipt',
-                  variant: AppButtonVariant.outline,
-                  expand: false,
-                  icon: const Icon(Icons.print_outlined, size: 18),
-                  onPressed: onPreview,
-                ),
-                if (canCreate) ...[
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppButton(
-                    label: 'Discard draft',
-                    variant: AppButtonVariant.ghost,
-                    expand: false,
-                    isLoading: state.isMutating,
-                    onPressed: onDiscard,
-                  ),
-                ],
-                const SizedBox(width: SpacingTokens.sm),
-                AppButton(label: 'Issue invoice', expand: false, isLoading: state.isMutating, onPressed: onIssue),
               ],
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, 0, SpacingTokens.lg, SpacingTokens.lg),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 960;
-                  final mainColumn = Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InvoiceItemsEditor(
-                        invoice: invoice,
-                        canEdit: canCreate,
-                        canApplyDiscount: canApplyDiscount,
-                        activeDiscountScope: state.activeDiscountScope,
-                        isMutating: state.isMutating,
-                        onAddItemFromService: (service) =>
-                            _handleCatalogMutation(context, ref, () => notifier.addItemFromService(service)),
-                        onUpdateItemQuantity: (id, quantity) => _handleMutation(
-                          context,
-                          ref,
-                          () => notifier.updateItemQuantity(itemId: id, quantity: quantity),
-                        ),
-                        onRemoveItem: (id) => _handleMutation(context, ref, () => notifier.removeItem(id)),
-                        onApplyLineDiscount: (id, kind, value) => _handleMutation(
-                          context,
-                          ref,
-                          () => notifier.applyLineDiscount(itemId: id, kind: kind, value: value),
-                        ),
-                        onClearLineDiscounts: () => _handleMutation(context, ref, onClearLineDiscounts),
-                      ),
-                      if (canApplyDiscount) ...[
-                        const SizedBox(height: SpacingTokens.lg),
-                        InvoiceDiscountPanel(
-                          invoice: invoice,
-                          enabled: canCreate,
-                          activeScope: state.activeDiscountScope,
-                          onApply: (kind, value) => _handleMutation(
-                            context,
-                            ref,
-                            () => notifier.applyInvoiceDiscount(kind: kind, value: value),
-                          ),
-                          onClearScope: () => _handleMutation(context, ref, onClearInvoiceDiscount),
-                        ),
-                      ],
-                      const SizedBox(height: SpacingTokens.lg),
-                      InsurancePanel(
-                        invoice: invoice,
-                        enabled: canCreate,
-                        onSave: (providerId, amount) => _handleMutation(
-                          context,
-                          ref,
-                          () => notifier.setInsuranceCoverage(providerId: providerId, coveredAmount: amount),
-                        ),
-                      ),
-                    ],
-                  );
-
-                  final totalsPanel = InvoiceTotalsPanel(invoice: invoice);
-
-                  if (isWide) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 3, child: mainColumn),
-                        const SizedBox(width: SpacingTokens.lg),
-                        SizedBox(width: 320, child: totalsPanel),
-                      ],
-                    );
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      mainColumn,
-                      const SizedBox(height: SpacingTokens.lg),
-                      totalsPanel,
-                    ],
-                  );
-                },
-              ),
-            ),
+          Text(
+            BillingFormatting.formatMoney(item.lineTotal, currency: currency),
+            style: AppTypography.bodyStrong(context),
           ),
+          if (onRemove != null) ...[
+            const SizedBox(width: AppSpacing.space2),
+            AppIconButton(
+              icon: const Icon(Icons.close_rounded, size: 16),
+              label: 'Remove line',
+              onPressed: onRemove,
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _CatalogResults extends ConsumerWidget {
+  const _CatalogResults({
+    required this.branchId,
+    required this.currency,
+    this.onAdd,
+  });
+
+  final String branchId;
+  final String currency;
+  final ValueChanged<EligibleService>? onAdd;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalog = ref.watch(serviceSelectorProvider(branchId));
+    final colors = context.appColors;
+
+    if (catalog.hasError && !catalog.hasValue) {
+      return Text(
+        catalog.error.toString(),
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
+      );
+    }
+
+    return catalog.when(
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (error, _) => Text(
+        error.toString(),
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
+      ),
+      data: (services) {
+        if (services.isEmpty) {
+          return Text(
+            'No eligible services',
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
+          );
+        }
+
+        return ListView.separated(
+          itemCount: services.length,
+          separatorBuilder: (_, _) =>
+              Divider(height: 1, color: colors.borderSubtle),
+          itemBuilder: (context, index) {
+            final service = services[index];
+            return Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(service.name),
+                subtitle: Text(
+                  BillingFormatting.formatMoney(
+                    service.unitPrice,
+                    currency: currency,
+                  ),
+                ),
+                trailing: AppButton(
+                  size: AppButtonSize.sm,
+                  onPressed: onAdd == null ? null : () => onAdd!(service),
+                  child: const Text('Add'),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -54,6 +54,75 @@ void main() {
       );
     });
 
+    test('invalid state: equal from and to throws INVALID_INPUT before RPC', () async {
+      final instant = DateTime.utc(2026, 6, 1, 10);
+
+      expect(
+        () => repository.listAppointments(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          from: instant,
+          to: instant,
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
+    test('stupid usage: blank branch id throws INVALID_INPUT before RPC', () async {
+      expect(
+        () => repository.listAppointments(
+          branchId: '  ',
+          from: DateTime.utc(2026, 6, 1),
+          to: DateTime.utc(2026, 6, 2),
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
+    test('edge case: non-List RPC payload returns empty list', () async {
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {'items': 'not-a-list'},
+      };
+
+      final items = await repository.listAppointments(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        from: DateTime.utc(2026, 6, 1),
+        to: DateTime.utc(2026, 6, 2),
+      );
+
+      expect(items, isEmpty);
+    });
+
+    test('edge case: plain Map rows are parsed', () async {
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {
+          'items': [
+            <String, dynamic>{
+              'id': 'plain-map',
+              'patient_id': 'p',
+              'patient_name': 'Plain Map',
+              'start_time': '2026-06-01T09:00:00Z',
+              'end_time': '2026-06-01T09:30:00Z',
+              'type': 'planned',
+              'status': 'scheduled',
+            },
+          ],
+        },
+      };
+
+      final items = await repository.listAppointments(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        from: DateTime.utc(2026, 6, 1),
+        to: DateTime.utc(2026, 6, 2),
+      );
+
+      expect(items, hasLength(1));
+      expect(items.first.patientName, 'Plain Map');
+    });
+
     test('edge case: malformed rows are skipped safely', () async {
       client.rpcResults['list_appointments'] = {
         'success': true,
@@ -90,6 +159,23 @@ void main() {
         to: DateTime.utc(2026, 6, 2),
       );
 
+      expect(client.lastParams?.containsKey('p_patient_id'), isFalse);
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+      expect(client.lastParams?.containsKey('p_statuses'), isFalse);
+    });
+
+    test('advanced: omits blank optional filters from RPC params', () async {
+      await repository.listAppointments(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        from: DateTime.utc(2026, 6, 1),
+        to: DateTime.utc(2026, 6, 2),
+        doctorId: '   ',
+        statuses: const [],
+        patientId: '  ',
+      );
+
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+      expect(client.lastParams?.containsKey('p_statuses'), isFalse);
       expect(client.lastParams?.containsKey('p_patient_id'), isFalse);
     });
   });

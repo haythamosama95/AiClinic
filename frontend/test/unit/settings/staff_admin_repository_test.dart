@@ -1,10 +1,12 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
+import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_staff_member_input.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../support/fake_postgrest_rpc.dart';
 import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 
@@ -128,5 +130,120 @@ void main() {
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'CROSS_ORG_DENIED')),
       );
     });
+
+    test('fetchStaffMember enriches username and skips deleted assignments', () async {
+      const staffId = '33333333-3333-4333-8333-333333333333';
+      final client = _StaffEnrichmentTestClient(
+        tables: {
+          'staff_members': [
+            {
+              'id': staffId,
+              'full_name': 'Dr. Smith',
+              'role': 'doctor',
+              'is_active': true,
+              'phone': '+1',
+              'is_deleted': false,
+              'staff_branch_assignments': [
+                {'branch_id': 'b1', 'is_primary': true, 'is_deleted': false},
+                {'branch_id': 'b2', 'is_primary': false, 'is_deleted': true},
+              ],
+            },
+          ],
+        },
+        usernameRows: [
+          {'staff_member_id': staffId, 'username': 'drsmith'},
+        ],
+      );
+      final repo = StaffAdminRepositoryImpl(client);
+
+      final detail = await repo.fetchStaffMember(staffId);
+
+      expect(detail?.username, 'drsmith');
+      expect(detail?.branchIds, ['b1']);
+      expect(detail?.primaryBranchId, 'b1');
+    });
+
+    test('listStaff enriches branch labels and usernames', () async {
+      const staffId = '11111111-1111-4111-8111-111111111111';
+      final client = _StaffEnrichmentTestClient(
+        tables: {
+          'staff_members': [
+            {'id': staffId, 'full_name': 'Alice', 'role': 'doctor', 'is_active': true, 'is_deleted': false},
+          ],
+          'staff_branch_assignments': [
+            {
+              'staff_member_id': staffId,
+              'branch_id': 'b-secondary',
+              'is_primary': false,
+              'is_deleted': false,
+              'branches': {'name': 'Annex'},
+            },
+            {
+              'staff_member_id': staffId,
+              'branch_id': 'b-primary',
+              'is_primary': true,
+              'is_deleted': false,
+              'branches': {'name': 'Main Branch'},
+            },
+          ],
+        },
+        usernameRows: [
+          {'staff_member_id': staffId, 'username': 'alice'},
+        ],
+      );
+      final repo = StaffAdminRepositoryImpl(client);
+
+      final staff = await repo.listStaff();
+
+      expect(staff, hasLength(1));
+      expect(staff.single.username, 'alice');
+      expect(staff.single.branches.map((b) => b.name), ['Main Branch', 'Annex']);
+      expect(staff.single.branches.first.isPrimary, isTrue);
+    });
+
+    test('deleteStaffMember surfaces STAFF_STILL_ACTIVE', () async {
+      client.rpcResults['delete_staff_member'] = {
+        'success': false,
+        'error_code': 'STAFF_STILL_ACTIVE',
+        'error_message': 'Deactivate the staff member before deleting them.',
+      };
+
+      expect(
+        () => repository.deleteStaffMember(staffMemberId: '33333333-3333-4333-8333-333333333333'),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'STAFF_STILL_ACTIVE')),
+      );
+    });
+
+    test('deleteStaffMember surfaces CANNOT_DELETE_SELF', () async {
+      client.rpcResults['delete_staff_member'] = {
+        'success': false,
+        'error_code': 'CANNOT_DELETE_SELF',
+        'error_message': 'You cannot delete your own account.',
+      };
+
+      expect(
+        () => repository.deleteStaffMember(staffMemberId: '33333333-3333-4333-8333-333333333333'),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'CANNOT_DELETE_SELF')),
+      );
+    });
   });
+}
+
+class _StaffEnrichmentTestClient extends Fake implements SupabaseClient {
+  _StaffEnrichmentTestClient({required Map<String, List<Map<String, dynamic>>> tables, this.usernameRows})
+    : _tableClient = SettingsTableTestClient(tables);
+
+  final SettingsTableTestClient _tableClient;
+  final List<Map<String, dynamic>>? usernameRows;
+
+  @override
+  SupabaseQueryBuilder from(String table) => _tableClient.from(table);
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'staff_login_usernames') {
+      return FakePostgrestRpc(usernameRows ?? const []) as PostgrestFilterBuilder<T>;
+    }
+    return SettingsRpcTestClient().rpc<T>(fn, params: params, get: get);
+  }
 }

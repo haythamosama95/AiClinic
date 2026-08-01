@@ -27,7 +27,7 @@ class BillingSettingsNotifier extends AsyncNotifier<BillingSettings> {
 
   Future<void> updateAllowPartialPayments(bool value) async {
     final previous = state.value;
-    state = const AsyncLoading<BillingSettings>();
+    state = AsyncData(BillingSettings(allowPartialPayments: value));
     state = await AsyncValue.guard(() async {
       await ref.read(billingSettingsRepositoryProvider).update(allowPartialPayments: value);
       return ref.read(billingSettingsRepositoryProvider).get();

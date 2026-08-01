@@ -1,38 +1,134 @@
-import 'dart:io';
-import 'dart:ui' as ui;
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:printing/printing.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 
-/// Builds a printable receipt PDF and shows an in-app preview (V1-6 US7).
+/// Builds a printable receipt PDF and opens the OS print dialog (V1-6 US7).
 abstract final class ReceiptPrintPreview {
-  static Future<void> show(BuildContext context, InvoiceDetail invoice) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => _ReceiptPreviewPage(invoice: invoice)),
+  static Future<void> show(BuildContext context, InvoiceDetail invoice) async {
+    final filename = pdfFileName(invoice);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Print invoice')),
+          body: PdfPreview(
+            build: (_) async => (await buildDocument(invoice)).save(),
+            pdfFileName: filename,
+            canChangePageFormat: false,
+            canChangeOrientation: false,
+            canDebug: false,
+            allowPrinting: true,
+            allowSharing: false,
+          ),
+        ),
+      ),
     );
   }
 
   static Future<pw.Document> buildDocument(InvoiceDetail invoice) async {
+    return _ReceiptPdf.build(invoice);
+  }
+
+  static String pdfFileName(InvoiceDetail invoice) {
+    final parts = <String>['aiclinc-invoice'];
+
+    final number = invoice.invoiceNumber?.trim();
+    if (number != null && number.isNotEmpty) {
+      parts.add(_sanitizeFilenameSegment(number));
+    } else {
+      parts.add(invoice.id.substring(0, 8).toLowerCase());
+    }
+
+    final patient = invoice.patientDisplayName?.trim();
+    if (patient != null && patient.isNotEmpty) {
+      parts.add(_sanitizeFilenameSegment(patient));
+    }
+
+    final date = invoice.issuedAt ?? invoice.createdAt;
+    parts.add(_formatDateForFilename(date));
+
+    return '${parts.join('-')}.pdf';
+  }
+
+  static String _sanitizeFilenameSegment(String value) {
+    final sanitized = value
+        .replaceAll(RegExp(r'[^\w\-]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '')
+        .toLowerCase();
+    return sanitized.isEmpty ? 'invoice' : sanitized;
+  }
+
+  static String _formatDateForFilename(DateTime date) {
+    final local = date.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PDF layout
+// ---------------------------------------------------------------------------
+
+abstract final class _ReceiptPalette {
+  static const navy = PdfColor.fromInt(0xFF1A2B4A);
+  static const teal = PdfColor.fromInt(0xFF0D7377);
+  static const tealLight = PdfColor.fromInt(0xFFE8F4F4);
+  static const surface = PdfColor.fromInt(0xFFF8FAFB);
+  static const border = PdfColor.fromInt(0xFFDDE3EA);
+  static const textMuted = PdfColor.fromInt(0xFF6B7A8D);
+  static const textBody = PdfColor.fromInt(0xFF2C3E50);
+  static const danger = PdfColor.fromInt(0xFFB42318);
+  static const dangerBg = PdfColor.fromInt(0xFFFEF3F2);
+  static const warning = PdfColor.fromInt(0xFFB54708);
+  static const warningBg = PdfColor.fromInt(0xFFFFFAEB);
+  static const success = PdfColor.fromInt(0xFF027A48);
+  static const successBg = PdfColor.fromInt(0xFFECFDF3);
+}
+
+abstract final class _ReceiptTypography {
+  static pw.TextStyle display({double size = 20, PdfColor color = _ReceiptPalette.navy}) {
+    return pw.TextStyle(fontSize: size, fontWeight: pw.FontWeight.bold, color: color, letterSpacing: 0.5);
+  }
+
+  static pw.TextStyle label({PdfColor color = _ReceiptPalette.textMuted}) {
+    return pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: color, letterSpacing: 1.2);
+  }
+
+  static pw.TextStyle body({bool bold = false, PdfColor color = _ReceiptPalette.textBody}) {
+    return pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color);
+  }
+
+  static pw.TextStyle caption({PdfColor color = _ReceiptPalette.textMuted}) {
+    return pw.TextStyle(fontSize: 8, color: color);
+  }
+
+  static pw.TextStyle amount({bool bold = false, PdfColor color = _ReceiptPalette.textBody}) {
+    return pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color);
+  }
+}
+
+abstract final class _ReceiptPdf {
+  static Future<pw.Document> build(InvoiceDetail invoice) async {
+    await pdfDefaultTheme();
+
     final doc = pw.Document();
     final currency = invoice.currency;
     final paidTotal = invoice.payments.fold<Money>(Money.zero, (sum, payment) => sum + payment.amount);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
     final watermark = switch (invoice.status) {
-      InvoiceStatus.draft => 'DRAFT',
+      InvoiceStatus.draft => 'DRAFT - NOT FOR PATIENT',
       InvoiceStatus.voided => 'VOIDED',
       _ => null,
     };
@@ -40,458 +136,410 @@ abstract final class ReceiptPrintPreview {
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+        header: (context) => _header(invoice, displayNumber),
+        footer: (context) => _footer(context),
         build: (context) => [
-          if (watermark != null)
-            pw.Center(
-              child: pw.Text(
-                watermark,
-                style: pw.TextStyle(fontSize: 48, color: PdfColors.grey300, fontWeight: pw.FontWeight.bold),
-              ),
-            ),
-          pw.SizedBox(height: 12),
-          pw.Text('Invoice receipt', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
-          pw.Text(BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id)),
-          if (invoice.branchName != null) pw.Text('Branch: ${invoice.branchName}'),
-          if (invoice.patientDisplayName != null) pw.Text('Patient: ${invoice.patientDisplayName}'),
-          if (invoice.issuedAt != null) pw.Text('Issued: ${BillingFormatting.formatDateTime(invoice.issuedAt!)}'),
-          pw.SizedBox(height: 16),
-          pw.Table.fromTextArray(
-            headers: const ['Description', 'Qty', 'Unit', 'Total'],
-            data: [
-              for (final item in invoice.items)
-                [
-                  item.description,
-                  item.quantity,
-                  BillingFormatting.formatMoney(item.unitPrice, currency: currency),
-                  BillingFormatting.formatMoney(item.lineTotal, currency: currency),
-                ],
-            ],
+          _metaSection(invoice),
+          if (invoice.visitSummary != null) ...[pw.SizedBox(height: 16), _visitSummary(invoice.visitSummary!)],
+          if (invoice.status.isVoided && invoice.voidReason != null) ...[pw.SizedBox(height: 16), _voidNotice(invoice)],
+          pw.SizedBox(height: 24),
+          _lineItemsTable(invoice, currency),
+          pw.SizedBox(height: 20),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [pw.Spacer(), _totalsCard(invoice, currency, paidTotal)],
           ),
-          pw.SizedBox(height: 16),
-          _pdfRow('Subtotal', BillingFormatting.formatMoney(invoice.subtotal, currency: currency)),
-          if (!invoice.discountAmount.isZero)
-            _pdfRow('Discount', '-${BillingFormatting.formatMoney(invoice.discountAmount, currency: currency)}'),
-          if (!invoice.insuranceCoveredAmount.isZero)
-            _pdfRow(
-              invoice.insuranceProviderName ?? 'Insurance',
-              '-${BillingFormatting.formatMoney(invoice.insuranceCoveredAmount, currency: currency)}',
-            ),
-          if (!paidTotal.isZero) _pdfRow('Paid', BillingFormatting.formatMoney(paidTotal, currency: currency)),
-          _pdfRow('Balance', BillingFormatting.formatMoney(invoice.balance, currency: currency), bold: true),
-          if (invoice.payments.isNotEmpty) ...[
-            pw.SizedBox(height: 16),
-            pw.Text('Payments', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 8),
-            pw.Table.fromTextArray(
-              headers: const ['Method', 'Amount', 'Date'],
-              data: [
-                for (final payment in invoice.payments)
-                  [
-                    payment.method.label,
-                    BillingFormatting.formatMoney(payment.amount, currency: currency),
-                    BillingFormatting.formatDateTime(payment.recordedAt),
-                  ],
-              ],
-            ),
-          ],
+          if (invoice.payments.isNotEmpty) ...[pw.SizedBox(height: 28), _paymentsSection(invoice, currency)],
         ],
+        pageTheme: watermark == null
+            ? null
+            : pw.PageTheme(
+                pageFormat: PdfPageFormat.a4,
+                margin: const pw.EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+                buildBackground: (context) => _watermark(watermark),
+              ),
       ),
     );
 
     return doc;
   }
 
-  static pw.Widget _pdfRow(String label, String value, {bool bold = false}) {
+  static pw.Widget _header(InvoiceDetail invoice, String displayNumber) {
+    final branchName = invoice.branchName?.trim();
+    final branchCode = invoice.branchCode?.trim();
+    final clinicName = branchName?.isNotEmpty == true ? branchName! : 'AiClinic';
+
+    return pw.Column(
+      children: [
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            _brandMark(),
+            pw.SizedBox(width: 12),
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(clinicName, style: _ReceiptTypography.display(size: 16)),
+                  if (branchCode?.isNotEmpty == true)
+                    pw.Text('Branch $branchCode', style: _ReceiptTypography.caption()),
+                ],
+              ),
+            ),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('INVOICE RECEIPT', style: _ReceiptTypography.label(color: _ReceiptPalette.teal)),
+                pw.SizedBox(height: 4),
+                pw.Text(displayNumber, style: _ReceiptTypography.display(size: 18, color: _ReceiptPalette.teal)),
+                pw.SizedBox(height: 6),
+                _statusBadge(invoice.status),
+              ],
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 20),
+        pw.Divider(color: _ReceiptPalette.border, thickness: 1),
+        pw.SizedBox(height: 8),
+      ],
+    );
+  }
+
+  static pw.Widget _brandMark() {
+    return pw.Container(
+      width: 40,
+      height: 40,
+      decoration: pw.BoxDecoration(color: _ReceiptPalette.teal, borderRadius: pw.BorderRadius.circular(8)),
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        'Rx',
+        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+      ),
+    );
+  }
+
+  static pw.Widget _statusBadge(InvoiceStatus status) {
+    final (bg, fg) = switch (status) {
+      InvoiceStatus.draft => (_ReceiptPalette.warningBg, _ReceiptPalette.warning),
+      InvoiceStatus.issued => (_ReceiptPalette.tealLight, _ReceiptPalette.teal),
+      InvoiceStatus.partiallyPaid => (_ReceiptPalette.warningBg, _ReceiptPalette.warning),
+      InvoiceStatus.paid => (_ReceiptPalette.successBg, _ReceiptPalette.success),
+      InvoiceStatus.voided => (_ReceiptPalette.dangerBg, _ReceiptPalette.danger),
+    };
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: pw.BoxDecoration(color: bg, borderRadius: pw.BorderRadius.circular(12)),
+      child: pw.Text(status.label.toUpperCase(), style: _ReceiptTypography.caption(color: fg)),
+    );
+  }
+
+  static pw.Widget _metaSection(InvoiceDetail invoice) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: _ReceiptPalette.surface,
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: _ReceiptPalette.border),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(child: _metaColumn('Bill To', _billToRows(invoice))),
+          pw.SizedBox(width: 24),
+          pw.Expanded(child: _metaColumn('Invoice Details', _invoiceDetailRows(invoice))),
+        ],
+      ),
+    );
+  }
+
+  static List<(String, String)> _billToRows(InvoiceDetail invoice) {
+    return [
+      ('Patient', invoice.patientDisplayName?.trim().isNotEmpty == true ? invoice.patientDisplayName! : '-'),
+      ('Phone', invoice.patientPhone?.trim().isNotEmpty == true ? invoice.patientPhone! : '-'),
+    ];
+  }
+
+  static List<(String, String)> _invoiceDetailRows(InvoiceDetail invoice) {
+    return [
+      ('Branch', invoice.branchName?.trim().isNotEmpty == true ? invoice.branchName! : '-'),
+      ('Issued', invoice.issuedAt == null ? 'Not yet issued' : BillingFormatting.formatDate(invoice.issuedAt!)),
+      ('Created', BillingFormatting.formatDate(invoice.createdAt)),
+      if (invoice.status.isVoided && invoice.voidedAt != null)
+        ('Voided', BillingFormatting.formatDateTime(invoice.voidedAt!)),
+    ];
+  }
+
+  static pw.Widget _metaColumn(String title, List<(String, String)> rows) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(title.toUpperCase(), style: _ReceiptTypography.label()),
+        pw.SizedBox(height: 8),
+        for (final (label, value) in rows) ...[
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.SizedBox(width: 64, child: pw.Text(label, style: _ReceiptTypography.caption())),
+                pw.Expanded(child: pw.Text(value, style: _ReceiptTypography.body())),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  static pw.Widget _visitSummary(VisitSummary visit) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: pw.BoxDecoration(color: _ReceiptPalette.tealLight, borderRadius: pw.BorderRadius.circular(8)),
+      child: pw.Row(
+        children: [
+          pw.Text('VISIT', style: _ReceiptTypography.label(color: _ReceiptPalette.teal)),
+          pw.SizedBox(width: 16),
+          pw.Expanded(
+            child: pw.Text(
+              '${BillingFormatting.formatDate(visit.date)} - ${visit.doctor} - ${visit.branch}',
+              style: _ReceiptTypography.body(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _voidNotice(InvoiceDetail invoice) {
+    final reason = invoice.voidReason ?? '-';
+    final voidedBy = invoice.voidedByName?.trim();
+    final detail = voidedBy?.isNotEmpty == true ? '$reason (by $voidedBy)' : reason;
+
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: _ReceiptPalette.dangerBg,
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: _ReceiptPalette.danger),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text('VOIDED INVOICE', style: _ReceiptTypography.label(color: _ReceiptPalette.danger)),
+          pw.SizedBox(height: 4),
+          pw.Text(detail, style: _ReceiptTypography.body(color: _ReceiptPalette.danger)),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _lineItemsTable(InvoiceDetail invoice, String currency) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text('LINE ITEMS', style: _ReceiptTypography.label()),
+        pw.SizedBox(height: 8),
+        pw.Table(
+          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: _ReceiptPalette.border, width: 0.5)),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(4),
+            1: const pw.FixedColumnWidth(40),
+            2: const pw.FixedColumnWidth(72),
+            3: const pw.FixedColumnWidth(72),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _ReceiptPalette.teal),
+              children: [
+                _tableHeaderCell('Description', align: pw.TextAlign.left),
+                _tableHeaderCell('Qty'),
+                _tableHeaderCell('Unit', align: pw.TextAlign.right),
+                _tableHeaderCell('Total', align: pw.TextAlign.right),
+              ],
+            ),
+            for (final item in invoice.items)
+              pw.TableRow(
+                children: [
+                  _tableCell(item.description, align: pw.TextAlign.left),
+                  _tableCell(item.quantity, align: pw.TextAlign.center),
+                  _tableCell(_formatMoney(item.unitPrice, currency), align: pw.TextAlign.right, amount: true),
+                  _tableCell(
+                    _formatMoney(item.lineTotal, currency),
+                    align: pw.TextAlign.right,
+                    amount: true,
+                    bold: true,
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _tableHeaderCell(String text, {pw.TextAlign align = pw.TextAlign.center}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: pw.Text(
+        text.toUpperCase(),
+        textAlign: align,
+        style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white, letterSpacing: 0.8),
+      ),
+    );
+  }
+
+  static String _formatMoney(Money amount, String currency) {
+    return BillingFormatting.formatMoney(amount, currency: currency);
+  }
+
+  static pw.Widget _tableCell(
+    String text, {
+    pw.TextAlign align = pw.TextAlign.left,
+    bool bold = false,
+    bool amount = false,
+  }) {
+    final style = amount ? _ReceiptTypography.amount(bold: bold) : _ReceiptTypography.body(bold: bold);
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: pw.Text(text, textAlign: align, style: style),
+    );
+  }
+
+  static pw.Widget _totalsCard(InvoiceDetail invoice, String currency, Money paidTotal) {
+    final balanceLabel = invoice.status.isVoided ? 'Balance at void' : 'Balance due';
+
+    return pw.Container(
+      width: 240,
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: _ReceiptPalette.surface,
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: _ReceiptPalette.border),
+      ),
+      child: pw.Column(
+        children: [
+          _totalRow('Subtotal', _formatMoney(invoice.subtotal, currency)),
+          if (!invoice.discountAmount.isZero)
+            _totalRow('Discount', '-${_formatMoney(invoice.discountAmount, currency)}'),
+          if (!invoice.insuranceCoveredAmount.isZero)
+            _totalRow(
+              invoice.insuranceProviderName ?? 'Insurance',
+              '-${_formatMoney(invoice.insuranceCoveredAmount, currency)}',
+            ),
+          if (!paidTotal.isZero) _totalRow('Paid', _formatMoney(paidTotal, currency)),
+          pw.SizedBox(height: 8),
+          pw.Divider(color: _ReceiptPalette.border),
+          pw.SizedBox(height: 8),
+          _totalRow(
+            balanceLabel,
+            _formatMoney(invoice.balance, currency),
+            bold: true,
+            valueColor: _ReceiptPalette.teal,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _totalRow(String label, String value, {bool bold = false, PdfColor? valueColor}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(fontWeight: bold ? pw.FontWeight.bold : null)),
-          pw.Text(value, style: pw.TextStyle(fontWeight: bold ? pw.FontWeight.bold : null)),
+          pw.Text(label, style: _ReceiptTypography.body(bold: bold)),
+          pw.Text(
+            value,
+            style: _ReceiptTypography.amount(bold: bold, color: valueColor ?? _ReceiptPalette.textBody),
+          ),
         ],
       ),
     );
   }
 
-  static String pdfFileName(InvoiceDetail invoice) {
-    final label = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
-    final sanitized = label.replaceAll(RegExp(r'[^\w\-]+'), '-').replaceAll(RegExp(r'-+'), '-').toLowerCase();
-    return 'receipt-$sanitized.pdf';
-  }
-}
-
-enum _ReceiptPreviewMode { pdfx, raster, external }
-
-class _ReceiptPreviewPage extends StatefulWidget {
-  const _ReceiptPreviewPage({required this.invoice});
-
-  final InvoiceDetail invoice;
-
-  @override
-  State<_ReceiptPreviewPage> createState() => _ReceiptPreviewPageState();
-}
-
-class _ReceiptPreviewPageState extends State<_ReceiptPreviewPage> {
-  pdfx.PdfControllerPinch? _pdfxController;
-  Uint8List? _bytes;
-  Object? _error;
-  _ReceiptPreviewMode? _mode;
-  List<ui.Image> _rasterPages = const [];
-  var _isSaving = false;
-  var _isPrinting = false;
-  var _isOpening = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreview();
-  }
-
-  Future<void> _loadPreview() async {
-    try {
-      final bytes = await (await ReceiptPrintPreview.buildDocument(widget.invoice)).save();
-      if (!mounted) {
-        return;
-      }
-
-      if (await pdfx.hasPdfSupport()) {
-        setState(() {
-          _bytes = bytes;
-          _mode = _ReceiptPreviewMode.pdfx;
-          _pdfxController = pdfx.PdfControllerPinch(document: pdfx.PdfDocument.openData(bytes));
-        });
-        return;
-      }
-
-      final info = await Printing.info();
-      if (info.canRaster) {
-        final pages = <ui.Image>[];
-        await for (final page in Printing.raster(bytes)) {
-          pages.add(await page.toImage());
-        }
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _bytes = bytes;
-          _mode = _ReceiptPreviewMode.raster;
-          _rasterPages = pages;
-        });
-        return;
-      }
-
-      setState(() {
-        _bytes = bytes;
-        _mode = _ReceiptPreviewMode.external;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _error = error);
-    }
-  }
-
-  @override
-  void dispose() {
-    _pdfxController?.dispose();
-    for (final page in _rasterPages) {
-      page.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _savePdf() async {
-    final bytes = _bytes;
-    if (bytes == null || _isSaving) {
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final fileName = ReceiptPrintPreview.pdfFileName(widget.invoice);
-      if (kIsWeb) {
-        final path = await FilePicker.platform.saveFile(
-          fileName: fileName,
-          type: FileType.custom,
-          allowedExtensions: const ['pdf'],
-          bytes: bytes,
-        );
-        if (path == null) {
-          return;
-        }
-      } else {
-        final path = await FilePicker.platform.saveFile(
-          fileName: fileName,
-          type: FileType.custom,
-          allowedExtensions: const ['pdf'],
-        );
-        if (path == null) {
-          return;
-        }
-        await File(path).writeAsBytes(bytes, flush: true);
-      }
-      if (mounted) {
-        AppToast.success(context, message: 'Receipt saved.');
-      }
-    } catch (_) {
-      if (mounted) {
-        AppToast.error(context, message: 'Unable to save receipt.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-  Future<void> _printPdf() async {
-    final bytes = _bytes;
-    if (bytes == null || _isPrinting) {
-      return;
-    }
-
-    setState(() => _isPrinting = true);
-    try {
-      final info = await Printing.info();
-      if (info.canPrint) {
-        final printed = await Printing.layoutPdf(
-          name: ReceiptPrintPreview.pdfFileName(widget.invoice),
-          onLayout: (_) async => bytes,
-        );
-        if (printed) {
-          return;
-        }
-      }
-    } catch (_) {
-      // Fall back to opening in the system viewer below.
-    }
-
-    try {
-      await _openPdfWithSystemViewer(bytes, ReceiptPrintPreview.pdfFileName(widget.invoice));
-    } catch (_) {
-      if (mounted) {
-        AppToast.error(context, message: 'Unable to print receipt. Try saving as PDF instead.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isPrinting = false);
-      }
-    }
-  }
-
-  Future<void> _openPdfWithSystemViewer(Uint8List bytes, String filename) async {
-    if (kIsWeb) {
-      final path = await FilePicker.platform.saveFile(
-        fileName: filename,
-        type: FileType.custom,
-        allowedExtensions: const ['pdf'],
-        bytes: bytes,
-      );
-      if (path == null) {
-        throw StateError('Save cancelled');
-      }
-      return;
-    }
-
-    final directory = await getTemporaryDirectory();
-    final receiptsDir = Directory('${directory.path}/receipt_previews');
-    if (!await receiptsDir.exists()) {
-      await receiptsDir.create(recursive: true);
-    }
-
-    final path = '${receiptsDir.path}/${DateTime.now().microsecondsSinceEpoch}_$filename';
-    await File(path).writeAsBytes(bytes, flush: true);
-
-    final result = await OpenFilex.open(path);
-    if (result.type != ResultType.done) {
-      throw StateError(result.message);
-    }
-  }
-
-  Future<void> _openExternally() async {
-    final bytes = _bytes;
-    if (bytes == null || _isOpening) {
-      return;
-    }
-
-    setState(() => _isOpening = true);
-    try {
-      await _openPdfWithSystemViewer(bytes, ReceiptPrintPreview.pdfFileName(widget.invoice));
-    } catch (_) {
-      if (mounted) {
-        AppToast.error(context, message: 'Unable to open receipt.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isOpening = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md),
-            child: Row(
-              children: [
-                AppIconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Receipt preview',
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        BillingFormatting.invoiceDisplayNumber(widget.invoice.invoiceNumber, widget.invoice.id),
-                        style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_mode != _ReceiptPreviewMode.external) ...[
-                  AppButton(
-                    label: 'Save PDF',
-                    variant: AppButtonVariant.outline,
-                    expand: false,
-                    isLoading: _isSaving,
-                    icon: const Icon(Icons.download_outlined, size: 18),
-                    onPressed: _bytes == null || _isSaving ? null : _savePdf,
-                  ),
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppButton(
-                    label: 'Print',
-                    expand: false,
-                    isLoading: _isPrinting,
-                    icon: const Icon(Icons.print_outlined, size: 18),
-                    onPressed: _bytes == null || _isPrinting ? null : _printPdf,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Expanded(child: _buildBody(context)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.lg),
-          child: Text('Unable to render receipt: $_error', textAlign: TextAlign.center),
-        ),
-      );
-    }
-
-    if (_mode == null) {
-      return const Center(child: AppCircularProgress());
-    }
-
-    return switch (_mode!) {
-      _ReceiptPreviewMode.pdfx => ColoredBox(
-        color: colors.muted,
-        child: pdfx.PdfViewPinch(
-          controller: _pdfxController!,
-          builders: pdfx.PdfViewPinchBuilders<pdfx.DefaultBuilderOptions>(
-            options: const pdfx.DefaultBuilderOptions(),
-            documentLoaderBuilder: (_) => const Center(child: AppCircularProgress()),
-            pageLoaderBuilder: (_) => const Center(child: AppCircularProgress()),
-            errorBuilder: (_, error) => Center(child: Text('Unable to render receipt: $error')),
-          ),
-        ),
-      ),
-      _ReceiptPreviewMode.raster => ColoredBox(
-        color: colors.muted,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(SpacingTokens.lg),
-          itemCount: _rasterPages.length,
-          itemBuilder: (context, index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: SpacingTokens.md),
-              child: Center(
-                child: RawImage(image: _rasterPages[index], fit: BoxFit.contain),
-              ),
-            );
+  static pw.Widget _paymentsSection(InvoiceDetail invoice, String currency) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text('PAYMENT HISTORY', style: _ReceiptTypography.label()),
+        pw.SizedBox(height: 8),
+        pw.Table(
+          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: _ReceiptPalette.border, width: 0.5)),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(2),
+            1: const pw.FixedColumnWidth(88),
+            2: const pw.FlexColumnWidth(2),
           },
-        ),
-      ),
-      _ReceiptPreviewMode.external => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(SpacingTokens.lg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _ReceiptPalette.navy),
               children: [
-                Icon(Icons.picture_as_pdf_outlined, size: 48, color: colors.mutedForeground),
-                const SizedBox(height: SpacingTokens.md),
-                Text(
-                  'Receipt ready',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: SpacingTokens.sm),
-                Text(
-                  'In-app preview is not available on this platform. Open the PDF in your default viewer or save it locally.',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: SpacingTokens.lg),
-                AppButton(
-                  label: 'Open PDF',
-                  expand: false,
-                  isLoading: _isOpening,
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  onPressed: _bytes == null || _isOpening ? null : _openExternally,
-                ),
-                const SizedBox(height: SpacingTokens.sm),
-                AppButton(
-                  label: 'Save PDF',
-                  variant: AppButtonVariant.outline,
-                  expand: false,
-                  isLoading: _isSaving,
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  onPressed: _bytes == null || _isSaving ? null : _savePdf,
-                ),
-                if (!kIsWeb) ...[
-                  const SizedBox(height: SpacingTokens.sm),
-                  AppButton(
-                    label: 'Print',
-                    variant: AppButtonVariant.outline,
-                    expand: false,
-                    isLoading: _isPrinting,
-                    icon: const Icon(Icons.print_outlined, size: 18),
-                    onPressed: _bytes == null || _isPrinting ? null : _printPdf,
+                _tableHeaderCell('Method', align: pw.TextAlign.left),
+                _tableHeaderCell('Amount', align: pw.TextAlign.right),
+                _tableHeaderCell('Date', align: pw.TextAlign.right),
+              ],
+            ),
+            for (final payment in invoice.payments)
+              pw.TableRow(
+                children: [
+                  _tableCell(payment.method.label, align: pw.TextAlign.left),
+                  _tableCell(_formatMoney(payment.amount, currency), align: pw.TextAlign.right, amount: true),
+                  _tableCell(BillingFormatting.formatDateTime(payment.recordedAt), align: pw.TextAlign.right),
+                ],
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _footer(pw.Context context) {
+    return pw.Column(
+      children: [
+        pw.Divider(color: _ReceiptPalette.border),
+        pw.SizedBox(height: 8),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Thank you for choosing our clinic.', style: _ReceiptTypography.caption()),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'This document is a billing receipt. Please retain for your records.',
+                    style: _ReceiptTypography.caption(),
                   ),
                 ],
-              ],
+              ),
+            ),
+            pw.Text('Page ${context.pageNumber} of ${context.pagesCount}', style: _ReceiptTypography.caption()),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _watermark(String text) {
+    return pw.FullPage(
+      ignoreMargins: true,
+      child: pw.Center(
+        child: pw.Transform.rotate(
+          angle: -0.4,
+          child: pw.Opacity(
+            opacity: 0.08,
+            child: pw.Text(
+              text,
+              style: pw.TextStyle(fontSize: 48, fontWeight: pw.FontWeight.bold, color: _ReceiptPalette.textMuted),
             ),
           ),
         ),
       ),
-    };
+    );
   }
 }

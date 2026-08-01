@@ -4,7 +4,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_member_detail.dart';
 
 import 'harness/boundary_test_context.dart';
 import 'harness/manifest_scenario.dart';

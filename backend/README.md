@@ -1,6 +1,6 @@
 # AiClinic Backend
 
-Auth/RBAC migrations live in `supabase/migrations/`. Apply them against the clinic-local stack (see `specs/002-auth-rbac/quickstart.md`):
+Auth/RBAC migrations live in `supabase/migrations/`. Apply them against the clinic-local stack (see `docs/specs/002-auth-rbac/quickstart.md`):
 
 ```bash
 cd backend

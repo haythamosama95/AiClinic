@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
+import 'package:ai_clinic/core/config/supabase_config.dart'
+    show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -37,10 +38,14 @@ class BillingSettingsRepository with AppRpcInvoker {
   }
 
   Future<void> update({required bool allowPartialPayments}) async {
-    await invokeRpc('update_billing_settings', {'p_allow_partial_payments': allowPartialPayments});
+    await invokeRpc('update_billing_settings', {
+      'p_allow_partial_payments': allowPartialPayments,
+    });
   }
 }
 
-final billingSettingsRepositoryProvider = Provider<BillingSettingsRepository>((ref) {
+final billingSettingsRepositoryProvider = Provider<BillingSettingsRepository>((
+  ref,
+) {
   return BillingSettingsRepository(ref.watch(supabaseClientProvider));
 });

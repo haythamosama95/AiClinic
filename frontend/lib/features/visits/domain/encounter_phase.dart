@@ -6,7 +6,8 @@ enum EncounterPhase {
   subjective,
   objective,
   plan,
-  review;
+  review,
+  billing;
 
   /// Phases with editable documentation canvases (excludes Summary).
   static const documentationPhases = <EncounterPhase>[subjective, objective, plan];
@@ -25,6 +26,7 @@ enum EncounterPhase {
     objective => 'Findings & Diagnosis',
     plan => 'Treatment',
     review => 'Summary',
+    billing => 'Billing',
   };
 
   String get abbr => switch (this) {
@@ -33,14 +35,16 @@ enum EncounterPhase {
     objective => 'FD',
     plan => 'TX',
     review => 'SM',
+    billing => 'BL',
   };
 
   IconData get icon => switch (this) {
     context => Icons.info_outline_rounded,
-    subjective => Icons.chat_bubble_outline_rounded,
-    objective => Icons.monitor_heart_outlined,
+    subjective => Icons.assignment_outlined,
+    objective => Icons.biotech_outlined,
     plan => Icons.medical_services_outlined,
     review => Icons.summarize_outlined,
+    billing => Icons.receipt_long_outlined,
   };
 
   bool get _isInStepper => stepperPhases.contains(this);

@@ -91,15 +91,12 @@ def main() -> None:
     artifacts_enabled = not args.no_artifacts
     campaign_id = new_campaign_id()
     campaign_dir: Path | None = None
-    child_env: dict[str, str] | None = None
+    child_env: dict[str, str] = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
     if artifacts_enabled:
         campaign_dir = args.campaign_dir or create_campaign_dir(FRONTEND_ROOT, campaign_id)
         campaign_id = campaign_dir.name
-        child_env = {
-            **os.environ,
-            CAMPAIGN_ENV: str(campaign_dir.resolve()),
-        }
+        child_env[CAMPAIGN_ENV] = str(campaign_dir.resolve())
 
     for label, flutter_cmd in (
         ("flutter clean", ["flutter", "clean"]),

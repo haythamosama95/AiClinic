@@ -1,4 +1,4 @@
-import 'package:ai_clinic/core/ui/widgets/input/app_paragraph_field.dart';
+import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';

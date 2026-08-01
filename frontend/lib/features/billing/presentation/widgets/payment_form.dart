@@ -1,150 +1,181 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
-import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/billing_settings_notifier.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/payment_notifier.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/payment_method_l10n.dart';
 
-/// Payment recording form for issued invoices (V1-6 US2).
-class PaymentForm extends StatefulWidget {
-  const PaymentForm({
-    required this.invoice,
-    required this.allowPartialPayments,
-    required this.enabled,
-    required this.onSubmit,
-    super.key,
-  });
+/// Records a payment against an issued invoice.
+class PaymentForm extends ConsumerStatefulWidget {
+  const PaymentForm({required this.invoice, required this.onRecorded, super.key});
 
   final InvoiceDetail invoice;
-  final bool allowPartialPayments;
-  final bool enabled;
-  final Future<void> Function(PaymentMethod method, String amount, String? reference, String? note) onSubmit;
+  final Future<void> Function() onRecorded;
 
   @override
-  State<PaymentForm> createState() => _PaymentFormState();
+  ConsumerState<PaymentForm> createState() => _PaymentFormState();
 }
 
-class _PaymentFormState extends State<PaymentForm> {
-  PaymentMethod _method = PaymentMethod.cash;
-  final _amountController = TextEditingController();
-  final _referenceController = TextEditingController();
+class _PaymentFormState extends ConsumerState<PaymentForm> {
   final _noteController = TextEditingController();
-  var _isSubmitting = false;
+  PaymentMethod _method = PaymentMethod.cash;
+  String? _amount;
+  var _submitting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _syncAmount();
+  bool get _amountLocked {
+    final settings = ref.watch(billingSettingsProvider).value;
+    final isPatientTender = _method != PaymentMethod.insuranceSettlement;
+    return settings != null && !settings.allowPartialPayments && isPatientTender;
   }
 
-  @override
-  void didUpdateWidget(PaymentForm oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.invoice.balance != widget.invoice.balance ||
-        oldWidget.allowPartialPayments != widget.allowPartialPayments ||
-        oldWidget.invoice.id != widget.invoice.id) {
-      _syncAmount();
-    }
-  }
-
-  void _syncAmount() {
-    final balance = widget.invoice.balance.wireValue;
-    final lockAmount = !widget.allowPartialPayments && _method.isPatientTender;
-    _amountController.text = balance;
-    if (lockAmount) {
-      _amountController.selection = TextSelection.collapsed(offset: balance.length);
-    }
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    _referenceController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
-  bool get _amountLocked => !widget.allowPartialPayments && _method.isPatientTender;
+  String get _resolvedAmount => _amountLocked ? widget.invoice.balance.wireValue : (_amount ?? '');
 
   Future<void> _submit() async {
-    setState(() => _isSubmitting = true);
+    if (_submitting) {
+      return;
+    }
+
+    final amount = _resolvedAmount.trim();
+    if (amount.isEmpty) {
+      appToast(context, const AppToastInput(message: 'Enter a payment amount.', variant: AppToastVariant.danger));
+      return;
+    }
+
+    setState(() => _submitting = true);
     try {
-      await widget.onSubmit(
-        _method,
-        _amountController.text.trim(),
-        _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
-        _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+      await ref
+          .read(paymentNotifierProvider)
+          .recordPayment(
+            invoiceId: widget.invoice.id,
+            method: _method,
+            amount: amount,
+            note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          );
+      if (!mounted) {
+        return;
+      }
+      await widget.onRecorded();
+      if (!mounted) {
+        return;
+      }
+      appToast(context, const AppToastInput(message: 'Payment recorded.', variant: AppToastVariant.success));
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Could not record the payment. Please try again.',
+          variant: AppToastVariant.danger,
+        ),
       );
-      _referenceController.clear();
-      _noteController.clear();
-      _syncAmount();
     } finally {
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        setState(() => _submitting = false);
       }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final balanceLabel = BillingFormatting.formatMoney(widget.invoice.balance, currency: widget.invoice.currency);
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
 
-    return AppCard(
-      title: const Text('Record payment'),
-      description: Text('Balance due: $balanceLabel'),
-      child: Opacity(
-        opacity: widget.enabled ? 1 : 0.6,
-        child: IgnorePointer(
-          ignoring: !widget.enabled,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AppLabel(
-                label: 'Payment method',
-                child: AppSelectTileGroup<PaymentMethod>(
-                  mode: AppSelectGroupMode.radio,
-                  options: [
-                    for (final method in PaymentMethod.values) AppSelectOption(value: method, label: method.label),
-                  ],
-                  values: {_method},
-                  onChanged: (values) {
-                    if (values.isNotEmpty) {
-                      setState(() {
-                        _method = values.first;
-                        _syncAmount();
-                      });
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('Balance due', style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+            const Spacer(),
+            AppMoneyDisplay(
+              amount: widget.invoice.balance.asDouble,
+              currency: widget.invoice.currency,
+              emphasis: true,
+              style: AppTypography.h2(
+                context,
+              ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: AppFormField(
+                id: 'payment-method',
+                label: 'Method',
+                child: AppSelect(
+                  value: _method.wireValue,
+                  disabled: _submitting,
+                  options: PaymentMethod.values
+                      .map((method) => AppSelectOption(value: method.wireValue, label: method.labelFor(context)))
+                      .toList(),
+                  onChanged: (value) {
+                    final method = PaymentMethod.tryParse(value);
+                    if (method != null) {
+                      setState(() => _method = method);
                     }
                   },
                 ),
               ),
-              const SizedBox(height: SpacingTokens.md),
-              AppTextField(
-                controller: _amountController,
+            ),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: AppFormField(
+                id: 'payment-amount',
                 label: 'Amount',
-                enabled: !_amountLocked,
-                hintText: balanceLabel,
-              ),
-              if (_amountLocked) ...[
-                const SizedBox(height: SpacingTokens.xs),
-                Text(
-                  'Partial payments are disabled. Collect the full balance.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+                helperText: _amountLocked ? 'Full balance required for this payment method.' : null,
+                child: AppMoneyField(
+                  key: ValueKey('${_method.name}-${widget.invoice.balance.wireValue}'),
+                  currency: widget.invoice.currency,
+                  disabled: _submitting || _amountLocked,
+                  initialValue: _amountLocked ? widget.invoice.balance.asDouble : null,
+                  onChanged: _amountLocked ? null : (value) => _amount = value,
                 ),
-              ],
-              const SizedBox(height: SpacingTokens.sm),
-              AppTextField(controller: _referenceController, label: 'Reference (optional)'),
-              const SizedBox(height: SpacingTokens.sm),
-              AppTextField(controller: _noteController, label: 'Note (optional)'),
-              const SizedBox(height: SpacingTokens.md),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppButton(label: 'Record payment', isLoading: _isSubmitting, expand: false, onPressed: _submit),
               ),
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(
+          id: 'payment-note',
+          label: 'Note',
+          child: AppTextInput(
+            controller: _noteController,
+            placeholder: 'Optional note for the ledger',
+            disabled: _submitting,
           ),
         ),
-      ),
+        const SizedBox(height: AppSpacing.space4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: AppButton(
+            loading: _submitting,
+            onPressed: _submitting ? null : _submit,
+            child: const Text('Record payment'),
+          ),
+        ),
+      ],
     );
   }
 }

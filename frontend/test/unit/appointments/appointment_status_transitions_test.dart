@@ -1,10 +1,11 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
+import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,8 +68,15 @@ void main() {
         doctorId: 'doc-a',
         id: 'waiting',
       );
+      bool inProgressBlocked(AppointmentListItem item, Iterable<AppointmentListItem> siblings) =>
+          AppointmentQueueStartDoctor.isForwardInProgressBlocked(item: item, siblingAppointments: siblings);
       expect(
-        forwardStatusTargetFor(waiting, referenceUtc: referenceUtc, siblingAppointments: [active, waiting]),
+        forwardStatusTargetFor(
+          waiting,
+          referenceUtc: referenceUtc,
+          siblingAppointments: [active, waiting],
+          inProgressBlocked: inProgressBlocked,
+        ),
         isNull,
       );
     });
@@ -107,7 +115,11 @@ void main() {
           waiting,
           referenceUtc: referenceUtc,
           siblingAppointments: [active, waiting],
-          shiftLookup: shiftLookup,
+          inProgressBlocked: (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
+            item: item,
+            siblingAppointments: siblings,
+            shiftLookup: shiftLookup,
+          ),
         ),
         AppointmentStatus.inProgress,
       );
@@ -149,6 +161,22 @@ void main() {
     test('confirmed planned appointments cannot be rescheduled per spec', () {
       expect(canRescheduleAppointment(item()), isTrue);
       expect(canRescheduleAppointment(item(status: AppointmentStatus.confirmed)), isFalse);
+    });
+
+    test('revert targets previous step in main flow', () {
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.confirmed)), AppointmentStatus.scheduled);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.confirmed)), 'Undo confirm');
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.checkedIn)), AppointmentStatus.confirmed);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.checkedIn)), 'Undo check-in');
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.inProgress)), AppointmentStatus.checkedIn);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.inProgress)), 'Undo start');
+    });
+
+    test('scheduled and terminal statuses cannot revert', () {
+      expect(previousStatusTargetFor(item()), isNull);
+      expect(canRevertAppointmentStatus(item()), isFalse);
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.completed)), isNull);
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.cancelled)), isNull);
     });
   });
 }

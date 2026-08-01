@@ -1,6 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/role_permissions_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/settings_rpc_test_client.dart';

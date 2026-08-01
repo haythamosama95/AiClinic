@@ -6,11 +6,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AuthRouteGuard extended', () {
-    test('unknown session on protected route does not redirect', () {
-      expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()), isNull);
+    test('unknown session on protected route redirects to login', () {
+      // Cold-start unknown/loading must not render the authenticated shell (review §2.1).
+      expect(
+        AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()),
+        AppRoutes.login,
+      );
     });
 
-    test('authenticated setup_required on login redirects to home shell', () {
+    test('unknown session on a public route is left through', () {
+      expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()), isNull);
+    });
+
+    test('authenticated setup_required on login redirects to home for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.login,
@@ -23,7 +31,7 @@ void main() {
       );
     });
 
-    test('authenticated setup_required on home stays on home shell', () {
+    test('authenticated setup_required on home stays for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -33,6 +41,19 @@ void main() {
           ),
         ),
         isNull,
+      );
+    });
+
+    test('authenticated setup_required on bootstrap redirects to home', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.bootstrap,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.home,
       );
     });
 
@@ -46,10 +67,10 @@ void main() {
       );
     });
 
-    test('setup-complete bootstrap stays while staff wizard step is active', () {
+    test('setup-complete home stays while staff wizard step is active', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.bootstrap,
+          location: AppRoutes.home,
           auth: AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext()),
           bootstrapStaffWizardInProgress: true,
         ),
@@ -57,7 +78,7 @@ void main() {
       );
     });
 
-    test('protected app prefix without setup redirects to bootstrap', () {
+    test('protected app prefix without setup redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: '${AppRoutes.protectedPrefix}/patients',
@@ -66,11 +87,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 
-    test('setup_required staff create redirects to bootstrap', () {
+    test('setup_required staff create redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffCreate,
@@ -79,11 +100,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 
-    test('setup_complete staff create redirects to settings staff form (US6)', () {
+    test('setup_complete staff create redirects to clinic management hub (US6)', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffCreate,
@@ -92,11 +113,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
           ),
         ),
-        AppRoutes.settingsStaffNew,
+        AppRoutes.clinicManagement,
       );
     });
 
-    test('setup_complete legacy password reset redirects to settings staff list', () {
+    test('setup_complete legacy password reset redirects to clinic management hub', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffPasswordReset,
@@ -105,7 +126,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
           ),
         ),
-        AppRoutes.settingsStaff,
+        AppRoutes.clinicManagement,
       );
     });
 

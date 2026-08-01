@@ -1,28 +1,34 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_timeline.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 
 /// Visual timeline of appointment lifecycle statuses with the current step highlighted.
 class AppointmentStatusTimelineWidget extends StatelessWidget {
-  const AppointmentStatusTimelineWidget({required this.detail, super.key});
+  const AppointmentStatusTimelineWidget({
+    required this.detail,
+    required this.doctorPresentation,
+    required this.statusActions,
+    super.key,
+  });
 
   final AppointmentDetail detail;
+  final QueueAppointmentDoctorPresentation? doctorPresentation;
+  final Widget statusActions;
 
   AppointmentStatus get currentStatus => detail.status;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final isTerminal = AppointmentStatusTimeline.isTerminalNegative(currentStatus);
+    final colors = context.appColors;
+    final isTerminal = AppointmentStatusTimeline.isTerminalNegative(
+      currentStatus,
+    );
     final steps = AppointmentStatusTimeline.mainFlow;
     final currentIndex = isTerminal ? -1 : steps.indexOf(currentStatus);
     final progressLabel = isTerminal
@@ -33,15 +39,19 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
+        color: colors.surfaceDefault,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.borderDefault),
         boxShadow: [
-          BoxShadow(color: colors.foreground.withValues(alpha: 0.04), blurRadius: 18, offset: const Offset(0, 6)),
+          BoxShadow(
+            color: colors.textPrimary.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
+        padding: const EdgeInsets.all(AppSpacing.space6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -51,19 +61,28 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                 final titleSection = Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.route_outlined, size: 20, color: colors.primary),
-                    const SizedBox(width: SpacingTokens.sm),
+                    Icon(
+                      Icons.route_outlined,
+                      size: 20,
+                      color: colors.textLink,
+                    ),
+                    const SizedBox(width: AppSpacing.space2),
                     Expanded(
                       child: Wrap(
-                        spacing: SpacingTokens.sm,
-                        runSpacing: SpacingTokens.xs,
+                        spacing: AppSpacing.space2,
+                        runSpacing: AppSpacing.space1,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             'Status journey',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                          if (progressLabel != null)
+                            AppBadge(
+                              label: progressLabel,
+                              variant: BadgeVariant.outline,
+                            ),
                         ],
                       ),
                     ),
@@ -75,8 +94,8 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       titleSection,
-                      const SizedBox(height: SpacingTokens.sm),
-                      AppointmentDetailStatusActions(detail: detail),
+                      const SizedBox(height: AppSpacing.space2),
+                      statusActions,
                     ],
                   );
                 }
@@ -84,49 +103,72 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.route_outlined, size: 20, color: colors.primary),
-                    const SizedBox(width: SpacingTokens.sm),
+                    Icon(
+                      Icons.route_outlined,
+                      size: 20,
+                      color: colors.textLink,
+                    ),
+                    const SizedBox(width: AppSpacing.space2),
                     Expanded(
                       flex: 2,
                       child: Wrap(
-                        spacing: SpacingTokens.sm,
-                        runSpacing: SpacingTokens.xs,
+                        spacing: AppSpacing.space2,
+                        runSpacing: AppSpacing.space1,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             'Status journey',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                          if (progressLabel != null)
+                            AppBadge(
+                              label: progressLabel,
+                              variant: BadgeVariant.outline,
+                            ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: SpacingTokens.sm),
-                    Expanded(flex: 3, child: AppointmentDetailStatusActions(detail: detail)),
+                    const SizedBox(width: AppSpacing.space2),
+                    Expanded(
+                      flex: 3,
+                      child: statusActions,
+                    ),
                   ],
                 );
               },
             ),
-            const SizedBox(height: SpacingTokens.xs),
+            const SizedBox(height: AppSpacing.space1),
             Text(
               isTerminal
                   ? 'This appointment ended before completion.'
                   : 'Track where this appointment is in the clinic workflow.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.textSecondary),
             ),
-            const SizedBox(height: SpacingTokens.lg),
+            const SizedBox(height: AppSpacing.space6),
             LayoutBuilder(
               builder: (context, constraints) {
                 final useHorizontal = constraints.maxWidth >= 640;
                 final timeline = useHorizontal
-                    ? _HorizontalStatusTimeline(currentStatus: currentStatus, isTerminal: isTerminal)
-                    : _VerticalStatusTimeline(currentStatus: currentStatus, isTerminal: isTerminal);
+                    ? _HorizontalStatusTimeline(
+                        currentStatus: currentStatus,
+                        isTerminal: isTerminal,
+                      )
+                    : _VerticalStatusTimeline(
+                        currentStatus: currentStatus,
+                        isTerminal: isTerminal,
+                      );
 
                 if (!isTerminal) {
                   return timeline;
                 }
 
-                return _TerminalTimelineOverlay(status: currentStatus, child: timeline);
+                return _TerminalTimelineOverlay(
+                  status: currentStatus,
+                  child: timeline,
+                );
               },
             ),
           ],
@@ -147,7 +189,10 @@ class _TerminalTimelineOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = AppointmentCalendarDisplay.statusColor(status);
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      status,
+      Theme.of(context).brightness,
+    );
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return Stack(
@@ -175,7 +220,7 @@ class _TerminalStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final colors = context.appColors;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return AnimatedContainer(
@@ -184,22 +229,36 @@ class _TerminalStatusCard extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       decoration: BoxDecoration(
-        color: colors.card.withValues(alpha: 0.94),
+        color: colors.surfaceDefault.withValues(alpha: 0.94),
         gradient: LinearGradient(
-          colors: [statusColor.withValues(alpha: 0.14), statusColor.withValues(alpha: 0.04)],
+          colors: [
+            statusColor.withValues(alpha: 0.14),
+            statusColor.withValues(alpha: 0.04),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: statusColor.withValues(alpha: 0.4)),
         boxShadow: [
-          BoxShadow(color: statusColor.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8)),
-          BoxShadow(color: colors.foreground.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: statusColor.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: colors.textPrimary.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.space6,
+            vertical: AppSpacing.space4,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -207,25 +266,29 @@ class _TerminalStatusCard extends StatelessWidget {
             children: [
               AnimatedAppointmentStatusColor(
                 color: statusColor,
-                builder: (context, color) => Icon(_iconForStatus(status), color: color, size: 32),
+                builder: (context, color) =>
+                    Icon(_iconForStatus(status), color: color, size: 32),
               ),
-              const SizedBox(height: SpacingTokens.sm),
+              const SizedBox(height: AppSpacing.space2),
               AnimatedDefaultTextStyle(
                 duration: motionDuration,
                 curve: AppointmentStatusMotion.curve,
-                style: Theme.of(
+                style: AppTypography.bodyStrong(
                   context,
-                ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700, color: statusColor),
+                ).copyWith(color: colors.textPrimary),
                 textAlign: TextAlign.center,
                 child: Text(status.label, textAlign: TextAlign.center),
               ),
-              const SizedBox(height: SpacingTokens.xs),
+              const SizedBox(height: AppSpacing.space1),
               Text(
                 AppointmentStatusTimeline.stepDescription(status),
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground, height: 1.45),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
+                  height: 1.45,
+                ),
               ),
-              const SizedBox(height: SpacingTokens.sm),
+              const SizedBox(height: AppSpacing.space2),
             ],
           ),
         ),
@@ -235,7 +298,10 @@ class _TerminalStatusCard extends StatelessWidget {
 }
 
 class _HorizontalStatusTimeline extends StatelessWidget {
-  const _HorizontalStatusTimeline({required this.currentStatus, required this.isTerminal});
+  const _HorizontalStatusTimeline({
+    required this.currentStatus,
+    required this.isTerminal,
+  });
 
   final AppointmentStatus currentStatus;
   final bool isTerminal;
@@ -248,23 +314,54 @@ class _HorizontalStatusTimeline extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            for (var index = 0; index < steps.length; index++)
-              Expanded(
-                child: _HorizontalTimelineTrackSegment(
-                  status: steps[index],
-                  stepState: AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index]),
-                  isTerminalContext: isTerminal,
-                  isFirst: index == 0,
-                  isLast: index == steps.length - 1,
-                  stepIndex: index,
-                  currentIndex: currentIndex,
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final stepCount = steps.length;
+            final segmentWidth = width / stepCount;
+            const trackHeight = _HorizontalTimelineTrack.trackHeight;
+            const nodeSize = _HorizontalTimelineTrack.nodeSize;
+            const nodeRadius = nodeSize / 2;
+            const connectorThickness = 2.0;
+            final connectorTop = (trackHeight - connectorThickness) / 2;
+            final connectorSpan = segmentWidth - nodeSize;
+
+            return SizedBox(
+              height: trackHeight,
+              width: width,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (stepCount > 1)
+                    for (var index = 0; index < stepCount - 1; index++)
+                      Positioned(
+                        left: segmentWidth * (index + 0.5) + nodeRadius,
+                        top: connectorTop,
+                        width: connectorSpan,
+                        child: _HorizontalTimelineConnector(
+                          fromStatus: steps[index],
+                          isActive: !isTerminal && currentIndex > index,
+                        ),
+                      ),
+                  for (var index = 0; index < stepCount; index++)
+                    Positioned(
+                      left:
+                          segmentWidth * index + (segmentWidth - nodeSize) / 2,
+                      top: (trackHeight - nodeSize) / 2,
+                      child: _HorizontalTimelineNode(
+                        status: steps[index],
+                        stepState: AppointmentStatusTimeline.stepState(
+                          current: currentStatus,
+                          step: steps[index],
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
+            );
+          },
         ),
-        const SizedBox(height: SpacingTokens.md),
+        const SizedBox(height: AppSpacing.space4),
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -273,12 +370,15 @@ class _HorizontalStatusTimeline extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(
-                      left: index == 0 ? 0 : SpacingTokens.xs,
-                      right: index == steps.length - 1 ? 0 : SpacingTokens.xs,
+                      left: index == 0 ? 0 : AppSpacing.space1,
+                      right: index == steps.length - 1 ? 0 : AppSpacing.space1,
                     ),
                     child: _HorizontalStepCard(
                       status: steps[index],
-                      stepState: AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index]),
+                      stepState: AppointmentStatusTimeline.stepState(
+                        current: currentStatus,
+                        step: steps[index],
+                      ),
                       isTerminalContext: isTerminal,
                       stepNumber: index + 1,
                     ),
@@ -292,97 +392,77 @@ class _HorizontalStatusTimeline extends StatelessWidget {
   }
 }
 
-class _HorizontalTimelineTrackSegment extends StatelessWidget {
-  const _HorizontalTimelineTrackSegment({
+class _HorizontalTimelineTrack {
+  const _HorizontalTimelineTrack._();
+
+  static const double trackHeight = 44;
+  static const double nodeSize = 36;
+}
+
+class _HorizontalTimelineConnector extends StatelessWidget {
+  const _HorizontalTimelineConnector({
+    required this.fromStatus,
+    required this.isActive,
+  });
+
+  final AppointmentStatus fromStatus;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      fromStatus,
+      Theme.of(context).brightness,
+    );
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+
+    return AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
+      height: 2,
+      color: isActive
+          ? statusColor.withValues(alpha: 0.75)
+          : colors.borderDefault,
+    );
+  }
+}
+
+class _HorizontalTimelineNode extends StatelessWidget {
+  const _HorizontalTimelineNode({
     required this.status,
     required this.stepState,
-    required this.isTerminalContext,
-    required this.isFirst,
-    required this.isLast,
-    required this.stepIndex,
-    required this.currentIndex,
   });
 
   final AppointmentStatus status;
   final AppointmentTimelineStepState stepState;
-  final bool isTerminalContext;
-  final bool isFirst;
-  final bool isLast;
-  final int stepIndex;
-  final int currentIndex;
 
-  static const double _trackHeight = 44;
-  static const double _nodeSize = 36;
-  static const double _connectorTop = (_trackHeight - 2) / 2;
+  static const double _nodeSize = _HorizontalTimelineTrack.nodeSize;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
     final isCurrent = stepState == AppointmentTimelineStepState.current;
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
 
-    final statusColor = AppointmentCalendarDisplay.statusColor(status);
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      status,
+      Theme.of(context).brightness,
+    );
     final nodeColor = isSkipped
-        ? colors.mutedForeground.withValues(alpha: 0.4)
+        ? statusColor.withValues(alpha: 0.35)
         : isCurrent || isCompleted
         ? statusColor
-        : colors.mutedForeground.withValues(alpha: 0.45);
+        : statusColor.withValues(alpha: 0.5);
 
-    final connectorBeforeActive = !isTerminalContext && stepIndex > 0 && currentIndex >= stepIndex;
-    final connectorAfterActive = !isTerminalContext && !isLast && currentIndex > stepIndex;
-    final motionDuration = AppointmentStatusMotion.durationOf(context);
-
-    return SizedBox(
-      height: _trackHeight,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final halfWidth = constraints.maxWidth / 2;
-
-          return Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              if (!isFirst)
-                Positioned(
-                  left: 0,
-                  width: halfWidth,
-                  top: _connectorTop,
-                  child: AnimatedContainer(
-                    duration: motionDuration,
-                    curve: AppointmentStatusMotion.curve,
-                    height: 2,
-                    color: connectorBeforeActive ? colors.primary : colors.border,
-                  ),
-                ),
-              if (!isLast)
-                Positioned(
-                  left: halfWidth,
-                  width: halfWidth,
-                  top: _connectorTop,
-                  child: AnimatedContainer(
-                    duration: motionDuration,
-                    curve: AppointmentStatusMotion.curve,
-                    height: 2,
-                    color: connectorAfterActive ? colors.primary : colors.border,
-                  ),
-                ),
-              Positioned.fill(
-                child: Center(
-                  child: _TimelineNode(
-                    icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
-                    color: nodeColor,
-                    isCurrent: isCurrent,
-                    isCompleted: isCompleted,
-                    isSkipped: isSkipped,
-                    fixedSize: _nodeSize,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+    return _TimelineNode(
+      icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
+      color: nodeColor,
+      statusColor: statusColor,
+      isCurrent: isCurrent,
+      isCompleted: isCompleted,
+      isSkipped: isSkipped,
+      fixedSize: _nodeSize,
     );
   }
 }
@@ -402,48 +482,39 @@ class _HorizontalStepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(status);
     final isCurrent = stepState == AppointmentTimelineStepState.current;
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
     final isUpcoming = stepState == AppointmentTimelineStepState.upcoming;
-    final motionDuration = AppointmentStatusMotion.durationOf(context);
 
-    return AnimatedContainer(
-      duration: motionDuration,
-      curve: AppointmentStatusMotion.curve,
-      decoration: BoxDecoration(
-        color: isCurrent ? statusColor.withValues(alpha: 0.08) : colors.muted.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(
-          color: isCurrent ? statusColor.withValues(alpha: 0.32) : colors.border,
-          width: isCurrent ? 1.5 : 1,
-        ),
+    return _StatusStepCard(
+      status: status,
+      stepState: stepState,
+      isTerminalContext: isTerminalContext,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.space4,
+        vertical: AppSpacing.space2 + AppSpacing.space1,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: SpacingTokens.md,
-          vertical: SpacingTokens.sm + SpacingTokens.xs,
-        ),
-        child: _TimelineStepContent(
-          status: status,
-          isCurrent: isCurrent,
-          isCompleted: isCompleted,
-          isSkipped: isSkipped,
-          isUpcoming: isUpcoming,
-          isTerminalContext: isTerminalContext,
-          stepNumber: stepNumber,
-          colors: colors,
-          compact: true,
-        ),
+      child: _TimelineStepContent(
+        status: status,
+        isCurrent: isCurrent,
+        isCompleted: isCompleted,
+        isSkipped: isSkipped,
+        isUpcoming: isUpcoming,
+        isTerminalContext: isTerminalContext,
+        stepNumber: stepNumber,
+        colors: context.appColors,
+        compact: true,
       ),
     );
   }
 }
 
 class _VerticalStatusTimeline extends StatelessWidget {
-  const _VerticalStatusTimeline({required this.currentStatus, required this.isTerminal});
+  const _VerticalStatusTimeline({
+    required this.currentStatus,
+    required this.isTerminal,
+  });
 
   final AppointmentStatus currentStatus;
   final bool isTerminal;
@@ -458,7 +529,10 @@ class _VerticalStatusTimeline extends StatelessWidget {
         for (var index = 0; index < steps.length; index++)
           _TimelineStepRow(
             status: steps[index],
-            stepState: AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index]),
+            stepState: AppointmentStatusTimeline.stepState(
+              current: currentStatus,
+              step: steps[index],
+            ),
             isTerminalContext: isTerminal,
             isLast: index == steps.length - 1,
             stepNumber: index + 1,
@@ -491,20 +565,24 @@ class _TimelineStepRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(status);
+    final colors = context.appColors;
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      status,
+      Theme.of(context).brightness,
+    );
     final isCurrent = stepState == AppointmentTimelineStepState.current;
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
     final isUpcoming = stepState == AppointmentTimelineStepState.upcoming;
 
     final nodeColor = isSkipped
-        ? colors.mutedForeground.withValues(alpha: 0.4)
+        ? statusColor.withValues(alpha: 0.35)
         : isCurrent || isCompleted
         ? statusColor
-        : colors.mutedForeground.withValues(alpha: 0.45);
+        : statusColor.withValues(alpha: 0.5);
 
-    final connectorActive = !isTerminalContext && !isLast && currentIndex > stepIndex;
+    final connectorActive =
+        !isTerminalContext && !isLast && currentIndex > stepIndex;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return IntrinsicHeight(
@@ -516,8 +594,11 @@ class _TimelineStepRow extends StatelessWidget {
             child: Column(
               children: [
                 _TimelineNode(
-                  icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
+                  icon: isCompleted
+                      ? Icons.check_rounded
+                      : _iconForStatus(status),
                   color: nodeColor,
+                  statusColor: statusColor,
                   isCurrent: isCurrent,
                   isCompleted: isCompleted,
                   isSkipped: isSkipped,
@@ -528,53 +609,88 @@ class _TimelineStepRow extends StatelessWidget {
                       duration: motionDuration,
                       curve: AppointmentStatusMotion.curve,
                       width: 2,
-                      color: connectorActive ? colors.primary : colors.border,
+                      color: connectorActive
+                          ? statusColor.withValues(alpha: 0.75)
+                          : colors.borderDefault,
                     ),
                   ),
               ],
             ),
           ),
-          const SizedBox(width: SpacingTokens.md),
+          const SizedBox(width: AppSpacing.space4),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : SpacingTokens.lg),
-              child: isCurrent
-                  ? AnimatedContainer(
-                      duration: motionDuration,
-                      curve: AppointmentStatusMotion.curve,
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.28)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(SpacingTokens.md),
-                        child: _TimelineStepContent(
-                          status: status,
-                          isCurrent: isCurrent,
-                          isCompleted: isCompleted,
-                          isSkipped: isSkipped,
-                          isUpcoming: isUpcoming,
-                          isTerminalContext: isTerminalContext,
-                          stepNumber: stepNumber,
-                          colors: colors,
-                        ),
-                      ),
-                    )
-                  : _TimelineStepContent(
-                      status: status,
-                      isCurrent: isCurrent,
-                      isCompleted: isCompleted,
-                      isSkipped: isSkipped,
-                      isUpcoming: isUpcoming,
-                      isTerminalContext: isTerminalContext,
-                      stepNumber: stepNumber,
-                      colors: colors,
-                    ),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.space6),
+              child: _StatusStepCard(
+                status: status,
+                stepState: stepState,
+                isTerminalContext: isTerminalContext,
+                padding: const EdgeInsets.all(AppSpacing.space4),
+                child: _TimelineStepContent(
+                  status: status,
+                  isCurrent: isCurrent,
+                  isCompleted: isCompleted,
+                  isSkipped: isSkipped,
+                  isUpcoming: isUpcoming,
+                  isTerminalContext: isTerminalContext,
+                  stepNumber: stepNumber,
+                  colors: colors,
+                ),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StatusStepCard extends StatelessWidget {
+  const _StatusStepCard({
+    required this.status,
+    required this.stepState,
+    required this.isTerminalContext,
+    required this.padding,
+    required this.child,
+  });
+
+  final AppointmentStatus status;
+  final AppointmentTimelineStepState stepState;
+  final bool isTerminalContext;
+  final EdgeInsetsGeometry padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCurrent = stepState == AppointmentTimelineStepState.current;
+    final useAnimatedBorder = isCurrent && !isTerminalContext;
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+    final brightness = Theme.of(context).brightness;
+    final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+
+    final card = AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
+      decoration: _statusStepCardDecoration(
+        context: context,
+        status: status,
+        stepState: stepState,
+        includeBorder: !useAnimatedBorder,
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+
+    if (!useAnimatedBorder) {
+      return card;
+    }
+
+    return AppAnimatedBorderCard(
+      active: true,
+      borderColor: style.border,
+      highlightColor: style.accent,
+      borderRadius: AppRadius.md,
+      borderWidth: 1.5,
+      child: card,
     );
   }
 }
@@ -599,25 +715,38 @@ class _TimelineStepContent extends StatelessWidget {
   final bool isUpcoming;
   final bool isTerminalContext;
   final int stepNumber;
-  final SemanticColors colors;
+  final AppSemanticColors colors;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+    final labelStyle = AppTypography.bodyStrong(context).copyWith(
       fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
       color: isSkipped
-          ? colors.mutedForeground.withValues(alpha: 0.55)
+          ? colors.textSecondary.withValues(alpha: 0.55)
           : isUpcoming
-          ? colors.mutedForeground
-          : colors.foreground,
+          ? colors.textSecondary
+          : colors.textPrimary,
     );
 
     final statusIndicator = isCurrent && !isTerminalContext
-        ? const AppBadge(label: 'Current', variant: AppBadgeVariant.primary, dense: true)
+        ? const AppBadge(
+            label: 'Current',
+            variant: BadgeVariant.soft,
+            color: BadgeColor.info,
+            size: BadgeSize.sm,
+          )
         : isCompleted
-        ? const AppBadge(label: 'Done', variant: AppBadgeVariant.outline, dense: true)
-        : AppBadge(label: 'Step $stepNumber', variant: AppBadgeVariant.outline, dense: true);
+        ? const AppBadge(
+            label: 'Done',
+            variant: BadgeVariant.outline,
+            size: BadgeSize.sm,
+          )
+        : AppBadge(
+            label: 'Step $stepNumber',
+            variant: BadgeVariant.outline,
+            size: BadgeSize.sm,
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -626,8 +755,13 @@ class _TimelineStepContent extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(status.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: labelStyle),
-              const SizedBox(height: SpacingTokens.xs),
+              Text(
+                status.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle,
+              ),
+              const SizedBox(height: AppSpacing.space1),
               statusIndicator,
             ],
           )
@@ -636,21 +770,26 @@ class _TimelineStepContent extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+                child: Text(
+                  status.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: labelStyle,
+                ),
               ),
-              const SizedBox(width: SpacingTokens.xs),
+              const SizedBox(width: AppSpacing.space1),
               statusIndicator,
             ],
           ),
-        const SizedBox(height: SpacingTokens.xs),
+        const SizedBox(height: AppSpacing.space1),
         Text(
           AppointmentStatusTimeline.stepDescription(status),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          style: AppTypography.bodySm(context).copyWith(
             color: isCurrent
-                ? colors.foreground.withValues(alpha: 0.85)
+                ? colors.textPrimary.withValues(alpha: 0.85)
                 : isSkipped
-                ? colors.mutedForeground.withValues(alpha: 0.5)
-                : colors.mutedForeground,
+                ? colors.textSecondary.withValues(alpha: 0.5)
+                : colors.textSecondary,
             height: compact ? 1.5 : 1.45,
           ),
         ),
@@ -663,6 +802,7 @@ class _TimelineNode extends StatelessWidget {
   const _TimelineNode({
     required this.icon,
     required this.color,
+    required this.statusColor,
     required this.isCurrent,
     required this.isCompleted,
     required this.isSkipped,
@@ -671,6 +811,7 @@ class _TimelineNode extends StatelessWidget {
 
   final IconData icon;
   final Color color;
+  final Color statusColor;
   final bool isCurrent;
   final bool isCompleted;
   final bool isSkipped;
@@ -678,14 +819,19 @@ class _TimelineNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final colors = context.appColors;
     final size = fixedSize ?? (isCurrent ? 40.0 : 36.0);
     final iconSize = fixedSize != null ? 18.0 : (isCurrent ? 20.0 : 18.0);
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
-    final backgroundColor = isCompleted || isCurrent
-        ? Color.lerp(colors.card, color, isSkipped ? 0.12 : 0.18)!
-        : colors.muted;
+    final fillStrength = isSkipped
+        ? 0.1
+        : (isCompleted || isCurrent ? 0.2 : 0.08);
+    final backgroundColor = Color.lerp(
+      colors.surfaceDefault,
+      statusColor,
+      fillStrength,
+    )!;
 
     Widget node = AnimatedContainer(
       duration: motionDuration,
@@ -695,15 +841,27 @@ class _TimelineNode extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: backgroundColor,
-        border: Border.all(color: isSkipped ? colors.border : color, width: isCurrent ? 2.5 : 1.5),
+        border: Border.all(
+          color: isSkipped ? statusColor.withValues(alpha: 0.22) : color,
+          width: isCurrent ? 2.5 : 1.5,
+        ),
         boxShadow: isCurrent
-            ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 12, spreadRadius: 1)]
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ]
             : null,
       ),
       child: Center(
         child: AnimatedAppointmentStatusColor(
-          color: isSkipped ? colors.mutedForeground.withValues(alpha: 0.5) : color,
-          builder: (context, animatedColor) => Icon(icon, size: iconSize, color: animatedColor),
+          color: isSkipped
+              ? colors.textSecondary.withValues(alpha: 0.5)
+              : color,
+          builder: (context, animatedColor) =>
+              Icon(icon, size: iconSize, color: animatedColor),
         ),
       ),
     );
@@ -714,7 +872,13 @@ class _TimelineNode extends StatelessWidget {
         curve: AppointmentStatusMotion.curve,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 16, spreadRadius: 2)],
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.25),
+              blurRadius: 16,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: node,
       );
@@ -722,6 +886,63 @@ class _TimelineNode extends StatelessWidget {
 
     return node;
   }
+}
+
+BoxDecoration _statusStepCardDecoration({
+  required BuildContext context,
+  required AppointmentStatus status,
+  required AppointmentTimelineStepState stepState,
+  bool includeBorder = true,
+}) {
+  final brightness = Theme.of(context).brightness;
+  final colors = context.appColors;
+  final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+  final isCurrent = stepState == AppointmentTimelineStepState.current;
+  final isDark = brightness == Brightness.dark;
+
+  final gradientStrength = switch (stepState) {
+    AppointmentTimelineStepState.current => 1.0,
+    AppointmentTimelineStepState.completed => 0.9,
+    AppointmentTimelineStepState.upcoming => 0.62,
+    AppointmentTimelineStepState.skipped => 0.38,
+  };
+
+  final borderAlpha = switch (stepState) {
+    AppointmentTimelineStepState.current => isDark ? 0.55 : 0.58,
+    AppointmentTimelineStepState.completed => isDark ? 0.42 : 0.48,
+    AppointmentTimelineStepState.upcoming => isDark ? 0.3 : 0.34,
+    AppointmentTimelineStepState.skipped => isDark ? 0.22 : 0.26,
+  };
+
+  Color blendGradient(Color tone) =>
+      Color.lerp(colors.surfaceDefault, tone, gradientStrength)!;
+
+  return BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        blendGradient(style.gradientStart),
+        blendGradient(style.gradientEnd),
+      ],
+    ),
+    borderRadius: BorderRadius.circular(AppRadius.md),
+    border: includeBorder
+        ? Border.all(
+            color: style.border.withValues(alpha: borderAlpha),
+            width: isCurrent ? 1.5 : 1,
+          )
+        : null,
+    boxShadow: [
+      BoxShadow(
+        color: style.accent.withValues(
+          alpha: isCurrent ? (isDark ? 0.18 : 0.12) : (isDark ? 0.08 : 0.05),
+        ),
+        blurRadius: isCurrent ? 14 : 6,
+        offset: Offset(0, isCurrent ? 4 : 1.5),
+      ),
+    ],
+  );
 }
 
 IconData _iconForStatus(AppointmentStatus status) {

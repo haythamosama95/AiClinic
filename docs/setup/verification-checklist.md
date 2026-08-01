@@ -24,7 +24,7 @@ Complete [server-node.md](./server-node.md) first when this machine hosts the cl
 
 Complete [client-workstation.md](./client-workstation.md) for profile placement and field values.
 
-- [ ] `deployment-profile.json` exists at one of the supported lookup paths (see [deployment-profile contract](../../specs/001-project-scaffolding/contracts/deployment-profile.md)).
+- [ ] `deployment-profile.json` exists at one of the supported lookup paths (see [deployment-profile contract](../specs/001-project-scaffolding/contracts/deployment-profile.md)).
 - [ ] `deployment_mode` is `local`.
 - [ ] `supabase_url` matches `SUPABASE_PUBLIC_URL` on the server node.
 - [ ] `supabase_anon_key` matches `SUPABASE_ANON_KEY` in `backend/local/.env`.
@@ -50,11 +50,11 @@ Skip this section for single-machine development on loopback.
 
 ## Clinic administration (V1-2, after auth bootstrap)
 
-When `specs/003-org-branch-management` is deployed:
+When `docs/specs/003-org-branch-management` is deployed:
 
 - [ ] [clinic-administration.md](./clinic-administration.md) describes settings screens used in production
 - [ ] `./backend/tests/run_org_branch_management_tests.sh` passes
-- [ ] Owner can save organization settings; branch/staff deactivate uses reactivate flow (no delete UI per [FR-018a checklist](../../specs/003-org-branch-management/checklists/fr-018a-ui-verification.md))
+- [ ] Owner can save organization settings; branch/staff deactivate uses reactivate flow (no delete UI per [FR-018a checklist](../specs/003-org-branch-management/checklists/fr-018a-ui-verification.md))
 
 ## Documentation sign-off
 

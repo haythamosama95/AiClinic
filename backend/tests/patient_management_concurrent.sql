@@ -49,14 +49,14 @@ BEGIN
 
   -- Insert first patient with phone '01001234567'
   v_patient1_id := gen_random_uuid();
-  INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, is_deleted, created_by, updated_by)
-  VALUES (v_patient1_id, v_org_id, v_branch_id, 'Patient One', '01001234567', false, v_bootstrap_user, v_bootstrap_user);
+  INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, mrn, is_deleted, created_by, updated_by)
+  VALUES (v_patient1_id, v_org_id, v_branch_id, 'Patient One', '01001234567', 'MRN-900101', false, v_bootstrap_user, v_bootstrap_user);
 
   -- Attempt to insert second patient with the same phone in same org
   BEGIN
     v_patient2_id := gen_random_uuid();
-    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, is_deleted, created_by, updated_by)
-    VALUES (v_patient2_id, v_org_id, v_branch_id, 'Patient Two', '01001234567', false, v_bootstrap_user, v_bootstrap_user);
+    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, mrn, is_deleted, created_by, updated_by)
+    VALUES (v_patient2_id, v_org_id, v_branch_id, 'Patient Two', '01001234567', 'MRN-900102', false, v_bootstrap_user, v_bootstrap_user);
   EXCEPTION
     WHEN unique_violation THEN
       v_got_violation := true;
@@ -88,8 +88,8 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
 
   BEGIN
-    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, is_deleted, created_by, updated_by)
-    VALUES (gen_random_uuid(), 'd1000000-0000-4000-8000-000000000c99', 'd2000000-0000-4000-8000-000000000c99', 'Patient Other Org', '01001234567', false, v_bootstrap_user, v_bootstrap_user);
+    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, mrn, is_deleted, created_by, updated_by)
+    VALUES (gen_random_uuid(), 'd1000000-0000-4000-8000-000000000c99', 'd2000000-0000-4000-8000-000000000c99', 'Patient Other Org', '01001234567', 'MRN-900103', false, v_bootstrap_user, v_bootstrap_user);
   EXCEPTION
     WHEN unique_violation THEN
       v_got_violation := true;
@@ -107,8 +107,8 @@ BEGIN
   UPDATE public.patients SET is_deleted = true WHERE id = v_patient1_id;
 
   BEGIN
-    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, is_deleted, created_by, updated_by)
-    VALUES (gen_random_uuid(), v_org_id, v_branch_id, 'Patient Replacement', '01001234567', false, v_bootstrap_user, v_bootstrap_user);
+    INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, mrn, is_deleted, created_by, updated_by)
+    VALUES (gen_random_uuid(), v_org_id, v_branch_id, 'Patient Replacement', '01001234567', 'MRN-900104', false, v_bootstrap_user, v_bootstrap_user);
   EXCEPTION
     WHEN unique_violation THEN
       v_got_violation := true;

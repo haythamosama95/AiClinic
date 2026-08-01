@@ -3,13 +3,34 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_peri
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppointmentCalendarDisplay', () {
     final schedule = BranchWorkingSchedule.defaultSchedule();
+
+    test('resolveBranchSchedule falls back when hours are not configured', () {
+      final resolved = AppointmentCalendarDisplay.resolveBranchSchedule(BranchWorkingSchedule.emptySchedule());
+
+      expect(resolved.hasConfiguredWorkingHours, isTrue);
+      expect(resolved, BranchWorkingSchedule.defaultSchedule());
+    });
+
+    test('resolveBranchSchedule falls back when schedule is null', () {
+      final resolved = AppointmentCalendarDisplay.resolveBranchSchedule(null);
+
+      expect(resolved, BranchWorkingSchedule.defaultSchedule());
+    });
+
+    test('resolveBranchSchedule keeps configured branch hours', () {
+      final configured = BranchWorkingSchedule([
+        BranchWorkingDayHours(day: BranchWeekday.friday, isWorkingDay: true, openTime: '09:00', closeTime: '17:00'),
+      ]);
+
+      expect(AppointmentCalendarDisplay.resolveBranchSchedule(configured), configured);
+    });
 
     test('day layout uses configured open and close hours', () {
       final layout = AppointmentCalendarDisplay.timeSlotLayout(
@@ -23,7 +44,7 @@ void main() {
       expect(layout.timeIntervalHeight, greaterThanOrEqualTo(AppointmentCalendarDisplay.minTimeIntervalHeight));
     });
 
-    test('doctors layout matches day layout', () {
+    test('doctors layout matches day layout and widens timeline columns', () {
       final dayLayout = AppointmentCalendarDisplay.timeSlotLayout(
         schedule: schedule,
         mode: AppointmentCalendarMode.day,
@@ -38,6 +59,7 @@ void main() {
       expect(doctorsLayout.startHour, dayLayout.startHour);
       expect(doctorsLayout.endHour, dayLayout.endHour);
       expect(doctorsLayout.shadeRegions, isEmpty);
+      expect(doctorsLayout.timeIntervalWidth, AppointmentCalendarDisplay.doctorsTimelineTimeIntervalWidth);
     });
 
     test('week layout spans union of working-day hours', () {
@@ -69,6 +91,30 @@ void main() {
       expect(layout.timeIntervalHeight, closeTo(expectedHeight, 0.01));
     });
 
+    test('custom time interval changes slot count and minutes', () {
+      final layout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+        timeIntervalMinutes: 15,
+      );
+
+      expect(layout.timeIntervalMinutes, 15);
+      final slotCount = ((layout.endHour - layout.startHour) * 60 / 15).ceil();
+      expect(slotCount, greaterThan(((layout.endHour - layout.startHour) * 60 / 30).ceil()));
+    });
+
+    test('unsupported time interval falls back to default', () {
+      final layout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+        timeIntervalMinutes: 20,
+      );
+
+      expect(layout.timeIntervalMinutes, AppointmentCalendarDisplay.defaultTimeIntervalMinutes);
+    });
+
     test('nonWorkingDays marks Sunday closed in default schedule', () {
       final closed = AppointmentCalendarDisplay.nonWorkingDays(schedule);
       expect(closed, contains(DateTime.sunday));
@@ -81,6 +127,230 @@ void main() {
     test('closedDatesInMonth includes Sundays', () {
       final closed = AppointmentCalendarDisplay.closedDatesInMonth(schedule, DateTime(2026, 6, 1));
       expect(closed.any((date) => date.weekday == DateTime.sunday), isTrue);
+    });
+
+    test('trivial: visibleHeaderDays returns single day in day mode', () {
+      final focus = DateTime(2026, 6, 4);
+      final days = AppointmentCalendarDisplay.visibleHeaderDays(AppointmentCalendarMode.day, focus);
+
+      expect(days, [DateTime(2026, 6, 4)]);
+    });
+
+    test('trivial: visibleHeaderDays returns week starting Monday in week mode', () {
+      final focus = DateTime(2026, 6, 4);
+      final days = AppointmentCalendarDisplay.visibleHeaderDays(AppointmentCalendarMode.week, focus);
+
+      expect(days, hasLength(7));
+      expect(days.first, DateTime(2026, 6, 1));
+      expect(days.last, DateTime(2026, 6, 7));
+    });
+
+    test('trivial: visibleHeaderDays is empty for month and schedule modes', () {
+      final focus = DateTime(2026, 6, 4);
+
+      expect(AppointmentCalendarDisplay.visibleHeaderDays(AppointmentCalendarMode.month, focus), isEmpty);
+      expect(AppointmentCalendarDisplay.visibleHeaderDays(AppointmentCalendarMode.schedule, focus), isEmpty);
+    });
+
+    test('trivial: headerTitle formats month and year from focus date', () {
+      expect(
+        AppointmentCalendarDisplay.headerTitle(AppointmentCalendarMode.day, DateTime(2026, 6, 4)),
+        'June 2026',
+      );
+      expect(
+        AppointmentCalendarDisplay.headerTitle(AppointmentCalendarMode.week, DateTime(2026, 6, 4)),
+        'June 2026',
+      );
+    });
+
+    test('trivial: showWeekends is true when Saturday or Sunday is a working day', () {
+      expect(AppointmentCalendarDisplay.showWeekends(schedule), isTrue);
+
+      final weekdaysOnly = BranchWorkingSchedule(
+        BranchWeekday.values
+            .map(
+              (day) => BranchWorkingDayHours(
+                day: day,
+                isWorkingDay: day != BranchWeekday.saturday && day != BranchWeekday.sunday,
+                openTime: day == BranchWeekday.saturday || day == BranchWeekday.sunday ? null : '09:00',
+                closeTime: day == BranchWeekday.saturday || day == BranchWeekday.sunday ? null : '17:00',
+              ),
+            )
+            .toList(growable: false),
+      );
+      expect(AppointmentCalendarDisplay.showWeekends(weekdaysOnly), isFalse);
+    });
+
+    test('invalid state: day layout falls back to 8-18 when hours are malformed', () {
+      final malformed = BranchWorkingSchedule(
+        BranchWeekday.values
+            .map(
+              (day) => BranchWorkingDayHours(
+                day: day,
+                isWorkingDay: day == BranchWeekday.thursday,
+                openTime: day == BranchWeekday.thursday ? '17:00' : null,
+                closeTime: day == BranchWeekday.thursday ? '09:00' : null,
+              ),
+            )
+            .toList(growable: false),
+      );
+
+      final layout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: malformed,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+      );
+
+      expect(layout.startHour, 8);
+      expect(layout.endHour, 18);
+    });
+
+    test('trivial: month and schedule modes use default 8-18 hour range', () {
+      for (final mode in [AppointmentCalendarMode.month, AppointmentCalendarMode.schedule]) {
+        final layout = AppointmentCalendarDisplay.timeSlotLayout(
+          schedule: schedule,
+          mode: mode,
+          focusDate: DateTime(2026, 6, 4),
+        );
+
+        expect(layout.startHour, 8, reason: '$mode startHour');
+        expect(layout.endHour, 18, reason: '$mode endHour');
+        expect(layout.shadeRegions, isEmpty);
+      }
+    });
+
+    test('advanced: shadeRegionsForWeek covers before-open and after-close windows', () {
+      final regions = AppointmentCalendarDisplay.shadeRegionsForWeek(schedule, DateTime(2026, 6, 4));
+
+      expect(regions, isNotEmpty);
+      final beforeOpen = regions.firstWhere(
+        (region) => region.start.hour == 0 && region.end.hour == 9 && region.end.minute == 0,
+      );
+      expect(beforeOpen.start, DateTime(2026, 6, 1));
+      final afterClose = regions.firstWhere(
+        (region) => region.start.hour == 17 && region.end.day == region.start.day + 1,
+      );
+      expect(afterClose.start, DateTime(2026, 6, 1, 17));
+    });
+
+    test('edge case: resourceRowStripeRegions returns empty for no resources', () {
+      expect(
+        AppointmentCalendarDisplay.resourceRowStripeRegions(
+          resourceIds: const [],
+          focusDate: DateTime(2026, 6, 4),
+          startHour: 9,
+          endHour: 17,
+          stripeColor: const Color(0xFFE5E7EB),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('slotRangeFromTap uses branch open when day tap has no explicit time', () {
+      final tapped = DateTime(2026, 6, 4);
+      final range = AppointmentCalendarDisplay.slotRangeFromTap(
+        tappedDate: tapped,
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+      );
+
+      expect(range.start, DateTime(2026, 6, 4, 9, 0));
+      expect(range.end, DateTime(2026, 6, 4, 9, 30));
+    });
+
+    test('edge case: snapTimeToSlot returns local time when slotMinutes is zero', () {
+      final time = DateTime(2026, 6, 4, 14, 17);
+      expect(AppointmentCalendarDisplay.snapTimeToSlot(time, slotMinutes: 0), time.toLocal());
+    });
+
+    test('edge case: isAlignedToSlotGrid is true when slotSize is zero', () {
+      expect(
+        AppointmentCalendarDisplay.isAlignedToSlotGrid(
+          const Rect.fromLTWH(0, 13, 100, 48),
+          0,
+          timelineAxisIsHorizontal: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('edge case: isAlignedToSlotGrid allows one-pixel tolerance on horizontal axis', () {
+      const slotWidth = 60.0;
+      expect(
+        AppointmentCalendarDisplay.isAlignedToSlotGrid(
+          const Rect.fromLTWH(59, 0, 60, 40),
+          slotWidth,
+          timelineAxisIsHorizontal: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('advanced: isHiddenOnCalendar and isVisibleOnCalendar respect status filter', () {
+      expect(AppointmentCalendarDisplay.isHiddenOnCalendar(AppointmentStatus.cancelled), isTrue);
+      expect(AppointmentCalendarDisplay.isHiddenOnCalendar(AppointmentStatus.scheduled), isFalse);
+
+      expect(
+        AppointmentCalendarDisplay.isVisibleOnCalendar(AppointmentStatus.cancelled, const {}),
+        isFalse,
+      );
+      expect(
+        AppointmentCalendarDisplay.isVisibleOnCalendar(
+          AppointmentStatus.cancelled,
+          {AppointmentStatus.cancelled},
+        ),
+        isTrue,
+      );
+      expect(
+        AppointmentCalendarDisplay.isVisibleOnCalendar(AppointmentStatus.scheduled, const {}),
+        isTrue,
+      );
+    });
+
+    test('advanced: isStatusChipSelected treats empty workflow filter as all selected', () {
+      const selected = <AppointmentStatus>{};
+
+      for (final status in AppointmentCalendarDisplay.calendarStatusLegend) {
+        if (AppointmentCalendarDisplay.isHiddenOnCalendar(status)) {
+          expect(AppointmentCalendarDisplay.isStatusChipSelected(status, selected), isFalse);
+        } else {
+          expect(AppointmentCalendarDisplay.isStatusChipSelected(status, selected), isTrue);
+        }
+      }
+    });
+
+    test('advanced: toggleStatusChip preserves hidden statuses when narrowing workflow', () {
+      final next = AppointmentCalendarDisplay.toggleStatusChip(
+        AppointmentStatus.scheduled,
+        {AppointmentStatus.cancelled},
+      );
+
+      expect(next, {
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+        AppointmentStatus.inProgress,
+        AppointmentStatus.completed,
+        AppointmentStatus.cancelled,
+      });
+    });
+
+    test('advanced: toggleStatusChip deselecting last workflow chip clears workflow filter', () {
+      final onlyConfirmed = {AppointmentStatus.confirmed};
+      final next = AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.confirmed, onlyConfirmed);
+
+      expect(next, isEmpty);
+    });
+
+    test('advanced: toggleStatusChip re-adds workflow status when subset is active', () {
+      final subset = {
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+        AppointmentStatus.inProgress,
+        AppointmentStatus.completed,
+      };
+      final next = AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.scheduled, subset);
+
+      expect(next, isEmpty);
     });
 
     test('slotRangeFromTap uses tapped time in day view', () {
@@ -134,21 +404,53 @@ void main() {
     });
 
     group('CAL-I — display (unit)', () {
-      test('CAL-I01: statusColor maps each appointment status', () {
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled), const Color(0xFF8B9CB3));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed), const Color(0xFF2563EB));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn), const Color(0xFFEAB308));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress), const Color(0xFFEA580C));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed), const Color(0xFF16A34A));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled), const Color(0xFFDC2626));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.noShow), const Color(0xFF5C5470));
+      test('CAL-I01: statusColor maps each appointment status (light theme)', () {
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled, Brightness.light),
+          const Color(0xFF6E8499),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.light),
+          const Color(0xFF5B6FD8),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn, Brightness.light),
+          const Color(0xFFC4A035),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress, Brightness.light),
+          const Color(0xFFD96B52),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed, Brightness.light),
+          const Color(0xFF3D9A72),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled, Brightness.light),
+          const Color(0xFFC05868),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.noShow, Brightness.light),
+          const Color(0xFF8A7B9C),
+        );
+      });
+
+      test('CAL-I01b: statusColor adapts to dark theme', () {
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.dark),
+          const Color(0xFF8494F0),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed, Brightness.dark),
+          const Color(0xFF58B88A),
+        );
       });
 
       test('CAL-I02: calendarStatusLegend lists calendar statuses excluding unknown', () {
         expect(AppointmentCalendarDisplay.calendarStatusLegend, hasLength(7));
         expect(AppointmentCalendarDisplay.calendarStatusLegend, isNot(contains(AppointmentStatus.unknown)));
         for (final status in AppointmentCalendarDisplay.calendarStatusLegend) {
-          expect(AppointmentCalendarDisplay.statusColor(status), isNotNull);
+          expect(AppointmentCalendarDisplay.statusColor(status, Brightness.light), isNotNull);
         }
       });
 
@@ -159,12 +461,46 @@ void main() {
         expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, highlighted), isFalse);
         expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, const {}), isTrue);
         expect(
-          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.confirmed, highlighted),
-          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed),
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.confirmed, highlighted, Brightness.light),
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.light),
         );
         expect(
-          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.scheduled, highlighted),
-          AppointmentCalendarDisplay.filteredOutStatusColor,
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.scheduled, highlighted, Brightness.light),
+          AppointmentCalendarDisplay.filteredOutStatusColor(Brightness.light),
+        );
+      });
+
+      test('CAL-I02c: default status chips hide cancelled and no-show', () {
+        const selected = <AppointmentStatus>{};
+
+        expect(AppointmentCalendarDisplay.isDefaultStatusFilter(selected), isTrue);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.scheduled, selected), isTrue);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.cancelled, selected), isFalse);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.noShow, selected), isFalse);
+      });
+
+      test('CAL-I02d: status chip toggles map to selectedStatuses storage', () {
+        expect(AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.cancelled, const {}), {
+          AppointmentStatus.cancelled,
+        });
+        expect(
+          AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.cancelled, const {AppointmentStatus.cancelled}),
+          const <AppointmentStatus>{},
+        );
+        expect(AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.scheduled, const {}), const {
+          AppointmentStatus.confirmed,
+          AppointmentStatus.checkedIn,
+          AppointmentStatus.inProgress,
+          AppointmentStatus.completed,
+        });
+        expect(
+          AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.scheduled, const {
+            AppointmentStatus.confirmed,
+            AppointmentStatus.checkedIn,
+            AppointmentStatus.inProgress,
+            AppointmentStatus.completed,
+          }),
+          const <AppointmentStatus>{},
         );
       });
 
@@ -231,10 +567,7 @@ void main() {
         );
         final items = [cancelled, noShow, scheduled];
 
-        expect(
-          AppointmentCalendarDisplay.filterVisibleAppointments(items, schedule),
-          hasLength(1),
-        );
+        expect(AppointmentCalendarDisplay.filterVisibleAppointments(items, schedule), hasLength(1));
         expect(
           AppointmentCalendarDisplay.filterVisibleAppointments(
             items,

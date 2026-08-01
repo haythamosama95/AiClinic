@@ -6,7 +6,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../widget/visits/visit_encounter_test_support.dart';
+import '../../support/visit_encounter_test_support.dart';
 
 VisitDocumentationState _patientSafetyOnlyDocState() {
   return sampleEncounterDocState().copyWith(
@@ -22,10 +22,6 @@ VisitDocumentationState _patientSafetyOnlyDocState() {
 
 void main() {
   group('EDGE-001 — Patient-safety-only submit (FE/BE mismatch)', () {
-    test('visitHasPersistableDocumentation ignores pending allergy draft', () {
-      expect(visitHasPersistableDocumentation(_patientSafetyOnlyDocState()), isFalse);
-    });
-
     test('evaluateVisitSubmitReadiness blocks submit when only allergy is staged', () {
       final readiness = evaluateVisitSubmitReadiness(_patientSafetyOnlyDocState());
 

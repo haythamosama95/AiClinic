@@ -14,7 +14,9 @@ enum PatientListScope {
 
     return switch (normalized) {
       'thisbranch' || 'this_branch' || 'branch' => PatientListScope.thisBranch,
-      'allbranches' || 'all_branches' || 'organization' => PatientListScope.allBranches,
+      'allbranches' ||
+      'all_branches' ||
+      'organization' => PatientListScope.allBranches,
       _ => null,
     };
   }

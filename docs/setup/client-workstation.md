@@ -49,7 +49,7 @@ Example for a LAN client:
 | `ai_service_url`     | No       | Reserved; startup ignores it in V1-0.                           |
 | `source_device_role` | No       | `server-node` or `client-node` for documentation only.          |
 
-Full rules: [deployment-profile contract](../../specs/001-project-scaffolding/contracts/deployment-profile.md).
+Full rules: [deployment-profile contract](../specs/001-project-scaffolding/contracts/deployment-profile.md).
 
 ## 3. Verify network access
 

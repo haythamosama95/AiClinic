@@ -1,73 +1,46 @@
 #!/usr/bin/env python3
 
 import argparse
-import itertools
 import json
 import os
 import subprocess
 import sys
-import threading
-import time
 from collections import defaultdict
 from pathlib import Path
 
-from discover_tests import unit_test_files
+from discover_tests import count_expected_tests, unit_test_files
 from test_run_artifacts import (
     MachineEventRecorder,
     refresh_latest,
     resolve_suite_artifact_dir,
 )
-from test_run_progress import TestRunProgress
+from test_run_progress import LiveTestDisplay
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
 
+CONCURRENCY = 15
+
 FAILURES = []
 CURRENT_TEST = None
 
-RUNNING = True
-
-PROGRESS = TestRunProgress()
+DISPLAY: LiveTestDisplay | None = None
 RECORDER: MachineEventRecorder | None = None
-
-
-# ---------------- Spinner + Progress ----------------
-
-def spinner_task():
-    spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-
-    while RUNNING:
-        sys.stdout.write(
-            f"\r🧪 Running Flutter tests... {next(spinner)} {PROGRESS.label()}"
-        )
-        sys.stdout.flush()
-
-        time.sleep(0.1)
-
-    PROGRESS.finalize()
-    done = f"\r🧪 Running Flutter tests... Done ✔️ {PROGRESS.label()}"
-    sys.stdout.write(done.ljust(80) + "\n")
-    sys.stdout.flush()
 
 
 # ---------------- Runner ----------------
 
-def run_tests() -> int:
-    global RUNNING
-
-    test_files = unit_test_files(ROOT)
+def run_tests(test_files: list[str]) -> int:
     if not test_files:
         print("ERROR: no unit/widget/integration test files found.", file=sys.stderr)
         return 1
-
-    PROGRESS.reset(0)
 
     cmd = [
         "flutter",
         "test",
         *test_files,
         "--concurrency",
-        "15",
+        str(CONCURRENCY),
         "--machine",
     ]
 
@@ -102,8 +75,6 @@ def run_tests() -> int:
 
         handle_event(parsed)
 
-    PROGRESS.finalize()
-    RUNNING = False
     return process.wait()
 
 
@@ -112,7 +83,6 @@ def run_tests() -> int:
 def handle_event(event):
     global CURRENT_TEST
 
-    # normalize
     if isinstance(event, list):
         for e in event:
             handle_event(e)
@@ -121,17 +91,13 @@ def handle_event(event):
     if not isinstance(event, dict):
         return
 
-    event_type = event.get("type")
+    if DISPLAY is not None:
+        DISPLAY.handle_event(event)
 
-    # ---- test lifecycle ----
+    event_type = event.get("type")
 
     if event_type == "testStart":
         CURRENT_TEST = event.get("test", {}).get("name")
-
-    elif event_type == "testDone":
-        PROGRESS.handle_event(event)
-
-    # ---- failures ----
 
     elif event_type == "error":
         FAILURES.append({
@@ -212,22 +178,29 @@ def main():
             campaign_dir,
         )
 
-    global RECORDER
+    test_files = unit_test_files(ROOT)
+    total_tests = count_expected_tests(ROOT, test_files)
+
+    global RECORDER, DISPLAY
     if artifacts_enabled and artifact_dir is not None:
         RECORDER = MachineEventRecorder(
             suite_name="unit",
             command=[],
             cwd=ROOT,
-            test_files=[],
+            test_files=test_files,
             artifact_dir=artifact_dir,
         )
 
-    spinner = threading.Thread(target=spinner_task)
-    spinner.start()
+    DISPLAY = LiveTestDisplay(
+        "🧪 Running Flutter tests...",
+        concurrency=CONCURRENCY,
+        total_tests=total_tests,
+    )
+    DISPLAY.start()
 
-    exit_code = run_tests()
+    exit_code = run_tests(test_files)
 
-    spinner.join()
+    DISPLAY.stop()
     print_summary()
 
     if RECORDER is not None:

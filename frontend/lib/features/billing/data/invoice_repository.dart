@@ -192,6 +192,10 @@ class InvoiceRepository with AppRpcInvoker {
   Future<InvoiceDetail> getDetail({required String invoiceId}) async {
     _assertNonEmpty('invoiceId', invoiceId);
 
+    // `get_invoice_detail` may omit optional enrichment (`invoice.created_at`,
+    // `voided_by`). Patient contact fields (`phone`, `date_of_birth`) are
+    // returned when the RPC includes them; `InvoiceDetail.fromRpcData` degrades
+    // gracefully when absent.
     final result = await invokeRpc('get_invoice_detail', {'p_invoice_id': invoiceId.trim()});
     final detail = InvoiceDetail.fromRpcData(result.data);
     if (detail == null) {
@@ -201,6 +205,8 @@ class InvoiceRepository with AppRpcInvoker {
   }
 
   Future<InvoiceListPageResult> listInvoices({Map<String, dynamic>? filters, int limit = 50, int offset = 0}) async {
+    // `sort_field` / `sort_direction` are forwarded via `p_filters` when present.
+    // Server-side honouring is not yet implemented; the notifier applies client-side sort (see §6).
     final result = await invokeRpc('list_invoices', {
       'p_filters': filters ?? const {},
       'p_limit': limit,

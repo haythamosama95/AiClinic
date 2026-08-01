@@ -7,13 +7,13 @@ import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_spec.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
-import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_staff_member_input.dart';
 
 /// Outcome of a dev patient seed run.
 class PatientDevSeedOutcome {
@@ -110,10 +110,11 @@ class PatientDevSeedService {
       }
       otherBranchLabel ??= _secondBranchName;
 
-      for (final spec in PatientDevSeedData.patients) {
+      for (var index = 0; index < PatientDevSeedData.patients.length; index++) {
+        final spec = PatientDevSeedData.patients[index];
         final branchId = spec.branchTarget == PatientDevSeedBranchTarget.other ? otherBranchId : mainBranchId;
 
-        final patientId = await _createWithDuplicateAck(spec, branchId);
+        final patientId = await _createWithDuplicateAck(spec, branchId, seedOrder: index + 1);
         created++;
 
         if (spec.archiveAfterCreate) {
@@ -149,7 +150,7 @@ class PatientDevSeedService {
     }
   }
 
-  Future<String> _createWithDuplicateAck(PatientDevSeedSpec spec, String branchId) async {
+  Future<String> _createWithDuplicateAck(PatientDevSeedSpec spec, String branchId, {required int seedOrder}) async {
     final input = CreatePatientInput(
       activeBranchId: branchId,
       fullName: spec.fullName,
@@ -158,26 +159,18 @@ class PatientDevSeedService {
       gender: spec.gender,
       maritalStatus: spec.maritalStatus,
       notes: spec.notes,
+      mrn: PatientDevSeedSpec.mrnForSeedOrder(seedOrder),
     );
 
     try {
-      return await _patients.createPatient(input);
+      final result = await _patients.createPatient(input);
+      return result.patientId;
     } on RpcFailure catch (error) {
       if (!error.isDuplicateWarning) {
         rethrow;
       }
-      return _patients.createPatient(
-        CreatePatientInput(
-          activeBranchId: branchId,
-          fullName: spec.fullName,
-          phone: spec.phone,
-          dateOfBirth: spec.dateOfBirth,
-          gender: spec.gender,
-          maritalStatus: spec.maritalStatus,
-          notes: spec.notes,
-          acknowledgeDuplicate: true,
-        ),
-      );
+      final result = await _patients.createPatient(input.copyWith(acknowledgeDuplicate: true));
+      return result.patientId;
     }
   }
 

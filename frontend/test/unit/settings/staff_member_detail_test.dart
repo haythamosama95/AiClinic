@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_member_detail.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

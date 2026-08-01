@@ -11,5 +11,33 @@ void main() {
     test('accepts valid digit-only mobile numbers', () {
       expect(PatientFieldValidation.validateMobileNumber('201005551234'), isNull);
     });
+
+    test('invalid state: null, empty, and whitespace-only are required', () {
+      expect(PatientFieldValidation.validateMobileNumber(null), 'Mobile number is required.');
+      expect(PatientFieldValidation.validateMobileNumber(''), 'Mobile number is required.');
+      expect(PatientFieldValidation.validateMobileNumber('   '), 'Mobile number is required.');
+    });
+
+    test('edge case: rejects numbers shorter than 8 digits', () {
+      expect(
+        PatientFieldValidation.validateMobileNumber('1234567'),
+        'Mobile number must be 8 to 15 digits.',
+      );
+    });
+
+    test('edge case: rejects numbers longer than 15 digits', () {
+      expect(
+        PatientFieldValidation.validateMobileNumber('1234567890123456'),
+        'Mobile number must be 8 to 15 digits.',
+      );
+    });
+
+    test('trivial: accepts 8-digit boundary', () {
+      expect(PatientFieldValidation.validateMobileNumber('12345678'), isNull);
+    });
+
+    test('trivial: accepts 15-digit boundary', () {
+      expect(PatientFieldValidation.validateMobileNumber('123456789012345'), isNull);
+    });
   });
 }

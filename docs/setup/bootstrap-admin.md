@@ -97,6 +97,6 @@ Verify bootstrap admin:
 
 ## Related documentation
 
-- Feature quickstart: [specs/002-auth-rbac/quickstart.md](../../specs/002-auth-rbac/quickstart.md)
-- RPC contracts: [specs/002-auth-rbac/contracts/bootstrap-provisioning.md](../../specs/002-auth-rbac/contracts/bootstrap-provisioning.md)
+- Feature quickstart: [docs/specs/002-auth-rbac/quickstart.md](../specs/002-auth-rbac/quickstart.md)
+- RPC contracts: [docs/specs/002-auth-rbac/contracts/bootstrap-provisioning.md](../specs/002-auth-rbac/contracts/bootstrap-provisioning.md)
 - Security model: [docs/architecture/09-security-rbac.md](../architecture/09-security-rbac.md)

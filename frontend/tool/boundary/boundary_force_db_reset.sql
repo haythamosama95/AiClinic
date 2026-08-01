@@ -31,6 +31,15 @@ BEGIN
   IF to_regclass('public.visit_attachments') IS NOT NULL THEN
     DELETE FROM public.visit_attachments WHERE true;
   END IF;
+  IF to_regclass('public.visit_investigations') IS NOT NULL THEN
+    DELETE FROM public.visit_investigations WHERE true;
+  END IF;
+  IF to_regclass('public.visit_vital_signs') IS NOT NULL THEN
+    DELETE FROM public.visit_vital_signs WHERE true;
+  END IF;
+  IF to_regclass('public.visit_clinical_notes') IS NOT NULL THEN
+    DELETE FROM public.visit_clinical_notes WHERE true;
+  END IF;
   IF to_regclass('public.soap_notes') IS NOT NULL THEN
     DELETE FROM public.soap_notes WHERE true;
   END IF;
@@ -57,6 +66,20 @@ DELETE FROM public.appointments WHERE true;
 DELETE FROM public.audit_log WHERE true;
 DELETE FROM public.patients WHERE true;
 
+-- AI layer (ai_internal): clear before staff_members and auth.users.
+DO $$
+BEGIN
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.app_settings') IS NOT NULL THEN
+    DELETE FROM ai_internal.app_settings WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys WHERE true;
+  END IF;
+END $$;
+
 DELETE FROM public.staff_branch_assignments sba
 WHERE sba.staff_member_id IN (
   SELECT id FROM public.staff_members WHERE NOT is_bootstrap_admin
@@ -74,6 +97,18 @@ WHERE NOT EXISTS (
 DELETE FROM public.staff_branch_assignments WHERE true;
 DELETE FROM public.app_settings WHERE true;
 DELETE FROM public.subscription_cache WHERE true;
+
+-- Service catalog (015): branch assignments reference branches and services.
+DO $$
+BEGIN
+  IF to_regclass('public.service_branches') IS NOT NULL THEN
+    DELETE FROM public.service_branches WHERE true;
+  END IF;
+  IF to_regclass('public.services') IS NOT NULL THEN
+    DELETE FROM public.services WHERE true;
+  END IF;
+END $$;
+
 DELETE FROM public.branches WHERE true;
 DELETE FROM public.organizations WHERE true;
 

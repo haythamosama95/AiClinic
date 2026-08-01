@@ -12,16 +12,22 @@ abstract final class AppointmentStatusMotion {
 
 /// Animates [color] changes for status-tinted icons and accents.
 class AnimatedAppointmentStatusColor extends StatefulWidget {
-  const AnimatedAppointmentStatusColor({required this.color, required this.builder, super.key});
+  const AnimatedAppointmentStatusColor({
+    required this.color,
+    required this.builder,
+    super.key,
+  });
 
   final Color color;
   final Widget Function(BuildContext context, Color color) builder;
 
   @override
-  State<AnimatedAppointmentStatusColor> createState() => _AnimatedAppointmentStatusColorState();
+  State<AnimatedAppointmentStatusColor> createState() =>
+      _AnimatedAppointmentStatusColorState();
 }
 
-class _AnimatedAppointmentStatusColorState extends State<AnimatedAppointmentStatusColor>
+class _AnimatedAppointmentStatusColorState
+    extends State<AnimatedAppointmentStatusColor>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late Animation<Color?> _colorAnimation;
@@ -31,7 +37,10 @@ class _AnimatedAppointmentStatusColorState extends State<AnimatedAppointmentStat
   void initState() {
     super.initState();
     _displayColor = widget.color;
-    _controller = AnimationController(vsync: this, duration: AppointmentStatusMotion.duration);
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppointmentStatusMotion.duration,
+    );
     _colorAnimation = AlwaysStoppedAnimation(widget.color);
   }
 
@@ -50,10 +59,16 @@ class _AnimatedAppointmentStatusColorState extends State<AnimatedAppointmentStat
       return;
     }
 
-    _colorAnimation = ColorTween(
-      begin: _colorAnimation.value ?? _displayColor,
-      end: widget.color,
-    ).animate(CurvedAnimation(parent: _controller, curve: AppointmentStatusMotion.curve));
+    _colorAnimation =
+        ColorTween(
+          begin: _colorAnimation.value ?? _displayColor,
+          end: widget.color,
+        ).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: AppointmentStatusMotion.curve,
+          ),
+        );
     _controller.forward(from: 0).then((_) {
       if (mounted) {
         setState(() => _displayColor = widget.color);
@@ -75,7 +90,8 @@ class _AnimatedAppointmentStatusColorState extends State<AnimatedAppointmentStat
 
     return AnimatedBuilder(
       animation: _colorAnimation,
-      builder: (context, _) => widget.builder(context, _colorAnimation.value ?? widget.color),
+      builder: (context, _) =>
+          widget.builder(context, _colorAnimation.value ?? widget.color),
     );
   }
 }

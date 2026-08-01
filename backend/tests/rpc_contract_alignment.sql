@@ -1,4 +1,4 @@
--- Verifies public RPC signatures match specs/002-auth-rbac/contracts/*.md (Phase 11 T062).
+-- Verifies public RPC signatures match docs/specs/002-auth-rbac/contracts/*.md (Phase 11 T062).
 -- Run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 -f backend/tests/rpc_contract_alignment.sql
 
 BEGIN;

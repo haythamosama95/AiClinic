@@ -2,31 +2,47 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:forui/forui.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_back_navigation.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
 /// Full appointment profile page loaded via `get_appointment`.
 class AppointmentDetailPage extends ConsumerWidget {
-  const AppointmentDetailPage({required this.appointmentId, this.preview, super.key});
+  const AppointmentDetailPage({
+    required this.appointmentId,
+    this.extra,
+    super.key,
+  });
 
   final String appointmentId;
-  final AppointmentListItem? preview;
+  final AppointmentDetailRouteExtra? extra;
+
+  AppointmentListItem? get _preview => extra?.preview;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,48 +55,121 @@ class AppointmentDetailPage extends ConsumerWidget {
 
     return detailAsync.when(
       skipLoadingOnReload: true,
-      loading: () =>
-          _AppointmentDetailLoadingView(appointmentId: appointmentId, preview: preview, onBack: () => _goBack(context)),
-      error: (error, _) => _AppointmentDetailErrorView(
+      loading: () => _AppointmentDetailLoadingView(
         appointmentId: appointmentId,
-        message: error.toString(),
+        preview: _preview,
         onBack: () => _goBack(context),
-        onRetry: () => ref.invalidate(appointmentDetailProvider(appointmentId)),
       ),
-      data: (detail) => _AppointmentDetailContentView(detail: detail, onBack: () => _goBack(context)),
+      error: (error, _) {
+        if (error is RpcFailure && error.code == 'NOT_FOUND') {
+          return _AppointmentDetailNotFoundView(onBack: () => _goBack(context));
+        }
+        return _AppointmentDetailErrorView(
+          appointmentId: appointmentId,
+          message: error.toString(),
+          onBack: () => _goBack(context),
+          onRetry: () =>
+              ref.invalidate(appointmentDetailProvider(appointmentId)),
+        );
+      },
+      data: (detail) => _AppointmentDetailContentView(
+        detail: detail,
+        preview: _preview,
+        onBack: () => _goBack(context),
+        onChanged: () => _invalidateSurfaces(ref, detail),
+      ),
     );
   }
 
   static void _goBack(BuildContext context) {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-      return;
-    }
-    context.nav.goAppointmentsCalendar();
+    context.navigateBack(fallback: () => context.nav.goAppointmentsCalendar());
+  }
+
+  static void _invalidateSurfaces(WidgetRef ref, AppointmentDetail detail) {
+    ref.invalidate(appointmentDetailProvider(detail.id));
+    ref.invalidate(
+      appointmentDetailSiblingsProvider(
+        AppointmentDetailSiblingsQuery(
+          branchId: detail.branchId,
+          startTime: detail.startTime,
+        ),
+      ),
+    );
+    ref.invalidate(
+      appointmentDetailShiftLookupProvider(
+        AppointmentDetailShiftQuery(
+          branchId: detail.branchId,
+          appointmentStart: detail.startTime,
+        ),
+      ),
+    );
+    ref.invalidate(appointmentCalendarProvider);
   }
 }
 
-class _AppointmentDetailContentView extends StatelessWidget {
-  const _AppointmentDetailContentView({required this.detail, required this.onBack});
+class _AppointmentDetailContentView extends ConsumerWidget {
+  const _AppointmentDetailContentView({
+    required this.detail,
+    required this.onBack,
+    required this.onChanged,
+    this.preview,
+  });
 
   final AppointmentDetail detail;
+  final AppointmentListItem? preview;
   final VoidCallback onBack;
+  final VoidCallback onChanged;
 
   static final _dateFormat = DateFormat('EEEE, MMM d, yyyy');
   static final _timeFormat = DateFormat('h:mm a');
   static final _auditFormat = DateFormat('MMM d, yyyy · h:mm a');
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(detail.status);
-    final durationMinutes = detail.endTime.difference(detail.startTime).inMinutes;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brightness = Theme.of(context).brightness;
+    final statusColor = AppointmentCalendarDisplay.statusColor(
+      detail.status,
+      brightness,
+    );
+    final durationMinutes = detail.endTime
+        .difference(detail.startTime)
+        .inMinutes;
+
+    final siblingsQuery = AppointmentDetailSiblingsQuery(
+      branchId: detail.branchId,
+      startTime: detail.startTime,
+    );
+    final shiftQuery = AppointmentDetailShiftQuery(
+      branchId: detail.branchId,
+      appointmentStart: detail.startTime,
+    );
+    final siblingsAsync = ref.watch(
+      appointmentDetailSiblingsProvider(siblingsQuery),
+    );
+    final shiftAsync = ref.watch(
+      appointmentDetailShiftLookupProvider(shiftQuery),
+    );
+    final siblings = siblingsAsync.value ?? const <AppointmentListItem>[];
+    final shiftLookup =
+        shiftAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
+    final listItem = detail.toListItem();
+    final doctorPresentation = shiftLookup.presentationFor(listItem);
+
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'appointment:${detail.id}',
+      BreadcrumbLabel.fixed(detail.patientName),
+    );
 
     return _AppointmentDetailScaffold(
       title: detail.patientName,
       subtitle: detail.status.label,
       patientId: detail.patientId,
-      headerActions: [AppointmentDetailEditButton(detail: detail)],
+      headerActions: [
+        AppointmentDetailOpenVisitButton(detail: detail),
+        AppointmentDetailInvoiceSummaryButton(detail: detail),
+        AppointmentDetailEditButton(detail: detail),
+      ],
       onBack: onBack,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,24 +183,35 @@ class _AppointmentDetailContentView extends StatelessWidget {
             durationLabel: '$durationMinutes min',
             auditFormat: _auditFormat,
           ),
-          const SizedBox(height: SpacingTokens.lg),
-          AppointmentStatusTimelineWidget(detail: detail),
-          if (detail.notes?.trim().isNotEmpty == true || detail.cancelReason?.trim().isNotEmpty == true) ...[
-            const SizedBox(height: SpacingTokens.lg),
+          const SizedBox(height: AppSpacing.space6),
+          AppointmentStatusTimelineWidget(
+            detail: detail,
+            doctorPresentation: doctorPresentation,
+            statusActions: AppointmentDetailStatusActions(
+              detail: detail,
+              siblingAppointments: siblings,
+              shiftLookup: shiftLookup,
+              onChanged: onChanged,
+            ),
+          ),
+          if (detail.notes?.trim().isNotEmpty == true ||
+              detail.cancelReason?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: AppSpacing.space6),
             if (detail.notes?.trim().isNotEmpty == true)
               _AppointmentNotesCard(
                 title: 'Notes',
                 body: detail.notes!.trim(),
                 icon: Icons.sticky_note_2_outlined,
-                accent: colors.primary,
+                accent: context.appColors.textLink,
               ),
             if (detail.cancelReason?.trim().isNotEmpty == true) ...[
-              if (detail.notes?.trim().isNotEmpty == true) const SizedBox(height: SpacingTokens.md),
+              if (detail.notes?.trim().isNotEmpty == true)
+                const SizedBox(height: AppSpacing.space4),
               _AppointmentNotesCard(
                 title: 'Cancellation reason',
                 body: detail.cancelReason!.trim(),
                 icon: Icons.info_outline_rounded,
-                accent: colors.destructive,
+                accent: context.appColors.actionDanger,
               ),
             ],
           ],
@@ -140,25 +240,34 @@ class _AppointmentHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
+    final colors = context.appColors;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return AnimatedContainer(
       duration: motionDuration,
       curve: AppointmentStatusMotion.curve,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         gradient: LinearGradient(
-          colors: [statusColor.withValues(alpha: 0.22), colors.primary.withValues(alpha: 0.08), colors.card],
+          colors: [
+            statusColor.withValues(alpha: 0.22),
+            colors.textLink.withValues(alpha: 0.08),
+            colors.surfaceDefault,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         border: Border.all(color: statusColor.withValues(alpha: 0.28)),
-        boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
+        padding: const EdgeInsets.all(AppSpacing.space6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -172,14 +281,16 @@ class _AppointmentHeroCard extends StatelessWidget {
                       detail.patientName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                      style: AppTypography.h2(context),
                     ),
-                    const SizedBox(height: SpacingTokens.xs),
+                    const SizedBox(height: AppSpacing.space1),
                     Text(
                       'with ${detail.doctorDisplayName}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(color: colors.mutedForeground),
+                      style: AppTypography.body(
+                        context,
+                      ).copyWith(color: colors.textSecondary),
                     ),
                   ],
                 );
@@ -189,13 +300,17 @@ class _AppointmentHeroCard extends StatelessWidget {
                   curve: AppointmentStatusMotion.curve,
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(context.shapeTokens.md),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(SpacingTokens.md),
+                    padding: const EdgeInsets.all(AppSpacing.space4),
                     child: AnimatedAppointmentStatusColor(
                       color: statusColor,
-                      builder: (context, color) => Icon(Icons.calendar_month_rounded, color: color, size: 28),
+                      builder: (context, color) => Icon(
+                        Icons.calendar_month_rounded,
+                        color: color,
+                        size: 28,
+                      ),
                     ),
                   ),
                 );
@@ -208,11 +323,11 @@ class _AppointmentHeroCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           icon,
-                          const SizedBox(width: SpacingTokens.md),
+                          const SizedBox(width: AppSpacing.space4),
                           Expanded(child: nameColumn),
                         ],
                       ),
-                      const SizedBox(height: SpacingTokens.sm),
+                      const SizedBox(height: AppSpacing.space2),
                       _StatusChip(status: detail.status, color: statusColor),
                     ],
                   );
@@ -222,25 +337,34 @@ class _AppointmentHeroCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     icon,
-                    const SizedBox(width: SpacingTokens.md),
+                    const SizedBox(width: AppSpacing.space4),
                     Expanded(child: nameColumn),
-                    const SizedBox(width: SpacingTokens.sm),
+                    const SizedBox(width: AppSpacing.space2),
                     _StatusChip(status: detail.status, color: statusColor),
                   ],
                 );
               },
             ),
-            const SizedBox(height: SpacingTokens.lg),
+            const SizedBox(height: AppSpacing.space6),
             Wrap(
-              spacing: SpacingTokens.md,
-              runSpacing: SpacingTokens.sm,
+              spacing: AppSpacing.space4,
+              runSpacing: AppSpacing.space2,
               children: [
                 _HeroFactChip(icon: Icons.event_outlined, label: dateLabel),
                 _HeroFactChip(icon: Icons.schedule_outlined, label: timeLabel),
-                _HeroFactChip(icon: Icons.timelapse_outlined, label: durationLabel),
-                _HeroFactChip(icon: Icons.category_outlined, label: detail.type.label),
+                _HeroFactChip(
+                  icon: Icons.timelapse_outlined,
+                  label: durationLabel,
+                ),
+                _HeroFactChip(
+                  icon: Icons.category_outlined,
+                  label: detail.type.label,
+                ),
                 if (detail.queueNumber != null)
-                  _HeroFactChip(icon: Icons.tag_outlined, label: 'Queue #${detail.queueNumber}'),
+                  _HeroFactChip(
+                    icon: Icons.tag_outlined,
+                    label: 'Queue #${detail.queueNumber}',
+                  ),
                 _HeroAuditInfoChip(detail: detail, auditFormat: auditFormat),
               ],
             ),
@@ -250,15 +374,6 @@ class _AppointmentHeroCard extends StatelessWidget {
     );
   }
 }
-
-final _auditPopoverMotion = FPopoverStyleDelta.delta(
-  motion: FPopoverMotionDelta.delta(
-    entranceDuration: Duration(milliseconds: 150),
-    exitDuration: Duration(milliseconds: 100),
-    scaleTween: Tween<double>(begin: 0.96, end: 1),
-    fadeTween: Tween<double>(begin: 0, end: 1),
-  ),
-);
 
 class _HeroAuditInfoChip extends StatefulWidget {
   const _HeroAuditInfoChip({required this.detail, required this.auditFormat});
@@ -270,8 +385,8 @@ class _HeroAuditInfoChip extends StatefulWidget {
   State<_HeroAuditInfoChip> createState() => _HeroAuditInfoChipState();
 }
 
-class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> with SingleTickerProviderStateMixin {
-  late final FPopoverController _controller = FPopoverController(vsync: this);
+class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> {
+  var _open = false;
   Timer? _hideTimer;
   var _isButtonHovered = false;
   var _isPopoverHovered = false;
@@ -279,47 +394,36 @@ class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> with SingleTicke
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _controller.dispose();
     super.dispose();
   }
 
   void _showPanel() {
     _hideTimer?.cancel();
-    _controller.show();
+    setState(() => _open = true);
   }
 
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(milliseconds: 120), () {
-      if (!_isButtonHovered && !_isPopoverHovered) {
-        _controller.hide();
+      if (!_isButtonHovered && !_isPopoverHovered && mounted) {
+        setState(() => _open = false);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final colors = context.appColors;
 
-    return FPopover(
-      control: FPopoverControl.managed(controller: _controller),
-      style: _auditPopoverMotion,
-      hideRegion: FPopoverHideRegion.none,
-      constraints: const FPortalConstraints(minWidth: 220, maxWidth: 280),
-      popoverAnchor: Alignment.topCenter,
-      childAnchor: Alignment.bottomCenter,
-      popoverBuilder: (context, controller) => MouseRegion(
-        onEnter: (_) {
-          setState(() => _isPopoverHovered = true);
-          _showPanel();
-        },
-        onExit: (_) {
-          setState(() => _isPopoverHovered = false);
-          _scheduleHide();
-        },
-        child: _HeroAuditPanel(detail: widget.detail, auditFormat: widget.auditFormat),
-      ),
-      builder: (context, controller, child) => MouseRegion(
+    return AppPopover(
+      open: _open,
+      onOpenChange: (value) => setState(() => _open = value),
+      align: AppPopoverAlign.center,
+      side: AppPopoverSide.top,
+      matchTriggerWidth: false,
+      minWidth: 220,
+      width: 280,
+      triggerBuilder: (context, isOpen, onToggle) => MouseRegion(
         onEnter: (_) {
           setState(() => _isButtonHovered = true);
           _showPanel();
@@ -329,35 +433,63 @@ class _HeroAuditInfoChipState extends State<_HeroAuditInfoChip> with SingleTicke
           _scheduleHide();
         },
         cursor: SystemMouseCursors.help,
-        child: FTappable(
-          onPress: controller.toggle,
-          child: IgnorePointer(child: child),
-        ),
-      ),
-      child: Tooltip(
-        message: 'View booking record details',
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: _isButtonHovered ? colors.muted : colors.card.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _isButtonHovered ? colors.primary.withValues(alpha: 0.45) : colors.border),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.info_outline_rounded, size: 16, color: colors.primary),
-                const SizedBox(width: SpacingTokens.xs),
-                Text(
-                  'Record info',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+        child: GestureDetector(
+          onTap: onToggle,
+          child: Tooltip(
+            message: 'View booking record details',
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: _isButtonHovered || isOpen
+                    ? colors.surfaceMuted
+                    : colors.surfaceDefault.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: _isButtonHovered || isOpen
+                      ? colors.textLink.withValues(alpha: 0.45)
+                      : colors.borderDefault,
                 ),
-              ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.space4,
+                  vertical: AppSpacing.space2,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: colors.textLink,
+                    ),
+                    const SizedBox(width: AppSpacing.space1),
+                    Text(
+                      'Record info',
+                      style: AppTypography.caption(
+                        context,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
+        ),
+      ),
+      child: MouseRegion(
+        onEnter: (_) {
+          setState(() => _isPopoverHovered = true);
+          _showPanel();
+        },
+        onExit: (_) {
+          setState(() => _isPopoverHovered = false);
+          _scheduleHide();
+        },
+        child: _HeroAuditPanel(
+          detail: widget.detail,
+          auditFormat: widget.auditFormat,
         ),
       ),
     );
@@ -372,44 +504,48 @@ class _HeroAuditPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
+    final colors = context.appColors;
     final bookedBy = detail.createdByDisplay?.trim();
 
     return Padding(
-      padding: const EdgeInsets.all(SpacingTokens.sm),
+      padding: const EdgeInsets.all(AppSpacing.space2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.sm, SpacingTokens.sm, SpacingTokens.sm, SpacingTokens.xs),
-            child: Text('Record info', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.space2,
+              AppSpacing.space2,
+              AppSpacing.space2,
+              AppSpacing.space1,
+            ),
+            child: Text(
+              'Record info',
+              style: AppTypography.bodyStrong(context),
+            ),
           ),
           _HeroAuditItem(
             icon: Icons.history_rounded,
             label: 'Created',
             value: auditFormat.format(detail.createdAt.toLocal()),
             colors: colors,
-            textTheme: theme.textTheme,
           ),
           if (bookedBy != null && bookedBy.isNotEmpty) ...[
-            const SizedBox(height: SpacingTokens.sm),
+            const SizedBox(height: AppSpacing.space2),
             _HeroAuditItem(
               icon: Icons.person_add_alt_1_outlined,
               label: 'Booked by',
               value: bookedBy,
               colors: colors,
-              textTheme: theme.textTheme,
             ),
           ],
-          const SizedBox(height: SpacingTokens.sm),
+          const SizedBox(height: AppSpacing.space2),
           _HeroAuditItem(
             icon: Icons.update_rounded,
             label: 'Last updated',
             value: auditFormat.format(detail.updatedAt.toLocal()),
             colors: colors,
-            textTheme: theme.textTheme,
           ),
         ],
       ),
@@ -423,31 +559,39 @@ class _HeroAuditItem extends StatelessWidget {
     required this.label,
     required this.value,
     required this.colors,
-    required this.textTheme,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final SemanticColors colors;
-  final TextTheme textTheme;
+  final AppSemanticColors colors;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: colors.mutedForeground),
-          const SizedBox(width: SpacingTokens.sm),
+          Icon(icon, size: 16, color: colors.textSecondary),
+          const SizedBox(width: AppSpacing.space2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: textTheme.labelSmall?.copyWith(color: colors.mutedForeground)),
+                Text(
+                  label,
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
+                ),
                 const SizedBox(height: 2),
-                Text(value, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  value,
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -466,7 +610,6 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final motionDuration = AppointmentStatusMotion.durationOf(context);
-    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700);
 
     return AnimatedContainer(
       duration: motionDuration,
@@ -477,12 +620,21 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.xs),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: AppSpacing.space1,
+        ),
         child: AnimatedDefaultTextStyle(
           duration: motionDuration,
           curve: AppointmentStatusMotion.curve,
-          style: labelStyle!.copyWith(color: color),
-          child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: color, fontWeight: FontWeight.w700),
+          child: Text(
+            status.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -497,27 +649,32 @@ class _HeroFactChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final colors = context.appColors;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card.withValues(alpha: 0.82),
+        color: colors.surfaceDefault.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colors.border),
+        border: Border.all(color: colors.borderDefault),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: AppSpacing.space2,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: colors.primary),
-            const SizedBox(width: SpacingTokens.xs),
+            Icon(icon, size: 16, color: colors.textLink),
+            const SizedBox(width: AppSpacing.space1),
             Flexible(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -528,7 +685,12 @@ class _HeroFactChip extends StatelessWidget {
 }
 
 class _AppointmentNotesCard extends StatelessWidget {
-  const _AppointmentNotesCard({required this.title, required this.body, required this.icon, required this.accent});
+  const _AppointmentNotesCard({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.accent,
+  });
 
   final String title;
   final String body;
@@ -537,28 +699,28 @@ class _AppointmentNotesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final colors = context.appColors;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        color: colors.surfaceDefault,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: accent.withValues(alpha: 0.25)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
+        padding: const EdgeInsets.all(AppSpacing.space6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(icon, color: accent, size: 20),
-                const SizedBox(width: SpacingTokens.sm),
-                Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(width: AppSpacing.space2),
+                Text(title, style: AppTypography.bodyStrong(context)),
               ],
             ),
-            const SizedBox(height: SpacingTokens.sm),
-            Text(body, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: AppSpacing.space2),
+            Text(body, style: AppTypography.body(context)),
           ],
         ),
       ),
@@ -583,100 +745,75 @@ class _AppointmentDetailScaffold extends StatelessWidget {
   final VoidCallback onBack;
   final Widget body;
 
+  Widget? _buildHeaderActions(BuildContext context) {
+    if (headerActions.isEmpty && patientId == null) {
+      return null;
+    }
+
+    return Wrap(
+      spacing: AppSpacing.space2,
+      runSpacing: AppSpacing.space2,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ...headerActions,
+        if (patientId != null)
+          AppButton(
+            variant: AppButtonVariant.primary,
+            size: AppButtonSize.md,
+            leadingIcon: const Icon(Icons.person_outline),
+            onPressed: () => context.nav.pushPatientDetail(patientId!),
+            child: const Text('Patient profile'),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppPageHeader(
+              title: title,
+              description: subtitle,
+              breadcrumb: const BreadcrumbTrailView(),
+              actions: _buildHeaderActions(context),
+            ),
+            const SizedBox(height: AppSpacing.space6),
+          ],
+        );
 
-    return Padding(
-      padding: const EdgeInsets.all(SpacingTokens.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 560;
-              final titleSection = Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Appointment',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    if (subtitle != null)
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                      ),
-                  ],
-                ),
-              );
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
+        if (!hasBoundedHeight) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [header, body],
+          );
+        }
 
-              final actions = (headerActions.isNotEmpty || patientId != null)
-                  ? Wrap(
-                      spacing: SpacingTokens.xs,
-                      runSpacing: SpacingTokens.xs,
-                      alignment: WrapAlignment.end,
-                      children: [
-                        ...headerActions,
-                        if (patientId != null)
-                          AppButton(
-                            label: 'Patient profile',
-                            variant: AppButtonVariant.ghost,
-                            size: AppFieldSize.sm,
-                            icon: const Icon(Icons.person_outline, size: 18),
-                            onPressed: () => context.nav.pushPatientDetail(patientId!),
-                          ),
-                      ],
-                    )
-                  : null;
-
-              if (isCompact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
-                        const SizedBox(width: SpacingTokens.sm),
-                        titleSection,
-                      ],
-                    ),
-                    if (actions != null) ...[const SizedBox(height: SpacingTokens.sm), actions],
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
-                  const SizedBox(width: SpacingTokens.sm),
-                  titleSection,
-                  if (actions != null) ...[const SizedBox(width: SpacingTokens.sm), actions],
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: SpacingTokens.md),
-          Expanded(child: SingleChildScrollView(child: body)),
-        ],
-      ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            Expanded(child: SingleChildScrollView(child: body)),
+          ],
+        );
+      },
     );
   }
 }
 
 class _AppointmentDetailLoadingView extends StatelessWidget {
-  const _AppointmentDetailLoadingView({required this.appointmentId, required this.onBack, this.preview});
+  const _AppointmentDetailLoadingView({
+    required this.appointmentId,
+    required this.onBack,
+    this.preview,
+  });
 
   final String appointmentId;
   final AppointmentListItem? preview;
@@ -696,20 +833,34 @@ class _AppointmentDetailLoadingView extends StatelessWidget {
               opacity: 0.65,
               child: _AppointmentHeroCard(
                 detail: _previewAsDetail(preview!),
-                statusColor: AppointmentCalendarDisplay.statusColor(preview!.status),
-                dateLabel: DateFormat.yMMMEd().format(preview!.startTime.toLocal()),
+                statusColor: AppointmentCalendarDisplay.statusColor(
+                  preview!.status,
+                  Theme.of(context).brightness,
+                ),
+                dateLabel: DateFormat.yMMMEd().format(
+                  preview!.startTime.toLocal(),
+                ),
                 timeLabel:
                     '${DateFormat.jm().format(preview!.startTime.toLocal())} – ${DateFormat.jm().format(preview!.endTime.toLocal())}',
-                durationLabel: '${preview!.endTime.difference(preview!.startTime).inMinutes} min',
+                durationLabel:
+                    '${preview!.endTime.difference(preview!.startTime).inMinutes} min',
                 auditFormat: DateFormat('MMM d, yyyy · h:mm a'),
               ),
             )
           else
-            const AppSkeletonBox(height: 180),
-          const SizedBox(height: SpacingTokens.lg),
-          const AppSkeletonBox(height: 220),
-          const SizedBox(height: SpacingTokens.lg),
-          const Center(child: AppCircularProgress()),
+            const AppSkeleton(
+              variant: SkeletonVariant.rectangular,
+              height: 180,
+            ),
+          const SizedBox(height: AppSpacing.space6),
+          const AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
+          const SizedBox(height: AppSpacing.space6),
+          const Center(
+            child: AppProgress(
+              variant: ProgressVariant.circular,
+              indeterminate: true,
+            ),
+          ),
         ],
       ),
     );
@@ -729,7 +880,7 @@ class _AppointmentDetailLoadingView extends StatelessWidget {
       type: preview.type,
       status: preview.status,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: preview.updatedAt ?? now,
     );
   }
 }
@@ -749,20 +900,46 @@ class _AppointmentDetailErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
     return _AppointmentDetailScaffold(
       title: 'Appointment',
       onBack: onBack,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Unable to load appointment', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: SpacingTokens.sm),
-          Text(message, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive)),
-          const SizedBox(height: SpacingTokens.lg),
-          AppButton(label: 'Retry', expand: false, onPressed: onRetry),
+          Text(
+            'Unable to load appointment',
+            style: AppTypography.bodyStrong(context),
+          ),
+          const SizedBox(height: AppSpacing.space2),
+          Text(
+            message,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: context.appColors.actionDanger),
+          ),
+          const SizedBox(height: AppSpacing.space6),
+          AppButton(onPressed: onRetry, child: const Text('Retry')),
         ],
+      ),
+    );
+  }
+}
+
+class _AppointmentDetailNotFoundView extends StatelessWidget {
+  const _AppointmentDetailNotFoundView({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AppointmentDetailScaffold(
+      title: 'Appointment not found',
+      onBack: onBack,
+      body: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Appointment not found',
+        description: 'It may have been removed or you may not have access.',
+        action: EmptyStateAction(label: 'Back to calendar', onPressed: onBack),
       ),
     );
   }
@@ -773,6 +950,11 @@ class _AppointmentDetailPermissionDenied extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: Text('You do not have permission to view appointments.'));
+    return Center(
+      child: Text(
+        'You do not have permission to view appointments.',
+        style: AppTypography.body(context),
+      ),
+    );
   }
 }

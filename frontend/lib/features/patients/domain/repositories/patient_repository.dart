@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
@@ -27,9 +28,14 @@ abstract class PatientRepository {
     String? excludePatientId,
   });
 
-  Future<String> createPatient(CreatePatientInput input);
+  Future<CreatePatientResult> createPatient(CreatePatientInput input);
 
   Future<DateTime> updatePatient(UpdatePatientInput input);
 
   Future<void> archivePatient(String patientId);
+
+  Future<String> reassignPatientMrn({
+    required String patientId,
+    required String newMrn,
+  });
 }

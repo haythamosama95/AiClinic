@@ -1,377 +1,532 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_label.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
+import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
-import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
-import 'package:ai_clinic/features/billing/domain/payment.dart';
-import 'package:ai_clinic/features/billing/domain/payment_method.dart';
-import 'package:ai_clinic/features/billing/presentation/providers/billing_settings_notifier.dart';
+import 'package:ai_clinic/core/ui/components/app_badge.dart';
+import 'package:ai_clinic/core/ui/components/app_card.dart';
+import 'package:ai_clinic/core/ui/components/app_dialog.dart';
+import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
+import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+import 'package:ai_clinic/core/ui/components/app_page_header.dart';
+import 'package:ai_clinic/core/ui/motion/app_motion.dart';
+import 'package:ai_clinic/core/ui/theme/app_radius.dart';
+import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
+import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
-import 'package:ai_clinic/features/billing/presentation/providers/payment_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_totals_panel.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_hero_card.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_line_items_card.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_link_card.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_payments_card.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_totals_panel.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_voided_notice.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/void_invoice_dialog.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 
-/// Issued/paid/voided invoice detail with payments panel (V1-6 US2/US6/US7).
-class InvoiceDetailPage extends ConsumerWidget {
-  const InvoiceDetailPage({required this.invoiceId, super.key});
+/// Invoice detail surface (`/billing/invoices/:id`).
+class InvoiceDetailPage extends ConsumerStatefulWidget {
+  const InvoiceDetailPage({required this.invoiceId, this.extra, super.key});
 
   final String invoiceId;
+  final InvoiceDetailRouteExtra? extra;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authSessionProvider);
-    if (!AuthRouteGuard.canAccessInvoiceDetail(auth)) {
-      return const Scaffold(body: Center(child: Text('You do not have permission to view invoices.')));
+  ConsumerState<InvoiceDetailPage> createState() => _InvoiceDetailPageState();
+}
+
+class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with SingleTickerProviderStateMixin {
+  late final AnimationController _enterController;
+  CurvedAnimation? _enterAnimation;
+  var _enterStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_enterStarted) {
+      _enterStarted = true;
+      final reducedMotion = AppMotion.prefersReducedMotion(context);
+      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
+      _enterAnimation = CurvedAnimation(
+        parent: _enterController,
+        curve: AppMotion.resolveCurve(AppMotionPreset.slideUp, reducedMotion: reducedMotion),
+      );
+      if (reducedMotion) {
+        _enterController.value = 1;
+      } else {
+        _enterController.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _enterAnimation?.dispose();
+    _enterController.dispose();
+    super.dispose();
+  }
+
+  bool _isInvoiceNotFound(Object error) {
+    return error is RpcFailure && error.code == 'NOT_FOUND';
+  }
+
+  void _popToInvoicesList() {
+    if (context.nav.canPop()) {
+      context.nav.pop();
+    } else {
+      context.nav.goBillingInvoices();
+    }
+  }
+
+  Widget _buildDetailError(Object error) {
+    if (_isInvoiceNotFound(error)) {
+      return _InvoiceNotFoundView(onBack: _popToInvoicesList);
     }
 
-    final detailAsync = ref.watch(invoiceDetailViewProvider(invoiceId));
-    final settingsAsync = ref.watch(billingSettingsProvider);
-
-    return detailAsync.when(
-      skipLoadingOnReload: true,
-      loading: () => const AppFullPageLoading(message: 'Loading invoice…'),
-      error: (error, _) => Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Unable to load invoice: $error'),
-              const SizedBox(height: SpacingTokens.md),
-              AppButton(
-                label: 'Retry',
-                expand: false,
-                onPressed: () => ref.invalidate(invoiceDetailViewProvider(invoiceId)),
-              ),
-            ],
-          ),
+    return Center(
+      child: AppEmptyState(
+        variant: AppEmptyStateVariant.error,
+        title: 'Could not load invoice',
+        description: error.toString(),
+        action: EmptyStateAction(
+          label: 'Retry',
+          onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
         ),
       ),
-      data: (view) {
-        if (view.invoice.status.isDraft) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) {
-              context.go(AppRoutes.billingInvoiceEdit(invoiceId));
-            }
-          });
-          return const AppFullPageLoading(message: 'Opening editor…');
-        }
-
-        final allowPartial = settingsAsync.value?.allowPartialPayments ?? false;
-        return _InvoiceDetailScaffold(
-          view: view,
-          allowPartialPayments: allowPartial,
-          onRefresh: () {
-            ref.invalidate(invoiceDetailViewProvider(invoiceId));
-            ref.invalidate(billingSettingsProvider);
-          },
-          onPrint: () => ReceiptPrintPreview.show(context, view.invoice),
-          onVoid: () => _voidInvoice(context, ref, view.invoice.updatedAt),
-          onRecordPayment: (method, amount, reference, note) =>
-              _recordPayment(context, ref, method, amount, reference, note),
-          onRecordRefund: (method, amount, note) => _recordRefund(context, ref, method, amount, note),
-        );
-      },
     );
   }
 
-  Future<void> _voidInvoice(BuildContext context, WidgetRef ref, DateTime expectedUpdatedAt) async {
-    final reason = await VoidInvoiceDialog.show(context);
-    if (reason == null || !context.mounted) return;
-
-    try {
-      await ref
-          .read(invoiceRepositoryProvider)
-          .voidInvoice(invoiceId: invoiceId, expectedUpdatedAt: expectedUpdatedAt, reason: reason);
-      if (!context.mounted) return;
-      AppToast.success(context, message: 'Invoice voided.');
-      ref.invalidate(invoiceDetailViewProvider(invoiceId));
-    } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: billingMessageForRpc(error));
-    }
-  }
-
-  Future<void> _recordPayment(
-    BuildContext context,
-    WidgetRef ref,
-    PaymentMethod method,
-    String amount,
-    String? reference,
-    String? note,
-  ) async {
-    try {
-      await ref
-          .read(paymentNotifierProvider)
-          .recordPayment(invoiceId: invoiceId, method: method, amount: amount, reference: reference, note: note);
-      if (!context.mounted) return;
-      AppToast.success(context, message: 'Payment recorded.');
-      ref.invalidate(invoiceDetailViewProvider(invoiceId));
-    } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: billingMessageForRpc(error));
-    }
-  }
-
-  Future<void> _recordRefund(
-    BuildContext context,
-    WidgetRef ref,
-    PaymentMethod method,
-    String amount,
-    String note,
-  ) async {
-    try {
-      await ref
-          .read(paymentNotifierProvider)
-          .recordRefund(invoiceId: invoiceId, method: method, amount: amount, note: note);
-      if (!context.mounted) return;
-      AppToast.success(context, message: 'Refund recorded.');
-      ref.invalidate(invoiceDetailViewProvider(invoiceId));
-    } on RpcFailure catch (error) {
-      if (!context.mounted) return;
-      AppToast.error(context, message: billingMessageForRpc(error));
-    }
-  }
-}
-
-class _InvoiceDetailScaffold extends StatelessWidget {
-  const _InvoiceDetailScaffold({
-    required this.view,
-    required this.allowPartialPayments,
-    required this.onRefresh,
-    required this.onPrint,
-    required this.onVoid,
-    required this.onRecordPayment,
-    required this.onRecordRefund,
-  });
-
-  final InvoiceDetailViewState view;
-  final bool allowPartialPayments;
-  final VoidCallback onRefresh;
-  final VoidCallback onPrint;
-  final Future<void> Function() onVoid;
-  final Future<void> Function(PaymentMethod method, String amount, String? reference, String? note) onRecordPayment;
-  final Future<void> Function(PaymentMethod method, String amount, String note) onRecordRefund;
-
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final invoice = view.invoice;
-    final canPay = view.canRecordPayment && !invoice.status.isVoided && !invoice.status.isTerminal;
-    final showRefund = view.canRefund && invoice.payments.any((p) => !p.isRefund);
+    final detailAsync = ref.watch(invoiceDetailViewProvider(widget.invoiceId));
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md),
-            child: Row(
-              children: [
-                AppIconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: () => context.pop()),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id),
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        [
-                          if (invoice.patientDisplayName != null) invoice.patientDisplayName,
-                          if (invoice.branchName != null) invoice.branchName,
-                        ].join(' · '),
-                        style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                      ),
-                    ],
-                  ),
-                ),
-                InvoiceStatusBadge(status: invoice.status),
-                const SizedBox(width: SpacingTokens.sm),
-                AppIconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: onRefresh),
-                const SizedBox(width: SpacingTokens.xs),
-                AppButton(
-                  label: 'Print receipt',
-                  variant: AppButtonVariant.outline,
-                  expand: false,
-                  icon: const Icon(Icons.print_outlined, size: 18),
-                  onPressed: onPrint,
-                ),
-                if (view.canVoid && invoice.status.isVoidable) ...[
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppButton(label: 'Void', variant: AppButtonVariant.destructive, expand: false, onPressed: onVoid),
-                ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, 0, SpacingTokens.lg, SpacingTokens.lg),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 960;
+    final Widget content;
+    if (detailAsync.hasError && !detailAsync.hasValue) {
+      content = _buildDetailError(detailAsync.error!);
+    } else {
+      content = detailAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        error: (error, _) => _buildDetailError(error),
+        data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
+      );
+    }
 
-                  final itemsCard = AppCard(
-                    title: const Text('Line items'),
-                    child: Column(
-                      children: [
-                        for (final item in invoice.items)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(item.description, style: theme.textTheme.bodyMedium)),
-                                Text(
-                                  BillingFormatting.formatMoney(item.lineTotal, currency: invoice.currency),
-                                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-
-                  final paymentsCard = AppCard(
-                    title: const Text('Payment history'),
-                    child: invoice.payments.isEmpty
-                        ? Text(
-                            'No payments recorded yet.',
-                            style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                          )
-                        : Column(
-                            children: [
-                              for (final payment in invoice.payments)
-                                _PaymentRow(payment: payment, currency: invoice.currency),
-                            ],
-                          ),
-                  );
-
-                  final sideColumn = Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InvoiceTotalsPanel(invoice: invoice),
-                      if (invoice.voidReason != null) ...[
-                        const SizedBox(height: SpacingTokens.md),
-                        AppCard(title: const Text('Void reason'), child: Text(invoice.voidReason!)),
-                      ],
-                      if (canPay) ...[
-                        const SizedBox(height: SpacingTokens.lg),
-                        PaymentForm(
-                          invoice: invoice,
-                          allowPartialPayments: allowPartialPayments,
-                          enabled: true,
-                          onSubmit: onRecordPayment,
-                        ),
-                      ],
-                      if (showRefund) ...[
-                        const SizedBox(height: SpacingTokens.lg),
-                        RefundForm(enabled: true, onSubmit: onRecordRefund),
-                      ],
-                    ],
-                  );
-
-                  if (isWide) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            children: [
-                              itemsCard,
-                              const SizedBox(height: SpacingTokens.lg),
-                              paymentsCard,
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: SpacingTokens.lg),
-                        SizedBox(width: 360, child: sideColumn),
-                      ],
-                    );
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      itemsCard,
-                      const SizedBox(height: SpacingTokens.lg),
-                      paymentsCard,
-                      const SizedBox(height: SpacingTokens.lg),
-                      sideColumn,
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+    return FadeTransition(
+      opacity: _enterAnimation ?? _enterController,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: AppSpacing.space8),
+        child: content,
       ),
     );
   }
 }
 
-class _PaymentRow extends StatelessWidget {
-  const _PaymentRow({required this.payment, required this.currency});
+class _InvoiceNotFoundView extends StatelessWidget {
+  const _InvoiceNotFoundView({required this.onBack});
 
-  final Payment payment;
-  final String currency;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final isRefund = payment.isRefund;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      spacing: AppSpacing.space6,
+      children: [
+        AppPageHeader(
+          title: 'Invoice not found',
+          breadcrumb: const BreadcrumbTrailView(),
+        ),
+        AppEmptyState(
+          variant: AppEmptyStateVariant.error,
+          title: 'Invoice not found',
+          description: 'The invoice you requested does not exist or has been removed.',
+          action: EmptyStateAction(label: 'Back to invoices', onPressed: onBack),
+        ),
+      ],
+    );
+  }
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-      child: Row(
-        children: [
-          Icon(
-            isRefund ? Icons.undo : Icons.payments_outlined,
-            size: 18,
-            color: isRefund ? colors.destructive : colors.primary,
-          ),
-          const SizedBox(width: SpacingTokens.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+class _InvoiceDetailBody extends ConsumerStatefulWidget {
+  const _InvoiceDetailBody({required this.view, required this.onPopToInvoicesList});
+
+  final InvoiceDetailViewState view;
+  final VoidCallback onPopToInvoicesList;
+
+  @override
+  ConsumerState<_InvoiceDetailBody> createState() => _InvoiceDetailBodyState();
+}
+
+class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
+  InvoiceDetail get invoice => widget.view.invoice;
+
+  Money _amountDue() => invoice.subtotal - invoice.discountAmount - invoice.insuranceCoveredAmount;
+
+  Money _netPaid() {
+    return invoice.payments.fold(Money.zero, (sum, payment) => sum + payment.amount);
+  }
+
+  String _displayOrDash(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? '—' : trimmed;
+  }
+
+  VisitSummary? get _visitSummary => invoice.visitSummary;
+
+  bool get _hasResolvableVisit => _visitSummary != null;
+
+  Future<void> _voidInvoice() async {
+    final confirmed = await VoidInvoiceDialog.show(context, invoice: invoice);
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
+  }
+
+  Future<void> _showRecordPaymentDialog() async {
+    await AppDialog.show<void>(
+      context,
+      title: 'Record payment',
+      size: AppDialogSize.lg,
+      child: Builder(
+        builder: (dialogContext) => PaymentForm(
+          invoice: invoice,
+          onRecorded: () async {
+            Navigator.of(dialogContext).pop();
+            await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVisitLinkCard(AppSemanticColors colors) {
+    final summary = _visitSummary;
+    if (!_hasResolvableVisit || summary == null) {
+      return _VisitUnavailableCard(colors: colors);
+    }
+
+    return InvoiceLinkCard(
+      eyebrow: 'Visit',
+      icon: Icons.medical_services_outlined,
+      title: BillingFormatting.formatDate(summary.date),
+      subtitle: '${summary.doctor} · ${summary.branch}',
+      badge: const AppBadge(
+        variant: BadgeVariant.soft,
+        color: BadgeColor.success,
+        size: BadgeSize.sm,
+        label: 'Completed',
+      ),
+      actionLabel: 'View visit in patient record',
+      tooltip: 'Open the completed visit linked to this invoice',
+      onAction: () => context.nav.pushVisitDocument(invoice.visitId),
+    );
+  }
+
+  String? _resolvePatientPhone(AsyncValue<PatientDetail> patientAsync) {
+    final invoicePhone = invoice.patientPhone?.trim();
+    if (invoicePhone != null && invoicePhone.isNotEmpty) {
+      return invoicePhone;
+    }
+
+    return patientAsync.maybeWhen(
+      data: (patient) {
+        final phone = patient.phone?.trim();
+        return phone == null || phone.isEmpty ? null : phone;
+      },
+      orElse: () => null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final patientAsync = ref.watch(patientDetailProvider(invoice.patientId));
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+    final patientName = invoice.patientDisplayName?.trim().isNotEmpty == true
+        ? invoice.patientDisplayName!.trim()
+        : 'Unknown patient';
+    final patientMrn = _displayOrDash(invoice.patientMrn);
+    final patientPhone = _displayOrDash(_resolvePatientPhone(patientAsync));
+    final amountDue = _amountDue();
+    final netPaid = _netPaid();
+    final canEdit = invoice.status.isDraft && widget.view.canCreate;
+    final canAddPayment = widget.view.canRecordPayment && !invoice.status.isDraft && !invoice.status.isTerminal;
+    final canVoid = widget.view.canVoid && invoice.status.isVoidable;
+    final editDisabledReason = InvoiceDetailActionTooltips.editDisabledReason(
+      canCreate: widget.view.canCreate,
+      status: invoice.status,
+    );
+    final addPaymentDisabledReason = InvoiceDetailActionTooltips.addPaymentDisabledReason(
+      canRecordPayment: widget.view.canRecordPayment,
+      status: invoice.status,
+    );
+    final voidDisabledReason = InvoiceDetailActionTooltips.voidDisabledReason(
+      canVoid: widget.view.canVoid,
+      status: invoice.status,
+    );
+
+    scheduleBreadcrumbEntryLabelUpdate(
+      ref,
+      'invoice:${invoice.id}',
+      BreadcrumbLabel.fixed(displayNumber),
+    );
+
+    final linkCards = [
+      InvoiceLinkCard(
+        eyebrow: 'Patient',
+        icon: Icons.person_outline,
+        title: patientName,
+        subtitle: '$patientMrn · $patientPhone',
+        actionLabel: 'View patient profile',
+        tooltip: 'Open the patient profile for $patientName',
+        onAction: () => context.nav.pushPatientDetail(invoice.patientId),
+      ),
+      _buildVisitLinkCard(colors),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      spacing: AppSpacing.space6,
+      children: [
+        const BreadcrumbTrailView(),
+        InvoiceHeroCard(
+          invoice: invoice,
+          patientName: patientName,
+          mrn: patientMrn,
+          branchName: invoice.branchName,
+          balance: invoice.balance,
+          onPatientTap: () => context.nav.pushPatientDetail(invoice.patientId),
+          canVoid: canVoid,
+          voidTooltip: InvoiceDetailActionTooltips.voidMessage(disabledReason: voidDisabledReason),
+          onVoid: _voidInvoice,
+          onPrint: () => ReceiptPrintPreview.show(context, invoice),
+        ),
+        if (invoice.status.isVoided) InvoiceVoidedNotice(invoice: invoice),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 600) {
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var index = 0; index < linkCards.length; index++) ...[
+                      if (index > 0) const SizedBox(width: AppSpacing.space4),
+                      Expanded(
+                        child: _StaggeredLinkCard(index: index, child: linkCards[index]),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '${payment.method.label}${isRefund ? ' (refund)' : ''}',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  BillingFormatting.formatDateTime(payment.recordedAt),
-                  style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                ),
+                for (var index = 0; index < linkCards.length; index++) ...[
+                  if (index > 0) const SizedBox(height: AppSpacing.space4),
+                  _StaggeredLinkCard(index: index, child: linkCards[index]),
+                ],
               ],
-            ),
+            );
+          },
+        ),
+        InvoiceLineItemsCard(
+          items: invoice.items,
+          currency: invoice.currency,
+          canEdit: canEdit,
+          editTooltip: InvoiceDetailActionTooltips.editMessage(disabledReason: editDisabledReason),
+          onEdit: () => context.nav.pushBillingInvoiceEdit(invoice.id),
+          totals: InvoiceTotalsModel.lineItems(
+            subtotal: invoice.subtotal,
+            discountAmount: invoice.discountAmount,
+            discountKind: invoice.discountKind,
+            discountValue: invoice.discountValue,
+            insuranceCoveredAmount: invoice.insuranceCoveredAmount,
+            insuranceProviderName: invoice.insuranceProviderName,
+            amountDue: amountDue,
+            currency: invoice.currency,
           ),
-          Text(
-            BillingFormatting.formatMoney(payment.amount, currency: currency),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: isRefund ? colors.destructive : null,
-            ),
+        ),
+        InvoicePaymentsCard(
+          payments: invoice.payments,
+          currency: invoice.currency,
+          status: invoice.status,
+          canAddPayment: canAddPayment,
+          addPaymentTooltip: InvoiceDetailActionTooltips.addPaymentMessage(disabledReason: addPaymentDisabledReason),
+          onAddPayment: _showRecordPaymentDialog,
+          totals: InvoiceTotalsModel.payments(
+            amountDue: amountDue,
+            netPaid: netPaid,
+            balance: invoice.balance,
+            currency: invoice.currency,
+            isVoided: invoice.status.isVoided,
+            hasPayments: invoice.payments.isNotEmpty,
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StaggeredLinkCard extends StatefulWidget {
+  const _StaggeredLinkCard({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_StaggeredLinkCard> createState() => _StaggeredLinkCardState();
+}
+
+class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTickerProviderStateMixin {
+  static const _staggerStepMs = 60;
+
+  late final AnimationController _controller;
+  CurvedAnimation? _animation;
+  Timer? _startTimer;
+  var _configured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_configured) {
+      return;
+    }
+    _configured = true;
+
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    _controller.duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+    );
+
+    final delay = reducedMotion ? Duration.zero : Duration(milliseconds: widget.index * _staggerStepMs);
+
+    if (delay == Duration.zero) {
+      _controller.forward();
+    } else {
+      _startTimer = Timer(delay, () {
+        if (mounted) {
+          _controller.forward();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _startTimer?.cancel();
+    _animation?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppMotion.animatedPreset(
+      context: context,
+      preset: AppMotionPreset.rowEnter,
+      animation: _animation ?? _controller,
+      child: widget.child,
+    );
+  }
+}
+
+class _VisitUnavailableCard extends StatelessWidget {
+  const _VisitUnavailableCard({required this.colors});
+
+  final AppSemanticColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      variant: CardVariant.flat,
+      padding: CardPadding.lg,
+      child: SizedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(color: colors.surfaceMuted, borderRadius: BorderRadius.circular(AppRadius.xl)),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.event_busy_outlined, size: 18, color: colors.iconMuted),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Visit', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                  const SizedBox(height: AppSpacing.space1),
+                  Text(
+                    'Visit unavailable',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                  ),
+                  Text(
+                    'The source visit for this invoice is no longer available.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.space3),
+            InvoiceDetailTooltip(
+              message: 'The source visit for this invoice is no longer available.',
+              child: Opacity(
+                opacity: 0.4,
+                child: AppIconButton(
+                  variant: AppIconButtonVariant.secondary,
+                  size: AppIconButtonSize.lg,
+                  label: 'Visit unavailable',
+                  tooltipDisabled: true,
+                  onPressed: null,
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

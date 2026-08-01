@@ -7,7 +7,7 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 ## How To Use This Architecture Set
 
 1. Start with this index to identify the smallest relevant architecture surface.
-2. Load the feature spec from `specs/00N-feature-name/`.
+2. Load the feature spec from `docs/specs/00N-feature-name/`.
 3. Load only the required architecture docs listed in the spec or in `docs/architecture/12-roadmap-phases.md`.
 4. Avoid loading the whole architecture set unless the task is explicitly architectural.
 
@@ -33,14 +33,14 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 
 ## Common Routing Shortcuts
 
-- Auth, staff, roles, and branch setup: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus `specs/002-auth-rbac/`, `specs/003-org-branch-management/`.
+- Auth, staff, roles, and branch setup: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus `docs/specs/002-auth-rbac/`, `docs/specs/003-org-branch-management/`.
 - Operational features:
-  - Patients: `specs/004-patient-management/`
-  - Appointments: `specs/005-appointment-management/`
-  - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `specs/013-visits/`, `specs/014-visit-encounter-workspace/`
-  - Billing: `15-billing.md`, `specs/007-billing/`
-  - Shifts: `specs/008-shift-management/`
-- AI features: `02-system-overview.md`, `06-ai.md`, `07-frontend.md`, optionally `04-backend.md` or `05-database.md`, plus future `specs/ai/`.
+  - Patients: `docs/specs/004-patient-management/`
+  - Appointments: `docs/specs/005-appointment-management/`
+  - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `docs/specs/013-visits/`, `docs/specs/014-visit-encounter-workspace/`
+  - Billing: `15-billing.md`, `docs/specs/007-billing/`
+  - Shifts: `docs/specs/008-shift-management/`
+- AI features: `02-system-overview.md`, `06-ai.md`, `07-frontend.md`, optionally `04-backend.md` or `05-database.md`, plus future `docs/specs/ai/`.
 - Deployment and installer work: `03-deployment-networking.md`, `07-frontend.md`, `10-resilience-and-scale.md`.
 - Analytics: `04-backend.md`, `05-database.md`, `06-ai.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md` (V3-1).
 

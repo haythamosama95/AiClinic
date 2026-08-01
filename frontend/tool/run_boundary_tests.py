@@ -3,26 +3,24 @@
 
 import argparse
 import atexit
-import itertools
 import json
 import os
 import subprocess
 import sys
-import threading
-import time
 from collections import defaultdict
 from pathlib import Path
 
 from discover_tests import (
     BOUNDARY_SUBSET_ROOTS,
     boundary_test_files,
+    count_expected_tests,
 )
 from test_run_artifacts import (
     MachineEventRecorder,
     refresh_latest,
     resolve_suite_artifact_dir,
 )
-from test_run_progress import TestRunProgress
+from test_run_progress import LiveTestDisplay
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
@@ -32,27 +30,12 @@ DEPLOYMENT_PROFILE = ROOT / "config/local/deployment-profile.json"
 DB_RESET_SQL = ROOT / "tool/boundary/boundary_force_db_reset.sql"
 VERIFY_MANIFEST = ROOT / "tool/boundary/verify_boundary_manifest.sh"
 
+CONCURRENCY = 1
+
 FAILURES = []
 CURRENT_TEST = None
-RUNNING = True
-PROGRESS = TestRunProgress()
+DISPLAY: LiveTestDisplay | None = None
 RECORDER: MachineEventRecorder | None = None
-
-
-def spinner_task():
-    spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-
-    while RUNNING:
-        sys.stdout.write(
-            f"\r🧪 Running boundary tests... {next(spinner)} {PROGRESS.label()}"
-        )
-        sys.stdout.flush()
-        time.sleep(0.1)
-
-    PROGRESS.finalize()
-    done = f"\r🧪 Running boundary tests... Done ✔️ {PROGRESS.label()}"
-    sys.stdout.write(done.ljust(80) + "\n")
-    sys.stdout.flush()
 
 
 def ensure_stack_running():
@@ -105,13 +88,9 @@ def boundary_force_db_reset():
 
 
 def run_tests(test_files: list[str]) -> int:
-    global RUNNING
-
     if not test_files:
         print("ERROR: no boundary test files found.", file=sys.stderr)
         return 1
-
-    PROGRESS.reset(0)
 
     env = {
         **os.environ,
@@ -126,7 +105,7 @@ def run_tests(test_files: list[str]) -> int:
         "--tags",
         "boundary",
         "--concurrency",
-        "1",
+        str(CONCURRENCY),
         "--timeout",
         "3m",
         "--machine",
@@ -165,8 +144,6 @@ def run_tests(test_files: list[str]) -> int:
 
         handle_event(parsed)
 
-    PROGRESS.finalize()
-    RUNNING = False
     return process.wait()
 
 
@@ -181,13 +158,13 @@ def handle_event(event):
     if not isinstance(event, dict):
         return
 
+    if DISPLAY is not None:
+        DISPLAY.handle_event(event)
+
     event_type = event.get("type")
 
     if event_type == "testStart":
         CURRENT_TEST = event.get("test", {}).get("name")
-
-    elif event_type == "testDone":
-        PROGRESS.handle_event(event)
 
     elif event_type == "error":
         FAILURES.append(
@@ -298,11 +275,12 @@ def main():
     boundary_force_db_reset()
 
     test_files = boundary_test_files(ROOT, args.subset)
+    total_tests = count_expected_tests(ROOT, test_files)
 
     artifacts_enabled = not args.no_artifacts
     campaign_dir = args.campaign_dir
     artifact_dir = None
-    global RECORDER
+    global RECORDER, DISPLAY
     if artifacts_enabled:
         artifact_dir = resolve_suite_artifact_dir(
             ROOT,
@@ -324,12 +302,16 @@ def main():
             stdout="executed before test run (stdout discarded)",
         )
 
-    spinner = threading.Thread(target=spinner_task)
-    spinner.start()
+    DISPLAY = LiveTestDisplay(
+        "🧪 Running boundary tests...",
+        concurrency=CONCURRENCY,
+        total_tests=total_tests,
+    )
+    DISPLAY.start()
 
     exit_code = run_tests(test_files)
 
-    spinner.join()
+    DISPLAY.stop()
     print_summary()
 
     if exit_code == 0:

@@ -4,7 +4,8 @@ import 'package:ai_clinic/core/auth/permission_service.dart';
 
 /// Brief permission-denied feedback for blocked routes and actions (FR-009a).
 abstract final class PermissionDeniedHandler {
-  static const defaultMessage = 'You do not have permission to perform this action.';
+  static const defaultMessage =
+      'You do not have permission to perform this action.';
 
   /// Shows a short snackbar; safe to call when [context] has a [ScaffoldMessenger].
   static void show(BuildContext context, {String? message}) {
