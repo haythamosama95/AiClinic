@@ -63,12 +63,22 @@ class PlatformHttpException implements Exception {
     this.requestReference,
     this.traceId,
     this.retrySafe = false,
+    this.missingKeys,
+    this.shapes,
+    this.manifestVersion,
+    this.manifestCapabilityId,
   });
 
   final TaxonomyCode code;
   final String? requestReference;
   final String? traceId;
   final bool retrySafe;
+
+  /// C2 missing-key manifest fields when [code] is [TaxonomyCode.contextRequired].
+  final List<String>? missingKeys;
+  final Map<String, Object?>? shapes;
+  final String? manifestVersion;
+  final String? manifestCapabilityId;
 }
 
 /// Transport failure before a terminal platform event (retryable by SDK).
