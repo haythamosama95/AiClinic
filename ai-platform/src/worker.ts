@@ -3,6 +3,8 @@ import { handleAdapterRequest } from "./adapter";
 import { dispatchControlRequest, isControlRoute } from "./control";
 import { getRequest } from "./journal";
 import { normalizeRequestReference } from "./reference";
+import { runRetentionPurge } from "./retention";
+import { runRollupAndReconciliation } from "./rollup";
 import {
   admissionRPC,
   creditRPC,
@@ -82,7 +84,10 @@ export default {
 
     if (request.method === "POST" && isControlRoute(url.pathname)) {
       const runtimeEnv = env as Env;
-      return dispatchControlRequest(request, { DB: runtimeEnv.DB });
+      return dispatchControlRequest(request, {
+        DB: runtimeEnv.DB,
+        R2: runtimeEnv.R2,
+      });
     }
 
     if (
@@ -119,5 +124,21 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
+  },
+
+  async scheduled(
+    controller: ScheduledController,
+    runtimeEnv: Env,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
+    const cron = controller.cron;
+    if (cron === "0 3 * * *") {
+      await runRetentionPurge({
+        db: runtimeEnv.DB,
+        r2: runtimeEnv.R2,
+      });
+    } else if (cron === "0 4 * * *") {
+      await runRollupAndReconciliation({ db: runtimeEnv.DB });
+    }
   },
 };

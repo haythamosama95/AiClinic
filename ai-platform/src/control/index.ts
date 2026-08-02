@@ -22,8 +22,12 @@ export const defaultOperatorAuth: OperatorAuth = {
   },
 };
 
+import { purgeByInstallationId } from "../retention";
+import { supportLookup } from "../support";
+
 type ControlBindings = {
   DB: D1Database;
+  R2?: R2Bucket;
 };
 
 type EnrollPayload = {
@@ -384,10 +388,81 @@ export async function handleDelete(
 }
 
 const CONTROL_ACTION_PATTERN =
-  /^\/control\/installations\/[^/]+\/(enroll|rotate|suspend|resume|delete)$/;
+  /^\/control\/installations\/[^/]+\/(enroll|rotate|suspend|resume|delete|purge)$/;
+
+const SUPPORT_LOOKUP_PATTERN = /^\/control\/support\/lookup$/;
 
 export function isControlRoute(pathname: string): boolean {
-  return CONTROL_ACTION_PATTERN.test(pathname);
+  return (
+    CONTROL_ACTION_PATTERN.test(pathname) ||
+    SUPPORT_LOOKUP_PATTERN.test(pathname)
+  );
+}
+
+export async function handleSupportLookup(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  if (!bindings.R2) {
+    return reject(500, "missing_r2_binding");
+  }
+
+  const url = new URL(request.url);
+  const reference = url.searchParams.get("reference");
+  if (!reference) {
+    return reject(400, "missing_reference");
+  }
+
+  const result = await supportLookup(reference, {
+    db: bindings.DB,
+    r2: bindings.R2,
+  });
+
+  if (!result.found) {
+    return reject(404, "not_found");
+  }
+
+  return ok({
+    request: result.request,
+    attempts: result.attempts,
+    envelope: result.envelope,
+  });
+}
+
+export async function handleInstallationPurge(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  if (!bindings.R2) {
+    return reject(500, "missing_r2_binding");
+  }
+
+  const match = new URL(request.url).pathname.match(
+    /^\/control\/installations\/([^/]+)\/purge$/,
+  );
+  const targetId = match?.[1];
+  if (!targetId) {
+    return reject(400, "invalid_route");
+  }
+
+  await purgeByInstallationId(targetId, auth.operatorId, {
+    db: bindings.DB,
+    r2: bindings.R2,
+  });
+
+  return ok();
 }
 
 export async function dispatchControlRequest(
@@ -395,7 +470,13 @@ export async function dispatchControlRequest(
   bindings: ControlBindings,
   operatorAuth: OperatorAuth = defaultOperatorAuth,
 ): Promise<Response> {
-  const action = new URL(request.url).pathname.split("/").pop();
+  const pathname = new URL(request.url).pathname;
+
+  if (SUPPORT_LOOKUP_PATTERN.test(pathname)) {
+    return handleSupportLookup(request, bindings, operatorAuth);
+  }
+
+  const action = pathname.split("/").pop();
 
   switch (action) {
     case "enroll":
@@ -408,6 +489,8 @@ export async function dispatchControlRequest(
       return handleResume(request, bindings, operatorAuth);
     case "delete":
       return handleDelete(request, bindings, operatorAuth);
+    case "purge":
+      return handleInstallationPurge(request, bindings, operatorAuth);
     default:
       return new Response("Not Found", { status: 404 });
   }
