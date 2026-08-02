@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
@@ -201,7 +201,11 @@ export function listEvalCapabilities(): string[] {
       (entry) =>
         entry.isDirectory() &&
         entry.name.includes(".") &&
-        !["prompts", "reports"].includes(entry.name),
+        !["prompts", "reports"].includes(entry.name) &&
+        // Golden-layout capabilities own an `expectations/` directory; sibling
+        // eval capabilities under `test/eval/` that lack one are not runnable
+        // by the golden runner and stay outside golden gating.
+        existsSync(path.join(EVAL_ROOT, entry.name, "expectations")),
     )
     .map((entry) => entry.name);
 }

@@ -62,7 +62,7 @@
 
 **Purpose**: Delivery plan §3.10 — every prior suite stays green alongside the new one, not just the latest.
 
-- [ ] T018 [US1] From `ai-platform/`, run this slice's suite — `npx vitest run test/eval/conversation.test.ts test/eval/prohibitions.test.ts`. Then run every prior slice's suite: `npx vitest run` (default Node-pool prior suites) and `npx vitest run --config vitest.workers.config.ts` (workers-pool prior suites). Confirm H4's nine named cases are green and every prior suite stays green. No new test is added here — this is the §3.10 checkpoint gate. H4 emits no §5.4 taxonomy codes. **Satisfies**: the §3.10 checkpoint rule (T1–T9 + prior suites). Proved by itself.
+- [X] T018 [US1] From `ai-platform/`, run this slice's suite — `npx vitest run test/eval/conversation.test.ts test/eval/prohibitions.test.ts`. Then run every prior slice's suite: `npx vitest run` (default Node-pool prior suites) and `npx vitest run --config vitest.workers.config.ts` (workers-pool prior suites). Confirm H4's nine named cases are green and every prior suite stays green. No new test is added here — this is the §3.10 checkpoint gate. H4 emits no §5.4 taxonomy codes. **Satisfies**: the §3.10 checkpoint rule (T1–T9 + prior suites). Proved by itself.
 
 ---
 
@@ -105,4 +105,5 @@
 - No Polish phase and no Foundational phase — prerequisites are the already-merged slices in the plan's Consumes Binding (F1, H2).
 - Vitest entry Files-section rows (`conversation.test.ts`, `prohibitions.test.ts`) are produced/extended by Phase 1 test tasks; they are not repeated as Implementation tasks. Remaining Files units are T010–T017 plus T019 (`quickstart.md`). `contracts/conversation-evals.md` is already frozen — no task recreates it.
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).
+- T018 resolution (Consumes F1): the fixture capability directory required by Clarification Q3 sits as a sibling under `test/eval/`, so F1's `listEvalCapabilities()` directory scan needed a layout discriminator to keep returning only golden-layout capabilities. The one-predicate extension (directory must own `expectations/`, which the golden runner already requires to load expectations) preserves F1 golden/smoke gating byte-for-byte in behaviour — `golden.test.ts` T6 still asserts `[clinic.visit_summary]` — and adds no second gate, so FR-010 holds. Conversation-capability discovery lives in H4's own `conversation-harness.ts`.
 - Preserve §6.4: no Flutter prompt/provider/model strings; no per-request server-side state; no §9.14 mechanism; no second Quota DO / R2 object; no runtime §5.4 codes from this harness.

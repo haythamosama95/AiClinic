@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Principal } from "../../src/identity";
@@ -123,6 +123,18 @@ export function loadConversationCapability(
     capability_id: capabilityFile.capability_id,
     manifest: load(capabilityFile.manifest),
   };
+}
+
+export function listConversationEvalCapabilities(): string[] {
+  return readdirSync(EVAL_ROOT, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name.includes(".") &&
+        existsSync(path.join(EVAL_ROOT, entry.name, "capability.json")),
+    )
+    .map((entry) => entry.name)
+    .sort();
 }
 
 export function listConversationCases(capabilityId: string): string[] {

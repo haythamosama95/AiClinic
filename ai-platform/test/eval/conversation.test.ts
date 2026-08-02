@@ -16,6 +16,7 @@ import {
   CONVERSATION_CAPABILITY_ID,
   getConversationHarnessRuntimeSnapshot,
   listConversationCases,
+  listConversationEvalCapabilities,
   loadConversationCapability,
   runConversationSuite,
 } from "./conversation-harness";
@@ -181,9 +182,11 @@ describe("extends_f1_harness_without_redefining_capability_evals", () => {
     expect(golden.report.cases[0]).toHaveProperty("schema");
     expect(golden.report.cases[0]).not.toHaveProperty("right_keys");
 
-    const capabilities = listEvalCapabilities();
-    expect(capabilities).toContain(FIRST_CAPABILITY_ID);
-    expect(capabilities).toContain(CONVERSATION_CAPABILITY_ID);
+    const goldenCapabilities = listEvalCapabilities();
+    expect(goldenCapabilities).toEqual([FIRST_CAPABILITY_ID]);
+    expect(listConversationEvalCapabilities()).toContain(
+      CONVERSATION_CAPABILITY_ID,
+    );
 
     expect(existsSync(path.join(EVAL_ROOT, "conversation-harness.ts"))).toBe(
       true,
