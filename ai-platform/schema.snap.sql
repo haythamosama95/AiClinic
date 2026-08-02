@@ -32,6 +32,8 @@ CREATE TABLE ai_request (
   terminal_error_code TEXT,
   trace_id TEXT NOT NULL,
   payload_pointer TEXT,
+  routing_tier TEXT,
+  routing_decision TEXT,
   conversation_id TEXT,
   turn_ordinal INTEGER,
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)

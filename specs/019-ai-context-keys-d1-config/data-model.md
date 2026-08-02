@@ -168,12 +168,18 @@ One row per request — the journal spine. The dominant table.
 | `terminal_error_code` | TEXT | Yes | Taxonomy code when terminal state is failed |
 | `trace_id` | TEXT | NOT NULL | Distributed trace identifier |
 | `payload_pointer` | TEXT | Yes | R2 envelope pointer (`request/{id}/envelope`) |
+| `routing_tier` | TEXT | Yes | Gateway-set tier — `standard` / `degraded` (§4.3.7, §7.3); never client-supplied |
+| `routing_decision` | TEXT | Yes | Serialized selection-reason object for the request (§4.3.7, §7.3) |
 | `conversation_id` | TEXT | Yes | Conversational leg grouping — see §3.2 |
 | `turn_ordinal` | INTEGER | Yes | Turn order within conversation — see §3.2 |
 
 **Growth**: dominant — roughly one row per AI request. **Retention**: `journal` class (see §4).
 
 **First write**: C3 (journal writer). A5 creates the table and index only.
+
+`routing_tier` and `routing_decision` are listed for `ai_request` in §7.3 and detailed in
+§4.3.7; they are gateway-set and never client-supplied. A5 creates them nullable because they are
+written after the row is inserted (routing runs later in the pipeline) — D2/F4 populate them.
 
 ### 2.7 `ai_attempt`
 
