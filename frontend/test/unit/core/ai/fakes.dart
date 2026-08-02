@@ -3,6 +3,8 @@ import 'dart:collection';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
+import 'package:ai_clinic/core/ai/context_registration.dart';
+import 'package:ai_clinic/core/ai/context_resolver.dart';
 
 /// In-memory mint fake with call counting.
 class FakeMintPort implements AatMintPort {
@@ -58,6 +60,7 @@ class FakeSubmitPort implements HttpsSubmitPort {
   int submitCallCount = 0;
   final List<String> idempotencyKeys = [];
   final List<SubmitRequestHeaders> headerLog = [];
+  final List<CapabilityInvokeInput> inputs = [];
   bool cancelEndpointCalled = false;
 
   @override
@@ -68,6 +71,7 @@ class FakeSubmitPort implements HttpsSubmitPort {
     submitCallCount++;
     idempotencyKeys.add(headers.idempotencyKey);
     headerLog.add(headers);
+    inputs.add(input);
 
     if (_script.isEmpty) {
       throw StateError('No submit script step configured');
@@ -338,3 +342,64 @@ Map<String, Object?> manifestWithUnknownContextKey() => sampleActiveManifest(
         },
       ],
     );
+
+CapabilityInvokeInput conversationalInvokeInput({
+  String conversationId = 'conv-test-001',
+  int turnOrdinal = 1,
+  List<Map<String, Object?>>? transcript,
+}) =>
+    CapabilityInvokeInput(
+      capabilityId: 'clinic.chat_assistant',
+      capabilityVersion: '1.0.0',
+      intent: 'chat',
+      context: const {'patient_id': 'p-1'},
+      conversationId: conversationId,
+      turnOrdinal: turnOrdinal,
+      transcript: transcript,
+    );
+
+List<SseEvent> contextRequestedStream({
+  String requestReference = 'req-ctx',
+  List<Map<String, Object?>>? contextRequest,
+}) =>
+    [
+      AcceptedEvent(requestReference: requestReference),
+      ContextRequestedEvent(
+        contextRequest: contextRequest ??
+            [
+              {
+                'key': visitChiefComplaintV1Key,
+                'arguments': <String, Object?>{},
+              },
+            ],
+      ),
+    ];
+
+/// Resolver spy that records keys without capability id.
+class ResolverSpy extends ContextResolver {
+  ResolverSpy({required super.providerPort});
+
+  final List<List<String>> resolveCalls = [];
+
+  @override
+  Future<ContextResolveResult> resolve(List<String> keys) async {
+    resolveCalls.add(List<String>.from(keys));
+    return super.resolve(keys);
+  }
+}
+
+/// Resolver that yields an empty payload (RLS deny simulation).
+class DenyingResolver extends ContextResolver {
+  DenyingResolver() : super(providerPort: DenyingContextProviderPort());
+
+  @override
+  Future<ContextResolveResult> resolve(List<String> keys) async {
+    return const ContextResolveSuccess(<String, Object?>{});
+  }
+}
+
+/// Context provider that returns empty payload (RLS deny simulation).
+class DenyingContextProviderPort implements ContextProviderPort {
+  @override
+  Future<Map<String, Object?>> fetchVisitChiefComplaint() async => {};
+}
