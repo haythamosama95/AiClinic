@@ -18,6 +18,7 @@ export default defineConfig({
       "test/journal-dashboards.test.ts",
       "test/soft-threshold-routing.test.ts",
       "test/conversational-journaling.test.ts",
+      "test/capability-deprecation.test.ts",
       "test/load/**",
     ],
     testTimeout: 120_000,

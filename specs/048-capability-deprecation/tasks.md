@@ -30,7 +30,7 @@
 
 **Purpose**: Route the new test file to the workers pool that provides real Miniflare D1 (plan → Testing / Files). Both config edits must land before any named test is written, so the Pipeline cases run under the D1-backed config and the default Node pool's `test/**/*.test.ts` glob does not load a Miniflare-D1 test (C1/C3/B2/H3 precedent).
 
-- [ ] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/capability-deprecation.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — add `"test/capability-deprecation.test.ts"` to `exclude`, so the workers-pool-only cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by every named test. Prepares the Phase 2 substrate.
+- [X] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/capability-deprecation.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — add `"test/capability-deprecation.test.ts"` to `exclude`, so the workers-pool-only cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by every named test. Prepares the Phase 2 substrate.
 
 ---
 

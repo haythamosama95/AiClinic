@@ -17,6 +17,7 @@ export default defineWorkersConfig({
       "test/journal-dashboards.test.ts",
       "test/soft-threshold-routing.test.ts",
       "test/conversational-journaling.test.ts",
+      "test/capability-deprecation.test.ts",
       "test/load/load-and-cost.test.ts",
     ],
     fileParallelism: false,
