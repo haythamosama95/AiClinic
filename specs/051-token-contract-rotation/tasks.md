@@ -30,7 +30,7 @@
 
 **Purpose**: Route the new Unit and workers-pool test files so Node-pool and Miniflare-D1 cases do not cross-contaminate (plan → Testing / Files; B2/C1/J1 precedent). Both config edits must land before any named Worker test is written.
 
-- [ ] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/token-contract-control.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — ensure `"test/token-contract-rotation.test.ts"` is covered by the Node-pool `include` and add `"test/token-contract-control.test.ts"` to `exclude`, so the workers-pool-only D1 cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by T-J4-01 .. T-J4-07 and the platform half of T-J4-10. Prepares the Phase 2 Worker substrate.
+- [x] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/token-contract-control.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — ensure `"test/token-contract-rotation.test.ts"` is covered by the Node-pool `include` and add `"test/token-contract-control.test.ts"` to `exclude`, so the workers-pool-only D1 cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by T-J4-01 .. T-J4-07 and the platform half of T-J4-10. Prepares the Phase 2 Worker substrate.
 
 ---
 

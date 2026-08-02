@@ -21,6 +21,7 @@ export default defineConfig({
       "test/capability-deprecation.test.ts",
       "test/cohort-activate-promote.test.ts",
       "test/routing-policy-canary.test.ts",
+      "test/token-contract-control.test.ts",
       "test/load/**",
     ],
     testTimeout: 120_000,
