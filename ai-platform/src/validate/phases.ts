@@ -1,3 +1,6 @@
+import { validateContextRequest } from "../context/context-request";
+import type { InteractionMode } from "../manifest";
+
 export const VALIDATION_PHASES = [
   "transport_parse",
   "schema",
@@ -42,21 +45,92 @@ export type RunPhasesInput = {
   ruleRegistry: BusinessRuleRegistry;
   context?: unknown;
   safetyMarkers?: SafetyMarkers;
+  interactionMode?: InteractionMode;
+  permittedKeySet?: readonly string[];
 };
 
 export type RunPhasesSuccess = { ok: true; validated: unknown };
 export type RunPhasesFailure = { ok: false; failure: ValidationError };
 export type RunPhasesResult = RunPhasesSuccess | RunPhasesFailure;
 
+function tryParseContextRequest(
+  raw: string,
+  permittedKeySet: readonly string[] | undefined,
+): { ok: true; validated: unknown } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const validation = validateContextRequest(parsed);
+  if (!validation.ok) {
+    return null;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  if (permittedKeySet !== undefined) {
+    const permitted = new Set(permittedKeySet);
+    for (const entry of parsed) {
+      if (
+        typeof entry === "object" &&
+        entry !== null &&
+        "key" in entry &&
+        typeof entry.key === "string" &&
+        !permitted.has(entry.key)
+      ) {
+        return null;
+      }
+    }
+  }
+
+  return { ok: true, validated: parsed };
+}
+
 function parseOutput(
   output: AssembledOutput,
   mode: RunPhasesInput["mode"],
+  input: RunPhasesInput,
 ): { ok: true; parsed: unknown } | { ok: false; failure: ValidationError } {
   if (output.transportValid === false) {
     return {
       ok: false,
       failure: { phase: "transport_parse", message: "transport invalid" },
     };
+  }
+
+  if (
+    input.interactionMode === "conversational" &&
+    mode === "prose"
+  ) {
+    const contextRequest = tryParseContextRequest(
+      output.raw,
+      input.permittedKeySet,
+    );
+    if (contextRequest !== null) {
+      return { ok: true, parsed: contextRequest.validated };
+    }
+
+    if (output.raw.trim() === "") {
+      return {
+        ok: false,
+        failure: { phase: "schema", message: "neither prose nor context request" },
+      };
+    }
+
+    const trimmed = output.raw.trimStart();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      return {
+        ok: false,
+        failure: { phase: "schema", message: "neither prose nor context request" },
+      };
+    }
+
+    return { ok: true, parsed: output.raw };
   }
 
   if (mode === "prose") {
@@ -115,7 +189,7 @@ function checkSafety(
 }
 
 export function runValidationPhases(input: RunPhasesInput): RunPhasesResult {
-  const parsedResult = parseOutput(input.output, input.mode);
+  const parsedResult = parseOutput(input.output, input.mode, input);
   if (!parsedResult.ok) {
     return parsedResult;
   }

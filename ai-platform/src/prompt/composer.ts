@@ -5,6 +5,8 @@ import {
 import type { Principal } from "../identity";
 import type { Manifest } from "../manifest";
 import { generateRequestReference } from "../reference";
+import { CONTEXT_REQUEST_SCHEMA_ID } from "../context/context-request";
+import type { Transcript } from "../context/validator";
 import { resolveArtifact, resolvePromptVersion } from "./registry";
 
 export type ComposeRequestInput = {
@@ -15,6 +17,7 @@ export type ComposeRequestInput = {
   requestReference?: string;
   streamFlag?: boolean;
   deadline?: number | null;
+  transcript?: Transcript;
 };
 
 export type ComposeRequestResult =
@@ -33,6 +36,15 @@ function deriveOutputFormatInstruction(
 
   const { mode, outputSchemaRef } = manifest.Output;
 
+  if (manifest.interactionMode === "conversational" && mode === "prose") {
+    return (
+      "Output format: respond in clear professional prose suitable for clinical advisory review, " +
+      `or respond with a JSON array conforming to the platform context-request schema ` +
+      `${CONTEXT_REQUEST_SCHEMA_ID} using keys from the permitted set. ` +
+      "Do not wrap prose in JSON, markdown code fences, or other structured envelopes."
+    );
+  }
+
   if (mode === "prose" && outputSchemaRef === null) {
     return "Output format: respond in clear professional prose suitable for clinical advisory review. Do not wrap the response in JSON, markdown code fences, or other structured envelopes.";
   }
@@ -50,7 +62,18 @@ function renderDelimitedContext(
 ): string {
   const blocks: string[] = [];
 
-  for (const requirement of manifest["Context requirements"]) {
+  if (manifest.interactionMode === "conversational") {
+    for (const [key, value] of Object.entries(filteredContext)) {
+      const serialized = JSON.stringify(value).replaceAll("</", "\\u003c/");
+      blocks.push(`<key name="${key}" shape="${key}">\n${serialized}\n</key>`);
+    }
+    return blocks.join("\n");
+  }
+
+  for (const requirement of manifest["Context requirements"] as Array<{
+    key: unknown;
+    shapeRef: unknown;
+  }>) {
     const key = String(requirement.key);
     const shape = String(requirement.shapeRef);
     const value = filteredContext[key];
@@ -64,6 +87,50 @@ function renderDelimitedContext(
   }
 
   return blocks.join("\n");
+}
+
+function renderDelimitedContextObject(
+  context: Record<string, unknown>,
+): string {
+  const blocks: string[] = [];
+  for (const [key, value] of Object.entries(context)) {
+    const serialized = JSON.stringify(value).replaceAll("</", "\\u003c/");
+    blocks.push(`<key name="${key}" shape="${key}">\n${serialized}\n</key>`);
+  }
+  return blocks.join("\n");
+}
+
+function renderTranscriptPriorTurns(
+  transcript: Transcript,
+): Array<{ role: string; content: string }> {
+  const parts: Array<{ role: string; content: string }> = [];
+
+  for (const turn of transcript) {
+    switch (turn.kind) {
+      case "user":
+        parts.push({ role: "user", content: turn.text });
+        break;
+      case "model":
+        parts.push({ role: "assistant", content: turn.text });
+        break;
+      case "context_requested":
+        parts.push({
+          role: "assistant",
+          content: JSON.stringify(turn.requests),
+        });
+        break;
+      case "context_resolved":
+        parts.push({
+          role: "data",
+          content: renderDelimitedContextObject(turn.context),
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  return parts;
 }
 
 function resolveRequestReference(input: ComposeRequestInput): string {
@@ -107,6 +174,12 @@ export function composeRequest(
       return { ok: false, code: "internal_error" };
     }
 
+    const transcriptParts =
+      manifest.interactionMode === "conversational" && input.transcript
+        ? renderTranscriptPriorTurns(input.transcript)
+        : [];
+
+    const contextPart = renderDelimitedContext(manifest, filteredContext);
     const messageParts: Array<{ role: string; content: string }> = [
       { role: "system", content: systemInstruction },
       ...businessRuleFragments.map((content) => ({
@@ -114,12 +187,14 @@ export function composeRequest(
         content,
       })),
       { role: "system", content: outputFormatInstruction },
-      {
-        role: "data",
-        content: renderDelimitedContext(manifest, filteredContext),
-      },
-      { role: "user", content: userIntent },
+      ...transcriptParts,
     ];
+
+    if (contextPart.length > 0) {
+      messageParts.push({ role: "data", content: contextPart });
+    }
+
+    messageParts.push({ role: "user", content: userIntent });
 
     const request: CanonicalRequest = {
       "ordered role-tagged message parts": messageParts,

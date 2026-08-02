@@ -1,3 +1,4 @@
+import type { InteractionMode } from "../manifest";
 import {
   runValidationPhases,
   type AssembledOutput,
@@ -45,6 +46,8 @@ export type ValidateAndRepairInput = {
   ruleRegistry: BusinessRuleRegistry;
   context?: unknown;
   safetyMarkers?: SafetyMarkers;
+  interactionMode?: InteractionMode;
+  permittedKeySet?: readonly string[];
   reask?: ReaskPort;
   repairJournalSink?: RepairJournalSink;
   repairCostSink?: RepairCostSink;
@@ -77,6 +80,8 @@ export async function validateAndRepair(
       ruleRegistry: input.ruleRegistry,
       context: input.context,
       safetyMarkers: input.safetyMarkers,
+      interactionMode: input.interactionMode,
+      permittedKeySet: input.permittedKeySet,
     });
 
     if (result.ok) {
