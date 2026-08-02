@@ -103,6 +103,7 @@ class FakeSubmitPort implements HttpsSubmitPort {
 class FakeSseConnection implements SseConnection {
   FakeSseConnection({required List<SseEvent> events})
       : _controller = StreamController<SseEvent>() {
+    _broadcast = _controller.stream.asBroadcastStream();
     Future.microtask(() async {
       for (final event in events) {
         if (_controller.isClosed) {
@@ -117,10 +118,11 @@ class FakeSseConnection implements SseConnection {
   }
 
   final StreamController<SseEvent> _controller;
+  late final Stream<SseEvent> _broadcast;
   var closeCallCount = 0;
 
   @override
-  Stream<SseEvent> get events => _controller.stream;
+  Stream<SseEvent> get events => _broadcast;
 
   @override
   void close() {
@@ -132,30 +134,33 @@ class FakeSseConnection implements SseConnection {
   }
 }
 
-/// Delayed stream for cancel tests — stays open until closed.
+/// Delayed stream for cancel tests — stays open until [close].
 class DelayedFakeSseConnection implements SseConnection {
   DelayedFakeSseConnection({
     required SseEvent accepted,
-    Duration holdDuration = const Duration(seconds: 30),
   })  : _accepted = accepted,
-        _holdDuration = holdDuration,
-        _controller = StreamController<SseEvent>();
-
-  final SseEvent _accepted;
-  final Duration _holdDuration;
-  final StreamController<SseEvent> _controller;
-  var closeCallCount = 0;
-
-  @override
-  Stream<SseEvent> get events {
-    Future.microtask(() async {
+        _controller = StreamController<SseEvent>() {
+    _broadcast = _controller.stream.asBroadcastStream();
+    Future.microtask(() {
       if (!_controller.isClosed) {
         _controller.add(_accepted);
       }
-      await Future<void>.delayed(_holdDuration);
     });
-    return _controller.stream;
   }
+
+  final SseEvent _accepted;
+  final StreamController<SseEvent> _controller;
+  late final Stream<SseEvent> _broadcast;
+  var closeCallCount = 0;
+
+  void emitContent(SseEvent event) {
+    if (!_controller.isClosed) {
+      _controller.add(event);
+    }
+  }
+
+  @override
+  Stream<SseEvent> get events => _broadcast;
 
   @override
   void close() {
