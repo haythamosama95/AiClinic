@@ -2,6 +2,8 @@
  * Field-group manifest for the ten §5.1 capability manifest groups.
  * Types and validation derive from this; contract tests (T-A4-*) exercise it.
  */
+import { validateKey } from "../context/index";
+
 export const MANIFEST_FIELD_GROUPS = [
   "Identity",
   "Access",
@@ -100,6 +102,14 @@ type InputGroup = ManifestGroupRecord<typeof MANIFEST_FIELD_MANIFEST.Input>;
 type ContextRequirementEntry = ManifestGroupRecord<
   typeof MANIFEST_FIELD_MANIFEST["Context requirements"]
 >;
+
+type ConversationalContextRequirements = {
+  readonly permittedKeySet: readonly string[];
+};
+
+type ContextRequirementsGroup =
+  | ContextRequirementEntry[]
+  | ConversationalContextRequirements;
 type PromptBindingGroup = ManifestGroupRecord<
   typeof MANIFEST_FIELD_MANIFEST["Prompt binding"]
 >;
@@ -121,7 +131,7 @@ export type Manifest = {
   Access: AccessGroup;
   Interaction: InteractionGroup;
   Input: InputGroup;
-  "Context requirements": ContextRequirementEntry[];
+  "Context requirements": ContextRequirementsGroup;
   "Prompt binding": PromptBindingGroup;
   Output: OutputGroup;
   Routing: RoutingGroup;
@@ -163,7 +173,7 @@ function validateObjectGroup(
   return value;
 }
 
-function validateContextRequirements(
+function validateSingleShotContextRequirements(
   value: unknown,
   groupName: ManifestFieldGroup,
 ): ContextRequirementEntry[] {
@@ -182,6 +192,48 @@ function validateContextRequirements(
   return value as ContextRequirementEntry[];
 }
 
+function validateConversationalContextRequirements(
+  value: unknown,
+  groupName: ManifestFieldGroup,
+): ConversationalContextRequirements {
+  if (!isPlainObject(value)) {
+    throw new Error(`Malformed manifest group: ${groupName}`);
+  }
+
+  if (!("permittedKeySet" in value)) {
+    throw new Error("Conversational manifest omits required field: permittedKeySet");
+  }
+
+  if (!Array.isArray(value.permittedKeySet)) {
+    throw new Error(`Malformed manifest group: ${groupName}`);
+  }
+
+  for (const key of value.permittedKeySet) {
+    if (typeof key !== "string") {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+
+    const keyResult = validateKey(key);
+    if (!keyResult.ok) {
+      throw new Error(`Permitted key set unknown key: ${key}`);
+    }
+  }
+
+  return {
+    permittedKeySet: value.permittedKeySet as readonly string[],
+  };
+}
+
+function assertConversationalInteractionFields(
+  interaction: InteractionGroup,
+): void {
+  for (const field of CONVERSATIONAL_ONLY_INTERACTION_FIELDS) {
+    if (!(field in interaction)) {
+      throw new Error(`Conversational manifest omits required field: ${field}`);
+    }
+  }
+}
+
 function resolveInteractionMode(
   interaction: InteractionGroup,
 ): InteractionMode {
@@ -198,6 +250,7 @@ function resolveInteractionMode(
 function assertNoConversationalFieldsOnSingleShot(
   interaction: InteractionGroup,
   interactionMode: InteractionMode,
+  contextRequirements: unknown,
 ): void {
   if (interactionMode !== "single_shot") {
     return;
@@ -209,6 +262,15 @@ function assertNoConversationalFieldsOnSingleShot(
         `Conversational-only field rejected on single_shot: ${field}`,
       );
     }
+  }
+
+  if (
+    isPlainObject(contextRequirements) &&
+    "permittedKeySet" in contextRequirements
+  ) {
+    throw new Error(
+      "Conversational-only field rejected on single_shot: permittedKeySet",
+    );
   }
 }
 
@@ -251,10 +313,27 @@ function validate(json: Record<string, unknown>): Manifest {
     "Input",
     MANIFEST_FIELD_MANIFEST.Input,
   );
-  const contextRequirements = validateContextRequirements(
+  const interactionMode = resolveInteractionMode(interaction);
+  assertNoConversationalFieldsOnSingleShot(
+    interaction,
+    interactionMode,
     json["Context requirements"],
-    "Context requirements",
   );
+
+  const contextRequirements =
+    interactionMode === "conversational"
+      ? validateConversationalContextRequirements(
+          json["Context requirements"],
+          "Context requirements",
+        )
+      : validateSingleShotContextRequirements(
+          json["Context requirements"],
+          "Context requirements",
+        );
+
+  if (interactionMode === "conversational") {
+    assertConversationalInteractionFields(interaction);
+  }
   const promptBinding = validateObjectGroup(
     json["Prompt binding"],
     "Prompt binding",
@@ -282,9 +361,6 @@ function validate(json: Record<string, unknown>): Manifest {
   );
 
   assertRoutingNeverNamesProviderOrModel(routing);
-
-  const interactionMode = resolveInteractionMode(interaction);
-  assertNoConversationalFieldsOnSingleShot(interaction, interactionMode);
 
   const manifest = {
     interactionMode,

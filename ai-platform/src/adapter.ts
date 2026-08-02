@@ -3,6 +3,7 @@ import {
   liveHttpStatusForCode,
   type TaxonomyCode,
 } from "./errors";
+import type { InteractionMode } from "./manifest";
 import { generateRequestReference } from "./reference";
 import { resolveTraceId } from "./trace";
 
@@ -11,7 +12,12 @@ export const INGRESS_BODY_SIZE_LIMIT = 1_048_576;
 
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
-const TERMINAL_EVENT_KINDS = ["completed", "failed", "cancelled"] as const;
+export const TERMINAL_EVENT_KINDS = [
+  "completed",
+  "failed",
+  "cancelled",
+  "context_requested",
+] as const;
 
 export type TerminalEventKind = (typeof TERMINAL_EVENT_KINDS)[number];
 
@@ -41,6 +47,7 @@ export interface StubEventSourceController {
   idle(): void | Promise<void>;
   abort(): void;
   attemptDuplicateTerminal(kind: TerminalEventKind): void;
+  requestContext(contextRequest: unknown): void;
 }
 
 export type StubEventSourceFactory = (
@@ -78,6 +85,133 @@ export function buildAcceptedSseEvent(
 
 function isTerminalEventType(type: string): type is TerminalEventKind {
   return (TERMINAL_EVENT_KINDS as readonly string[]).includes(type);
+}
+
+export function isTerminalEventKind(type: string): boolean {
+  return isTerminalEventType(type);
+}
+
+export function pushTerminalEvent(
+  sink: AdapterEventSink,
+  context: AdapterStreamContext,
+  kind: TerminalEventKind,
+  interactionMode: InteractionMode,
+  payload?: Record<string, unknown>,
+): void {
+  if (kind === "context_requested" && interactionMode !== "conversational") {
+    throw new Error("context_requested is conversational-only");
+  }
+
+  if (kind === "completed") {
+    sink.push({
+      type: "completed",
+      data: { result: payload?.result ?? {}, trace_id: context.traceId },
+      trace_id: context.traceId,
+    });
+    return;
+  }
+
+  if (kind === "failed") {
+    const code = (payload?.code as TaxonomyCode | undefined) ?? "internal_error";
+    const errorBody = buildErrorBody({
+      code,
+      requestReference: context.requestReference,
+      traceId: context.traceId,
+    });
+    sink.push({
+      type: "failed",
+      data: { ...errorBody },
+      trace_id: context.traceId,
+    });
+    return;
+  }
+
+  if (kind === "cancelled") {
+    sink.push({
+      type: "cancelled",
+      data: { trace_id: context.traceId },
+      trace_id: context.traceId,
+    });
+    return;
+  }
+
+  sink.push({
+    type: "context_requested",
+    data: {
+      context_request: payload?.context_request ?? [],
+      trace_id: context.traceId,
+    },
+    trace_id: context.traceId,
+  });
+}
+
+export function createModeGatedStubEventSource(
+  interactionMode: InteractionMode,
+  terminalKind: TerminalEventKind,
+  contextRequest: unknown = [],
+): StubEventSourceFactory {
+  return (sink, context) => {
+    const controller: StubEventSourceController = {
+      complete(result = { status: "ok" }) {
+        pushTerminalEvent(sink, context, "completed", interactionMode, {
+          result,
+        });
+      },
+      fail(code: TaxonomyCode) {
+        pushTerminalEvent(sink, context, "failed", interactionMode, { code });
+      },
+      idle() {
+        sink.push({
+          type: "heartbeat",
+          data: { trace_id: context.traceId },
+          trace_id: context.traceId,
+        });
+      },
+      abort() {
+        pushTerminalEvent(sink, context, "cancelled", interactionMode);
+      },
+      attemptDuplicateTerminal(kind: TerminalEventKind) {
+        if (kind === "completed") {
+          controller.complete();
+          return;
+        }
+        if (kind === "failed") {
+          controller.fail("internal_error");
+          return;
+        }
+        if (kind === "context_requested") {
+          controller.requestContext(contextRequest);
+          return;
+        }
+        controller.abort();
+      },
+      requestContext(request) {
+        if (interactionMode !== "conversational") {
+          controller.complete();
+          return;
+        }
+        pushTerminalEvent(sink, context, "context_requested", interactionMode, {
+          context_request: request,
+        });
+      },
+    };
+
+    if (terminalKind === "context_requested") {
+      if (interactionMode === "conversational") {
+        controller.requestContext(contextRequest);
+      } else {
+        controller.complete();
+      }
+    } else if (terminalKind === "completed") {
+      controller.complete();
+    } else if (terminalKind === "failed") {
+      controller.fail("internal_error");
+    } else if (terminalKind === "cancelled") {
+      controller.abort();
+    }
+
+    return controller;
+  };
 }
 
 function isValidSuppliedTraceId(value: string): boolean {
@@ -156,6 +290,7 @@ function defaultStubEventSource(
     idle: noop,
     abort: noop,
     attemptDuplicateTerminal: noop,
+    requestContext: noop,
   };
 }
 

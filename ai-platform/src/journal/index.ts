@@ -1,7 +1,7 @@
 import type { CanonicalResult } from "../contracts/canonical";
 import type { TaxonomyCode } from "../errors";
 import type { Principal } from "../identity";
-import type { Manifest } from "../manifest";
+import type { InteractionMode, Manifest } from "../manifest";
 import { normalizeRequestReference } from "../reference";
 import { generateUlid } from "../trace";
 
@@ -91,6 +91,33 @@ const TERMINAL_TRANSITION_STATES = new Set<TransitionState>([
   "Cancelled",
   "AwaitingContext",
 ]);
+
+export const JOURNAL_TERMINAL_IMMUTABLE_STATES: readonly TransitionState[] = [
+  "Completed",
+  "Failed",
+  "Cancelled",
+  "AwaitingContext",
+];
+
+export function isJournalTerminalState(state: TransitionState): boolean {
+  return TERMINAL_TRANSITION_STATES.has(state);
+}
+
+export function isJournalTransitionAllowed(
+  from: TransitionState,
+  to: TransitionState,
+): boolean {
+  if (TERMINAL_TRANSITION_STATES.has(from)) {
+    return false;
+  }
+  return true;
+}
+
+export function canReachAwaitingContext(
+  interactionMode: InteractionMode,
+): boolean {
+  return interactionMode === "conversational";
+}
 
 /** In-isolate guard-rejection tally keyed by time bucket + dimension set (§4.3.12). */
 const guardRejectionTally = new Map<string, number>();
