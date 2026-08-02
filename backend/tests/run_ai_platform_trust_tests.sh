@@ -28,6 +28,7 @@ sql_tests=(
 )
 
 for f in "${sql_tests[@]}"; do
+  psql_run -c "DELETE FROM ai_internal.ai_token_issuance;" >/dev/null
   printf '== AI platform trust suite: %s ==\n' "${f}"
   psql_run -f "${script_dir}/${f}" >/dev/null
 done
