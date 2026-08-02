@@ -19,6 +19,8 @@ export default defineConfig({
       "test/soft-threshold-routing.test.ts",
       "test/conversational-journaling.test.ts",
       "test/capability-deprecation.test.ts",
+      "test/cohort-activate-promote.test.ts",
+      "test/routing-policy-canary.test.ts",
       "test/load/**",
     ],
     testTimeout: 120_000,

@@ -18,6 +18,8 @@ export default defineWorkersConfig({
       "test/soft-threshold-routing.test.ts",
       "test/conversational-journaling.test.ts",
       "test/capability-deprecation.test.ts",
+      "test/cohort-activate-promote.test.ts",
+      "test/routing-policy-canary.test.ts",
       "test/load/load-and-cost.test.ts",
     ],
     fileParallelism: false,

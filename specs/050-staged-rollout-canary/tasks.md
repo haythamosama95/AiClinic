@@ -30,7 +30,7 @@
 
 **Purpose**: Route both new Pipeline test files to the workers pool that provides real Miniflare D1 (+ R2 for policy documents) (plan → Testing / Files). Both config edits must land before any named test is written, so the cases run under the D1-backed config and the default Node pool's `test/**/*.test.ts` glob does not load Miniflare-D1 tests (B2/C1/J1 precedent).
 
-- [ ] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/cohort-activate-promote.test.ts"` and `"test/routing-policy-canary.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — add both paths to `exclude`, so the workers-pool-only cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by every named test. Prepares the Phase 2 substrate.
+- [X] T001 [US1] Modify `ai-platform/vitest.workers.config.ts` — add `"test/cohort-activate-promote.test.ts"` and `"test/routing-policy-canary.test.ts"` to `include`. Modify `ai-platform/vitest.config.ts` — add both paths to `exclude`, so the workers-pool-only cases do not double-run in the default Node pool (plan → Files). No FR — harness; required by every named test. Prepares the Phase 2 substrate.
 
 ---
 
