@@ -1,10 +1,5 @@
 # Quickstart: Conversational manifest fields and context-request schema (H1)
 
-> **Fill status:** Skeleton produced by `/ai-platform-plan`. Complete sections 2–5 during the
-> Documentation task after implementation and verification
-> (`.specify/templates/ai-platform-quickstart-template.md`). Slice-only scope — no prior-slice
-> files, combined counts, or full-suite `npm test`.
-
 H1 freezes conversational manifest extras, the shared `{key, arguments}` context-request schema,
 `context_requested` as a fourth SSE terminal kind (not a taxonomy code), and `AwaitingContext` as a
 terminal immutable request state — so H2/H3 bind to contracts rather than inventing them.
@@ -22,19 +17,29 @@ this slice's test files, and only commands that run this slice's tests.
   (see `spec.md` Slice Contract → Implements).
 - **Spec** — [`spec.md`](./spec.md) freezes conversational Interaction fields + permitted key set,
   the shared context-request schema, fourth terminal kind, and terminal `AwaitingContext`.
-- **Plan** — [`plan.md`](./plan.md) scopes extensions to `src/manifest/`, `src/context/context-request.ts`,
+- **Plan** — [`plan.md`](./plan.md) scoped extensions to `src/manifest/`, `src/context/context-request.ts`,
   `src/adapter.ts`, and `src/journal/`, plus contract + build + integration tests.
 
 ## 2. What was implemented
 
-<!-- Fill after verification: deliverables matching plan Files / Sequencing. -->
+- **Conversational manifest load rules** — `ai-platform/src/manifest/index.ts` requires max history
+  turns, max context rounds per turn, transcript size limit, and permitted key set when
+  `interactionMode` is `conversational`; rejects conversational-only fields on `single_shot`;
+  validates permitted keys via A5 `validateKey`.
+- **Platform-owned context-request schema** — `ai-platform/src/context/context-request.ts` exports
+  `validateContextRequest()` and `CONTEXT_REQUEST_SCHEMA_ID` for the shared list-of-`{key, arguments}`
+  shape.
+- **Fourth terminal kind** — `ai-platform/src/adapter.ts` adds `context_requested` to
+  `TERMINAL_EVENT_KINDS`, gates emission on `interactionMode`, and exports mode-gated stub helpers
+  for integration tests.
+- **`AwaitingContext` terminal helpers** — `ai-platform/src/journal/index.ts` exports
+  `isJournalTerminalState`, `isJournalTransitionAllowed`, and `canReachAwaitingContext`.
+- **Contract + build + integration tests** — four test files covering manifest load/omit/reject,
+  shared schema accept/reject, taxonomy absence, terminal immutability, and one-terminal invariant.
+- **Frozen contracts** — `contracts/conversational-manifest.md`, `contracts/context-request-schema.md`,
+  `contracts/context-requested-terminal.md`.
 
-- _(pending implementation)_ Conversational load rules on the A4 manifest loader.
-- _(pending implementation)_ Platform-owned context-request schema module.
-- _(pending implementation)_ `context_requested` terminal kind gated on `interactionMode`.
-- _(pending implementation)_ `AwaitingContext` terminal immutability helpers.
-- Frozen contracts under `contracts/`.
-- Link: [`spec.md`](./spec.md), [`plan.md`](./plan.md).
+Link: [`spec.md`](./spec.md), [`plan.md`](./plan.md).
 
 ## 3. Files to review
 
@@ -56,7 +61,6 @@ From the repository root:
 
 ```bash
 cd ai-platform
-npm install   # first time only
 npx vitest run \
   test/conversational-manifest.test.ts \
   test/context-request.test.ts \
@@ -64,17 +68,15 @@ npx vitest run \
   test/context-requested-terminal.test.ts
 ```
 
-Expected: all H1 named tests passing for this slice only. Do not cite prior-slice counts or run
-`npm test` for the full platform suite here.
+Expected: **28 passing tests** across the four H1 test files.
 
 ## 5. Inspect the changes
 
-<!-- Fill after verification: concrete greps / focused commands for this slice's files. -->
-
-- Open the modules in §3.
-- Grep for `context_requested`, `permittedKeySet`, `AwaitingContext`, `validateContextRequest`.
-- Read the three files under `contracts/`.
-
-## 6. Manual validation
-
-Omitted — CI / `vitest` is the only verification path for this contract slice.
+```bash
+rg 'context_requested|permittedKeySet|AwaitingContext|validateContextRequest' \
+  ai-platform/src/manifest ai-platform/src/context/context-request.ts \
+  ai-platform/src/adapter.ts ai-platform/src/journal
+cat specs/044-conversational-manifest-schema/contracts/conversational-manifest.md
+cat specs/044-conversational-manifest-schema/contracts/context-request-schema.md
+cat specs/044-conversational-manifest-schema/contracts/context-requested-terminal.md
+```
