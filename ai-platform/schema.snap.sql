@@ -108,6 +108,7 @@ CREATE TABLE routing_policy (
   content_pointer TEXT NOT NULL,
   active_from TEXT NOT NULL,
   activated_by TEXT NOT NULL,
+  canary_installation_ids TEXT,
   PRIMARY KEY (policy_id, version)
 );
 
