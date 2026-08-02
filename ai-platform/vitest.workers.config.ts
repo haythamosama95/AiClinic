@@ -11,6 +11,10 @@ export default defineWorkersConfig({
       "test/admission-credit.test.ts",
       "test/capability.test.ts",
       "test/journal.test.ts",
+      "test/support-lookup.test.ts",
+      "test/retention.test.ts",
+      "test/rollup-reconciliation.test.ts",
+      "test/journal-dashboards.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
@@ -24,6 +28,7 @@ export default defineWorkersConfig({
         miniflare: {
           compatibilityDate: "2026-05-03",
           d1Databases: ["DB"],
+          r2Buckets: ["R2"],
         },
       },
     },
