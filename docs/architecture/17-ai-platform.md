@@ -1498,6 +1498,7 @@ A small internal surface, separate from the client-facing API and separately aut
 | Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities, set period bounds and soft threshold |
 | Kill switches           | Global, per capability, per installation, per provider (A8)                                        |
 | Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation — every one of these writes a `capability_grant` row ([§7.3](#73-d1-logical-model)); deprecate and retire write it at `global` scope |
+| Token contract rotation | Begin a rotation (add a `ver` to the accepted set) or retire a `ver` (remove it) — the only two writers of the global `token_contract` record ([§5.7](#57-versioning-and-compatibility-rules), [§7.3](#73-d1-logical-model)) |
 | Routing policy          | Publish a new versioned policy; canary; roll back                                                  |
 | Support lookup          | Resolve a request reference to its full trace and payloads (A13)                                   |
 | Operational dashboards  | Health, error taxonomy breakdown, provider latency and cost, quota consumption                     |
@@ -1774,6 +1775,28 @@ rather than a re-enrollment.
 Deliberate omissions: no patient identifiers (a token is not a resource grant), no quota state (owned
 by the platform and would be stale instantly), no provider or model hints (the client has no say).
 
+**`ver` is a platform-global contract version, and it has two sides.** It versions the AAT claim
+contract itself, not an installation, so there is exactly one `ver` timeline for the whole platform.
+
+- **Minting side (clinic).** The issuer RPC reads its `ver` from one place — the AI schema's settings
+ row `ai.aat.ver` in `ai_internal.app_settings`, alongside `ai.aat.lifetime_minutes` — and mints
+ **exactly one** `ver` per token. There is no dual-mint: a clinic is on the old contract or the new
+ one, never both. The platform never reads or writes this setting
+ ([§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database)); advancing it is an operator
+ action on the clinic deployment.
+- **Accepting side (platform).** The identity stage ([§4.3.2](#432-identity-and-tenant-resolution))
+ checks the token's `ver` against the **accepted-`ver` set**, a single global `token_contract` record
+ in D1 ([§7.3](#73-d1-logical-model)) read through the same config cache as installation keys and
+ kill switches. The set holds exactly one value when stable and at most two during a rotation. A
+ token whose `ver` is not in the set fails verification as `unauthenticated`
+ ([§5.4](#54-error-taxonomy)) — a contract the verifier no longer accepts is not a distinct error
+ class from any other unacceptable claim, and no new taxonomy code is added for it.
+
+Rotation is therefore additive in exactly the way key rotation is
+([§8.1](#81-clinic-enrollment-and-trust-bootstrap)): both contract versions are accepted during the
+window, `iss` and `kid` are untouched, and **no clinic re-enrolls**. The full transition model is in
+[§5.7](#57-versioning-and-compatibility-rules).
+
 ### 5.7 Versioning and compatibility rules
 
 
@@ -1786,8 +1809,32 @@ by the platform and would be stale instantly), no provider or model hints (the c
 | Routing policy   | Versioned, independently deployable        | Invisible to clients by construction                                                                                                                                      |
 | Interaction mode | Fixed for the life of a capability version | Changing a capability between `single_shot` and `conversational` is a new capability version, never an in-place edit — the client's whole interaction shape depends on it |
 | Error taxonomy   | Additive only                              | Clients must treat unknown codes as `internal_error`                                                                                                                      |
-| Token contract   | `ver` claim                                | Overlapping acceptance during rotation                                                                                                                                    |
+| Token contract   | `ver` claim, platform-global               | Overlapping acceptance during rotation: the verifier accepts every `ver` in the D1 `token_contract` accepted set — one when stable, at most two mid-rotation. Both transitions are control-plane operator mutations ([§4.5](#45-control-plane)), never request-path clock trips. Issuers mint a single `ver` from clinic `ai.aat.ver` ([§5.6](#56-token-contract)); rotation needs no re-enrollment |
 
+
+**The token-contract rotation transition model.** A rotation has exactly two operator-driven edges and
+no timer:
+
+| Transition       | Who / what                                                                    | Effect on the accepted set                                                                | Effect on issuers                                                          |
+| ---------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Begin rotation** | Control-plane operator mutation on the `token_contract` record                | New `ver` **added**; prior `ver` **kept**. The overlap window is open from this write     | None yet — clinics keep minting the prior `ver`                            |
+| *(during)*       | Operator advances `ai.aat.ver` per clinic deployment, at whatever pace suits   | Unchanged — both values accepted                                                          | Each clinic flips from prior to new `ver` on its own, one value at a time  |
+| **Retire**       | Control-plane operator mutation on the `token_contract` record                 | Retired `ver` **removed**; the set returns to one value. The window is closed by this write | None — clinics are already on the new `ver` before this is safe to run     |
+
+"During" and "after" are therefore not clock states but **set membership**: the verifier is in overlap
+exactly while the accepted set has two members, and a `ver` is retired exactly when an operator has
+removed it. Nothing in the request path mutates this record, and nothing auto-retires — the same rule
+that governs capability retirement ([§7.3](#73-d1-logical-model)).
+
+**Why this deliberately differs from capability overlap (A12, [§15](#15-open-decisions) OD-9).** A
+capability version's overlap must outlive deployed *clients*, which is why it carries `deprecated_at`
+and `retire_after` and why OD-9 measures it in release cycles and months. A token contract's overlap
+only has to outlive tokens already in flight plus the operator's rollout of `ai.aat.ver` across
+clinics — and AAT lifetime is **minutes** ([§5.6](#56-token-contract)). So the `token_contract` record
+carries **no `retire_after` and no TTL**: adding a timed retirement to the hot path would buy nothing
+the operator's own sequencing does not already give, and would create a way for the platform to start
+refusing valid clinics on a clock (R-20). Retirement is safe as soon as every clinic has advanced its
+minting `ver` and the last old token has expired, and the operator is the one who knows that.
 
 The asymmetry to internalize: **prompts, models, providers, and routing can change hourly without
 client awareness; capability ids, context shapes, output schemas, and error codes cannot.** The
@@ -2195,6 +2242,7 @@ schema definition.
 | `installation_key` | Verification material and rotation history                                     | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                  | Few per installation     | History kept for audit                  |
 | `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
 | `capability_grant` | Which capability versions a plan or installation may use, **and** the current lifecycle of a capability version (scope `global`)                       | scope (`global` / `plan` / `installation`), capability id, version, granted/revoked, lifecycle state (`active` / `deprecated` / `retired`), successor id, deprecated_at, retire_after, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
+| `token_contract`   | The platform-global set of accepted AAT `ver` values                           | accepted `ver` value, added_at, retired_at, changed_by — one row per `ver`; the accepted set is the rows with no `retired_at`                                                                                                                                                  | A handful of rows ever  | Full history                            |
 | `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer (R2 key for the immutable policy document — schema in [§4.3.7](#437-provider-router-and-policy-engine)), active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
 | `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, `routing_tier` (`standard` / `degraded`), `routing_decision` ([§4.3.7](#437-provider-router-and-policy-engine)), plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
 | `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, `selection_reason` ([§4.3.7](#437-provider-router-and-policy-engine)), outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
@@ -2220,6 +2268,18 @@ the config cache alongside grants and kill switches ([§6.1](#61-the-pipeline) s
 isolate reconstructs lifecycle from D1 exactly as it reconstructs every other volatile flag. **No
 lifecycle-overlay entity of its own is added**, and no manifest is republished to change a lifecycle
 state.
+
+**`token_contract` is the accepted-`ver` set, and D1 is its only authority.** It is global, not
+per-installation, because `ver` versions the AAT claim contract itself
+([§5.6](#56-token-contract)). Begin-rotation inserts a row for the new `ver`; retire stamps
+`retired_at` on the old one; both are [§4.5](#45-control-plane) operator mutations that also write
+`control_audit`, and the request path never writes here. The identity stage
+([§4.3.2](#432-identity-and-tenant-resolution)) reads the live set through the config cache, so a
+cold isolate reconstructs it from D1 like every other volatile flag, and a rotation takes effect
+within one cache TTL without a deploy. Rows are append-only history, so "which contract versions were
+accepted when, and who changed that" is answerable without a second store. There is deliberately no
+`retire_after` column here — unlike `capability_grant`, retirement is not scheduled
+([§5.7](#57-versioning-and-compatibility-rules)).
 
 **Entitlement status** takes `pending`, `active`, or `suspended`. A row is created `pending` by
 enroll with no economics set and is moved to `active` by entitlement assignment
