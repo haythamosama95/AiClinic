@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_registration.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 
 /// In-memory mint fake with call counting.
@@ -37,12 +38,20 @@ final class SubmitHttpErrorStep extends SubmitScriptStep {
     this.requestReference,
     this.traceId,
     this.retrySafe = false,
+    this.missingKeys,
+    this.shapes,
+    this.manifestVersion,
+    this.manifestCapabilityId,
   });
 
   final TaxonomyCode code;
   final String? requestReference;
   final String? traceId;
   final bool retrySafe;
+  final List<String>? missingKeys;
+  final Map<String, Object?>? shapes;
+  final String? manifestVersion;
+  final String? manifestCapabilityId;
 }
 
 final class SubmitOpenStreamStep extends SubmitScriptStep {
@@ -86,12 +95,20 @@ class FakeSubmitPort implements HttpsSubmitPort {
           :final requestReference,
           :final traceId,
           :final retrySafe,
+          :final missingKeys,
+          :final shapes,
+          :final manifestVersion,
+          :final manifestCapabilityId,
         ):
         throw PlatformHttpException(
           code: code,
           requestReference: requestReference,
           traceId: traceId,
           retrySafe: retrySafe,
+          missingKeys: missingKeys,
+          shapes: shapes,
+          manifestVersion: manifestVersion,
+          manifestCapabilityId: manifestCapabilityId,
         );
       case SubmitOpenStreamStep(:final events):
         return FakeSseConnection(events: events);
@@ -374,6 +391,43 @@ List<SseEvent> contextRequestedStream({
             ],
       ),
     ];
+
+/// Spy for [ManifestRefreshPort] — records refresh call count (J2).
+class FakeManifestRefreshPort implements ManifestRefreshPort {
+  int refreshCallCount = 0;
+
+  @override
+  Future<void> refresh() async {
+    refreshCallCount++;
+  }
+}
+
+SubmitHttpErrorStep contextRequiredErrorStep({
+  String requestReference = 'req-ctx-required',
+  List<String>? missingKeys,
+  Map<String, Object?>? shapes,
+  String manifestVersion = '1.0.0',
+  String manifestCapabilityId = 'clinic.visit_summary',
+}) =>
+    SubmitHttpErrorStep(
+      code: TaxonomyCode.contextRequired,
+      requestReference: requestReference,
+      traceId: 'trace-ctx-req',
+      retrySafe: true,
+      missingKeys: missingKeys ?? [visitChiefComplaintV1Key],
+      shapes: shapes ??
+          {
+            visitChiefComplaintV1Key: {
+              'type': 'object',
+              'properties': {
+                'visit_id': {'type': 'string'},
+                'complaint': {'type': 'string'},
+              },
+            },
+          },
+      manifestVersion: manifestVersion,
+      manifestCapabilityId: manifestCapabilityId,
+    );
 
 /// Resolver spy that records keys without capability id.
 class ResolverSpy extends ContextResolver {
