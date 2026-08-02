@@ -5,6 +5,7 @@ import 'package:ai_clinic/features/ai/surface/first_ai_feature_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../unit/core/ai/fakes.dart';
 import 'ai_surface_test_harness.dart';
 
 const kClinicalAcceptKey = Key('clinical_accept');

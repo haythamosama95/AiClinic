@@ -148,6 +148,7 @@ BEGIN
     jsonb_build_object('p_visit_id', v_visit_id)
   );
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'unregistered_target_key_rejected',
     (NOT v_result.success)
@@ -170,6 +171,7 @@ BEGIN
     )
   );
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'delegated_rpc_errors_pass_through_unchanged',
     (NOT v_result.success)
@@ -212,6 +214,7 @@ BEGIN
   ORDER BY created_at DESC
   LIMIT 1;
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'acceptance_writes_domain_change_and_request_reference_together',
     v_result.success
@@ -236,6 +239,7 @@ BEGIN
   WHERE ai_request_reference = v_request_ref
   LIMIT 1;
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'acceptance_audit_log_bidirectional_provenance',
     v_forward_ref = v_request_ref
@@ -252,6 +256,7 @@ BEGIN
   WHERE table_schema = 'public'
     AND table_name = 'ai_accepted_output';
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'acceptance_rpc_does_not_store_ai_request_state',
     v_column_names NOT ILIKE '%capability%'
@@ -269,6 +274,7 @@ BEGIN
   FROM ai_internal.acceptance_targets
   WHERE target_key = 'visit_clinical_notes';
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'demonstration_target_does_not_promote_capability',
     v_registry_row.target_key = 'visit_clinical_notes'
@@ -289,6 +295,7 @@ BEGIN
   FROM public.audit_log
   WHERE action = 'ai.acceptance_record';
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'discard_path_writes_nothing',
     v_acceptance_count = 1 AND v_audit_count = 1,
@@ -296,6 +303,7 @@ BEGIN
   );
 
   -- T4: unaccepted_content_never_persisted (SQL — only accepted content in domain row)
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'unaccepted_content_never_persisted',
     NOT EXISTS (

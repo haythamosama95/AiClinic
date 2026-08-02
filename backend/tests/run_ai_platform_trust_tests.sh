@@ -23,6 +23,7 @@ sql_tests=(
   ai_keystore_rls.sql
   ai_token_issuer.sql
   context_provider_rpc.sql
+  ai_acceptance_recording.sql
 )
 
 for f in "${sql_tests[@]}"; do
