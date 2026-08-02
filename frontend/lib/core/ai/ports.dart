@@ -13,12 +13,24 @@ class CapabilityInvokeInput {
     required this.capabilityVersion,
     required this.intent,
     required this.context,
+    this.conversationId,
+    this.turnOrdinal,
+    this.transcript,
   });
 
   final String capabilityId;
   final String capabilityVersion;
   final String intent;
   final Map<String, dynamic> context;
+
+  /// Client-supplied conversation grouping (conversational capabilities only).
+  final String? conversationId;
+
+  /// Client-supplied leg ordinal (conversational capabilities only).
+  final int? turnOrdinal;
+
+  /// Prior transcript turns resupplied on each leg (conversational capabilities only).
+  final List<Map<String, Object?>>? transcript;
 }
 
 /// A6 submit-request correlation headers (frozen by A6 / A2).

@@ -52,6 +52,13 @@ final class CancelledEvent extends SseEvent {
   const CancelledEvent();
 }
 
+/// Terminal — conversational context request (H1 fourth kind; not a taxonomy code).
+final class ContextRequestedEvent extends SseEvent {
+  const ContextRequestedEvent({required this.contextRequest});
+
+  final List<Map<String, Object?>> contextRequest;
+}
+
 /// Surfaced terminal state after stream consumption.
 sealed class TerminalState {
   const TerminalState();
@@ -79,4 +86,10 @@ final class FailedTerminal extends TerminalState {
 
 final class CancelledTerminal extends TerminalState {
   const CancelledTerminal();
+}
+
+final class ContextRequestedTerminal extends TerminalState {
+  const ContextRequestedTerminal({required this.contextRequest});
+
+  final List<Map<String, Object?>> contextRequest;
 }

@@ -152,6 +152,8 @@ class AiInvokeSession {
           );
         case CancelledEvent():
           return const CancelledTerminal();
+        case ContextRequestedEvent(:final contextRequest):
+          return ContextRequestedTerminal(contextRequest: contextRequest);
       }
     }
     throw StateError('SSE stream ended without a terminal event');

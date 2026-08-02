@@ -387,6 +387,30 @@ export async function getRequest(
   return { found: false };
 }
 
+export type ConversationLegRow = {
+  request_id: string;
+  conversation_id: string;
+  turn_ordinal: number;
+  state: TransitionState;
+};
+
+export async function listConversationLegs(
+  conversationId: string,
+  db: D1Database,
+): Promise<ConversationLegRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT request_id, conversation_id, turn_ordinal, state
+       FROM ai_request
+       WHERE conversation_id = ?
+       ORDER BY turn_ordinal`,
+    )
+    .bind(conversationId)
+    .all<ConversationLegRow>();
+
+  return result.results ?? [];
+}
+
 export function recordGuardRejection(input: {
   installationId: string;
   errorCode: string;
