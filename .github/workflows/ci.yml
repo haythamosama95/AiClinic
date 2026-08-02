@@ -78,3 +78,36 @@ jobs:
           name: windows-build
           path: frontend/build/windows/x64/runner/Release/
           retention-days: 7
+
+  ai-platform-eval-golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ai-platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run golden eval suite
+        run: npx vitest run test/eval/golden.test.ts test/eval/prohibitions.test.ts
+
+      - name: Upload score report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-platform-golden-eval-reports
+          path: ai-platform/test/eval/reports/*.json
+          if-no-files-found: ignore
+          retention-days: 7
