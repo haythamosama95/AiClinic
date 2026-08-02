@@ -73,3 +73,68 @@ describe("T8 harness_holds_no_per_request_server_state", () => {
     expect(harnessSource).not.toContain("src/eval");
   });
 });
+
+const CONVERSATION_MODULE_PATHS = [
+  path.join(EVAL_ROOT, "conversation-harness.ts"),
+  path.join(EVAL_ROOT, "conversation-score-report.ts"),
+  path.join(EVAL_ROOT, "conversation.test.ts"),
+  path.join(EVAL_ROOT, "clinic.chat_assistant"),
+];
+
+describe("no_prompt_text_in_flutter_client", () => {
+  it("conversation module files introduce no Flutter client prompt, provider, or model strings", () => {
+    for (const modulePath of CONVERSATION_MODULE_PATHS) {
+      expect(existsSync(modulePath)).toBe(true);
+      expect(modulePath.startsWith(AI_PLATFORM_ROOT)).toBe(true);
+      expect(modulePath.includes("frontend")).toBe(false);
+    }
+
+    const dartFilesUnderEval: string[] = [];
+    for (const modulePath of CONVERSATION_MODULE_PATHS) {
+      if (modulePath.endsWith(".dart")) {
+        dartFilesUnderEval.push(modulePath);
+      }
+    }
+    expect(dartFilesUnderEval).toEqual([]);
+
+    const scanTargets = [
+      path.join(EVAL_ROOT, "conversation-harness.ts"),
+      path.join(EVAL_ROOT, "conversation-score-report.ts"),
+      path.join(EVAL_ROOT, "conversation.test.ts"),
+    ];
+    for (const filePath of scanTargets) {
+      const source = readFileSync(filePath, "utf8");
+      for (const pattern of FORBIDDEN_CLIENT_PATTERNS) {
+        expect(source).not.toMatch(pattern);
+      }
+    }
+
+    for (const file of listFilesRecursive(FRONTEND_LIB)) {
+      const source = readFileSync(file, "utf8");
+      for (const pattern of FORBIDDEN_CLIENT_PATTERNS) {
+        expect(source).not.toMatch(pattern);
+      }
+    }
+  });
+});
+
+describe("harness_holds_no_per_request_server_state", () => {
+  it("conversation harness remains CI tooling with no per-request server-side state", () => {
+    expect(existsSync(path.join(AI_PLATFORM_ROOT, "src", "eval"))).toBe(false);
+
+    const conversationHarnessPath = path.join(
+      EVAL_ROOT,
+      "conversation-harness.ts",
+    );
+    expect(existsSync(conversationHarnessPath)).toBe(true);
+
+    const harnessSource = readFileSync(conversationHarnessPath, "utf8");
+    expect(harnessSource).not.toMatch(/\bD1Database\b/);
+    expect(harnessSource).not.toMatch(/\bR2Bucket\b/);
+    expect(harnessSource).not.toMatch(/\bDurableObject\b/);
+    expect(harnessSource).not.toMatch(/\bKVNamespace\b/);
+    expect(harnessSource).not.toContain("src/eval");
+    expect(harnessSource.startsWith(EVAL_ROOT)).toBe(false);
+    expect(conversationHarnessPath).toContain("/test/eval/");
+  });
+});
