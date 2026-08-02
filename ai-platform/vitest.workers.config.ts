@@ -16,6 +16,7 @@ export default defineWorkersConfig({
       "test/rollup-reconciliation.test.ts",
       "test/journal-dashboards.test.ts",
       "test/soft-threshold-routing.test.ts",
+      "test/load/load-and-cost.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
