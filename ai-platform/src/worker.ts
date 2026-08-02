@@ -83,6 +83,7 @@ export default {
     }
 
     if (request.method === "POST" && isControlRoute(url.pathname)) {
+      // Includes installation lifecycle, capability deprecate/retire, support lookup, purge.
       const runtimeEnv = env as Env;
       return dispatchControlRequest(request, {
         DB: runtimeEnv.DB,

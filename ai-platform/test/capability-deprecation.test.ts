@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -353,12 +354,7 @@ function buildRetireRequest(
   );
 }
 
-const LIFECYCLE_MIGRATION_SQL = `
-ALTER TABLE capability_grant ADD COLUMN lifecycle_state TEXT;
-ALTER TABLE capability_grant ADD COLUMN successor_id TEXT;
-ALTER TABLE capability_grant ADD COLUMN deprecated_at TEXT;
-ALTER TABLE capability_grant ADD COLUMN retire_after TEXT;
-`;
+const LIFECYCLE_MIGRATION_SQL = lifecycleMigrationSql;
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);

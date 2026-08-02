@@ -28,7 +28,99 @@ export type DiscoveryResult = {
 
 const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
 
+/** OD-9 overlap window: two client release cycles, minimum 90 days (not a configuration surface). */
+export const OVERLAP_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+export type LifecycleOverlay = {
+  lifecycle_state?: string;
+  successor_id?: string | null;
+  deprecated_at?: string;
+  retire_after?: string;
+};
+
+export type EffectiveLifecycle = {
+  lifecycleState: string;
+  successorId: string | null;
+};
+
 let capabilityRegistry: CapabilityRegistry = new Map();
+
+export function effectiveLifecycle(
+  manifest: Manifest,
+  overlay: LifecycleOverlay | null,
+): EffectiveLifecycle {
+  const publishedState =
+    typeof manifest.Identity.lifecycleState === "string"
+      ? manifest.Identity.lifecycleState
+      : "active";
+  const publishedSuccessor =
+    typeof manifest.Identity.successorId === "string"
+      ? manifest.Identity.successorId
+      : null;
+
+  if (!overlay || overlay.lifecycle_state == null) {
+    return { lifecycleState: publishedState, successorId: publishedSuccessor };
+  }
+
+  return {
+    lifecycleState: overlay.lifecycle_state,
+    successorId:
+      overlay.successor_id != null ? overlay.successor_id : publishedSuccessor,
+  };
+}
+
+async function loadLifecycleOverlay(
+  cache: ConfigCache,
+  reader: D1Reader,
+  capabilityId: string,
+  version: string,
+): Promise<LifecycleOverlay | null> {
+  try {
+    const row = await loadConfig(
+      cache,
+      scopeReaderForKind(reader, "grants"),
+      "grants",
+      `global/${capabilityId}/${version}`,
+    );
+    return {
+      lifecycle_state:
+        typeof row.lifecycle_state === "string" ? row.lifecycle_state : undefined,
+      successor_id:
+        typeof row.successor_id === "string" ? row.successor_id : null,
+      deprecated_at:
+        typeof row.deprecated_at === "string" ? row.deprecated_at : undefined,
+      retire_after:
+        typeof row.retire_after === "string" ? row.retire_after : undefined,
+    };
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function manifestWithEffectiveIdentity(
+  manifest: Manifest,
+  effective: EffectiveLifecycle,
+): Manifest {
+  if (
+    manifest.Identity.lifecycleState === effective.lifecycleState &&
+    manifest.Identity.successorId === effective.successorId
+  ) {
+    return manifest;
+  }
+
+  const derived = {
+    ...manifest,
+    Identity: {
+      ...manifest.Identity,
+      lifecycleState: effective.lifecycleState,
+      successorId: effective.successorId,
+    },
+  };
+  return freezeManifest(derived as Manifest);
+}
 
 function registryKey(capabilityId: string, version: string): string {
   return `${capabilityId}@${version}`;
@@ -217,7 +309,10 @@ export async function resolve(
     return { ok: false, code: "capability_unknown" };
   }
 
-  if (manifest.Identity.lifecycleState === "retired") {
+  const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
+  const effective = effectiveLifecycle(manifest, overlay);
+
+  if (effective.lifecycleState === "retired") {
     return { ok: false, code: "capability_retired" };
   }
 
@@ -225,7 +320,7 @@ export async function resolve(
     return { ok: false, code: "capability_disabled" };
   }
 
-  return { ok: true, manifest };
+  return { ok: true, manifest: manifestWithEffectiveIdentity(manifest, effective) };
 }
 
 export function computeDiscoveryEtag(manifestList: Manifest[]): string {
@@ -273,12 +368,9 @@ export async function discover(
   const manifests: Manifest[] = [];
 
   for (const manifest of capabilityRegistry.values()) {
-    if (manifest.Identity.lifecycleState !== "active") {
-      continue;
-    }
-
     const capabilityId = manifest.Identity.capabilityId;
-    if (typeof capabilityId !== "string") {
+    const version = manifest.Identity.version;
+    if (typeof capabilityId !== "string" || typeof version !== "string") {
       continue;
     }
 
@@ -312,7 +404,27 @@ export async function discover(
       throw error;
     }
 
-    manifests.push(manifest);
+    const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
+    const effective = effectiveLifecycle(manifest, overlay);
+
+    if (effective.lifecycleState === "retired") {
+      continue;
+    }
+
+    const overlayAnnounced = overlay?.lifecycle_state != null;
+    const publishedActive = manifest.Identity.lifecycleState === "active";
+    if (!overlayAnnounced && !publishedActive) {
+      continue;
+    }
+
+    if (
+      effective.lifecycleState !== "active" &&
+      effective.lifecycleState !== "deprecated"
+    ) {
+      continue;
+    }
+
+    manifests.push(manifestWithEffectiveIdentity(manifest, effective));
   }
 
   const sorted = sortManifests(manifests);
