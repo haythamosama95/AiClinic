@@ -134,6 +134,7 @@ BEGIN
 
   -- T5: unregistered_target_key_rejected
   PERFORM pg_temp.set_authenticated_session(v_doctor_user, v_org_id, v_branch_id, v_doctor_staff, 'doctor');
+  PERFORM set_config('role', 'postgres', true);
   SELECT count(*) INTO v_acceptance_count FROM public.ai_accepted_output;
   SELECT count(*) INTO v_audit_count
   FROM public.audit_log
@@ -141,6 +142,7 @@ BEGIN
   SELECT count(*) INTO v_note_count
   FROM public.visit_clinical_notes
   WHERE visit_id = v_visit_id AND is_deleted = false;
+  PERFORM pg_temp.set_authenticated_session(v_doctor_user, v_org_id, v_branch_id, v_doctor_staff, 'doctor');
 
   v_result := public.record_ai_acceptance(
     v_request_ref,
@@ -160,6 +162,7 @@ BEGIN
     format('success=%s error=%s', v_result.success, v_result.error_code)
   );
 
+  PERFORM pg_temp.set_authenticated_session(v_doctor_user, v_org_id, v_branch_id, v_doctor_staff, 'doctor');
   -- T9: delegated_rpc_errors_pass_through_unchanged
   v_result := public.record_ai_acceptance(
     v_request_ref,
@@ -189,7 +192,7 @@ BEGIN
     format('success=%s code=%s msg=%s', v_result.success, v_result.error_code, v_result.error_message)
   );
 
-  -- T1: acceptance_writes_domain_change_and_request_reference_together
+  PERFORM pg_temp.set_authenticated_session(v_doctor_user, v_org_id, v_branch_id, v_doctor_staff, 'doctor');
   v_result := public.record_ai_acceptance(
     v_request_ref,
     'visit_clinical_notes',
@@ -200,6 +203,7 @@ BEGIN
     )
   );
 
+  PERFORM set_config('role', 'postgres', true);
   SELECT * INTO v_acceptance_row
   FROM public.ai_accepted_output
   WHERE ai_request_reference = v_request_ref
@@ -214,7 +218,6 @@ BEGIN
   ORDER BY created_at DESC
   LIMIT 1;
 
-  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_acceptance_recording_results VALUES (
     'acceptance_writes_domain_change_and_request_reference_together',
     v_result.success
@@ -290,6 +293,7 @@ BEGIN
   );
 
   -- T3: discard_path_writes_nothing (SQL precondition — no RPC call)
+  PERFORM set_config('role', 'postgres', true);
   SELECT count(*) INTO v_acceptance_count FROM public.ai_accepted_output;
   SELECT count(*) INTO v_audit_count
   FROM public.audit_log
@@ -336,6 +340,4 @@ BEGIN
 END;
 $$;
 
-COMMIT;
-
-SELECT test_name, passed, detail FROM ai_acceptance_recording_results ORDER BY test_name;
+ROLLBACK;
