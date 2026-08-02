@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
   EnrolledKeyVerifier,
@@ -226,6 +227,7 @@ function makeIdentityReader(
   overrides: {
     installation?: Record<string, unknown> | "miss";
     key?: Record<string, unknown> | "miss";
+    contract?: Record<string, unknown> | "miss" | ((ver: string) => Record<string, unknown> | "miss");
   } = {},
 ): ReaderSpy {
   return makeReader((lookupKey) => {
@@ -234,6 +236,23 @@ function makeIdentityReader(
     }
     if (lookupKey === keypair.kid) {
       return overrides.key ?? keyRow(keypair);
+    }
+    const contractLookup =
+      overrides.contract ??
+      ((ver: string) =>
+        ver === "1"
+          ? {
+              ver: "1",
+              added_at: "2026-08-03T00:00:00.000Z",
+              retired_at: null,
+              changed_by: "seed",
+            }
+          : "miss");
+    if (typeof contractLookup === "function") {
+      return contractLookup(lookupKey);
+    }
+    if (contractLookup !== "miss") {
+      return contractLookup;
     }
     return "miss";
   });
@@ -316,6 +335,14 @@ function createPlatformD1Reader(db: D1Database): D1Reader {
         .first<Record<string, unknown>>();
       if (installationKey) {
         return installationKey;
+      }
+
+      const tokenContract = await db
+        .prepare("SELECT * FROM token_contract WHERE ver = ?")
+        .bind(key)
+        .first<Record<string, unknown>>();
+      if (tokenContract) {
+        return tokenContract;
       }
 
       return "miss";
@@ -641,6 +668,7 @@ describe("identity_rejects_suspended_installation", () => {
     const workers = await import("cloudflare:test");
     db = workers.env.DB;
     await applyPlatformSchema(db, migrationSql);
+    await applyPlatformSchema(db, tokenContractMigrationSql);
   });
 
   beforeEach(async () => {

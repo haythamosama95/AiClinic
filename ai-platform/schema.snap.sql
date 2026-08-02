@@ -111,6 +111,13 @@ CREATE TABLE routing_policy (
   PRIMARY KEY (policy_id, version)
 );
 
+CREATE TABLE token_contract (
+  ver TEXT PRIMARY KEY NOT NULL,
+  added_at TEXT NOT NULL,
+  retired_at TEXT,
+  changed_by TEXT NOT NULL
+);
+
 CREATE TABLE usage_event (
   usage_event_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,
@@ -130,11 +137,4 @@ CREATE TABLE usage_rollup (
   request_count INTEGER NOT NULL,
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL
-);
-
-CREATE TABLE token_contract (
-  ver TEXT PRIMARY KEY NOT NULL,
-  added_at TEXT NOT NULL,
-  retired_at TEXT,
-  changed_by TEXT NOT NULL
 );
