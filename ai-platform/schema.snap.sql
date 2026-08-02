@@ -47,12 +47,8 @@ CREATE TABLE capability_grant (
   granted_at TEXT NOT NULL,
   revoked_at TEXT,
   changed_at TEXT NOT NULL,
-  changed_by TEXT NOT NULL,
-  lifecycle_state TEXT,
-  successor_id TEXT,
-  deprecated_at TEXT,
-  retire_after TEXT
-);
+  changed_by TEXT NOT NULL
+, lifecycle_state TEXT, successor_id TEXT, deprecated_at TEXT, retire_after TEXT);
 
 CREATE TABLE control_audit (
   audit_id TEXT PRIMARY KEY NOT NULL,
