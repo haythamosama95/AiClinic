@@ -95,6 +95,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.foundationDemo,
             builder: (context, state) => DesignSystemPage(initialSection: ShellNavConfig.devSectionForUri(state.uri)),
           ),
+          GoRoute(
+            path: AppRoutes.aiFeatureHost,
+            builder: (context, state) => const Scaffold(
+              body: Center(
+                child: Text('AI feature host route is registered for CP3 composition.'),
+              ),
+            ),
+          ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),

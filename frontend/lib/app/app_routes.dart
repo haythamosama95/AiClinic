@@ -160,4 +160,7 @@ abstract final class AppRoutes {
   static const shifts = '/shifts';
 
   static const shiftStaticPaths = <String>[shiftsCalendar, shiftsNew];
+
+  /// Standalone AI feature host for widget tests and CP3 entry (E4).
+  static const aiFeatureHost = '/ai/feature-host';
 }
