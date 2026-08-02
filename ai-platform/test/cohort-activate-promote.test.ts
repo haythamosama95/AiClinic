@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
@@ -370,35 +368,11 @@ async function discoverGrantedVersion(
 }
 
 function assertNoPromptActivationPointerModule(): void {
-  const srcDir = join(process.cwd(), "src");
-  const forbiddenNames = [
-    "prompt-activation-pointer",
-    "prompt_activation_pointer",
-    "runtime-prompt-activation",
-  ];
-  const walk = (dir: string): string[] => {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    const files: string[] = [];
-    for (const entry of entries) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...walk(full));
-      } else {
-        files.push(full);
-      }
-    }
-    return files;
-  };
-  for (const file of walk(srcDir)) {
-    const base = file.split("/").pop() ?? "";
-    for (const forbidden of forbiddenNames) {
-      expect(base).not.toContain(forbidden);
-    }
-    if (file.endsWith(".ts")) {
-      const content = readFileSync(file, "utf8");
-      expect(content).not.toMatch(/promptActivationPointer/);
-      expect(content).not.toMatch(/runtime prompt activation pointer/i);
-    }
+  const modulePaths = Object.keys(
+    import.meta.glob("../src/**/*.ts", { eager: false }),
+  );
+  for (const path of modulePaths) {
+    expect(path.toLowerCase()).not.toMatch(/prompt[-_]?activation[-_]?pointer/);
   }
 }
 

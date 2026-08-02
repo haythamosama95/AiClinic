@@ -6,6 +6,8 @@
 import {
   type ConfigCache,
   ConfigCacheMissError,
+  type D1Reader,
+  loadConfig,
 } from "../config-cache";
 
 export type RoutingTier = "standard" | "degraded";
@@ -372,7 +374,11 @@ export function selectCandidateChain({
   policyCacheKey: string;
   context: RouterContext;
 }): RouterOutcome {
-  const row = cache.consult("active_routing_policy", policyCacheKey);
+  const installationPolicyKey = `${policyCacheKey}/${context.installationId}`;
+  let row = cache.consult("active_routing_policy", installationPolicyKey);
+  if (row === undefined) {
+    row = cache.consult("active_routing_policy", policyCacheKey);
+  }
   if (row === undefined) {
     throw new ConfigCacheMissError("active_routing_policy", policyCacheKey);
   }
@@ -424,4 +430,27 @@ export function selectCandidateChain({
       max_parallel_attempts: clampParallelAttempts(rawParallelAttempts),
     },
   };
+}
+
+function scopeReaderForKind(reader: D1Reader, kind: string): D1Reader {
+  return {
+    read(key: string) {
+      return reader.read(`${kind}:${key}`);
+    },
+  };
+}
+
+/** Preload installation-specific active routing policy into the config cache (J3). */
+export async function preloadRoutingPolicyForInstallation(
+  cache: ConfigCache,
+  reader: D1Reader,
+  policyCacheKey: string,
+  installationId: string,
+): Promise<void> {
+  await loadConfig(
+    cache,
+    scopeReaderForKind(reader, "active_routing_policy"),
+    "active_routing_policy",
+    `${policyCacheKey}/${installationId}`,
+  );
 }

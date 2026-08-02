@@ -511,6 +511,345 @@ export async function handleRetire(
   return ok();
 }
 
+type CohortPayload = {
+  installation_ids: string[];
+  cohort_name?: string;
+};
+
+type PublishPayload = {
+  document: Record<string, unknown>;
+};
+
+type CohortCapabilityRoute = {
+  capabilityId: string;
+  version: string;
+  action: "activate" | "promote";
+};
+
+type RoutingPolicyRoute = {
+  policyId: string;
+  version: string;
+  action: "publish" | "canary" | "rollback";
+};
+
+function parseCohortCapabilityRoute(request: Request): CohortCapabilityRoute | null {
+  const match = new URL(request.url).pathname.match(
+    /^\/control\/capabilities\/([^/]+)\/versions\/([^/]+)\/(activate|promote)$/,
+  );
+  if (!match) {
+    return null;
+  }
+  return {
+    capabilityId: match[1],
+    version: match[2],
+    action: match[3] as "activate" | "promote",
+  };
+}
+
+function parseRoutingPolicyRoute(request: Request): RoutingPolicyRoute | null {
+  const match = new URL(request.url).pathname.match(
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/(publish|canary|rollback)$/,
+  );
+  if (!match) {
+    return null;
+  }
+  return {
+    policyId: match[1],
+    version: match[2],
+    action: match[3] as "publish" | "canary" | "rollback",
+  };
+}
+
+export async function handleCohortActivate(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const route = parseCohortCapabilityRoute(request);
+  if (!route || route.action !== "activate") {
+    return reject(400, "invalid_route");
+  }
+
+  const body = await parseJsonBody<CohortPayload>(request);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  if (!Array.isArray(body.installation_ids) || body.installation_ids.length === 0) {
+    return reject(400, "missing_installation_ids");
+  }
+
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = body.cohort_name
+    ? `${route.capabilityId}@${route.version}:${body.cohort_name}`
+    : `${route.capabilityId}@${route.version}`;
+
+  const statements: D1PreparedStatement[] = [];
+  for (const installationId of body.installation_ids) {
+    const existing = await DB.prepare(
+      `SELECT grant_id FROM capability_grant
+       WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL`,
+    )
+      .bind(`installation:${installationId}`, route.capabilityId)
+      .first<{ grant_id: string }>();
+
+    if (existing) {
+      statements.push(
+        DB.prepare(
+          `UPDATE capability_grant
+           SET capability_version = ?, changed_at = ?, changed_by = ?
+           WHERE grant_id = ?`,
+        ).bind(route.version, recordedAt, auth.operatorId, existing.grant_id),
+      );
+    } else {
+      statements.push(
+        DB.prepare(
+          `INSERT INTO capability_grant (
+             grant_id, scope, capability_id, capability_version,
+             granted_at, revoked_at, changed_at, changed_by
+           ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+        ).bind(
+          newId(),
+          `installation:${installationId}`,
+          route.capabilityId,
+          route.version,
+          recordedAt,
+          recordedAt,
+          auth.operatorId,
+        ),
+      );
+    }
+  }
+
+  statements.push(
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'cohort_activate', ?, NULL, NULL, ?)`,
+    ).bind(newId(), auth.operatorId, target, recordedAt),
+  );
+
+  await DB.batch(statements);
+  return ok();
+}
+
+export async function handleCohortPromote(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const route = parseCohortCapabilityRoute(request);
+  if (!route || route.action !== "promote") {
+    return reject(400, "invalid_route");
+  }
+
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${route.capabilityId}@${route.version}`;
+
+  const grants = await DB.prepare(
+    `SELECT grant_id FROM capability_grant
+     WHERE capability_id = ? AND scope LIKE 'installation:%' AND revoked_at IS NULL`,
+  )
+    .bind(route.capabilityId)
+    .all<{ grant_id: string }>();
+
+  const statements: D1PreparedStatement[] = (grants.results ?? []).map((grant) =>
+    DB.prepare(
+      `UPDATE capability_grant
+       SET capability_version = ?, changed_at = ?, changed_by = ?
+       WHERE grant_id = ?`,
+    ).bind(route.version, recordedAt, auth.operatorId, grant.grant_id),
+  );
+
+  statements.push(
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'cohort_promote', ?, NULL, NULL, ?)`,
+    ).bind(newId(), auth.operatorId, target, recordedAt),
+  );
+
+  if (statements.length > 0) {
+    await DB.batch(statements);
+  }
+
+  return ok();
+}
+
+export async function handleRoutingPolicyPublish(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const route = parseRoutingPolicyRoute(request);
+  if (!route || route.action !== "publish") {
+    return reject(400, "invalid_route");
+  }
+
+  if (!bindings.R2) {
+    return reject(500, "missing_r2_binding");
+  }
+
+  const body = await parseJsonBody<PublishPayload>(request);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  if (!body.document || typeof body.document !== "object") {
+    return reject(400, "missing_document");
+  }
+
+  const { DB, R2 } = bindings;
+  const recordedAt = nowIso();
+  const contentPointer = `control/routing-policy/${route.policyId}/${route.version}.json`;
+  const target = `${route.policyId}@${route.version}`;
+
+  await R2.put(contentPointer, JSON.stringify(body.document), {
+    httpMetadata: { contentType: "application/json" },
+  });
+
+  await DB.batch([
+    DB.prepare(
+      `INSERT INTO routing_policy (
+         policy_id, version, content_pointer, active_from, activated_by, canary_installation_ids
+       ) VALUES (?, ?, ?, ?, ?, NULL)`,
+    ).bind(
+      route.policyId,
+      route.version,
+      contentPointer,
+      recordedAt,
+      auth.operatorId,
+    ),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_publish', ?, NULL, ?, ?)`,
+    ).bind(newId(), auth.operatorId, target, contentPointer, recordedAt),
+  ]);
+
+  return ok();
+}
+
+export async function handleRoutingPolicyCanary(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const route = parseRoutingPolicyRoute(request);
+  if (!route || route.action !== "canary") {
+    return reject(400, "invalid_route");
+  }
+
+  const body = await parseJsonBody<CohortPayload>(request);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  if (!Array.isArray(body.installation_ids) || body.installation_ids.length === 0) {
+    return reject(400, "missing_installation_ids");
+  }
+
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${route.policyId}@${route.version}`;
+
+  const existing = await DB.prepare(
+    `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(route.policyId, route.version)
+    .first<{ policy_id: string }>();
+
+  if (!existing) {
+    return reject(404, "policy_version_not_found");
+  }
+
+  await DB.batch([
+    DB.prepare(
+      `UPDATE routing_policy
+       SET canary_installation_ids = ?
+       WHERE policy_id = ? AND version = ?`,
+    ).bind(
+      JSON.stringify(body.installation_ids),
+      route.policyId,
+      route.version,
+    ),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_canary', ?, NULL, NULL, ?)`,
+    ).bind(newId(), auth.operatorId, target, recordedAt),
+  ]);
+
+  return ok();
+}
+
+export async function handleRoutingPolicyRollback(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const route = parseRoutingPolicyRoute(request);
+  if (!route || route.action !== "rollback") {
+    return reject(400, "invalid_route");
+  }
+
+  const { DB } = bindings;
+  const recordedAt = nowIso();
+  const target = `${route.policyId}@${route.version}`;
+
+  const existing = await DB.prepare(
+    `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(route.policyId, route.version)
+    .first<{ policy_id: string }>();
+
+  if (!existing) {
+    return reject(404, "policy_version_not_found");
+  }
+
+  await DB.batch([
+    DB.prepare(
+      `UPDATE routing_policy
+       SET canary_installation_ids = NULL
+       WHERE policy_id = ? AND version = ?`,
+    ).bind(route.policyId, route.version),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'routing_policy_rollback', ?, NULL, NULL, ?)`,
+    ).bind(newId(), auth.operatorId, target, recordedAt),
+  ]);
+
+  return ok();
+}
+
 export async function handleDelete(
   request: Request,
   bindings: ControlBindings,
@@ -562,10 +901,18 @@ const CAPABILITY_LIFECYCLE_PATTERN =
 
 const SUPPORT_LOOKUP_PATTERN = /^\/control\/support\/lookup$/;
 
+const ROUTING_POLICY_PATTERN =
+  /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(publish|canary|rollback)$/;
+
+const COHORT_CAPABILITY_PATTERN =
+  /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(activate|promote)$/;
+
 export function isControlRoute(pathname: string): boolean {
   return (
     CONTROL_ACTION_PATTERN.test(pathname) ||
     CAPABILITY_LIFECYCLE_PATTERN.test(pathname) ||
+    COHORT_CAPABILITY_PATTERN.test(pathname) ||
+    ROUTING_POLICY_PATTERN.test(pathname) ||
     SUPPORT_LOOKUP_PATTERN.test(pathname)
   );
 }
@@ -656,6 +1003,31 @@ export async function dispatchControlRequest(
       return handleDeprecate(request, bindings, operatorAuth);
     }
     return handleRetire(request, bindings, operatorAuth);
+  }
+
+  if (COHORT_CAPABILITY_PATTERN.test(pathname)) {
+    const route = parseCohortCapabilityRoute(request);
+    if (!route) {
+      return reject(400, "invalid_route");
+    }
+    if (route.action === "activate") {
+      return handleCohortActivate(request, bindings, operatorAuth);
+    }
+    return handleCohortPromote(request, bindings, operatorAuth);
+  }
+
+  if (ROUTING_POLICY_PATTERN.test(pathname)) {
+    const route = parseRoutingPolicyRoute(request);
+    if (!route) {
+      return reject(400, "invalid_route");
+    }
+    if (route.action === "publish") {
+      return handleRoutingPolicyPublish(request, bindings, operatorAuth);
+    }
+    if (route.action === "canary") {
+      return handleRoutingPolicyCanary(request, bindings, operatorAuth);
+    }
+    return handleRoutingPolicyRollback(request, bindings, operatorAuth);
   }
 
   const action = pathname.split("/").pop();

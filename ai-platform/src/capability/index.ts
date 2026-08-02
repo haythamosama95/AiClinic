@@ -387,6 +387,7 @@ export async function discover(
     }
 
     const grantKey = `${installationId}/${capabilityId}`;
+    let grantedVersion: string | null = null;
     try {
       const grant = await loadConfig(
         cache,
@@ -397,11 +398,18 @@ export async function discover(
       if (grant.revoked_at != null) {
         continue;
       }
+      if (typeof grant.capability_version === "string") {
+        grantedVersion = grant.capability_version;
+      }
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         continue;
       }
       throw error;
+    }
+
+    if (grantedVersion !== null && manifest.Identity.version !== grantedVersion) {
+      continue;
     }
 
     const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
@@ -429,6 +437,33 @@ export async function discover(
 
   const sorted = sortManifests(manifests);
   return { manifests: sorted, etag: computeDiscoveryEtag(sorted) };
+}
+
+export async function getGrantedCapabilityVersion(
+  installationId: string,
+  capabilityId: string,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<string | null> {
+  try {
+    const grant = await loadConfig(
+      cache,
+      scopeReaderForKind(reader, "grants"),
+      "grants",
+      `${installationId}/${capabilityId}`,
+    );
+    if (grant.revoked_at != null) {
+      return null;
+    }
+    return typeof grant.capability_version === "string"
+      ? grant.capability_version
+      : null;
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export function buildDiscoveryResponse(

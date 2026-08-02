@@ -7,7 +7,7 @@ import {
   type ConfigEntityKind,
   type D1Reader,
 } from "../src/config-cache";
-import { selectCandidateChain } from "../src/router";
+import { preloadRoutingPolicyForInstallation, selectCandidateChain } from "../src/router";
 import {
   assertControlAudit,
   countControlAuditsForAction,
@@ -306,11 +306,17 @@ function buildCohortPromoteRequest(
   );
 }
 
-function routeForInstallation(
+async function routeForInstallation(
   installationId: string,
   cache: ConfigCache,
   reader: D1Reader,
-): ReturnType<typeof selectCandidateChain> {
+): Promise<ReturnType<typeof selectCandidateChain>> {
+  await preloadRoutingPolicyForInstallation(
+    cache,
+    reader,
+    FIXTURE_POLICY_REF,
+    installationId,
+  );
   return selectCandidateChain({
     cache,
     policyCacheKey: FIXTURE_POLICY_REF,
@@ -327,7 +333,6 @@ function routeForInstallation(
       manifestCostClass: "standard",
       entitlementMaxCostClass: "premium",
     },
-    reader,
   });
 }
 
@@ -465,7 +470,7 @@ describe("routing_policy_canary_split", () => {
     const cache = new ConfigCache();
     const reader = makeRoutingD1Reader(env.DB, env.R2);
 
-    const cohortOutcome = routeForInstallation(
+    const cohortOutcome = await routeForInstallation(
       COHORT_INSTALLATION_ID,
       cache,
       reader,
@@ -473,7 +478,7 @@ describe("routing_policy_canary_split", () => {
     expect(cohortOutcome.routing_decision.policy_version).toBe(2);
     expect(cohortOutcome.routing_decision.chain[0]?.provider_id).toBe("gemini");
 
-    const otherOutcome = routeForInstallation(
+    const otherOutcome = await routeForInstallation(
       OTHER_INSTALLATION_ID,
       cache,
       reader,
