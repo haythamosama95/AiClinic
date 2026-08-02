@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
@@ -28,17 +29,6 @@ function createFakeOperatorAuth(
     },
   };
 }
-
-const TOKEN_CONTRACT_SUBSTRATE_SQL = `
-CREATE TABLE IF NOT EXISTS token_contract (
-  ver TEXT PRIMARY KEY NOT NULL,
-  added_at TEXT NOT NULL,
-  retired_at TEXT,
-  changed_by TEXT NOT NULL
-);
-INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
-VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed');
-`;
 
 type TokenContractControlHandlers = {
   handleTokenContractBeginRotation: (
@@ -84,8 +74,11 @@ async function clearTokenContractTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM token_contract"),
+    env.DB.prepare(
+      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+       VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
+    ),
   ]);
-  await applySql(env.DB, TOKEN_CONTRACT_SUBSTRATE_SQL);
 }
 
 function buildBeginRotationRequest(ver: string = NEW_VER): Request {
@@ -112,7 +105,7 @@ function buildRetireRequest(ver: string = PRIOR_VER): Request {
 
 beforeAll(async () => {
   await applySql(env.DB, migrationSql);
-  await applySql(env.DB, TOKEN_CONTRACT_SUBSTRATE_SQL);
+  await applySql(env.DB, tokenContractMigrationSql);
 });
 
 beforeEach(async () => {

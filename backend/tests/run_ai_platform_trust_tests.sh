@@ -22,6 +22,7 @@ psql_run() {
 sql_tests=(
   ai_keystore_rls.sql
   ai_token_issuer.sql
+  ai_token_contract_rotation.sql
   context_provider_rpc.sql
   ai_acceptance_recording.sql
 )

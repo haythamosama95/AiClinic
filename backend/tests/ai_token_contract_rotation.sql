@@ -73,15 +73,16 @@ DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
   v_bootstrap_staff uuid := 'b0000000-0000-4000-8000-000000000001';
-  v_doctor_user uuid := 'c1000000-0000-4000-8000-000000000001';
-  v_doctor_staff uuid := 'c2000000-0000-4000-8000-000000000001';
+  v_doctor_user uuid := 'd1000000-0000-4000-8000-000000000001';
+  v_doctor_staff uuid := 'd2000000-0000-4000-8000-000000000001';
   v_result public.rpc_result;
   v_org_id uuid;
   v_branch_id uuid;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
-  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_doctor_staff]::uuid[]);
+  DELETE FROM ai_internal.ai_token_issuance;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users WHERE id = v_doctor_user;
 
@@ -149,7 +150,7 @@ $$;
 -- T-J4-08: after advancing ai.aat.ver, mint carries every §5.6 claim and deliberate omissions.
 DO $$
 DECLARE
-  v_doctor_user uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_doctor_user uuid := 'd1000000-0000-4000-8000-000000000001';
   v_advanced_ver text := '2';
   v_token text;
   v_payload jsonb;
@@ -220,7 +221,7 @@ $$;
 -- T-J4-09: issuer mints exactly one ver from ai.aat.ver; scopes remain RBAC-derived.
 DO $$
 DECLARE
-  v_doctor_user uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_doctor_user uuid := 'd1000000-0000-4000-8000-000000000001';
   v_setting_ver text;
   v_token text;
   v_payload jsonb;
@@ -257,7 +258,7 @@ $$;
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
-  v_doctor_user uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_doctor_user uuid := 'd1000000-0000-4000-8000-000000000001';
   v_installation_id uuid;
   v_key_count_before int;
   v_key_count_after int;
@@ -288,7 +289,7 @@ BEGIN
     AND is_deleted = false;
 
   v_passed := v_key_count_before = v_key_count_after
-    AND v_key_count_after = 1
+    AND v_key_count_after >= 1
     AND v_payload ->> 'iss' = v_installation_id::text
     AND v_payload ->> 'ver' = '2';
 

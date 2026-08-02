@@ -131,3 +131,10 @@ CREATE TABLE usage_rollup (
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL
 );
+
+CREATE TABLE token_contract (
+  ver TEXT PRIMARY KEY NOT NULL,
+  added_at TEXT NOT NULL,
+  retired_at TEXT,
+  changed_by TEXT NOT NULL
+);

@@ -299,6 +299,20 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
+    let contractRow: Record<string, unknown>;
+    try {
+      contractRow = await loadConfig(ctx.cache, ctx.reader, "token_contracts", payload.ver);
+    } catch (error) {
+      if (error instanceof ConfigCacheMissError) {
+        return rejectUnauthenticated();
+      }
+      throw error;
+    }
+
+    if (contractRow.retired_at != null) {
+      return rejectUnauthenticated();
+    }
+
     return { ok: true, principal: buildPrincipal(payload) };
   }
 }

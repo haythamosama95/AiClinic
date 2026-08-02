@@ -9,7 +9,8 @@ export type ConfigEntityKind =
   | "entitlements"
   | "grants"
   | "kill_switches"
-  | "active_routing_policy";
+  | "active_routing_policy"
+  | "token_contracts";
 
 type D1Row = Record<string, unknown>;
 
