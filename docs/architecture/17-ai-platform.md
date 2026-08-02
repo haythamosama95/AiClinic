@@ -50,6 +50,7 @@
   - [4.1 Client-side components](#41-client-side-components)
   - [4.2 Clinic backend components (Supabase)](#42-clinic-backend-components-supabase)
     - [4.2.1 The clinic-side signing mechanism](#421-the-clinic-side-signing-mechanism)
+    - [4.2.2 The AI acceptance recording contract](#422-the-ai-acceptance-recording-contract)
   - [4.3 AI Gateway Worker components](#43-ai-gateway-worker-components)
     - [4.3.1 Protocol adapter](#431-protocol-adapter)
     - [4.3.2 Identity and tenant resolution](#432-identity-and-tenant-resolution)
@@ -952,7 +953,7 @@ Additive only. No existing table changes semantics, and every addition follows t
 | **Installation keystore**       | Hold the installation ID and the Ed25519 private signing key in a restricted schema, unreadable by `anon`/`authenticated` roles                        | Only the token-issuing function may read it. Rotation is a supported operation. Mechanism in [§4.2.1](#421-the-clinic-side-signing-mechanism).                |
 | **AI token issuer RPC**         | Verify the caller's session, resolve tenant/actor claims and AI capability scopes from the RBAC tables, mint a short-lived signed AAT, record issuance | The single point where clinic identity is converted into AI platform identity. Rate-limited itself, so a compromised client cannot mint tokens without bound. |
 | **Context provider RPCs**       | Return the domain payloads the Context Resolver needs, under the caller's own permissions                                                              | Prefer reusing existing RPCs. New ones are ordinary read RPCs with no AI knowledge — an RPC returning vitals is not "an AI RPC".                              |
-| **AI acceptance recording RPC** | Record that a human accepted AI-generated content into a clinical record, storing the AI request reference alongside the domain write                  | Closes the audit loop (A5): the clinic `audit_log` can explain the provenance of a clinical field.                                                            |
+| **AI acceptance recording RPC** | Record that a human accepted AI-generated content into a clinical record, storing the AI request reference alongside the domain write                  | Closes the audit loop (A5): the clinic `audit_log` can explain the provenance of a clinical field. One shared RPC for every capability; contract in [§4.2.2](#422-the-ai-acceptance-recording-contract).                                                            |
 | **AI availability flag**        | Store whether this installation is AI-enrolled and the platform base URL                                                                               | Lets the client hide AI affordances entirely for non-AI clinics without probing the network.                                                                  |
 
 
@@ -1008,6 +1009,98 @@ under this project's control, not Supabase's release calendar. Should Tier 3 (Su
 become real, the affected clinics are precisely the ones that gain a cloud-issued JWKS, which is the
 OIDC verifier strategy [§2.1](#21-amendment-a1-authenticate-every-request-requires-a-trust-bootstrap-that-does-not-exist-yet)
 already keeps on the table. Tracked as R-24.
+
+#### 4.2.2 The AI acceptance recording contract
+
+A5 requires clinical content to enter the record only through an explicit human accept recorded with
+the AI request reference, and [§14](#14-constitution-compliance-check) (principle III) requires that
+AI output enter the record **through the existing domain RPCs**, with their existing validation,
+triggers, and RLS. Those two together fix the shape of the acceptance RPC: it is a single,
+capability-agnostic wrapper that *delegates* the clinical write to an allow-listed existing domain
+RPC and records provenance in the same transaction. Naming it here is not an implementation detail a
+delivery slice may choose for itself — Open Decision 14 requires later conversational acceptance to
+reuse this exact RPC, so a second acceptance path must be impossible by construction.
+
+**The RPC.**
+
+```sql
+public.record_ai_acceptance(
+  p_request_reference text,   -- e.g. '7QK4-2B9F' (§8.9 format); the only AI-shaped input
+  p_target_key        text,   -- an allow-listed acceptance target
+  p_target_args       jsonb   -- named arguments for that target's domain RPC
+) RETURNS public.rpc_result
+```
+
+It follows the established `public` wrapper → `auth_internal.record_ai_acceptance`
+`SECURITY DEFINER` pattern (F4), where the definer half exists to write `ai_accepted_output` and the
+append-only `audit_log` — the clinical write itself is delegated and keeps its own authorization, as
+below. On success, `rpc_result.data` carries
+`{"acceptance_id", "table_name", "record_id", "audit_log_id"}` merged with the delegated RPC's own
+`data`. On failure it returns the delegated RPC's `error_code` and `error_message` unchanged, so
+acceptance adds **no new error vocabulary** — neither a clinic-side one nor an entry in the platform
+error taxonomy ([§5.4](#54-error-taxonomy)), which is not involved at all: by this point the request
+is already terminal and the platform has been left behind.
+
+**Why one shared RPC can perform a domain-specific clinical write.** Because it knows no domain.
+`p_target_key` resolves, in an allow-list registry `ai_internal.acceptance_targets(target_key,
+domain_function, table_name)`, to exactly one existing `public` domain RPC. The acceptance RPC
+invokes that RPC with `p_target_args`, and because the delegated function runs its own
+`auth_internal` authorization against the calling actor exactly as it does for a manual edit, the
+write is subject to the same permission checks, validation, triggers, and RLS — acceptance grants no
+privilege the clinician did not already have. A function name is never client-supplied: the
+registry is the only source, and registering a target is a migration. An unregistered `p_target_key`
+is rejected before anything is written. Enabling a new
+clinical capability therefore adds a registry row, never a second acceptance path, which is exactly
+what Open Decision 14 needs and what keeps AI schema out of the domain functions: they remain
+ordinary domain RPCs that have never heard of AI.
+
+**Where the request reference is persisted.** One additive table, `public.ai_accepted_output`:
+
+
+| Column                 | Type                                                                                    | Purpose                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `id`                   | `uuid` PK                                                                               | The acceptance id returned to the caller                                            |
+| `organization_id`      | `uuid` NOT NULL → `public.organizations`                                                | Tenant scope for RLS, matching every other domain table                             |
+| `branch_id`            | `uuid` NULL → `public.branches`                                                         | Branch scope where the target row has one                                           |
+| `table_name`           | `text` NOT NULL                                                                         | The domain table written — same vocabulary as `audit_log.table_name`                |
+| `record_id`            | `uuid` NOT NULL                                                                         | PK of the domain row written — same vocabulary as `audit_log.record_id`             |
+| `ai_request_reference` | `text` NOT NULL, `CHECK (value ~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$')`      | The join key to the platform journal, in the fixed [§8.9](#89-support-audit-trace) format (A13) |
+| `accepted_by`          | `uuid` NOT NULL → `auth.users`                                                          | The human who accepted (A5)                                                         |
+| `accepted_at`          | `timestamptz` NOT NULL DEFAULT `now()`                                                  | When                                                                                |
+| `audit_log_id`         | `uuid` NOT NULL → `public.audit_log`                                                    | The audit entry this acceptance produced                                            |
+
+
+Unique on `(table_name, record_id, ai_request_reference)`; indexed on `ai_request_reference` and on
+`(table_name, record_id)`. The reference is stored as `text` rather than a foreign key because the
+row it refers to lives in D1 — the clinic database must be able to hold it while the platform is
+gone. Deliberately absent, per the boundary note above: capability id, model, provider, prompt,
+token counts, cost, and request state. The clinic stores the *handle*, not the request.
+
+**How `audit_log` joins the domain write to the reference.** In the same transaction the RPC writes
+one `audit_log` entry with `action = 'ai.acceptance_record'`, `table_name` and `record_id` set to the
+domain row just written, and `new_data_json` carrying `{"ai_request_reference": …,
+"acceptance_id": …}`; `ai_accepted_output.audit_log_id` points back at it. Provenance for a clinical
+field is then one query in either direction: from the field, `audit_log` by `(table_name,
+record_id)` yields the reference; from a reference quoted by a clinician, `ai_accepted_output` yields
+the field and its audit entry, and the platform's own trace resolves from the same string
+([§8.9](#89-support-audit-trace)). Because the delegated domain write, the `ai_accepted_output` row,
+and the `audit_log` entry are one function call and therefore one transaction, "domain change and
+request reference together or not at all" is a property of the RPC, not a discipline asked of
+callers.
+
+**What the mechanism is first proved against.** Open Decision 1 keeps the *first shipped capability*
+non-clinical-record with acceptance mode `advisory_display`, so when this RPC lands there is no
+product capability whose accept writes a clinical record — and there must not be, or F2 would become
+a prerequisite for CP3. The RPC is therefore proved against a **registered demonstration target**
+rather than a product behaviour: one registry row, `visit_clinical_notes` → the existing
+`public.save_visit_documentation`, exercised by SQL and Flutter tests for atomicity, provenance, and
+the discard path. That target is chosen only because it already exists, is clinical, and is written
+by an ordinary domain RPC — a `public` wrapper delegating to `auth_internal.save_visit_documentation`
+(`SECURITY DEFINER`), which asserts `visits.edit_soap`, enforces branch scope and optimistic
+concurrency, and writes the visit's clinical note row. Registering a target grants no capability the right to write to it: that
+right comes from a capability declaring acceptance mode `human_accept_required` in its manifest
+([§5.1](#51-capability-manifest)), which stays Open Decision 1's to assign. Until it does, the E4
+surface's `advisory_display` accept remains non-writing.
 
 ### 4.3 AI Gateway Worker components
 
@@ -1976,17 +2069,21 @@ manifest's permitted set and executed by the client
 | --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Patients, visits, invoices, staff, RBAC             | Supabase                                           | The AI platform holds **transient** copies inside request payloads only, subject to retention class (A10)                                                          |
 | Prompts, manifests, routing policy, provider config | AI platform                                        | The clinic app never receives them                                                                                                                                 |
-| AI request journal, usage ledger, entitlement       | AI platform (D1)                                   | Supabase holds only the request reference on accepted output                                                                                                       |
+| AI request journal, usage ledger, entitlement       | AI platform (D1)                                   | Supabase holds only the request reference on accepted output — `public.ai_accepted_output.ai_request_reference` (`text`, [§8.9](#89-support-audit-trace) format), never a request row ([§4.2.2](#422-the-ai-acceptance-recording-contract))                                                                     |
 | Provider credentials                                | AI platform secret store                           | Never leaves it; never journaled                                                                                                                                   |
 | Installation signing key                            | Clinic PostgreSQL (private) / AI platform (public) | The private key never leaves the clinic                                                                                                                            |
-| Human acceptance of AI output                       | Supabase (`audit_log` + domain row)                | The platform journals that a terminal result was delivered, not that it was accepted                                                                               |
+| Human acceptance of AI output                       | Supabase (`audit_log` + domain row + `ai_accepted_output`) | The platform journals that a terminal result was delivered, not that it was accepted                                                                               |
 | An open conversation's transcript                   | The client, for the life of the chat               | The platform holds it only for the duration of each leg, and afterwards only inside that leg's retained payload envelope ([§6.7](#67-conversational-capabilities)) |
 
 
 The last row is the deliberate seam in the audit story: the platform can prove *what it returned*, and
 the clinic database can prove *what a human did with it*. Joining them requires the request reference,
 which is stored on both sides. Neither side needs the other's schema for its own audit trail to be
-complete.
+complete. Concretely, on the clinic side the reference lands on
+`public.ai_accepted_output` alongside the `(table_name, record_id)` of the domain row and a
+foreign key to the `audit_log` entry written in the same transaction, so a clinical field resolves to
+a reference and a reference resolves to a clinical field without either query leaving Postgres
+([§4.2.2](#422-the-ai-acceptance-recording-contract)).
 
 ### 7.2 Data flow
 
@@ -3055,6 +3152,7 @@ evaluated, and killed like any other prompt logic (A14).
 | D-19 | Conversation state       | Client holds the transcript and resupplies it per leg         | Per-conversation Durable Object or D1 table               | Avoids the platform's first per-request store and its lifecycle, for data the client already holds                                                                        |
 | D-20 | Context for chat         | Bounded negotiation: the platform asks, the client resolves   | Platform fetches; or client pre-resolves everything       | Preserves client → platform data flow and per-user RLS, while keeping intent inference server-side                                                                        |
 | D-21 | AAT signing mechanism    | `pgsodium` Ed25519 detached signatures, `alg: EdDSA`          | `pgjwt` (HMAC-only); ECDSA P-256; an Edge Function signer | The only asymmetric signing primitive the clinic's own Postgres image ships; keeps the issuer a `SECURITY DEFINER` RPC ([§4.2.1](#421-the-clinic-side-signing-mechanism)) |
+| D-22 | Clinical acceptance path | One shared `record_ai_acceptance` RPC delegating to an allow-listed existing domain RPC | An acceptance RPC per capability; or acceptance recorded by the client after the domain write | Keeps the write inside existing validation, triggers, and RLS; makes "domain change and reference together or not at all" a transaction property; leaves no room for a second acceptance path (Open Decision 14) ([§4.2.2](#422-the-ai-acceptance-recording-contract)) |
 
 
 ---
@@ -3475,7 +3573,7 @@ nothing blocks on them.
 
 | #   | Decision                                                                                    | Recommended default                                                                                                                                                                                                                                                                                                                                   |
 | --- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Which capability is built first, and which are `human_accept_required` versus display-only? | Start with one non-clinical-record capability (e.g. drafting a visit summary for review) to exercise the platform without clinical risk                                                                                                                                                                                                               |
+| 1   | Which capability is built first, and which are `human_accept_required` versus display-only? | Start with one non-clinical-record capability (e.g. drafting a visit summary for review) to exercise the platform without clinical risk. This does not delay the acceptance mechanism: it is frozen against a registered demonstration target, and only a manifest declaring `human_accept_required` promotes a capability to writing ([§4.2.2](#422-the-ai-acceptance-recording-contract))                                                                                                                                                                                                               |
 | 2   | Quota period and unit: requests, tokens, or cost?                                           | Cost-based budget with a request-count guard; requests alone cannot bound spend (A6)                                                                                                                                                                                                                                                                  |
 | 3   | Behaviour when the Quota DO is unavailable: fail open or fail closed?                       | Fail open with a capped grace allowance and reconciliation — an infrastructure blip must not block care (R-15)                                                                                                                                                                                                                                        |
 | 4   | Diagnostic retention horizon for prompts, context, and responses                            | Short by default (days), extendable per capability; this is the largest and most sensitive data (A10)                                                                                                                                                                                                                                                 |
@@ -3488,7 +3586,7 @@ nothing blocks on them.
 | 11  | Is a local/on-LAN provider adapter needed for privacy-sensitive prospects?                  | Not now; kept cheap by the provider port (a later band)                                                                                                                                                                                                                                                                                               |
 | 12  | What is the chat assistant's permitted context key set, and does it vary by staff role?     | Start narrow — the keys the button-invoked capabilities already use — and widen on evidence. Role variation needs no new mechanism: the token's scopes and the user's own RLS already bound it (A14)                                                                                                                                                  |
 | 13  | Max history turns and max context rounds per turn for the assistant                         | A short history and two context rounds to begin. Both are manifest values, so tuning them is a manifest publish rather than a release ([§6.7.3](#673-what-bounds-the-loop))                                                                                                                                                                           |
-| 14  | May chat output be moved into a clinical record, and through which acceptance path?         | Only through the same human acceptance RPC as any other capability (A5). Declaring the assistant `advisory_display` first, and adding acceptance later, is the lower-risk order                                                                                                                                                                       |
+| 14  | May chat output be moved into a clinical record, and through which acceptance path?         | Only through the same human acceptance RPC as any other capability — `public.record_ai_acceptance` with a registered acceptance target, no chat-specific path ([§4.2.2](#422-the-ai-acceptance-recording-contract)) (A5). Declaring the assistant `advisory_display` first, and adding acceptance later, is the lower-risk order                                                                                                                                                                       |
 | 15  | Is there a plan catalogue that maps a plan name to quota, budget, and capability set?       | Not initially. Enroll records the plan name only and leaves the row `pending`; an operator assigns the economics explicitly ([§8.1](#81-clinic-enrollment-and-trust-bootstrap)). A catalogue becomes worth building when plans outnumber operators' memory, and it is additive — it changes what Entitlement management reads, not what enroll writes |
 
 
