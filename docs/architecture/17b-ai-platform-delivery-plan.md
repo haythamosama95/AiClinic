@@ -299,6 +299,8 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **Useful to know:** Deferred under DP-5 because there are no deployed clients, not because it is undesigned. Each slice's contract surface already exists from bands A–D, so these are behaviour-only additions. Build a slice when its trigger fires — the triggers are in the `Build when` column, not the band's position in the sequence. J2 explicitly does not apply to conversational capabilities.
 
+**One exception to "behaviour-only" in this band:** J1's deprecate / retire mutations persist onto the lifecycle-overlay fields of `capability_grant` (§7.3 of the architecture reference). That entity is A5's, and per DP-5 those fields belong with the early contract surface — but if the shipped A5 migration predates the §5.1 / §7.3 lifecycle-overlay amendment, J1 carries one forward-only additive migration to add them. J1 introduces no new entity.
+
 
 | ID     | Slice                                            | Canonical                | Needs          | Build when                                                                        | Done when                                                                                                                                                                                                                        |
 | ------ | ------------------------------------------------ | ------------------------ | -------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -1497,7 +1497,7 @@ A small internal surface, separate from the client-facing API and separately aut
 | Installation lifecycle  | Enroll, rotate keys, suspend, resume, delete                                                       |
 | Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities, set period bounds and soft threshold |
 | Kill switches           | Global, per capability, per installation, per provider (A8)                                        |
-| Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation                  |
+| Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation — every one of these writes a `capability_grant` row ([§7.3](#73-d1-logical-model)); deprecate and retire write it at `global` scope |
 | Routing policy          | Publish a new versioned policy; canary; roll back                                                  |
 | Support lookup          | Resolve a request reference to its full trace and payloads (A13)                                   |
 | Operational dashboards  | Health, error taxonomy breakdown, provider latency and cost, quota consumption                     |
@@ -1549,6 +1549,17 @@ later.
 
 The manifest is the platform's declaration of an AI feature. It is immutable per version; changing
 anything semantically meaningful produces a new version.
+
+**Immutability and lifecycle.** Immutability covers the manifest's *content* — everything the prompt
+composer, validator, router, and entitlement stage read, and everything a content hash is taken over.
+The Identity group's `lifecycleState` and `successorId` are the values the version was **published
+with**; they are the declared starting point, not a mutable field. A capability version's lifecycle
+does not stay frozen for its life, but it also never evolves by editing a published manifest: an
+operator deprecation or retirement is recorded as a **control-plane availability overlay** in D1
+(`capability_grant`, [§7.3](#73-d1-logical-model)) that the capability resolver and discovery apply
+on top of the bundled manifest, exactly as they already apply kill-switch and grant flags
+([§6.1](#61-the-pipeline) stage 5). The manifest bytes and their hash never change; the effective
+lifecycle state is *manifest value, overridden by overlay if one exists*.
 
 
 | Field group              | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Consumed by                                                               |
@@ -1768,7 +1779,7 @@ by the platform and would be stale instantly), no provider or model hints (the c
 
 | Artifact         | Versioning                                 | Compatibility promise                                                                                                                                                     |
 | ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capability       | Semantic, in the id (`@v2`)                | Deprecated versions remain servable for a defined overlap window (A12); retirement is announced through discovery before it is enforced                                   |
+| Capability       | Semantic, in the id (`@v2`)                | Deprecated versions remain servable for a defined overlap window (A12); retirement is announced through discovery before it is enforced. Lifecycle transitions are control-plane overlay writes, never manifest edits ([§5.1](#51-capability-manifest), [§7.3](#73-d1-logical-model)) |
 | Context key      | Versioned per key                          | New optional keys are backward compatible; required keys or shape changes force a new capability version                                                                  |
 | Output schema    | Versioned with the capability              | Additive optional fields allowed in place; anything else is a new version                                                                                                 |
 | Prompt artifact  | Immutable, pinned by the capability        | Swapping a prompt is a new capability *build*, not a new capability version, as long as the output schema and behaviour contract hold; guarded by the eval suite (A9)     |
@@ -2183,7 +2194,7 @@ schema definition.
 | `installation`     | An enrolled clinic deployment                                                  | installation id, org id, display name, status, region, enrolled_at                                                                                                                                                                                                           | Tens–thousands of rows   | Life of customer                        |
 | `installation_key` | Verification material and rotation history                                     | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                  | Few per installation     | History kept for audit                  |
 | `entitlement`      | What this installation may use and how much                                    | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                       | One current + history    | History kept for billing disputes       |
-| `capability_grant` | Which capability versions a plan or installation may use                       | scope, capability id, version, granted/revoked, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
+| `capability_grant` | Which capability versions a plan or installation may use, **and** the current lifecycle of a capability version (scope `global`)                       | scope (`global` / `plan` / `installation`), capability id, version, granted/revoked, lifecycle state (`active` / `deprecated` / `retired`), successor id, deprecated_at, retire_after, changed_at, changed_by                                                                                                                                                                                                       | Low                      | Full history                            |
 | `routing_policy`   | Versioned target chains and selection rules                                    | policy id, version, content pointer (R2 key for the immutable policy document — schema in [§4.3.7](#437-provider-router-and-policy-engine)), active_from, activated_by                                                                                                                                                                                                               | Low                      | Full history                            |
 | `ai_request`       | One row per request: the journal spine                                         | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, `routing_tier` (`standard` / `degraded`), `routing_decision` ([§4.3.7](#437-provider-router-and-policy-engine)), plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
 | `ai_attempt`       | One row per provider attempt                                                   | request id, attempt no., provider, model, `selection_reason` ([§4.3.7](#437-provider-router-and-policy-engine)), outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                             | 1–3 per request          | With the request                        |
@@ -2192,6 +2203,23 @@ schema definition.
 | `platform_counter` | Bucketed counts for events that are never journaled — chiefly guard rejections | dimension set, time bucket, count                                                                                                                                                                                                                                            | Bounded, low cardinality | Months                                  |
 | `control_audit`    | Control-plane mutations                                                        | operator, action, target, before/after pointer, at                                                                                                                                                                                                                           | Low                      | Long                                    |
 
+
+**`capability_grant` is the capability-availability row, and lifecycle is one of the things it makes
+available.** It is the durable target for every [§4.5](#45-control-plane) "Capability availability"
+mutation — grant, gate, deprecate, retire. A grant or gate is written at `plan` or `installation`
+scope; a deprecation or retirement is written at `global` scope, because a version's lifecycle is a
+property of the version and not of one tenant. The lifecycle fields are the overlay described in
+[§5.1](#51-capability-manifest): absent, the manifest's published `lifecycleState` and `successorId`
+stand; present, they win. `deprecated_at` starts the overlap window and `retire_after` is when
+retirement may be enforced (A12, [§15](#15-open-decisions) OD-9); the transition to `retired` is
+itself an operator mutation, not a clock the gateway trips on its own — nothing in the request path
+writes this row. Rows are append-only history like the rest of the ledger set, so "who deprecated
+what, when" is answerable without a second store, and each mutation additionally writes
+`control_audit` with the operator identity. The resolver and discovery read the current row through
+the config cache alongside grants and kill switches ([§6.1](#61-the-pipeline) stage 5), so a cold
+isolate reconstructs lifecycle from D1 exactly as it reconstructs every other volatile flag. **No
+lifecycle-overlay entity of its own is added**, and no manifest is republished to change a lifecycle
+state.
 
 **Entitlement status** takes `pending`, `active`, or `suspended`. A row is created `pending` by
 enroll with no economics set and is moved to `active` by entitlement assignment
@@ -3403,7 +3431,11 @@ decision, not a performance one (R-23).
 
 **Retire a capability:** mark deprecated in discovery with a successor; keep serving through the
 overlap window (A12); then retire, returning `capability_retired` so old clients prompt for an update
-instead of failing opaquely.
+instead of failing opaquely. Both steps are control-plane "Capability availability" mutations
+([§4.5](#45-control-plane)) that write the version's `global`-scope `capability_grant` lifecycle
+overlay plus a `control_audit` row ([§7.3](#73-d1-logical-model)); the published manifest is never
+edited and no new version is published to carry the state change
+([§5.1](#51-capability-manifest)).
 
 ### 12.5 Explicitly not to be built yet
 
