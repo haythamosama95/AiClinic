@@ -1245,6 +1245,22 @@ does not permit cannot enter a prompt even if the model asked for it and the cli
 stage also validates the supplied transcript — turn ordering, declared shapes, and the conversation
 budget counted from the transcript itself ([§6.7](#67-conversational-capabilities)).
 
+The declared shapes are the closed transcript wire contract in
+[§6.7.1](#671-the-unit-of-work-is-a-leg-not-a-conversation). Two rejections are distinct and must not
+be conflated, because the client's remedy differs:
+
+- **A malformed or out-of-order turn is `context_invalid`** — an out-of-order or duplicate
+`turn_ordinal`, an unknown `kind`, or a payload that is missing, mistyped, or not the one that
+turn's `kind` declares. The transcript violates its published shape exactly as a malformed context
+payload does, and it is the same defect with the same remedy: the client is emitting a shape the
+platform never published, so retrying is pointless and the failure is a bug to report
+([§5.4](#54-error-taxonomy)). No new taxonomy code is introduced for it.
+- **A well-formed transcript that is merely too long is not `context_invalid`.** Exceeding max
+history turns or max context rounds is `conversation_budget_exhausted`, and exceeding the cost
+ceiling is `request_too_large` ([§6.7.3](#673-what-bounds-the-loop)). Shape is checked first: a
+transcript that cannot be parsed into turns cannot be counted, so a budget code is never emitted for
+a transcript that failed shape validation.
+
 #### 4.3.6 Prompt composer and prompt registry
 
 The heart of requirement [2]. Composes the final provider-bound message set from: the system
@@ -1645,7 +1661,7 @@ them and never surfaced raw.
 | `quota_exhausted`                           | Period quota or budget consumed                                                                           | 429  | Not until period reset       | No                  | Show quota state, offer admin path                                         |
 | `request_too_large`                         | Input or context exceeds capability limits                                                                | 413  | No                           | No                  | Ask user to shorten/narrow selection                                       |
 | `context_required`                          | Required context keys missing                                                                             | 422  | Yes, after resolving         | No                  | Resolve keys and resubmit once ([§8.4](#84-missing-context-self-healing))  |
-| `context_invalid`                           | Supplied context violates declared shape                                                                  | 422  | No                           | No                  | Bug: report with request reference                                         |
+| `context_invalid`                           | Supplied context violates declared shape — including a conversational transcript turn that is malformed, of unknown kind, or out of `turn_ordinal` order ([§6.7.1](#671-the-unit-of-work-is-a-leg-not-a-conversation)) | 422  | No                           | No                  | Bug: report with request reference                                         |
 | `conversation_budget_exhausted`             | Transcript exceeds the capability's max history turns, or this turn exceeded its max context rounds (A14) | 409  | No, within this conversation | No                  | Offer to start a fresh conversation; show the last answer if there was one |
 | `capability_unknown` / `capability_retired` | Unknown or withdrawn capability/version                                                                   | 404  | No                           | No                  | Prompt for app update                                                      |
 | `capability_disabled`                       | Kill switch active                                                                                        | 503  | Later                        | No                  | Show temporary-unavailable state                                           |
@@ -1983,6 +1999,39 @@ uses it, journals a reference to it, and forgets it. This is what keeps every pr
 depends on: routing stays stateless, cancellation stays connection-scoped, admission and quota stay
 per-request, and no store is added ([§9.18](#918-platform-held-conversation-state)).
 
+**The transcript wire shape is closed and platform-owned**, for the same reason the context-request
+schema is ([§6.7.2](#672-a-turn-ends-in-one-of-two-ways)): a capability may choose what its
+assistant talks about, never how a turn is spelled. The submit surface
+([§5.5](#55-api-surface-and-streaming-protocol)) carries `transcript` as a JSON array of turn
+objects. Every turn declares exactly two common fields plus the one payload field its kind defines:
+
+
+| Field          | Type      | Rules                                                                                                                            |
+| -------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `turn_ordinal` | `integer` | Required. The ordinal this turn occupied when it happened. Strictly increasing across the array, no duplicates, and every value strictly less than the leg's own `turn_ordinal`. Gaps are legal — a client may trim turns (R-22, [§6.7.3](#673-what-bounds-the-loop)) |
+| `kind`         | `string`  | Required. One of the four kinds below. No other value is accepted                                                                |
+
+
+| `kind`              | Payload field | Payload type | Meaning                                                                                                                                                                |
+| ------------------- | ------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `user`              | `text`        | `string`     | What the clinician typed. Rendered as a `user` part ([§4.3.6](#436-prompt-composer-and-prompt-registry))                                                                |
+| `model`             | `text`        | `string`     | A prior validated prose answer. Rendered as an `assistant` part                                                                                                        |
+| `context_requested` | `requests`    | `array`      | The platform-owned `{key, arguments}` list the assistant asked for on that turn, verbatim as the platform emitted it ([§6.7.2](#672-a-turn-ends-in-one-of-two-ways))    |
+| `context_resolved`  | `context`     | `object`     | The keys the client resolved in answer to the preceding `context_requested` turn, keyed and shaped exactly as an ordinary context payload ([§5.2](#52-context-contract)). Rendered as a `data` part |
+
+
+A turn carrying no payload field, the wrong payload field for its `kind`, a payload of the wrong
+type, an unknown `kind`, a missing or non-integer `turn_ordinal`, or a `turn_ordinal` that does not
+respect the ordering rule is a **malformed turn** and is rejected by the context validator with
+`context_invalid` ([§4.3.5](#435-context-validator), [§5.4](#54-error-taxonomy)). There is no
+coercion and no silent drop of a bad turn: a transcript is accepted whole or rejected whole. Keys
+inside a `context_resolved` turn are, by contrast, subject to the ordinary allowlist rule — a key
+outside the manifest's permitted set is dropped rather than rejecting the request
+([§4.3.5](#435-context-validator)).
+
+These are the "declared shapes" [§4.3.5](#435-context-validator) validates against and the turns the
+budget counters in [§6.7.3](#673-what-bounds-the-loop) count.
+
 #### 6.7.2 A turn ends in one of two ways
 
 The assistant either answers, or asks for data. Both are terminal for that leg.
@@ -2009,7 +2058,11 @@ assistant.
 #### 6.7.3 What bounds the loop
 
 An assistant that can ask for data can ask forever, so three bounds apply. All three are computed from
-the submitted request alone, which is what keeps them stateless:
+the submitted request alone, which is what keeps them stateless, and all three are evaluated only
+after the transcript has passed shape validation
+([§6.7.1](#671-the-unit-of-work-is-a-leg-not-a-conversation),
+[§4.3.5](#435-context-validator)) — a transcript that is malformed or out of order fails with
+`context_invalid` and is never counted:
 
 
 | Bound                           | Where declared | Enforced by                                                                                                                                                      | Breach                          |
