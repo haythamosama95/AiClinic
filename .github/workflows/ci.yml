@@ -101,7 +101,7 @@ jobs:
         run: npm ci
 
       - name: Run golden eval suite
-        run: npx vitest run test/eval/golden.test.ts test/eval/prohibitions.test.ts
+        run: npx vitest run test/eval/golden.test.ts test/eval/conversation.test.ts test/eval/prohibitions.test.ts
 
       - name: Upload score report artifacts
         if: always()
