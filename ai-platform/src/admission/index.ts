@@ -50,13 +50,14 @@ type IdempotencyPriorState = {
 };
 
 type AdmissionSuccess =
-  | { ok: true; outcome: "admitted"; requestId: string }
+  | { ok: true; outcome: "admitted"; requestId: string; degraded?: boolean }
   | { ok: true; outcome: "grace_admitted"; requestId: string; requestReference: string }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
 type AdmissionFailure = {
   ok: false;
   code: "unauthenticated" | "quota_exhausted" | "concurrency_exhausted" | "internal_error";
+  periodReset?: string;
 };
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -191,7 +192,12 @@ function mapDoOutcome(
 ): AdmissionResult {
   switch (body.outcome) {
     case "admitted":
-      return { ok: true, outcome: "admitted", requestId: body.requestId };
+      return {
+        ok: true,
+        outcome: "admitted",
+        requestId: body.requestId,
+        ...(body.degraded ? { degraded: true } : {}),
+      };
     case "replay":
       recordRejection("unauthenticated", installationId);
       return { ok: false, code: "unauthenticated" };
@@ -199,7 +205,11 @@ function mapDoOutcome(
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
     case "quota_exhausted":
       recordRejection("quota_exhausted", installationId);
-      return { ok: false, code: "quota_exhausted" };
+      return {
+        ok: false,
+        code: "quota_exhausted",
+        periodReset: body.period_end,
+      };
     case "concurrency_exhausted":
       recordRejection("concurrency_exhausted", installationId);
       return { ok: false, code: "concurrency_exhausted" };

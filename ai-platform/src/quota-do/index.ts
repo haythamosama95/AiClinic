@@ -74,6 +74,7 @@ export interface AdmissionAdmitted {
   kind: "admission";
   outcome: "admitted";
   requestId: string;
+  degraded?: boolean;
 }
 
 export interface AdmissionReplay {
@@ -90,6 +91,7 @@ export interface AdmissionIdempotent {
 export interface AdmissionQuotaExhausted {
   kind: "admission";
   outcome: "quota_exhausted";
+  period_end: string;
 }
 
 export interface AdmissionConcurrencyExhausted {
@@ -198,6 +200,38 @@ function isQuotaExhausted(
   );
 }
 
+function isSoftThresholdCrossed(
+  counters: PeriodCounters,
+  entitlement: EntitlementSnapshot,
+): boolean {
+  const threshold = entitlement.soft_threshold;
+
+  if (entitlement.request_quota > 0) {
+    const ratio = counters.requestsUsed / entitlement.request_quota;
+    if (ratio >= threshold) {
+      return true;
+    }
+  }
+
+  const tokenBudget = entitlement.token_cost_budget.token_budget;
+  if (tokenBudget > 0) {
+    const ratio = counters.tokensUsed / tokenBudget;
+    if (ratio >= threshold) {
+      return true;
+    }
+  }
+
+  const costBudget = entitlement.token_cost_budget.cost_budget;
+  if (costBudget > 0) {
+    const ratio = counters.costUsed / costBudget;
+    if (ratio >= threshold) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function admissionRPC(
   storage: DurableObjectStorage,
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
@@ -233,7 +267,11 @@ export async function admissionRPC(
 
     if (isQuotaExhausted(state.periodCounters, request.entitlement)) {
       await storage.put(STATE_KEY, state);
-      return { kind: "admission", outcome: "quota_exhausted" };
+      return {
+        kind: "admission",
+        outcome: "quota_exhausted",
+        period_end: request.entitlement.period_bounds.period_end,
+      };
     }
 
     if (state.periodCounters.inFlight >= CONCURRENCY_LIMIT) {
@@ -256,8 +294,18 @@ export async function admissionRPC(
     };
     state.periodCounters.inFlight += 1;
 
+    const degraded = isSoftThresholdCrossed(
+      state.periodCounters,
+      request.entitlement,
+    );
+
     await storage.put(STATE_KEY, state);
-    return { kind: "admission", outcome: "admitted", requestId };
+    return {
+      kind: "admission",
+      outcome: "admitted",
+      requestId,
+      ...(degraded ? { degraded: true } : {}),
+    };
   });
 }
 

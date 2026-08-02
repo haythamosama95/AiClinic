@@ -371,6 +371,7 @@ describe("admission_budget_exhaustion_rejected", () => {
     expect(exhausted.body).toEqual({
       kind: "admission",
       outcome: "quota_exhausted",
+      period_end: entitlement.period_bounds.period_end,
     });
   });
 });

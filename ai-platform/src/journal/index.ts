@@ -26,6 +26,7 @@ export type RequestRowInput = {
   traceId: string;
   conversationId?: string | null;
   turnOrdinal?: number | null;
+  routingTier?: "standard" | "degraded";
 };
 
 export type AttemptInput = {
@@ -154,8 +155,8 @@ export async function createRequestRow(
           request_id, request_reference, installation_id, actor_id, branch_id,
           capability_id, capability_version, prompt_artifact_hash, idempotency_key,
           trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
-          payload_pointer, conversation_id, turn_ordinal
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+          payload_pointer, conversation_id, turn_ordinal, routing_tier
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
       )
       .bind(
         input.requestId,
@@ -173,6 +174,7 @@ export async function createRequestRow(
         now,
         conversationId,
         turnOrdinal,
+        input.routingTier ?? null,
       )
       .run();
     return { ok: true };

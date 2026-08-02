@@ -16,6 +16,7 @@ export default defineConfig({
       "test/retention.test.ts",
       "test/rollup-reconciliation.test.ts",
       "test/journal-dashboards.test.ts",
+      "test/soft-threshold-routing.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,

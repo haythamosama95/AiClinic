@@ -50,6 +50,30 @@ export type StubEventSourceFactory = (
 
 export interface HandleAdapterRequestOptions {
   stubEventSource?: StubEventSourceFactory;
+  degradedNotice?: boolean;
+}
+
+export interface AcceptedSseEventInput {
+  requestReference: string;
+  traceId: string;
+  degradedNotice?: boolean;
+}
+
+export function buildAcceptedSseEvent(
+  input: AcceptedSseEventInput,
+): AdapterSseEvent {
+  const data: Record<string, unknown> = {
+    request_reference: input.requestReference,
+    trace_id: input.traceId,
+  };
+  if (input.degradedNotice) {
+    data.degraded_notice = true;
+  }
+  return {
+    type: "accepted",
+    data,
+    trace_id: input.traceId,
+  };
 }
 
 function isTerminalEventType(type: string): type is TerminalEventKind {
@@ -189,14 +213,11 @@ export async function handleAdapterRequest(
     start(controller) {
       streamController = controller;
 
-      const acceptedEvent: AdapterSseEvent = {
-        type: "accepted",
-        data: {
-          request_reference: requestReference,
-          trace_id: context.traceId,
-        },
-        trace_id: context.traceId,
-      };
+      const acceptedEvent = buildAcceptedSseEvent({
+        requestReference,
+        traceId: context.traceId,
+        degradedNotice: options.degradedNotice,
+      });
       controller.enqueue(
         new TextEncoder().encode(encodeSseEvent(acceptedEvent)),
       );
