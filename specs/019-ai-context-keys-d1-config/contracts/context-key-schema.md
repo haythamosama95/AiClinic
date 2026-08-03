@@ -73,10 +73,19 @@ version 1. Only keys with a published shape (§5) may pass `validatePayload`.
 
 ### 2.4 Unknown version rejection
 
-A key that matches the format and vocabulary domain but whose `@vN` suffix is not in the
-published vocabulary MUST be rejected with code `unknown_version`.
+A key that matches the format and whose `domain.concept` base is in the published vocabulary, but
+whose `@vN` suffix is not published, MUST be rejected with code `unknown_version`.
 
-**Example:** `visit.vitals@v9` is rejected because `v9` is not published.
+**Example:** `visit.vitals@v9` is rejected because `visit.vitals` is known but `v9` is not published.
+`patient.demographics@v2` is likewise `unknown_version`.
+
+### 2.5 Unknown key rejection
+
+A well-formed `domain.concept@vN` key whose `domain.concept` base is **not** in the published
+vocabulary at any version MUST be rejected with code `unknown_key` — distinct from
+`unknown_version`.
+
+**Example:** `patient.allergies@v1` is rejected as `unknown_key`.
 
 ---
 
@@ -89,11 +98,14 @@ Keys whose concept segment names storage rather than clinical meaning MUST be re
 
 | Pattern | Example (rejected) | Rationale |
 | --- | --- | --- |
-| Concept ends with `_table` | `visits_vitals_table@v1` | Names a database table, not clinical meaning. |
-| Concept matches `get_*_rpc` | `get_visit_vitals_rpc@v1` | Names an RPC, not clinical meaning. |
+| Concept ends with `_table` | `visits_vitals_table@v1`, `visits.vitals_table@v1` | Names a database table, not clinical meaning. |
+| Concept ends with `_view` | `visits.vitals_view@v1` | Names a storage view, not clinical meaning. |
+| Concept matches `get_*_rpc` | `get_visit_vitals_rpc@v1`, `clinic.get_visit_vitals_rpc@v1` | Names an RPC, not clinical meaning. |
 
-The rule is about **meaning**, not existence. A storage-named string that happens to be valid
-`domain.concept@vN` syntax is still rejected.
+Storage-named rejection runs **before** format rejection so the undotted contract examples still
+receive `storage_named_key` rather than `malformed_key`. The rule is about **meaning**, not
+existence. A storage-named string that happens to be valid `domain.concept@vN` syntax is still
+rejected.
 
 ### 3.2 Malformed format examples
 
@@ -167,7 +179,8 @@ keys before forwarding).
 | --- | --- |
 | `malformed_key` | Key fails §2.1 format. |
 | `storage_named_key` | Key fails §3.1 storage-named rule. |
-| `unknown_version` | Key not in published vocabulary (§2.4). |
+| `unknown_key` | Well-formed key whose `domain.concept` is outside the published vocabulary (§2.5). |
+| `unknown_version` | Known `domain.concept` with an unpublished `@vN` (§2.4). |
 | `unknown_shape` | Key accepted but no `KeyShape` registered (should not occur for vocabulary keys once shapes are added). |
 | `type` | Value is not the declared `FieldType`, or payload is not a plain object. |
 | `cardinality` | String exceeds `maxLength`. |
@@ -227,6 +240,7 @@ for binding tests and downstream slices (C2, C3, E3).
   "storage_named_rejection": {
     "rules": [
       { "pattern": "*_table", "example": "visits_vitals_table@v1", "code": "storage_named_key" },
+      { "pattern": "*_view", "example": "visits.vitals_view@v1", "code": "storage_named_key" },
       { "pattern": "get_*_rpc", "example": "get_visit_vitals_rpc@v1", "code": "storage_named_key" }
     ]
   },
@@ -281,6 +295,7 @@ for binding tests and downstream slices (C2, C3, E3).
   "validation_codes": [
     "malformed_key",
     "storage_named_key",
+    "unknown_key",
     "unknown_version",
     "unknown_shape",
     "type",

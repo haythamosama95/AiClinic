@@ -66,7 +66,7 @@ This slice establishes, for the first time:
 ### Session 2026-07-31
 
 - Q: Where do the D1 migrations live and what applies them in the test harness? → A: `ai-platform/migrations/<YYYYMMDDHHMMSS>_<name>.sql`, applied via `wrangler d1 migrations` (Miniflare D1) in the test harness; rerun-no-op is enforced by Wrangler's own applied-migrations table. `[implementation choice — no §citation]`
-- Q: How is the schema snapshot test (`schema_snapshot_matches`) constructed and compared? → A: dump each entity's `CREATE TABLE` DDL after migration to a checked-in `ai-platform/test/schema.snap.sql`; the test asserts the dump equals the snapshot. `[implementation choice — no §citation]`
+- Q: How is the schema snapshot test (`schema_snapshot_matches`) constructed and compared? → A: dump each entity's `CREATE TABLE` DDL after migration to a checked-in `ai-platform/schema.snap.sql` (repo root of `ai-platform/`); the test asserts the dump equals the snapshot. `[implementation choice — no §citation]`
 - Q: How do the config-cache spy tests observe D1 calls without a real binding? → A: inject a `D1Reader` port behind the cache; a spy/test-double in vitest asserts `.read` call count and returns the canned row or a miss literal. `[implementation choice — no §citation]`
 - Q: Where do the context-key vocabulary and validator module live within `ai-platform/src/`? → A: a single `ai-platform/src/context/` module mirroring A4's `src/manifest/` — exports `validateKey`, `validatePayload`, and the published `KeyShape` type. `[implementation choice — no §citation]`
 
@@ -145,8 +145,9 @@ Layer: Contract + migration + unit (spy) (Delivery Plan §3.11.1, row A5; §13.5
 
 - `context_key_valid_accepted` — contract — a `domain.concept@vN` key is accepted (§5.2).
 - `context_key_malformed_format_rejected` — contract — a malformed key is rejected (§3.11.1 row A5).
-- `context_key_storage_named_rejected` — contract — a key named after storage (`visits_vitals_table@v1`, `get_visit_vitals_rpc@v1`) is rejected (§5.2; Done when).
-- `context_key_unknown_version_rejected` — contract — an unknown key version is rejected (§3.11.1 row A5).
+- `context_key_storage_named_rejected` — contract — a key named after storage (`visits_vitals_table@v1`, `get_visit_vitals_rpc@v1`, `visits.vitals_view@v1`) is rejected with `storage_named_key` (§5.2; Done when).
+- `context_key_unknown_version_rejected` — contract — an unpublished version of a known concept (e.g. `visit.vitals@v9`) is rejected with `unknown_version` (§3.11.1 row A5).
+- `context_key_unknown_key_rejected` — contract — a well-formed key whose `domain.concept` is outside the published vocabulary is rejected with `unknown_key` (distinct from `unknown_version`).
 - `context_key_payload_validates` — contract — a conforming payload validates against the published shape (§3.11.1 row A5; §5.2).
 - `context_key_shape_violation_type` — contract — a type violation is rejected (§3.11.1 row A5).
 - `context_key_shape_violation_cardinality` — contract — a cardinality violation is rejected (§3.11.1 row A5).
@@ -221,7 +222,7 @@ Coverage additions from §3.10 (every inherited invariant and prohibition):
   Delivery Plan §3.2 row A5 "Done when").
 - **FR-005**: A payload conforming to a published shape MUST validate; a shape violation — type,
   cardinality, units, or a missing field — MUST be rejected (Delivery Plan §3.11.1 row A5; §5.2).
-- **FR-006**: An unknown context-key version MUST be rejected (Delivery Plan §3.11.1 row A5).
+- **FR-006**: An unknown context-key version of a known concept MUST be rejected with `unknown_version`; a well-formed key whose `domain.concept` is outside the published vocabulary MUST be rejected with `unknown_key` (Delivery Plan §3.11.1 row A5).
 - **FR-007**: Adding an optional context key MUST be backward compatible; adding a required key or
   changing a shape MUST require a new key version and a new capability version (§5.2 Evolution). The
   overlap/deprecation *behaviour* is out of scope (band J).
@@ -320,6 +321,10 @@ Coverage additions from §3.10 (every inherited invariant and prohibition):
 - **No conversational behaviour.** A5 creates the nullable `conversation_id` / `turn_ordinal`
   columns because the schema must accommodate amendment A14; it does not implement transcripts,
   context negotiation, or turn budgets (band H).
+- **No D1 unique index on `(installation_id, idempotency_key)`.** Idempotency duplicate detection
+  is owned by the Quota Durable Object (C3 / §4.3.3), not by D1. A5 indexes only `request_reference`
+  uniquely on `ai_request`; adding a D1 uniqueness constraint on the idempotency key would contradict
+  the architecture's choice to fold replay and idempotency into the DO round trip.
 
 Prohibitions copied from Delivery Plan §6.4 — none are pulled forward by this slice, all are
 restated so an implementer with weak judgement does not add them:
