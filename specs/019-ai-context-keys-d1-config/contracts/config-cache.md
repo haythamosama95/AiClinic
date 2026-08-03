@@ -82,6 +82,12 @@ When `loadConfig` is called and the cache has no valid (non-expired) entry for t
 `(kind, key)` pair, it MUST perform **exactly one** `reader.read(key)` and cache the returned row
 (FR-017; test `T-A5-17`).
 
+### 4.1.1 Single-flight / stampede protection
+
+Concurrent cold `loadConfig` calls for the **same** `(kind, key)` MUST coalesce onto a single
+in-flight `reader.read` — waiters share the resulting row (or shared typed miss failure). After the
+flight completes, subsequent warm consults perform zero I/O (test `T-A5-21b`).
+
 ### 4.2 Warm isolate — zero I/O
 
 When `loadConfig` is called and a valid cached entry exists, it MUST return from memory with **zero**
@@ -175,6 +181,7 @@ Contract behaviour is enforced by `ai-platform/test/config-cache.test.ts`:
 | `T-A5-19` | TTL expiry: exactly one refetch |
 | `T-A5-20` | All six entity kinds: warm zero I/O |
 | `T-A5-21` | D1 miss: `ConfigCacheMissError`; no negative cache |
+| `T-A5-21b` | Concurrent cold loads for the same key: single-flight (one `reader.read`) |
 | `T-A5-22` | Owns nothing: D1 update visible after TTL |
 | `T-A5-23` | In-isolate memory; no KV binding |
 | `T-A5-24` | No per-request state on export surface |

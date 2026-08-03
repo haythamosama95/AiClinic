@@ -155,6 +155,43 @@ describe("T-A5-21 config_cache_d1_miss_typed_failure", () => {
   });
 });
 
+describe("T-A5-21b config_cache_cold_load_single_flight", () => {
+  it("coalesces concurrent cold loads for the same kind+key into one reader.read", async () => {
+    let resolveRead!: (row: D1Row) => void;
+    const pending = new Promise<D1Row>((resolve) => {
+      resolveRead = resolve;
+    });
+    const read = vi.fn(async (): Promise<D1Row | "miss"> => pending);
+    const reader: ReaderSpy = {
+      read,
+      readCount: () => read.mock.calls.length,
+    };
+    const cache = new ConfigCache();
+    const row = sampleRow("installations");
+
+    const first = loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    const second = loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+
+    expect(reader.readCount()).toBe(1);
+    resolveRead(row);
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toEqual(row);
+    expect(b).toEqual(row);
+    expect(reader.readCount()).toBe(1);
+
+    reader.read.mockClear();
+    const warm = await loadConfig(
+      cache,
+      reader,
+      "installations",
+      TEST_INSTALLATION_KEY,
+    );
+    expect(reader.readCount()).toBe(0);
+    expect(warm).toEqual(row);
+  });
+});
+
 describe("T-A5-22 config_cache_owns_nothing", () => {
   beforeEach(() => {
     vi.useFakeTimers();

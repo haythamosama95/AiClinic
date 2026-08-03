@@ -46,7 +46,7 @@ The model follows `docs/architecture/17-ai-platform.md` §7.3. Field lists indic
 | Forward migration | `ai-platform/migrations/20260731120000_platform_schema.sql` |
 | DDL snapshot | `ai-platform/schema.snap.sql` |
 
-Migrations are forward-only and additive (§13.4). The snapshot test (`schema_snapshot_matches`) pins the post-migration `CREATE TABLE` DDL against `schema.snap.sql`.
+Migrations are forward-only and additive (§13.4). The snapshot test (`schema_snapshot_matches`) pins the post-migration `CREATE TABLE` DDL against `schema.snap.sql`. Later additive migrations (e.g. capability-grant lifecycle columns) are included in the same snapshot so the test stays green on `ai/master`.
 
 ---
 
@@ -296,7 +296,11 @@ Properties asserted by `request_reference_index_exists_and_unique` (T-A5-15):
 
 - Index exists on `request_reference`.
 - Index is unique.
-- Column stores the A2 format without transformation.
+- Column stores the A2 format without transformation — proven by inserting a
+  `generateRequestReference()` value and selecting it back unchanged.
+
+There is **no** unique index on `(installation_id, idempotency_key)` (T-A5-15b). Idempotency
+duplicate detection is owned by the Quota Durable Object (C3 / §4.3.3), not by D1.
 
 F3 support lookup resolves a reference through this index in exactly one D1 query, then one R2 `GetObject` (§7.6).
 
