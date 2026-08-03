@@ -40,6 +40,9 @@ export function createD1Spy(realDb: D1Database): D1Spy {
       }
       return realDb.prepare(query);
     },
+    batch(statements: D1PreparedStatement[]) {
+      return realDb.batch(statements);
+    },
     hotPathWriteCount() {
       return hotPathWrites;
     },

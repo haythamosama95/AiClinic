@@ -104,6 +104,51 @@ export class ConfigCache {
   }
 }
 
+/**
+ * Production D1Reader for enrolled-key verification and related config loads.
+ * Covers the kinds EnrolledKeyVerifier consults: installations, keys, token_contracts.
+ * Reader keys are `${kind}:${key}` (see loadConfig).
+ */
+export function createD1ConfigReader(db: D1Database): D1Reader {
+  return {
+    async read(prefixedKey: string): Promise<D1Row | "miss"> {
+      const separator = prefixedKey.indexOf(":");
+      if (separator === -1) {
+        return "miss";
+      }
+
+      const kind = prefixedKey.slice(0, separator);
+      const key = prefixedKey.slice(separator + 1);
+
+      switch (kind) {
+        case "installations": {
+          const row = await db
+            .prepare("SELECT * FROM installation WHERE installation_id = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "keys": {
+          const row = await db
+            .prepare("SELECT * FROM installation_key WHERE key_id = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "token_contracts": {
+          const row = await db
+            .prepare("SELECT * FROM token_contract WHERE ver = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        default:
+          return "miss";
+      }
+    },
+  };
+}
+
 export async function loadConfig(
   cache: ConfigCache,
   reader: D1Reader,

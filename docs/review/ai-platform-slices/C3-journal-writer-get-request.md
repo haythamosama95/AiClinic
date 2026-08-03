@@ -71,3 +71,49 @@ None. At the library level this slice scopes itself to, the done-when criteria a
 - **Make stage 16 observable and order-safe** (Bugs 8, 9): log swallowed failures (`console.error` with request id and trace id), consider `db.batch()` for the D1 writes so attempts-plus-ledger fail together, and document the accepted partial states.
 - **Amend the frozen contract for the merged reality** (Deviation 1): add the H3 exports, the guard helpers, and the `routing_tier` column to §4.2.1/§5, exactly as C1's and C2's contracts owe their amendments.
 - **Add the missing cases**: stage-9 insert failure → `internal_error` before the provider spy; `journalTransition` terminal branch; in-flight/`AwaitingContext`/missing-envelope/corrupt-envelope/NULL-error-code get-request cases; terminal-overwrite rejection; exact-four-keys envelope assertion; `payload_pointer` set after stage 16; stage-16 mid-sequence failure.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **C3-R1 — Get-request auth + installation scope** | Bugs #1; Rec (rule on auth) | `authenticateGetRequest` / `getRequestAuthErrorBody` in `journal/index.ts`; `createD1ConfigReader` in `config-cache/index.ts`; `worker.ts` GET route; Spec Kit §3 |
+| **C3-R2 — Read-path terminal coverage** | Bugs #2, #3, #4, #6; Architectural Deviations #3; Missing/Weak Tests #4; Rec (close read-path gaps) | `GetRequestResult` + `getRequest`; worker response branches; Spec Kit §3.3 / §5.2 |
+| **C3-R3 — Terminal immutability** | Bugs #5; Missing/Weak Tests #5; Rec (enforce immutability) | Conditional `UPDATE … WHERE state NOT IN (terminal)` in `journalTransition` / `recordTerminalState`; Failed requires taxonomy code |
+| **C3-R4 — Dead guard tally** | Bugs #7; Missing/Weak Tests #2; Rec (delete or adopt) | Removed journal tally exports; T-C3-05 re-pointed to `rate-limit` `recordGuardRejection` / `flushRejectionCounters` |
+| **C3-R5 — Stage-16 observability** | Bugs #8, #9; Missing/Weak Tests #9; Rec (make stage 16 observable) | `db.batch` for attempts+ledger; `console.error` on swallow; pointer after R2; binding-spy `batch` forward |
+| **C3-R6 — Stage-9 diagnostic failure** | Bugs #10; Missing/Weak Tests #1 | `createRequestRow` failure carries `request_reference` + `trace_id` |
+| **C3-R7 — Contract merge reconciliation** | Architectural Deviations #1; Rec (amend frozen contract) | Spec Kit §4.2.1 `routing_tier`; §5 H3 exports / helpers; dead tally removed from surface |
+| **C3-R8 — Remaining coverage + double-norm** | Architectural Deviations #2, #4; Missing/Weak Tests #3, #6, #7, #8; Rec (add missing cases) | Worker single-normalize; T-C3-01 spy-inside-provider; T-C3-09 exact four keys; `journalTransition` terminal tests; write-path note left as observation (D-slices own wiring) |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched. No escalations — Bug 1 wired §5.6 auth without amending architecture (same pattern as B2).
+
+### 1.2 Test cases created first
+
+- **C3-R1:** `get_request_auth_requires_bearer` (missing / empty / malformed → `unauthenticated`); `get_request_installation_scope_mismatch_not_found`.
+- **C3-R2:** `get_request_awaiting_context`, `get_request_in_flight_pending`, `get_request_completed_missing_envelope_result_missing`, `get_request_completed_corrupt_envelope_result_missing`, `get_request_failed_null_error_code_falls_back_internal_error`.
+- **C3-R3:** `terminal_immutability_rejects_overwrite`; `record_terminal_failed_requires_taxonomy_code`.
+- **C3-R4:** T-C3-05 against live `rate-limit` path (already green after import re-point).
+- **C3-R5:** `stage16_sets_payload_pointer_on_success`, `stage16_mid_sequence_r2_failure_leaves_d1_detail`, `stage16_write_order_attempts_ledger_then_envelope_pointer`.
+- **C3-R6:** `stage9_insert_failure_returns_internal_error_before_provider`.
+- **C3-R8:** T-C3-01 rewritten so provider spy asserts row presence inside its callback; T-C3-09 exact-four-keys; `journal_transition_terminal_branch_stamps_completed_at`.
+
+### 1.3 Fix implemented
+
+- **C3-R1:** GET `/v1/requests/{reference}` requires Bearer AAT via `EnrolledKeyVerifier` + `createD1ConfigReader`; scopes `getRequest` by `principal.installationId` (mismatch → 404).
+- **C3-R2:** Extended `GetRequestResult` with `AwaitingContext`, `pending`, and `Completed`+`resultMissing`; dropped `payload_pointer` fallback; guarded `JSON.parse`; Failed null code → `internal_error`.
+- **C3-R3:** Writers no-op when row already terminal; Failed without code throws.
+- **C3-R4:** Deleted journal duplicate counters; live path remains rate-limit/admission.
+- **C3-R5:** Stage-16 D1 batch → R2 put → pointer; failures logged; test spies forward `batch`.
+- **C3-R6:** Stage-9 failure returns diagnostic fields; Spec Kit §4.2.2 / §5.3 reconciled.
+- **C3-R7:** Spec Kit documents H3 exports, helpers, `routing_tier`.
+- **C3-R8:** Single normalize in `getRequest`; remaining named cases pinned. Write-path unwired observation retained (Deviation #2) — no production caller invent for D-slices.
+
+### 1.4 Verification
+
+Full `ai-platform` suite via `npm test`: **38 Node files (479 tests) + 19 workers files (241 tests)**, all passed.
+
+Modified/added test surfaces: `journal.test.ts` (T-C3-01/03/05–07/09/15/18 updated; 16 new named cases including auth), `config-cache.test.ts` (allow `createD1ConfigReader`), `load/binding-spies.ts` (`batch` forward for stage-16).
