@@ -51,8 +51,9 @@ export interface QuotaDoState {
   periodBounds?: { period_start: string; period_end: string };
   jtiReplay: Record<string, JtiReplayEntry>;
   idempotency: Record<string, IdempotencyEntry>;
-  creditedRequests: string[];
-  admittedRequests: Record<string, { requestReference: string }>;
+  creditedRequests: Record<string, { expiresAt: number }>;
+  admittedRequests: Record<string, { requestReference: string; admittedAt: number }>;
+  boundInstallationId?: string;
 }
 
 export interface AdmissionRequest {
@@ -148,7 +149,7 @@ function initialState(): QuotaDoState {
     periodCounters: initialPeriodCounters(),
     jtiReplay: {},
     idempotency: {},
-    creditedRequests: [],
+    creditedRequests: {},
     admittedRequests: {},
   };
 }
@@ -156,6 +157,29 @@ function initialState(): QuotaDoState {
 async function loadState(storage: DurableObjectStorage): Promise<QuotaDoState> {
   const stored = await storage.get<QuotaDoState>(STATE_KEY);
   return stored ?? initialState();
+}
+
+function assertInstallationBound(state: QuotaDoState, installationId: string): void {
+  if (
+    state.boundInstallationId !== undefined &&
+    state.boundInstallationId !== installationId
+  ) {
+    throw new Error("installation_id_mismatch");
+  }
+}
+
+function sweepAbandonedAdmissions(state: QuotaDoState, now: number): void {
+  const cutoff = now - EPHEMERAL_HORIZON_MS;
+
+  for (const [requestId, entry] of Object.entries(state.admittedRequests)) {
+    if (entry.admittedAt <= cutoff) {
+      delete state.admittedRequests[requestId];
+      state.periodCounters.inFlight = Math.max(
+        0,
+        state.periodCounters.inFlight - 1,
+      );
+    }
+  }
 }
 
 function sweepEphemeral(state: QuotaDoState, now: number): void {
@@ -170,6 +194,14 @@ function sweepEphemeral(state: QuotaDoState, now: number): void {
       delete state.idempotency[key];
     }
   }
+
+  for (const [requestId, entry] of Object.entries(state.creditedRequests)) {
+    if (entry.expiresAt <= now) {
+      delete state.creditedRequests[requestId];
+    }
+  }
+
+  sweepAbandonedAdmissions(state, now);
 }
 
 function maybeResetPeriod(state: QuotaDoState, entitlement: EntitlementSnapshot): void {
@@ -182,11 +214,15 @@ function maybeResetPeriod(state: QuotaDoState, entitlement: EntitlementSnapshot)
     return;
   }
 
+  const inFlight = state.periodCounters.inFlight;
   state.periodBounds = {
     period_start: bounds.period_start,
     period_end: bounds.period_end,
   };
-  state.periodCounters = initialPeriodCounters();
+  state.periodCounters = {
+    ...initialPeriodCounters(),
+    inFlight,
+  };
 }
 
 function isQuotaExhausted(
@@ -232,6 +268,21 @@ function isSoftThresholdCrossed(
   return false;
 }
 
+function markIdempotencyOnCredit(
+  state: QuotaDoState,
+  requestId: string,
+  partial: boolean,
+): void {
+  const nextState: IdempotencyRequestState = partial ? "cancelled" : "completed";
+
+  for (const entry of Object.values(state.idempotency)) {
+    if (entry.requestId === requestId) {
+      entry.state = nextState;
+      break;
+    }
+  }
+}
+
 export async function admissionRPC(
   storage: DurableObjectStorage,
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
@@ -243,6 +294,7 @@ export async function admissionRPC(
   return blockConcurrencyWhile(async () => {
     const state = await loadState(storage);
 
+    assertInstallationBound(state, request.installationId);
     sweepEphemeral(state, timestamp);
     maybeResetPeriod(state, request.entitlement);
 
@@ -282,6 +334,10 @@ export async function admissionRPC(
     const requestId = crypto.randomUUID();
     const expiresAt = timestamp + EPHEMERAL_HORIZON_MS;
 
+    if (state.boundInstallationId === undefined) {
+      state.boundInstallationId = request.installationId;
+    }
+
     state.jtiReplay[request.jti] = { expiresAt };
     state.idempotency[request.idempotencyKey] = {
       expiresAt,
@@ -291,6 +347,7 @@ export async function admissionRPC(
     };
     state.admittedRequests[requestId] = {
       requestReference: request.requestReference,
+      admittedAt: timestamp,
     };
     state.periodCounters.inFlight += 1;
 
@@ -313,15 +370,27 @@ export async function creditRPC(
   storage: DurableObjectStorage,
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   request: CreditRequest,
-  _now?: number,
+  now?: number,
 ): Promise<CreditResponse> {
+  const timestamp = now ?? Date.now();
+
   return blockConcurrencyWhile(async () => {
     const state = await loadState(storage);
 
     if (
-      !state.admittedRequests[request.requestId] ||
-      state.creditedRequests.includes(request.requestId)
+      state.boundInstallationId !== undefined &&
+      state.boundInstallationId !== request.installationId
     ) {
+      return { kind: "credit", ok: false, code: "unknown_request" };
+    }
+
+    sweepEphemeral(state, timestamp);
+
+    if (
+      !state.admittedRequests[request.requestId] ||
+      state.creditedRequests[request.requestId]
+    ) {
+      await storage.put(STATE_KEY, state);
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
@@ -329,7 +398,13 @@ export async function creditRPC(
     state.periodCounters.costUsed += request.usage.cost;
     state.periodCounters.requestsUsed += 1;
     state.periodCounters.inFlight = Math.max(0, state.periodCounters.inFlight - 1);
-    state.creditedRequests.push(request.requestId);
+
+    delete state.admittedRequests[request.requestId];
+    state.creditedRequests[request.requestId] = {
+      expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
+    };
+
+    markIdempotencyOnCredit(state, request.requestId, request.partial);
 
     await storage.put(STATE_KEY, state);
 

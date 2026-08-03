@@ -63,7 +63,7 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "concurrency_exhausted" | "internal_error";
+  code: "unauthenticated" | "quota_exhausted" | "internal_error";
   periodReset?: string;
 };
 
@@ -90,10 +90,20 @@ type PeriodCounters = {
 
 type CreditResult =
   | { ok: true; periodCounters: PeriodCounters }
-  | { ok: false; code: "unknown_request" };
+  | { ok: false; code: "unknown_request" | "unavailable" | "internal_error" };
 
 type ReconcileGraceResult = {
   reconciled: number;
+};
+
+type PendingGraceAdmission = {
+  installationId: string;
+  requestReference: string;
+  jti: string;
+  idempotencyKey: string;
+  graceRequestId: string;
+  usage?: { tokens: number; cost: number };
+  partial?: boolean;
 };
 
 type AdmissionModule = {
@@ -105,6 +115,13 @@ type AdmissionModule = {
   flushRejectionCounters: (
     bindings: Pick<AdmissionBindings, "DB">,
   ) => Promise<void>;
+  drainPendingGraceAdmissions: () => PendingGraceAdmission[];
+  peekPendingGraceAdmissions: () => readonly PendingGraceAdmission[];
+  attachGraceUsage: (
+    graceRequestIdOrReference: string,
+    usage: { tokens: number; cost: number },
+    partial?: boolean,
+  ) => boolean;
 };
 
 type CreditModule = {
@@ -189,7 +206,7 @@ function uniqueRequestReference(): string {
 }
 
 function freshInstallationId(): string {
-  return env.DO.newUniqueId().toString();
+  return crypto.randomUUID();
 }
 
 function makePrincipal(
@@ -394,6 +411,8 @@ beforeEach(async () => {
   idempotencyKeyCounter = 0;
   requestReferenceCounter = 0;
   await clearAdmissionTables();
+  const admission = await loadAdmissionModule();
+  admission.drainPendingGraceAdmissions();
 });
 
 describe("admission_exactly_one_do_fetch_per_request", () => {
@@ -459,13 +478,14 @@ describe("admission_repeated_key_no_second_inference", () => {
 });
 
 describe("admission_expired_token_same_key_unauthenticated", () => {
-  it("rejects unauthenticated when the token expired before idempotency replay", async () => {
+  it("rejects unauthenticated when the token expired outside skew before idempotency replay", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
     const idempotencyKey = uniqueIdempotencyKey();
     const requestReference = uniqueRequestReference();
     const jti = uniqueJti();
+    const clockSkewSeconds = 60;
 
     const first = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader, {
@@ -487,7 +507,7 @@ describe("admission_expired_token_same_key_unauthenticated", () => {
         requestReference: uniqueRequestReference(),
         principal: {
           jti,
-          exp: FIXTURE_NOW_MS - 1,
+          exp: FIXTURE_NOW_MS - clockSkewSeconds - 1,
         },
       }),
       { DB: env.DB, DO: env.DO },
@@ -513,19 +533,27 @@ describe("quota_do_unavailable_capped_grace_then_rejection", () => {
         { now: FIXTURE_NOW_MS },
       );
       expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.outcome).toBe("grace_admitted");
+      }
     }
+
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(GRACE_ADMISSION_CAP);
 
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       bindings,
       { now: FIXTURE_NOW_MS },
     );
-    expect(rejected.ok).toBe(false);
+    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+
+    // Cap exhaustion must not wipe prior grace queue entries.
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(GRACE_ADMISSION_CAP);
   });
 });
 
 describe("grace_usage_reconciled_afterwards", () => {
-  it("reconciles queued grace usage with one credit DO fetch once the DO is reachable", async () => {
+  it("re-admits then credits so DO requestsUsed increases once the DO is reachable", async () => {
     const admission = await loadAdmissionModule();
     const credit = await loadCreditModule();
     const installationId = freshInstallationId();
@@ -539,12 +567,43 @@ describe("grace_usage_reconciled_afterwards", () => {
       { now: FIXTURE_NOW_MS },
     );
     expect(graceResult.ok).toBe(true);
+    if (graceResult.ok) {
+      expect(graceResult.outcome).toBe("grace_admitted");
+    }
+
+    expect(
+      admission.attachGraceUsage(requestReference, { tokens: 10, cost: 0.01 }, false),
+    ).toBe(true);
 
     const creditSpy = createDoSpy(env.DO);
     const reconcile = await credit.reconcileGraceUsage({ DO: creditSpy });
 
-    expect(creditSpy.fetchCount()).toBe(1);
+    // Re-admit + credit for the pending grace entry.
+    expect(creditSpy.fetchCount()).toBe(2);
     expect(reconcile.reconciled).toBeGreaterThanOrEqual(1);
+
+    // Probe DO counters: grace settlement already counted as 1 requestUsed.
+    const probe = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(probe);
+
+    const probeCredit = await credit.creditUsage(
+      {
+        installationId,
+        requestId: probe.requestId,
+        requestReference: uniqueRequestReference(),
+        usage: { tokens: 1, cost: 0 },
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(probeCredit.ok).toBe(true);
+    if (probeCredit.ok) {
+      expect(probeCredit.periodCounters.requestsUsed).toBeGreaterThanOrEqual(2);
+    }
   });
 });
 
@@ -607,5 +666,130 @@ describe("admission_rejection_counted_not_journaled", () => {
 
     const totalRejected = matching.reduce((sum, row) => sum + row.count, 0);
     expect(totalRejected).toBeGreaterThanOrEqual(1);
+  });
+
+  it("tallies replay rejection as unauthenticated without an ai_request row", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const jti = uniqueJti();
+    const aiRequestsBefore = await readAiRequestCount();
+
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(first);
+
+    const replay = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(replay).toEqual({ ok: false, code: "unauthenticated" });
+
+    await admission.flushRejectionCounters({ DB: env.DB });
+    expect(await readAiRequestCount()).toBe(aiRequestsBefore);
+
+    const matching = (await readPlatformCounterRows()).filter((row) => {
+      const dimensions = parseDimensionSet(row.dimension_set);
+      return (
+        dimensions.error_code === "unauthenticated" &&
+        dimensions.installation_id === installationId
+      );
+    });
+    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("maps concurrency_exhausted onto quota_exhausted and tallies that code", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+
+    for (let index = 0; index < CONCURRENCY_LIMIT; index += 1) {
+      const admitted = await admission.runAdmission(
+        defaultAdmissionInput(installationId, cache, reader),
+        { DB: env.DB, DO: env.DO },
+        { now: FIXTURE_NOW_MS },
+      );
+      assertAdmitted(admitted);
+    }
+
+    const rejected = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+
+    await admission.flushRejectionCounters({ DB: env.DB });
+    const matching = (await readPlatformCounterRows()).filter((row) => {
+      const dimensions = parseDimensionSet(row.dimension_set);
+      return (
+        dimensions.error_code === "quota_exhausted" &&
+        dimensions.installation_id === installationId
+      );
+    });
+    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("tallies grace-cap rejection as quota_exhausted", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+
+    for (let index = 0; index < GRACE_ADMISSION_CAP; index += 1) {
+      const result = await admission.runAdmission(
+        defaultAdmissionInput(installationId, cache, reader),
+        { DB: env.DB, DO: brokenDo },
+        { now: FIXTURE_NOW_MS },
+      );
+      expect(result.ok).toBe(true);
+    }
+
+    const rejected = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+
+    await admission.flushRejectionCounters({ DB: env.DB });
+    const matching = (await readPlatformCounterRows()).filter((row) => {
+      const dimensions = parseDimensionSet(row.dimension_set);
+      return (
+        dimensions.error_code === "quota_exhausted" &&
+        dimensions.installation_id === installationId
+      );
+    });
+    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("admission_missing_entitlement_fail_closed", () => {
+  it("rejects quota_exhausted on config-cache miss instead of throwing or grace", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const cache = new ConfigCache();
+    const reader: D1Reader = {
+      async read() {
+        return "miss";
+      },
+    };
+
+    const result = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+
+    expect(result).toEqual({ ok: false, code: "quota_exhausted" });
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
   });
 });

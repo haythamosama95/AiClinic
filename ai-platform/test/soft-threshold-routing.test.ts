@@ -78,7 +78,7 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "concurrency_exhausted" | "internal_error";
+  code: "unauthenticated" | "quota_exhausted" | "internal_error";
   periodReset?: string;
 };
 
@@ -193,7 +193,7 @@ function uniqueRequestReference(): string {
 }
 
 function freshInstallationId(): string {
-  return env.DO.newUniqueId().toString();
+  return crypto.randomUUID();
 }
 
 function makePrincipal(

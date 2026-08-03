@@ -40,7 +40,7 @@ Object binding (`env.DO`) for the DO unit + concurrency cases, and an injected c
 (§3.11.2 row B4 layer "DO unit + concurrency + integration (spy)"; Clarification Q3, Q4).
 
 **Target Platform**: Cloudflare Workers + Durable Objects (per-installation instances via
-`env.DO.idFromString(installationId)`); clinic LAN for the Worker's callers.
+`env.DO.idFromName(installationId)`); clinic LAN for the Worker's callers.
 
 **Project Type**: AI gateway, additive non-primary component (§14).
 
@@ -129,12 +129,12 @@ shapes plus the in-object ephemeral entry shape), not to prose.
 ai-platform/
 ├── src/
 │   ├── quota-do/
-│   │   └── index.ts         # Quota DO handlers: admissionRPC, creditRPC, ephemeral sweep
+│   │   └── index.ts         # Quota DO handlers: admissionRPC, creditRPC, ephemeral sweep, soft-threshold degraded flag
 │   ├── admission/
-│   │   └── index.ts         # Stage-8 caller: id = env.DO.idFromString(installationId); admission
+│   │   └── index.ts         # Stage-8 caller: id = env.DO.idFromName(installationId); grace path; maps concurrency→quota_exhausted
 │   ├── credit/
-│   │   └── index.ts         # Stage-15 caller: credit call with actual usage
-│   └── worker.ts            # GatewayObject.fetch/rpc extended to delegate to quota-do handlers
+│   │   └── index.ts         # Stage-15 caller + reconcileGraceUsage (re-admit then credit DO-issued requestId)
+│   └── worker.ts            # GatewayObject.fetch/rpc (+ optional now); scheduled flush + reconcileGraceUsage
 └── test/
     ├── quota-do.test.ts     # DO unit + concurrency cases
     └── admission-credit.test.ts  # Integration (spy) cases
@@ -147,8 +147,10 @@ bound in `wrangler.toml` (`DO` → `GatewayObject`) is **extended** — its `fet
 delegates to `src/quota-do/` handlers — it is not renamed and its binding is not rewritten, so A1's
 skeleton contract (the binding surface) is preserved as extension, not rework (delivery plan §2.3;
 spec `## Out of Scope`). `wrangler.toml`'s existing `DO → GatewayObject` binding is consumed unchanged.
-The Cloudflare Worker / Supabase / Flutter layer boundaries in the template are not used verbatim; the
-Worker source tree in `ai-platform/` is the relevant one for this slice (delivery plan §7.1).
+Worker `scheduled` runs the shared rejection-counter flush and `reconcileGraceUsage` so grace admissions
+are settled when the DO is reachable again. The Cloudflare Worker / Supabase / Flutter layer boundaries
+in the template are not used verbatim; the Worker source tree in `ai-platform/` is the relevant one for
+this slice (delivery plan §7.1).
 
 ## Consumes Binding
 
@@ -184,10 +186,10 @@ delivery plan sized the slice as one component group (delivery plan §2.5; §3.3
 
 | File | Trace |
 | --- | --- |
-| `ai-platform/src/quota-do/index.ts` (new) — the in-object admission handler (`jti` replay check, idempotency lookup, budget/concurrency check, lazy sweep of expired ephemeral entries), the credit handler (period counter adjustment incl. partial usage), and the in-object ephemeral entry shape | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-015 |
-| `ai-platform/src/admission/index.ts` (new) — stage-8 caller: load entitlement snapshot via `loadConfig(cache, reader, "entitlements", installationId)`, build the admission RPC payload from `Principal.jti`, `Principal.installationId`, and the parsed idempotency key, call `env.DO.withId(env.DO.idFromString(installationId)).fetch(...)` once, return `{admitted}` / `{replay}` / `{idempotent: priorState}` / `{quota_exhausted}` / `{concurrency_exhausted}`; fail-open grace path with reconciliation | FR-001, FR-004, FR-005, FR-006, FR-007, FR-011, FR-012, FR-013, FR-014 |
-| `ai-platform/src/credit/index.ts` (new) — stage-15 caller: build the credit RPC payload with actual usage (tokens/cost) plus a `partial` flag, call the same DO instance once | FR-008, FR-016 |
-| `ai-platform/src/worker.ts` (modified — extension only) — implement `GatewayObject`'s `fetch`/rpc method, dispatching on the RPC kind to `admissionRPC` / `creditRPC` from `src/quota-do/`; the binding `DO → GatewayObject` in `wrangler.toml` and the class export are unchanged in name | FR-001, FR-011 |
+| `ai-platform/src/quota-do/index.ts` (new) — the in-object admission handler (`jti` replay check, idempotency lookup, budget/concurrency check, optional `degraded` when soft_threshold crossed, lazy sweep of expired ephemeral entries including `admittedRequests` / `creditedRequests`), the credit handler (period counter adjustment incl. partial usage; closes idempotency to `completed`/`cancelled`), and the in-object ephemeral entry shape | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-015 |
+| `ai-platform/src/admission/index.ts` (new) — stage-8 caller: load entitlement snapshot via `loadConfig(cache, reader, "entitlements", installationId)`, build the admission RPC payload from `Principal.jti`, `Principal.installationId`, and the parsed idempotency key, call `env.DO.get(env.DO.idFromName(installationId)).fetch(...)` once, map DO outcomes to `{admitted}` / `{replay}` / `{idempotent: priorState}` / `{quota_exhausted}` (including mapped `concurrency_exhausted`); fail-open grace path with reconciliation queue preserved on cap exhaustion | FR-001, FR-004, FR-005, FR-006, FR-007, FR-011, FR-012, FR-013, FR-014 |
+| `ai-platform/src/credit/index.ts` (new) — stage-15 caller: build the credit RPC payload with actual usage (tokens/cost) plus a `partial` flag, call the same DO instance once; `reconcileGraceUsage` re-admits then credits the DO-issued `requestId` | FR-008, FR-013, FR-016 |
+| `ai-platform/src/worker.ts` (modified — extension only) — implement `GatewayObject`'s `fetch`/rpc method (optional injectable `now` for ephemeral-sweep tests), dispatching on the RPC kind to `admissionRPC` / `creditRPC` from `src/quota-do/`; `scheduled` runs rejection flush + `reconcileGraceUsage`; the binding `DO → GatewayObject` in `wrangler.toml` and the class export are unchanged in name | FR-001, FR-011, FR-013 |
 | `ai-platform/test/quota-do.test.ts` (new) — DO unit + concurrency cases | (Test Layout) |
 | `ai-platform/test/admission-credit.test.ts` (new) — integration (spy) cases | (Test Layout) |
 | `ai-platform/vitest.workers.config.ts` (modified — test registration only) — add the two new test files to `test.include` | (Test Layout) |
@@ -223,7 +225,7 @@ Per §13.5 layers and §3.11.2 row B4 layer "DO unit + concurrency + integration
 
 Every named test in the spec's Test plan is placed in exactly one §13.5 layer and one file. DO unit +
 concurrency cases drive the real Miniflare DO via `cloudflare:test`'s `env.DO`
-(`env.DO.withId(env.DO.idFromString(installationId)).fetch(...)`) against an installation-scoped
+(`env.DO.get(env.DO.idFromName(installationId)).fetch(...)`) against an installation-scoped
 instance — the real binding is what reproduces DO-level serialized counting (Clarification Q3). The
 integration (spy) cases inject a counting spy around `env.DO` (Miniflare DO namespace) to assert fetch
 count and the post-reconciliation counter delta — the same injection shape A5/B3 use for D1 reads,
@@ -241,14 +243,16 @@ new counter shape. No test is placed in a layer §13.5 does not name.
    (Clarification Q5: admission evicts expired entries before answering, no `alarm()` handler). Pure
    functions over the DO's `ctx.storage` (`blockConcurrencyWhile` for the atomic read-modify-write the
    serialized-counting test exercises).
-3. **`worker.ts` extension** — add `GatewayObject`'s `fetch`/rpc dispatch to the handlers; verify the
-   `DO → GatewayObject` binding is unchanged.
+3. **`worker.ts` extension** — add `GatewayObject`'s `fetch`/rpc dispatch to the handlers (pass optional
+   injectable `now`); verify the `DO → GatewayObject` binding is unchanged; wire `scheduled` to flush
+   rejection tallies and call `reconcileGraceUsage`.
 4. **`src/admission/index.ts`** and **`src/credit/index.ts`** — the two callers; admission reads the
-   entitlement snapshot through `loadConfig` (Clarification Q2) and invokes the DO once; credit invokes
-   the same instance once with actual usage and a `partial` flag.
+   entitlement snapshot through `loadConfig` (Clarification Q2) and invokes the DO once via
+   `idFromName`; credit invokes the same instance once with actual usage and a `partial` flag;
+   `reconcileGraceUsage` re-admits then credits.
 5. **Fail-open grace path** in `src/admission/index.ts` — Quota DO `fetch` rejection triggers the
-   capped-grace admission (record the grace admission) and queues reconciliation to the credit call when
-   the DO is reachable again (§15 #3).
+   capped-grace admission (record the grace admission; preserve queue on cap exhaustion) and queues
+   reconciliation for `scheduled` / credit-side drain when the DO is reachable again (§15 #3).
 6. **Tests land alongside**, not after. `ai-platform/test/quota-do.test.ts` (DO unit + concurrency) is
    written with the handlers so each handler is verified in isolation; `ai-platform/test/admission-
    credit.test.ts` (integration spy, including the grace path) lands with the callers. The

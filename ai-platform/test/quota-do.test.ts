@@ -138,7 +138,7 @@ function uniqueRequestReference(): string {
 }
 
 function freshInstallationId(): string {
-  return env.DO.newUniqueId().toString();
+  return crypto.randomUUID();
 }
 
 function buildEntitlementSnapshot(
@@ -176,7 +176,7 @@ function buildEntitlementSnapshot(
 }
 
 function quotaStub(installationId: string) {
-  const id = env.DO.idFromString(installationId);
+  const id = env.DO.idFromName(installationId);
   return env.DO.get(id);
 }
 
@@ -376,6 +376,58 @@ describe("admission_budget_exhaustion_rejected", () => {
   });
 });
 
+describe("admission_token_budget_exhaustion_rejected", () => {
+  it("rejects admission when token budget is exhausted", async () => {
+    const installationId = freshInstallationId();
+    const entitlement = buildEntitlementSnapshot({
+      request_quota: 10_000,
+      token_budget: 100,
+      cost_budget: 50.0,
+    });
+
+    const admitted = await admitFresh(installationId, { entitlement });
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 100, cost: 0.01 },
+    });
+
+    const exhausted = await callAdmissionRPC(installationId, { entitlement });
+
+    expect(exhausted.response.ok).toBe(true);
+    expect(exhausted.body).toEqual({
+      kind: "admission",
+      outcome: "quota_exhausted",
+      period_end: entitlement.period_bounds.period_end,
+    });
+  });
+});
+
+describe("admission_cost_budget_exhaustion_rejected", () => {
+  it("rejects admission when cost budget is exhausted", async () => {
+    const installationId = freshInstallationId();
+    const entitlement = buildEntitlementSnapshot({
+      request_quota: 10_000,
+      token_budget: 500_000,
+      cost_budget: 1.0,
+    });
+
+    const admitted = await admitFresh(installationId, { entitlement });
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 10, cost: 1.0 },
+    });
+
+    const exhausted = await callAdmissionRPC(installationId, { entitlement });
+
+    expect(exhausted.response.ok).toBe(true);
+    expect(exhausted.body).toEqual({
+      kind: "admission",
+      outcome: "quota_exhausted",
+      period_end: entitlement.period_bounds.period_end,
+    });
+  });
+});
+
 describe("admission_concurrency_ceiling_rejected", () => {
   it(`rejects when inFlight reaches CONCURRENCY_LIMIT (${CONCURRENCY_LIMIT})`, async () => {
     const installationId = freshInstallationId();
@@ -454,6 +506,233 @@ describe("credit_adjusts_counters_with_partial_usage", () => {
   });
 });
 
+describe("credit_evicts_admitted_request_and_expires_credited", () => {
+  it("evicts the admitted entry so a second credit returns unknown_request", async () => {
+    const installationId = freshInstallationId();
+    const admitted = await admitFresh(installationId);
+
+    const first = await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 10, cost: 0.01 },
+    });
+    expect(first.body).toMatchObject({ kind: "credit", ok: true });
+
+    const second = await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 10, cost: 0.01 },
+    });
+    expect(second.response.ok).toBe(true);
+    expect(second.body).toEqual({
+      kind: "credit",
+      ok: false,
+      code: "unknown_request",
+    });
+  });
+});
+
+describe("unknown_credit_request_id_returns_unknown_request", () => {
+  it("returns unknown_request for a never-admitted requestId", async () => {
+    const installationId = freshInstallationId();
+    await admitFresh(installationId);
+
+    const { response, body } = await callCreditRPC(installationId, {
+      requestId: crypto.randomUUID(),
+      usage: { tokens: 1, cost: 0.001 },
+    });
+
+    expect(response.ok).toBe(true);
+    expect(body).toEqual({
+      kind: "credit",
+      ok: false,
+      code: "unknown_request",
+    });
+  });
+});
+
+describe("duplicate_credit_returns_unknown_request", () => {
+  it("returns unknown_request when the same requestId is credited twice", async () => {
+    const installationId = freshInstallationId();
+    const admitted = await admitFresh(installationId);
+
+    const first = await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 5, cost: 0.002 },
+    });
+    expect(first.body).toMatchObject({ kind: "credit", ok: true });
+
+    const duplicate = await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 5, cost: 0.002 },
+    });
+    expect(duplicate.body).toEqual({
+      kind: "credit",
+      ok: false,
+      code: "unknown_request",
+    });
+  });
+});
+
+describe("period_rollover_preserves_in_flight", () => {
+  it("preserves inFlight across period rollover and resets usage counters", async () => {
+    const installationId = freshInstallationId();
+    const periodA = {
+      period_start: "2026-08-01T00:00:00.000Z",
+      period_end: "2026-09-01T00:00:00.000Z",
+    };
+    const periodB = {
+      period_start: "2026-09-01T00:00:00.000Z",
+      period_end: "2026-10-01T00:00:00.000Z",
+    };
+    const periodC = {
+      period_start: "2026-10-01T00:00:00.000Z",
+      period_end: "2026-11-01T00:00:00.000Z",
+    };
+
+    const entA = buildEntitlementSnapshot({
+      request_quota: 1,
+      period_bounds: periodA,
+    });
+    const first = await admitFresh(installationId, { entitlement: entA });
+    const credit = await callCreditRPC(installationId, {
+      requestId: first.requestId,
+      usage: { tokens: 10, cost: 0.01 },
+    });
+    expect(credit.body).toMatchObject({
+      kind: "credit",
+      ok: true,
+      periodCounters: { requestsUsed: 1, inFlight: 0 },
+    });
+
+    const blocked = await callAdmissionRPC(installationId, { entitlement: entA });
+    expect(blocked.body).toMatchObject({
+      kind: "admission",
+      outcome: "quota_exhausted",
+    });
+
+    const entB = buildEntitlementSnapshot({
+      request_quota: 10_000,
+      period_bounds: periodB,
+    });
+    // Usage counters reset — admission succeeds despite period-A exhaustion.
+    await admitFresh(installationId, { entitlement: entB });
+
+    for (let i = 1; i < CONCURRENCY_LIMIT; i += 1) {
+      await admitFresh(installationId, { entitlement: entB });
+    }
+
+    const entC = buildEntitlementSnapshot({
+      request_quota: 10_000,
+      period_bounds: periodC,
+    });
+    // inFlight carried across the B→C rollover — still at the ceiling.
+    const rejected = await callAdmissionRPC(installationId, { entitlement: entC });
+    expect(rejected.response.ok).toBe(true);
+    expect(rejected.body).toEqual({
+      kind: "admission",
+      outcome: "concurrency_exhausted",
+    });
+  });
+});
+
+describe("abandoned_admission_swept_after_horizon", () => {
+  it("sweeps abandoned admissions after EPHEMERAL_HORIZON_MS and frees inFlight", async () => {
+    const installationId = freshInstallationId();
+    const entitlement = buildEntitlementSnapshot({ request_quota: 10_000 });
+    const baseTime = new Date("2026-08-01T12:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+
+    for (let i = 0; i < CONCURRENCY_LIMIT; i += 1) {
+      await admitFresh(installationId, { entitlement });
+    }
+
+    const blocked = await callAdmissionRPC(installationId, { entitlement });
+    expect(blocked.body).toMatchObject({
+      kind: "admission",
+      outcome: "concurrency_exhausted",
+    });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1));
+
+    const recovered = await callAdmissionRPC(installationId, { entitlement });
+    expect(recovered.response.ok).toBe(true);
+    expect(recovered.body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+    });
+  });
+});
+
+describe("credit_marks_idempotency_completed", () => {
+  it("marks the idempotency record completed after a full credit", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage: { tokens: 20, cost: 0.02 },
+      partial: false,
+    });
+
+    const replay = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference,
+        state: "completed",
+        requestId: admitted.requestId,
+      },
+    });
+  });
+});
+
+describe("credit_partial_marks_idempotency_cancelled", () => {
+  it("marks the idempotency record cancelled after a partial credit", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage: { tokens: 5, cost: 0.001 },
+      partial: true,
+    });
+
+    const replay = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference,
+        state: "cancelled",
+        requestId: admitted.requestId,
+      },
+    });
+  });
+});
+
 describe("parallel_admissions_exact_final_count", () => {
   it("produces exact inFlight and requestsUsed after parallel admits and credits", async () => {
     const installationId = freshInstallationId();
@@ -486,8 +765,9 @@ describe("parallel_admissions_exact_final_count", () => {
       ),
     );
 
-    const lastCredit = credits[credits.length - 1]?.body as CreditAcknowledged;
-    expect(lastCredit).toMatchObject({ kind: "credit", ok: true });
+    for (const credit of credits) {
+      expect(credit.body).toMatchObject({ kind: "credit", ok: true });
+    }
 
     const expectedCost = admittedBodies.reduce(
       (sum, _, index) => sum + 0.001 * (index + 1),
@@ -499,11 +779,22 @@ describe("parallel_admissions_exact_final_count", () => {
       tokensSum += 50 + i;
     }
 
-    expect(lastCredit.periodCounters).toEqual({
-      requestsUsed: parallelCount,
-      tokensUsed: tokensSum,
-      costUsed: expect.closeTo(expectedCost, 5),
-      inFlight: 0,
+    // Read counters only after every parallel credit has settled.
+    const trailing = await admitFresh(installationId, { entitlement });
+    const settled = await callCreditRPC(installationId, {
+      requestId: trailing.requestId,
+      usage: { tokens: 0, cost: 0 },
+    });
+
+    expect(settled.body).toEqual({
+      kind: "credit",
+      ok: true,
+      periodCounters: {
+        requestsUsed: parallelCount + 1,
+        tokensUsed: tokensSum,
+        costUsed: expect.closeTo(expectedCost, 5),
+        inFlight: 0,
+      },
     });
   });
 });
@@ -530,6 +821,47 @@ describe("ephemeral_entries_expire_in_place", () => {
     expect(second.body).toEqual({
       kind: "admission",
       outcome: "admitted",
+      requestId: expect.any(String),
+    });
+  });
+
+  it("evicts expired idempotency keys so a repeat key admits fresh after the horizon", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const baseTime = new Date("2026-08-01T12:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+
+    const first = await callAdmissionRPC(installationId, { idempotencyKey });
+    expect(first.body).toMatchObject({ kind: "admission", outcome: "admitted" });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1));
+
+    const second = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+    });
+
+    expect(second.response.ok).toBe(true);
+    expect(second.body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+      requestId: expect.any(String),
+    });
+  });
+});
+
+describe("admission_soft_threshold_sets_degraded", () => {
+  it("sets degraded on admitted when soft_threshold is already crossed", async () => {
+    const installationId = freshInstallationId();
+    const { body } = await callAdmissionRPC(installationId, {
+      entitlement: buildEntitlementSnapshot({ soft_threshold: 0 }),
+    });
+
+    expect(body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+      degraded: true,
       requestId: expect.any(String),
     });
   });

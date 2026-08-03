@@ -33,12 +33,16 @@ the journal writer's stage 9.
   each admission call (no `alarm()` handler).
 - **`src/admission/`** — Stage-8 caller: loads the entitlement snapshot through A5's
   `loadConfig`, builds the admission RPC payload from the verified `Principal` and parsed
-  idempotency key, invokes `env.DO` once per request, and implements the capped fail-open grace
-  path with later reconciliation when the Quota DO is unreachable.
+  idempotency key, invokes `env.DO.idFromName(installationId)` once per request, maps DO
+  `concurrency_exhausted` to client `quota_exhausted`, and implements the capped fail-open grace
+  path (queue preserved on cap exhaustion) with later re-admit-then-credit reconciliation.
 - **`src/credit/`** — Stage-15 caller: invokes the same DO instance once with actual token/cost
-  usage and a `partial` flag; drains pending grace admissions for reconciliation.
+  usage and a `partial` flag; `reconcileGraceUsage` re-admits queued grace entries then credits the
+  DO-issued `requestId`.
 - **`worker.ts` extension** — `GatewayObject.fetch` dispatches on the RPC `kind` discriminant to
-  `admissionRPC` / `creditRPC`; the A1 `DO → GatewayObject` binding is unchanged.
+  `admissionRPC` / `creditRPC` (optional injectable `now` for ephemeral-sweep tests); Worker
+  `scheduled` flushes rejection tallies and runs `reconcileGraceUsage`; the A1
+  `DO → GatewayObject` binding is unchanged.
 - **Frozen contract** — `contracts/quota-do-rpc.md` documents the admission and credit RPC wire
   shapes and the in-object ephemeral entry shape for downstream slices.
 - **Test suite** — 16 named tests: 10 in `quota-do.test.ts` (DO unit + concurrency) and 6 in
@@ -49,9 +53,9 @@ the journal writer's stage 9.
 | Path | Role |
 | --- | --- |
 | `ai-platform/src/quota-do/index.ts` | `admissionRPC`, `creditRPC`, ephemeral entry types, lazy sweep, `CONCURRENCY_LIMIT` / `EPHEMERAL_HORIZON_MS` |
-| `ai-platform/src/admission/index.ts` | Stage-8 caller: entitlement snapshot load, one DO fetch per request, fail-open grace path, rejection tally |
-| `ai-platform/src/credit/index.ts` | Stage-15 caller: credit RPC with actual/partial usage, grace reconciliation drain |
-| `ai-platform/src/worker.ts` | `GatewayObject` fetch/rpc dispatch to `admissionRPC` / `creditRPC` |
+| `ai-platform/src/admission/index.ts` | Stage-8 caller: `idFromName`, entitlement snapshot load, one DO fetch per request, fail-open grace path, rejection tally |
+| `ai-platform/src/credit/index.ts` | Stage-15 caller: credit RPC with actual/partial usage, `reconcileGraceUsage` |
+| `ai-platform/src/worker.ts` | `GatewayObject` fetch/rpc dispatch (+ optional `now`); `scheduled` flush + `reconcileGraceUsage` |
 | `ai-platform/test/quota-do.test.ts` | 10 tests: admission (fresh/replay `jti`, idempotency, budget, concurrency), credit (actual/partial), parallel admissions, ephemeral expiry |
 | `ai-platform/test/admission-credit.test.ts` | 6 tests: one DO fetch per request, idempotent replay, expired-token rejection, capped grace, grace reconciliation, rejection counted not journaled |
 | `specs/024-quota-do-admission/contracts/quota-do-rpc.md` | Frozen admission and credit RPC request/response shapes and ephemeral entry shape |
@@ -105,19 +109,19 @@ cat specs/024-quota-do-admission/contracts/quota-do-rpc.md
 Grep the `GatewayObject` dispatch in `worker.ts`:
 
 ```bash
-grep -n 'admissionRPC\|creditRPC\|GatewayObject' ai-platform/src/worker.ts
+grep -n 'admissionRPC\|creditRPC\|GatewayObject\|reconcileGraceUsage\|scheduled' ai-platform/src/worker.ts
 ```
 
 Inspect the Quota DO handlers and ephemeral sweep:
 
 ```bash
-grep -n 'admissionRPC\|creditRPC\|sweepEphemeral\|EPHEMERAL_HORIZON' ai-platform/src/quota-do/index.ts
+grep -n 'admissionRPC\|creditRPC\|sweepEphemeral\|EPHEMERAL_HORIZON\|degraded\|period_end' ai-platform/src/quota-do/index.ts
 ```
 
 Inspect the fail-open grace path in the admission caller:
 
 ```bash
-grep -n 'GRACE_ADMISSION_CAP\|grace\|reconcil' ai-platform/src/admission/index.ts
+grep -n 'GRACE_ADMISSION_CAP\|grace\|idFromName\|concurrency_exhausted\|quota_exhausted' ai-platform/src/admission/index.ts
 ```
 
 List the named test cases:
