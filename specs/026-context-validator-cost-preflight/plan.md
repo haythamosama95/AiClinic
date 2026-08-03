@@ -126,13 +126,15 @@ C2 touches two §4 components: §4.3.5 (primary — the validator) and §4.3.3 (
 
 | File | Created / Modified | Traces to |
 | --- | --- | --- |
-| `ai-platform/src/context/validator.ts` | Created | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-009 — `ValidateResult` discriminated union (`{ok:true, filteredContext} | {ok:false, code:"context_required", missingKeys, shapes, manifestVersion, manifestCapabilityId} | {ok:false, code:"context_invalid"}`); `validateContext(manifest, suppliedContext, principal): ValidateResult` (stage 6); `buildContextRequiredResponse(result, requestReference, traceId)` (the Clarification-Q1 wire builder, calling A2 `buildErrorBody` for the four common fields and attaching the frozen snake_case missing-key manifest `{missing_keys, shapes, manifest_version, manifest_capability_id}`). |
-| `ai-platform/src/context/preflight.ts` | Created | FR-007, FR-008 — `TOKENS_PER_BYTE_DIVISOR = 4` and `ESTIMATE_SAFETY_FACTOR = 1.15` platform constants (§13.6.2); `estimateInputTokens(serializedInput: string): number` (`Math.ceil(utf8ByteLength / 4) * 1.15`); `runCostPreflight(manifest, serializedInput): PreflightResult` where `PreflightResult = {ok:true} | {ok:false, code:"request_too_large"}` — the two predicates `estimatedInputTokens + maxOutputTokens ≤ perRequestCostCeiling` AND `estimatedInputTokens ≤ maxInputTokens` (§6.1 stage 7, §13.6.2). |
-| `ai-platform/test/context-validator.test.ts` | Created | SC-001, SC-002, SC-003, SC-004, SC-005 — the 15 named tests from the spec's `### Test plan` (`T-C2-01` … `T-C2-15`), unit (spy), with spy assertions on composer/egress call counts for T6, T10, T13. |
-| `specs/026-context-validator-cost-preflight/contracts/context-validator.md` | Created | (freezes the `ValidateResult` union + the filtered-context payload shape, the `context_required` wire payload `{code, request_reference, trace_id, retry_safe, missing_keys, shapes, manifest_version, manifest_capability_id}`, the `PreflightResult` union, and the §13.6.2 estimator with its two platform constants) from FR-001/FR-002/FR-003/FR-004/FR-005/FR-006/FR-007, so D1/J2/B4/D3 consume a contract, not prose. |
+| `ai-platform/src/context/validator.ts` | Created (+ C2-R review) | FR-001–FR-006, FR-009, FR-010 — `ValidateResult` (incl. H2 `conversation_budget_exhausted` and `internal_error`); frozen `filteredContext` / `context_required` payloads; A5 `publishedShapeForKey`; optional conversational fourth arg. |
+| `ai-platform/src/context/preflight.ts` | Created (+ C2-R review) | FR-007, FR-008 — estimator + `promptArtifactByteLength`; fail-closed non-finite Economics. |
+| `ai-platform/src/context/index.ts` | Modified (C2-R) | Export `publishedShapeForKey` (single source for missing-key shapes). |
+| `ai-platform/src/manifest/index.ts` | Modified (C2-R) | Fail-closed Economics finite numbers; Context-requirements `required`/`maxSize` types + A5 `validateKey` on declared keys. |
+| `ai-platform/test/context-validator.test.ts` | Created (+ C2-R review) | T-C2-01…15 plus C2-R cases (boundaries, order, tenant absence, version drop, immutability, fail-closed load, estimator literals, artifact bytes). |
+| `specs/026-context-validator-cost-preflight/contracts/context-validator.md` | Created (+ C2-R review) | Contract extensions for H2 merge, fault split, artifact bytes, frozen payloads, A5 shapes gap / unwired stages. |
 | `specs/026-context-validator-cost-preflight/quickstart.md` | Created | — written during the implement-phase Documentation task (sections named in Project Structure → Documentation). Not traced to an FR (template-mandated review surface). |
 
-Every code/contract file traces to an `FR-###`. No file is created for an unstated requirement. `worker.ts` and the consumed modules (`context/index.ts`, `manifest/`, `capability/`, `identity/`, `errors.ts`, `adapter.ts`, `contracts/canonical.ts`) are unchanged.
+Every code/contract file traces to an `FR-###`. No file is created for an unstated requirement. `worker.ts` remains unwired for stages 6–7 (contract §10).
 
 ## Test Layout
 

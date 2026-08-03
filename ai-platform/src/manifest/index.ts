@@ -166,6 +166,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== "object") {
     return value;
@@ -262,9 +266,34 @@ function validateSingleShotContextRequirements(
       throw new Error(`Malformed manifest group: ${groupName}`);
     }
     assertExactKeys(entry, entryKeys, groupName);
+
+    if (typeof entry.key !== "string") {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+    if (typeof entry.required !== "boolean") {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+    if (!isFiniteNumber(entry.maxSize)) {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+
+    // Same A5 vocabulary gate as conversational permittedKeySet (H1): a
+    // manifest-declared key outside the published set is a platform defect.
+    const keyResult = validateKey(entry.key);
+    if (!keyResult.ok) {
+      throw new Error(`Context requirements unknown key: ${entry.key}`);
+    }
   }
 
   return value as ContextRequirementEntry[];
+}
+
+function assertEconomicsTypes(economics: Record<string, unknown>): void {
+  for (const field of MANIFEST_FIELD_MANIFEST.Economics) {
+    if (!isFiniteNumber(economics[field])) {
+      throw new Error("Malformed manifest group: Economics");
+    }
+  }
 }
 
 function validateConversationalContextRequirements(
@@ -455,6 +484,7 @@ function validate(json: Record<string, unknown>): Manifest {
     "Economics",
     MANIFEST_FIELD_MANIFEST.Economics,
   );
+  assertEconomicsTypes(economics);
   const governance = validateObjectGroup(
     json.Governance,
     "Governance",

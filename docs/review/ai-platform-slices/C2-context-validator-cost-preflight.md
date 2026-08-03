@@ -59,3 +59,47 @@ None. Both done-when criteria are met at the library level this slice scopes its
 - **Amend the frozen contract for the H2 merge** (Deviation 1): add the `conversation_budget_exhausted` branch, the fourth parameter, and the three new exports to §2/§9.1, exactly as C1's contract owes the J1 lifecycle amendments.
 - **Close the estimator-input gap** (Deviation 2): decide how prompt-artifact bytes enter the measured input — a third parameter, or a manifest-derived constant — and amend FR-007 and contract §6–7 to match §13.6.2 before D3 consumes the signature.
 - **Add the missing cases**: exact-equality boundaries for all three comparisons; evaluation-order short-circuit; absent org/branch; same-concept different-version key; malformed-manifest fail-closed paths; payload immutability; literal-anchored estimator table.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **C2-R1 — Fail-closed Economics / Context-requirements types** | Bugs #1, #2; Missing/Weak Tests #5; Rec (fail closed on malformed economics and context-requirement entries) | `ai-platform/src/manifest/index.ts` (finite Economics; boolean `required` / finite `maxSize`; A5 `validateKey` on declared keys); `preflight.ts` / `validator.ts` runtime defence; Spec Kit FR-010 |
+| **C2-R2 — Platform vs client fault split** | Bugs #3; Missing/Weak Tests #7; Rec (resolve Bug 3 fault assignment) | `validator.ts` (`internal_error` for platform key codes; `context_invalid` for field violations; `unknown_shape` still passes); contract §3.4; load-time unknown-key rejection |
+| **C2-R3 — Single-source published shapes** | Bugs #4; Rec (single-source published shapes) | Export `publishedShapeForKey` from `context/index.ts`; delete duplicate map in `validator.ts` |
+| **C2-R4 — Freeze output payloads** | Bugs #5; Missing/Weak Tests #6; Rec (freeze and copy) | Deep-freeze + clone `filteredContext` and `context_required` wire body; mutation tests |
+| **C2-R5 — H2 contract reconciliation** | Architectural Deviations #1; Rec (amend frozen contract for H2 merge) | Spec Kit contract §2 / §9.1 / Out-of-scope; `conversation_budget_exhausted`, fourth param, H2 exports — no production behaviour change |
+| **C2-R6 — Estimator artifact bytes** | Architectural Deviations #2; Rec (close estimator-input gap) | `estimateInputTokens` / `runCostPreflight` optional `promptArtifactByteLength`; FR-007 + contract §6–7 |
+| **C2-R7 — Record A5 shapes gap + unwired stages** | Architectural Deviations #3, #4 | Spec Kit / contract notes only — no worker wiring; A5 vocabulary gap recorded for J2 |
+| **C2-R8 — Remaining coverage** | Missing/Weak Tests #1–4, #8; Rec (add missing cases) | Exact boundaries; evaluation-order short-circuit; absent org/branch; same-concept@v2 drop; literal estimator table; artifact-byte tip-over |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched.
+
+### 1.2 Test cases created first
+
+- **C2-R1:** load rejects string/undefined Economics fields; non-boolean `required`; non-numeric `maxSize`; unknown declared key (`visit.vitals@v2`).
+- **C2-R2 / R7:** `unknown_shape` tolerance for shape-less vocabulary keys; client field violation stays `context_invalid`; load rejects unpublished declared keys.
+- **C2-R4:** `filteredContext` frozen + nested caller mutation does not leak; `context_required` wire body / `missing_keys` / `shapes` frozen copies.
+- **C2-R6 / R8:** literal input→estimate table; `promptArtifactByteLength` tips ceiling; non-finite artifact bytes → `request_too_large`.
+- **C2-R8:** estimate + maxOutput == ceiling passes; estimate == maxInputTokens passes; bytes == maxSize passes; missing-key short-circuits past tenant/shape defects; absent org/branch → `context_invalid`; `visit.vitals@v2` dropped with required v1 in `missing_keys`.
+
+### 1.3 Fix implemented
+
+- **C2-R1:** A4 loader type-checks Economics as finite numbers and Context-requirements entries (`required` boolean, `maxSize` finite, key in A5 vocabulary). Runtime pre-flight / validator still fail closed if types slip through.
+- **C2-R2:** `validatePayload` platform key codes → `internal_error`; client field codes → `context_invalid`; `unknown_shape` continues to pass. Contract §3.4 extended.
+- **C2-R3:** `publishedShapeForKey` exported from A5 module; validator duplicate map removed.
+- **C2-R4:** `structuredClone` + deep-freeze on success `filteredContext` and on `buildContextRequiredResponse` / `context_required` results.
+- **C2-R5:** Spec Kit contract/spec/plan/tasks reconciled with H2 merge (docs only).
+- **C2-R6:** Optional third argument `promptArtifactByteLength` included in measured byte length per §13.6.2.
+- **C2-R7:** Documented only — A5 shapes gap and deferred `worker.ts` wiring.
+- **C2-R8:** Coverage cases listed in 1.2.
+
+### 1.4 Verification
+
+Full `ai-platform` suite via `npm test` (Node pool + workers pool): **38 Node files (479 tests) + 19 workers files (223 tests)**, all passed.
+
+Modified/added test surfaces: `ai-platform/test/context-validator.test.ts` (C2-R describe blocks; 39 total cases in file including T-C2-01..15).

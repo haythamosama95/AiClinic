@@ -88,6 +88,11 @@
 
 - Phase 2 (T001–T016) all touch the same file (`context-validator.test.ts`) — no `[P]`; sequential, each appending to the substrate T001 created.
 - Phase 3 (T017, T018) touch different files (`validator.ts`, `preflight.ts`) — `[P]` relative to each other.
+
+## Review resolution (C2-R)
+
+- [X] T022 [US1] C2 review resolution: fail-closed A4 load typing; platform vs client fault split; single-source `publishedShapeForKey`; frozen payloads; H2 contract reconciliation; `promptArtifactByteLength` estimator extension; recorded A5 shapes gap + unwired stages; added C2-R unit cases in `context-validator.test.ts`. Architecture docs untouched.
+
 - Phase 5 (T020, T021) touch different files and have no shared dependency — `[P]` relative to each other.
 
 ---

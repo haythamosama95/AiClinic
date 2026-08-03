@@ -727,3 +727,369 @@ describe("T-C2-15 preflight_rejects_over_max_input_tokens", () => {
     expect(result).toEqual({ ok: false, code: "request_too_large" });
   });
 });
+
+describe("C2-R review resolution — fail-closed load paths", () => {
+  it("load rejects non-numeric Economics.maxOutputTokens", () => {
+    expect(() =>
+      load(
+        validManifest({
+          Economics: {
+            maxInputTokens: 8_000,
+            maxOutputTokens: "1024",
+            perRequestCostCeiling: 9_024,
+            quotaWeight: 1,
+          },
+        }),
+      ),
+    ).toThrow(/Economics/);
+  });
+
+  it("load rejects non-numeric Economics.maxInputTokens", () => {
+    expect(() =>
+      load(
+        validManifest({
+          Economics: {
+            maxInputTokens: undefined,
+            maxOutputTokens: 1_024,
+            perRequestCostCeiling: 9_024,
+            quotaWeight: 1,
+          },
+        }),
+      ),
+    ).toThrow(/Economics/);
+  });
+
+  it("load rejects non-numeric Economics.perRequestCostCeiling", () => {
+    expect(() =>
+      load(
+        validManifest({
+          Economics: {
+            maxInputTokens: 8_000,
+            maxOutputTokens: 1_024,
+            perRequestCostCeiling: "9024",
+            quotaWeight: 1,
+          },
+        }),
+      ),
+    ).toThrow(/Economics/);
+  });
+
+  it("load rejects non-boolean Context requirements.required", () => {
+    expect(() =>
+      load(
+        validManifest({
+          "Context requirements": [
+            {
+              key: REQUIRED_KEY_DEMOGRAPHICS,
+              required: "yes",
+              shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
+              maxSize: 4_096,
+              freshnessHint: "session",
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/Context requirements/);
+  });
+
+  it("load rejects non-numeric Context requirements.maxSize", () => {
+    expect(() =>
+      load(
+        validManifest({
+          "Context requirements": [
+            {
+              key: REQUIRED_KEY_DEMOGRAPHICS,
+              required: true,
+              shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
+              maxSize: "4096",
+              freshnessHint: "session",
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/Context requirements/);
+  });
+
+  it("load rejects a Context requirements key outside the published vocabulary", () => {
+    expect(() =>
+      load(
+        validManifest({
+          "Context requirements": [
+            {
+              key: "visit.vitals@v2",
+              required: true,
+              shapeRef: "visit.vitals@v2",
+              maxSize: 4_096,
+              freshnessHint: "session",
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/Context requirements unknown key/);
+  });
+});
+
+describe("C2-R review resolution — exact boundaries", () => {
+  it("preflight passes when estimate + maxOutputTokens equals the ceiling", () => {
+    const serializedInput = "abcd"; // 4 bytes → ceil(4/4)*1.15 = 1.15
+    const estimate = estimateInputTokens(serializedInput);
+    expect(estimate).toBe(1.15);
+    const maxOutputTokens = 10;
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens,
+        perRequestCostCeiling: estimate + maxOutputTokens,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({ ok: true });
+  });
+
+  it("preflight passes when estimate equals maxInputTokens", () => {
+    const serializedInput = "abcd";
+    const estimate = estimateInputTokens(serializedInput);
+    expect(estimate).toBe(1.15);
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: estimate,
+        maxOutputTokens: 100,
+        perRequestCostCeiling: 10_000,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({ ok: true });
+  });
+
+  it("validator passes when key JSON bytes equal maxSize", () => {
+    const payload = { note: "exact-bound" };
+    const exactBytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+    const manifest = loadedManifest({
+      "Context requirements": [
+        {
+          key: REQUIRED_KEY_DEMOGRAPHICS,
+          required: true,
+          shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
+          maxSize: exactBytes,
+          freshnessHint: "session",
+        },
+        {
+          key: REQUIRED_KEY_VITALS,
+          required: true,
+          shapeRef: REQUIRED_KEY_VITALS,
+          maxSize: 4_096,
+          freshnessHint: "session",
+        },
+      ],
+    });
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext({
+      [REQUIRED_KEY_DEMOGRAPHICS]: payload,
+    });
+
+    const result = validateContext(manifest, suppliedContext, principal);
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("C2-R review resolution — evaluation order and tenant edges", () => {
+  it("short-circuits to context_required when required key is missing even with tenant and shape defects", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext({
+      org: "wrong-org",
+      branch: "wrong-branch",
+      [OPTIONAL_KEY_CHIEF_COMPLAINT]: { visit_id: 123 },
+    });
+    delete suppliedContext[REQUIRED_KEY_DEMOGRAPHICS];
+
+    const result = validateContext(manifest, suppliedContext, principal);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.code).toBe("context_required");
+    expect(result.missingKeys).toEqual([REQUIRED_KEY_DEMOGRAPHICS]);
+  });
+
+  it("rejects absent org as context_invalid", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext();
+    delete suppliedContext.org;
+
+    expect(validateContext(manifest, suppliedContext, principal)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+
+  it("rejects absent branch as context_invalid", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext();
+    delete suppliedContext.branch;
+
+    expect(validateContext(manifest, suppliedContext, principal)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+
+  it("drops same-concept different-version key and surfaces required v1 as missing", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext();
+    delete suppliedContext[REQUIRED_KEY_VITALS];
+    suppliedContext["visit.vitals@v2"] = { systolic: 120 };
+
+    const result = validateContext(manifest, suppliedContext, principal);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.code).toBe("context_required");
+    expect(result.missingKeys).toEqual([REQUIRED_KEY_VITALS]);
+  });
+});
+
+describe("C2-R review resolution — shape tolerance and immutability", () => {
+  it("tolerates unknown_shape for published vocabulary keys without a shape", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    // demographics/vitals have no published shape — unknown_shape must pass.
+    const result = validateContext(
+      manifest,
+      validSuppliedContext(),
+      principal,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects client shape violations as context_invalid (not internal_error)", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext({
+      [OPTIONAL_KEY_CHIEF_COMPLAINT]: {
+        visit_id: "not-a-uuid",
+        complaint: "Headache",
+      },
+    });
+
+    expect(validateContext(manifest, suppliedContext, principal)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+
+  it("freezes filteredContext and does not alias nested caller values", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const nested = { note: "caller-owned" };
+    const suppliedContext = validSuppliedContext({
+      [REQUIRED_KEY_DEMOGRAPHICS]: nested,
+    });
+
+    const result = validateContext(manifest, suppliedContext, principal);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(Object.isFrozen(result.filteredContext)).toBe(true);
+    expect(() => {
+      result.filteredContext.extra = true;
+    }).toThrow();
+
+    nested.note = "mutated-after-validate";
+    expect(result.filteredContext[REQUIRED_KEY_DEMOGRAPHICS]).toEqual({
+      note: "caller-owned",
+    });
+  });
+
+  it("freezes context_required wire body including missing_keys and shapes copies", () => {
+    const manifest = loadedManifest();
+    const principal = buildPrincipal();
+    const suppliedContext = validSuppliedContext();
+    delete suppliedContext[REQUIRED_KEY_DEMOGRAPHICS];
+
+    const result = validateContext(manifest, suppliedContext, principal);
+    expect(result.ok).toBe(false);
+    if (result.ok || result.code !== "context_required") {
+      return;
+    }
+
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.missingKeys)).toBe(true);
+
+    const wire = buildContextRequiredResponse(
+      result,
+      FIXTURE_REQUEST_REFERENCE,
+      FIXTURE_TRACE_ID,
+    );
+    expect(Object.isFrozen(wire)).toBe(true);
+    expect(Object.isFrozen(wire.missing_keys)).toBe(true);
+    expect(Object.isFrozen(wire.shapes)).toBe(true);
+
+    const missingKeys = wire.missing_keys as string[];
+    expect(() => {
+      missingKeys.push("injected");
+    }).toThrow();
+    expect(result.missingKeys).toEqual([REQUIRED_KEY_DEMOGRAPHICS]);
+  });
+});
+
+describe("C2-R review resolution — estimator literals and artifact bytes", () => {
+  it("anchors estimateInputTokens to fixed input→estimate literals", () => {
+    // utf8("")=0 → ceil(0/4)*1.15 = 0
+    expect(estimateInputTokens("")).toBe(0);
+    // utf8("a")=1 → ceil(1/4)*1.15 = 1.15
+    expect(estimateInputTokens("a")).toBe(1.15);
+    // utf8("abcd")=4 → ceil(4/4)*1.15 = 1.15
+    expect(estimateInputTokens("abcd")).toBe(1.15);
+    // utf8("abcde")=5 → ceil(5/4)*1.15 = 2.3
+    expect(estimateInputTokens("abcde")).toBe(2.3);
+    // utf8("café")=5 → 2.3
+    expect(estimateInputTokens("caf\u00e9")).toBe(2.3);
+    // utf8("日本語")=9 → ceil(9/4)*1.15 (IEEE: 3*1.15)
+    expect(estimateInputTokens("日本語")).toBe(Math.ceil(9 / 4) * 1.15);
+  });
+
+  it("includes promptArtifactByteLength in the measured input", () => {
+    const serializedInput = "abcd"; // 4 bytes → 1.15 alone
+    expect(estimateInputTokens(serializedInput)).toBe(1.15);
+    // 4 + 4 = 8 bytes → ceil(8/4)*1.15 = 2.3
+    expect(estimateInputTokens(serializedInput, 4)).toBe(2.3);
+
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens: 1,
+        perRequestCostCeiling: 2.2,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({ ok: true });
+    expect(runCostPreflight(manifest, serializedInput, 4)).toEqual({
+      ok: false,
+      code: "request_too_large",
+    });
+  });
+
+  it("rejects non-finite promptArtifactByteLength as request_too_large", () => {
+    const manifest = loadedManifest();
+    expect(runCostPreflight(manifest, "x", Number.NaN)).toEqual({
+      ok: false,
+      code: "request_too_large",
+    });
+    expect(runCostPreflight(manifest, "x", -1)).toEqual({
+      ok: false,
+      code: "request_too_large",
+    });
+  });
+});
