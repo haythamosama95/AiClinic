@@ -3,15 +3,10 @@ import 'dart:io';
 import 'package:ai_clinic/core/ai/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'fakes.dart';
-
 void main() {
   group('Conversation store', () {
     test('transcript_held_locally_and_resupplied_per_leg', () {
-      final store = ConversationStore(
-        conversationId: 'conv-store-001',
-        isConversational: true,
-      );
+      final store = ConversationStore(conversationId: 'conv-store-001', isConversational: true);
 
       final leg1 = store.prepareLegSubmit('What is the chief complaint?');
       expect(leg1.turnOrdinal, 1);
@@ -23,17 +18,11 @@ void main() {
       expect(leg2.turnOrdinal, 2);
       expect(leg2.transcript, hasLength(3));
       expect(leg2.transcript.last['text'], 'The patient has a headache.');
-      expect(
-        leg2.transcript.any((turn) => turn['kind'] == 'model'),
-        isTrue,
-      );
+      expect(leg2.transcript.any((turn) => turn['kind'] == 'model'), isTrue);
     });
 
     test('transcript_discarded_on_close', () {
-      final store = ConversationStore(
-        conversationId: 'conv-store-close',
-        isConversational: true,
-      );
+      final store = ConversationStore(conversationId: 'conv-store-close', isConversational: true);
 
       store.prepareLegSubmit('Hello');
       store.appendModelAnswer('Hi there.');
@@ -42,17 +31,11 @@ void main() {
       store.close();
       expect(store.transcript, isEmpty);
       expect(store.isOpen, isFalse);
-      expect(
-        () => store.prepareLegSubmit('After close'),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => store.prepareLegSubmit('After close'), throwsA(isA<StateError>()));
     });
 
     test('client_never_interprets_message_or_chooses_keys', () {
-      final store = ConversationStore(
-        conversationId: 'conv-store-spy',
-        isConversational: true,
-      );
+      final store = ConversationStore(conversationId: 'conv-store-spy', isConversational: true);
 
       const rawMessage = 'Need labs for patient 42 — urgent!!!';
       final leg = store.prepareLegSubmit(rawMessage);
@@ -75,15 +58,9 @@ void main() {
     });
 
     test('single_shot_unaffected_by_h3', () {
-      final store = ConversationStore(
-        conversationId: 'conv-single-shot',
-        isConversational: false,
-      );
+      final store = ConversationStore(conversationId: 'conv-single-shot', isConversational: false);
 
-      expect(
-        () => store.prepareLegSubmit('Should not attach'),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => store.prepareLegSubmit('Should not attach'), throwsA(isA<StateError>()));
       expect(store.transcript, isEmpty);
     });
   });

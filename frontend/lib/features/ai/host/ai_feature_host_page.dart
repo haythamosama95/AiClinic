@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
-import 'package:ai_clinic/core/ai/taxonomy.dart';
 
 import '../availability/ai_availability.dart';
 import '../degraded/ai_degraded_mode.dart';
@@ -62,10 +61,7 @@ class AiFeatureHostDependencies {
 
 /// Standalone host composing availability gate + surface (Clarification Q2).
 class AiFeatureHostPage extends StatefulWidget {
-  const AiFeatureHostPage({
-    super.key,
-    required this.dependencies,
-  });
+  const AiFeatureHostPage({super.key, required this.dependencies});
 
   final AiFeatureHostDependencies dependencies;
 
@@ -121,12 +117,11 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final hideSurface = _mode == AiDegradedMode.nonEnrolled ||
+    final hideSurface =
+        _mode == AiDegradedMode.nonEnrolled ||
         _mode == AiDegradedMode.installationSuspended ||
         _mode == AiDegradedMode.forbiddenCapability ||
         _mode == AiDegradedMode.unreachable ||
@@ -142,14 +137,14 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
           child: hideSurface
               ? const Text('Clinical workflows remain available.')
               : _resolver != null
-                  ? FirstAiFeatureSurface(
-                      sdk: widget.dependencies.sdk,
-                      resolver: _resolver!,
-                      visitId: widget.dependencies.visitId,
-                      persistenceProbe: widget.dependencies.persistenceProbe,
-                      exportProbe: widget.dependencies.exportProbe,
-                    )
-                  : null,
+              ? FirstAiFeatureSurface(
+                  sdk: widget.dependencies.sdk,
+                  resolver: _resolver!,
+                  visitId: widget.dependencies.visitId,
+                  persistenceProbe: widget.dependencies.persistenceProbe,
+                  exportProbe: widget.dependencies.exportProbe,
+                )
+              : null,
         ),
       ),
     );

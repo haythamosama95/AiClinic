@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_registration.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
-import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
@@ -120,10 +119,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
 
     final resolveResult = await widget.resolver.resolve([visitChiefComplaintV1Key]);
     if (resolveResult is ContextResolveFailure) {
-      _setFailed(
-        code: TaxonomyCode.contextInvalid,
-        requestReference: widget.sdk.lastRequestReference ?? 'ctx-fail',
-      );
+      _setFailed(code: TaxonomyCode.contextInvalid, requestReference: widget.sdk.lastRequestReference ?? 'ctx-fail');
       return;
     }
 
@@ -135,10 +131,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
           capabilityId: kFirstAiCapabilityId,
           capabilityVersion: kFirstAiCapabilityVersion,
           intent: kFirstAiIntent,
-          context: {
-            'visit_id': widget.visitId,
-            ...contextPayload,
-          },
+          context: {'visit_id': widget.visitId, ...contextPayload},
         ),
       );
       _session = session;
@@ -164,20 +157,12 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             _requestReference = requestReference;
           case CompletedEvent(:final result):
             _onTerminal(CompletedTerminal(result: result));
-          case FailedEvent(
-              :final code,
-              :final requestReference,
-              :final traceId,
-              :final retrySafe,
-            ):
+          case FailedEvent(:final code, :final requestReference, :final traceId, :final retrySafe):
             _onTerminal(
-              FailedTerminal(
-                code: code,
-                requestReference: requestReference,
-                traceId: traceId,
-                retrySafe: retrySafe,
-              ),
+              FailedTerminal(code: code, requestReference: requestReference, traceId: traceId, retrySafe: retrySafe),
             );
+          case ContextRequestedEvent(:final contextRequest):
+            _onTerminal(ContextRequestedTerminal(contextRequest: contextRequest));
           case HeartbeatEvent():
           case CancelledEvent():
             break;
@@ -188,10 +173,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       _setFailed(code: error.code, requestReference: error.requestReference);
     } catch (e, st) {
       debugPrint('FirstAiFeatureSurface invoke failed: $e\n$st');
-      _setFailed(
-        code: TaxonomyCode.internalError,
-        requestReference: widget.sdk.lastRequestReference ?? 'invoke-error',
-      );
+      _setFailed(code: TaxonomyCode.internalError, requestReference: widget.sdk.lastRequestReference ?? 'invoke-error');
     }
   }
 
@@ -211,6 +193,11 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
         _setFailed(code: code, requestReference: requestReference);
       case CancelledTerminal():
         break;
+      case ContextRequestedTerminal():
+        _setFailed(
+          code: TaxonomyCode.contextInvalid,
+          requestReference: _requestReference ?? widget.sdk.lastRequestReference,
+        );
     }
   }
 
@@ -243,8 +230,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_phase == _SurfacePhase.loading)
-          const LinearProgressIndicator(),
+        if (_phase == _SurfacePhase.loading) const LinearProgressIndicator(),
         if (_provisionalText != null &&
             _phase != _SurfacePhase.completed &&
             _phase != _SurfacePhase.acknowledged &&
@@ -253,25 +239,14 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
         if (_terminalText != null)
           Semantics(
             label: 'AI validated answer',
-            child: Text(
-              key: kAiTerminalProseKey,
-              _terminalText!,
-              style: AppTypography.body(context),
-            ),
+            child: Text(key: kAiTerminalProseKey, _terminalText!, style: AppTypography.body(context)),
           ),
         if (_phase == _SurfacePhase.failed && _requestReference != null)
           RequestReferenceView(requestReference: _requestReference!),
         if (_phase == _SurfacePhase.acknowledged)
-          const Text(
-            key: kAiAcknowledgedKey,
-            'Acknowledged for advisory review.',
-          ),
+          const Text(key: kAiAcknowledgedKey, 'Acknowledged for advisory review.'),
         if (_phase == _SurfacePhase.completed) ...[
-          AppButton(
-            key: kAiAcceptKey,
-            onPressed: _accept,
-            child: const Text('Accept'),
-          ),
+          AppButton(key: kAiAcceptKey, onPressed: _accept, child: const Text('Accept')),
           const SizedBox(height: 8),
           AppButton(
             key: kAiDiscardKey,
@@ -280,8 +255,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             child: const Text('Discard'),
           ),
         ],
-        if (_failureCode != null && _failureCode != TaxonomyCode.contextInvalid)
-          const SizedBox.shrink(),
+        if (_failureCode != null && _failureCode != TaxonomyCode.contextInvalid) const SizedBox.shrink(),
       ],
     );
   }

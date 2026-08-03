@@ -9,10 +9,7 @@ const kAiProvisionalProseSemanticsLabel = 'AI draft content';
 
 /// Live provisional prose with draft styling tokens (§6.4; FR-003).
 class ProvisionalProseView extends StatelessWidget {
-  const ProvisionalProseView({
-    super.key,
-    required this.text,
-  });
+  const ProvisionalProseView({super.key, required this.text});
 
   final String text;
 
@@ -30,10 +27,7 @@ class ProvisionalProseView extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: colors.borderAi),
         ),
-        child: Text(
-          text,
-          style: AppTypography.body(context).copyWith(color: colors.textAi),
-        ),
+        child: Text(text, style: AppTypography.body(context).copyWith(color: colors.textAi)),
       ),
     );
   }
@@ -44,7 +38,7 @@ String? terminalProseText(Object? result) {
   if (result is! Map) {
     return null;
   }
-  final map = Map<String, dynamic>.from(result as Map);
+  final map = Map<String, dynamic>.from(result);
   final finalContent = map['final content'];
   if (finalContent is Map) {
     final text = finalContent['text'];

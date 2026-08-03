@@ -29,10 +29,10 @@ class ClinicalAcceptController {
       targetArgs: {
         'p_visit_id': visitId,
         'p_complaint': complaint,
-        if (history != null) 'p_history': history,
-        if (examination != null) 'p_examination': examination,
-        if (diagnosis != null) 'p_diagnosis': diagnosis,
-        if (plan != null) 'p_plan': plan,
+        'p_history': ?history,
+        'p_examination': ?examination,
+        'p_diagnosis': ?diagnosis,
+        'p_plan': ?plan,
         'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
       },
     );
