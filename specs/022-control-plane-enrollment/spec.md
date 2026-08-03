@@ -131,25 +131,40 @@ slice's row of delivery plan §3.11.2 ("Integration").
 | `lifecycle_resume_audit` | Integration | Resume writes a `control_audit` row carrying the operator identity (§3.11.2 row B2; §4.5) |
 | `lifecycle_rotate_audit` | Integration | Rotate writes a `control_audit` row carrying the operator identity and adds a new `kid` key row while the previous remains (§3.11.2 row B2; §8.1) |
 | `lifecycle_delete_audit` | Integration | Delete writes a `control_audit` row carrying the operator identity (§3.11.2 row B2; §4.5) |
-| `non_operator_credentials_rejected` | Integration | Requests without operator credentials are rejected on every lifecycle mutation (§3.11.2 row B2; §4.5) |
-| `duplicate_enrollment_deterministic` | Integration | A second enroll for an existing installation/organisation produces no second installation and resolves deterministically (§3.11.2 row B2; §8.1) |
+| `non_operator_credentials_rejected` | Integration | Requests without operator credentials are rejected (`401 unauthorized`) on every lifecycle mutation (§3.11.2 row B2; §4.5) |
+| `duplicate_enrollment_deterministic` | Integration | A second enroll for an existing installation/organisation produces no second installation and resolves as `409 already_enrolled` (§3.11.2 row B2; §8.1) |
+| `secret_operator_auth_verifies_credential` | Integration | Secret scheme rejects missing/empty/wrong bearer; returns configured `OPERATOR_ID`, never the credential |
+| `control_route_end_to_end` | Integration | `SELF.fetch` route → dispatch → D1; journals `OPERATOR_ID` under Miniflare bindings |
+| `lifecycle_illegal_transitions` | Integration | Five illegal cases: suspend/rotate/delete on `deleted`, resume on `active`, re-suspend → `409 illegal_lifecycle_transition`; no phantom audit |
+| `suspend_resume_entitlement_unchanged` | Integration | Suspend/resume leave the `entitlement` row byte-identical |
+| `duplicate_enrollment_same_org_different_installation` | Integration | Same `org_id`, different `installation_id` → `409 already_enrolled` |
+| `enroll_invalid_payload` | Integration | Missing/empty required enroll field → `400 invalid_payload` |
+| `rotate_duplicate_kid` | Integration | Rotate reusing an existing `kid` → `409 duplicate_kid` |
+| `enroll_invalid_json` | Integration | Non-JSON body → `400 invalid_json` |
+| `invalid_route_rejected` | Integration | Malformed control path → `400 invalid_route` |
+| `installation_not_found` | Integration | Lifecycle mutation on unknown id → `404 installation_not_found` |
 
 ### Edge Cases
 
-- **Non-operator credentials on any mutation** are rejected; the control plane is a separate surface
-  authenticated by operator identity, not clinic identity (§4.5). The architecture names no
-  request-path error code for the control plane; B2 does not emit a §5.4 code — rejection is the
-  specified outcome (delivery plan §3.11.2 row B2 names only "rejected", no code).
+- **Non-operator credentials on any mutation** are rejected (`401 unauthorized`); the control plane is
+  a separate surface authenticated by operator identity, not clinic identity (§4.5). B2 does not emit
+  a §5.4 code — rejections use the contract §2.4 JSON shape.
 - **Duplicate enrollment.** Enrollment is "One-time, per clinic installation" (§8.1); a repeated
-  enroll for an already-enrolled installation/organisation must not create a second installation. The
-  deterministic resolution is rejection without a duplicate row, because enrollment is one-time
-  (§8.1).
+  enroll for an already-enrolled installation/organisation must not create a second installation
+  (`409 already_enrolled`). Same-`org_id` / different-`installation_id` is also rejected. Concurrent
+  same-`org_id` races lack DB backing until an A5 follow-up adds `UNIQUE(org_id)` on `installation`
+  (do not amend A5's migration in B2).
 - **Key rotation overlap.** Rotation adds a `kid` and the previous key must remain valid during the
   overlap so no clinic is offline for a rotation; the previous `installation_key` row is not removed
-  (§8.1). Verification of both keys is the guard's concern (B3), not B2's.
-- **Enroll input.** The enroll call carries operator credentials, org info, the clinic's public key,
-  and plan (§8.1). The architecture specifies no format validation or rate limit for the control-plane
-  surface beyond operator authentication, so none is added (R-20).
+  (§8.1). A rotate that reuses an existing `kid` → `409 duplicate_kid`. Verification of both keys is
+  the guard's concern (B3), not B2's.
+- **Enroll / rotate payload.** Required non-empty string fields are validated; missing or empty →
+  `400 invalid_payload`. Malformed JSON → `400 invalid_json`. Non-UNIQUE D1 failures →
+  `500 storage_error`.
+- **Lifecycle FSM.** `deleted` is terminal (suspend/rotate/delete on it → `409
+  illegal_lifecycle_transition`). Resume only from `suspended`; re-suspend and resume-on-active →
+  `409`. Journal only real transitions. Delete pins `status === "deleted"`. Suspend/resume must not
+  mutate the `entitlement` row.
 
 ## Requirements *(mandatory)*
 
@@ -187,12 +202,18 @@ slice's row of delivery plan §3.11.2 ("Integration").
   a `control_audit` row carrying the operator identity, because they are the installation-lifecycle
   functions and every control-plane mutation is journaled with the operator identity (§4.5 table row
   "Installation lifecycle"; §4.5 "Every control-plane mutation is journaled with the operator
-  identity").
+  identity"). Illegal transitions (mutate `deleted`, resume when not `suspended`, re-suspend) MUST
+  reject with `409 illegal_lifecycle_transition` and MUST NOT journal a phantom transition. Delete
+  MUST pin `installation.status` to `deleted`. Suspend/resume MUST NOT alter the `entitlement` row.
 - **FR-009**: Any control-plane lifecycle mutation attempted without operator credentials MUST be
-  rejected (§4.5; delivery plan §3.11.2 row B2).
+  rejected (§4.5; delivery plan §3.11.2 row B2). Production MUST verify the bearer against
+  `OPERATOR_BEARER_TOKEN` and journal `OPERATOR_ID`, never the credential.
 - **FR-010**: A duplicate enroll for an already-enrolled installation/organisation MUST NOT create a
   second installation; enrollment is one-time per clinic installation and the duplicate is handled
-  deterministically (§8.1; delivery plan §3.11.2 row B2).
+  deterministically as `409 already_enrolled` (§8.1; delivery plan §3.11.2 row B2).
+- **FR-011**: Enroll and rotate required fields MUST be non-empty strings (`400 invalid_payload` when
+  not); duplicate `kid` on rotate or UNIQUE on `installation_key` MUST yield `409 duplicate_kid`;
+  other non-UNIQUE batch failures MUST yield `500 storage_error`.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -267,12 +288,16 @@ Prohibitions inherited from delivery plan §6.4, copied verbatim:
 
 ## Assumptions
 
-- Operator identity is an established, out-of-band credential external to this slice; the architecture
-  states "operator identity, not clinic identity" (§4.5) without specifying the operator auth scheme,
-  so B2 consumes an existing operator-auth mechanism and defines none.
+- **R-20 reconciled (review resolution):** §4.5 requires a separately authenticated operator surface
+  but names no concrete scheme. No prior verifying mechanism existed to consume, so B2 wires
+  `createSecretOperatorAuth` — timing-safe bearer compare against `OPERATOR_BEARER_TOKEN`, mapping to
+  stable `OPERATOR_ID` for audit — as the minimal verifying scheme that satisfies §4.5 without adding
+  a §9.14 mechanism. The earlier "consume existing / invent none" assumption is superseded by this
+  wiring; accept-any Bearer is not permitted.
 - The platform D1 with the `installation`, `installation_key`, `entitlement`, and `control_audit`
   entities is present and migrated by A5, so B2 writes into existing tables and does not run migrations
-  of its own (A5 `Freezes`; §7.3).
+  of its own (A5 `Freezes`; §7.3). **Known A5 follow-up:** add `UNIQUE(org_id)` on `installation` to
+  DB-back the one-time org invariant; do not amend A5's migration from B2.
 - The clinic's public key and `kid` supplied on enroll/rotate arrive from the operator routine named in
   §8.1 (clinic-side keypair generation); B2 receives and stores them and does not generate keys.
 - The control plane is operator-driven per Open Decision 7's recommended default and §8.1, so no

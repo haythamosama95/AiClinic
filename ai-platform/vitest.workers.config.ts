@@ -36,6 +36,10 @@ export default defineWorkersConfig({
           compatibilityDate: "2026-05-03",
           d1Databases: ["DB"],
           r2Buckets: ["R2"],
+          bindings: {
+            OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
+            OPERATOR_ID: "operator-test-principal",
+          },
         },
       },
     },

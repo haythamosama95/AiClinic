@@ -39,3 +39,39 @@ B2 delivers the §4.5 installation-lifecycle surface: five operator-gated handle
 - **Remove the dead `writeAudit` helper** (`index.ts:111-125`) — every handler inlines its own audit insert into the write batch (correctly, for atomicity), so the unused single-statement helper is pure drift bait; or use it consistently. Either way, one convention.
 - **Add the missing cases**: pin 401/`unauthorized` and 409/`already_enrolled` status and body in T-B2-06/07; one case each for `invalid_json`, `invalid_route`, and `installation_not_found` per handler; an end-to-end `worker.fetch` route test (fulfilling plan step 6) including `defaultOperatorAuth`'s header parsing; suspend-on-deleted, resume-on-active, rotate-on-deleted, double-delete; same-`org_id`-different-id duplicate; and a suspend/resume assertion that the `entitlement` row is byte-identical before and after.
 - **Split the later-slice handlers into sibling modules** (`index.ts:358-984`) behind `dispatchControlRequest`, restoring the sibling-per-concern layout Clarification Q2 named and stopping the implicit inheritance of B2's auth and error conventions by every future control surface.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **B2-R1 — Verifying operator auth** | Critical #1; Architectural Deviations #1; Missing/Weak Tests #1 (401/`unauthorized` pin), #2 (e2e + secret auth); Recommended Improvements (replace accept-any Bearer; never journal credentials; e2e cases) | `src/control/auth.ts`; `src/worker.ts`; `wrangler.toml` (`OPERATOR_ID`); `vitest.workers.config.ts` Miniflare bindings; `test/control.test.ts`; Spec Kit contract §3 / Assumptions |
+| **B2-R2 — Lifecycle FSM** | Bugs #1; Missing/Weak Tests #3, #5; Recommended Improvements (enforce FSM; pin `deleted`) | `src/control/lifecycle.ts`; `test/control.test.ts` (`lifecycle_illegal_transitions`, entitlement byte-identity, T-B2-05 pin); contract §6.1 |
+| **B2-R3 — Payload validation + enrollment race** | Bugs #2, #3; Missing/Weak Tests #4, #6; Recommended Improvements (close race via UNIQUE catch; validate payloads; A5 `UNIQUE(org_id)` follow-up note) | `src/control/lifecycle.ts` (`validate*`, `runControlBatch`); Spec Kit §8 / plan A5 follow-up (no A5 migration edit) |
+| **B2-R4 — Rejection-code coverage** | Missing/Weak Tests #1 (remaining codes); Recommended Improvements (missing cases remainder) | `test/control.test.ts` (`invalid_json`, `invalid_route`, `installation_not_found`, `invalid_payload`, `duplicate_kid`, same-org duplicate; T-B2-06/07 body pins) |
+| **B2-R5 — Sibling modules + writeAudit convention** | Architectural Deviations #2; Recommended Improvements (split modules; writeAudit convention) | `src/control/{types,http,auth,audit,lifecycle,capability-lifecycle,cohort,routing-policy,token-contract,support-purge,index}.ts` — `writeAudit` kept for non-batched token-contract; lifecycle keeps inlined batch audit |
+
+Every numbered review item appears in exactly one stage. No escalations — §4.5 already requires verifying operator identity; implementation + Spec Kit contract extension reconcile without amending `17-ai-platform.md`.
+
+### 1.2 Test cases created first
+
+- **B2-R1:** `secret_operator_auth_verifies_credential` (missing/empty/wrong bearer → null; match → stable `OPERATOR_ID` not credential; empty config fail-closed); `control_route_end_to_end` (`SELF.fetch` enroll + wrong bearer → 401); T-B2-06 pinned to `401`/`unauthorized`; T-B2-07 pinned to `409`/`already_enrolled`.
+- **B2-R2:** `lifecycle_illegal_transitions` (suspend-on-deleted, resume-on-active, rotate-on-deleted, double-delete, re-suspend); T-B2-05 `status === "deleted"`; `suspend_resume_entitlement_unchanged` (JSON snapshot identity).
+- **B2-R3 / B2-R4:** `enroll_invalid_payload`, `rotate_duplicate_kid`, `enroll_invalid_json`, `invalid_route_rejected`, `installation_not_found`, `duplicate_enrollment_same_org_different_installation`.
+
+### 1.3 Fix implemented
+
+- **B2-R1:** Replaced `defaultOperatorAuth` with `createSecretOperatorAuth` (timing-safe UTF-8 compare). Worker builds auth from `OPERATOR_BEARER_TOKEN` + `OPERATOR_ID`; `dispatchControlRequest` requires explicit `operatorAuth`. Audit journals stable id only. Contract §3 / Spec Assumptions / R-20 reconciled to the verifying scheme.
+- **B2-R2:** Handlers read `status`; reject illegal transitions with `409 illegal_lifecycle_transition`; resume only from `suspended`; no phantom journals.
+- **B2-R3:** Required-field validation → `400 invalid_payload`; duplicate kid → `409 duplicate_kid`; `runControlBatch` maps UNIQUE → `already_enrolled` / `duplicate_kid`, else `500 storage_error`. Documented A5 follow-up `UNIQUE(org_id)` without editing A5 migration.
+- **B2-R4:** Added/pinned rejection cases above (tests-only relative to R1–R3 production work).
+- **B2-R5:** Split catch-all `control/index.ts` into sibling modules behind a barrel; `writeAudit` retained for token-contract (not dead after master merge); lifecycle continues inlined batch audit for atomicity.
+
+### 1.4 Verification
+
+- Workers-pool: **19 files, 161 tests passed** (`npx vitest run --config vitest.workers.config.ts`), including `control.test.ts` (**22 tests**).
+- Unit/`npm test`: **38 files, 457 tests passed**.
+- Spec Kit updated under `specs/022-control-plane-enrollment/` (`contracts/control-plane.md`, `spec.md`, `plan.md`, `tasks.md`, `quickstart.md`). Architecture docs (`17-ai-platform.md`, `17b`) untouched.

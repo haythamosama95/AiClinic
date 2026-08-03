@@ -25,15 +25,16 @@ new runtime dependency is introduced.
 0.8.71 devDependency (A1 provisioned it) — selected as the harness for the real-Miniflare-D1
 integration tests (per Clarification Q3). `wrangler` ~4.86 and `@cloudflare/workers-types` remain as
 A1 set them. No schema-validation, auth, or HTTP-framework library is named by §4.5/§8.1; adding one
-would be a mechanism the spec does not name (R-20). The lifecycle handlers are plain TS functions; the
-`OperatorAuth` port is a single-method seam (per Clarification Q2).
+would be a mechanism the spec does not name (R-20). Lifecycle handlers are plain TS; operator auth is
+`createSecretOperatorAuth` (timing-safe secret compare) behind the `OperatorAuth` port.
 
 **Storage**: D1 only, the platform's own store. B2 writes rows into the four entities A5 created
 (`installation`, `installation_key`, `entitlement`, `control_audit`); it runs **no** migration and
-introduces no new table, column, index, or binding. The A5 migration
+introduces no new table or column. The A5 migration
 `ai-platform/migrations/20260731120000_platform_schema.sql` is applied to the test Miniflare D1 in test
-setup, not modified. B2 does not touch R2, Durable Objects, or the secrets binding (delivery plan §3.3
-row B2 `Needs` = A5 only).
+setup, not modified. **Known A5 follow-up:** `UNIQUE(org_id)` on `installation` (not amended here).
+B2 does not touch R2 or Durable Objects. Operator Env: `OPERATOR_BEARER_TOKEN` (secret) +
+`OPERATOR_ID` (var) — delivery plan §3.3 row B2 `Needs` = A5 only for schema.
 
 **Initial entitlement values (§8.1 amendment, OD-15)**: at enroll the `entitlement` row is created in
 status `pending` with: the `plan` name from the enroll payload; `request_quota` = 0, `token_budget` =
@@ -44,22 +45,26 @@ non-null — `pending` is expressed as zeroed budgets and an empty capability se
 The entitlement status enum is `pending` / `active` / `suspended` (§7.3 amendment); B2 writes
 `pending` and `suspended` (suspend/resume toggle `suspended`↔`active`).
 
-**Operator authentication**: an established, out-of-band credential external to this slice (spec
-Assumptions; §4.5 "operator identity, not clinic identity"). B2 consumes an `OperatorAuth` port that
-resolves an operator principal from the incoming request or rejects; the real scheme is not
-implemented here and none is invented (R-20). The fake `OperatorAuth` in tests returns a fixed operator
-principal or `null` (per Clarification Q3).
+**Operator authentication (R-20 reconciled):** §4.5 requires operator identity but names no scheme; no
+prior verifying mechanism existed. B2 wires `createSecretOperatorAuth({ bearerToken, operatorId })` —
+timing-safe Bearer compare against `OPERATOR_BEARER_TOKEN`, returns configured `OPERATOR_ID` (never
+the credential), fail-closed if either Env value is empty. `dispatchControlRequest` requires explicit
+`operatorAuth` (no default). Tests inject a fake `OperatorAuth`; e2e uses `SELF.fetch` with Miniflare
+bindings. Accept-any Bearer is not permitted.
 
 **Platform base URL (§8.1 return)**: the "enrollment confirmed + platform base URL" reply carries the
 gateway's own origin, derived from the request URL — the same Worker serves `/control` and
-`/v1/requests`. No new binding or secret is introduced for it.
+`/v1/requests`.
 
-**Testing**: `npx vitest run --config vitest.workers.config.ts test/control.test.ts` — the only test
-file, in the Integration layer (delivery plan §3.11.2 row B2). The harness applies the A5 migration to
-a per-test Miniflare D1 (`env.DB`) in `beforeAll`, injects the fake `OperatorAuth`, exercises the
-lifecycle handlers from `ai-platform/src/control/`, and asserts row writes by querying `env.DB` back.
-No HTTP read-back route is invented (that would be an untraced surface). The full slice suite plus all
-prior band suites run in CI on every change (§13.5; §3.10 checkpoint rule).
+**Testing**: `npx vitest run --config vitest.workers.config.ts test/control.test.ts` — Integration
+layer (delivery plan §3.11.2 row B2). Harness applies the A5 migration to Miniflare D1 (`env.DB`),
+injects fake `OperatorAuth` for handler tests, and covers production wiring via `SELF.fetch` +
+Miniflare `OPERATOR_*` bindings. Named cases include T-B2-01..07 (T-B2-05 pins `status === "deleted"`;
+T-B2-06/07 pin exact status+body) plus review-resolution cases:
+`secret_operator_auth_verifies_credential`, `control_route_end_to_end`, `lifecycle_illegal_transitions`
+(5), `suspend_resume_entitlement_unchanged`, `duplicate_enrollment_same_org_different_installation`,
+`enroll_invalid_payload`, `rotate_duplicate_kid`, `enroll_invalid_json`, `invalid_route_rejected`,
+`installation_not_found`. Full suite + prior bands run in CI (§13.5; §3.10).
 
 **Target Platform**: the `ai-platform/` Cloudflare Worker at the repository root, a sibling of
 `frontend/` and `backend/`. B2 is a control-plane mutation surface, not on the AI request hot path.
@@ -90,9 +95,8 @@ rejections, and the one-time/rotation invariants are asserted by query, not by t
 - No mechanism from §9.14 is added; no per-request server-side state; no retry, caching, or
   configurability beyond what §4.5/§8.1 name (R-20; spec Out of Scope).
 
-**Scale/Scope**: One §4 component — §4.5 Control plane. One source module (`src/control/`), one worker
-route addition, one test file, one scoped vitest config, one contract artifact, one quickstart.
-Roughly 16–18 tasks (well under the ~25 ceiling of delivery plan §6.3 / plan stop condition 5).
+**Scale/Scope**: One §4 component — §4.5 Control plane. Sibling modules under `src/control/`, Worker
+route + `OPERATOR_*` Env, one test file, workers vitest config, contract + quickstart.
 
 ## Constitution Check
 
@@ -158,13 +162,12 @@ specs/022-control-plane-enrollment/
 `.specify/templates/ai-platform-quickstart-template.md`): **1. Architecture context** (§4.5 + §8.1,
 delivery plan §3.3 row B2, what the spec/plan scoped); **2. What was implemented** (the five lifecycle
 handlers, the `/control` route, the `OperatorAuth` port, the `pending` enrollment entitlement); **3.
-Files to review** (`src/control/index.ts`, `src/worker.ts` diff, `test/control.test.ts`,
-`vitest.workers.config.ts`, `contracts/control-plane.md`); **4. Prerequisites** — kept: the tests need
-the `@cloudflare/vitest-pool-workers` Miniflare D1 pool, so the `--config vitest.workers.config.ts`
-flag and a one-time `npm install` are stated; **5. Run the automated suite**
+Files to review** (`src/control/` siblings + barrel, `src/worker.ts` diff, `test/control.test.ts`,
+`vitest.workers.config.ts`, `contracts/control-plane.md`); **4. Prerequisites** — Miniflare workers
+pool + `OPERATOR_BEARER_TOKEN` secret / `OPERATOR_ID` var for local Worker runs; **5. Run the automated suite**
 (`npx vitest run --config vitest.workers.config.ts test/control.test.ts`); **6. Inspect the changes**
-(read the lifecycle handlers, grep `control_audit.action` cases, read the frozen entitlement
-initial-values contract); no **7. Manual validation** section (CI is the only verification path — the
+(read lifecycle FSM + auth, grep rejection codes, read frozen entitlement initial-values contract); no
+**7. Manual validation** section (CI is the only verification path — the
 control plane has no user-facing behaviour beyond the suite).
 
 `data-model.md` is **not** produced — B2 defines no D1 entities (spec §Key Entities); it writes into
@@ -186,29 +189,33 @@ extend them (each is "may extend, never rewrite", §2.3), so they must bind to a
 ```text
 ai-platform/
 ├── vitest.config.ts                    # A1 — consumed unchanged (default Node pool for prior suites)
-├── vitest.workers.config.ts            # NEW — scoped workers-pool harness for the D1 integration tests
+├── vitest.workers.config.ts            # workers-pool harness; Miniflare OPERATOR_* bindings for e2e
+├── wrangler.toml                       # OPERATOR_ID var per env; OPERATOR_BEARER_TOKEN via secret put
 ├── migrations/
-│   └── 20260731120000_platform_schema.sql  # A5 — consumed unchanged (applied in test setup, never edited)
+│   └── 20260731120000_platform_schema.sql  # A5 — consumed unchanged (UNIQUE(org_id) = known follow-up)
 ├── src/
-│   ├── worker.ts                       # MODIFIED — add /control route dispatch to src/control
-│   └── control/                        # NEW — control-plane lifecycle (per Clarification Q2)
-│       └── index.ts                    # exports enroll/rotate/suspend/resume/delete + OperatorAuth port
+│   ├── worker.ts                       # /control → createSecretOperatorAuth(Env) + dispatchControlRequest
+│   └── control/                        # sibling-per-concern modules + barrel index.ts
+│       ├── index.ts                    # barrel + isControlRoute / dispatchControlRequest
+│       ├── types.ts
+│       ├── http.ts
+│       ├── auth.ts                     # createSecretOperatorAuth (timing-safe; fail-closed)
+│       ├── audit.ts                    # writeAudit (non-batched; token-contract)
+│       ├── lifecycle.ts                # enroll/rotate/suspend/resume/delete (audit in batch)
+│       ├── capability-lifecycle.ts
+│       ├── cohort.ts
+│       ├── routing-policy.ts
+│       ├── token-contract.ts
+│       └── support-purge.ts
 └── test/
-    └── control.test.ts                 # NEW — T-B2-01 .. T-B2-07 integration tests (real Miniflare D1)
+    └── control.test.ts                 # T-B2-01..07 + review-resolution cases
 ```
 
-**Structure Decision**: One new module `ai-platform/src/control/` mirroring A4's `src/manifest/` and
-A5's `src/context/` (sibling-per-concern, per Clarification Q2), exporting the five lifecycle handlers
-and the `OperatorAuth` port. The `/control` routes are wired in `src/worker.ts` (operator-auth
-middleware resolves the principal then dispatches), keeping the surface visibly separate from the
-client-facing `/v1/requests` adapter (§4.5 "separate from the client-facing API", per Clarification
-Q1). The harness lives in a **separate** `vitest.workers.config.ts` so the shared
-`vitest.config.ts` (A1's default Node pool used by every prior suite) is untouched; only
-`test/control.test.ts` opts into the `@cloudflare/vitest-pool-workers` pool with a Miniflare `DB`
-binding (per Clarification Q3 — a real Miniflare D1 for write assertions + a fake `OperatorAuth`).
-No `wrangler.toml` change — A1 provisioned the per-environment `DB` binding; the workers-pool harness
-declares its own ephemeral Miniflare D1 in the config, and `src/worker.ts`'s binding assertion is
-unaffected.
+**Structure Decision**: `ai-platform/src/control/` sibling modules behind barrel `index.ts` (Clarification
+Q2). Production Worker builds `createSecretOperatorAuth` from `OPERATOR_BEARER_TOKEN` + `OPERATOR_ID`
+and passes it explicitly to `dispatchControlRequest`. Tests inject fake `OperatorAuth`; e2e uses
+`SELF.fetch` with Miniflare bindings. Harness in `vitest.workers.config.ts` (shared `vitest.config.ts`
+untouched).
 
 ## Consumes Binding
 
@@ -233,44 +240,42 @@ components is needed; none is.
 
 | Path | Created / Modified | Traces to |
 | --- | --- | --- |
-| `ai-platform/src/control/index.ts` | Created | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010 — the `OperatorAuth` port, the five lifecycle handlers, the enroll write set with `pending` initial entitlement values (§8.1 amendment), the rotation overlap (new `kid`, previous row kept), suspend/resume/delete status transitions + audit, non-operator rejection, and one-time duplicate-enrollment rejection. |
-| `ai-platform/src/worker.ts` | Modified | FR-001, FR-002 — `/control` HTTP routes dispatched to `src/control/` with operator-auth gating before any mutation (per Clarification Q1); the client-facing `/v1/requests` and `/health` routes are unchanged. |
-| `ai-platform/vitest.workers.config.ts` | Created | SC-001, SC-002, SC-003, SC-004 — the scoped `@cloudflare/vitest-pool-workers` pool with an ephemeral Miniflare `DB` binding enabling the real-D1 write assertions named by the test plan (per Clarification Q3). |
-| `ai-platform/test/control.test.ts` | Created | SC-001 (T-B2-01 enroll writes all four tables), SC-002 (T-B2-02/03/04/05 suspend/resume/rotate/delete audit), SC-003 (T-B2-06 non-operator rejected), SC-004 (T-B2-07 duplicate enrollment deterministic — unchanged D1 row count + non-2xx response, per Clarification Q4). |
-| `specs/022-control-plane-enrollment/contracts/control-plane.md` | Created | Freezes — the `/control` surface, the five `control_audit.action` lifecycle values, the operator-auth requirement, the `pending` enroll entitlement initial values (§8.1 amendment), the entitlement status enum (§7.3 amendment), and the rotation overlap invariant; bound by B3 (guard reads `pending` as "no capability allowed" → quota-exhaustion path), J3 (control_audit activations), F3 (installation purge references the lifecycle status). |
+| `ai-platform/src/control/` (`types`, `http`, `auth`, `audit`, `lifecycle`, barrel `index.ts`, plus later-slice siblings) | Created / split | FR-001…FR-011 — `OperatorAuth` / `createSecretOperatorAuth`, five lifecycle handlers (FSM + payload/D1 error mapping), enroll `pending` entitlement, rotation overlap, audit journaling of `OPERATOR_ID`, explicit `dispatchControlRequest(…, operatorAuth)`. |
+| `ai-platform/src/worker.ts` | Modified | FR-001, FR-002, FR-009 — `/control` dispatch; wires Env `OPERATOR_BEARER_TOKEN` + `OPERATOR_ID` into `createSecretOperatorAuth`; no default auth. |
+| `ai-platform/wrangler.toml` | Modified | FR-009 — `OPERATOR_ID` var per env; `OPERATOR_BEARER_TOKEN` supplied via `wrangler secret put` (not committed). |
+| `ai-platform/vitest.workers.config.ts` | Created | SC-001…004 + review cases — workers pool, Miniflare `DB` + `OPERATOR_*` bindings. |
+| `ai-platform/test/control.test.ts` | Created | T-B2-01…07 (T-B2-05 pins `deleted`; T-B2-06/07 pin status+body) + `secret_operator_auth_verifies_credential`, `control_route_end_to_end`, `lifecycle_illegal_transitions`, `suspend_resume_entitlement_unchanged`, `duplicate_enrollment_same_org_different_installation`, `enroll_invalid_payload`, `rotate_duplicate_kid`, `enroll_invalid_json`, `invalid_route_rejected`, `installation_not_found`. |
+| `specs/022-control-plane-enrollment/contracts/control-plane.md` | Created | Freezes — `/control` surface, lifecycle actions, secret operator-auth rule, `pending` enroll entitlement, status enum, rotation overlap, rejection table §2.4, FSM terminal rules. |
 | `specs/022-control-plane-enrollment/quickstart.md` | Created (implement phase) | Documentation slice review surface (not traced to an FR; template-mandated). |
 
-No file is traced to a `## Clarifications` entry. The four implementation choices (HTTP routes under
-`/control`, the `src/control/` module, the real-Miniflare-D1 + fake-`OperatorAuth` harness, the
-duplicate-enrollment dual assertion) are followed in the layout and harness above but never promoted
-into a requirement (delivery plan §6 "downstream contract"). No `ai-platform/wrangler.toml` change —
-A1 provisioned the `DB` binding; no new binding, secret, namespace, or DO class is added.
+No file is traced to a `## Clarifications` entry. Clarification Q2's sibling-per-concern layout is the
+current source layout. `OPERATOR_BEARER_TOKEN` is a Workers secret (not committed plaintext).
 
 ## Test Layout
 
-All seven named tests from the spec's `### Test plan` run in the Integration layer named by delivery
-plan §3.11.2 row B2, realised via the §13.5 "Pipeline tests" harness style (deterministic, real
-Miniflare D1). The harness is `vitest.workers.config.ts` + `test/control.test.ts` (per Clarification
-Q3): `beforeAll` applies the A5 migration to the workers-pool Miniflare `env.DB`; each test injects a
-fake `OperatorAuth` (fixed principal or `null`), calls a `src/control/` handler, then asserts rows by
-querying `env.DB` back. A prior-slice read-back route is not invented.
+Named tests from the spec's `### Test plan` run in the Integration layer (delivery plan §3.11.2 row
+B2). Harness: `vitest.workers.config.ts` + `test/control.test.ts` — A5 migration on Miniflare `env.DB`;
+fake `OperatorAuth` for handler calls; `SELF.fetch` + Miniflare `OPERATOR_*` for route e2e.
 
 | Spec Test plan name | Test id | File | Layer | Asserts (FR / SC) |
 | --- | --- | --- | --- | --- |
-| `enroll_writes_all_four_tables` | T-B2-01 | `test/control.test.ts` | Integration | FR-005/FR-006 / SC-001 — enroll with operator credentials + org info + public key + plan writes exactly one row each in `installation`, `installation_key`, `entitlement` (status `pending`, zeroed economics, closed empty period per §8.1 amendment), and `control_audit` (operator identity, `action = enroll`); reply carries the gateway origin base URL. |
-| `lifecycle_suspend_audit` | T-B2-02 | `test/control.test.ts` | Integration | FR-008 / SC-002 — suspend writes `control_audit` with operator identity and sets `installation.status = suspended`. |
-| `lifecycle_resume_audit` | T-B2-03 | `test/control.test.ts` | Integration | FR-008 / SC-002 — resume writes `control_audit` with operator identity and restores the prior active lifecycle status. |
-| `lifecycle_rotate_audit` | T-B2-04 | `test/control.test.ts` | Integration | FR-007 / SC-002 — rotate adds a new `installation_key` row with a new `kid`, leaves the previous row present (overlap intact), and writes `control_audit` with operator identity. |
-| `lifecycle_delete_audit` | T-B2-05 | `test/control.test.ts` | Integration | FR-008 / SC-002 — delete writes `control_audit` with operator identity and transitions lifecycle status; the row purge itself is out of scope (F3). |
-| `non_operator_credentials_rejected` | T-B2-06 | `test/control.test.ts` | Integration | FR-001/FR-009 / SC-003 — with `OperatorAuth` returning `null`, each of the five mutations produces no D1 row write and a terminal rejection (no §5.4 code; spec Edge Cases). |
-| `duplicate_enrollment_deterministic` | T-B2-07 | `test/control.test.ts` | Integration | FR-004/FR-010 / SC-004 — a second enroll for an existing `installation`/`org_id` leaves the D1 row count unchanged and returns a terminal non-2xx rejection (per Clarification Q4 — both sides asserted). |
-
-All seven named tests place cleanly in the Integration layer; none is left unplaced (stop condition 3
-not triggered). Coverage from §3.10: the happy path of every requirement is T-B2-01..05; B2 emits no
-§5.4 error code (spec Edge Cases), so there are no per-code cases; every branch (non-operator rejection
-T-B2-06, one-time duplicate T-B2-07) and every named boundary (one-time enrollment §8.1, rotation
-overlap §8.1) is covered; inherited prohibitions (no per-request state, no §9.14 mechanism) are
-respected by design and asserted by the absence of any such object in `src/control/`.
+| `enroll_writes_all_four_tables` | T-B2-01 | `test/control.test.ts` | Integration | FR-005/FR-006 / SC-001 — four-table enroll; `pending` entitlement; gateway origin. |
+| `lifecycle_suspend_audit` | T-B2-02 | `test/control.test.ts` | Integration | FR-008 / SC-002 — suspend audit + `installation.status = suspended`. |
+| `lifecycle_resume_audit` | T-B2-03 | `test/control.test.ts` | Integration | FR-008 / SC-002 — resume audit + restore `active` from `suspended`. |
+| `lifecycle_rotate_audit` | T-B2-04 | `test/control.test.ts` | Integration | FR-007 / SC-002 — new `kid`, previous kept, rotate audit. |
+| `lifecycle_delete_audit` | T-B2-05 | `test/control.test.ts` | Integration | FR-008 / SC-002 — delete audit; **`status === "deleted"`**. |
+| `non_operator_credentials_rejected` | T-B2-06 | `test/control.test.ts` | Integration | FR-001/FR-009 / SC-003 — **`401` + `{error:"unauthorized"}`**; no D1 writes. |
+| `duplicate_enrollment_deterministic` | T-B2-07 | `test/control.test.ts` | Integration | FR-004/FR-010 / SC-004 — **`409` + `{error:"already_enrolled"}`**; row counts unchanged. |
+| `secret_operator_auth_verifies_credential` | — | `test/control.test.ts` | Integration | FR-009 — wrong/missing bearer → null; match → `OPERATOR_ID` ≠ credential; empty config fail-closed. |
+| `control_route_end_to_end` | — | `test/control.test.ts` | Integration | FR-001 — `SELF.fetch` route → handler → D1; journals `OPERATOR_ID`. |
+| `lifecycle_illegal_transitions` | — | `test/control.test.ts` | Integration | FR-008 — five cases → `409 illegal_lifecycle_transition`. |
+| `suspend_resume_entitlement_unchanged` | — | `test/control.test.ts` | Integration | FR-008 — entitlement row unchanged across suspend/resume. |
+| `duplicate_enrollment_same_org_different_installation` | — | `test/control.test.ts` | Integration | FR-010 — same `org_id`, different id → `409 already_enrolled`. |
+| `enroll_invalid_payload` | — | `test/control.test.ts` | Integration | FR-011 — `400 invalid_payload`. |
+| `rotate_duplicate_kid` | — | `test/control.test.ts` | Integration | FR-011 — `409 duplicate_kid`. |
+| `enroll_invalid_json` | — | `test/control.test.ts` | Integration | Contract §2.4 — `400 invalid_json`. |
+| `invalid_route_rejected` | — | `test/control.test.ts` | Integration | Contract §2.4 — `400 invalid_route`. |
+| `installation_not_found` | — | `test/control.test.ts` | Integration | Contract §2.4 — `404 installation_not_found`. |
 
 ## Sequencing
 

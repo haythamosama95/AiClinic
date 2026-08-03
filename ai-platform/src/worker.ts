@@ -1,6 +1,10 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { handleAdapterRequest } from "./adapter";
-import { dispatchControlRequest, isControlRoute } from "./control";
+import {
+  createSecretOperatorAuth,
+  dispatchControlRequest,
+  isControlRoute,
+} from "./control";
 import { getRequest } from "./journal";
 import { normalizeRequestReference } from "./reference";
 import { runRetentionPurge } from "./retention";
@@ -18,6 +22,8 @@ interface Env {
   DO: DurableObjectNamespace;
   BUILD_SHA: string;
   ENVIRONMENT: string;
+  OPERATOR_BEARER_TOKEN: string;
+  OPERATOR_ID: string;
 }
 
 function assertRequiredBindings(runtimeEnv: Env): void {
@@ -86,10 +92,18 @@ export default {
       // Installation lifecycle, capability deprecate/retire, cohort activate/promote,
       // routing-policy publish/canary/rollback, support lookup, purge.
       const runtimeEnv = env as Env;
-      return dispatchControlRequest(request, {
-        DB: runtimeEnv.DB,
-        R2: runtimeEnv.R2,
+      const operatorAuth = createSecretOperatorAuth({
+        bearerToken: runtimeEnv.OPERATOR_BEARER_TOKEN ?? "",
+        operatorId: runtimeEnv.OPERATOR_ID ?? "",
       });
+      return dispatchControlRequest(
+        request,
+        {
+          DB: runtimeEnv.DB,
+          R2: runtimeEnv.R2,
+        },
+        operatorAuth,
+      );
     }
 
     if (
