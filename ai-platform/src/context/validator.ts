@@ -4,8 +4,7 @@
  */
 
 import {
-  VISIT_CHIEF_COMPLAINT_V1,
-  VISIT_CHIEF_COMPLAINT_V1_SHAPE,
+  publishedShapeForKey,
   type KeyShape,
   validatePayload,
 } from "./index";
@@ -45,7 +44,8 @@ export type ValidateResult =
       manifestCapabilityId: string;
     }
   | { ok: false; code: "context_invalid" }
-  | { ok: false; code: "conversation_budget_exhausted" };
+  | { ok: false; code: "conversation_budget_exhausted" }
+  | { ok: false; code: "internal_error" };
 
 export type ConversationalValidateOptions = {
   transcript: unknown;
@@ -59,12 +59,43 @@ const TRANSCRIPT_KINDS = new Set([
   "context_resolved",
 ]);
 
-const PUBLISHED_SHAPES: ReadonlyMap<string, KeyShape> = new Map([
-  [VISIT_CHIEF_COMPLAINT_V1, VISIT_CHIEF_COMPLAINT_V1_SHAPE],
+/** A5 validateKey / validatePayload codes that name a platform vocabulary defect. */
+const PLATFORM_KEY_FAILURE_CODES = new Set([
+  "storage_named_key",
+  "malformed_key",
+  "unknown_key",
+  "unknown_version",
 ]);
 
-function publishedShapeForKey(key: string): KeyShape | undefined {
-  return PUBLISHED_SHAPES.get(key);
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  Object.freeze(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      deepFreeze(entry);
+    }
+    return value;
+  }
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(child);
+  }
+  return value;
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function freezeFilteredContext(
+  filtered: Record<string, unknown>,
+): Record<string, unknown> {
+  const copy: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filtered)) {
+    copy[key] = cloneJsonValue(value);
+  }
+  return deepFreeze(copy);
 }
 
 function jsonByteLength(value: unknown): number {
@@ -82,6 +113,10 @@ function buildShapesForMissingKeys(
     }
   }
   return shapes;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -273,8 +308,8 @@ function validateConversationalContext(
 
   return {
     ok: true,
-    filteredContext,
-    validatedTranscript,
+    filteredContext: freezeFilteredContext(filteredContext),
+    validatedTranscript: deepFreeze(cloneJsonValue([...validatedTranscript])),
   };
 }
 
@@ -300,15 +335,13 @@ export function validateContext(
     return { ok: false, code: "context_invalid" };
   }
 
-  const maxSizeByKey = new Map<string, number>();
-
-  for (const entry of contextRequirements) {
-    maxSizeByKey.set(String(entry.key), Number(entry.maxSize));
-  }
-
   const missingKeys: string[] = [];
   for (const entry of contextRequirements) {
     const key = String(entry.key);
+    if (typeof entry.required !== "boolean") {
+      // Malformed required flag is a platform/manifest defect.
+      return { ok: false, code: "internal_error" };
+    }
     if (
       entry.required === true &&
       !Object.prototype.hasOwnProperty.call(suppliedContext, key)
@@ -318,14 +351,14 @@ export function validateContext(
   }
 
   if (missingKeys.length > 0) {
-    return {
-      ok: false,
-      code: "context_required",
-      missingKeys,
+    return deepFreeze({
+      ok: false as const,
+      code: "context_required" as const,
+      missingKeys: [...missingKeys],
       shapes: buildShapesForMissingKeys(missingKeys),
       manifestVersion: String(manifest.Identity.version),
       manifestCapabilityId: String(manifest.Identity.capabilityId),
-    };
+    });
   }
 
   if (
@@ -343,12 +376,22 @@ export function validateContext(
 
     const value = suppliedContext[key];
     const payloadResult = validatePayload(key, value);
-    if (!payloadResult.ok && payloadResult.code !== "unknown_shape") {
-      return { ok: false, code: "context_invalid" };
+    if (!payloadResult.ok) {
+      if (payloadResult.code === "unknown_shape") {
+        // Keys without a published shape pass the shape check (A5 owns publication).
+      } else if (PLATFORM_KEY_FAILURE_CODES.has(payloadResult.code)) {
+        // Manifest declared an unpublished/malformed key — platform defect.
+        return { ok: false, code: "internal_error" };
+      } else {
+        // Client-remediable shape/field violation.
+        return { ok: false, code: "context_invalid" };
+      }
     }
 
-    const maxSize = maxSizeByKey.get(key);
-    if (maxSize !== undefined && jsonByteLength(value) > maxSize) {
+    if (!isFiniteNumber(entry.maxSize)) {
+      return { ok: false, code: "internal_error" };
+    }
+    if (jsonByteLength(value) > entry.maxSize) {
       return { ok: false, code: "context_invalid" };
     }
   }
@@ -361,7 +404,7 @@ export function validateContext(
     }
   }
 
-  return { ok: true, filteredContext };
+  return { ok: true, filteredContext: freezeFilteredContext(filteredContext) };
 }
 
 export function buildContextRequiredResponse(
@@ -375,11 +418,11 @@ export function buildContextRequiredResponse(
     traceId,
   });
 
-  return {
+  return deepFreeze({
     ...body,
-    missing_keys: result.missingKeys,
-    shapes: result.shapes,
+    missing_keys: [...result.missingKeys],
+    shapes: cloneJsonValue(result.shapes),
     manifest_version: result.manifestVersion,
     manifest_capability_id: result.manifestCapabilityId,
-  };
+  });
 }

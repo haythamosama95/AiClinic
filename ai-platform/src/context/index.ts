@@ -70,6 +70,11 @@ const PUBLISHED_KEY_SHAPES: ReadonlyMap<string, KeyShape> = new Map([
   [VISIT_CHIEF_COMPLAINT_V1, VISIT_CHIEF_COMPLAINT_V1_SHAPE],
 ]);
 
+/** Lookup a platform-published shape by key (single source for A5 + C2). */
+export function publishedShapeForKey(key: string): KeyShape | undefined {
+  return PUBLISHED_KEY_SHAPES.get(key);
+}
+
 const PUBLISHED_CONTEXT_KEYS = new Set<string>(SECTION_5_2_EXAMPLE_KEYS);
 
 const CONTEXT_KEY_FORMAT =
