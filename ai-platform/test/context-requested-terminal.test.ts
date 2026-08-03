@@ -4,7 +4,6 @@ import {
   isTaxonomyCode,
 } from "../src/errors";
 import {
-  createModeGatedStubEventSource,
   handleAdapterRequest,
   isTerminalEventKind,
   pushTerminalEvent,
@@ -13,6 +12,7 @@ import {
   type AdapterStreamContext,
   type TerminalEventKind,
 } from "../src/adapter";
+import { createModeGatedStubEventSource } from "./helpers/adapter-stub";
 
 const VALID_BODY = {
   installation: "installation:test-h1-001",
@@ -106,7 +106,7 @@ describe("single_shot_never_emits_context_requested", () => {
     );
 
     const response = await handleAdapterRequest(buildRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     const events = await collectSseEvents(response);
@@ -158,7 +158,7 @@ describe("conversational_leg_still_one_terminal_event", () => {
     );
 
     const response = await handleAdapterRequest(buildRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     const events = await collectSseEvents(response);
