@@ -1,10 +1,10 @@
 ---
 name: ai-platform-resolve-review
 description: >-
-  Resolve every comment in an AI platform slice review document: sync the slice
-  branch with ai/master, fix findings in staged test-first passes, update Spec
-  Kit docs, append a resolution record, commit, push, and squash-merge to
-  ai/master.
+  Resolve every comment in an AI platform slice review document: merge ai/master
+  into the slice branch (real merge), fix findings in staged test-first passes,
+  update Spec Kit docs, append a resolution record, commit, push, and
+  squash-merge to ai/master.
   Use when the user invokes /ai-platform-resolve-review with a review file under
   docs/review/ai-platform-slices/, or asks to handle AI platform review comments.
 disable-model-invocation: true
@@ -47,7 +47,7 @@ Copy this checklist and track progress:
 Review resolution:
 - [ ] 1. Parse slice id, branch, canonical sections from review file
 - [ ] 2. Read delivery-plan row + architecture sections only
-- [ ] 3. Checkout slice branch; squash-merge ai/master into it
+- [ ] 3. Checkout slice branch; merge ai/master into it (real merge, not squash)
 - [ ] 4. Group all review comments into stages
 - [ ] 5. For each stage: test first → fix → full suite → Spec Kit docs
 - [ ] 6. Append resolution section to review file
@@ -86,16 +86,26 @@ These two reads define slice scope. Fixes must stay within them.
 
 ### 3. Sync the slice branch
 
+Use a **real merge** of `origin/ai/master` into the slice branch — **not**
+`merge --squash`. Squash-merging master into the slice branch does not advance
+Git’s merge-base, so step 8’s later `merge --squash` of the slice into
+`ai/master` re-applies master’s own history as conflicting add/add and content
+changes. A merge commit updates the merge-base so step 8 only carries the review
+delta.
+
 ```bash
 git fetch origin ai/master
 git checkout <branch-from-review>
-git merge --squash origin/ai/master
-git commit -m "Squash merge ai/master into <branch-from-review>"
+git merge origin/ai/master -m "Merge ai/master into <branch-from-review>"
 git push -u origin HEAD
 ```
 
-If there is nothing to commit after the squash merge, continue without an empty
-commit or push.
+If Git reports `Already up to date`, continue without an empty commit; still push
+only if the branch needed `-u` setup or local commits were missing on origin.
+
+If the merge conflicts, resolve them (prefer `origin/ai/master` for unrelated
+files; keep slice-branch intent only where the conflict is in files this review
+must change), finish the merge commit, then push.
 
 Resolve the spec directory:
 
@@ -295,11 +305,14 @@ Do not partially fix other stages after an escalation.
 - **Full suite every stage.** Not slice-only tests.
 - **Architecture is read-only.** Cite it for scope; never edit it in this skill.
 - **Delivery plan is read-only.** Slice row is for scope only.
-- **One commit message shape** on both the slice branch and `ai/master` squash
-  merge, per step 7–8.
-- **Push after every commit** — slice-branch sync (step 3), resolution commit
-  (step 7), and `ai/master` squash merge (step 8). Skip push only when step 3
-  produced no commit.
+- **One commit message shape** on the resolution commit (step 7) and the
+  `ai/master` squash merge (step 8). Step 3 uses the merge message above.
+- **Real merge in step 3; squash only in step 8.** Never `merge --squash`
+  `ai/master` into the slice branch — that breaks merge-base for step 8.
+- **Push after every commit** — slice-branch sync (step 3, when a merge commit
+  was created), resolution commit (step 7), and `ai/master` squash merge
+  (step 8). Skip push only when step 3 was already up to date and tracking is
+  set.
 - **Do not create PRs** unless the user asks separately.
 
 ## Stop conditions
