@@ -1,4 +1,326 @@
 -- =============================================================================
+-- B1 review resolution: apply hardened keystore/issuer behavior on DBs that
+-- already ran 20260801120000–20260801120200. Idempotent with the updated
+-- originals (CREATE OR REPLACE / IF NOT EXISTS patterns).
+-- =============================================================================
+
+REVOKE ALL ON SCHEMA ai_internal FROM PUBLIC, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA ai_internal TO postgres;
+-- Later F2 registry reads (acceptance_targets) re-grant service_role USAGE.
+
+-- Enrollment SECURITY DEFINER owner must hold keymaker (§4.2.1).
+GRANT pgsodium_keymaker TO postgres;
+
+CREATE OR REPLACE FUNCTION ai_internal.enforce_single_installation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_existing uuid;
+BEGIN
+  IF NEW.is_deleted THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT ik.installation_id
+  INTO v_existing
+  FROM ai_internal.installation_keys ik
+  WHERE ik.is_deleted = false
+    AND ik.kid IS DISTINCT FROM NEW.kid
+  ORDER BY ik.valid_from ASC, ik.kid ASC
+  LIMIT 1;
+
+  IF v_existing IS NOT NULL AND v_existing IS DISTINCT FROM NEW.installation_id THEN
+    RAISE EXCEPTION 'SINGLE_INSTALLATION_VIOLATION'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS installation_keys_single_installation
+  ON ai_internal.installation_keys;
+
+CREATE TRIGGER installation_keys_single_installation
+  BEFORE INSERT OR UPDATE OF installation_id, is_deleted
+  ON ai_internal.installation_keys
+  FOR EACH ROW
+  EXECUTE FUNCTION ai_internal.enforce_single_installation();
+
+DROP INDEX IF EXISTS ai_internal.installation_keys_active_idx;
+CREATE INDEX installation_keys_active_idx
+  ON ai_internal.installation_keys (installation_id, valid_from DESC, kid DESC)
+  WHERE revoked_at IS NULL AND is_deleted = false;
+-- =============================================================================
+-- B1 slice: installation keypair enrollment, rotation, and revocation.
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION auth_internal.enroll_installation_keypair()
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, ai_internal, pgsodium, auth_internal
+AS $$
+DECLARE
+  v_caller public.staff_members%ROWTYPE;
+  v_installation_id uuid;
+  v_keypair record;
+  v_kid text;
+  v_public_jwk jsonb;
+BEGIN
+  v_caller := auth_internal.assert_owner_or_administrator();
+
+  SELECT ik.installation_id
+  INTO v_installation_id
+  FROM ai_internal.installation_keys ik
+  WHERE ik.is_deleted = false
+  ORDER BY ik.valid_from ASC, ik.kid ASC
+  LIMIT 1;
+
+  IF v_installation_id IS NULL THEN
+    v_installation_id := gen_random_uuid();
+  END IF;
+
+  SELECT kp.public, kp.secret
+  INTO v_keypair
+  FROM pgsodium.crypto_sign_new_keypair() kp;
+
+  v_kid := gen_random_uuid()::text;
+
+  INSERT INTO ai_internal.installation_keys (
+    kid,
+    installation_id,
+    public_key,
+    secret_key,
+    algorithm,
+    valid_from,
+    created_at,
+    created_by,
+    updated_by
+  )
+  VALUES (
+    v_kid,
+    v_installation_id,
+    v_keypair.public,
+    v_keypair.secret,
+    'EdDSA',
+    clock_timestamp(),
+    clock_timestamp(),
+    v_caller.auth_user_id,
+    v_caller.auth_user_id
+  );
+
+  v_public_jwk := jsonb_build_object(
+    'kty', 'OKP',
+    'crv', 'Ed25519',
+    'x', auth_internal.base64url_encode(v_keypair.public),
+    'kid', v_kid
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'kid', v_kid,
+      'installation_id', v_installation_id,
+      'public_jwk', v_public_jwk
+    )
+  );
+EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may enroll installation keys.');
+    END IF;
+    RAISE;
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may enroll installation keys.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.rotate_installation_key()
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, ai_internal, pgsodium, auth_internal
+AS $$
+DECLARE
+  v_caller public.staff_members%ROWTYPE;
+  v_installation_id uuid;
+  v_keypair record;
+  v_kid text;
+  v_public_jwk jsonb;
+BEGIN
+  v_caller := auth_internal.assert_owner_or_administrator();
+
+  SELECT ik.installation_id
+  INTO v_installation_id
+  FROM ai_internal.installation_keys ik
+  WHERE ik.is_deleted = false
+  ORDER BY ik.valid_from ASC, ik.kid ASC
+  LIMIT 1;
+
+  IF v_installation_id IS NULL THEN
+    RETURN public.rpc_error(
+      'INSTALLATION_NOT_ENROLLED',
+      'Enroll an installation keypair before rotating.'
+    );
+  END IF;
+
+  SELECT kp.public, kp.secret
+  INTO v_keypair
+  FROM pgsodium.crypto_sign_new_keypair() kp;
+
+  v_kid := gen_random_uuid()::text;
+
+  INSERT INTO ai_internal.installation_keys (
+    kid,
+    installation_id,
+    public_key,
+    secret_key,
+    algorithm,
+    valid_from,
+    created_at,
+    created_by,
+    updated_by
+  )
+  VALUES (
+    v_kid,
+    v_installation_id,
+    v_keypair.public,
+    v_keypair.secret,
+    'EdDSA',
+    clock_timestamp(),
+    clock_timestamp(),
+    v_caller.auth_user_id,
+    v_caller.auth_user_id
+  );
+
+  v_public_jwk := jsonb_build_object(
+    'kty', 'OKP',
+    'crv', 'Ed25519',
+    'x', auth_internal.base64url_encode(v_keypair.public),
+    'kid', v_kid
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'kid', v_kid,
+      'installation_id', v_installation_id,
+      'public_jwk', v_public_jwk
+    )
+  );
+EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may rotate installation keys.');
+    END IF;
+    RAISE;
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may rotate installation keys.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.revoke_installation_key(p_kid text)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, ai_internal
+AS $$
+DECLARE
+  v_caller public.staff_members%ROWTYPE;
+  v_row ai_internal.installation_keys%ROWTYPE;
+BEGIN
+  v_caller := auth_internal.assert_owner_or_administrator();
+
+  IF NULLIF(trim(p_kid), '') IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Key id is required.');
+  END IF;
+
+  SELECT *
+  INTO v_row
+  FROM ai_internal.installation_keys ik
+  WHERE ik.kid = p_kid
+    AND ik.is_deleted = false;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('KEY_NOT_FOUND', 'Installation key was not found.');
+  END IF;
+
+  IF v_row.revoked_at IS NOT NULL THEN
+    RETURN public.rpc_success(
+      jsonb_build_object('kid', v_row.kid, 'revoked_at', v_row.revoked_at)
+    );
+  END IF;
+
+  UPDATE ai_internal.installation_keys ik
+  SET
+    revoked_at = clock_timestamp(),
+    updated_at = clock_timestamp(),
+    updated_by = v_caller.auth_user_id
+  WHERE ik.kid = p_kid;
+
+  RETURN public.rpc_success(
+    jsonb_build_object('kid', p_kid, 'revoked_at', clock_timestamp())
+  );
+EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may revoke installation keys.');
+    END IF;
+    RAISE;
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may revoke installation keys.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.enroll_installation_keypair()
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.enroll_installation_keypair();
+$$;
+
+CREATE OR REPLACE FUNCTION public.rotate_installation_key()
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.rotate_installation_key();
+$$;
+
+CREATE OR REPLACE FUNCTION public.revoke_installation_key(p_kid text)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.revoke_installation_key(p_kid);
+$$;
+
+REVOKE EXECUTE ON FUNCTION auth_internal.enroll_installation_keypair() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.rotate_installation_key() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.revoke_installation_key(text) FROM PUBLIC, anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.enroll_installation_keypair() FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rotate_installation_key() FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.revoke_installation_key(text) FROM anon, PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.enroll_installation_keypair() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rotate_installation_key() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.revoke_installation_key(text) TO authenticated;
+
+-- =============================================================================
 -- B1 slice: AAT issuer RPC and clinic-side verifier self-test helper.
 -- =============================================================================
 
@@ -403,3 +725,12 @@ REVOKE EXECUTE ON FUNCTION auth_internal.verify_aat(text) FROM PUBLIC, anon, aut
 
 REVOKE EXECUTE ON FUNCTION public.issue_ai_token(text[]) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.issue_ai_token(text[]) TO authenticated;
+
+-- Preserve F2 service_role read path if acceptance_targets already exists.
+DO $$
+BEGIN
+  IF to_regclass('ai_internal.acceptance_targets') IS NOT NULL THEN
+    EXECUTE 'GRANT USAGE ON SCHEMA ai_internal TO service_role';
+  END IF;
+END;
+$$;

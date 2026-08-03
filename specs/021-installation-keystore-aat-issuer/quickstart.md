@@ -31,33 +31,44 @@ This slice implements delivery-plan row **B1** (*Installation keystore and AAT i
   restricted schema; additive rotation without invalidating in-flight tokens.
 
 The **spec** freezes the keystore shape, the issuer RPC contract, the §5.6 claim set, and the rule
-that `scopes` are never client-supplied. The **plan** scopes three Supabase migrations, two SQL/RLS
-test suites (T01–T12), and a dedicated runner — `backend/` only; no Worker or Flutter changes.
+that `scopes` are never client-supplied. The **plan** scopes four Supabase migrations (three
+originals + review overlay), two SQL/RLS test suites (keystore T01–T10; issuer T07–T16), and a
+dedicated runner — `backend/` only; no Worker or Flutter changes.
 
 ## 2. What was implemented
 
 - **`ai_internal` keystore schema** — `pgsodium` extension enabled; restricted `ai_internal`
-  schema with `installation_keys` (additive rotation, `revoked_at` revocation) and
-  `ai_token_issuance` ledger tables; RLS deny policies for `anon`/`authenticated`; config keys for
-  AAT lifetime, audience, contract version, and issuer rate-limit window/ceiling.
+  schema with `installation_keys` (additive rotation, `revoked_at` revocation, singleton
+  `installation_id` trigger) and `ai_token_issuance` ledger tables; RLS deny policies for
+  `anon`/`authenticated`; schema `USAGE` to `postgres` only at B1; config keys for AAT lifetime,
+  audience, contract version, and issuer rate-limit window/ceiling.
 - **`auth_internal` keypair routines** — `enroll_installation_keypair`, `rotate_installation_key`,
-  and `revoke_installation_key` (`SECURITY DEFINER`, `pgsodium.crypto_sign_new_keypair`); thin
-  `public` `SECURITY INVOKER` wrappers, operator-gated via `assert_owner_or_administrator()`.
-- **`auth_internal.issue_ai_token` issuer RPC** — verifies `auth.uid()` session; resolves tenant/actor
-  claims via `build_staff_claims`; derives `scopes` from `roles_permissions` `ai.*` namespace
-  (ignores caller-supplied `p_scopes`); mints `alg: EdDSA` JWS; writes issuance ledger row;
-  enforces per-caller rate limit. `auth_internal.verify_aat` provides the clinic-side self-test
-  verifier. `public.issue_ai_token` `SECURITY INVOKER` wrapper for authenticated staff.
+  and `revoke_installation_key` (`SECURITY DEFINER`, `pgsodium.crypto_sign_new_keypair`,
+  `clock_timestamp` stamps); enroll/rotate return `rpc_success` with `kid`, `installation_id`,
+  and `public_jwk` (`OKP`/`Ed25519`/`x`/`kid`) for the §8.1 operator handoff. Thin `public`
+  `SECURITY DEFINER` wrappers, operator-gated via `assert_owner_or_administrator()`;
+  `REVOKE EXECUTE` from `PUBLIC`/`anon`/`authenticated` on internal functions.
+- **`auth_internal.issue_ai_token` issuer RPC** — verifies session (`UNAUTHENTICATED` /
+  `SESSION_EXPIRED`); resolves tenant/actor claims via `build_staff_claims`; derives `scopes`
+  from `roles_permissions` `ai.*` (ignores `p_scopes`); mints `alg: EdDSA` JWS with
+  installation-scoped signing key (`ORDER BY valid_from DESC, kid DESC`); writes issuance
+  ledger; per-actor `pg_advisory_xact_lock` + rate limit (`RATE_LIMITED`). Bare exception codes
+  documented in `contracts/aat-token.md` §9. `auth_internal.verify_aat` binds payload `iss` to
+  the key row, returns `false` on malformed input (no throw), and does **not** check `exp`
+  (B3). `public.issue_ai_token` `SECURITY DEFINER` wrapper for authenticated staff.
+- **Review overlay** — `20260803140000_b1_review_resolution.sql` applies the same hardening on
+  databases that already ran the original B1 migrations.
 
 ## 3. Files to review
 
 | Path | Role |
 | --- | --- |
 | `backend/supabase/migrations/20260801120000_ai_keystore_schema.sql` | `pgsodium` enable, `ai_internal` schema, keystore + ledger tables, RLS deny, config keys |
-| `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | Enroll / rotate / revoke keypair routines + `public` wrappers |
+| `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | Enroll / rotate / revoke keypair routines + `public` wrappers (`public_jwk` return) |
 | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` | `issue_ai_token` issuer, `verify_aat` self-test helper, `public.issue_ai_token` wrapper |
-| `backend/tests/ai_keystore_rls.sql` | T01–T06: keystore access, rotation additivity, previous-key verify, revoked-key reject |
-| `backend/tests/ai_token_issuer.sql` | T07–T12: §5.6 claims, RBAC scopes, session reject, issuance row, rate limit, `exp` window |
+| `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` | Review-resolution overlay (idempotent with updated originals) |
+| `backend/tests/ai_keystore_rls.sql` | T01–T10: keystore access, `public_jwk`, rotation, verify/`iss`/malformed, admin/error paths |
+| `backend/tests/ai_token_issuer.sql` | T07–T16: §5.6 claims, header `alg`, omissions, exact error codes, per-actor rate limit, `exp` |
 
 ## 4. Prerequisites
 
@@ -74,9 +85,9 @@ From the repository root:
 bash backend/tests/run_ai_platform_trust_tests.sh
 ```
 
-Expected: **12 passing tests** for this slice only — six in `ai_keystore_rls.sql` (T01–T06) and
-six in `ai_token_issuer.sql` (T07–T12). The runner prints `AI platform trust suite: all checks
-passed.` on success.
+Expected: both suites green — `ai_keystore_rls.sql` (T01–T10, including T05b–d) and
+`ai_token_issuer.sql` (T07–T16, including T07b/T08b). The runner prints `AI platform trust suite:
+all checks passed.` on success.
 
 To run the suites individually:
 

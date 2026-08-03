@@ -6,13 +6,14 @@ CREATE OR REPLACE FUNCTION auth_internal.enroll_installation_keypair()
 RETURNS public.rpc_result
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth, ai_internal, pgsodium
+SET search_path = public, auth, ai_internal, pgsodium, auth_internal
 AS $$
 DECLARE
   v_caller public.staff_members%ROWTYPE;
   v_installation_id uuid;
   v_keypair record;
   v_kid text;
+  v_public_jwk jsonb;
 BEGIN
   v_caller := auth_internal.assert_owner_or_administrator();
 
@@ -20,7 +21,7 @@ BEGIN
   INTO v_installation_id
   FROM ai_internal.installation_keys ik
   WHERE ik.is_deleted = false
-  ORDER BY ik.valid_from
+  ORDER BY ik.valid_from ASC, ik.kid ASC
   LIMIT 1;
 
   IF v_installation_id IS NULL THEN
@@ -40,6 +41,7 @@ BEGIN
     secret_key,
     algorithm,
     valid_from,
+    created_at,
     created_by,
     updated_by
   )
@@ -49,18 +51,32 @@ BEGIN
     v_keypair.public,
     v_keypair.secret,
     'EdDSA',
-    now(),
+    clock_timestamp(),
+    clock_timestamp(),
     v_caller.auth_user_id,
     v_caller.auth_user_id
+  );
+
+  v_public_jwk := jsonb_build_object(
+    'kty', 'OKP',
+    'crv', 'Ed25519',
+    'x', auth_internal.base64url_encode(v_keypair.public),
+    'kid', v_kid
   );
 
   RETURN public.rpc_success(
     jsonb_build_object(
       'kid', v_kid,
-      'installation_id', v_installation_id
+      'installation_id', v_installation_id,
+      'public_jwk', v_public_jwk
     )
   );
 EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may enroll installation keys.');
+    END IF;
+    RAISE;
   WHEN OTHERS THEN
     IF SQLERRM = 'FORBIDDEN' THEN
       RETURN public.rpc_error('FORBIDDEN', 'Only administrators may enroll installation keys.');
@@ -73,13 +89,14 @@ CREATE OR REPLACE FUNCTION auth_internal.rotate_installation_key()
 RETURNS public.rpc_result
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth, ai_internal, pgsodium
+SET search_path = public, auth, ai_internal, pgsodium, auth_internal
 AS $$
 DECLARE
   v_caller public.staff_members%ROWTYPE;
   v_installation_id uuid;
   v_keypair record;
   v_kid text;
+  v_public_jwk jsonb;
 BEGIN
   v_caller := auth_internal.assert_owner_or_administrator();
 
@@ -87,7 +104,7 @@ BEGIN
   INTO v_installation_id
   FROM ai_internal.installation_keys ik
   WHERE ik.is_deleted = false
-  ORDER BY ik.valid_from
+  ORDER BY ik.valid_from ASC, ik.kid ASC
   LIMIT 1;
 
   IF v_installation_id IS NULL THEN
@@ -110,6 +127,7 @@ BEGIN
     secret_key,
     algorithm,
     valid_from,
+    created_at,
     created_by,
     updated_by
   )
@@ -119,18 +137,32 @@ BEGIN
     v_keypair.public,
     v_keypair.secret,
     'EdDSA',
-    now(),
+    clock_timestamp(),
+    clock_timestamp(),
     v_caller.auth_user_id,
     v_caller.auth_user_id
+  );
+
+  v_public_jwk := jsonb_build_object(
+    'kty', 'OKP',
+    'crv', 'Ed25519',
+    'x', auth_internal.base64url_encode(v_keypair.public),
+    'kid', v_kid
   );
 
   RETURN public.rpc_success(
     jsonb_build_object(
       'kid', v_kid,
-      'installation_id', v_installation_id
+      'installation_id', v_installation_id,
+      'public_jwk', v_public_jwk
     )
   );
 EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may rotate installation keys.');
+    END IF;
+    RAISE;
   WHEN OTHERS THEN
     IF SQLERRM = 'FORBIDDEN' THEN
       RETURN public.rpc_error('FORBIDDEN', 'Only administrators may rotate installation keys.');
@@ -173,15 +205,20 @@ BEGIN
 
   UPDATE ai_internal.installation_keys ik
   SET
-    revoked_at = now(),
-    updated_at = now(),
+    revoked_at = clock_timestamp(),
+    updated_at = clock_timestamp(),
     updated_by = v_caller.auth_user_id
   WHERE ik.kid = p_kid;
 
   RETURN public.rpc_success(
-    jsonb_build_object('kid', p_kid, 'revoked_at', now())
+    jsonb_build_object('kid', p_kid, 'revoked_at', clock_timestamp())
   );
 EXCEPTION
+  WHEN SQLSTATE 'P0001' THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only administrators may revoke installation keys.');
+    END IF;
+    RAISE;
   WHEN OTHERS THEN
     IF SQLERRM = 'FORBIDDEN' THEN
       RETURN public.rpc_error('FORBIDDEN', 'Only administrators may revoke installation keys.');
@@ -193,7 +230,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.enroll_installation_keypair()
 RETURNS public.rpc_result
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, auth_internal
 AS $$
   SELECT auth_internal.enroll_installation_keypair();
@@ -202,7 +239,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.rotate_installation_key()
 RETURNS public.rpc_result
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, auth_internal
 AS $$
   SELECT auth_internal.rotate_installation_key();
@@ -211,11 +248,15 @@ $$;
 CREATE OR REPLACE FUNCTION public.revoke_installation_key(p_kid text)
 RETURNS public.rpc_result
 LANGUAGE sql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, auth_internal
 AS $$
   SELECT auth_internal.revoke_installation_key(p_kid);
 $$;
+
+REVOKE EXECUTE ON FUNCTION auth_internal.enroll_installation_keypair() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.rotate_installation_key() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION auth_internal.revoke_installation_key(text) FROM PUBLIC, anon, authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.enroll_installation_keypair() FROM anon, PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.rotate_installation_key() FROM anon, PUBLIC;

@@ -7,13 +7,15 @@ no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g.
 acceptance) but may not **rewrite** anything below.
 
 **Pinned by contract tests:** `T07 all section 5.6 claims populated` (claim set),
-`T05 previous-key AAT still verifies within validity window` and `T06 revoked key rejected`
-(rotation and revocation semantics).
+`T05 previous-key AAT still verifies after additive rotation` and `T06 revoked key rejected`
+(rotation and revocation semantics); `T05c`/`T05d` (malformed signature → false; `iss` bind).
 
 **Source of truth in code:** `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql`
 (`auth_internal.issue_ai_token`, `auth_internal.verify_aat`, `auth_internal.base64url_encode`);
 `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql`
-(enrollment and additive rotation).
+(enrollment and additive rotation); review fixes also in
+`backend/supabase/migrations/20260803140000_b1_review_resolution.sql` (idempotent overlay for DBs
+that already ran the original B1 migrations).
 
 ---
 
@@ -151,33 +153,49 @@ signature = pgsodium.crypto_sign_detached(
 token     = header_b64 || '.' || payload_b64 || '.' || base64url(signature)
 ```
 
-The issuer selects the **current** signing key: the non-revoked `installation_keys` row with the
-latest `valid_from` for the installation.
+The issuer selects the **current** signing key scoped to the clinic's singleton `installation_id`
+(enforced by trigger `ai_internal.enforce_single_installation`): the non-revoked, non-deleted
+`installation_keys` row for that installation ordered by `valid_from DESC, kid DESC` (`LIMIT 1`).
+Enroll/rotate inserts stamp `valid_from` / `created_at` with `clock_timestamp()` so same-transaction
+rotations remain ordered.
 
 ### 6.3 Verification (clinic self-test)
 
 `auth_internal.verify_aat(token)` implements the clinic-side verifier used by contract tests T05 and
-T06:
+T06. It returns **`false` on any rejection path** (including malformed signature decode) and does
+**not** throw for bad input:
 
-1. Split the token into three segments; reject if any segment is missing.
-2. Base64url-decode the header; require `alg = "EdDSA"` and a non-null `kid`.
-3. Load `installation_keys` by `kid`; reject if not found, soft-deleted, or `revoked_at IS NOT NULL`
-   (contract test T06).
-4. Reconstruct the signing input `header_b64 || '.' || payload_b64`.
-5. Return the result of `pgsodium.crypto_sign_verify_detached(signature, signing_input_bytes, public_key)`.
+1. Split the token into three segments; return `false` if any segment is missing or the segment count
+   is not exactly three.
+2. Base64url-decode the header; require `alg = "EdDSA"` and a non-null `kid` (else `false`).
+3. Load `installation_keys` by `kid`; return `false` if not found, soft-deleted, or
+   `revoked_at IS NOT NULL` (contract test T06).
+4. Base64url-decode the payload; require payload `iss` equals the key row's `installation_id` as
+   text (contract §8.3; tests T05d) — else `false`.
+5. Reconstruct the signing input `header_b64 || '.' || payload_b64`.
+6. Return the result of `pgsodium.crypto_sign_verify_detached(...)`; any decode/verify exception
+   yields `false` (test T05c).
+
+The clinic self-test does **not** evaluate `exp`. Token lifetime / expiry enforcement belongs to the
+platform verifier (B3). T05 proves that after additive rotation a previous-key AAT still verifies;
+it does not assert an `exp` window.
 
 ### 6.4 Verification (platform gateway — B3 consumer)
 
 The gateway verifier port (B3) MUST verify the same JWS shape using WebCrypto `Ed25519` `importKey`
-(JWK or raw 32-byte public key) and `verify` (§4.2.1). Key lookup is by `iss` (installation id) and
-`kid` (header); no network call is required for the enrolled-installation-key strategy.
+(JWK or raw 32-byte public key) and `verify` (§4.2.1), and MUST enforce `exp` (and audience/scopes as
+named by B3). Key lookup is by `iss` (installation id) and `kid` (header); no network call is
+required for the enrolled-installation-key strategy.
 
 ---
 
 ## 7. Public key format (JWK)
 
 The 32-byte raw Ed25519 public key is published to the platform during enrollment and on rotation as a
-JSON Web Key (§4.2.1):
+JSON Web Key (§4.2.1). Publication path: `public.enroll_installation_keypair` /
+`public.rotate_installation_key` return `rpc_success` data containing `kid`, `installation_id`, and
+`public_jwk` (the object below) — the §8.1 operator handoff. The keystore remains unreadable by
+`anon`/`authenticated`; the RPC return is the only clinic-side publish channel for the public key.
 
 | Member | Value |
 | --- | --- |
@@ -212,9 +230,10 @@ row. Both keys remain present; the previous key's `revoked_at` stays null until 
 
 During the overlap window:
 
-- New tokens are signed with the key having the latest `valid_from` (the current signing key).
-- Tokens already signed under a previous `kid` **continue to verify** until their `exp` claim passes,
-  provided that key has not been revoked (contract test T05).
+- New tokens are signed with the current signing key (§6.2 / §8.3).
+- Tokens already signed under a previous `kid` **continue to verify** at the clinic self-test while
+  that key remains unrevoked (contract test T05). Gateway-side rejection after `exp` is B3's job;
+  B1 does not pin an `exp` check in `verify_aat`.
 
 The platform accepts multiple active public keys per installation, selected by `kid` in the JWS header
 (§8.1: "the platform accepts both keys during the overlap, so no clinic is offline for a rotation").
@@ -230,25 +249,64 @@ trust in a specific key.
 
 | Operation | Selection rule |
 | --- | --- |
-| Signing (issuer) | Non-revoked key with greatest `valid_from` for the installation |
-| Verifying (clinic or platform) | Exact match on header `kid` against enrolled key set for payload `iss`; key MUST NOT be revoked |
+| Signing (issuer) | Non-revoked, non-deleted key for the clinic singleton `installation_id`, ordered by `valid_from DESC, kid DESC` |
+| Verifying (clinic or platform) | Exact match on header `kid` against enrolled key set for payload `iss`; key MUST NOT be revoked; payload `iss` MUST equal the key row's `installation_id` |
 
 `iss` plus `kid` together select the verification public key. Rotation is therefore a key-set operation,
 not a re-enrollment (§5.6).
 
 ---
 
-## 9. Out of scope for this contract
+## 9. Issuer and keypair error conventions
+
+This section extends the contract for **error surface** only; it does not change the JWS wire shape
+in §§2–5.
+
+### 9.1 Keypair routines (`rpc_result`)
+
+`enroll_installation_keypair`, `rotate_installation_key`, and `revoke_installation_key` keep the
+established `public.rpc_result` envelope (`rpc_success` / `rpc_error`). Success data for enroll and
+rotate includes `kid`, `installation_id`, and `public_jwk` (§7).
+
+### 9.2 Issuer RPC (bare exception codes)
+
+`auth_internal.issue_ai_token` / `public.issue_ai_token` keep bare `RAISE EXCEPTION '<CODE>'`
+(PostgREST `P0001` with the code as `SQLERRM`). Emittable codes:
+
+| Code | When |
+| --- | --- |
+| `UNAUTHENTICATED` | No `auth.uid()` / invalid session identity |
+| `SESSION_EXPIRED` | Clinic session past expiry |
+| `STAFF_NOT_FOUND` | Authenticated user has no usable `staff_members` row |
+| `BRANCH_NOT_FOUND` | Staff has no resolvable active branch |
+| `INSTALLATION_NOT_ENROLLED` | No usable installation signing key |
+| `RATE_LIMITED` | Per-actor mint ceiling exceeded within the configured window |
+| `AI_ACCESS_DENIED` | Caller role has no granted `ai.*` permission |
+
+Rate limiting takes `pg_advisory_xact_lock` per actor before count+insert so the ceiling holds under
+concurrent mints (test T11).
+
+### 9.3 Grants (B1)
+
+At B1, `ai_internal` schema `USAGE` is granted to `postgres` only (`service_role` is re-granted by
+F2 when `acceptance_targets` needs it). New `auth_internal` B1 functions revoke `EXECUTE` from
+`PUBLIC` / `anon` / `authenticated`; `public` wrappers are `SECURITY DEFINER` entry points.
+`pgsodium_keymaker` is granted to `postgres` as the enrollment definer role (§4.2.1).
+
+---
+
+## 10. Out of scope for this contract
 
 The following behaviours are enforced by the issuer RPC and its tests but are **not** part of the
 frozen wire shape consumed by B3/B4:
 
 | Behaviour | Test | Notes |
 | --- | --- | --- |
-| Session validity gate | T09 | Absent or expired clinic session is rejected before minting |
+| Session validity gate | T09 | Absent → `UNAUTHENTICATED`; expired → `SESSION_EXPIRED` |
 | Issuance ledger row | T10 | One `ai_token_issuance` row per `jti` |
-| Issuer rate limit | T11 | Per-actor mint ceiling within a configured window |
+| Issuer rate limit | T11 | Per-actor mint ceiling; advisory lock; exact `RATE_LIMITED` |
 | Keystore RLS deny | T01–T03 | `anon`/`authenticated` cannot read signing keys |
+| Exact issuer error codes | T13–T16 | `STAFF_NOT_FOUND`, `BRANCH_NOT_FOUND`, `INSTALLATION_NOT_ENROLLED`, `AI_ACCESS_DENIED` |
 
 B3 implements gateway-side expiry, audience, and scope checks on the wire claims defined in §4. B4
 implements `jti` replay rejection at admission using the `jti` claim minted here.

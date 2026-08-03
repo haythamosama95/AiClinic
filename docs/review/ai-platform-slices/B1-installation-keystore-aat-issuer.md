@@ -46,3 +46,45 @@ B1 delivers the §4.2 clinic-side pair in three migrations: a restricted `ai_int
 - **Strengthen the rejection tests**: in T09 and T11 assert the specific error text (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `RATE_LIMITED`) instead of `WHEN OTHERS`; add a second-actor mint to T11; run T09 after enrollment so the session gate is the only thing that can reject (`ai_token_issuer.sql:123-170`, `:289-329`).
 - **Add the missing cases**: header decode (`alg = 'EdDSA'`, non-null `kid`); one test per untested error code (`STAFF_NOT_FOUND`, `BRANCH_NOT_FOUND`, `INSTALLATION_NOT_ENROLLED`, `AI_ACCESS_DENIED`, keypair `FORBIDDEN`/`INVALID_INPUT`/`KEY_NOT_FOUND`); a non-administrator denied enroll/rotate/revoke; post-rotation mint signed by the new `kid`; deliberate-omissions assertion on the decoded payload; value assertions in T07 (`aud`, `sub`, `iss`) and `jti` uniqueness across two mints.
 - **Tighten grants and test hygiene**: drop the `service_role` schema grant and the no-op keymaker grant (`20260801120000_ai_keystore_schema.sql:8`, `:13`); `REVOKE EXECUTE ... FROM PUBLIC` on the new `auth_internal` functions so the wrappers are the only entry; make both suites restore (or roll back) every config key and fixture row they mutate.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **B1-R1 — Public JWK on enroll/rotate** | Critical #1; Recommended (return public key) | `20260801120100_ai_installation_keypair_routines.sql`; `contracts/aat-token.md` §7 |
+| **B1-R2 — Rate-limiter race** | Bugs #1; Recommended (advisory lock); Missing #2 (T11 exact code + second actor) | `20260801120200_ai_token_issuer_rpc.sql`; `ai_token_issuer.sql` T11 |
+| **B1-R3 — Deterministic installation-scoped signing** | Bugs #2; Arch Dev #2; Missing #6; Recommended (scoped selection) | schema singleton trigger; issuer key select `ORDER BY valid_from DESC, kid DESC`; `clock_timestamp()` inserts; T05b |
+| **B1-R4 — Harden `verify_aat` + exp clarification** | Bugs #3–#4; Arch Dev #3; Missing #5; Recommended (harden verify) | `verify_aat` iss bind + malformed→false; contract §6.3 (no clinic `exp`); T05/T05c/T05d |
+| **B1-R5 — Error convention** | Arch Dev #1; Recommended (pick convention) | Issuer bare `RAISE EXCEPTION '<CODE>'` documented in contract §9; keypair stays `rpc_result` with `SQLSTATE 'P0001'` + `FORBIDDEN` catch |
+| **B1-R6 — Grant hygiene** | Arch Dev #4; Recommended (grants) | Drop `service_role` schema USAGE from B1 (F2 re-grants for `acceptance_targets`); `REVOKE EXECUTE` on `auth_internal` B1 fns; public wrappers `SECURITY DEFINER`; keep `pgsodium_keymaker` on postgres (required for `crypto_sign_new_keypair`, §4.2.1 enrollment definer) |
+| **B1-R7 — Tests + hygiene** | Missing #1–#4, #7–#9; Recommended (strengthen/add cases, hygiene) | `ai_keystore_rls.sql` T01–T10; `ai_token_issuer.sql` T07–T16; SELECT-then-ROLLBACK |
+
+Every numbered finding appears in exactly one stage. Overlay migration: `20260803140000_b1_review_resolution.sql`.
+
+### 1.2 Test cases created first
+
+- **B1-R1:** T03/T04 assert `public_jwk` `{kty,crv,x,kid}` before production return shape landed.
+- **B1-R2 / R7:** T11 asserts `SQLERRM = 'RATE_LIMITED'` and a second actor still mints.
+- **B1-R3:** T05b asserts post-rotation mint header `kid` equals rotate result.
+- **B1-R4:** T05c malformed signature → `false` (no throw); T05d iss mismatch → `false`; T05 renamed to previous-key-still-verifies (no clinic `exp`).
+- **B1-R5 / R7:** T09 exact `UNAUTHENTICATED` / `SESSION_EXPIRED`; T13–T16 one case per remaining issuer code; T07–T10 keypair error branches.
+- **B1-R7:** T07b header `alg=EdDSA`; T07 claim value/`jti` uniqueness; T08b deliberate omissions; suites ROLLBACK.
+
+### 1.3 Fix implemented
+
+- Enroll/rotate return `public_jwk` OKP/Ed25519 alongside `kid` / `installation_id`.
+- Issuer takes `pg_advisory_xact_lock(87201401, hashtext(actor))` before count+insert.
+- Signing key filtered by singleton `installation_id`; tie-break `kid`; inserts use `clock_timestamp()`; `enforce_single_installation` trigger.
+- `verify_aat` binds `iss`, swallows malformed signature/decode errors as `false`; no clinic `exp` check (B3 owns expiry) — Spec Kit clarified.
+- Dual error conventions documented; issuer codes pinned by tests; keypair FORBIDDEN catch uses `SQLSTATE 'P0001'`.
+- Schema USAGE: postgres only at B1; wrappers DEFINER; `auth_internal` B1 EXECUTE revoked from PUBLIC/anon/authenticated; keymaker retained for enrollment definer.
+- Spec Kit (`spec.md`, `plan.md`, `tasks.md`, `quickstart.md`, `contracts/aat-token.md`) aligned.
+
+### 1.4 Verification
+
+- SQL: `ai_keystore_rls.sql` — **13/13 passed** (T01–T10 + helpers); `ai_token_issuer.sql` — **13/13 passed** (fixture + T07–T16); `ai_token_contract_rotation.sql` — **4/4 passed** (no regression).
+- Full `ai-platform` suite: **38 files, 457 tests passed**.
