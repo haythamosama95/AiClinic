@@ -8,6 +8,8 @@ CREATE TABLE ai_internal.acceptance_targets (
   table_name text NOT NULL
 );
 
+-- F2 needs service_role read of the registry; B1 no longer grants schema USAGE broadly.
+GRANT USAGE ON SCHEMA ai_internal TO service_role;
 REVOKE ALL ON TABLE ai_internal.acceptance_targets FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE ai_internal.acceptance_targets TO postgres, service_role;
 
