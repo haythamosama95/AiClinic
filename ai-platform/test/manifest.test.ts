@@ -191,7 +191,7 @@ describe("T-A4-02..11 manifest_missing_or_malformed_group", () => {
 });
 
 describe("T-A4-12 in_place_edit_of_published_version_fails_build", () => {
-  it("rejects an on-disk manifest whose hash differs from the registry entry", () => {
+  it("rejects an on-disk manifest whose hash differs from the registry entry", async () => {
     const valid = validManifest();
     const edited = {
       ...valid,
@@ -203,23 +203,24 @@ describe("T-A4-12 in_place_edit_of_published_version_fails_build", () => {
     const capabilityId = (valid.Identity as { capabilityId: string }).capabilityId;
     const version = (valid.Identity as { version: string }).version;
     const registryKey = `${capabilityId}@${version}`;
+    const validHash = await hashManifest(valid);
+    const editedHash = await hashManifest(edited);
 
     expect(() =>
       verifyPublishedRegistry(
-        [{ capabilityId, version, hash: hashManifest(edited) }],
-        { [registryKey]: hashManifest(valid) },
+        [{ capabilityId, version, hash: editedHash }],
+        { [registryKey]: validHash },
       ),
     ).toThrow();
 
     expect(() =>
       verifyPublishedRegistry(
-        [{ capabilityId, version, hash: hashManifest(valid) }],
-        { [registryKey]: hashManifest(valid) },
+        [{ capabilityId, version, hash: validHash }],
+        { [registryKey]: validHash },
       ),
     ).not.toThrow();
   });
 });
-
 describe("T-A4-13 omitted_interaction_mode_defaults_to_single_shot", () => {
   it("loads with interactionMode === single_shot when interactionMode is absent", () => {
     const loaded = load(manifestWithoutInteractionMode());
@@ -249,6 +250,7 @@ describe("T-A4-15 manifest_is_data_not_code", () => {
     const allowedRuntimeExports = [
       "hashManifest",
       "load",
+      "verifyManifestTree",
       "verifyPublishedRegistry",
     ].sort();
 
@@ -285,12 +287,14 @@ describe("T-A4-16 manifest_never_names_provider_or_model", () => {
 });
 
 describe("T-A4-17 interaction_mode_fixed_for_life_of_version", () => {
-  it("types interactionMode as read-only", () => {
+  it("rejects runtime mutation of interactionMode", () => {
     const loaded = load(validManifest());
 
-    // Compile-time: assignment to interactionMode must fail.
-    // @ts-expect-error interactionMode is read-only for the life of a version
-    loaded.interactionMode = "conversational";
+    expect(() => {
+      // Compile-time: assignment to interactionMode must fail.
+      // @ts-expect-error interactionMode is read-only for the life of a version
+      loaded.interactionMode = "conversational";
+    }).toThrow();
 
     expect(loaded.interactionMode).toBe("single_shot");
   });
@@ -301,5 +305,157 @@ describe("T-A4-17 interaction_mode_fixed_for_life_of_version", () => {
 
     expect(loaded.interactionMode).toBe("single_shot");
     expect((fixture.Interaction as Record<string, unknown>).interactionMode).toBeUndefined();
+  });
+});
+
+describe("T-A4-18 unknown_extra_keys_rejected", () => {
+  it("rejects an unknown key in Output", () => {
+    const manifest = validManifest();
+    (manifest.Output as Record<string, unknown>).extraField = "nope";
+    expect(() => load(manifest)).toThrow(/Output/);
+  });
+
+  it("rejects an unknown key in Routing", () => {
+    const manifest = validManifest();
+    (manifest.Routing as Record<string, unknown>).preferredProvider = "gemini";
+    expect(() => load(manifest)).toThrow(/Routing/);
+  });
+
+  it("rejects an unknown key in Prompt binding", () => {
+    const manifest = validManifest();
+    (manifest["Prompt binding"] as Record<string, unknown>).modelHint = "gpt-4";
+    expect(() => load(manifest)).toThrow(/Prompt binding/);
+  });
+});
+
+describe("T-A4-19 provider_model_denylist_across_groups", () => {
+  it("rejects provider-shaped key outside Routing literals", () => {
+    const manifest = validManifest();
+    (manifest.Routing as Record<string, unknown>).preferredProvider = "gemini";
+    expect(() => load(manifest)).toThrow(/provider|model|Routing/i);
+  });
+
+  it("rejects model-shaped key nested under requiredProviderFeatures", () => {
+    const manifest = validManifest();
+    const routing = manifest.Routing as Record<string, unknown>;
+    routing.requiredProviderFeatures = {
+      ...(routing.requiredProviderFeatures as Record<string, unknown>),
+      model: "gpt-4",
+    };
+    expect(() => load(manifest)).toThrow(/provider|model/i);
+  });
+
+  it("rejects modelHint on Prompt binding", () => {
+    const manifest = validManifest();
+    (manifest["Prompt binding"] as Record<string, unknown>).modelHint = "gpt-4";
+    expect(() => load(manifest)).toThrow(/provider|model|Prompt binding/i);
+  });
+});
+
+describe("T-A4-20 content_enum_validation", () => {
+  it("rejects invalid Output.mode", () => {
+    const manifest = validManifest();
+    (manifest.Output as Record<string, unknown>).mode = "yolo";
+    expect(() => load(manifest)).toThrow(/mode|Output/i);
+  });
+
+  it("rejects invalid Governance.acceptanceMode", () => {
+    const manifest = validManifest();
+    (manifest.Governance as Record<string, unknown>).acceptanceMode = "yolo";
+    expect(() => load(manifest)).toThrow(/acceptanceMode|Governance/i);
+  });
+
+  it("rejects invalid Identity.lifecycleState", () => {
+    const manifest = validManifest();
+    (manifest.Identity as Record<string, unknown>).lifecycleState = "zombie";
+    expect(() => load(manifest)).toThrow(/lifecycleState|Identity/i);
+  });
+});
+
+describe("T-A4-21 deep_freeze_rejects_group_mutation", () => {
+  it("throws when mutating a non-interactionMode field on a loaded manifest", () => {
+    const loaded = load(validManifest());
+    expect(() => {
+      (loaded.Output as { mode: string }).mode = "structured";
+    }).toThrow();
+    expect(loaded.Output.mode).toBe("prose");
+  });
+
+  it("throws when mutating a nested Identity field", () => {
+    const loaded = load(validManifest());
+    expect(() => {
+      (loaded.Identity as { title: string }).title = "mutated";
+    }).toThrow();
+    expect(loaded.Identity.title).toBe("Visit summary");
+  });
+});
+
+describe("T-A4-22 content_hash_is_sha256", () => {
+  it("hashManifest returns a 64-char lowercase hex SHA-256 digest", async () => {
+    const hash = await hashManifest(validManifest());
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("T-A4-23 registry_gate_runs_in_build", () => {
+  it("package.json declares a verify-manifests script", async () => {
+    const pkg = JSON.parse(
+      await import("node:fs/promises").then((fs) =>
+        fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
+      ),
+    ) as { scripts?: Record<string, string> };
+    expect(pkg.scripts?.["verify-manifests"]).toMatch(/manifest-registry-gate/);
+  });
+
+  it("checked-in published registry passes verifyManifestTree", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const { verifyManifestTree } = await import("../src/manifest");
+    const root = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
+    await expect(
+      verifyManifestTree({
+        manifestsDir: path.join(root, "manifests", "published"),
+        registryPath: path.join(root, "manifests", "published-registry.json"),
+        readFile: (p) => fs.readFile(p, "utf8"),
+        readdir: (p) => fs.readdir(p),
+        join: path.join,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("in-place edit of a checked-in published manifest fails the registry gate", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const { verifyManifestTree } = await import("../src/manifest");
+    const root = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
+    const registryPath = path.join(root, "manifests", "published-registry.json");
+    const manifestsDir = path.join(root, "manifests", "published");
+    const files = await fs.readdir(manifestsDir);
+    const first = files.find((name) => name.endsWith(".json"));
+    expect(first).toBeDefined();
+    const original = JSON.parse(
+      await fs.readFile(path.join(manifestsDir, first!), "utf8"),
+    ) as Record<string, unknown>;
+    const edited = {
+      ...original,
+      Identity: {
+        ...(original.Identity as Record<string, unknown>),
+        title: "Edited in place",
+      },
+    };
+    await expect(
+      verifyManifestTree({
+        manifestsDir,
+        registryPath,
+        readFile: async (p) => {
+          if (p.endsWith(first!)) {
+            return JSON.stringify(edited);
+          }
+          return fs.readFile(p, "utf8");
+        },
+        readdir: (p) => fs.readdir(p),
+        join: path.join,
+      }),
+    ).rejects.toThrow(/hash mismatch|Published manifest/i);
   });
 });

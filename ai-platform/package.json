@@ -9,7 +9,9 @@
     "dev": "wrangler dev --env development",
     "deploy": "wrangler deploy",
     "check": "wrangler check",
-    "test": "vitest run",
+    "verify-manifests": "vitest run test/manifest-registry-gate.test.ts",
+    "test": "npm run verify-manifests && vitest run",
+    "test:unit": "vitest run",
     "test:load": "vitest run --config vitest.workers.config.ts test/load/load-and-cost.test.ts",
     "types": "wrangler types"
   },

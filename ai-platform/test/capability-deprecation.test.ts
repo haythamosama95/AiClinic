@@ -529,7 +529,7 @@ describe("T-J1-05 lifecycle_survives_cold_isolate_manifest_unchanged", () => {
   it("reconstructs lifecycle via cold ConfigCache and preserves manifest hash", async () => {
     const manifestWire = validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION);
     buildRegistry(manifestWire);
-    const publishedHash = hashManifest(manifestWire);
+    const publishedHash = await hashManifest(manifestWire);
 
     await seedInstallation(env.DB);
     await seedEntitlement(env.DB);
@@ -576,7 +576,7 @@ describe("T-J1-05 lifecycle_survives_cold_isolate_manifest_unchanged", () => {
     expect(discovered?.Identity.successorId).toBe(FIXTURE_SUCCESSOR_ID);
 
     const registryManifest = load(manifestWire);
-    expect(hashManifest(manifestWire)).toBe(publishedHash);
+    expect(await hashManifest(manifestWire)).toBe(publishedHash);
     expect(registryManifest.Identity.lifecycleState).toBe("active");
   });
 });

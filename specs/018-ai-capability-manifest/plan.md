@@ -23,7 +23,7 @@ before A5 (context-key vocabulary) and C1 (the capability resolver).
 
 **Storage**: None. A4 defines no D1, R2, or DO entity and writes nothing to any store (spec §Key Entities: "A4 defines no stored domain data"). D1 schema/migrations are A6.
 
-**Testing**: `npx vitest run` contract + build tests in `ai-platform/test/manifest.test.ts`, run in CI on every change (§13.5 Contract tests row). The CI gate *is* the "build fails" mechanism in the spec's Done-when and §3.11.1 row A4 — a manifest that fails to load, a malformed group, or a published-version hash mismatch fails the contract test and therefore fails CI.
+**Testing**: `npm run verify-manifests` (dedicated gate over `manifests/published/` + `published-registry.json`) plus `npx vitest run` contract tests in `ai-platform/test/manifest.test.ts` (T-A4-01..23). `npm test` runs the gate then the full suite. The CI/build gate *is* the "build fails" mechanism in the spec's Done-when and §3.11.1 row A4.
 
 **Target Platform**: The `ai-platform/` Cloudflare Worker at the repository root, a sibling of `frontend/` and `backend/` (delivery plan §7.1). No Worker request path is exercised by this slice.
 
