@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
-import '../../widget/visits/visit_encounter_test_support.dart';
+import '../../support/visit_encounter_test_support.dart';
 
 const _staleRpcResult = {
   'success': false,

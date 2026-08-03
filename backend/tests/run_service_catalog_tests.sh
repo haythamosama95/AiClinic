@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run Service Catalog (015) backend verification scripts.
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../.." && pwd)"
+local_env="${repo_root}/backend/local/.env"
+
+if [[ -f "${local_env}" ]]; then
+  # shellcheck disable=SC1090
+  set -a && source "${local_env}" && set +a
+fi
+
+db_port="${SUPABASE_DB_PORT:-54322}"
+db_password="${POSTGRES_PASSWORD:-postgres}"
+export PGPASSWORD="${db_password}"
+
+psql_run() {
+  psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres -v ON_ERROR_STOP=1 "$@"
+}
+
+sql_tests=(
+  service_catalog_crud.sql
+  service_catalog_list.sql
+  service_catalog_rls.sql
+  service_catalog_pricing.sql
+  service_catalog_concurrency.sql
+)
+
+for f in "${sql_tests[@]}"; do
+  if [[ ! -f "${script_dir}/${f}" ]]; then
+    printf '== Service Catalog: skipping missing %s ==\n' "${f}"
+    continue
+  fi
+  printf '== Service Catalog: %s ==\n' "${f}"
+  psql_run -f "${script_dir}/${f}"
+done
+
+printf 'Service Catalog backend suite: all checks passed.\n'

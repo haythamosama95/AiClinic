@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
 
 import '../harness/boundary_test_context.dart';
 import '../harness/fake_session.dart';
@@ -42,7 +42,7 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'session_refresh');
       await ctx.signInAdmin();
       await ctx.auth.refreshSession();
-      final claims = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claims = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claims['organization_id'], isNotNull);
       clinic;
     });
@@ -95,12 +95,12 @@ void main() {
       const ManifestScenario('sessionContext.setupRequired');
       await ctx.resetInstallation();
       await ctx.signInAdmin();
-      final claimsBefore = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claimsBefore = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claimsBefore['setup_required'], isTrue);
       await ctx.ensureClinic(label: 'session_setup');
       await ctx.signInAdmin();
       await ctx.auth.refreshSession();
-      final claimsAfter = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claimsAfter = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claimsAfter['setup_required'], isNot(true));
     });
 

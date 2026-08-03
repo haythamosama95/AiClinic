@@ -1,0 +1,252 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CACHE_TTL_MS,
+  ConfigCache,
+  ConfigCacheMissError,
+  loadConfig,
+  type ConfigEntityKind,
+  type D1Reader,
+} from "../src/config-cache";
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const WRANGLER_PATH = path.join(ROOT, "wrangler.toml");
+const TEST_INSTALLATION_KEY = "installation:test-001";
+
+const CACHED_ENTITY_KINDS = [
+  "installations",
+  "keys",
+  "entitlements",
+  "grants",
+  "kill_switches",
+  "active_routing_policy",
+] as const satisfies readonly ConfigEntityKind[];
+
+type D1Row = Record<string, unknown>;
+
+type ReaderSource =
+  | D1Row
+  | "miss"
+  | Record<string, D1Row | "miss">
+  | (() => D1Row | "miss");
+
+export type ReaderSpy = D1Reader & {
+  read: ReturnType<typeof vi.fn<(key: string) => Promise<D1Row | "miss">>>;
+  readCount: () => number;
+};
+
+/** T019 — D1Reader spy substrate (Clarification Q3). */
+export function makeReader(source: ReaderSource): ReaderSpy {
+  const read = vi.fn(async (key: string): Promise<D1Row | "miss"> => {
+    if (source === "miss") {
+      return "miss";
+    }
+    if (typeof source === "function") {
+      return source();
+    }
+    if (key in source) {
+      return source[key];
+    }
+    return source as D1Row;
+  });
+
+  return {
+    read,
+    readCount: () => read.mock.calls.length,
+  };
+}
+
+function sampleRow(kind: ConfigEntityKind): D1Row {
+  return { kind, installationId: TEST_INSTALLATION_KEY, value: `${kind}-row` };
+}
+
+async function warmEntry(
+  cache: ConfigCache,
+  reader: ReaderSpy,
+  kind: ConfigEntityKind,
+  key: string = TEST_INSTALLATION_KEY,
+): Promise<void> {
+  await loadConfig(cache, reader, kind, key);
+  reader.read.mockClear();
+}
+
+describe("T-A5-17 config_cache_cold_isolate_one_d1_read", () => {
+  it("performs exactly one reader.read on a cold cache miss", async () => {
+    const cache = new ConfigCache();
+    const reader = makeReader(sampleRow("installations"));
+
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+
+    expect(reader.readCount()).toBe(1);
+  });
+});
+
+describe("T-A5-18 config_cache_warm_isolate_zero_io", () => {
+  it("performs zero reader.read when the entry is already warm", async () => {
+    const cache = new ConfigCache();
+    const reader = makeReader(sampleRow("installations"));
+
+    await warmEntry(cache, reader, "installations");
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+
+    expect(reader.readCount()).toBe(0);
+  });
+});
+
+describe("T-A5-19 config_cache_ttl_expiry_one_refetch", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("triggers exactly one reader.read after TTL expiry", async () => {
+    const cache = new ConfigCache();
+    const reader = makeReader(sampleRow("installations"));
+
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    expect(reader.readCount()).toBe(1);
+    reader.read.mockClear();
+
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    expect(reader.readCount()).toBe(0);
+
+    vi.advanceTimersByTime(CACHE_TTL_MS + 1);
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+
+    expect(reader.readCount()).toBe(1);
+  });
+});
+
+describe("T-A5-20 config_cache_entity_kind_<kind>", () => {
+  for (const kind of CACHED_ENTITY_KINDS) {
+    describe(kind, () => {
+      it("answers from warm isolate memory with zero reader.read", async () => {
+        const cache = new ConfigCache();
+        const reader = makeReader(sampleRow(kind));
+
+        await warmEntry(cache, reader, kind);
+        await loadConfig(cache, reader, kind, TEST_INSTALLATION_KEY);
+
+        expect(reader.readCount()).toBe(0);
+      });
+    });
+  }
+});
+
+describe("T-A5-21 config_cache_d1_miss_typed_failure", () => {
+  it("throws a typed failure on miss and does not cache an empty entry", async () => {
+    const cache = new ConfigCache();
+    const missReader = makeReader("miss");
+
+    await expect(
+      loadConfig(cache, missReader, "installations", TEST_INSTALLATION_KEY),
+    ).rejects.toBeInstanceOf(ConfigCacheMissError);
+    expect(missReader.readCount()).toBe(1);
+
+    const hitReader = makeReader(sampleRow("installations"));
+    await loadConfig(cache, hitReader, "installations", TEST_INSTALLATION_KEY);
+
+    expect(hitReader.readCount()).toBe(1);
+  });
+});
+
+describe("T-A5-22 config_cache_owns_nothing", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("observes D1 updates after TTL without a cache flush", async () => {
+    let currentRow: D1Row = { installationId: TEST_INSTALLATION_KEY, status: "active" };
+    const cache = new ConfigCache();
+    const reader = makeReader(() => currentRow);
+
+    const first = await loadConfig(
+      cache,
+      reader,
+      "installations",
+      TEST_INSTALLATION_KEY,
+    );
+    expect(first.status).toBe("active");
+    expect(reader.readCount()).toBe(1);
+    reader.read.mockClear();
+
+    currentRow = { installationId: TEST_INSTALLATION_KEY, status: "suspended" };
+    vi.advanceTimersByTime(CACHE_TTL_MS + 1);
+
+    const second = await loadConfig(
+      cache,
+      reader,
+      "installations",
+      TEST_INSTALLATION_KEY,
+    );
+
+    expect(reader.readCount()).toBe(1);
+    expect(second.status).toBe("suspended");
+
+    reader.read.mockClear();
+    const warm = await loadConfig(
+      cache,
+      reader,
+      "installations",
+      TEST_INSTALLATION_KEY,
+    );
+    expect(reader.readCount()).toBe(0);
+    expect(warm.status).toBe("suspended");
+
+    (warm as { status: string }).status = "mutated";
+    reader.read.mockClear();
+    const again = await loadConfig(
+      cache,
+      reader,
+      "installations",
+      TEST_INSTALLATION_KEY,
+    );
+    expect(reader.readCount()).toBe(0);
+    expect(again.status).toBe("suspended");
+  });
+});
+
+describe("T-A5-23 config_cache_uses_in_isolate_memory_not_kv", () => {
+  it("exports no KV surface and wrangler.toml has no KV binding", async () => {
+    const moduleExports = await import("../src/config-cache");
+
+    for (const exportName of Object.keys(moduleExports)) {
+      expect(exportName.toLowerCase()).not.toMatch(/kv/);
+    }
+
+    const wrangler = fs.readFileSync(WRANGLER_PATH, "utf8");
+    expect(wrangler).not.toMatch(/\[\[.*kv_namespaces.*\]\]/i);
+    expect(wrangler).not.toMatch(/binding\s*=\s*"KV"/i);
+  });
+});
+
+describe("T-A5-24 no_per_request_state_introduced", () => {
+  it("exports only installation-scoped cache API without per-request handles", async () => {
+    const moduleExports = await import("../src/config-cache");
+    const exportNames = Object.keys(moduleExports).sort();
+
+    const allowedRuntimeExports = [
+      "CACHE_TTL_MS",
+      "ConfigCache",
+      "ConfigCacheMissError",
+      "loadConfig",
+    ].sort();
+
+    expect(exportNames).toEqual(allowedRuntimeExports);
+
+    for (const exportName of exportNames) {
+      expect(exportName.toLowerCase()).not.toMatch(/request/);
+      expect(exportName.toLowerCase()).not.toMatch(/session/);
+      expect(exportName.toLowerCase()).not.toMatch(/handle/);
+    }
+  });
+});

@@ -12,6 +12,10 @@ abstract final class AppRoutes {
   static const login = '/login';
   static const bootstrap = '/bootstrap';
   static const home = '/home';
+  static const dashboard = '/dashboard';
+  static const encounters = '/encounters';
+  static const workspace = '/workspace';
+  static const reports = '/reports';
   static const forgotPassword = '/forgot-password';
 
   /// Minimal staff provisioning (US6); blocked while `setup_required` is true.
@@ -20,7 +24,20 @@ abstract final class AppRoutes {
 
   /// Clinic workstation settings (authenticated, setup complete).
   static const settings = '/settings';
+  static const settingsAppearance = '/settings/appearance';
+  static const settingsNotifications = '/settings/notifications';
+  static const settingsSecurity = '/settings/security';
   static const settingsIdleTimeout = '/settings/idle-timeout';
+
+  /// Personal settings screens (web `SETTINGS_SCREENS`).
+  static const personalSettingsPaths = <String>[
+    settingsAppearance,
+    settingsNotifications,
+    settingsSecurity,
+  ];
+
+  /// Clinic management hub (organization, branches, staff, roles).
+  static const clinicManagement = '/clinic-management';
 
   // V1-2 settings administration (org / branch / staff / permissions)
   static const settingsOrganization = '/settings/organization';
@@ -48,6 +65,9 @@ abstract final class AppRoutes {
     settingsStaffNew,
     settingsPermissions,
   ];
+
+  /// Clinic management hub paths.
+  static const clinicManagementPaths = <String>[clinicManagement];
 
   // V1-3 patient management
   static const patients = '/patients';
@@ -97,19 +117,37 @@ abstract final class AppRoutes {
   static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';
 
   // V1-6 billing
+  static const billing = '/billing';
   static const billingInvoices = '/billing/invoices';
+  static const billingVisitSegment = 'visits';
   static const billingInsuranceProviders = '/billing/insurance-providers';
   static const settingsBilling = '/settings/billing';
+
+  /// Visit billing flow: `/billing/visits/:visitId`
+  static String billingVisit(String visitId) => '$billing/$billingVisitSegment/$visitId';
+
+  // V1-8 service catalog (015)
+  static const settingsServices = '/settings/services';
+  static const settingsServicesNew = '/settings/services/new';
+
+  /// Service editor: `/settings/services/:id/edit`
+  static String settingsServiceEdit(String serviceId) => '/settings/services/$serviceId/edit';
+
+  static const serviceCatalogStaticPaths = <String>[settingsServices, settingsServicesNew];
 
   /// Invoice detail: `/billing/invoices/:id`
   static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';
 
   static const billingInvoiceEditSegment = 'edit';
+  static const billingInvoiceReviewSegment = 'review';
 
   /// Draft invoice editor: `/billing/invoices/:id/edit`
   static String billingInvoiceEdit(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
 
-  /// Static billing hub paths.
+  /// Read-only invoice document view: `/billing/invoices/:id/review`
+  static String billingInvoiceReview(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceReviewSegment';
+
+  /// Static billing paths (excluding `/billing`, which redirects to invoices).
   static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
 
   // V1-7 shift management
@@ -122,4 +160,7 @@ abstract final class AppRoutes {
   static const shifts = '/shifts';
 
   static const shiftStaticPaths = <String>[shiftsCalendar, shiftsNew];
+
+  /// Standalone AI feature host for widget tests and CP3 entry (E4).
+  static const aiFeatureHost = '/ai/feature-host';
 }

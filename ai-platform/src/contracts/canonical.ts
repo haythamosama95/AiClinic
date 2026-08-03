@@ -2,39 +2,35 @@ import { isTaxonomyCode, type TaxonomyCode } from "../errors";
 
 /**
  * Field-name manifest for the four §5.3 canonical inference elements.
- * Types and codec derive from this; the guard test (T-A3-05) exercises it.
+ * Identifiers match amended §5.3 Field column; the guard test (T-A3-05 / T-A3-10)
+ * exercises them.
  */
 export const CANONICAL_FIELD_MANIFEST = {
   request: [
-    "ordered role-tagged message parts",
-    "output format directive",
-    "sampling constraints",
-    "max output tokens",
-    "stop conditions",
-    "tool/function declarations (reserved for future)",
-    "stream flag",
+    "parts",
+    "formatDirective",
+    "samplingConstraints",
+    "maxOutputTokens",
+    "stopConditions",
+    "toolDeclarations",
+    "stream",
     "deadline",
-    "correlation ids",
+    "correlationIds",
   ],
-  streamChunk: [
-    "sequence number",
-    "kind",
-    "payload",
-    "terminal flag",
-  ],
+  streamChunk: ["sequenceNumber", "kind", "payload", "terminal"],
   result: [
-    "final content",
-    "usage counters",
-    "provider+model actually used",
-    "finish reason",
-    "provider request id",
-    "timing breakdown",
+    "finalContent",
+    "usage",
+    "providerModel",
+    "finishReason",
+    "providerRequestId",
+    "timing",
   ],
   error: [
-    "taxonomy code",
+    "taxonomyCode",
     "retryability",
-    "provider-native code and message",
-    "whether the attempt consumed budget",
+    "providerNative",
+    "consumedBudget",
   ],
 } as const;
 
@@ -47,19 +43,86 @@ const PROVIDER_SHAPED_FIELD_NAMES = new Set([
   "logprobs",
 ]);
 
-type ManifestRecord<Keys extends readonly string[]> = {
-  [K in Keys[number]]: unknown;
+/** Closed §5.3 message-part role tags. */
+export const CANONICAL_MESSAGE_ROLES = [
+  "system",
+  "user",
+  "assistant",
+  "data",
+] as const;
+
+export type CanonicalMessageRole = (typeof CANONICAL_MESSAGE_ROLES)[number];
+
+export type CanonicalMessagePart = {
+  role: CanonicalMessageRole;
+  content: string;
 };
 
-/** §5.3 canonical request — field names derived from the manifest. */
-export type CanonicalRequest = ManifestRecord<
-  typeof CANONICAL_FIELD_MANIFEST.request
->;
+/** Output format directive — free text / JSON-with-schema, or composer mode pin. */
+export type OutputFormatDirective = {
+  type?: string;
+  schema?: unknown;
+  mode?: string;
+  outputSchemaRef?: string | null;
+};
 
-/** §5.3 canonical result — field names derived from the manifest. */
-export type CanonicalResult = ManifestRecord<
-  typeof CANONICAL_FIELD_MANIFEST.result
->;
+export type SamplingConstraints = {
+  temperature?: number;
+  top_k?: number;
+  allowedLanguages?: readonly string[];
+};
+
+export type CorrelationIds = {
+  request_reference: string;
+  trace_id: string;
+};
+
+/** §5.3 canonical request — typed fields keyed by amended identifiers. */
+export type CanonicalRequest = {
+  parts: readonly CanonicalMessagePart[];
+  formatDirective: OutputFormatDirective;
+  samplingConstraints: SamplingConstraints;
+  maxOutputTokens: number;
+  stopConditions: readonly string[];
+  toolDeclarations: readonly unknown[];
+  stream: boolean;
+  deadline: number | null;
+  correlationIds: CorrelationIds;
+};
+
+export type UsageCounters = {
+  input: number;
+  output: number;
+  cached: number;
+};
+
+export type ProviderModelUsed = {
+  provider: string;
+  model: string;
+};
+
+export type TimingBreakdown = {
+  queue_ms: number;
+  provider_ms: number;
+  total_ms: number;
+};
+
+/** Final content may be free text or structured object. */
+export type FinalContent = {
+  type?: string;
+  text?: string;
+  [key: string]: unknown;
+};
+
+/** §5.3 canonical result — typed fields keyed by amended identifiers. */
+export type CanonicalResult = {
+  finalContent: FinalContent;
+  usage: UsageCounters;
+  providerModel: ProviderModelUsed;
+  finishReason: string;
+  providerRequestId: string;
+  timing: TimingBreakdown;
+};
 
 /** Closed, exhaustive chunk-kind set (§5.3). */
 export const CANONICAL_CHUNK_KINDS = [
@@ -71,20 +134,25 @@ export const CANONICAL_CHUNK_KINDS = [
 
 export type CanonicalChunkKind = (typeof CANONICAL_CHUNK_KINDS)[number];
 
-type StreamChunkBase = ManifestRecord<
-  typeof CANONICAL_FIELD_MANIFEST.streamChunk
->;
-
 /** §5.3 canonical stream chunk — `kind` is the closed chunk-kind union. */
-export type CanonicalStreamChunk = Omit<StreamChunkBase, "kind"> & {
+export type CanonicalStreamChunk = {
+  sequenceNumber: number;
   kind: CanonicalChunkKind;
+  payload: unknown;
+  terminal: boolean;
 };
 
-type ErrorBase = ManifestRecord<typeof CANONICAL_FIELD_MANIFEST.error>;
+export type ProviderNativeDiagnostic = {
+  code: string;
+  message: string;
+};
 
-/** §5.3 canonical error — `taxonomy code` binds to A2's frozen set. */
-export type CanonicalError = Omit<ErrorBase, "taxonomy code"> & {
-  "taxonomy code": TaxonomyCode;
+/** §5.3 canonical error — `taxonomyCode` binds to A2's frozen set. */
+export type CanonicalError = {
+  taxonomyCode: TaxonomyCode;
+  retryability: boolean;
+  providerNative: ProviderNativeDiagnostic;
+  consumedBudget: boolean;
 };
 
 export function assertNoProviderShapedFieldNames(
@@ -104,14 +172,14 @@ export function isCanonicalChunkKind(
 }
 
 export function assertExactlyOneTerminal(
-  sequence: readonly Pick<CanonicalStreamChunk, "terminal flag">[],
+  sequence: readonly Pick<CanonicalStreamChunk, "terminal">[],
 ): void {
   if (sequence.length === 0) {
     throw new Error("Chunk sequence must not be empty");
   }
 
   const terminalCount = sequence.filter(
-    (chunk) => chunk["terminal flag"] === true,
+    (chunk) => chunk.terminal === true,
   ).length;
 
   if (terminalCount !== 1) {
@@ -134,11 +202,30 @@ function pickManifestKeys(
   return out;
 }
 
+/**
+ * Fail closed: reject provider-shaped and unknown keys on codec I/O.
+ * Silent stripping would hide upstream drift (§5.3 / T-A3-05, T-A3-08).
+ */
+function assertOnlyManifestKeys(
+  value: Record<string, unknown>,
+  manifestKeys: readonly string[],
+): void {
+  const allowed = new Set<string>(manifestKeys);
+  const present = Object.keys(value);
+  assertNoProviderShapedFieldNames(present);
+  for (const key of present) {
+    if (!allowed.has(key)) {
+      throw new Error(`Unknown canonical field rejected: ${key}`);
+    }
+  }
+}
+
 function encodeFromManifest(
   value: Record<string, unknown>,
   manifestKeys: readonly string[],
 ): string {
   assertNoProviderShapedFieldNames(manifestKeys);
+  assertOnlyManifestKeys(value, manifestKeys);
   return JSON.stringify(pickManifestKeys(value, manifestKeys));
 }
 
@@ -148,6 +235,7 @@ function decodeFromManifest<T>(
   validate?: (decoded: Record<string, unknown>) => T,
 ): T {
   const parsed = JSON.parse(wire) as Record<string, unknown>;
+  assertOnlyManifestKeys(parsed, manifestKeys);
   const decoded = pickManifestKeys(parsed, manifestKeys);
   return validate ? validate(decoded) : (decoded as T);
 }
@@ -175,7 +263,7 @@ export function decodeCanonicalChunk(wire: string): CanonicalStreamChunk {
     wire,
     CANONICAL_FIELD_MANIFEST.streamChunk,
     (decoded) => {
-      const kind = decoded["kind"];
+      const kind = decoded.kind;
       if (typeof kind !== "string" || !isCanonicalChunkKind(kind)) {
         throw new Error(`Unrecognised chunk kind: ${kind}`);
       }
@@ -195,9 +283,7 @@ export function decodeCanonicalResult(wire: string): CanonicalResult {
   return decodeFromManifest(wire, CANONICAL_FIELD_MANIFEST.result);
 }
 
-export function encodeCanonicalError(
-  value: CanonicalError | ErrorBase,
-): string {
+export function encodeCanonicalError(value: CanonicalError): string {
   return encodeFromManifest(
     value as Record<string, unknown>,
     CANONICAL_FIELD_MANIFEST.error,
@@ -209,7 +295,7 @@ export function decodeCanonicalError(wire: string): CanonicalError {
     wire,
     CANONICAL_FIELD_MANIFEST.error,
     (decoded) => {
-      const code = decoded["taxonomy code"];
+      const code = decoded.taxonomyCode;
       if (typeof code !== "string" || !isTaxonomyCode(code)) {
         throw new Error(`Unrecognised taxonomy code: ${code}`);
       }

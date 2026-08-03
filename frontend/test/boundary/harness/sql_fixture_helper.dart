@@ -19,15 +19,28 @@ class SqlFixtureHelper {
   final String database;
   final String password;
 
-  Future<void> execute(String sql) async {
-    final result = await Process.run(
-      'psql',
-      ['-h', host, '-p', '$port', '-U', user, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
-      environment: {'PGPASSWORD': password},
-    );
+  static const _maxExecuteAttempts = 5;
+  static const _executeRetryDelay = Duration(milliseconds: 200);
 
-    if (result.exitCode != 0) {
-      throw StateError('psql failed (${result.exitCode}): ${result.stderr}\nSQL: $sql');
+  Future<void> execute(String sql) async {
+    for (var attempt = 1; attempt <= _maxExecuteAttempts; attempt++) {
+      final result = await Process.run(
+        'psql',
+        ['-h', host, '-p', '$port', '-U', user, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
+        environment: {'PGPASSWORD': password},
+      );
+
+      if (result.exitCode == 0) {
+        return;
+      }
+
+      final stderr = '${result.stderr}';
+      final retryable = stderr.contains('tuple concurrently updated') || stderr.contains('deadlock detected');
+      if (!retryable || attempt == _maxExecuteAttempts) {
+        throw StateError('psql failed (${result.exitCode}): $stderr\nSQL: $sql');
+      }
+
+      await Future<void>.delayed(_executeRetryDelay * attempt);
     }
   }
 
@@ -40,6 +53,8 @@ class SqlFixtureHelper {
     }
 
     await execute(r'''
+SELECT pg_advisory_lock(8675309);
+
 CREATE OR REPLACE FUNCTION public.local_dev_pre_request()
 RETURNS void
 LANGUAGE sql
@@ -51,9 +66,7 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.local_dev_pre_request() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.local_dev_pre_request() TO authenticator, anon, authenticated, service_role;
-''');
 
-    await execute(r'''
 DO $do$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
@@ -65,6 +78,196 @@ BEGIN
   END IF;
 END
 $do$;
+
+SELECT pg_advisory_unlock(8675309);
+''');
+  }
+
+  /// Polls until [branchId] is active under [organizationId] (JWT claims may lag).
+  Future<void> waitForActiveBranch({
+    required String branchId,
+    required String organizationId,
+    int attempts = 40,
+  }) async {
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      try {
+        await execute('''
+DO \$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = '$branchId'::uuid
+      AND b.organization_id = '$organizationId'::uuid
+      AND b.is_active = true
+      AND b.is_deleted = false
+  ) THEN
+    RAISE EXCEPTION 'branch not ready';
+  END IF;
+END \$\$;
+''');
+        return;
+      } on StateError {
+        if (attempt == attempts - 1) {
+          rethrow;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 200 * (attempt + 1)));
+      }
+    }
+  }
+
+  /// Verifies [dev_reset] left no org/branch rows (shared DB isolation guard).
+  Future<void> assertInstallationClean() async {
+    await execute(r'''
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.organizations) THEN
+    RAISE EXCEPTION 'organizations remain after dev_reset';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.branches) THEN
+    RAISE EXCEPTION 'branches remain after dev_reset';
+  END IF;
+END $$;
+''');
+  }
+
+  /// FK-safe SQL purge when [dev_reset_clinic_installation] is blocked or incomplete.
+  ///
+  /// Mirrors [boundary_force_db_reset.sql] plus patient health records. Keeps bootstrap
+  /// admin and global role permission seeds intact.
+  Future<void> forcePurgeInstallation() async {
+    await execute(r'''
+SELECT pg_advisory_lock(8675310);
+
+DO $$
+BEGIN
+  IF to_regclass('public.payments') IS NOT NULL THEN
+    DELETE FROM public.payments WHERE true;
+  END IF;
+  IF to_regclass('public.invoice_items') IS NOT NULL THEN
+    DELETE FROM public.invoice_items WHERE true;
+  END IF;
+  IF to_regclass('public.invoices') IS NOT NULL THEN
+    DELETE FROM public.invoices WHERE true;
+  END IF;
+  IF to_regclass('public.invoice_number_sequences') IS NOT NULL THEN
+    DELETE FROM public.invoice_number_sequences WHERE true;
+  END IF;
+  IF to_regclass('public.insurance_providers') IS NOT NULL THEN
+    DELETE FROM public.insurance_providers WHERE true;
+  END IF;
+  IF to_regclass('public.organization_billing_settings') IS NOT NULL THEN
+    DELETE FROM public.organization_billing_settings WHERE true;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.visit_attachments') IS NOT NULL THEN
+    DELETE FROM public.visit_attachments WHERE true;
+  END IF;
+  IF to_regclass('public.visit_investigations') IS NOT NULL THEN
+    DELETE FROM public.visit_investigations WHERE true;
+  END IF;
+  IF to_regclass('public.visit_vital_signs') IS NOT NULL THEN
+    DELETE FROM public.visit_vital_signs WHERE true;
+  END IF;
+  IF to_regclass('public.visit_clinical_notes') IS NOT NULL THEN
+    DELETE FROM public.visit_clinical_notes WHERE true;
+  END IF;
+  IF to_regclass('public.soap_notes') IS NOT NULL THEN
+    DELETE FROM public.soap_notes WHERE true;
+  END IF;
+  IF to_regclass('public.treatment_plans') IS NOT NULL THEN
+    DELETE FROM public.treatment_plans WHERE true;
+  END IF;
+  IF to_regclass('public.visits') IS NOT NULL THEN
+    DELETE FROM public.visits WHERE true;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.shift_assignments') IS NOT NULL THEN
+    DELETE FROM public.shift_assignments WHERE true;
+  END IF;
+  IF to_regclass('public.shifts') IS NOT NULL THEN
+    DELETE FROM public.shifts WHERE true;
+  END IF;
+END $$;
+
+DELETE FROM public.appointments WHERE true;
+DELETE FROM public.audit_log WHERE true;
+
+DO $$
+BEGIN
+  IF to_regclass('public.patient_allergies') IS NOT NULL THEN
+    DELETE FROM public.patient_allergies WHERE true;
+  END IF;
+  IF to_regclass('public.patient_medications') IS NOT NULL THEN
+    DELETE FROM public.patient_medications WHERE true;
+  END IF;
+  IF to_regclass('public.patient_chronic_conditions') IS NOT NULL THEN
+    DELETE FROM public.patient_chronic_conditions WHERE true;
+  END IF;
+END $$;
+
+DELETE FROM public.patients WHERE true;
+
+DO $$
+BEGIN
+  IF to_regclass('public.patient_mrn_seq') IS NOT NULL THEN
+    PERFORM setval('public.patient_mrn_seq', 1, false);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.app_settings') IS NOT NULL THEN
+    DELETE FROM ai_internal.app_settings WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys WHERE true;
+  END IF;
+END $$;
+
+DELETE FROM public.staff_branch_assignments sba
+WHERE sba.staff_member_id IN (
+  SELECT id FROM public.staff_members WHERE NOT is_bootstrap_admin
+);
+
+DELETE FROM public.staff_members WHERE NOT is_bootstrap_admin;
+DELETE FROM public.audit_log WHERE true;
+
+DELETE FROM auth.users au
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.staff_members sm WHERE sm.auth_user_id = au.id
+);
+
+DELETE FROM public.staff_branch_assignments WHERE true;
+DELETE FROM public.app_settings WHERE true;
+DELETE FROM public.subscription_cache WHERE true;
+
+DO $$
+BEGIN
+  IF to_regclass('public.service_branches') IS NOT NULL THEN
+    DELETE FROM public.service_branches WHERE true;
+  END IF;
+  IF to_regclass('public.services') IS NOT NULL THEN
+    DELETE FROM public.services WHERE true;
+  END IF;
+  IF to_regclass('public.diagnosis_codes') IS NOT NULL THEN
+    DELETE FROM public.diagnosis_codes WHERE true;
+  END IF;
+END $$;
+
+DELETE FROM public.branches WHERE true;
+DELETE FROM public.organizations WHERE true;
+
+SELECT pg_advisory_unlock(8675310);
 ''');
   }
 
@@ -151,7 +354,7 @@ ON CONFLICT (id) DO NOTHING;
     final patientId = _deterministicUuid('a2', '${clinic.suffix}_patient');
     await execute('''
 INSERT INTO public.patients (
-  id, branch_id, organization_id, full_name, phone, created_by, updated_by
+  id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
 )
 VALUES (
   '$patientId'::uuid,
@@ -159,6 +362,7 @@ VALUES (
   '${clinic.organizationId}'::uuid,
   '$fullName',
   '$phoneDigits',
+  auth_internal.assign_patient_mrn(),
   '$_bootstrapUserId'::uuid,
   '$_bootstrapUserId'::uuid
 )

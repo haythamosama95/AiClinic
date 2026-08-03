@@ -55,9 +55,11 @@ class PatientListFilters {
   int get offset => (page - 1) * pageSize;
 
   bool get hasActiveFilters =>
-      (branchId != null && branchId!.isNotEmpty) || lastVisitFilter != PatientLastVisitFilter.any;
+      (branchId != null && branchId!.isNotEmpty) ||
+      lastVisitFilter != PatientLastVisitFilter.any;
 
-  bool get hasSearchOrFilters => searchText.trim().isNotEmpty || hasActiveFilters;
+  bool get hasSearchOrFilters =>
+      searchText.trim().isNotEmpty || hasActiveFilters;
 
   int get activeFilterCount {
     var count = 0;
@@ -80,7 +82,9 @@ class PatientListFilters {
   }) {
     return PatientListFilters(
       searchText: searchText ?? this.searchText,
-      branchId: identical(branchId, _sentinel) ? this.branchId : branchId as String?,
+      branchId: identical(branchId, _sentinel)
+          ? this.branchId
+          : branchId as String?,
       lastVisitFilter: lastVisitFilter ?? this.lastVisitFilter,
       sortField: sortField ?? this.sortField,
       page: page ?? this.page,
@@ -106,7 +110,10 @@ class PatientTableRow {
 
   int? get age => PatientPresentationFormatting.ageYears(item.dateOfBirth);
 
-  String get ageGenderLabel => PatientPresentationFormatting.ageGenderLabel(age: age, gender: item.gender);
+  String get ageGenderLabel => PatientPresentationFormatting.ageGenderLabel(
+    age: age,
+    gender: item.gender,
+  );
 
   static List<PatientTableRow> fromItems(List<PatientListItem> items) {
     return items.map((item) => PatientTableRow(item: item)).toList();

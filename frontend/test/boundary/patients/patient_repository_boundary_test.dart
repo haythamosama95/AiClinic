@@ -154,10 +154,10 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'pat_create_min');
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
-      final id = await ctx.patients.createPatient(
+      final result = await ctx.patients.createPatient(
         CreatePatientInput(activeBranchId: clinic.branchId, fullName: 'New Patient', phone: clinic.phone('41')),
       );
-      expect(id, isNotEmpty);
+      expect(result.patientId, isNotEmpty);
     });
 
     test('patients.createPatient.DUPLICATE_WARNING', () async {
@@ -180,7 +180,7 @@ void main() {
     test('patients.createPatient.acknowledgeDuplicate', () async {
       const ManifestScenario('patients.createPatient.acknowledgeDuplicate');
       final clinic = await ctx.ensureClinic(label: 'pat_ack_dup');
-      await ctx.signInAdmin();
+      await ctx.signInAdminForClinic(clinic);
       await ctx.patients.createPatient(
         CreatePatientInput(
           activeBranchId: clinic.branchId,
@@ -192,7 +192,7 @@ void main() {
       await ctx.signOut();
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
-      final id = await ctx.patients.createPatient(
+      final result = await ctx.patients.createPatient(
         CreatePatientInput(
           activeBranchId: clinic.branchId,
           fullName: 'Ack Dup',
@@ -201,7 +201,7 @@ void main() {
           acknowledgeDuplicate: true,
         ),
       );
-      expect(id, isNotEmpty);
+      expect(result.patientId, isNotEmpty);
     });
 
     test('patients.updatePatient.STALE_PATIENT', () async {

@@ -1,0 +1,10 @@
+{
+  "case_id": "visit_summary.happy_path",
+  "system_instruction_must_contain": [
+    "advisory only",
+    "clinical documentation assistant"
+  ],
+  "output_must_contain": ["headache", "advisory"],
+  "output_min_length": 40,
+  "output_mode": "prose"
+}

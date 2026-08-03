@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "policy_id": "platform-default",
+  "policy_version": 1,
+  "defaults": {
+    "cost_class": "standard",
+    "max_parallel_attempts": 1
+  },
+  "rules": [
+    {
+      "rule_id": "platform-default-fallback",
+      "match": {},
+      "requires": {
+        "structured_output": false,
+        "min_context_window": 0,
+        "languages": []
+      },
+      "targets": [
+        {
+          "provider_id": "deepseek",
+          "model_id": "deepseek-chat",
+          "features": {
+            "structured_output": true,
+            "min_context_window": 128000,
+            "languages": ["en"],
+            "latency_class": "interactive",
+            "cost_class": "standard"
+          },
+          "max_attempts": 2,
+          "timeout_ms": 30000
+        },
+        {
+          "provider_id": "gemini",
+          "model_id": "gemini-1.5-flash",
+          "features": {
+            "structured_output": true,
+            "min_context_window": 128000,
+            "languages": ["en"],
+            "latency_class": "interactive",
+            "cost_class": "standard"
+          },
+          "max_attempts": 2,
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "overrides": []
+}

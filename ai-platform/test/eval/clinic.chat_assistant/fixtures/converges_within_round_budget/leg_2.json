@@ -1,0 +1,7 @@
+{
+  "leg_id": "leg_2",
+  "assistant_turn": {
+    "kind": "model",
+    "text": "The patient reports a persistent headache for three days."
+  }
+}

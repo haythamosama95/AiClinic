@@ -90,8 +90,7 @@ Phases, replacing the template's:
 4. **Verification** — a final task running the whole suite, including every prior slice's suite
    (delivery plan §3.10).
 5. **Documentation** — always present. One task for `specs/<NNN>-<name>/quickstart.md`, filled per
-   `.specify/templates/ai-platform-quickstart-template.md`: **Architecture context** (§1 — delivery-plan
-   row, cited arch sections, spec aim, plan scope), what was implemented, files to review,
+   `.specify/templates/ai-platform-quickstart-template.md`: what was implemented, files to review,
    slice-only test commands (`npx vitest run` for this slice's test files — not full `npm test`),
    how to inspect the changes, and manual validation only when the slice exposes behaviour beyond CI.
    The quickstart task must state slice-only scope explicitly: no prior-slice files in the review

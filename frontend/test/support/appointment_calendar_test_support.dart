@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'appointment_rpc_test_client.dart';

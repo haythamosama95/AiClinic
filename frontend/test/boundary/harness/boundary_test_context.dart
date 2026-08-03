@@ -7,13 +7,14 @@ import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/features/settings/data/organization_repository.dart';
-import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/organization_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/role_permissions_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
 
 import 'fixture_factory.dart';
+import 'boundary_session.dart';
 import 'live_supabase_harness.dart';
 import 'reset.dart';
 import 'sql_fixture_helper.dart';
@@ -61,6 +62,7 @@ class BoundaryTestContext {
 
   /// Force-clears installation state. Per-test [setUp] calls this; clears cached clinic.
   Future<void> resetInstallation() async {
+    await signOut();
     await devResetAsBootstrapAdmin(client);
     clinic = null;
   }
@@ -69,9 +71,6 @@ class BoundaryTestContext {
     final requested = label;
     if (clinic != null && (requested == null || clinic!.suffix == requested)) {
       return clinic!;
-    }
-    if (clinic != null) {
-      await devResetAsBootstrapAdmin(client);
     }
     clinic = await fixtures.bootstrapOnly(label: requested);
     return clinic!;
@@ -82,10 +81,20 @@ class BoundaryTestContext {
     await auth.refreshSession();
   }
 
+  /// Signs in bootstrap admin and waits until JWT org/branch claims match [clinic].
+  Future<void> signInAdminForClinic(BoundaryClinicFixture clinic) async {
+    await signInAdmin();
+    await boundaryRefreshSessionForClinic(
+      auth,
+      clinic,
+      username: 'admin',
+      password: 'admin',
+    );
+  }
+
   Future<void> signInStaff(String username, String password) async {
     await auth.signOut();
     await auth.signIn(username: username, password: password);
-    await auth.refreshSession();
   }
 
   Future<void> signOut() => auth.signOut();

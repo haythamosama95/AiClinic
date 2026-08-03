@@ -71,4 +71,4 @@ Rules would be stored in a future `workflow_rules` table and managed via a setti
 - A JSON configuration for the action (templates, target fields)
 - Whether the rule applies to a specific branch or all branches
 
-See `specs/future/offline-cache-strategy.md` and V3 roadmap for when automation may be scheduled.
+See `docs/specs/future/offline-cache-strategy.md` and V3 roadmap for when automation may be scheduled.

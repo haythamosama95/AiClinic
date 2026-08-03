@@ -122,18 +122,21 @@ All seven named tests from the spec's `### Test plan` live in the **Contract tes
 | `T-A3-02` round-trip canonical stream chunk | Contract | `ai-platform/test/canonical.test.ts` | `encodeCanonicalChunk` / `decodeCanonicalChunk` |
 | `T-A3-03` round-trip canonical result | Contract | `ai-platform/test/canonical.test.ts` | `encodeCanonicalResult` / `decodeCanonicalResult` |
 | `T-A3-04` round-trip canonical error | Contract | `ai-platform/test/canonical.test.ts` | `encodeCanonicalError` / `decodeCanonicalError` (taxonomy code validated against A2's `TaxonomyCode`) |
-| `T-A3-05` provider-shaped field name rejected | Contract | `ai-platform/test/canonical.test.ts` | The guard reads the manifest keys and fails if any equals a known provider-shaped token (`messages`, `completion`, `n`, `frequency_penalty`, `top_p`, `logprobs`, …) — FR-009 / SC-002 |
+| `T-A3-05` provider-shaped field name rejected | Contract | `ai-platform/test/canonical.test.ts` | The guard reads the manifest keys and fails if any equals a known provider-shaped token (`messages`, `completion`, `n`, `frequency_penalty`, `top_p`, `logprobs`, …); codec encode/decode also reject a provider-shaped extra key on the value/wire — FR-009 / SC-002 |
 | `T-A3-06` chunk kinds exhaustive | Contract | `ai-platform/test/canonical.test.ts` | Asserts the closed set is exactly `{text_delta, partial_structured, usage, provider_note}` and rejects any other kind — FR-005 / SC-003 |
 | `T-A3-07` terminal flag exactly once per sequence | Contract | `ai-platform/test/canonical.test.ts` | Asserts zero-terminal and multiple-terminal sequences are rejected; exactly one terminal flag is required — FR-004 / SC-004 / §5.5 rule 4 |
+| `T-A3-08` unknown keys rejected on decode | Contract | `ai-platform/test/canonical.test.ts` | Decode/encode reject unknown non-manifest keys fail-closed (no silent strip) on request, chunk, result, and error |
+| `T-A3-09` typed field schema | Contract | `ai-platform/test/canonical.test.ts` | Decoded request/result/error expose typed field access; `CANONICAL_MESSAGE_ROLES` is the closed §5.3 role set |
+| `T-A3-10` §5.3 field identifiers | Contract | `ai-platform/test/canonical.test.ts` | Manifest equals amended §5.3 Field identifiers; forbidden prose contents keys are absent |
 
-`T-A3-05` is a spy-style assertion on an *absence*: it feeds a deliberately provider-shaped key into the manifest and proves the contract test rejects it, mirroring how §3.10 treats "the assertion is on the number or absence of calls". `T-A3-07`'s boundary inputs (zero-terminal, multiple-terminal) are constructed in-test from chunk sequences, since A3 has no runtime stream to observe.
+`T-A3-05` is a spy-style assertion on an *absence*: it feeds a deliberately provider-shaped key into the manifest and proves the contract test rejects it, and additionally proves the codec rejects provider-shaped extras on the wire rather than stripping them — mirroring how §3.10 treats "the assertion is on the number or absence of calls". `T-A3-07`'s boundary inputs (zero-terminal, multiple-terminal) are constructed in-test from chunk sequences, since A3 has no runtime stream to observe.
 
 ## Sequencing
 
 Tests are written first or alongside the module; no implementation lands before its test.
 
 1. **`ai-platform/src/contracts/canonical.ts` skeleton + manifest.** The field-name manifest enumerating each canonical element's §5.3 keys is written first, with the `T-A3-05` guard test exercising it before the TS types are derived. (FR-002, FR-009)
-2. **Types derived from the manifest.** The four canonical element interfaces are derived from the manifest so a renamed field fails the guard test at compile time. (FR-001, FR-003..FR-007)
+2. **Types derived from the manifest.** The four canonical element interfaces use real per-field TypeScript types keyed by amended §5.3 Field identifiers (not contents prose). (FR-001, FR-003..FR-007; T-A3-09, T-A3-10)
 3. **Chunk-kind closed set + terminal-flag invariant helpers.** `T-A3-06` and `T-A3-07` are written next to pin the closed kind set and the exactly-one-terminal rule. (FR-004, FR-005, SC-003, SC-004)
 4. **Owned JSON codec.** The thin manifest-driven encoder/decoder is added, then `T-A3-01..04` exercise it as round-trip tests asserting §5.3 key names survive byte-for-byte with no extra keys. (FR-008, SC-001)
 5. **Full suite green.** `npm test` from `ai-platform/` runs A1, A2, and A3 suites; A1/A2 regressions are hard fails. (delivery plan §3.10)

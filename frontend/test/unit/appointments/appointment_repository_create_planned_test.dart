@@ -65,6 +65,20 @@ void main() {
       expect(client.lastParams?.containsKey('p_duration_minutes'), isFalse);
     });
 
+    test('stupid usage: blank branch id throws INVALID_INPUT before RPC', () async {
+      expect(
+        () => repository.createAppointment(
+          branchId: '  ',
+          patientId: '11111111-1111-4111-8111-111111111111',
+          doctorId: '22222222-2222-4222-8222-222222222222',
+          type: AppointmentType.planned,
+          startTime: DateTime.utc(2026, 6, 15, 10),
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
     test('stupid usage: blank patient id throws INVALID_INPUT before RPC', () async {
       expect(
         () => repository.createAppointment(
@@ -165,6 +179,21 @@ void main() {
         ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'PATIENT_ALREADY_BOOKED_SAME_DAY')),
       );
+    });
+
+    test('edge case: notes exactly 2000 chars accepted', () async {
+      final notes = 'x' * 2000;
+
+      await repository.createAppointment(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        patientId: '11111111-1111-4111-8111-111111111111',
+        doctorId: '22222222-2222-4222-8222-222222222222',
+        type: AppointmentType.planned,
+        startTime: DateTime.utc(2026, 6, 15, 10),
+        notes: notes,
+      );
+
+      expect(client.lastParams?['p_notes'], notes);
     });
 
     test('stupid usage: notes over 2000 chars rejected locally', () async {

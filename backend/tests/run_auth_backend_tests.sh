@@ -34,6 +34,8 @@ sql_tests=(
   auth_rbac_extended.sql
   owner_role_migration.sql
   dev_reset_clinic_installation.sql
+  ai_keystore_rls.sql
+  ai_token_issuer.sql
 )
 
 for f in "${sql_tests[@]}"; do

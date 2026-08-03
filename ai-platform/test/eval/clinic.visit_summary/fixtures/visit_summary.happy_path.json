@@ -1,0 +1,5 @@
+{
+  "case_id": "visit_summary.happy_path",
+  "d5_fixture_subdir": "usage",
+  "provider_response_file": "visit-summary-provider-response.json"
+}

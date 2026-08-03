@@ -82,7 +82,7 @@ Copy `supabase_anon_key` from the same `.env` file the stack uses—do not inven
 3. `lib/core/config/deployment-profile.json` (when running from `frontend/`)
 4. `frontend/lib/core/config/deployment-profile.json` (when running from repo root)
 
-See the [deployment profile contract](../../specs/001-project-scaffolding/contracts/deployment-profile.md) for field rules.
+See the [deployment profile contract](../specs/001-project-scaffolding/contracts/deployment-profile.md) for field rules.
 
 ## 4. Run the Flutter app
 

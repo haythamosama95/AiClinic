@@ -119,10 +119,10 @@ void main() {
       await ctx.signOut();
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
-      final id = await ctx.patients.createPatient(
+      final result = await ctx.patients.createPatient(
         CreatePatientInput(activeBranchId: clinic.branchId, fullName: 'Restored Create', phone: clinic.phone('71')),
       );
-      expect(id, isNotEmpty);
+      expect(result.patientId, isNotEmpty);
     });
 
     test('patients.revoke.view.checkDuplicates.FORBIDDEN', () async {

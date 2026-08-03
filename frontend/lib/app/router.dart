@@ -3,30 +3,44 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
+import 'package:ai_clinic/app/presentation/shell_page_builder.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
-import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
-import 'package:ai_clinic/features/patients/presentation/navigation/patient_container_transform_transition.dart';
-import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
-import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
-import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
-import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
-import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
-import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
-import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
-import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
-import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
-import 'package:ai_clinic/core/ui/demo/theme_showcase_page.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/pages/clinic_management_page.dart';
+import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/app/navigation/login_query_params.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
+import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
+import 'package:ai_clinic/core/ui/theme/theme_transition_controller.dart';
+import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
+import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
+import 'package:ai_clinic/features/billing/presentation/navigation/visit_billing_route_extra.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_review_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
+import 'package:ai_clinic/features/visits/presentation/navigation/visit_route_extra.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+
+String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -38,7 +52,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.listen<AuthSessionState>(authSessionProvider, (_, _) {
     refreshSignal.value++;
   });
-  ref.listen<SetupUiState>(setupNotifierProvider, (_, _) {
+  ref.listen<ClinicSetupState>(clinicSetupProvider, (_, _) {
     refreshSignal.value++;
   });
 
@@ -47,163 +61,180 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = ref.read(startupSessionProvider.notifier);
 
   return GoRouter(
-    initialLocation: AppRoutes.startupCheck,
+    navigatorKey: ref.read(rootNavigatorKeyProvider),
+    initialLocation: AppRoutes.login,
     refreshListenable: refreshSignal,
     routes: [
-      // Unauthenticated / startup routes
-      GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => const StartupEntryPage()),
-      GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.protectedBlocked, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(
-        path: AppRoutes.protectedPlaceholder,
-        builder: (context, state) => uiPendingPlaceholder('Startup', state),
-      ),
       GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
-      GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
-      GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
-      GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-      GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-
-      // Authenticated shell — shared navigation wraps all feature routes
+      // LoginPage should read [LoginQueryParams.forgotPasswordQueryKey] to show forgot-password UI.
+      GoRoute(
+        path: AppRoutes.forgotPassword,
+        redirect: (context, state) => LoginQueryParams.loginWithForgotPasswordIntent(),
+      ),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
+          GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(
+            path: AppRoutes.protectedBlocked,
+            builder: (context, state) => uiPendingPlaceholder('Startup', state),
+          ),
+          GoRoute(
+            path: AppRoutes.protectedPlaceholder,
+            builder: (context, state) => uiPendingPlaceholder('Startup', state),
+          ),
+          GoRoute(path: AppRoutes.bootstrap, redirect: (context, state) => AppRoutes.home),
+          GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(
+            path: AppRoutes.staffPasswordReset,
+            builder: (context, state) => uiPendingPlaceholder('Setup', state),
+          ),
           GoRoute(
             path: AppRoutes.foundationDemo,
-            builder: (context, state) => const ThemeShowcasePage(embeddedInShell: true),
+            builder: (context, state) => DesignSystemPage(initialSection: ShellNavConfig.devSectionForUri(state.uri)),
           ),
-          GoRoute(path: AppRoutes.home, builder: (context, state) => const DashboardPage()),
+          GoRoute(
+            path: AppRoutes.aiFeatureHost,
+            builder: (context, state) => const Scaffold(
+              body: Center(
+                child: Text('AI feature host route is registered for CP3 composition.'),
+              ),
+            ),
+          ),
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
+          GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.reports, builder: shellPlaceholderPage),
 
           // Patient management
           GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientsPage()),
-          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
+          GoRoute(path: AppRoutes.patientsNew, builder: shellPlaceholderPage),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId',
-            pageBuilder: (context, state) {
-              final patientId = state.pathParameters['patientId']!;
-              final routeExtra = PatientDetailRouteExtra.fromExtra(state.extra);
-              return PatientDetailContainerTransformPage(
-                state: state,
-                sourceRect: routeExtra.sourceRect,
-                child: PatientDetailPage(patientId: patientId, preview: routeExtra.preview),
-              );
-            },
+            builder: (context, state) => PatientDetailPage(
+              patientId: state.pathParameters['patientId']!,
+              extra: PatientDetailRouteExtra.fromExtra(state.extra),
+            ),
           ),
-          GoRoute(
-            path: '${AppRoutes.patients}/:patientId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
-          ),
+          GoRoute(path: '${AppRoutes.patients}/:patientId/edit', builder: shellPlaceholderPage),
 
           // Appointments (V1-4)
-          GoRoute(
-            path: AppRoutes.appointments,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: AppRoutes.appointmentsBook,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const AppointmentQueuePage()),
+          GoRoute(path: AppRoutes.appointments, redirect: (_, _) => AppRoutes.appointmentsCalendar),
+          GoRoute(path: AppRoutes.appointmentsBook, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const QueuePage()),
           GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(
             path: '${AppRoutes.appointments}/:appointmentId',
-            builder: (context, state) {
-              final appointmentId = state.pathParameters['appointmentId']!;
-              final routeExtra = AppointmentDetailRouteExtra.fromExtra(state.extra);
-              return AppointmentDetailPage(appointmentId: appointmentId, preview: routeExtra.preview);
-            },
+            builder: (context, state) => AppointmentDetailPage(
+              appointmentId: state.pathParameters['appointmentId']!,
+              extra: AppointmentDetailRouteExtra.fromExtra(state.extra),
+            ),
           ),
-          GoRoute(
-            path: '${AppRoutes.appointments}/schedule/:doctorId',
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
+          GoRoute(path: '${AppRoutes.appointments}/schedule/:doctorId', builder: shellPlaceholderPage),
 
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: (context, state) {
-              final visitId = state.pathParameters['visitId'];
-              final startInEditMode = state.uri.queryParameters['edit'] == '1';
-              return VisitDocumentationPage(visitId: visitId, startInEditMode: startInEditMode);
-            },
+            builder: (context, state) => VisitDocumentPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitRouteExtra.fromExtra(state.extra),
+              startInEditMode: state.uri.queryParameters['edit'] == '1',
+            ),
           ),
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
-            builder: (context, state) {
-              final visitId = state.pathParameters['visitId'];
-              return VisitDetailPage(visitId: visitId);
-            },
+            builder: (context, state) => VisitDetailPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitRouteExtra.fromExtra(state.extra),
+            ),
           ),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.billing, redirect: (context, state) => AppRoutes.billingInvoices),
+          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => InvoiceEditorPage(invoiceId: state.pathParameters['invoiceId']!),
+          ),
+          GoRoute(
+            path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceReviewSegment}',
+            builder: (context, state) => InvoiceReviewPage(invoiceId: state.pathParameters['invoiceId']!),
           ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => InvoiceDetailPage(
+              invoiceId: state.pathParameters['invoiceId']!,
+              extra: InvoiceDetailRouteExtra.fromExtra(state.extra),
+            ),
           ),
           GoRoute(
-            path: AppRoutes.billingInsuranceProviders,
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            path: '${AppRoutes.billing}/${AppRoutes.billingVisitSegment}/:visitId',
+            builder: (context, state) => VisitBillingPage(
+              visitId: state.pathParameters['visitId']!,
+              extra: VisitBillingRouteExtra.fromExtra(state.extra),
+            ),
           ),
-          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsServices, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsServicesNew, builder: shellPlaceholderPage),
+          GoRoute(path: '/settings/services/:serviceId/edit', builder: shellPlaceholderPage),
 
           // Shifts (V1-7)
-          GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
-          GoRoute(path: AppRoutes.shiftsNew, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
-          GoRoute(
-            path: '${AppRoutes.shifts}/:shiftId',
-            builder: (context, state) => uiPendingPlaceholder('Shifts', state),
-          ),
+          GoRoute(path: AppRoutes.shiftsCalendar, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.shiftsNew, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.shifts}/:shiftId', builder: shellPlaceholderPage),
+
+          // Clinic management (V1-2 admin hub)
+          GoRoute(path: AppRoutes.clinicManagement, builder: (context, state) => const ClinicManagementPage()),
 
           // Settings
-          GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
+          GoRoute(path: AppRoutes.settings, redirect: (_, _) => AppRoutes.settingsAppearance),
+          GoRoute(path: AppRoutes.settingsIdleTimeout, redirect: (_, _) => AppRoutes.settingsSecurity),
+          GoRoute(path: AppRoutes.settingsOrganization, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsBranches, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsBranchesNew, redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsBranches}/:branchId/edit', redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsStaff, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsStaffNew, redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsPermissions, redirect: _redirectToClinicManagement),
           GoRoute(
-            path: AppRoutes.settingsIdleTimeout,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            path: '${AppRoutes.settings}/:screenId',
+            redirect: (context, state) {
+              final screenId = state.pathParameters['screenId'];
+              if (screenId == null || SettingsScreens.byId(screenId) == null) {
+                return AppRoutes.settingsAppearance;
+              }
+              return null;
+            },
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: const ValueKey('settings-personal'),
+              child: SettingsPage(screenId: state.pathParameters['screenId']),
+            ),
           ),
-          GoRoute(
-            path: AppRoutes.settingsOrganization,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsBranches,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsBranchesNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsBranches}/:branchId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => uiPendingPlaceholder('Settings', state)),
-          GoRoute(
-            path: AppRoutes.settingsStaffNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsStaff}/:staffId',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
         ],
       ),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
       final auth = ref.read(authSessionProvider);
-      final setup = ref.read(setupNotifierProvider);
       final location = state.matchedLocation;
+
+      if (ShellDevNav.allowsOpenAccess(location)) {
+        return null;
+      }
+
+      if (!auth.isAuthenticated && ShellDevNav.isEnabled && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
+        if (ref.read(devClinicResetProvider).inProgress) {
+          return AppRoutes.login;
+        }
+        return null;
+      }
 
       if (shellDevSuppressAuthRedirect(ref, auth)) {
         return null;
@@ -212,7 +243,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       String? resolveAuthRedirect(String route) => AuthRouteGuard.resolveRedirect(
         location: route,
         auth: auth,
-        bootstrapStaffWizardInProgress: setup.isBootstrapWizardInProgress,
+        bootstrapStaffWizardInProgress: ref.read(isBootstrapSetupRequiredProvider),
       );
 
       final isProtectedFeatureRoute = AuthRouteGuard.requiresProtectedSetupComplete(location);
@@ -224,7 +255,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
-            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
+            return auth.isAuthenticated ? AppRoutes.home : AppRoutes.login;
           }
         }
 
@@ -235,7 +266,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       final startupRedirect = switch (session.currentView) {
-        StartupCurrentView.startupCheck => location == AppRoutes.startupCheck ? null : AppRoutes.startupCheck,
+        StartupCurrentView.startupCheck =>
+          // During the cold-start configuration window the session is unknown, so the
+          // authenticated shell must never render. Only the login route is left through;
+          // everything else (including /home) is sent to /login until config resolves.
+          location == AppRoutes.login ? null : AppRoutes.login,
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
@@ -249,8 +284,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             return null;
           }
 
-          // Legacy landing routes remain registered but are not reachable in normal flow.
-          if (location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo) {
+          if (location == AppRoutes.startupEntry) {
+            return AppRoutes.login;
+          }
+
+          if (location == AppRoutes.foundationDemo) {
             return AppRoutes.login;
           }
 
@@ -274,6 +312,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return adminRedirect;
         }
 
+        final clinicManagementRedirect = AuthRouteGuard.clinicManagementRouteRedirect(location: location, auth: auth);
+        if (clinicManagementRedirect != null) {
+          return clinicManagementRedirect;
+        }
+
         final patientRedirect = AuthRouteGuard.patientRouteRedirect(location: location, auth: auth);
         if (patientRedirect != null) {
           return patientRedirect;
@@ -292,6 +335,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final billingRedirect = AuthRouteGuard.billingRouteRedirect(location: location, auth: auth);
         if (billingRedirect != null) {
           return billingRedirect;
+        }
+
+        final serviceCatalogRedirect = AuthRouteGuard.serviceCatalogRouteRedirect(location: location, auth: auth);
+        if (serviceCatalogRedirect != null) {
+          return serviceCatalogRedirect;
         }
 
         final shiftRedirect = AuthRouteGuard.shiftRouteRedirect(location: location, auth: auth);

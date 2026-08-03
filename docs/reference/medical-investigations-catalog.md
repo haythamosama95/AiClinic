@@ -15,7 +15,7 @@ This catalog is a reference compilation, not medical advice. Test availability v
 - NCBI StatPearls — Overview on Ordering and Evaluation of Laboratory Tests
 - Fullscript — Most Commonly Ordered Lab Tests
 - Cleveland Clinic — Blood Tests Guide
-- AiClinic project seed data (specs/013-visits)
+- AiClinic project seed data (docs/specs/013-visits)
 
 ## Summary by Category
 

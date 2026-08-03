@@ -2,7 +2,12 @@ import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 
 /// Paginated patient list/search result from `search_patients`.
 class PatientSearchPage {
-  const PatientSearchPage({required this.items, required this.totalCount, required this.limit, required this.offset});
+  const PatientSearchPage({
+    required this.items,
+    required this.totalCount,
+    required this.limit,
+    required this.offset,
+  });
 
   final List<PatientListItem> items;
   final int totalCount;
@@ -11,7 +16,12 @@ class PatientSearchPage {
 
   factory PatientSearchPage.fromRpcData(Map<String, dynamic>? data) {
     if (data == null) {
-      return const PatientSearchPage(items: [], totalCount: 0, limit: 25, offset: 0);
+      return const PatientSearchPage(
+        items: [],
+        totalCount: 0,
+        limit: 25,
+        offset: 0,
+      );
     }
 
     final rawItems = data['items'];
@@ -19,7 +29,9 @@ class PatientSearchPage {
     if (rawItems is List) {
       for (final entry in rawItems) {
         if (entry is Map) {
-          final item = PatientListItem.fromRow(Map<String, dynamic>.from(entry));
+          final item = PatientListItem.fromRow(
+            Map<String, dynamic>.from(entry),
+          );
           if (item != null) {
             items.add(item);
           }

@@ -3,7 +3,7 @@
 - Purpose: Document the billing domain schema, invoice lifecycle, payment rules, and current frontend implementation status.
 - Read this when: implementing invoice UI, payment flows, insurance settings, or billing RPC integrations.
 - Canonical for: billing tables, RPC inventory, permission keys, and business rules for V1-6.
-- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `specs/007-billing/`.
+- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `docs/specs/007-billing/`.
 - Not covered here: V3-2 advanced billing (overdue automation, claim tracking), analytics revenue views.
 
 ---
@@ -15,9 +15,9 @@
 | Backend (migrations + RPCs) | **Complete** — `20260605180000_billing.sql` and US1–US8 follow-ups |
 | SQL tests | **Complete** — `run_billing_tests.sh` |
 | Frontend data/domain | **Complete** — `frontend/lib/features/billing/data/`, `domain/`, `application/` |
-| Frontend presentation | **Pending** — router routes render `uiPendingPlaceholder('Billing', ...)` |
+| Frontend presentation | **Complete** — `frontend/lib/features/billing/presentation/` |
 
-Operator walkthrough for backend verification: `specs/007-billing/quickstart.md`.
+Operator walkthrough for backend verification: `docs/specs/007-billing/quickstart.md`.
 
 ## Schema
 
@@ -101,13 +101,13 @@ frontend/lib/features/billing/
 
 No use-case layer exists yet (unlike `patients`/`settings`); repositories call RPCs directly and would be wired to a future presentation layer.
 
-No `presentation/` layer yet. Planned surfaces (from spec):
+No `presentation/` layer yet. Implemented surfaces:
 
-- Invoice editor and detail
-- Invoice list and patient billing tab
+- Invoice list, editor, and detail pages
 - Insurance provider management
 - Settings → Billing (partial payments toggle)
 - Visit detail **Create invoice** / **Open invoice** action
+- Patient profile billing section
 
 Routes exist in `app/router.dart` but render placeholders until V1-6 UI is built.
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -21,6 +23,18 @@ class _IdleHarnessRepository extends AuthRepositoryImpl {
 
   @override
   Session? get currentSession => null;
+}
+
+class _HangingSignOutRepository extends _IdleHarnessRepository {
+  _HangingSignOutRepository(this._signOutGate);
+
+  final Completer<void> _signOutGate;
+
+  @override
+  Future<void> signOut() async {
+    await _signOutGate.future;
+    signOutCalls++;
+  }
 }
 
 class _FakeClient implements SupabaseClient {
@@ -84,5 +98,37 @@ void main() {
 
     expect(container.read(authSessionProvider).failureMessage, isNull);
     expect(container.read(idleTimeoutServiceProvider).isEnabled, isFalse);
+  });
+
+  test('signOut clears session state before network sign-out completes', () async {
+    final signOutGate = Completer<void>();
+    late _HangingSignOutRepository repo;
+
+    final container = ProviderContainer(
+      overrides: [
+        authRepositoryProvider.overrideWith((ref) => repo = _HangingSignOutRepository(signOutGate)),
+        idleTimeoutServiceProvider.overrideWith((ref) {
+          final idle = IdleTimeoutService(idleDuration: const Duration(minutes: 15), onIdleTimeout: () {});
+          ref.onDispose(idle.dispose);
+          return idle;
+        }),
+        authSessionProvider.overrideWith(_HarnessAuthNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(authSessionProvider.notifier) as _HarnessAuthNotifier;
+    notifier.state = AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext());
+
+    final signOutFuture = notifier.signOut();
+
+    expect(container.read(authSessionProvider).isAuthenticated, isFalse);
+    expect(container.read(authSessionProvider).failureMessage, isNull);
+    expect(repo.signOutCalls, 0);
+
+    signOutGate.complete();
+    await signOutFuture;
+
+    expect(repo.signOutCalls, 1);
   });
 }

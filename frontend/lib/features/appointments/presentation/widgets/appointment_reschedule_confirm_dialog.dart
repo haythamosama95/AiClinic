@@ -1,17 +1,18 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:forui/forui.dart';
 import 'package:intl/intl.dart';
 
-import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Confirmed move times returned from [AppointmentRescheduleConfirmDialog].
 class AppointmentRescheduleConfirmResult {
-  const AppointmentRescheduleConfirmResult({required this.start, required this.end});
+  const AppointmentRescheduleConfirmResult({
+    required this.start,
+    required this.end,
+  });
 
   final DateTime start;
   final DateTime end;
@@ -25,8 +26,6 @@ class AppointmentRescheduleConfirmDialog extends StatefulWidget {
     required this.newEnd,
     required this.schedule,
     required this.branchAppointments,
-    required this.dialogStyle,
-    required this.animation,
     super.key,
   });
 
@@ -35,8 +34,6 @@ class AppointmentRescheduleConfirmDialog extends StatefulWidget {
   final DateTime newEnd;
   final BranchWorkingSchedule schedule;
   final List<AppointmentListItem> branchAppointments;
-  final FDialogStyle dialogStyle;
-  final Animation<double> animation;
 
   static Future<AppointmentRescheduleConfirmResult?> show(
     BuildContext context, {
@@ -46,36 +43,28 @@ class AppointmentRescheduleConfirmDialog extends StatefulWidget {
     required BranchWorkingSchedule schedule,
     required List<AppointmentListItem> branchAppointments,
   }) {
-    final fTheme = context.theme;
-
-    return showFDialog<AppointmentRescheduleConfirmResult>(
-      context: context,
-      useRootNavigator: true,
+    return AppDialog.show<AppointmentRescheduleConfirmResult>(
+      context,
+      title: 'Move appointment?',
+      size: AppDialogSize.md,
       barrierDismissible: false,
-      builder: (dialogContext, style, animation) {
-        return FTheme(
-          data: fTheme,
-          child: AppointmentRescheduleConfirmDialog(
-            appointment: appointment,
-            newStart: newStart,
-            newEnd: newEnd,
-            schedule: schedule,
-            branchAppointments: branchAppointments,
-            dialogStyle: style,
-            animation: animation,
-          ),
-        );
-      },
+      child: AppointmentRescheduleConfirmDialog(
+        appointment: appointment,
+        newStart: newStart,
+        newEnd: newEnd,
+        schedule: schedule,
+        branchAppointments: branchAppointments,
+      ),
     );
   }
 
   @override
-  State<AppointmentRescheduleConfirmDialog> createState() => _AppointmentRescheduleConfirmDialogState();
+  State<AppointmentRescheduleConfirmDialog> createState() =>
+      _AppointmentRescheduleConfirmDialogState();
 }
 
-class _AppointmentRescheduleConfirmDialogState extends State<AppointmentRescheduleConfirmDialog> {
-  final _formKey = GlobalKey<FormState>();
-
+class _AppointmentRescheduleConfirmDialogState
+    extends State<AppointmentRescheduleConfirmDialog> {
   late DateTime _startTime;
   late DateTime _endTime;
   String? _validationError;
@@ -98,8 +87,12 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
     setState(() {
       _startTime = value;
       if (!_endTime.isAfter(_startTime)) {
-        final originalDuration = widget.appointment.endTime.difference(widget.appointment.startTime).inMinutes;
-        _endTime = _startTime.add(Duration(minutes: originalDuration.clamp(5, 9999)));
+        final originalDuration = widget.appointment.endTime
+            .difference(widget.appointment.startTime)
+            .inMinutes;
+        _endTime = _startTime.add(
+          Duration(minutes: originalDuration.clamp(5, 9999)),
+        );
       }
       _validationError = _validateTimes();
     });
@@ -127,10 +120,6 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
   }
 
   void _confirm() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
-      return;
-    }
-
     final error = _validateTimes();
     if (error != null) {
       setState(() => _validationError = error);
@@ -139,106 +128,165 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
 
     Navigator.of(
       context,
-      rootNavigator: true,
     ).pop(AppointmentRescheduleConfirmResult(start: _startTime, end: _endTime));
   }
 
+  int? _parseTime(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(trimmed);
+    if (match == null) {
+      return null;
+    }
+    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+  }
+
+  TimeOfDay _minutesToTime(int minutes) =>
+      TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+
+  String _pad(int value) => value.toString().padLeft(2, '0');
+
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final bodyStyle = theme.textTheme.bodyMedium;
-    final labelStyle = bodyStyle?.copyWith(color: colors.mutedForeground);
-    final today = DateTime(clock.now().year, clock.now().month, clock.now().day);
+    final colors = context.appColors;
+    final today = DateTime(
+      clock.now().year,
+      clock.now().month,
+      clock.now().day,
+    );
     final canMove = _validationError == null;
 
-    return FDialog(
-      style: widget.dialogStyle,
-      animation: widget.animation,
-      direction: Axis.horizontal,
-      title: Text('Move appointment?', style: theme.textTheme.titleMedium),
-      body: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          widget.appointment.patientName,
+          style: AppTypography.bodyStrong(context),
+        ),
+        const SizedBox(height: AppSpacing.space3),
+        Text(
+          'From',
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
+        ),
+        Text(
+          _formatRange(
+            widget.appointment.startTime,
+            widget.appointment.endTime,
+          ),
+          style: AppTypography.bodySm(context),
+        ),
+        const SizedBox(height: AppSpacing.space4),
+        Text(
+          'To',
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
+        ),
+        const SizedBox(height: AppSpacing.space1),
+        AppFormField(
+          id: 'appointment_reschedule_pick_date',
+          label: 'Date',
+          child: AppDatePicker(
+            key: const Key('appointment_reschedule_pick_date'),
+            value: DateTime(_startTime.year, _startTime.month, _startTime.day),
+            min: today,
+            max: today.add(const Duration(days: 365)),
+            onChanged: (date) {
+              if (date == null) {
+                return;
+              }
+              _setStartTime(
+                _combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)),
+              );
+              _setEndTime(
+                _combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: AppSpacing.space3),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.appointment.patientName, style: theme.textTheme.titleSmall),
-            const SizedBox(height: SpacingTokens.sm),
-            Text('From', style: labelStyle),
-            Text(_formatRange(widget.appointment.startTime, widget.appointment.endTime), style: bodyStyle),
-            const SizedBox(height: SpacingTokens.md),
-            Text('To', style: labelStyle),
-            const SizedBox(height: SpacingTokens.xs),
-            AppDateField(
-              key: const Key('appointment_reschedule_pick_date'),
-              label: 'Date',
-              value: DateTime(_startTime.year, _startTime.month, _startTime.day),
-              firstDate: today,
-              lastDate: today.add(const Duration(days: 365)),
-              onChanged: (date) {
-                if (date == null) {
-                  return;
-                }
-                _setStartTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)));
-                _setEndTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)));
-              },
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: AppClockTimeField(
-                    key: const Key('appointment_reschedule_pick_start'),
-                    label: 'Start time',
-                    value: TimeOfDay.fromDateTime(_startTime),
-                    onChanged: (time) {
-                      if (time == null) {
-                        return;
-                      }
-                      _setStartTime(_combineDateAndTime(_startTime, time));
-                    },
-                  ),
+            Expanded(
+              child: AppFormField(
+                id: 'appointment_reschedule_pick_start',
+                label: 'Start time',
+                child: AppTimePicker(
+                  key: const Key('appointment_reschedule_pick_start'),
+                  value: '${_pad(_startTime.hour)}:${_pad(_startTime.minute)}',
+                  onChanged: (value) {
+                    final minutes = _parseTime(value);
+                    if (minutes == null) {
+                      return;
+                    }
+                    _setStartTime(
+                      _combineDateAndTime(_startTime, _minutesToTime(minutes)),
+                    );
+                  },
                 ),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: AppClockTimeField(
-                    key: const Key('appointment_reschedule_pick_end'),
-                    label: 'End time',
-                    value: TimeOfDay.fromDateTime(_endTime),
-                    onChanged: (time) {
-                      if (time == null) {
-                        return;
-                      }
-                      _setEndTime(_combineDateAndTime(_endTime, time));
-                    },
-                  ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: AppFormField(
+                id: 'appointment_reschedule_pick_end',
+                label: 'End time',
+                child: AppTimePicker(
+                  key: const Key('appointment_reschedule_pick_end'),
+                  value: '${_pad(_endTime.hour)}:${_pad(_endTime.minute)}',
+                  onChanged: (value) {
+                    final minutes = _parseTime(value);
+                    if (minutes == null) {
+                      return;
+                    }
+                    _setEndTime(
+                      _combineDateAndTime(_endTime, _minutesToTime(minutes)),
+                    );
+                  },
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: SpacingTokens.xs),
-            Text(
-              'Duration: $_durationMinutes min',
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-            ),
-            if (_validationError != null) ...[
-              const SizedBox(height: SpacingTokens.sm),
-              Text(_validationError!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
-            ],
           ],
         ),
-      ),
-      actions: [
-        AppButton(
-          key: const Key('appointment_reschedule_confirm'),
-          label: 'Move',
-          onPressed: canMove ? _confirm : null,
+        const SizedBox(height: AppSpacing.space1),
+        Text(
+          'Duration: $_durationMinutes min',
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
         ),
-        AppButton(
-          label: 'Cancel',
-          variant: AppButtonVariant.secondary,
-          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+        if (_validationError != null) ...[
+          const SizedBox(height: AppSpacing.space2),
+          Text(
+            _validationError!,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.statusDangerFg),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.space6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: AppSpacing.space2),
+            AppButton(
+              key: const Key('appointment_reschedule_confirm'),
+              disabled: !canMove,
+              onPressed: canMove ? _confirm : null,
+              child: const Text('Move'),
+            ),
+          ],
         ),
       ],
     );

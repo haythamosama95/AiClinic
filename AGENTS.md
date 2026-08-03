@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/014-visit-encounter-workspace/plan.md`
-Feature spec: `specs/014-visit-encounter-workspace/spec.md`
-Branch: (set per active feature)
+Active feature plan: `specs/034-second-provider-adapter/plan.md`
+Feature spec: `specs/034-second-provider-adapter/spec.md`
+Branch: `ai/034-d7-second-provider-adapter`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
@@ -15,7 +15,7 @@ Branch: (set per active feature)
 - `frontend/` — Flutter desktop app (presentation, orchestration).
 - `backend/` — Supabase (auth, storage, RPCs) + PostgreSQL migrations/functions.
 - `ai-platform/` — Cloudflare Worker AI gateway: source, D1 migrations, prompt artifacts, tests.
- Additive and non-primary; no domain logic, no business data, no write path into Supabase.
+  Additive and non-primary; no domain logic, no business data, no write path into Supabase.
 - `specs/` — Spec Kit feature working directories (`<NNN>-<short-name>/` with `spec.md`,
   `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `tasks.md`).
 - `.specify/` — Spec Kit configuration, templates, scripts, memory (`constitution.md`).

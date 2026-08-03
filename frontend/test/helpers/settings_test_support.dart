@@ -1,8 +1,8 @@
 // Test-only helpers; not imported by production code.
 // ignore_for_file: depend_on_referenced_packages
 
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
 
 /// Standard test branch for consistent test data.
 BranchListItem sampleBranch({

@@ -86,20 +86,11 @@ run_sql_test "Settings code review fixes" "settings_code_review_fixes.sql"
 
 # --- Patient Management ---
 printf -- '\n--- Patient Management ---\n'
-run_sql_test "Patient management CRUD" "patient_management_crud.sql"
-run_sql_test "Patient management RLS" "patient_management_rls.sql"
-run_sql_test "Patient management extended" "patient_management_extended.sql"
-run_sql_test "Patient management roles" "patient_management_roles.sql"
-run_sql_test "Patient management search advanced" "patient_management_search_advanced.sql"
-run_sql_test "Patient management search filters" "patient_management_search_filters.sql"
-run_sql_test "Patient management concurrent" "patient_management_concurrent.sql"
+run_shell_test "Patient management suite" "run_patient_management_tests.sh"
 
 # --- Appointment Management ---
 printf '\n--- Appointment Management ---\n'
-run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
-run_sql_test "Appointment management patient filter" "appointment_management_patient_filter.sql"
-run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
-run_sql_test "Appointment management grants" "appointment_management_grants.sql"
+run_shell_test "Appointment management suite" "run_appointment_management_tests.sh"
 
 # --- Visit Medical Records ---
 printf '\n--- Visit Medical Records ---\n'
@@ -108,6 +99,10 @@ run_shell_test "Visit medical records suite" "run_visit_medical_records_tests.sh
 # --- Billing ---
 printf '\n--- Billing ---\n'
 run_shell_test "Billing suite" "run_billing_tests.sh"
+
+# --- Service Catalog ---
+printf '\n--- Service Catalog ---\n'
+run_shell_test "Service Catalog suite" "run_service_catalog_tests.sh"
 
 # --- Shift Management ---
 printf '\n--- Shift Management ---\n'

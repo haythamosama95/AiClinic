@@ -10,6 +10,7 @@
     "deploy": "wrangler deploy",
     "check": "wrangler check",
     "test": "vitest run",
+    "test:load": "vitest run --config vitest.workers.config.ts test/load/load-and-cost.test.ts",
     "types": "wrangler types"
   },
   "devDependencies": {

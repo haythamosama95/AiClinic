@@ -33,6 +33,38 @@ void main() {
       expect(client.lastParams?.containsKey('p_reason'), isFalse);
     });
 
+    test('advanced: omits reason when blank', () async {
+      await repository.cancelAppointment(
+        appointmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        reason: '   ',
+      );
+
+      expect(client.lastParams?.containsKey('p_reason'), isFalse);
+    });
+
+    test('edge case: reason exactly 2000 chars accepted', () async {
+      final reason = 'x' * 2000;
+
+      await repository.cancelAppointment(
+        appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        reason: reason,
+      );
+
+      expect(client.lastParams?['p_reason'], reason);
+    });
+
+    test('regression: null status in RPC payload throws StateError', () async {
+      client.rpcResults['cancel_appointment'] = {
+        'success': true,
+        'data': {'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'status': null},
+      };
+
+      expect(
+        () => repository.cancelAppointment(appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('advanced: parses status from RPC payload', () async {
       client.rpcResults['cancel_appointment'] = {
         'success': true,

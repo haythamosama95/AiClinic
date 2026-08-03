@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_query.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_query.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

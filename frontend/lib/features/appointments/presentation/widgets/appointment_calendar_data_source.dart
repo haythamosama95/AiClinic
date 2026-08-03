@@ -4,7 +4,7 @@ import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 
 /// Resource id for appointments without an assigned doctor.
 const appointmentCalendarUnassignedResourceId = '__unassigned__';
@@ -12,8 +12,12 @@ const appointmentCalendarUnassignedResourceId = '__unassigned__';
 /// Syncfusion data source for branch appointment rows.
 class AppointmentCalendarDataSource extends CalendarDataSource {
   Set<AppointmentStatus> _highlightedStatuses = const {};
+  Brightness _brightness = Brightness.light;
 
-  AppointmentCalendarDataSource(List<AppointmentListItem> items, {List<StaffListItem> doctors = const []}) {
+  AppointmentCalendarDataSource(
+    List<AppointmentListItem> items, {
+    List<StaffListItem> doctors = const [],
+  }) {
     _apply(
       items,
       doctors,
@@ -30,10 +34,12 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     Color evenResourceRowColor = Colors.transparent,
     Color oddResourceRowColor = Colors.transparent,
     Set<AppointmentStatus>? highlightedStatuses,
+    Brightness brightness = Brightness.light,
   }) {
     if (highlightedStatuses != null) {
       _highlightedStatuses = highlightedStatuses;
     }
+    _brightness = brightness;
     _apply(
       items,
       doctors,
@@ -42,6 +48,13 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       oddResourceRowColor: oddResourceRowColor,
     );
     notifyListeners(CalendarDataSourceAction.reset, appointments ?? const []);
+    // `reset` does not refresh SfCalendar's internal `_resourceCollection`.
+    // Without `resetResource`, doctor timeline view can lay out with a stale
+    // empty collection while `dataSource.resources` is populated (NaN height).
+    final resourceList = resources;
+    if (resourceList != null && resourceList.isNotEmpty) {
+      notifyListeners(CalendarDataSourceAction.resetResource, resourceList);
+    }
   }
 
   void _apply(
@@ -55,9 +68,14 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       items,
       assignResources: includeDoctorResources,
       highlightedStatuses: _highlightedStatuses,
+      brightness: _brightness,
     );
     resources = includeDoctorResources
-        ? _mapDoctorResources(doctors, evenRowColor: evenResourceRowColor, oddRowColor: oddResourceRowColor)
+        ? _mapDoctorResources(
+            doctors,
+            evenRowColor: evenResourceRowColor,
+            oddRowColor: oddResourceRowColor,
+          )
         : const [];
   }
 
@@ -65,6 +83,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     List<AppointmentListItem> items, {
     required bool assignResources,
     required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
   }) {
     return [
       for (final item in items)
@@ -74,7 +93,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
           notes: assignResources ? null : item.doctorDisplayName,
-          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses),
+          color: AppointmentCalendarDisplay.appointmentTileColor(
+            item.status,
+            highlightedStatuses,
+            brightness,
+          ),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
     ];
@@ -97,7 +120,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     var index = 0;
     for (final doctor in doctors) {
       resources.add(
-        CalendarResource(id: doctor.id, displayName: doctor.fullName, color: index.isEven ? evenRowColor : oddRowColor),
+        CalendarResource(
+          id: doctor.id,
+          displayName: doctor.fullName,
+          color: index.isEven ? evenRowColor : oddRowColor,
+        ),
       );
       index++;
     }
@@ -130,7 +157,9 @@ String? appointmentIdFromTap(CalendarTapDetails details) {
 }
 
 /// Resolves appointment id from [details] produced by [CalendarAppointmentDetails].
-String? appointmentIdFromAppointmentDetails(CalendarAppointmentDetails details) {
+String? appointmentIdFromAppointmentDetails(
+  CalendarAppointmentDetails details,
+) {
   final appointment = details.appointments.firstOrNull;
   return appointment is Appointment ? _appointmentId(appointment) : null;
 }

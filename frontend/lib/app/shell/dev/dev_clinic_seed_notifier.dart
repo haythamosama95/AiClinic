@@ -3,18 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_service.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
+import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+import 'package:ai_clinic/features/billing/data/payment_repository.dart';
+import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 
 @immutable
 class DevClinicSeedState {
@@ -49,6 +57,12 @@ final devClinicSeedServiceProvider = Provider<DevClinicSeedService>((ref) {
     appointments: ref.watch(appointmentRepositoryProvider),
     visits: ref.watch(visitRepositoryProvider),
     shiftRepository: ref.watch(shiftRepositoryProvider),
+    visitAttachments: ref.watch(visitAttachmentServiceProvider),
+    invoices: ref.watch(invoiceRepositoryProvider),
+    payments: ref.watch(paymentRepositoryProvider),
+    insuranceProviders: ref.watch(insuranceProviderRepositoryProvider),
+    billingSettings: ref.watch(billingSettingsRepositoryProvider),
+    serviceCatalog: ref.watch(serviceCatalogRepositoryProvider),
   );
 });
 
@@ -77,18 +91,26 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
     state = state.copyWith(inProgress: true, clearError: true, progressMessage: 'Preparing…');
     AppLog.info('dev_clinic_seed.start');
 
+    ref.read(authSessionProvider.notifier).suppressClinicSetupLostSignOut();
     try {
       await ref
           .read(devClinicSeedServiceProvider)
           .run(
             auth: auth,
             refreshSession: () => ref.read(authSessionProvider.notifier).refreshSessionContext(),
+            ensureRpcSession: () async {
+              final signInError = await ShellDevBootstrapSignIn.ensureSignedInWithRef(ref);
+              if (signInError != null) {
+                throw StateError(signInError);
+              }
+            },
             onProgress: (message) {
               state = state.copyWith(progressMessage: message);
             },
           );
 
-      ref.read(setupNotifierProvider.notifier).markSetupComplete();
+      ref.read(clinicSetupProvider.notifier).markSetupComplete();
+      await ref.read(clinicSetupProvider.notifier).hydrateFromBackend();
       invalidateAppointmentSurfaceProviders(ref);
       state = const DevClinicSeedState();
       AppLog.info('dev_clinic_seed.completed');
@@ -112,6 +134,8 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
             : 'Unable to fill dummy clinic data. Try again.',
       );
       return false;
+    } finally {
+      ref.read(authSessionProvider.notifier).releaseClinicSetupLostSignOut();
     }
   }
 }

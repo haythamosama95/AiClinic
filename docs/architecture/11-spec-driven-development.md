@@ -3,7 +3,7 @@
 - Purpose: Define how architecture docs, feature specs, and implementation agents fit together.
 - Read this when: planning or implementing a feature, writing a new spec, or deciding which architecture docs an implementation task should load.
 - Canonical for: the implementation workflow, required spec structure, and context-loading rules for agents.
-- Usually paired with: `docs/architecture/00-index.md`, `docs/architecture/12-roadmap-phases.md`, and the specific feature spec in `specs/...`.
+- Usually paired with: `docs/architecture/00-index.md`, `docs/architecture/12-roadmap-phases.md`, and the specific feature spec in `docs/specs/...`.
 - Not covered here: detailed domain rules that belong in backend, database, frontend, AI, or security docs.
 
 ---
@@ -36,7 +36,7 @@ For each feature, sequentially:
 Implementation agents do **not** read the entire architecture set by default.
 
 1. Start with `docs/architecture/00-index.md`.
-2. Open the assigned spec in `specs/...`.
+2. Open the assigned spec in `docs/specs/...`.
 3. Load only the architecture docs and headings listed in that spec.
 4. Use `docs/architecture/12-roadmap-phases.md` as the fallback routing source when a spec is missing or still being authored.
 5. Escalate to cross-cutting docs only when the feature explicitly depends on them, such as `09-security-rbac.md` or `10-resilience-and-scale.md`.
@@ -46,7 +46,7 @@ Implementation agents do **not** read the entire architecture set by default.
 Implemented features use **numbered directories** as the authoritative spec source:
 
 ```text
-specs/
+docs/specs/
 ├── 002-auth-rbac/              # spec.md, plan.md, tasks.md, contracts/, data-model.md
 ├── 003-org-branch-management/
 ├── 004-patient-management/
@@ -70,7 +70,7 @@ specs/
 └── analytics/
 ```
 
-**Rule:** When both `specs/NNN-feature/` and `specs/operations/feature.spec.md` exist, the **numbered directory** is authoritative for implemented work. Roadmap entries (e.g. V1-4 → `005-appointment-management`) point to numbered specs.
+**Rule:** When both `docs/specs/NNN-feature/` and `docs/specs/operations/feature.spec.md` exist, the **numbered directory** is authoritative for implemented work. Roadmap entries (e.g. V1-4 → `005-appointment-management`) point to numbered specs.
 
 ### Numbering convention
 
@@ -81,7 +81,7 @@ specs/
 ### Legacy layout (reference only)
 
 ```text
-specs/
+docs/specs/
 ├── README.md
 ├── common/
 │   ├── auth.spec.md
