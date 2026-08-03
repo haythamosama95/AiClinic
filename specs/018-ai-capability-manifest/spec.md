@@ -39,6 +39,9 @@ None. A4 does not depend on any §15 recommended default; the manifest schema an
 
 - Q: What on-disk source encoding do capability manifests use? → A: JSON files under `ai-platform/`, validated by a TypeScript schema module at build and load time; the runtime schema layer is an implementation detail of the plan. `[implementation choice — no §citation]`
 - Q: How does the build prove "an in-place edit to a published version fails the build"? → A: A checked-in append-only registry mapping `(capability_id, version)` → manifest content hash; the build computes the manifest hash and fails if it differs from the registry entry. `[implementation choice — no §citation]`
+- Q: Where do published manifests and the registry live, and what runs the gate? → A: JSON files under `ai-platform/manifests/published/` plus `ai-platform/manifests/published-registry.json`; `npm run verify-manifests` (and therefore `npm test`) runs `verifyManifestTree` against that tree. Hash algorithm is WebCrypto SHA-256 over canonical JSON. `[implementation choice — review resolution A4]`
+- Q: How is runtime immutability of a loaded manifest enforced? → A: `load()` returns a deeply `Object.freeze`d object; mutation throws in strict mode rather than being silently discarded. `[implementation choice — review resolution A4]`
+- Q: How are unknown keys and provider/model hints rejected? → A: Each group uses exact key-set equality against `MANIFEST_FIELD_MANIFEST`; a recursive denylist rejects any key matching `/provider|model/i` except the allowlisted `requiredProviderFeatures` key name. Enum fields `lifecycleState`, `Output.mode`, and `acceptanceMode` are validated at load time. `[implementation choice — review resolution A4]`
 - Q: Where does the manifest loader live, and what is its export surface within `ai-platform/src/`? → A: A single `ai-platform/src/manifest/` module exporting `load()` and the `Manifest` type; the validator is kept internal to the module. `[implementation choice — no §citation]`
 
 ## User Scenarios & Testing *(mandatory)*
@@ -86,7 +89,12 @@ Coverage additions from §3.10 (every branch, every inherited prohibition, every
 
 - `manifest_is_data_not_code` — contract — the manifest contributes no executable pipeline/client code; reusing existing context keys, routing policy, and validation rules needs no pipeline or client change (§5.1).
 - `manifest_never_names_provider_or_model` — contract — the manifest schema permits no provider name or model identifier; it names requirements only (§5.1).
-- `interaction_mode_fixed_for_life_of_version` — contract — a loaded manifest's `interaction_mode` is immutable for that version; changing it is a new version, not a mutation (§5.7).
+- `interaction_mode_fixed_for_life_of_version` — contract — a loaded manifest's `interaction_mode` is immutable for that version; changing it is a new version, not a mutation (§5.7). Deep-freeze rejects runtime writes.
+- `unknown_extra_keys_rejected` / `provider_model_denylist_across_groups` — contract — unknown group keys and provider/model-shaped keys (including nested) fail `load()`.
+- `content_enum_validation` — contract — invalid `lifecycleState`, `Output.mode`, or `acceptanceMode` fail `load()`.
+- `deep_freeze_rejects_group_mutation` — contract — mutating any group field on a loaded manifest throws.
+- `content_hash_is_sha256` — contract — `hashManifest` returns a 64-char hex SHA-256 digest.
+- `registry_gate_runs_in_build` — build — `package.json` declares `verify-manifests`; checked-in manifests match `published-registry.json`; an in-place edit fails the gate.
 
 ### Edge Cases
 
@@ -131,7 +139,7 @@ Coverage additions from §3.10 (every branch, every inherited prohibition, every
 - Slice A5 — context key vocabulary and shape registry (§5.2): the manifest's Context-requirements group references context keys by their `domain.concept@vN` form, but defining/validating key shapes is A5.
 - Slice A6 — D1 schema and migrations (§7.3): A4 defines no D1 entity; manifest storage/persistence belongs to A6.
 - Slice C1 — capability resolver stage (§4.3.4, §6.1 stage 5): resolving a capability id plus requested version to a manifest and distinguishing `capability_unknown` / `capability_retired` / `capability_disabled` is C1. A4 provides the typed manifest object; it does not perform resolution or lifecycle-state handling at request time.
-- Slice H1 — conversational manifest fields (§5.1, §5.7, §6.7.4, A14): A4 enforces that `single_shot` rejects conversational-only fields and that `interaction_mode` defaults to `single_shot`; it does not validate the *contents* of the conversational fields (max history turns, max context rounds per turn, transcript size limit, permitted key set) beyond their presence/absence rule. Full conversational manifest validation is H1.
+- Slice H1 — conversational manifest fields (§5.1, §5.7, §6.7.4, A14): A4 enforces that `single_shot` rejects conversational-only fields and that `interaction_mode` defaults to `single_shot`; it does not own the *contents* rules for conversational fields beyond presence/absence. Vocabulary validation of `permittedKeySet` entries is the H1 extension co-located in the A4 loader (H1 Consumes A4; `specs/044-conversational-manifest-schema`).
 - Slice D1 — prompt registry and artifacts (§4.3.6, §5.7, §9.5): the manifest's Prompt-binding group references prompt artifact refs; loading/pinning artifacts by hash is D1.
 - No mechanism from §9.14 added because it looks prudent (R-20).
 - No prompt text, provider name, or model identifier in the Flutter client (R-12) — not applicable to this slice beyond the manifest's own never-names-provider/model rule, which is in scope above.

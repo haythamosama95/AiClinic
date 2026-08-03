@@ -709,7 +709,7 @@ describe("T-C1-08 discovery_etag_not_modified", () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
-    const etag = computeDiscoveryEtag(manifests);
+    const etag = await computeDiscoveryEtag(manifests);
 
     const stringifySpy = vi.spyOn(JSON, "stringify");
 
@@ -737,7 +737,7 @@ describe("T-C1-08 discovery_etag_not_modified", () => {
 });
 
 describe("T-C1-09 discovery_etag_changes", () => {
-  it("changes the etag when a manifest version changes or a granted manifest is removed", () => {
+  it("changes the etag when a manifest version changes or a granted manifest is removed", async () => {
     const grantedActiveA = load(
       validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION, "active"),
     );
@@ -745,19 +745,19 @@ describe("T-C1-09 discovery_etag_changes", () => {
       validManifest("clinic.secondary", FIXTURE_CAPABILITY_VERSION, "active"),
     );
 
-    const originalEtag = computeDiscoveryEtag([grantedActiveA, grantedActiveB]);
+    const originalEtag = await computeDiscoveryEtag([grantedActiveA, grantedActiveB]);
 
     const versionChanged = load(
       validManifest(FIXTURE_GRANTED_CAPABILITY_ID, "1.1.0", "active"),
     );
-    const versionChangedEtag = computeDiscoveryEtag([versionChanged, grantedActiveB]);
+    const versionChangedEtag = await computeDiscoveryEtag([versionChanged, grantedActiveB]);
     expect(versionChangedEtag).not.toBe(originalEtag);
 
-    const removedFromSetEtag = computeDiscoveryEtag([grantedActiveA]);
+    const removedFromSetEtag = await computeDiscoveryEtag([grantedActiveA]);
     expect(removedFromSetEtag).not.toBe(originalEtag);
 
-    expect(hashManifest(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, "1.1.0"))).not.toBe(
-      hashManifest(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
+    expect(await hashManifest(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, "1.1.0"))).not.toBe(
+      await hashManifest(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     );
   });
 });

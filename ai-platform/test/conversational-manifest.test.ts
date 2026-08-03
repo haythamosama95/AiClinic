@@ -205,18 +205,20 @@ describe("conversational_fields_rejected_on_single_shot", () => {
 });
 
 describe("interaction_mode_in_place_change_fails_build", () => {
-  it("fails verifyPublishedRegistry when interactionMode changes in place", () => {
+  it("fails verifyPublishedRegistry when interactionMode changes in place", async () => {
     const singleShot = singleShotManifestWire();
     const conversational = validConversationalManifest();
     const capabilityId = (singleShot.Identity as { capabilityId: string })
       .capabilityId;
     const version = (singleShot.Identity as { version: string }).version;
     const registryKey = `${capabilityId}@${version}`;
+    const conversationalHash = await hashManifest(conversational);
+    const singleShotHash = await hashManifest(singleShot);
 
     expect(() =>
       verifyPublishedRegistry(
-        [{ capabilityId, version, hash: hashManifest(conversational) }],
-        { [registryKey]: hashManifest(singleShot) },
+        [{ capabilityId, version, hash: conversationalHash }],
+        { [registryKey]: singleShotHash },
       ),
     ).toThrow();
   });
@@ -234,11 +236,13 @@ describe("permitted_key_set_unknown_key_fails", () => {
 });
 
 describe("interaction_mode_fixed_for_life_of_version", () => {
-  it("types interactionMode as read-only on a loaded manifest", () => {
+  it("rejects runtime mutation of interactionMode on a loaded conversational manifest", () => {
     const loaded = load(validConversationalManifest());
 
-    // @ts-expect-error interactionMode is read-only for the life of a version
-    loaded.interactionMode = "single_shot";
+    expect(() => {
+      // @ts-expect-error interactionMode is read-only for the life of a version
+      loaded.interactionMode = "single_shot";
+    }).toThrow();
 
     expect(loaded.interactionMode).toBe("conversational");
   });

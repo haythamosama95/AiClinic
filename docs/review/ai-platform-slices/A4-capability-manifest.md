@@ -35,3 +35,43 @@ The schema covers all ten §5.1 field groups with the correct contents, the `sin
 - Reject unknown keys per group in `assertManifestKeys` (exact key-set equality), and extend the provider/model guard to a denylist pattern across all groups, or validate Routing values against the routing-policy registry.
 - Use a real content hash (WebCrypto SHA-256) instead of 32-bit FNV-1a (`index.ts:405-412`) — collision resistance matters if the registry is the integrity anchor, and Workers provides it natively.
 - Constrain enum fields (`interactionMode` already is; add `mode`, `acceptanceMode`, `lifecycleState`) at validation time.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **A4-R1 — Published registry build gate** | Critical #1; Missing/Weak Tests #1; Recommended (build/CI + checked-in registry) | `ai-platform/manifests/published/`; `published-registry.json`; `verifyManifestTree`; `test/manifest-registry-gate.test.ts`; `package.json` `verify-manifests` |
+| **A4-R2 — Deep-freeze immutability** | Bugs #1–#2; Missing/Weak Tests #4; Recommended (`Object.freeze`) | `src/manifest/index.ts` `deepFreeze`; T-A4-17/T-A4-21; Spec Kit |
+| **A4-R3 — Exact keys + provider/model denylist** | Arch #1; Missing/Weak Tests #2; Recommended (exact key-set + denylist) | `assertExactKeys`; recursive denylist; T-A4-18/T-A4-19 |
+| **A4-R4 — Content enum validation** | Arch #2; Missing/Weak Tests #3; Recommended (constrain enums) | `assertContentEnums`; T-A4-20 |
+| **A4-R5 — SHA-256 content hash** | Recommended (WebCrypto SHA-256) | async `hashManifest`; T-A4-22; callers in capability/discovery |
+| **A4-R6 — H1 boundary clarification** | Arch #3 | Comment + Spec Kit: `permittedKeySet` vocabulary check is H1 co-located in A4 loader |
+
+Every numbered review item is in exactly one stage. No architecture-doc edits.
+
+### 1.2 Test cases created first
+
+- **A4-R1:** T-A4-23 (`registry_gate_runs_in_build`) — asserts `verify-manifests` script, green checked-in tree, and failure on in-place edit; plus `test/manifest-registry-gate.test.ts` as the script entrypoint.
+- **A4-R2:** T-A4-17 rewritten to expect throw on `interactionMode` write; T-A4-21 asserts group/nested mutation throws.
+- **A4-R3:** T-A4-18 unknown extra keys; T-A4-19 preferredProvider / nested `model` / modelHint.
+- **A4-R4:** T-A4-20 invalid `mode`, `acceptanceMode`, `lifecycleState`.
+- **A4-R5:** T-A4-22 SHA-256 hex length/format; T-A4-12 updated to `await hashManifest`.
+- **A4-R6:** no new failing test — documentation/comment only (H1 `permitted_key_set_unknown_key_fails` remains green).
+
+### 1.3 Fix implemented
+
+- **A4-R1:** Checked in `manifests/published/clinic.visit_summary@1.0.0.json` and append-only `published-registry.json`; exported `verifyManifestTree`; wired `npm run verify-manifests` (and `npm test` runs it first).
+- **A4-R2:** Replaced Proxy swallow-trap with recursive `Object.freeze`; mutation throws in strict mode.
+- **A4-R3:** Exact key-set equality per group; recursive provider/model denylist with allowlist for the `requiredProviderFeatures` key name only.
+- **A4-R4:** Validate §5.1 enums for lifecycle, output mode, and acceptance mode at load time.
+- **A4-R5:** Replaced FNV-1a with async WebCrypto SHA-256; `computeDiscoveryEtag` and hash call sites updated.
+- **A4-R6:** Marked vocabulary check as H1 extension; Spec Kit Out of Scope / contracts clarified. No removal (would break H1 Done-when).
+- Spec Kit: `spec.md`, `plan.md`, `quickstart.md`, `contracts/manifest-schema.md` updated. Architecture docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **38 files, 436 tests passed**, including `manifest.test.ts` (T-A4-01..23), `manifest-registry-gate.test.ts`, and `conversational-manifest.test.ts`.

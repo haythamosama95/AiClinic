@@ -264,19 +264,6 @@ function deepFreeze<T extends object>(value: T): T {
 }
 
 function freezeManifest(manifest: Manifest): Manifest {
-  for (const entry of manifest["Context requirements"]) {
-    deepFreeze(entry);
-  }
-  deepFreeze(manifest.Identity);
-  deepFreeze(manifest.Access);
-  deepFreeze(manifest.Interaction);
-  deepFreeze(manifest.Input);
-  deepFreeze(manifest["Context requirements"]);
-  deepFreeze(manifest["Prompt binding"]);
-  deepFreeze(manifest.Output);
-  deepFreeze(manifest.Routing);
-  deepFreeze(manifest.Economics);
-  deepFreeze(manifest.Governance);
   return deepFreeze(manifest);
 }
 
@@ -323,7 +310,9 @@ export async function resolve(
   return { ok: true, manifest: manifestWithEffectiveIdentity(manifest, effective) };
 }
 
-export function computeDiscoveryEtag(manifestList: Manifest[]): string {
+export async function computeDiscoveryEtag(
+  manifestList: Manifest[],
+): Promise<string> {
   const sorted = sortManifests(manifestList);
   return hashManifest({
     manifests: sorted.map(manifestToHashInput),
@@ -348,20 +337,20 @@ export async function discover(
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
       const manifests: Manifest[] = [];
-      return { manifests, etag: computeDiscoveryEtag(manifests) };
+      return { manifests, etag: await computeDiscoveryEtag(manifests) };
     }
     throw error;
   }
 
   if (entitlement.status !== "active") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: computeDiscoveryEtag(manifests) };
+    return { manifests, etag: await computeDiscoveryEtag(manifests) };
   }
 
   const plan = entitlement.plan;
   if (typeof plan !== "string") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: computeDiscoveryEtag(manifests) };
+    return { manifests, etag: await computeDiscoveryEtag(manifests) };
   }
 
   const allowedCapabilities = parseAllowedCapabilities(entitlement);
@@ -436,7 +425,7 @@ export async function discover(
   }
 
   const sorted = sortManifests(manifests);
-  return { manifests: sorted, etag: computeDiscoveryEtag(sorted) };
+  return { manifests: sorted, etag: await computeDiscoveryEtag(sorted) };
 }
 
 export async function getGrantedCapabilityVersion(
