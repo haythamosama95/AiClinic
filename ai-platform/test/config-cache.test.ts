@@ -291,6 +291,7 @@ describe("T-A5-24 no_per_request_state_introduced", () => {
       "CACHE_TTL_MS",
       "ConfigCache",
       "ConfigCacheMissError",
+      "createD1ConfigReader",
       "loadConfig",
     ].sort();
 

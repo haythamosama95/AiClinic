@@ -6,8 +6,12 @@ import {
   isControlRoute,
 } from "./control";
 import { reconcileGraceUsage } from "./credit";
-import { getRequest } from "./journal";
-import { normalizeRequestReference } from "./reference";
+import { liveHttpStatusForCode } from "./errors";
+import {
+  authenticateGetRequest,
+  getRequest,
+  getRequestAuthErrorBody,
+} from "./journal";
 import { flushRejectionCounters } from "./rate-limit";
 import { runRetentionPurge } from "./retention";
 import { runRollupAndReconciliation } from "./rollup";
@@ -131,18 +135,42 @@ export default {
         return new Response(null, { status: 404 });
       }
       const runtimeEnv = env as Env;
-      const normalizedRef = normalizeRequestReference(reference);
-      const result = await getRequest(normalizedRef, {
-        db: runtimeEnv.DB,
-        r2: runtimeEnv.R2,
+
+      const auth = await authenticateGetRequest(request, {
+        DB: runtimeEnv.DB,
       });
+      if (!auth.ok) {
+        // Prefer 401 for missing/invalid token; suspended maps to taxonomy HTTP status.
+        const status = liveHttpStatusForCode(auth.code) ?? 401;
+        return Response.json(getRequestAuthErrorBody(auth.code), { status });
+      }
+
+      // Pass raw path reference — getRequest normalizes once (contract §3.1).
+      const result = await getRequest(
+        reference,
+        {
+          db: runtimeEnv.DB,
+          r2: runtimeEnv.R2,
+        },
+        { installationId: auth.principal.installationId },
+      );
 
       if (!result.found) {
         return new Response(null, { status: 404 });
       }
 
       if (result.state === "Completed") {
-        return Response.json({ state: "Completed", result: result.result });
+        if ("result" in result) {
+          return Response.json({
+            state: "Completed",
+            result: result.result,
+          });
+        }
+        return Response.json({ state: "Completed" });
+      }
+
+      if ("pending" in result && result.pending) {
+        return Response.json({ state: result.state, pending: true });
       }
 
       if (result.state === "Failed") {
@@ -150,6 +178,10 @@ export default {
           state: "Failed",
           terminal_error_code: result.terminalErrorCode,
         });
+      }
+
+      if (result.state === "AwaitingContext") {
+        return Response.json({ state: "AwaitingContext" });
       }
 
       return Response.json({ state: "Cancelled" });
