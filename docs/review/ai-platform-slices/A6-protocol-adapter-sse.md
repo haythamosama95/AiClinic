@@ -43,3 +43,46 @@ A6 delivers the §4.3.1 protocol adapter in one module (`ai-platform/src/adapter
 - **Resolve the trace-id acceptance rule in the contract**: either accept any non-empty client trace id (A2's contract, `trace.ts:23-28`) or freeze the ULID requirement in `contracts/sse-framing.md` §1 — do not leave it as an undocumented adapter invention (`adapter.ts:269`).
 - **Decide the live-route story before D4**: either gate `POST /v1/requests` behind the not-yet-wired broker, or have the adapter fail fast when no event source is provided, so the deployed route cannot leak hanging, heartbeat-less, never-terminating streams (`worker.ts:82`, `adapter.ts:282-295`).
 - **Handle the already-aborted signal** (`adapter.ts:380-382`) instead of the empty branch — at minimum register the same terminal-marking logic or reject the request outright.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **A6-R1 — Disconnect cancel without dead-socket write** | Critical #1; Bugs #4; Missing/Weak Tests #1; Recommended Improvements (disconnect path; already-aborted signal) | `ai-platform/src/adapter.ts` (`cancel()`, abort listener, already-aborted at entry); `ai-platform/test/adapter.test.ts` T10 |
+| **A6-R2 — Byte-accurate early size gate** | Bugs #1, #2; Missing/Weak Tests #4; Recommended Improvements (byte-accurate + early gate) | `adapter.ts` `readBodyWithinLimit`; T1 Content-Length / multi-byte / oversized+malformed-headers cases |
+| **A6-R3 — Malformed body rejected at stage 1** | Bugs #3; Missing/Weak Tests #2; Recommended Improvements (parse body) | `adapter.ts` `parseRequestBody`; T5 malformed JSON / non-object body cases |
+| **A6-R4 — Trace id accepts any non-empty string** | Architectural Deviations #2; Recommended Improvements (trace-id rule) | `adapter.ts` `parseRequiredHeaders` (removed ULID-only gate); T3 non-ULID case; contract §1 |
+| **A6-R5 — Stubs out of production + fail-fast live route** | Architectural Deviations #1, #3; Recommended Improvements (move stubs; live-route story) | Removed stubs from `src/adapter.ts`; `test/helpers/adapter-stub.ts`; required `eventSource` → 503; T13; `worker.ts` inherits fail-fast |
+| **A6-R6 — Header branch coverage** | Missing/Weak Tests #3 | T5 empty/whitespace idempotency, version pin, present-but-empty trace id |
+| **A6-R7 — 413 empty fields / bare 422 documented** | Architectural Deviations #4, #5 | Contract §5–§6; Spec Kit FR-006 exception + bare-422 note (no production change) |
+| **A6-R8 — Heartbeat framing + no per-request state** | Missing/Weak Tests #5, #6 | T7 framing assertion (heartbeat ≠ terminal); T11 connection-scoped context keys; Spec Kit FR-009 / D4 ownership |
+
+Every numbered review item appears in exactly one stage. No architecture-doc change; no escalation.
+
+### 1.2 Test cases created first
+
+- **A6-R1:** T10 — `reader.cancel()` mid-stream does not throw and never writes `cancelled`; `request.signal` abort mid-stream same; already-aborted signal emits `accepted` then closes without invoking event source or writing `cancelled`.
+- **A6-R2:** T1 — Content-Length over limit → 413 before body work; multi-byte UTF-8 body over byte limit → 413 even when UTF-16 length ≤ limit; oversized body with malformed headers → 413 not 422.
+- **A6-R3:** T5 — `"not json"`, JSON array, JSON null → bare 422, no taxonomy body, no stream.
+- **A6-R4:** T3 — UUID-shaped non-ULID `x-trace-id` accepted and propagated.
+- **A6-R5:** T13 — missing `eventSource` → HTTP 503, no SSE, no reference generated.
+- **A6-R6:** T5 — empty/whitespace idempotency key, version pin, and present-but-empty trace id → bare 422.
+- **A6-R7:** T1 assertions already pin empty `request_reference` / `trace_id` on 413; contract/spec text records the FR-006 exception and intentional bare 422.
+- **A6-R8:** T7 — injected heartbeat is neither content nor terminal and does not satisfy one-terminal; T11 — stream context is closure-local keys only (no per-request registry).
+
+### 1.3 Fix implemented
+
+- **A6-R1:** `cancel()` and the abort listener only set `terminalEmitted`; already-aborted at entry marks terminal and closes after `accepted` without starting the event source.
+- **A6-R2:** Replaced `request.text()` + `string.length` with Content-Length pre-check and streaming `Uint8Array` byte accumulation that aborts at the first oversize chunk.
+- **A6-R3:** Stage-1 JSON parse requiring a non-null plain object; failures → bare 422.
+- **A6-R4:** Dropped adapter-local ULID validation of client trace ids; deferred to A2 `resolveTraceId`.
+- **A6-R5:** Deleted `createModeGatedStubEventSource`, `defaultStubEventSource`, and `attemptDuplicateTerminal` from `src/adapter.ts`; moved mode-gated stub to `test/helpers/adapter-stub.ts`; renamed injection to required `eventSource` (503 if missing). Live `worker.ts` path fails fast until D4 wires a broker.
+- **A6-R6–R8:** Tests and Spec Kit docs only (plus T7/T11 assertions). Contract §1/§4–§7, `spec.md`, `plan.md`, `tasks.md`, `quickstart.md` updated. Architecture docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **38 files, 457 tests passed**, including `adapter.test.ts` (33 tests) and `context-requested-terminal.test.ts` (imports stub helper).

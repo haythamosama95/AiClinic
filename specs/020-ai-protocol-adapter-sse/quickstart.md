@@ -1,9 +1,10 @@
 # Quickstart: Protocol adapter and SSE framing (A6)
 
-Slice **A6** owns the gateway's wire format: request parsing, the ingress body-size gate, the three
-Submit-request headers, SSE event framing (`accepted`, heartbeat, terminal events), the
-one-terminal-event invariant, and connection-scoped cancellation. The Worker `POST /v1/requests`
-handler now delegates to the adapter instead of the A2 placeholder JSON response.
+Slice **A6** owns the gateway's wire format: request parsing, the UTF-8 byte-accurate ingress
+body-size gate, the three Submit-request headers, SSE event framing (`accepted`, heartbeat, terminal
+events), the one-terminal-event invariant, and connection-scoped cancellation (mark `terminalEmitted`
+only — never enqueue `cancelled` on a dead socket). The Worker `POST /v1/requests` handler delegates
+to the adapter and fails fast (HTTP 503) until D4 injects an `eventSource`.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
@@ -19,32 +20,42 @@ This slice implements delivery-plan row **A6** (*Protocol adapter and SSE framin
   cancellation, and on-the-wire HTTP error emission via A2's taxonomy). It is the last Band A slice
   and the subject of review checkpoint **CP1**.
 - The **plan** scopes one new source module (`adapter.ts`), a modified `worker.ts` fetch path, one
-  integration test file (`adapter.test.ts`), and the frozen `contracts/sse-framing.md` artifact. No
-  D1, R2, or Durable Object writes; no broker or provider.
+  integration test file (`adapter.test.ts`) plus `test/helpers/adapter-stub.ts`, and the frozen
+  `contracts/sse-framing.md` artifact. No D1, R2, or Durable Object writes; no broker or provider.
 
 ## 2. What was implemented
 
 - **Protocol adapter module** — `ai-platform/src/adapter.ts` parses `POST /v1/requests`, enforces the
-  ingress body-size limit (`request_too_large` / HTTP 413 via A2), reads
-  `x-idempotency-key`, `x-trace-id`, and `x-capability-version`, rejects adapter-local parse
-  failures without a taxonomy-coded body (HTTP 422, not bare `400`), frames SSE events
-  (`accepted`, heartbeat, `completed` / `failed` / `cancelled`), guarantees exactly one terminal
-  event per stream, and handles connection-scoped cancellation.
+  UTF-8 byte-accurate ingress body-size limit (`Content-Length` pre-check; stream-read abort; never
+  buffer past the cap; `request_too_large` / HTTP 413 with empty `request_reference` and
+  `trace_id`), reads `x-idempotency-key`, `x-trace-id` (any non-empty client string via A2
+  `resolveTraceId`; ULID only when absent), and `x-capability-version`, rejects adapter-local parse
+  failures with bare HTTP 422 (malformed body / empty-whitespace headers; no taxonomy body), frames
+  SSE events (`accepted`, heartbeat, `completed` / `failed` / `cancelled`), guarantees exactly one
+  terminal event per stream, and on cancel/abort marks `terminalEmitted` only (never enqueues
+  `cancelled` on a dead socket). Requires injected `eventSource`; missing → HTTP 503. No stubs in
+  `src/`.
 - **Worker wiring** — `ai-platform/src/worker.ts` routes `POST /v1/requests` to
-  `handleAdapterRequest`; the `/health` route and `GatewayObject` Durable Object class are unchanged.
-- **Integration test suite** — `ai-platform/test/adapter.test.ts` drives the adapter through an
-  in-process stub event source (no broker, no provider, no network), covering spec Test plan cases
-  T1–T12.
+  `handleAdapterRequest`; live route fails fast until D4. The `/health` route and `GatewayObject`
+  Durable Object class are unchanged.
+- **Integration test suite** — `ai-platform/test/adapter.test.ts` +
+  `ai-platform/test/helpers/adapter-stub.ts` drive the adapter through an in-process stub (no broker,
+  no provider, no network), covering spec Test plan cases T1–T13 (**33 tests**): real
+  `reader.cancel()`, already-aborted, signal abort, Content-Length, multi-byte UTF-8, malformed body,
+  empty/whitespace headers, non-ULID trace, 503 without `eventSource`, connection-scoped terminal
+  flag.
 - **Frozen framing contract** — `contracts/sse-framing.md` documents the header set, SSE vocabulary,
-  one-terminal-event invariant, and cancellation rules for later slices' Consumes review.
+  one-terminal-event invariant, cancellation rules, body gate, bare 422, and event-source requirement
+  for later slices' Consumes review.
 
 ## 3. Files to review
 
 | Path | Role |
 | --- | --- |
 | `ai-platform/src/adapter.ts` | §4.3.1 protocol adapter — ingress gate, header parsing, SSE framing, terminal-event guard, cancellation |
-| `ai-platform/src/worker.ts` | `POST /v1/requests` delegates to `handleAdapterRequest`; `/health` unchanged |
-| `ai-platform/test/adapter.test.ts` | T-A6-T1..T12 integration suite (spec Test plan T1–T12) |
+| `ai-platform/src/worker.ts` | `POST /v1/requests` delegates to `handleAdapterRequest`; fails fast until D4; `/health` unchanged |
+| `ai-platform/test/adapter.test.ts` | T-A6-T1..T13 integration suite (33 tests) |
+| `ai-platform/test/helpers/adapter-stub.ts` | Test-harness stub event source (not shipped in `src/`) |
 
 ## 4. Run the automated suite
 
@@ -56,8 +67,8 @@ npm install   # first time only
 npx vitest run test/adapter.test.ts
 ```
 
-Expected: **19 passing tests** for this slice only (twelve named spec scenarios T1–T12, plus
-parameterized sub-cases for header rejection and duplicate-terminal guards).
+Expected: **33 passing tests** for this slice only (named spec scenarios T1–T13, including
+parameterized sub-cases for header/body rejection, disconnect paths, and duplicate-terminal guards).
 
 To run a single describe block:
 
@@ -73,17 +84,17 @@ Read the frozen SSE framing contract:
 cat specs/020-ai-protocol-adapter-sse/contracts/sse-framing.md
 ```
 
-Inspect the ingress gate and parse-failure status (no bare `400`):
+Inspect the ingress gate, bare 422, and required eventSource:
 
 ```bash
-grep -n 'INGRESS_BODY_SIZE_LIMIT\|ingressTooLarge\|adapterParseFailure\|422' \
+grep -n 'INGRESS_BODY_SIZE_LIMIT\|readBodyWithinLimit\|ingressTooLarge\|adapterParseFailure\|eventSourceRequired\|422\|503' \
   ai-platform/src/adapter.ts
 ```
 
-Inspect SSE event encoding and the one-terminal-event guard:
+Inspect SSE event encoding, cancel-without-enqueue, and the one-terminal-event guard:
 
 ```bash
-grep -n 'encodeSseEvent\|terminalEmitted\|accepted\|heartbeat\|cancelled' \
+grep -n 'encodeSseEvent\|terminalEmitted\|markCancelledWithoutEnqueue\|accepted\|heartbeat\|cancelled' \
   ai-platform/src/adapter.ts
 ```
 
@@ -91,6 +102,13 @@ Inspect Worker routing to the adapter:
 
 ```bash
 grep -n 'handleAdapterRequest\|/v1/requests\|/health' ai-platform/src/worker.ts
+```
+
+Confirm stubs are test-only:
+
+```bash
+grep -n 'StubEventSource\|createModeGated\|attemptDuplicateTerminal' \
+  ai-platform/src/adapter.ts ai-platform/test/helpers/adapter-stub.ts
 ```
 
 List the named test cases covered by this slice:

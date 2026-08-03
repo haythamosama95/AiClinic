@@ -10,8 +10,6 @@ import { resolveTraceId } from "./trace";
 /** Transport ingress body-size limit (bytes). Shared with tests via Clarification Q1. */
 export const INGRESS_BODY_SIZE_LIMIT = 1_048_576;
 
-const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
-
 export const TERMINAL_EVENT_KINDS = [
   "completed",
   "failed",
@@ -41,22 +39,17 @@ export interface AdapterEventSink {
   push(event: AdapterSseEvent): void;
 }
 
-export interface StubEventSourceController {
-  complete(result?: unknown): void;
-  fail(code: TaxonomyCode): void;
-  idle(): void | Promise<void>;
-  abort(): void;
-  attemptDuplicateTerminal(kind: TerminalEventKind): void;
-  requestContext(contextRequest: unknown): void;
-}
-
-export type StubEventSourceFactory = (
+/**
+ * Injected event source (broker in production; test harness stubs in tests).
+ * Required — without one the adapter fails fast with 503.
+ */
+export type AdapterEventSourceFactory = (
   sink: AdapterEventSink,
   context: AdapterStreamContext,
-) => StubEventSourceController;
+) => unknown;
 
 export interface HandleAdapterRequestOptions {
-  stubEventSource?: StubEventSourceFactory;
+  eventSource?: AdapterEventSourceFactory;
   degradedNotice?: boolean;
 }
 
@@ -145,84 +138,12 @@ export function pushTerminalEvent(
   });
 }
 
-export function createModeGatedStubEventSource(
-  interactionMode: InteractionMode,
-  terminalKind: TerminalEventKind,
-  contextRequest: unknown = [],
-): StubEventSourceFactory {
-  return (sink, context) => {
-    const controller: StubEventSourceController = {
-      complete(result = { status: "ok" }) {
-        pushTerminalEvent(sink, context, "completed", interactionMode, {
-          result,
-        });
-      },
-      fail(code: TaxonomyCode) {
-        pushTerminalEvent(sink, context, "failed", interactionMode, { code });
-      },
-      idle() {
-        sink.push({
-          type: "heartbeat",
-          data: { trace_id: context.traceId },
-          trace_id: context.traceId,
-        });
-      },
-      abort() {
-        pushTerminalEvent(sink, context, "cancelled", interactionMode);
-      },
-      attemptDuplicateTerminal(kind: TerminalEventKind) {
-        if (kind === "completed") {
-          controller.complete();
-          return;
-        }
-        if (kind === "failed") {
-          controller.fail("internal_error");
-          return;
-        }
-        if (kind === "context_requested") {
-          controller.requestContext(contextRequest);
-          return;
-        }
-        controller.abort();
-      },
-      requestContext(request) {
-        if (interactionMode !== "conversational") {
-          controller.complete();
-          return;
-        }
-        pushTerminalEvent(sink, context, "context_requested", interactionMode, {
-          context_request: request,
-        });
-      },
-    };
-
-    if (terminalKind === "context_requested") {
-      if (interactionMode === "conversational") {
-        controller.requestContext(contextRequest);
-      } else {
-        controller.complete();
-      }
-    } else if (terminalKind === "completed") {
-      controller.complete();
-    } else if (terminalKind === "failed") {
-      controller.fail("internal_error");
-    } else if (terminalKind === "cancelled") {
-      controller.abort();
-    }
-
-    return controller;
-  };
-}
-
-function isValidSuppliedTraceId(value: string): boolean {
-  return ULID_PATTERN.test(value);
-}
-
 function encodeSseEvent(event: AdapterSseEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
 }
 
 function ingressTooLargeResponse(): Response {
+  // Stage-1 size gate runs before headers/reference: empty fields by design (FR-006 exception).
   const body = buildErrorBody({
     code: "request_too_large",
     requestReference: "",
@@ -236,9 +157,16 @@ function ingressTooLargeResponse(): Response {
 }
 
 function adapterParseFailureResponse(): Response {
-  // §5.4: no taxonomy code maps to a bare 400; adapter-local parse failures use 422.
+  // §5.4: no taxonomy code maps to a bare 400; adapter-local parse failures use bare 422.
   return new Response(null, {
     status: 422,
+    headers: { "content-type": "text/plain" },
+  });
+}
+
+function eventSourceRequiredResponse(): Response {
+  return new Response("event source required", {
+    status: 503,
     headers: { "content-type": "text/plain" },
   });
 }
@@ -249,9 +177,7 @@ interface ParsedHeaders {
   capabilityVersion: string;
 }
 
-function parseRequiredHeaders(
-  request: Request,
-): ParsedHeaders | null {
+function parseRequiredHeaders(request: Request): ParsedHeaders | null {
   const idempotencyKey = request.headers.get("x-idempotency-key")?.trim();
   if (!idempotencyKey) {
     return null;
@@ -266,11 +192,11 @@ function parseRequiredHeaders(
   if (suppliedTraceId !== null && suppliedTraceId.trim() === "") {
     return null;
   }
-  if (suppliedTraceId !== null && !isValidSuppliedTraceId(suppliedTraceId)) {
-    return null;
-  }
 
-  const traceId = resolveTraceId(suppliedTraceId);
+  // A2 resolveTraceId: any non-empty supplied id is accepted; ULID only when absent.
+  const traceId = resolveTraceId(
+    suppliedTraceId === null ? null : suppliedTraceId.trim(),
+  );
 
   return {
     idempotencyKey,
@@ -279,39 +205,119 @@ function parseRequiredHeaders(
   };
 }
 
-function defaultStubEventSource(
-  _sink: AdapterEventSink,
-  _context: AdapterStreamContext,
-): StubEventSourceController {
-  const noop = (): void => undefined;
-  return {
-    complete: noop,
-    fail: noop,
-    idle: noop,
-    abort: noop,
-    attemptDuplicateTerminal: noop,
-    requestContext: noop,
-  };
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseRequestBody(bodyText: string): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function concatUint8Arrays(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
+
+type BodyReadResult =
+  | { ok: true; text: string }
+  | { ok: false; reason: "too_large" | "read_error" };
+
+/**
+ * Byte-accurate ingress gate: Content-Length pre-check when present; otherwise stream-read
+ * and abort at the first chunk that would exceed the limit. Never buffers past the cap.
+ */
+async function readBodyWithinLimit(request: Request): Promise<BodyReadResult> {
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader !== null) {
+    const declared = Number(contentLengthHeader);
+    if (Number.isFinite(declared) && declared > INGRESS_BODY_SIZE_LIMIT) {
+      return { ok: false, reason: "too_large" };
+    }
+  }
+
+  if (request.body === null) {
+    return { ok: true, text: "" };
+  }
+
+  try {
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value || value.byteLength === 0) {
+        continue;
+      }
+      if (totalBytes + value.byteLength > INGRESS_BODY_SIZE_LIMIT) {
+        await reader.cancel();
+        return { ok: false, reason: "too_large" };
+      }
+      chunks.push(value);
+      totalBytes += value.byteLength;
+    }
+
+    const merged = concatUint8Arrays(chunks, totalBytes);
+    return { ok: true, text: new TextDecoder().decode(merged) };
+  } catch {
+    return { ok: false, reason: "read_error" };
+  }
+}
+
+function safeCloseController(
+  controller: ReadableStreamDefaultController<Uint8Array> | null,
+): void {
+  if (!controller) {
+    return;
+  }
+  try {
+    controller.close();
+  } catch {
+    // Already closed or cancelled — ignore.
+  }
 }
 
 export async function handleAdapterRequest(
   request: Request,
   options: HandleAdapterRequestOptions = {},
 ): Promise<Response> {
-  let bodyText: string;
-  try {
-    bodyText = await request.text();
-  } catch {
+  const bodyResult = await readBodyWithinLimit(request);
+  if (!bodyResult.ok) {
+    if (bodyResult.reason === "too_large") {
+      return ingressTooLargeResponse();
+    }
     return adapterParseFailureResponse();
   }
 
-  if (bodyText.length > INGRESS_BODY_SIZE_LIMIT) {
-    return ingressTooLargeResponse();
+  if (parseRequestBody(bodyResult.text) === null) {
+    return adapterParseFailureResponse();
   }
 
   const parsedHeaders = parseRequiredHeaders(request);
   if (!parsedHeaders) {
     return adapterParseFailureResponse();
+  }
+
+  const eventSource = options.eventSource;
+  if (!eventSource) {
+    return eventSourceRequiredResponse();
   }
 
   const requestReference = generateRequestReference();
@@ -325,9 +331,15 @@ export async function handleAdapterRequest(
     },
   };
 
+  // Connection-scoped only — no per-request server state object (§4.4 / §9.7).
   let terminalEmitted = false;
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
     null;
+  const abortedAtEntry = request.signal.aborted;
+
+  const markCancelledWithoutEnqueue = (): void => {
+    terminalEmitted = true;
+  };
 
   const sink: AdapterEventSink = {
     push(event: AdapterSseEvent): void {
@@ -339,7 +351,7 @@ export async function handleAdapterRequest(
       }
       streamController?.enqueue(new TextEncoder().encode(encodeSseEvent(event)));
       if (isTerminalEventType(event.type)) {
-        streamController?.close();
+        safeCloseController(streamController);
       }
     },
   };
@@ -357,43 +369,27 @@ export async function handleAdapterRequest(
         new TextEncoder().encode(encodeSseEvent(acceptedEvent)),
       );
 
-      const stubFactory = options.stubEventSource ?? defaultStubEventSource;
-      stubFactory(sink, context);
-    },
-    cancel() {
-      if (terminalEmitted) {
+      if (abortedAtEntry || request.signal.aborted) {
+        markCancelledWithoutEnqueue();
+        safeCloseController(controller);
         return;
       }
-      const cancelledEvent: AdapterSseEvent = {
-        type: "cancelled",
-        data: { trace_id: context.traceId },
-        trace_id: context.traceId,
-      };
-      terminalEmitted = true;
-      streamController?.enqueue(
-        new TextEncoder().encode(encodeSseEvent(cancelledEvent)),
-      );
-      streamController?.close();
+
+      eventSource(sink, context);
+    },
+    cancel() {
+      // Client disconnected — nobody left to receive `cancelled` on the wire (contract §4).
+      markCancelledWithoutEnqueue();
     },
   });
 
-  if (request.signal.aborted) {
-    // Handled by stream cancel when consumer aborts.
-  } else {
+  if (!abortedAtEntry) {
     request.signal.addEventListener(
       "abort",
       () => {
         if (!terminalEmitted) {
-          const cancelledEvent: AdapterSseEvent = {
-            type: "cancelled",
-            data: { trace_id: context.traceId },
-            trace_id: context.traceId,
-          };
-          terminalEmitted = true;
-          streamController?.enqueue(
-            new TextEncoder().encode(encodeSseEvent(cancelledEvent)),
-          );
-          streamController?.close();
+          markCancelledWithoutEnqueue();
+          safeCloseController(streamController);
         }
       },
       { once: true },
