@@ -8,6 +8,7 @@ import {
   type D1Reader,
   loadConfig,
 } from "../config-cache";
+import { recordGuardRejection } from "../rate-limit";
 
 export interface Principal {
   readonly installationId: string;
@@ -52,11 +53,19 @@ type AatPayload = {
   ver: string;
 };
 
-function rejectUnauthenticated(): VerifyResult {
+function rejectUnauthenticated(installationId?: string): VerifyResult {
+  recordGuardRejection({
+    error_code: "unauthenticated",
+    installation_id: installationId ?? "_",
+  });
   return { ok: false, code: "unauthenticated" };
 }
 
-function rejectSuspended(): VerifyResult {
+function rejectSuspended(installationId: string): VerifyResult {
+  recordGuardRejection({
+    error_code: "installation_suspended",
+    installation_id: installationId,
+  });
   return { ok: false, code: "installation_suspended" };
 }
 
@@ -238,18 +247,34 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
+    // Cheap claim checks before any config-cache / D1 load (§4.3.2).
+    if (payload.aud !== ctx.audience) {
+      return rejectUnauthenticated(payload.iss);
+    }
+
+    if (
+      payload.iat - ctx.clockSkewSeconds > ctx.now ||
+      ctx.now > payload.exp + ctx.clockSkewSeconds
+    ) {
+      return rejectUnauthenticated(payload.iss);
+    }
+
     let installation: Record<string, unknown>;
     try {
       installation = await loadConfig(ctx.cache, ctx.reader, "installations", payload.iss);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated();
+        return rejectUnauthenticated(payload.iss);
       }
       throw error;
     }
 
+    // Fail closed on lifecycle: only `active` authenticates (§4.3.2 / B2 delete).
     if (installation.status === "suspended") {
-      return rejectSuspended();
+      return rejectSuspended(payload.iss);
+    }
+    if (installation.status !== "active") {
+      return rejectUnauthenticated(payload.iss);
     }
 
     let keyRow: Record<string, unknown>;
@@ -257,34 +282,28 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       keyRow = await loadConfig(ctx.cache, ctx.reader, "keys", header.kid);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated();
+        return rejectUnauthenticated(payload.iss);
       }
       throw error;
     }
 
     if (keyRow.revoked_at != null) {
-      return rejectUnauthenticated();
+      return rejectUnauthenticated(payload.iss);
     }
 
-    if (payload.aud !== ctx.audience) {
-      return rejectUnauthenticated();
-    }
-
-    if (
-      payload.iat - ctx.clockSkewSeconds > ctx.now ||
-      ctx.now > payload.exp + ctx.clockSkewSeconds
-    ) {
-      return rejectUnauthenticated();
+    // Key selected by iss AND kid (§4.3.2) — bind ownership before verify.
+    if (keyRow.installation_id !== payload.iss) {
+      return rejectUnauthenticated(payload.iss);
     }
 
     const signatureBytes = base64urlDecode(signatureB64);
     if (!signatureBytes) {
-      return rejectUnauthenticated();
+      return rejectUnauthenticated(payload.iss);
     }
 
     const publicKey = await importEd25519PublicKey(keyRow);
     if (!publicKey) {
-      return rejectUnauthenticated();
+      return rejectUnauthenticated(payload.iss);
     }
 
     const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
@@ -296,7 +315,7 @@ export class EnrolledKeyVerifier implements TokenVerifier {
     );
 
     if (!valid) {
-      return rejectUnauthenticated();
+      return rejectUnauthenticated(payload.iss);
     }
 
     let contractRow: Record<string, unknown>;
@@ -304,13 +323,13 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       contractRow = await loadConfig(ctx.cache, ctx.reader, "token_contracts", payload.ver);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated();
+        return rejectUnauthenticated(payload.iss);
       }
       throw error;
     }
 
     if (contractRow.retired_at != null) {
-      return rejectUnauthenticated();
+      return rejectUnauthenticated(payload.iss);
     }
 
     return { ok: true, principal: buildPrincipal(payload) };

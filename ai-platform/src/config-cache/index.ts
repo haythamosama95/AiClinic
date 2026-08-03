@@ -117,7 +117,9 @@ export async function loadConfig(
   }
 
   return cache.beginInflight(kind, key, async () => {
-    const row = await reader.read(key);
+    // Reader keys are `${kind}:${key}` so one D1Reader serves every entity kind
+    // without colliding on shared identifiers (installations vs entitlements).
+    const row = await reader.read(`${kind}:${key}`);
     if (row === "miss") {
       throw new ConfigCacheMissError(kind, key);
     }

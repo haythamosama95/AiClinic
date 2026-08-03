@@ -264,6 +264,22 @@ describe("T-A5-23 config_cache_uses_in_isolate_memory_not_kv", () => {
     expect(wrangler).not.toMatch(/\[\[.*kv_namespaces.*\]\]/i);
     expect(wrangler).not.toMatch(/binding\s*=\s*"KV"/i);
   });
+
+  it("declares the three FR-006 Rate Limiting bindings in wrangler.toml", () => {
+    const wrangler = fs.readFileSync(WRANGLER_PATH, "utf8");
+    expect(wrangler).toContain('name = "RATE_LIMITER_INSTALLATION"');
+    expect(wrangler).toContain('name = "RATE_LIMITER_INSTALLATION_ACTOR"');
+    expect(wrangler).toContain('name = "RATE_LIMITER_INSTALLATION_CAPABILITY"');
+  });
+});
+
+describe("T-B3 worker_scheduled_flushes_rejection_counters", () => {
+  it("worker scheduled handler imports and calls flushRejectionCounters", () => {
+    const worker = fs.readFileSync(path.join(ROOT, "src/worker.ts"), "utf8");
+    expect(worker).toContain('from "./rate-limit"');
+    expect(worker).toContain("flushRejectionCounters");
+    expect(worker).toMatch(/async scheduled\([\s\S]*flushRejectionCounters/);
+  });
 });
 
 describe("T-A5-24 no_per_request_state_introduced", () => {

@@ -7,6 +7,7 @@ import {
 } from "./control";
 import { getRequest } from "./journal";
 import { normalizeRequestReference } from "./reference";
+import { flushRejectionCounters } from "./rate-limit";
 import { runRetentionPurge } from "./retention";
 import { runRollupAndReconciliation } from "./rollup";
 import {
@@ -24,6 +25,9 @@ interface Env {
   ENVIRONMENT: string;
   OPERATOR_BEARER_TOKEN: string;
   OPERATOR_ID: string;
+  RATE_LIMITER_INSTALLATION: RateLimit;
+  RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
+  RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
 }
 
 function assertRequiredBindings(runtimeEnv: Env): void {
@@ -147,6 +151,9 @@ export default {
     runtimeEnv: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
+    // FR-011 — flush in-isolate guard rejection tallies before other jobs.
+    await flushRejectionCounters({ DB: runtimeEnv.DB });
+
     const cron = controller.cron;
     if (cron === "0 3 * * *") {
       await runRetentionPurge({

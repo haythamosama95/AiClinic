@@ -4,7 +4,6 @@
 
 import {
   type ConfigCache,
-  type ConfigEntityKind,
   type D1Reader,
   loadConfig,
 } from "../config-cache";
@@ -13,6 +12,10 @@ import type {
   AdmissionResponse,
   EntitlementSnapshot,
 } from "../quota-do/index";
+import {
+  flushRejectionCounters,
+  recordGuardRejection,
+} from "../rate-limit";
 
 const GRACE_ADMISSION_CAP = 5;
 
@@ -71,19 +74,10 @@ export type PendingGraceAdmission = {
   entitlement: EntitlementSnapshot;
 };
 
-/** In-isolate rejection tally keyed by time bucket + dimension set (§4.3.12). */
-const rejectionTally = new Map<string, number>();
-
 /** Grace admissions consumed per installation during a DO unavailability episode. */
 const graceAdmissionsUsed = new Map<string, number>();
 
 const graceReconciliationQueue: PendingGraceAdmission[] = [];
-
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read: (key) => reader.read(`${kind}:${key}`),
-  };
-}
 
 function parseAllowedCapabilities(entitlement: D1Row): string[] {
   const raw = entitlement.allowed_capabilities;
@@ -91,7 +85,12 @@ function parseAllowedCapabilities(entitlement: D1Row): string[] {
     return raw as string[];
   }
   if (typeof raw === "string") {
-    return JSON.parse(raw) as string[];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -112,40 +111,6 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
     soft_threshold: row.soft_threshold as number,
     status: row.status as string,
   };
-}
-
-function currentTimeBucket(now = new Date()): string {
-  const iso = now.toISOString();
-  return `${iso.slice(0, 16)}:00`;
-}
-
-function dimensionSetFor(errorCode: string, installationId: string): string {
-  return JSON.stringify({
-    error_code: errorCode,
-    installation_id: installationId,
-  });
-}
-
-function tallyMapKey(timeBucket: string, dimensionSet: string): string {
-  return `${timeBucket}\0${dimensionSet}`;
-}
-
-function recordRejection(errorCode: string, installationId: string): void {
-  const timeBucket = currentTimeBucket();
-  const dimensionSet = dimensionSetFor(errorCode, installationId);
-  const key = tallyMapKey(timeBucket, dimensionSet);
-  rejectionTally.set(key, (rejectionTally.get(key) ?? 0) + 1);
-}
-
-async function counterIdFor(
-  dimensionSet: string,
-  timeBucket: string,
-): Promise<string> {
-  const data = new TextEncoder().encode(`${timeBucket}:${dimensionSet}`);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function resetGraceCounterOnDoSuccess(installationId: string): void {
@@ -199,19 +164,28 @@ function mapDoOutcome(
         ...(body.degraded ? { degraded: true } : {}),
       };
     case "replay":
-      recordRejection("unauthenticated", installationId);
+      recordGuardRejection({
+        error_code: "unauthenticated",
+        installation_id: installationId,
+      });
       return { ok: false, code: "unauthenticated" };
     case "idempotent":
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
     case "quota_exhausted":
-      recordRejection("quota_exhausted", installationId);
+      recordGuardRejection({
+        error_code: "quota_exhausted",
+        installation_id: installationId,
+      });
       return {
         ok: false,
         code: "quota_exhausted",
         periodReset: body.period_end,
       };
     case "concurrency_exhausted":
-      recordRejection("concurrency_exhausted", installationId);
+      recordGuardRejection({
+        error_code: "concurrency_exhausted",
+        installation_id: installationId,
+      });
       return { ok: false, code: "concurrency_exhausted" };
     default:
       return { ok: false, code: "internal_error" };
@@ -268,7 +242,7 @@ export async function runAdmission(
 
   const entitlementRow = await loadConfig(
     cache,
-    scopeReaderForKind(reader, "entitlements"),
+    reader,
     "entitlements",
     principal.installationId,
   );
@@ -296,27 +270,5 @@ export async function runAdmission(
   }
 }
 
-export async function flushRejectionCounters(
-  bindings: Pick<AdmissionBindings, "DB">,
-): Promise<void> {
-  if (rejectionTally.size === 0) {
-    return;
-  }
-
-  for (const [mapKey, count] of rejectionTally) {
-    const separator = mapKey.indexOf("\0");
-    const timeBucket = mapKey.slice(0, separator);
-    const dimensionSet = mapKey.slice(separator + 1);
-    const counterId = await counterIdFor(dimensionSet, timeBucket);
-
-    await bindings.DB.prepare(
-      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(counter_id) DO UPDATE SET count = count + excluded.count`,
-    )
-      .bind(counterId, dimensionSet, timeBucket, count)
-      .run();
-  }
-
-  rejectionTally.clear();
-}
+/** Re-export B3 shared flush — admission no longer keeps a private tally. */
+export { flushRejectionCounters };

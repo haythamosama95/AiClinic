@@ -147,7 +147,7 @@ or request-scoped mutable state is introduced (test `T-A5-24`).
 | Export | Role |
 | --- | --- |
 | `ConfigEntityKind` | Closed union of the six cached kinds (§2). |
-| `D1Reader` | Port: `read(key: string) => Promise<D1Row \| "miss">`. |
+| `D1Reader` | Port: `read(key: string) => Promise<D1Row \| "miss">`. `loadConfig` passes `` `${kind}:${key}` `` as `key` so a single production reader can distinguish entity kinds that share identifiers. |
 | `ConfigCache` | In-isolate TTL map; `consult(kind, key)` and `remember(kind, key, value)`. |
 | `loadConfig(cache, reader, kind, key)` | Primary entry point: cache hit → copy; miss/expiry → one D1 read. |
 | `ConfigCacheMissError` | Typed failure on D1 miss (§5). |

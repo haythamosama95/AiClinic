@@ -55,6 +55,11 @@ type RateLimitModule = {
   flushRejectionCounters: (
     bindings: Pick<RateLimitBindings, "DB">,
   ) => Promise<void>;
+  recordGuardRejection: (dimensions: {
+    error_code: string;
+    installation_id: string;
+    composite_key?: CompositeKeyKind;
+  }) => void;
 };
 
 type CompositeKeyKind =
@@ -401,5 +406,67 @@ describe("rate_limit_counters_flush_bucketed", () => {
 
     const dimensionSets = new Set(rows.map((row) => row.dimension_set));
     expect(dimensionSets.size).toBe(1);
+  });
+});
+
+describe("guard_rejection_counters_stages_2_3", () => {
+  it("flushes identity and entitlement rejection codes into platform_counter", async () => {
+    const module = await loadRateLimitModule();
+    const { bindings } = createRateLimitBindings();
+
+    module.recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+    module.recordGuardRejection({
+      error_code: "installation_suspended",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+    module.recordGuardRejection({
+      error_code: "forbidden_capability",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+    module.recordGuardRejection({
+      error_code: "capability_disabled",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+
+    await module.flushRejectionCounters(bindings);
+
+    const rows = await readPlatformCounterRows();
+    const codes = rows.map((row) => JSON.parse(row.dimension_set).error_code as string);
+    expect(codes.sort()).toEqual([
+      "capability_disabled",
+      "forbidden_capability",
+      "installation_suspended",
+      "unauthenticated",
+    ]);
+  });
+});
+
+describe("flush_rejection_counters_snapshot_clears_before_write", () => {
+  it("does not double-count when a subsequent flush follows a completed flush", async () => {
+    const module = await loadRateLimitModule();
+    const { bindings } = createRateLimitBindings();
+
+    module.recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+    await module.flushRejectionCounters(bindings);
+    await module.flushRejectionCounters(bindings);
+
+    const rows = await readPlatformCounterRows();
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
+    expect(total).toBe(1);
+  });
+});
+
+describe("worker_scheduled_exports_flush", () => {
+  it("shares flushRejectionCounters between rate-limit and admission modules", async () => {
+    const rateLimit = await loadRateLimitModule();
+    const admission = await import(/* @vite-ignore */ "../src/admission");
+    expect(typeof rateLimit.flushRejectionCounters).toBe("function");
+    expect(admission.flushRejectionCounters).toBe(rateLimit.flushRejectionCounters);
   });
 });

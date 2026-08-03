@@ -111,8 +111,8 @@ description: "Task list for AI platform slice B3 — Guard stages: identity, rat
 
 - Tests are written and confirmed failing before any implementation (T012 proved by T002–T005; T013 by T009–T011; T014 by T006–T008).
 - The migration (`ai-platform/migrations/20260731120000_platform_schema.sql`) is applied in test setup, never edited — A5 owns it.
-- No new binding, secret, DO class, `wrangler.toml` change, or migration is made anywhere in the slice.
-- The consumed `errors.ts` (A2), `config-cache/` (A5), `adapter.ts` (A6), `control/` (B2), and the B1 keystore/issuer in `backend/supabase/` are imported, never modified.
+- Rate Limiting bindings (`RATE_LIMITER_INSTALLATION{,_ACTOR,_CAPABILITY}`) are declared in `wrangler.toml` so FR-006 is satisfiable outside test fixtures (review resolution). No new DO class or migration is added by B3.
+- The consumed `errors.ts` (A2), `config-cache/` (A5), `adapter.ts` (A6), `control/` (B2), and the B1 keystore/issuer in `backend/supabase/` are imported; `loadConfig` reader-key convention and shared rejection tally are extended by review resolution as allowed contract extensions.
 
 ### Parallel Opportunities
 

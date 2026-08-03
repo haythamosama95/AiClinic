@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import {
   ConfigCache,
+  ConfigCacheMissError,
   loadConfig,
   type ConfigEntityKind,
   type D1Reader,
@@ -92,7 +93,9 @@ const FIXTURE_ORG_ID = "org-ent-001";
 const FIXTURE_CAPABILITY_ID = "clinic.visit_summary";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
 const FIXTURE_PROVIDER_ID = "deepseek";
+const FIXTURE_PLAN = "professional";
 const FIXTURE_NOW = "2026-07-31T12:00:00.000Z";
+const FIXTURE_LATER = "2026-07-31T13:00:00.000Z";
 
 type EntitlementHandlers = {
   evaluateEntitlement: (
@@ -106,7 +109,16 @@ type EntitlementHandlers = {
 type SeedEntitlementOptions = {
   status?: string;
   plan?: string;
-  allowedCapabilities?: string[];
+  allowedCapabilities?: string[] | string;
+};
+
+type SeedGrantOptions = {
+  capabilityId?: string;
+  capabilityVersion?: string;
+  /** D1 `capability_grant.scope` column value. */
+  scope?: string;
+  revokedAt?: string | null;
+  grantId?: string;
 };
 
 type KillSwitchScope = "global" | "capability" | "installation" | "provider";
@@ -114,14 +126,6 @@ type KillSwitchScope = "global" | "capability" | "installation" | "provider";
 /** Loads entitlement stage from `src/entitlement/` (absent until Phase 3). */
 async function loadEntitlementHandlers(): Promise<EntitlementHandlers> {
   return import(/* @vite-ignore */ "../src/entitlement") as Promise<EntitlementHandlers>;
-}
-
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
 }
 
 function makePrincipal(overrides: Partial<Principal> = {}): Principal {
@@ -197,9 +201,14 @@ async function seedEntitlement(
 ): Promise<void> {
   const {
     status = "active",
-    plan = "professional",
+    plan = FIXTURE_PLAN,
     allowedCapabilities = [FIXTURE_CAPABILITY_ID],
   } = options;
+
+  const allowedCapabilitiesValue =
+    typeof allowedCapabilities === "string"
+      ? allowedCapabilities
+      : JSON.stringify(allowedCapabilities);
 
   await env.DB.prepare(
     `INSERT INTO entitlement (
@@ -217,7 +226,7 @@ async function seedEntitlement(
       1_000,
       1_000_000,
       100,
-      JSON.stringify(allowedCapabilities),
+      allowedCapabilitiesValue,
       0.8,
       status,
     )
@@ -225,21 +234,30 @@ async function seedEntitlement(
 }
 
 async function seedCapabilityGrant(
-  capabilityId: string = FIXTURE_CAPABILITY_ID,
-  capabilityVersion: string = FIXTURE_CAPABILITY_VERSION,
+  options: SeedGrantOptions = {},
 ): Promise<void> {
+  const capabilityId = options.capabilityId ?? FIXTURE_CAPABILITY_ID;
+  const capabilityVersion =
+    options.capabilityVersion ?? FIXTURE_CAPABILITY_VERSION;
+  const scope =
+    options.scope ?? `installation:${FIXTURE_INSTALLATION_ID}`;
+  const revokedAt = options.revokedAt === undefined ? null : options.revokedAt;
+  const grantId =
+    options.grantId ?? `grant-${scope}-${capabilityId}`.replace(/:/g, "_");
+
   await env.DB.prepare(
     `INSERT INTO capability_grant (
       grant_id, scope, capability_id, capability_version,
       granted_at, revoked_at, changed_at, changed_by
-    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
-      `grant-${capabilityId}`,
-      `installation:${FIXTURE_INSTALLATION_ID}`,
+      grantId,
+      scope,
       capabilityId,
       capabilityVersion,
       FIXTURE_NOW,
+      revokedAt,
       FIXTURE_NOW,
       "operator-test",
     )
@@ -249,6 +267,7 @@ async function seedCapabilityGrant(
 async function seedKillSwitch(
   scope: KillSwitchScope,
   target: string,
+  recordedAt: string = FIXTURE_NOW,
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO control_audit (
@@ -260,7 +279,28 @@ async function seedKillSwitch(
       "operator-test",
       `kill_switch_${scope}`,
       target,
-      FIXTURE_NOW,
+      recordedAt,
+    )
+    .run();
+}
+
+/** Records a lift after a prior activate — harness treats latest lift as inactive. */
+async function seedKillSwitchLift(
+  scope: KillSwitchScope,
+  target: string,
+  recordedAt: string = FIXTURE_LATER,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO control_audit (
+      audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
+    ) VALUES (?, ?, ?, ?, NULL, NULL, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      "operator-test",
+      `lift_kill_switch_${scope}`,
+      target,
+      recordedAt,
     )
     .run();
 }
@@ -278,6 +318,11 @@ function killSwitchTarget(scope: KillSwitchScope): string {
   }
 }
 
+/**
+ * Production-shaped D1Reader: `loadConfig` passes prefixed keys `kind:key`.
+ * Grant rows are returned even when revoked — evaluateEntitlement decides.
+ * Kill-switch absence is `"miss"` (inactive); a later lift yields `{active:false}`.
+ */
 function makePlatformD1Reader(db: D1Database): D1Reader {
   return {
     async read(prefixedKey: string): Promise<D1Row | "miss"> {
@@ -312,35 +357,61 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
           return row ?? "miss";
         }
         case "grants": {
-          const [installationId, capabilityId] = key.split("/", 2);
+          // Cache keys: `${installationId}/${capabilityId}` or `plan:${plan}/${capabilityId}`.
+          let scope: string;
+          let capabilityId: string;
+          if (key.startsWith("plan:")) {
+            const slash = key.lastIndexOf("/");
+            if (slash === -1) {
+              return "miss";
+            }
+            scope = key.slice(0, slash);
+            capabilityId = key.slice(slash + 1);
+          } else {
+            const [installationId, capId] = key.split("/", 2);
+            if (!installationId || !capId) {
+              return "miss";
+            }
+            scope = `installation:${installationId}`;
+            capabilityId = capId;
+          }
+
           const row = await db
             .prepare(
               `SELECT grant_id, scope, capability_id, capability_version,
                       granted_at, revoked_at, changed_at, changed_by
                FROM capability_grant
-               WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL`,
+               WHERE scope = ? AND capability_id = ?
+               ORDER BY changed_at DESC LIMIT 1`,
             )
-            .bind(`installation:${installationId}`, capabilityId)
+            .bind(scope, capabilityId)
             .first<D1Row>();
           return row ?? "miss";
         }
         case "kill_switches": {
           const [scope, ...rest] = key.split(":");
           const target = rest.length > 0 ? rest.join(":") : scope;
-          const action =
+          const activateAction =
             scope === "global"
               ? "kill_switch_global"
               : `kill_switch_${scope}`;
+          const liftAction =
+            scope === "global"
+              ? "lift_kill_switch_global"
+              : `lift_kill_switch_${scope}`;
           const auditTarget = scope === "global" ? "global" : target;
           const row = await db
             .prepare(
               `SELECT action, target FROM control_audit
-               WHERE action = ? AND target = ?
+               WHERE target = ? AND action IN (?, ?)
                ORDER BY recorded_at DESC LIMIT 1`,
             )
-            .bind(action, auditTarget)
+            .bind(auditTarget, activateAction, liftAction)
             .first<D1Row>();
           if (!row) {
+            return "miss";
+          }
+          if (typeof row.action === "string" && row.action.startsWith("lift_")) {
             return { active: false, scope, target: auditTarget };
           }
           return { active: true, scope, target: auditTarget, action: row.action };
@@ -352,39 +423,38 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
   };
 }
 
+/**
+ * Warms cache via bare `loadConfig` — `loadConfig` itself prefixes `kind:key`
+ * for the reader (no scopeReaderForKind wrapper).
+ * Kill-switch absence is remembered as `{ active: false }` so a warm isolate
+ * still pays zero reader I/O (misses are not cached by loadConfig itself).
+ */
 async function warmEntitlementCache(
   cache: ConfigCache,
   reader: D1Reader,
   installationId: string = FIXTURE_INSTALLATION_ID,
+  grantKey: string = `${FIXTURE_INSTALLATION_ID}/${FIXTURE_CAPABILITY_ID}`,
 ): Promise<void> {
-  const scoped = (kind: ConfigEntityKind) => scopeReaderForKind(reader, kind);
+  await loadConfig(cache, reader, "installations", installationId);
+  await loadConfig(cache, reader, "entitlements", installationId);
+  await loadConfig(cache, reader, "grants", grantKey);
 
-  await loadConfig(
-    cache,
-    scoped("installations"),
-    "installations",
-    installationId,
-  );
-  await loadConfig(
-    cache,
-    scoped("entitlements"),
-    "entitlements",
-    installationId,
-  );
-  await loadConfig(
-    cache,
-    scoped("grants"),
-    "grants",
-    `${installationId}/${FIXTURE_CAPABILITY_ID}`,
-  );
-
+  const now = Date.now();
   for (const scope of [
     "global",
     `capability:${FIXTURE_CAPABILITY_ID}`,
     `installation:${installationId}`,
     `provider:${FIXTURE_PROVIDER_ID}`,
   ] as const) {
-    await loadConfig(cache, scoped("kill_switches"), "kill_switches", scope);
+    try {
+      await loadConfig(cache, reader, "kill_switches", scope);
+    } catch (error) {
+      if (error instanceof ConfigCacheMissError) {
+        cache.remember("kill_switches", scope, { active: false }, now);
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
@@ -515,6 +585,144 @@ describe("kill_switch_capability_disabled", () => {
   }
 });
 
+describe("kill_switch_absent_and_lifted", () => {
+  it("kill_switch_absent_passes — miss for all kill-switch scopes is inactive", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement();
+    await seedCapabilityGrant();
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx(),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("kill_switch_lifted_passes — explicit {active:false} after a prior activate", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement();
+    await seedCapabilityGrant();
+    await seedKillSwitch("capability", FIXTURE_CAPABILITY_ID, FIXTURE_NOW);
+    await seedKillSwitchLift("capability", FIXTURE_CAPABILITY_ID, FIXTURE_LATER);
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx(),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({ ok: true });
+  });
+});
+
+describe("entitlement_grant_scope_and_revocation", () => {
+  it("entitlement_plan_scoped_grant_accepted — plan scope grant with installation miss", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement({ plan: FIXTURE_PLAN });
+    await seedCapabilityGrant({
+      scope: `plan:${FIXTURE_PLAN}`,
+      grantId: "grant-plan-scoped",
+    });
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx(),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("entitlement_revoked_grant_rejected — revoked_at set is returned by reader", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement();
+    await seedCapabilityGrant({
+      revokedAt: FIXTURE_NOW,
+      grantId: "grant-revoked",
+    });
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx(),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "forbidden_capability",
+      path: "capability_not_granted",
+    });
+  });
+
+  it("entitlement_capability_version_mismatch_rejected", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement();
+    await seedCapabilityGrant({
+      capabilityVersion: "1.0.0",
+    });
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx({ capabilityVersion: "2.0.0" }),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "forbidden_capability",
+      path: "capability_not_granted",
+    });
+  });
+});
+
+describe("entitlement_malformed_allowed_capabilities_rejected", () => {
+  it("rejects forbidden_capability when allowed_capabilities is not valid JSON", async () => {
+    const { evaluateEntitlement } = await loadEntitlementHandlers();
+    await seedInstallation();
+    await seedEntitlement({
+      allowedCapabilities: "{not-json",
+    });
+    await seedCapabilityGrant();
+
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(env.DB);
+    const result = await evaluateEntitlement(
+      makePrincipal(),
+      makeCtx(),
+      cache,
+      reader,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "forbidden_capability",
+      path: "capability_not_granted",
+    });
+  });
+});
+
 describe("entitlement_warm_isolate_no_d1_read", () => {
   it("performs zero reader.read for entitlement and all four kill-switch scopes", async () => {
     const { evaluateEntitlement } = await loadEntitlementHandlers();
@@ -536,6 +744,7 @@ describe("entitlement_warm_isolate_no_d1_read", () => {
         capability_version: FIXTURE_CAPABILITY_VERSION,
         revoked_at: null,
       },
+      // Explicit inactive rows (warm path); absent path is covered by miss tests.
       "kill_switches:global": { active: false, scope: "global", target: "global" },
       [`kill_switches:capability:${FIXTURE_CAPABILITY_ID}`]: {
         active: false,

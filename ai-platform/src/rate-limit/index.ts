@@ -24,6 +24,13 @@ export type RateLimitFailure = {
 };
 export type RateLimitResult = RateLimitSuccess | RateLimitFailure;
 
+/** Dimensions for a guard rejection flushed into `platform_counter` (§4.3.12). */
+export type GuardRejectionDimensions = {
+  error_code: string;
+  installation_id: string;
+  composite_key?: CompositeKeyKind;
+};
+
 /** Default retry-after when the binding does not supply one (§4.3.3 simple limiter window). */
 const DEFAULT_RETRY_AFTER_SECONDS = 60;
 
@@ -41,27 +48,28 @@ function currentTimeBucket(now = new Date()): string {
   return `${iso.slice(0, 16)}:00`;
 }
 
-function dimensionSetFor(
-  compositeKey: CompositeKeyKind,
-  installationId: string,
-): string {
-  return JSON.stringify({
-    error_code: "rate_limited",
-    composite_key: compositeKey,
-    installation_id: installationId,
-  });
+function dimensionSetFor(dimensions: GuardRejectionDimensions): string {
+  const payload: Record<string, string> = {
+    error_code: dimensions.error_code,
+    installation_id: dimensions.installation_id,
+  };
+  if (dimensions.composite_key !== undefined) {
+    payload.composite_key = dimensions.composite_key;
+  }
+  return JSON.stringify(payload);
 }
 
 function tallyMapKey(timeBucket: string, dimensionSet: string): string {
   return `${timeBucket}\0${dimensionSet}`;
 }
 
-function recordRejection(
-  compositeKey: CompositeKeyKind,
-  installationId: string,
-): void {
+/**
+ * Records a guard rejection from stages 2–4 (and B4 admission) into the in-isolate
+ * tally flushed later to `platform_counter` (FR-011; §4.3.12).
+ */
+export function recordGuardRejection(dimensions: GuardRejectionDimensions): void {
   const timeBucket = currentTimeBucket();
-  const dimensionSet = dimensionSetFor(compositeKey, installationId);
+  const dimensionSet = dimensionSetFor(dimensions);
   const key = tallyMapKey(timeBucket, dimensionSet);
   rejectionTally.set(key, (rejectionTally.get(key) ?? 0) + 1);
 }
@@ -107,7 +115,11 @@ export async function checkRateLimit(
   for (const check of compositeKeyChecks(input, bindings)) {
     const outcome = await check.binding.limit({ key: check.key });
     if (!outcome.success) {
-      recordRejection(check.kind, input.installationId);
+      recordGuardRejection({
+        error_code: "rate_limited",
+        installation_id: input.installationId,
+        composite_key: check.kind,
+      });
       return {
         ok: false,
         code: "rate_limited",
@@ -119,6 +131,11 @@ export async function checkRateLimit(
   return { ok: true };
 }
 
+/**
+ * Flushes the in-isolate tally to bucketed `platform_counter` rows.
+ * Snapshot-and-clear before writing so a mid-flush D1 failure cannot double-count
+ * on the next flush (under-count on failure is preferred to double-apply).
+ */
 export async function flushRejectionCounters(
   bindings: Pick<RateLimitBindings, "DB">,
 ): Promise<void> {
@@ -126,7 +143,10 @@ export async function flushRejectionCounters(
     return;
   }
 
-  for (const [mapKey, count] of rejectionTally) {
+  const snapshot = [...rejectionTally.entries()];
+  rejectionTally.clear();
+
+  for (const [mapKey, count] of snapshot) {
     const separator = mapKey.indexOf("\0");
     const timeBucket = mapKey.slice(0, separator);
     const dimensionSet = mapKey.slice(separator + 1);
@@ -140,6 +160,4 @@ export async function flushRejectionCounters(
       .bind(counterId, dimensionSet, timeBucket, count)
       .run();
   }
-
-  rejectionTally.clear();
 }

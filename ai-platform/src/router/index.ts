@@ -432,14 +432,6 @@ export function selectCandidateChain({
   };
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: string): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
-}
-
 /** Preload installation-specific active routing policy into the config cache (J3). */
 export async function preloadRoutingPolicyForInstallation(
   cache: ConfigCache,
@@ -449,7 +441,7 @@ export async function preloadRoutingPolicyForInstallation(
 ): Promise<void> {
   await loadConfig(
     cache,
-    scopeReaderForKind(reader, "active_routing_policy"),
+    reader,
     "active_routing_policy",
     `${policyCacheKey}/${installationId}`,
   );

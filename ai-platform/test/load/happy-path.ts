@@ -252,12 +252,6 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
   };
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read: (key) => reader.read(`${kind}:${key}`),
-  };
-}
-
 async function seedInstallation(db: D1Database, installationId: string): Promise<void> {
   await db
     .prepare(
@@ -384,12 +378,7 @@ async function prepareRequest(
   await seedEntitlement(db, installationId);
   const cache = new ConfigCache();
   const reader = makePlatformD1Reader(db);
-  await loadConfig(
-    cache,
-    scopeReaderForKind(reader, "entitlements"),
-    "entitlements",
-    installationId,
-  );
+  await loadConfig(cache, reader, "entitlements", installationId);
   return { installationId, cache, reader };
 }
 
