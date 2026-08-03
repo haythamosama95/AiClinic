@@ -46,7 +46,7 @@ to the Flutter desktop app and the Supabase backend, already living in `ai-platf
 §7.1). A2 adds contracts and generators to that Worker, not infrastructure.
 
 **Performance Goals**: None at the request level. The only measurable is correctness of the taxonomy
-mapping, the reference format/uniqueness over 1,000,000 draws (T21), and the trace contract. The
+mapping, the reference format/uniqueness over 20,000 draws (T21), and the trace contract. The
 generator must not be a measurable latency contributor; a single `crypto.getRandomValues` call per
 reference and per fallback trace id is the entire cost.
 
@@ -204,7 +204,7 @@ tests of stateless generators, which §13.5 places under the same CI-on-every-ch
 | T1–T18 | Contract tests (CI) | `ai-platform/test/taxonomy.test.ts` | one case per §5.4 code: HTTP status, retryability, quota-consumption flag, body code |
 | T19 | Contract tests (CI) | `ai-platform/test/taxonomy.test.ts` | unrecognised code → `internal_error` (HTTP 500), never surfaced raw |
 | T20 | Contract tests (CI) | `ai-platform/test/error-body.test.ts` | every error body is `{"code","request_reference","trace_id","retry_safe"}`, `retry_safe` boolean |
-| T21 | Contract tests (CI) | `ai-platform/test/reference.test.ts` | 1,000,000 generated references match the regex, are uppercase, omit `I`/`L`/`O`/`U`, unique across the run |
+| T21 | Contract tests (CI) | `ai-platform/test/reference.test.ts` | 20,000 generated references match the regex, are uppercase, omit `I`/`L`/`O`/`U`, unique across the run |
 | T22 | Unit (CI) | `ai-platform/test/trace.test.ts` | a supplied trace id appears on every log line for that request |
 | T23 | Unit (CI) | `ai-platform/test/trace.test.ts` | an absent trace id is generated as a ULID (26-char Crockford-base32) and propagated identically |
 | T24 | Contract tests (CI) | `ai-platform/test/taxonomy.test.ts` | no error body is built for `context_requested` |
@@ -231,7 +231,7 @@ order is driven by what each module's tests need to exist:
    alongside in `test/error-body.test.ts`.
 3. **`src/reference.ts` — the Crockford-base32 generator + normalisation** (FR-010–013). CSPRNG
    draw via `crypto.getRandomValues`; the normalisation map (`I`/`L`→`1`, `O`→`0`, case-fold up).
-   T21 (1,000,000-draw run) and T28 (normalisation) written alongside in `test/reference.test.ts`.
+   T21 (20,000-draw run) and T28 (normalisation) written alongside in `test/reference.test.ts`.
 4. **`src/trace.ts` — the trace-id resolver** (FR-014–016; Clarification Q3). Accept the
    caller-supplied id; on absence generate a ULID-format string from `crypto.getRandomValues`;
    return a value propagated identically to a caller-supplied one. T22 and T23 written alongside

@@ -59,7 +59,7 @@ format, and the trace contract are fully specified by §5.4, §4.3.1, §13.1, §
 ### Session 2026-07-30
 
 - Q: What JSON field names and shape does the §5.4 error body use? → A: `{"code","request_reference","trace_id","retry_safe"}` with `retry_safe` as a boolean.
-- Q: What is the generation-run size for the T21 uniqueness assertion? → A: 1,000,000 draws.
+- Q: What is the generation-run size for the T21 uniqueness assertion? → A: 20,000 draws (strict uniqueness; birthday false-fail ≪ 0.1% over 32⁸). Not 1,000,000 — that draw count has ~36% collision probability and makes a strict-uniqueness assertion flaky.
 - Q: What format does the gateway-generated fallback trace id use? → A: ULID (26-char Crockford-base32).
 - Q: How is the §5.4 "Retryable" column mapped to the boolean `retry_safe`? → A: false for `No` and `—`; true for all other Retryable values.
 - Q: What does A2 actually test for `cancelled` given the get-request lookup belongs to C5/C7? → A: A2 tests `cancelled`→`499` classification + never-on-live-socket; the `200` lookup is deferred to C5/C7 (referenced, not run at A2).
@@ -85,7 +85,8 @@ no-rework rule (Delivery Plan §2.3) would make the resulting drift unfixable in
 **Independent Test**: Provable by automated unit and contract tests — every code in the §5.4 table
 exists with its HTTP status, retryability, and quota-consumption flag; an unrecognised code is treated
 as `internal_error`; every error body carries reference, trace id, and retry-safety; the request
-reference generator produces a format-valid identifier unique across a large generation run; a
+reference generator produces a format-valid identifier unique across a statistically safe generation
+run; a
 supplied trace id reaches every log line for that request; an absent trace id is generated (Delivery
 Plan §3.2 A2 `Done when`, §3.11.1 A2). No user-facing behaviour is demonstrated (DP-3).
 
@@ -151,9 +152,11 @@ Plan §3.2 A2 `Done when`, §3.11.1 A2). No user-facing behaviour is demonstrate
 20. **Given** any error response produced by the gateway, **When** its body is inspected, **Then** it
     carries the fields `code`, `request_reference`, `trace_id`, and `retry_safe` (a boolean), so the
     client never has to guess and support never has to ask the user to reproduce.
-21. **Given** the request reference generator runs for a generation run of 1,000,000 draws, **When** its output is
-    inspected, **Then** every value matches `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`, is
-    uppercase, contains no `I`/`L`/`O`/`U`, and is unique across the run.
+21. **Given** the request reference generator runs for a generation run of 20,000 draws, **When** its
+    output is inspected, **Then** every value matches `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`,
+    is uppercase, contains no `I`/`L`/`O`/`U`, and is unique across the run. (Draw count chosen so
+    birthday-paradox false-fail probability is ≪ 0.1% over the 32⁸ space; durable uniqueness is
+    enforced by A6's D1 unique index.)
 22. **Given** a caller-supplied trace id is present on the request, **When** any log line is emitted
     for that request, **Then** every log line carries that supplied trace id.
 23. **Given** no trace id is supplied by the caller, **When** the gateway handles the request, **Then**
@@ -187,7 +190,8 @@ Plan §3.2 A2 `Done when`, §3.11.1 A2). No user-facing behaviour is demonstrate
   on the vanishingly rare conflict (§8.9). A2 owns the generator's format and CSPRNG sourcing; the
   D1-enforced uniqueness and retry-on-conflict against a stored row is established by the slice that
   owns the D1 schema (A6) — it is out of scope here. A test asserts the generator yields
-  format-valid, collision-improbable values across a large in-memory run only.
+  format-valid, collision-improbable values across a statistically safe in-memory generation run
+  (20,000 draws) only.
 - **Reference normalisation at lookup.** Input is normalised before lookup: case-folded up, and
   `I`/`L` → `1`, `O` → `0`, so a user who reads the string the way it looks still resolves it (§8.9).
   A test asserts a lowercase or confused-character input normalises to the stored reference. (The
@@ -223,7 +227,7 @@ Layer: Unit + contract (Delivery Plan §3.11.1 A2).
 | T18 | `internal_error` → HTTP 500, retryability "Yes", quota-consumption "No" | Unit + contract | §5.4; §3.11.1 A2 |
 | T19 | An unrecognised code is treated as `internal_error` (HTTP 500), never surfaced raw | Unit + contract | §5.4; §3.11.1 A2 |
 | T20 | Every error body is the JSON object `{"code","request_reference","trace_id","retry_safe"}` with `retry_safe` a boolean | Unit + contract | §5.4; §3.11.1 A2 |
-| T21 | Generated request references match `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`, are uppercase, omit `I`/`L`/`O`/`U`, and are unique across a generation run of 1,000,000 draws | Unit + contract | §8.9; §3.11.1 A2 |
+| T21 | Generated request references match `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`, are uppercase, omit `I`/`L`/`O`/`U`, and are unique across a generation run of 20,000 draws | Unit + contract | §8.9; §3.11.1 A2 |
 | T22 | A supplied trace id appears on every log line emitted for that request | Unit + contract | §13.1; §4.3.1; §3.11.1 A2 |
 | T23 | An absent trace id is generated as a ULID (26-char Crockford-base32), so every log line still carries one, and is propagated identically to a caller-supplied id | Unit + contract | §13.1; §3.11.1 A2 |
 | T24 | No error body is built for `context_requested` (it is an event kind, not a taxonomy code) | Unit + contract | §5.4 |
@@ -366,7 +370,8 @@ migrations), which is out of scope here.
   boolean that is false for §5.4 "Retryable" values `No` and `—`, true for every other value) —
   provable by T20 and T29.
 - **SC-004**: The request reference generator produces format-valid, uppercase, Crockford-base32
-  values, unique across a large generation run — provable by T21.
+  values, unique across a statistically safe generation run (20,000 draws; birthday false-fail ≪
+  0.1%) — provable by T21.
 - **SC-005**: A caller-supplied trace id reaches every log line for that request, and an absent trace
   id is generated — provable by T22 and T23.
 - **SC-006**: No log line carries prompt text, context, or credentials — provable by T27.
@@ -377,7 +382,8 @@ migrations), which is out of scope here.
   contracts and generators to that Worker and does not provision infrastructure.
 - A2's reference generator is stateless and in-memory; the D1 unique index on `request_reference` and
   the retry-on-conflict-against-a-stored-row behaviour are established by A6, so A2's uniqueness
-  evidence is a large in-memory generation run, not a stored-row conflict test.
+  evidence is a statistically safe in-memory generation run (20,000 draws), not a stored-row conflict
+  test.
 - The trace id is client-generated in the ordinary case (§13.1); the "generate when absent" behaviour
   (FR-016, T23) exists only to keep the "every log line carries a trace id" invariant true for callers
   that omit one, and does not change the contract that the trace id is client-generated when supplied.
