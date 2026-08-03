@@ -148,7 +148,7 @@ function validManifest(
 function buildRegistry(...manifests: ManifestWire[]): void {
   const loaded = manifests.map((wire) => load(wire));
   const registry = createCapabilityRegistry(loaded);
-  setCapabilityRegistry(registry);
+  setCapabilityRegistry(registry, { replace: true });
 }
 
 function buildPrincipal(): Principal {

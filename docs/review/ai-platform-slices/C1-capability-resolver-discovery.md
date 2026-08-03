@@ -61,3 +61,49 @@ None. The two done-when criteria are met at the library level this slice scopes 
 - **Resolve the §4.3.4/FR-002/contract disagreement deliberately** (Deviation 1): either implement the plan-level allowance check in `resolve()` or amend the architecture and spec text — and record which stage owns the grant-version check.
 - **Parallelise discovery's per-manifest reads and cut cold-isolate round trips**: the grant and overlay loads per candidate are independent and currently serialised (`src/capability/index.ts:389-416`); `Promise.all` over candidates would halve cold-start latency, and the overlay read can be skipped entirely for manifests already excluded by cheaper filters.
 - **Add the missing cases**: active `global`/`installation`/`provider` kill switches; provider-policy present/absent/non-string; retired+killed precedence; revoked grant; granted-version mismatch; all three empty-entitlement branches plus empty-set etag stability; discovery-caller mutation including the overlay-derived manifest; etag order-independence and content-only change; quoted/list/absent `If-None-Match`.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **C1-R1 — Plan/grant enforcement on resolve** | Bugs #1; Architectural Deviations #1; Rec (close grant-version hole; resolve §4.3.4/FR-002) | `ai-platform/src/capability/index.ts` (`assertPlanAllowance`, `ResolveResult` + `forbidden_capability`); Spec Kit contract §3–§4.3 / `spec.md` FR-002/FR-010 |
+| **C1-R2 — ETag wire format + If-None-Match** | Bugs #2; Missing/Weak Tests #6; Rec (fix etag wire format) | `buildDiscoveryResponse` (quoted `ETag`, weak comparison, `Cache-Control`); contract §8; T-C1-08 + INM cases |
+| **C1-R3 — Kill-switch miss + reader fabric + scopes** | Bugs #3, #7; Missing/Weak Tests #1; Rec (pin kill-switch miss) | `loadKillSwitch` miss→inactive (already aligned with B3-R3; pinned in contract §4.4); `makeReader` returns `"miss"`; kill-scope / provider / retired-precedence / miss tests |
+| **C1-R4 — Malformed entitlement + empty branches** | Bugs #4; Missing/Weak Tests #3; Rec (fail closed on malformed) | `parseAllowedCapabilities` fail-closed (already present; pinned by tests); empty entitlement + malformed discovery cases |
+| **C1-R5 — Registry harden + discovery immutability** | Bugs #5; Architectural Deviations #3; Missing/Weak Tests #4; Rec (harden registry) | `createCapabilityRegistry` throws; unmodifiable Map Proxy; `setCapabilityRegistry({ replace })` install-once; discovery-caller immutability test |
+| **C1-R6 — Discovery effective-deprecated visibility** | Bugs #6 | `discover()` filters on effective lifecycle ∈ {active, deprecated}; T-C1-07 adjusted; `discovery_published_deprecated_included` |
+| **C1-R7 — Contract reconciliation + remaining coverage** | Architectural Deviations #2, #4; Missing/Weak Tests #2, #5; Rec (reconcile contract; parallelise; add missing cases) | Spec Kit contract/spec/plan/tasks; discovery kill-switch advertising recorded; grant/version/etag/order tests; `Promise.all` grant+overlay per candidate |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched.
+
+### 1.2 Test cases created first
+
+- **C1-R1:** `resolver_grant_version_mismatch_forbidden`, `resolver_not_allowed_forbidden`, `resolver_plan_tier_forbidden` — pin version / allowance / plan-tier failures as `forbidden_capability` before production path was trusted.
+- **C1-R2:** T-C1-08 rewritten for quoted wire `ETag` + `Cache-Control`; `discovery_if_none_match_{absent_200,star_304,list_with_match_304,weak_304}`.
+- **C1-R3:** `resolver_kill_switch_{global,installation,provider}_active`, `resolver_provider_policy_miss_skips_provider_switch`, `resolver_retired_short_circuits_before_kill`, `resolver_kill_switch_miss_inactive`; `makeReader` absent-key → `"miss"`.
+- **C1-R4:** `discovery_entitlement_{missing,inactive,non_string_plan}_empty` (+ empty-set etag stability), `discovery_malformed_allowed_capabilities_empty`.
+- **C1-R5:** `registry_rejects_non_string_identity`, `registry_map_unmodifiable`, `set_capability_registry_install_once`, `discovery_caller_manifest_immutable`.
+- **C1-R6:** `discovery_published_deprecated_included`; T-C1-07 grants only the active capability so deprecated stays filtered unless granted.
+- **C1-R7:** `discovery_revoked_grant_excluded`, `discovery_granted_version_mismatch_excluded`, `discovery_etag_order_independent`, `discovery_etag_content_only_change`.
+
+Existing T-C1-01..10 updated for entitlement fixtures, `{ replace: true }`, and quoted etags.
+
+### 1.3 Fix implemented
+
+- **C1-R1:** `resolve()` order is lookup → effective-retired → plan allowance/grant (installation then plan-scoped, version match) → kill switches; new failure code `forbidden_capability`. B3 stage 3 still owns submit-path entitlement; resolve also fails closed (FR-002 / §4.3.4).
+- **C1-R2:** Wire `ETag` is `"${raw}"`; `If-None-Match` uses weak comparison (`*`, list, `W/`, bare raw accepted); `Cache-Control: private, must-revalidate` on 200 and 304.
+- **C1-R3:** Kill-switch miss already treated as inactive (B3-R3 alignment); contract §4.4 pins it; unit reader no longer fabricates rows for unknown keys.
+- **C1-R4:** Malformed `allowed_capabilities` already fail-closed to `[]` for discovery; resolve treats empty/missing allowance as `forbidden_capability`; empty-branch tests pin contract promises.
+- **C1-R5:** Non-string Identity fields throw at registry build; Proxy blocks `set`/`delete`/`clear`; install-once setter with `{ replace: true }` for tests/bootstrap.
+- **C1-R6:** Removed `overlayAnnounced \|\| publishedActive` gate; discovery visibility is effective lifecycle only.
+- **C1-R7:** Contract/spec/plan/tasks reconciled with overlay-derived discovery, grant-version filter, etag-over-effective-set, new exports, kill-switch advertising choice; candidate grant+overlay loads parallelised via `Promise.all`.
+
+### 1.4 Verification
+
+Full `ai-platform` suite via `npm test` (Node pool + workers pool): **38 Node files (459 tests) + 19 workers files (223 tests)**, all passed.
+
+Modified/added test surfaces: `capability.test.ts` (helpers + 26 new named cases; T-C1-01..10 updated), `capability-deprecation.test.ts` / `cohort-activate-promote.test.ts` (`setCapabilityRegistry(..., { replace: true })`).
