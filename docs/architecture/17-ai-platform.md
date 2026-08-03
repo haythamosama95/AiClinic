@@ -1626,13 +1626,36 @@ avoided.
 An internal, provider-neutral representation sits between the composer and the adapters. Everything
 upstream of the adapters speaks only this; nothing upstream may contain a provider-shaped field.
 
+**Field identifiers** in the table below are the frozen wire/TypeScript keys. The Contents column
+describes meaning only — it is not a source of key names. (Contract-change amendment: A3 review
+resolution — prose contents must not be used as identifiers.)
 
-| Element                | Contents                                                                                                                                                                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Canonical request      | Ordered role-tagged message parts (role tags from the closed set below), output format directive (free text / JSON with schema), sampling constraints, max output tokens, stop conditions, tool/function declarations (reserved for future), stream flag, deadline, correlation ids |
-| Canonical stream chunk | Sequence number, kind (`text_delta`, `partial_structured`, `usage`, `provider_note`), payload, terminal flag                                                                                                                                  |
-| Canonical result       | Final content, usage counters (input/output/cached tokens), provider+model actually used, finish reason, provider request id, timing breakdown                                                                                                |
-| Canonical error        | Taxonomy code, retryability, provider-native code and message (for diagnostics only), whether the attempt consumed budget                                                                                                                     |
+
+| Element                | Field                | Contents                                                                                                                                 |
+| ---------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical request      | `parts`              | Ordered role-tagged message parts (role tags from the closed set below)                                                                  |
+|                        | `formatDirective`    | Output format directive (free text / JSON with schema)                                                                                   |
+|                        | `samplingConstraints`| Sampling constraints                                                                                                                     |
+|                        | `maxOutputTokens`    | Max output tokens                                                                                                                        |
+|                        | `stopConditions`     | Stop conditions                                                                                                                          |
+|                        | `toolDeclarations`   | Tool/function declarations (reserved for future)                                                                                         |
+|                        | `stream`             | Stream flag                                                                                                                              |
+|                        | `deadline`           | Deadline                                                                                                                                 |
+|                        | `correlationIds`     | Correlation ids                                                                                                                          |
+| Canonical stream chunk | `sequenceNumber`     | Sequence number                                                                                                                          |
+|                        | `kind`               | Kind (`text_delta`, `partial_structured`, `usage`, `provider_note`)                                                                      |
+|                        | `payload`            | Payload                                                                                                                                  |
+|                        | `terminal`           | Terminal flag                                                                                                                            |
+| Canonical result       | `finalContent`       | Final content                                                                                                                            |
+|                        | `usage`              | Usage counters (input/output/cached tokens)                                                                                              |
+|                        | `providerModel`      | Provider+model actually used                                                                                                             |
+|                        | `finishReason`       | Finish reason                                                                                                                            |
+|                        | `providerRequestId`  | Provider request id                                                                                                                      |
+|                        | `timing`             | Timing breakdown                                                                                                                         |
+| Canonical error        | `taxonomyCode`       | Taxonomy code                                                                                                                            |
+|                        | `retryability`       | Retryability                                                                                                                             |
+|                        | `providerNative`     | Provider-native code and message (for diagnostics only)                                                                                  |
+|                        | `consumedBudget`     | Whether the attempt consumed budget                                                                                                      |
 
 
 **Message-part role tags are a closed set**, owned by this section and frozen with the canonical

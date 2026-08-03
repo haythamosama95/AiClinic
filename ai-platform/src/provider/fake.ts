@@ -18,32 +18,32 @@ function consumesBudget(code: TaxonomyCode): boolean {
 
 function createCanonicalError(code: TaxonomyCode): CanonicalError {
   return setRetryabilityFromClassification({
-    "taxonomy code": code,
+    taxonomyCode: code,
     retryability: false,
-    "provider-native code and message": {
+    providerNative: {
       code: "FAKE_ERROR",
       message: `Simulated ${code} from fake adapter`,
     },
-    "whether the attempt consumed budget": consumesBudget(code),
+    consumedBudget: consumesBudget(code),
   });
 }
 
 function createSuccessResult(): CanonicalResult {
   return {
-    "final content": { type: "text", text: "Fake adapter summary." },
-    "usage counters": { input: 10, output: 20, cached: 0 },
-    "provider+model actually used": { provider: "fake", model: "fake-v1" },
-    "finish reason": "stop",
-    "provider request id": "fake-req-001",
-    "timing breakdown": { queue_ms: 1, provider_ms: 5, total_ms: 6 },
+    finalContent: { type: "text", text: "Fake adapter summary." },
+    usage: { input: 10, output: 20, cached: 0 },
+    providerModel: { provider: "fake", model: "fake-v1" },
+    finishReason: "stop",
+    providerRequestId: "fake-req-001",
+    timing: { queue_ms: 1, provider_ms: 5, total_ms: 6 },
   };
 }
 
 function createTruncationResult(): CanonicalResult {
   return {
     ...createSuccessResult(),
-    "final content": { type: "text", text: "Partial output…" },
-    "finish reason": "length",
+    finalContent: { type: "text", text: "Partial output…" },
+    finishReason: "length",
   };
 }
 

@@ -108,13 +108,13 @@ function createCanonicalError(
   nativeMessage: string,
 ): CanonicalError {
   return setRetryabilityFromClassification({
-    "taxonomy code": code,
+    taxonomyCode: code,
     retryability: false,
-    "provider-native code and message": {
+    providerNative: {
       code: nativeCode,
       message: nativeMessage,
     },
-    "whether the attempt consumed budget": consumesBudget(code),
+    consumedBudget: consumesBudget(code),
   });
 }
 
@@ -141,13 +141,13 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   wire: GeminiWireRequest;
   isStream: boolean;
 } {
-  const sampling = request["sampling constraints"];
-  const outputFormat = request["output format directive"];
-  const stopConditions = request["stop conditions"];
-  const isStream = Boolean(request["stream flag"]);
+  const sampling = request.samplingConstraints;
+  const outputFormat = request.formatDirective;
+  const stopConditions = request.stopConditions;
+  const isStream = Boolean(request.stream);
 
   const wire: GeminiWireRequest = {
-    contents: request["ordered role-tagged message parts"].map((part) => ({
+    contents: request.parts.map((part) => ({
       role: mapRoleToGemini(part.role),
       parts: [{ text: part.content }],
     })),
@@ -157,8 +157,8 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   if (typeof sampling?.temperature === "number") {
     wire.generationConfig!.temperature = sampling.temperature;
   }
-  if (typeof request["max output tokens"] === "number") {
-    wire.generationConfig!.maxOutputTokens = request["max output tokens"];
+  if (typeof request.maxOutputTokens === "number") {
+    wire.generationConfig!.maxOutputTokens = request.maxOutputTokens;
   }
   if (Array.isArray(stopConditions) && stopConditions.length > 0) {
     wire.generationConfig!.stopSequences = [...stopConditions];
@@ -185,7 +185,7 @@ function buildApiUrl(isStream: boolean): string {
 
 function mapUsage(
   usage: GeminiUsage | undefined,
-): CanonicalResult["usage counters"] {
+): CanonicalResult["usage"] {
   return {
     input: usage?.promptTokenCount ?? 0,
     output: usage?.candidatesTokenCount ?? 0,
@@ -195,7 +195,7 @@ function mapUsage(
 
 function mapFinishReason(
   finishReason: string | null | undefined,
-): CanonicalResult["finish reason"] {
+): CanonicalResult["finishReason"] {
   if (finishReason === "MAX_TOKENS" || finishReason === "length") {
     return "length";
   }
@@ -208,15 +208,15 @@ function buildResult(
   finishReason: string | null | undefined,
 ): CanonicalResult {
   return {
-    "final content": { type: "text", text: content },
-    "usage counters": mapUsage(response.usageMetadata),
-    "provider+model actually used": {
+    finalContent: { type: "text", text: content },
+    usage: mapUsage(response.usageMetadata),
+    providerModel: {
       provider: PROVIDER_ID,
       model: GEMINI_MODEL,
     },
-    "finish reason": mapFinishReason(finishReason),
-    "provider request id": "gemini-unknown",
-    "timing breakdown": { queue_ms: 0, provider_ms: 0, total_ms: 0 },
+    finishReason: mapFinishReason(finishReason),
+    providerRequestId: "gemini-unknown",
+    timing: { queue_ms: 0, provider_ms: 0, total_ms: 0 },
   };
 }
 
@@ -284,10 +284,10 @@ function normalizeStreamChunks(
     if (typeof delta === "string" && delta.length > 0) {
       assembled += delta;
       chunks.push({
-        "sequence number": sequence,
+        sequenceNumber: sequence,
         kind: "text_delta",
         payload: { text: delta },
-        "terminal flag": false,
+        terminal: false,
       });
       sequence += 1;
     }
@@ -298,19 +298,19 @@ function normalizeStreamChunks(
 
   if (usage) {
     chunks.push({
-      "sequence number": sequence,
+      sequenceNumber: sequence,
       kind: "usage",
       payload: mapUsage(usage),
-      "terminal flag": false,
+      terminal: false,
     });
     sequence += 1;
   }
 
   chunks.push({
-    "sequence number": sequence,
+    sequenceNumber: sequence,
     kind: "text_delta",
     payload: { text: assembled },
-    "terminal flag": true,
+    terminal: true,
   });
 
   return chunks;
@@ -525,7 +525,7 @@ export class GeminiAdapter implements ProviderPort {
 
     safeEmitLog(this.logger, "info", "gemini.invoke_complete", {
       provider: PROVIDER_ID,
-      request_reference: request["correlation ids"].request_reference,
+      request_reference: request.correlationIds.request_reference,
     });
     safeEmitJournal(this.journal, {
       event: "provider.invoke_complete",

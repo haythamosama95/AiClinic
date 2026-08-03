@@ -47,17 +47,17 @@ const LOGGING_POLICY_API_PATTERN =
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
-  "ordered role-tagged message parts": [
+  parts: [
     { role: "user", content: "Summarise the visit." },
   ],
-  "output format directive": { type: "text" },
-  "sampling constraints": { temperature: 0.2 },
-  "max output tokens": 256,
-  "stop conditions": [],
-  "tool/function declarations (reserved for future)": [],
-  "stream flag": false,
+  formatDirective: { type: "text" },
+  samplingConstraints: { temperature: 0.2 },
+  maxOutputTokens: 256,
+  stopConditions: [],
+  toolDeclarations: [],
+  stream: false,
   deadline: 30_000,
-  "correlation ids": {
+  correlationIds: {
     request_reference: "7QK4-2B9F",
     trace_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   },
@@ -263,7 +263,7 @@ function assertClassifiedError(
           throw new Error("Expected classified error outcome");
         })();
   assertCanonicalErrorShape(error);
-  expect(error["taxonomy code"]).toBe(expectedCode);
+  expect(error.taxonomyCode).toBe(expectedCode);
   const classification = classifyFailure(expectedCode);
   expect(error.retryability).toBe(classification === "retryable");
   expect(error).toEqual(setRetryabilityFromClassification(error));
@@ -355,8 +355,8 @@ describe("T-D5-11 credentials_from_secret_store_only", () => {
 
     const requestWithEmbeddedCredential: CanonicalRequest = {
       ...requestFixture,
-      "correlation ids": {
-        ...requestFixture["correlation ids"],
+      correlationIds: {
+        ...requestFixture.correlationIds,
         request_reference: KNOWN_SECRET,
       },
     };
@@ -477,7 +477,7 @@ describe("T-D5-03 usage_extraction", () => {
     }
 
     assertCanonicalResultShape(outcome.result);
-    expect(outcome.result["usage counters"]).toEqual(
+    expect(outcome.result.usage).toEqual(
       expect.objectContaining({
         input: expect.any(Number),
         output: expect.any(Number),
@@ -584,7 +584,7 @@ describe("T-D5-06 truncated_response", () => {
 
     if (outcome.kind === "truncation" || outcome.kind === "success") {
       assertCanonicalResultShape(outcome.result);
-      expect(outcome.result["finish reason"]).toBe("length");
+      expect(outcome.result.finishReason).toBe("length");
     }
   });
 });

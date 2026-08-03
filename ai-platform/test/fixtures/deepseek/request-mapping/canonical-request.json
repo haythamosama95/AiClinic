@@ -1,15 +1,15 @@
 {
-  "ordered role-tagged message parts": [
+  "parts": [
     { "role": "user", "content": "Summarise the visit." }
   ],
-  "output format directive": { "type": "text" },
-  "sampling constraints": { "temperature": 0.2 },
-  "max output tokens": 256,
-  "stop conditions": [],
-  "tool/function declarations (reserved for future)": [],
-  "stream flag": false,
+  "formatDirective": { "type": "text" },
+  "samplingConstraints": { "temperature": 0.2 },
+  "maxOutputTokens": 256,
+  "stopConditions": [],
+  "toolDeclarations": [],
+  "stream": false,
   "deadline": 30000,
-  "correlation ids": {
+  "correlationIds": {
     "request_reference": "7QK4-2B9F",
     "trace_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
   }

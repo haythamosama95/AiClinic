@@ -103,13 +103,13 @@ function createCanonicalError(
   nativeMessage: string,
 ): CanonicalError {
   return setRetryabilityFromClassification({
-    "taxonomy code": code,
+    taxonomyCode: code,
     retryability: false,
-    "provider-native code and message": {
+    providerNative: {
       code: nativeCode,
       message: nativeMessage,
     },
-    "whether the attempt consumed budget": consumesBudget(code),
+    consumedBudget: consumesBudget(code),
   });
 }
 
@@ -126,24 +126,24 @@ function resolveTimeoutMs(
 }
 
 function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
-  const sampling = request["sampling constraints"];
-  const outputFormat = request["output format directive"];
-  const stopConditions = request["stop conditions"];
+  const sampling = request.samplingConstraints;
+  const outputFormat = request.formatDirective;
+  const stopConditions = request.stopConditions;
 
   const wire: DeepSeekWireRequest = {
     model: DEEPSEEK_MODEL,
-    messages: request["ordered role-tagged message parts"].map((part) => ({
+    messages: request.parts.map((part) => ({
       role: part.role,
       content: part.content,
     })),
-    stream: Boolean(request["stream flag"]),
+    stream: Boolean(request.stream),
   };
 
   if (typeof sampling?.temperature === "number") {
     wire.temperature = sampling.temperature;
   }
-  if (typeof request["max output tokens"] === "number") {
-    wire.max_tokens = request["max output tokens"];
+  if (typeof request.maxOutputTokens === "number") {
+    wire.max_tokens = request.maxOutputTokens;
   }
   if (Array.isArray(stopConditions) && stopConditions.length > 0) {
     wire.stop = [...stopConditions];
@@ -157,7 +157,7 @@ function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
 
 function mapUsage(
   usage: DeepSeekUsage | undefined,
-): CanonicalResult["usage counters"] {
+): CanonicalResult["usage"] {
   return {
     input: usage?.prompt_tokens ?? 0,
     output: usage?.completion_tokens ?? 0,
@@ -167,7 +167,7 @@ function mapUsage(
 
 function mapFinishReason(
   finishReason: string | null | undefined,
-): CanonicalResult["finish reason"] {
+): CanonicalResult["finishReason"] {
   if (finishReason === "length") {
     return "length";
   }
@@ -180,15 +180,15 @@ function buildResult(
   finishReason: string | null | undefined,
 ): CanonicalResult {
   return {
-    "final content": { type: "text", text: content },
-    "usage counters": mapUsage(response.usage),
-    "provider+model actually used": {
+    finalContent: { type: "text", text: content },
+    usage: mapUsage(response.usage),
+    providerModel: {
       provider: PROVIDER_ID,
       model: DEEPSEEK_MODEL,
     },
-    "finish reason": mapFinishReason(finishReason),
-    "provider request id": response.id ?? "deepseek-unknown",
-    "timing breakdown": { queue_ms: 0, provider_ms: 0, total_ms: 0 },
+    finishReason: mapFinishReason(finishReason),
+    providerRequestId: response.id ?? "deepseek-unknown",
+    timing: { queue_ms: 0, provider_ms: 0, total_ms: 0 },
   };
 }
 
@@ -260,10 +260,10 @@ function normalizeStreamChunks(
     if (typeof delta === "string" && delta.length > 0) {
       assembled += delta;
       chunks.push({
-        "sequence number": sequence,
+        sequenceNumber: sequence,
         kind: "text_delta",
         payload: { text: delta },
-        "terminal flag": false,
+        terminal: false,
       });
       sequence += 1;
     }
@@ -274,19 +274,19 @@ function normalizeStreamChunks(
 
   if (usage) {
     chunks.push({
-      "sequence number": sequence,
+      sequenceNumber: sequence,
       kind: "usage",
       payload: mapUsage(usage),
-      "terminal flag": false,
+      terminal: false,
     });
     sequence += 1;
   }
 
   chunks.push({
-    "sequence number": sequence,
+    sequenceNumber: sequence,
     kind: "text_delta",
     payload: { text: assembled },
-    "terminal flag": true,
+    terminal: true,
   });
 
   return chunks;
@@ -504,7 +504,7 @@ export class DeepSeekAdapter implements ProviderPort {
 
     safeEmitLog(this.logger, "info", "deepseek.invoke_complete", {
       provider: PROVIDER_ID,
-      request_reference: request["correlation ids"].request_reference,
+      request_reference: request.correlationIds.request_reference,
     });
     safeEmitJournal(this.journal, {
       event: "provider.invoke_complete",

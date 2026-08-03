@@ -211,19 +211,19 @@ function buildPrincipal(seed: PrincipalSeed = {}): Principal {
 
 function canonicalResultFixture(): CanonicalResult {
   return {
-    "final content": { text: "Journal fixture result." },
-    "usage counters": {
+    finalContent: { text: "Journal fixture result." },
+    usage: {
       input: 512,
       output: 96,
       cached: 0,
     },
-    "provider+model actually used": {
+    providerModel: {
       provider: "deepseek",
       model: "journal-fixture",
     },
-    "finish reason": "stop",
-    "provider request id": "provider-req-journal-001",
-    "timing breakdown": {
+    finishReason: "stop",
+    providerRequestId: "provider-req-journal-001",
+    timing: {
       queue_ms: 5,
       provider_ms: 420,
       total_ms: 450,

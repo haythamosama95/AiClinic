@@ -188,15 +188,15 @@ async function seedRequest(
       prompt: { system: "test" },
       attempts: [{ raw: "response" }],
       result: {
-        "final content": { text: "ok" },
-        "usage counters": { input: 100, output: 50, cached: 0 },
-        "provider+model actually used": {
+        finalContent: { text: "ok" },
+        usage: { input: 100, output: 50, cached: 0 },
+        providerModel: {
           provider: "deepseek",
           model: "support-fixture",
         },
-        "finish reason": "stop",
-        "provider request id": "prov-support-001",
-        "timing breakdown": { queue_ms: 1, provider_ms: 149, total_ms: 150 },
+        finishReason: "stop",
+        providerRequestId: "prov-support-001",
+        timing: { queue_ms: 1, provider_ms: 149, total_ms: 150 },
       },
     };
     await env.R2.put(`request/${requestId}/envelope`, JSON.stringify(envelope));

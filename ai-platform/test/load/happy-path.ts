@@ -316,12 +316,12 @@ function createFakeCtx(): FakeExecutionContext {
 
 function canonicalResult(): CanonicalResult {
   return {
-    "final content": { type: "text", text: "Load fixture summary." },
-    "usage counters": { input: 10, output: 20, cached: 0 },
-    "provider+model actually used": { provider: "fake", model: "fake-v1" },
-    "finish reason": "stop",
-    "provider request id": "fake-load-req",
-    "timing breakdown": { queue_ms: 1, provider_ms: 5, total_ms: 6 },
+    finalContent: { type: "text", text: "Load fixture summary." },
+    usage: { input: 10, output: 20, cached: 0 },
+    providerModel: { provider: "fake", model: "fake-v1" },
+    finishReason: "stop",
+    providerRequestId: "fake-load-req",
+    timing: { queue_ms: 1, provider_ms: 5, total_ms: 6 },
   };
 }
 
@@ -434,15 +434,15 @@ async function runSingleHappyPath(input: {
 
   const adapter = new FakeAdapter(["success"]);
   const invokeResult = adapter.invoke({
-    "ordered role-tagged message parts": [{ role: "user", content: "Summarise." }],
-    "output format directive": { type: "text" },
-    "sampling constraints": { temperature: 0.2 },
-    "max output tokens": 256,
-    "stop conditions": [],
-    "tool/function declarations (reserved for future)": [],
-    "stream flag": false,
+    parts: [{ role: "user", content: "Summarise." }],
+    formatDirective: { type: "text" },
+    samplingConstraints: { temperature: 0.2 },
+    maxOutputTokens: 256,
+    stopConditions: [],
+    toolDeclarations: [],
+    stream: false,
     deadline: 30_000,
-    "correlation ids": {
+    correlationIds: {
       request_reference: requestReference,
       trace_id: FIXTURE_TRACE_ID,
     },

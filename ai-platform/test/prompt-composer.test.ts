@@ -183,7 +183,7 @@ function goldenCanonicalRequest(
   const manifest = load(validManifest());
 
   return {
-    "ordered role-tagged message parts": [
+    parts: [
       { role: "system", content: systemInstructionArtifact },
       { role: "system", content: businessRulesArtifact },
       { role: "system", content: PROSE_FORMAT_INSTRUCTION },
@@ -193,16 +193,16 @@ function goldenCanonicalRequest(
       },
       { role: "user", content: FIXTURE_USER_INTENT },
     ],
-    "output format directive": deriveOutputFormatDirective("prose", null),
-    "sampling constraints": {
+    formatDirective: deriveOutputFormatDirective("prose", null),
+    samplingConstraints: {
       allowedLanguages: manifest.Input.allowedLanguages,
     },
-    "max output tokens": manifest.Economics.maxOutputTokens,
-    "stop conditions": [],
-    "tool/function declarations (reserved for future)": [],
-    "stream flag": false,
+    maxOutputTokens: manifest.Economics.maxOutputTokens,
+    stopConditions: [],
+    toolDeclarations: [],
+    stream: false,
     deadline: null,
-    "correlation ids": {
+    correlationIds: {
       request_reference: FIXTURE_REQUEST_REFERENCE,
       trace_id: FIXTURE_TRACE_ID,
     },
@@ -225,7 +225,7 @@ function composeFixture(options: {
 }
 
 function messageParts(request: CanonicalRequest): readonly CanonicalMessagePart[] {
-  return request["ordered role-tagged message parts"];
+  return request.parts;
 }
 
 function instructionPartPayloads(request: CanonicalRequest): string[] {
@@ -297,14 +297,14 @@ describe("T-D1-07 composer_format_instruction_tracks_output_schema", () => {
     expect(structuredInstruction).toBe(STRUCTURED_FORMAT_INSTRUCTION);
     expect(structuredInstruction).not.toBe(proseInstruction);
 
-    expect(proseResult.request["output format directive"]).toEqual(
+    expect(proseResult.request.formatDirective).toEqual(
       deriveOutputFormatDirective("prose", null),
     );
-    expect(structuredResult.request["output format directive"]).toEqual(
+    expect(structuredResult.request.formatDirective).toEqual(
       deriveOutputFormatDirective("prose", FIXTURE_STRUCTURED_SCHEMA_REF),
     );
-    expect(structuredResult.request["output format directive"]).not.toEqual(
-      proseResult.request["output format directive"],
+    expect(structuredResult.request.formatDirective).not.toEqual(
+      proseResult.request.formatDirective,
     );
   });
 });
@@ -382,11 +382,11 @@ describe("T-D1-10 composer_output_constraints_present", () => {
       return;
     }
 
-    expect(result.request["max output tokens"]).toBe(
+    expect(result.request.maxOutputTokens).toBe(
       manifest.Economics.maxOutputTokens,
     );
-    expect(result.request["stop conditions"]).toEqual([]);
-    expect(result.request["sampling constraints"]).toEqual({
+    expect(result.request.stopConditions).toEqual([]);
+    expect(result.request.samplingConstraints).toEqual({
       allowedLanguages: manifest.Input.allowedLanguages,
     });
   });

@@ -40,7 +40,7 @@ None within the slice's own logic. Round-trip, chunk-kind exhaustiveness, termin
 | --- | --- | --- |
 | **A3-R1 — Fail-closed codec** | Missing/Weak Tests #1 (static-only guard); Missing/Weak Tests #2 (no extra-key rejection); Recommended Improvements (reject unknown keys) | `ai-platform/src/contracts/canonical.ts` (`assertOnlyManifestKeys`); `ai-platform/test/canonical.test.ts` (T-A3-05 codec path + T-A3-08); Spec Kit `specs/017-ai-canonical-inference/{spec,plan,tasks,contracts}` |
 | **A3-R2 — Typed field schema** | Architectural Deviations #2 (`unknown` ManifestRecord); Recommended Improvements (typed schema; delete adapter casts) | `canonical.ts` real per-field types + `CANONICAL_MESSAGE_ROLES`; `gemini.ts` / `deepseek.ts` / `composer.ts` cast removal; T-A3-09; Spec Kit |
-| **A3-R3 — Rename prose keys** | Architectural Deviations #1 (contents prose as JSON keys); Recommended Improvements (rename via §2.3 contract-change) | **Escalated** — see §1.5. No production change in this pass. |
+| **A3-R3 — Rename prose keys** | Architectural Deviations #1 (contents prose as JSON keys); Recommended Improvements (rename via §2.3 contract-change) | `17-ai-platform.md` §5.3 Field column; `canonical.ts`; all consumers; Spec Kit; **resolved** — see §2 |
 
 Also brought forward the already-resolved A2 T21 uniqueness methodology (`reference.test.ts` @ 20k draws) from local `ai/master`, because `origin/ai/master` still had the flaky 1M strict-uniqueness case and the full suite failed on it after the squash-merge sync.
 
@@ -50,18 +50,59 @@ Also brought forward the already-resolved A2 T21 uniqueness methodology (`refere
   - T-A3-05: decode rejects wire with `messages` extra key; encode rejects a value with `messages`.
   - T-A3-08: decode rejects unknown non-provider extras on request, chunk, result, and error.
 - **A3-R2:** Before rewriting types, added T-A3-09 asserting typed field access on decoded request/result/error and the closed `CANONICAL_MESSAGE_ROLES` set.
-- **A3-R3:** No test written — blocked at escalation gate (contract rewrite).
+- **A3-R3:** T-A3-10 written first (identifier set + forbidden prose keys), then architecture amendment and rename.
 
 ### 1.3 Fix implemented
 
 - **A3-R1:** `assertOnlyManifestKeys` on encode and decode — provider-shaped extras and any non-manifest key throw; silent `pickManifestKeys` strip removed from the fail path. Spec Kit updated (clarification Q&A, T-A3-08, edge case, contract doc, T011).
 - **A3-R2:** Replaced `ManifestRecord → unknown` with real interfaces (`CanonicalMessagePart`, `UsageCounters`, `CorrelationIds`, …). Removed `as` casts in Gemini/DeepSeek adapters and composer/tests that read canonical fields. Spec Kit updated (T-A3-09, T009, clarifications).
-- **A3-R3:** Not implemented — renaming frozen wire keys (or documenting the prose-key choice in `17-ai-platform.md`) is a Delivery Plan §2.3 contract-change / architecture amendment, out of scope for this skill.
+- **A3-R3:** Resolved after human chose option (a). See §2.
 
 ### 1.4 Verification
 
-Full `ai-platform` suite: **37 files, 418 tests passed**, including `canonical.test.ts` (T-A3-01…09) and `reference.test.ts` (T21 @ 20k draws).
+Full `ai-platform` suite after A3-R1/R2: **37 files, 418 tests passed**. After A3-R3: **37 files, 420 tests passed** (T-A3-10 added).
 
-### 1.5 Escalation (A3-R3)
+### 1.5 Escalation (A3-R3) — resolved
 
-See operator response: Architectural Deviations #1 / rename Recommended Improvement require a human contract-change decision before further work on field identifiers.
+Human decision: **option (a)** — amend `17-ai-platform.md` §5.3 with Field identifiers
+and migrate all consumers (Delivery Plan §2.3 contract-change).
+
+```text
+## ESCALATION (resolved)
+
+**Review file:** docs/review/ai-platform-slices/A3-canonical-inference.md
+**Stage:** A3-R3
+**Review item:** Architectural Deviations #1 (also Recommended Improvements — rename prose keys)
+**Decision:** Amend §5.3 with camelCase Field identifiers; migrate wire/types/consumers.
+**Resolved by:** architecture amendment + T-A3-10 + consumer rename (see §2).
+```
+
+---
+
+## 2. Review Resolution — A3-R3 (prose → identifiers)
+
+### 2.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **A3-R3 — Rename prose keys** | Architectural Deviations #1; Recommended Improvements (rename via §2.3) | `docs/architecture/17-ai-platform.md` §5.3; `canonical.ts` manifest/types; all `ai-platform` consumers + fixtures; Spec Kit `specs/017-ai-canonical-inference/*` |
+
+### 2.2 Test cases created first
+
+- **T-A3-10** in `canonical.test.ts` (written before the rename): asserts
+  `CANONICAL_FIELD_MANIFEST` equals the amended identifier set (`parts`,
+  `formatDirective`, `maxOutputTokens`, `terminal`, `consumedBudget`, …) and that
+  no contents-prose key remains. Failed against the prose manifest, then went green
+  after the migration.
+
+### 2.3 Fix implemented
+
+- Amended §5.3 to a Field \| Contents table; Field column is the frozen wire key set.
+- Renamed `CANONICAL_FIELD_MANIFEST` and typed interfaces to the new identifiers.
+- Migrated composer, Gemini/DeepSeek/fake adapters, invocation, stream broker, journal
+  fixtures, and tests.
+- Spec Kit aligned (contracts, assumptions, T-A3-10, T001/T009).
+
+### 2.4 Verification
+
+Full `ai-platform` suite: **37 files, 420 tests passed**, including T-A3-01…10.
