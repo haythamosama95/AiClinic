@@ -282,12 +282,6 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
   };
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read: (key) => reader.read(`${kind}:${key}`),
-  };
-}
-
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
   const statements = sql
     .replace(/--.*$/gm, "")
@@ -358,12 +352,7 @@ async function prepareInstallation(
   await seedEntitlement(installationId);
   const cache = new ConfigCache();
   const reader = makePlatformD1Reader(env.DB);
-  await loadConfig(
-    cache,
-    scopeReaderForKind(reader, "entitlements"),
-    "entitlements",
-    installationId,
-  );
+  await loadConfig(cache, reader, "entitlements", installationId);
   return { cache, reader };
 }
 

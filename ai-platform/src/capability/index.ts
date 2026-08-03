@@ -4,7 +4,6 @@
 
 import {
   type ConfigCache,
-  type ConfigEntityKind,
   ConfigCacheMissError,
   type D1Reader,
   loadConfig,
@@ -78,7 +77,7 @@ async function loadLifecycleOverlay(
   try {
     const row = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "grants"),
+      reader,
       "grants",
       `global/${capabilityId}/${version}`,
     );
@@ -126,21 +125,22 @@ function registryKey(capabilityId: string, version: string): string {
   return `${capabilityId}@${version}`;
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
-}
 
 function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] {
   const raw = entitlement.allowed_capabilities;
   if (Array.isArray(raw)) {
-    return raw as string[];
+    return raw.every((entry) => typeof entry === "string") ? (raw as string[]) : [];
   }
   if (typeof raw === "string") {
-    return JSON.parse(raw) as string[];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
+        return [];
+      }
+      return parsed as string[];
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -165,12 +165,14 @@ async function loadKillSwitch(
   reader: D1Reader,
   key: string,
 ): Promise<Record<string, unknown>> {
-  return loadConfig(
-    cache,
-    scopeReaderForKind(reader, "kill_switches"),
-    "kill_switches",
-    key,
-  );
+  try {
+    return await loadConfig(cache, reader, "kill_switches", key);
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return { active: false };
+    }
+    throw error;
+  }
 }
 
 async function resolveProviderId(
@@ -186,7 +188,7 @@ async function resolveProviderId(
   try {
     const policy = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "active_routing_policy"),
+      reader,
       "active_routing_policy",
       policyRef,
     );
@@ -330,7 +332,7 @@ export async function discover(
   try {
     entitlement = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "entitlements"),
+      reader,
       "entitlements",
       installationId,
     );
@@ -380,8 +382,8 @@ export async function discover(
     try {
       const grant = await loadConfig(
         cache,
-        scopeReaderForKind(reader, "grants"),
-        "grants",
+        reader,
+      "grants",
         grantKey,
       );
       if (grant.revoked_at != null) {
@@ -437,7 +439,7 @@ export async function getGrantedCapabilityVersion(
   try {
     const grant = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "grants"),
+      reader,
       "grants",
       `${installationId}/${capabilityId}`,
     );

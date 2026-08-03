@@ -548,11 +548,7 @@ describe("T-J1-05 lifecycle_survives_cold_isolate_manifest_unchanged", () => {
     const reader = makePlatformD1Reader(env.DB);
     const overlayRow = await loadConfig(
       coldCache,
-      {
-        read(key: string) {
-          return reader.read(`grants:${key}`);
-        },
-      },
+      reader,
       "grants",
       `global/${FIXTURE_CAPABILITY_ID}/${FIXTURE_CAPABILITY_VERSION}`,
     );

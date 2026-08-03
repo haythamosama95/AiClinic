@@ -211,15 +211,15 @@ function makeRotationReader(
   contractLookup: (ver: string) => Record<string, unknown> | "miss",
 ): ReaderSpy {
   return makeReader((lookupKey) => {
-    if (lookupKey === FIXTURE_ISS) {
+    if (lookupKey === `installations:${FIXTURE_ISS}`) {
       return installationRow("active");
     }
-    if (lookupKey === keypair.kid) {
+    if (lookupKey === `keys:${keypair.kid}`) {
       return keyRow(keypair);
     }
-    const contract = contractLookup(lookupKey);
-    if (contract !== "miss") {
-      return contract;
+    if (lookupKey.startsWith("token_contracts:")) {
+      const ver = lookupKey.slice("token_contracts:".length);
+      return contractLookup(ver);
     }
     return "miss";
   });
@@ -284,8 +284,8 @@ describe("T-J4-01 both_ver_values_verify_during_rotation_window", () => {
     }
 
     const readKeys = reader.read.mock.calls.map((call) => call[0]);
-    expect(readKeys).toContain("1");
-    expect(readKeys).toContain("2");
+    expect(readKeys).toContain("token_contracts:1");
+    expect(readKeys).toContain("token_contracts:2");
   });
 });
 
@@ -354,7 +354,7 @@ describe("T-J4-07 request_path_never_writes_token_contract", () => {
     expect(result.ok).toBe(true);
     expect(after).toEqual(before);
     const readKeys = reader.read.mock.calls.map((call) => call[0]);
-    expect(readKeys).toContain("1");
+    expect(readKeys).toContain("token_contracts:1");
     expect("write" in reader).toBe(false);
     expect("run" in reader).toBe(false);
   });
@@ -392,8 +392,8 @@ describe("T-J4-10 rotation_requires_no_re_enrollment", () => {
     }
 
     const readKeys = reader.read.mock.calls.map((call) => call[0]);
-    expect(readKeys).toContain("1");
-    expect(readKeys).toContain("2");
-    expect(readKeys).toContain(fixtureKeypair.kid);
+    expect(readKeys).toContain("token_contracts:1");
+    expect(readKeys).toContain("token_contracts:2");
+    expect(readKeys).toContain(`keys:${fixtureKeypair.kid}`);
   });
 });

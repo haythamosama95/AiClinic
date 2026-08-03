@@ -53,3 +53,53 @@ B3 delivers the three guard modules as sibling-per-concern units — `src/identi
 - **Fail closed on corrupt entitlement data** (`src/entitlement/index.ts:61-70`): a malformed `allowed_capabilities` should reject `forbidden_capability`, not throw; consult plan-scoped grants and either honour `capabilityVersion` in the grant lookup or drop it from `EntitlementContext`.
 - **Import `Principal` from `src/identity/`** in entitlement and anchor the plan-tier ordering to an architecture-cited source (or an A5 config entity), not a module-local constant.
 - **Add the missing cases**: HMAC alg; unknown `kid`; revoked key; cross-installation `iss`/`kid`; expired-inside-skew accept; the malformed-token gauntlet; deleted installation; kill-switch absent and lifted; revoked grant; plan-scoped grant; stage 2–3 counter increments; and a non-circular verifier-swap driven by an independent expectation table.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **B3-R1 — iss↔kid key binding** | Critical #1; Missing/Weak Tests #2 (cross-iss, unknown kid, revoked); Rec (bind key to issuer) | `ai-platform/src/identity/index.ts`; `specs/023-guard-stages/contracts/token-verifier.md`; `ai-platform/test/identity.test.ts` |
+| **B3-R2 — Fail-closed lifecycle** | Bugs #1; Missing/Weak Tests #8 (deleted); Rec (fail closed on status) | `ai-platform/src/identity/index.ts`; `ai-platform/test/identity.test.ts` |
+| **B3-R3 — Kill-switch miss = inactive** | Critical #2; Missing/Weak Tests #6; Rec (kill-switch miss semantics) | `ai-platform/src/entitlement/index.ts`; `ai-platform/src/capability/index.ts`; `ai-platform/test/entitlement.test.ts` — no `kill_switch` D1 table invented (§7.3 has no entity; miss means inactive) |
+| **B3-R4 — Guard rejection tally + flush** | Bugs #2, #3, #7; Missing/Weak Tests #8 (counters); Rec (count every rejection / wire flush) | `ai-platform/src/rate-limit/index.ts`; `ai-platform/src/identity/index.ts`; `ai-platform/src/entitlement/index.ts`; `ai-platform/src/admission/index.ts` (shared export, duplicate tally removed); `ai-platform/src/worker.ts`; `ai-platform/test/rate-limit.test.ts`; `ai-platform/test/config-cache.test.ts` |
+| **B3-R5 — Unify D1Reader keys** | Bugs #4; Rec (unify reader convention) | `ai-platform/src/config-cache/index.ts` (`loadConfig` → `` `${kind}:${key}` ``); entitlement/capability/admission/router wrappers removed; A5 contract extension; test harnesses |
+| **B3-R6 — Grants, corrupt data, Principal** | Bugs #5, #6; Missing/Weak Tests #7; Arch Dev #4 (Principal import); Rec (fail closed / plan grants / Principal) | `ai-platform/src/entitlement/index.ts`; `ai-platform/test/entitlement.test.ts` — plan-tier list kept fail-closed (no architecture vocabulary to cite) |
+| **B3-R7 — Identity coverage + cheap checks first** | Missing/Weak Tests #1, #3, #4, #5; Rec (order cheap checks; HMAC / malformed / swap) | `ai-platform/src/identity/index.ts`; `ai-platform/test/identity.test.ts` |
+| **B3-R8 — Accepted-`ver` membership** | Architectural Deviations #1; Rec (enforce ver) | Already present via J4 (`token_contracts` + identity check); B3 contract extended with step 12; no production change beyond docs |
+| **B3-R9 — Bindings + harness docs** | Architectural Deviations #2, #3; Rec (wrangler bindings) | `ai-platform/wrangler.toml`; `ai-platform/package.json` (`npm test` runs both pools); `specs/023-guard-stages/{plan,tasks}.md` |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched. Negative-caching of unknown-`iss` left as A5-forbid (not implemented).
+
+### 1.2 Test cases created first
+
+- **B3-R1:** `identity_rejects_cross_installation_key`, `identity_rejects_unknown_kid`, `identity_rejects_revoked_key` — prove iss/kid ownership and key existence/revocation branches.
+- **B3-R2:** `identity_rejects_deleted_installation` — deleted status must not authenticate.
+- **B3-R3:** `kill_switch_absent_passes`, kill-switch lifted / explicit inactive harness paths — miss no longer throws.
+- **B3-R4:** `guard_rejection_counters_stages_2_3`, `flush_rejection_counters_snapshot_clears_before_write`, shared flush re-export assert, wrangler + worker scheduled wiring asserts.
+- **B3-R5:** Existing cache / entitlement / capability suites re-keyed to `` kind:key `` (fail under double-prefix before wrappers removed).
+- **B3-R6:** `entitlement_plan_scoped_grant_accepted`, `entitlement_revoked_grant_rejected`, `entitlement_malformed_allowed_capabilities_rejected`, capabilityVersion mismatch case.
+- **B3-R7:** `identity_rejects_hmac_alg`, `identity_accepts_expired_inside_skew`, `identity_rejects_malformed_token` gauntlet, non-circular `verifier_swap_changes_no_outcome` expectation table.
+- **B3-R8:** J4 suite (`token-contract-rotation.test.ts`) already covers membership; assertions updated for prefixed reader keys.
+- **B3-R9:** wrangler binding presence + workers-pool harness documentation.
+
+### 1.3 Fix implemented
+
+- **B3-R1:** Reject unless `keyRow.installation_id === payload.iss`; contract §6 steps 7–8 extended.
+- **B3-R2:** Only `status === "active"` authenticates; `suspended` stays `installation_suspended`; other statuses → `unauthenticated`.
+- **B3-R3:** Kill-switch `ConfigCacheMissError` → inactive; capability stage aligned. No invented `kill_switch` table (architecture §7.3 lists none); production persistence remains a control-plane/A5 follow-up.
+- **B3-R4:** Exported `recordGuardRejection` with general `error_code`; identity + entitlement record; snapshot-and-clear flush; Worker `scheduled` flushes; admission uses B3 export (private tally deleted).
+- **B3-R5:** `loadConfig` prefixes `` `${kind}:${key}` ``; all `scopeReaderForKind` wrappers removed; A5 `config-cache.md` documents the key format (allowed extension).
+- **B3-R6:** Installation then plan-scoped grant lookup; honour `capabilityVersion`; malformed `allowed_capabilities` → `forbidden_capability`; `Principal` imported from identity.
+- **B3-R7:** Audience/skew before D1 loads; full missing identity cases; independent expectation-table verifier swap.
+- **B3-R8:** Docs/contract only — code already checked `token_contracts` after J4 merge.
+- **B3-R9:** Three `ratelimits` bindings per env in `wrangler.toml`; plan/tasks corrected to workers-pool; `npm test` runs Node + workers pools.
+
+### 1.4 Verification
+
+Full `ai-platform` suite via `npm test` (Node pool + workers pool): **38 Node files (459 tests) + 19 workers files (182 tests)**, all passed.
+
+Modified/added test surfaces: `identity.test.ts`, `entitlement.test.ts`, `rate-limit.test.ts`, `config-cache.test.ts`, `token-contract-rotation.test.ts`, plus harness updates across capability/admission consumers for the reader-key convention.

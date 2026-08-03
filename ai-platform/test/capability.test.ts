@@ -173,14 +173,6 @@ function makeReader(source: ReaderSource): ReaderSpy {
   };
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
-}
-
 function makeInactiveKillSwitchRows(
   installationId: string,
   capabilityId: string,
@@ -411,15 +403,13 @@ async function warmResolveCache(
   installationId: string,
   capabilityId: string,
 ): Promise<void> {
-  const scoped = (kind: ConfigEntityKind) => scopeReaderForKind(reader, kind);
-
   for (const scope of [
     "global",
     `capability:${capabilityId}`,
     `installation:${installationId}`,
     `provider:${FIXTURE_PROVIDER_ID}`,
   ] as const) {
-    await loadConfig(cache, scoped("kill_switches"), "kill_switches", scope);
+    await loadConfig(cache, reader, "kill_switches", scope);
   }
 }
 
@@ -429,16 +419,14 @@ async function warmDiscoveryCache(
   installationId: string,
   capabilityIds: string[],
 ): Promise<void> {
-  const scoped = (kind: ConfigEntityKind) => scopeReaderForKind(reader, kind);
-
-  await loadConfig(cache, scoped("installations"), "installations", installationId);
-  await loadConfig(cache, scoped("entitlements"), "entitlements", installationId);
+  await loadConfig(cache, reader, "installations", installationId);
+  await loadConfig(cache, reader, "entitlements", installationId);
 
   for (const capabilityId of capabilityIds) {
     try {
       await loadConfig(
         cache,
-        scoped("grants"),
+        reader,
         "grants",
         `${installationId}/${capabilityId}`,
       );
