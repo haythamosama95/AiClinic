@@ -54,7 +54,7 @@ row B4 layer "DO unit + concurrency + integration (spy)". DO unit + concurrency 
 `ai-platform/test/quota-do.test.ts`; integration (spy) cases live in
 `ai-platform/test/admission-credit.test.ts`. The first task of each file also registers the file in
 `ai-platform/vitest.workers.config.ts` `test.include`. Tests invoke the real Miniflare Durable Object
-binding (`cloudflare:test` `env.DO`, `env.DO.idFromString(installationId)`) — Clarification Q3 — and
+binding (`cloudflare:test` `env.DO`, `env.DO.idFromName(installationId)`) — Clarification Q3 — and
 the integration spy cases wrap `env.DO` in a counting spy — Clarification Q4.
 
 - [X] T002 [US1] `admission_fresh_jti_accepted` in `ai-platform/test/quota-do.test.ts` (DO unit): a
@@ -127,28 +127,34 @@ dispatch delegates to them, and the dispatch exists before the callers exercise 
 - [X] T018 [US1] Write `ai-platform/src/quota-do/index.ts` — the Quota Durable Object handlers:
   `admissionRPC` (one atomic read-modify-write inside `ctx.blockConcurrencyWhile` answering `jti`
   freshness, idempotency-key novelty, remaining budget, and concurrency headroom, performing the lazy
-  ephemeral sweep before answering), `creditRPC` (period counter adjustment by actual usage, including
-  the `partial` flag), and the in-object ephemeral entry type. No pre-flight reservations (FR-015); no
+  ephemeral sweep before answering, optionally setting `degraded` when soft_threshold is crossed),
+  `creditRPC` (period counter adjustment by actual usage, including the `partial` flag; closes
+  idempotency to `completed`/`cancelled`; ephemeral-horizon `admittedRequests`/`creditedRequests`),
+  and the in-object ephemeral entry type. No pre-flight reservations (FR-015); no
   `alarm()` handler (Clarification Q5). Satisfies FR-001, FR-002, FR-003, FR-004, FR-005, FR-006,
   FR-007, FR-008, FR-009, FR-010, FR-015. Proved by T002–T011.
 - [X] T019 [US1] Extend `ai-platform/src/worker.ts` — implement `GatewayObject`'s `fetch`/rpc method,
   dispatching on the RPC kind from the request to `admissionRPC` / `creditRPC` from
-  `src/quota-do/index.ts`. The existing `export class GatewayObject extends DurableObject { }` is
+  `src/quota-do/index.ts` (optional injectable `now` for ephemeral-sweep tests). Wire `scheduled` to
+  flush rejection tallies and call `reconcileGraceUsage`. The existing
+  `export class GatewayObject extends DurableObject { }` is
   extended in place; its name and the `DO → GatewayObject` binding in `wrangler.toml` are unchanged
-  (delivery plan §2.3; spec `## Out of Scope`). Satisfies FR-001, FR-011. Proved by T002–T011 (DO
+  (delivery plan §2.3; spec `## Out of Scope`). Satisfies FR-001, FR-011, FR-013. Proved by T002–T011 (DO
   unit cases hit this dispatch through `env.DO`). Depends on T018.
 - [X] T020 [P] [US1] Write `ai-platform/src/admission/index.ts` — the stage-8 caller: load the
   entitlement snapshot via `loadConfig(cache, reader, "entitlements", installationId)` (the A5/B3
   seam — Clarification Q2), build the admission RPC payload from the B3 `Principal.jti` /
   `Principal.installationId` and the A6-parsed idempotency key, call
-  `env.DO.withId(env.DO.idFromString(installationId)).fetch(...)` exactly once, and return the
-  admitted / replay / idempotent / `quota_exhausted` / concurrency-exhausted outcome. Implement the
+  `env.DO.get(env.DO.idFromName(installationId)).fetch(...)` exactly once, and return the
+  admitted / replay / idempotent / `quota_exhausted` outcome (mapping DO `concurrency_exhausted` to
+  caller `quota_exhausted`). Implement the
   fail-open grace path: a DO `fetch` rejection admits under the capped grace allowance and queues
-  reconciliation to the credit call (§15 #3). Satisfies FR-001, FR-004, FR-005, FR-006, FR-007,
+  reconciliation for re-admit-then-credit (§15 #3). Satisfies FR-001, FR-004, FR-005, FR-006, FR-007,
   FR-011, FR-012, FR-013, FR-014. Proved by T012–T017.
 - [X] T021 [P] [US1] Write `ai-platform/src/credit/index.ts` — the stage-15 caller: build the credit
   RPC payload with actual usage (tokens/cost) plus the `partial` flag, and call the same DO instance
-  exactly once. Satisfies FR-008, FR-016. Proved by T008, T009, T016.
+  exactly once via `idFromName`. Export `reconcileGraceUsage` (re-admit queued grace entries, then
+  credit the DO-issued `requestId`). Satisfies FR-008, FR-013, FR-016. Proved by T008, T009, T016.
 
 ---
 

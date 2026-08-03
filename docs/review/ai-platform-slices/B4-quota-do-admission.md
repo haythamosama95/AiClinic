@@ -71,3 +71,44 @@ B4 delivers the three modules the plan names — `src/quota-do/` (admission and 
 - **Wire the stage and delete the duplicate tally** (`src/worker.ts`): invoke `runAdmission` from the pipeline and `creditUsage` at stage 15, drive `flushRejectionCounters` and `reconcileGraceUsage` from `scheduled`/`waitUntil`, and replace B4's private tally with B3's export as the B3 report already recommended.
 - **Reconcile the contract with the code**: amend `quota-do-rpc.md` for `idFromName`, the `period_end` field, and either the `degraded` extension (with F4) or its removal from B4; drop the untriggered `now` parameter or pass it from `GatewayObject.fetch`; and validate `installationId` against the instance or stop claiming the check exists.
 - **Add the missing cases**: UUID installation id; reconciliation counter delta; settled-state final count; duplicate and unknown credit; idempotency expiry; token- and cost-budget exhaustion at the equality boundary; period rollover; replay and concurrency tally rows; the grace-cap rejection's code and tally; and the stale idempotency-state transition once credit closes out records.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **B4-R1 — DO idFromName + UUID pinning** | Critical #1; Rec (fix DO id derivation) | `src/admission/index.ts`; `src/credit/index.ts`; `contracts/quota-do-rpc.md`; both test helpers use dashed-UUID `installationId` + `idFromName` |
+| **B4-R2 — Grace reconciliation redesign** | Critical #2; Missing/Weak Tests #1; Bug #6 (4xx vs transport); Bug #7 (no queue wipe on cap); Arch Dev #2 (grace-cap code); Rec (make grace real / stop deleting queue / distinguish transport) | `src/admission/index.ts` (re-queue params, `attachGraceUsage`, 5xx→grace / 4xx→`internal_error`); `src/credit/index.ts` (`reconcileGraceUsage` re-admits then credits); `test/admission-credit.test.ts` (counter delta + queue survival) |
+| **B4-R3 — Bound DO memory, in-flight, idempotency** | Bugs #1–#3; Arch Dev #5; Missing #2–#5 (parallel snapshot, duplicate/unknown credit, budgets, rollover, abandoned sweep, idempotency close-out); Rec (bound memory / in-flight recovery / state transition) | `src/quota-do/index.ts`; `src/worker.ts` (mismatch → 400); `test/quota-do.test.ts` |
+| **B4-R4 — Taxonomy codes + tally paths** | Arch Dev #1–#2; Bug #4; Missing #6 (replay / concurrency / grace-cap tally); Rec (codes inside taxonomy / tally every rejection / skew on exp) | `src/admission/index.ts` (`concurrency_exhausted`→`quota_exhausted`; grace-cap→`quota_exhausted`+tally; exp uses 60s skew + tally); tally cases in `admission-credit.test.ts` |
+| **B4-R5 — Entitlement fail-closed + credit transport split** | Bug #5; Bug #6 (credit side); Rec (fail closed / distinguish transport) | `runAdmission` catches `ConfigCacheMissError` → `quota_exhausted`; `creditUsage` returns `unavailable` / `internal_error` / `unknown_request`; miss test added |
+| **B4-R6 — Isolate grace + scheduled reconcile** | Bug #7 (durable D1 ledger rejected: §4.4 / §6.4); Bug #8 (scheduled half + Spec Kit orchestrator clarification); Rec (wire scheduled / document isolate cap) | `src/worker.ts` `scheduled` → `reconcileGraceUsage`; Spec Kit Edge Cases document isolate-scoped grace (no D1 live-request state) and defer POST composition to the later orchestrator |
+| **B4-R7 — Contract + now seam + degraded** | Arch Dev #3–#4, #6; Missing degraded / idempotency-expiry cases; Rec (reconcile contract) | `quota-do-rpc.md` (`period_end`, `degraded?`, concurrency mapping, `now`, binding); `GatewayObject.fetch` passes injectable `now`; soft-threshold / ephemeral idempotency tests |
+
+Every numbered Critical / Bug / Architectural Deviation / Missing-or-Weak-Test item and every Recommended Improvement is covered by exactly one stage. No architecture-doc edits. D1 grace ledger was not added (would violate §4.4 / delivery-plan §6.4); isolate + scheduled reconcile is the non-escalating resolution, recorded in Spec Kit.
+
+### 1.2 Test cases created first
+
+- **B4-R1:** UUID `freshInstallationId()` in `quota-do.test.ts` / `admission-credit.test.ts` (and soft-threshold) before relying on `idFromName` production callers.
+- **B4-R2:** Strengthened `grace_usage_reconciled_afterwards` (assert DO `requestsUsed` delta + re-admit/credit fetch count) and cap-exhaustion queue-survival assertion before / with the reconcile redesign.
+- **B4-R3:** New DO cases written alongside the memory/in-flight/idempotency fixes: duplicate/unknown credit, token/cost budget exhaustion, period rollover preserves `inFlight`, abandoned-admission sweep, credit marks idempotency `completed`/`cancelled`, parallel final count after settle.
+- **B4-R4:** Replay / concurrency-mapped / grace-cap tally cases added under `admission_rejection_counted_not_journaled`; expired-token case updated for skew.
+- **B4-R5:** `admission_missing_entitlement_fail_closed` asserts cache-miss → `quota_exhausted` with empty grace queue.
+- **B4-R7:** Idempotency-map expiry half of ephemeral sweep; `admission_soft_threshold_sets_degraded`.
+
+### 1.3 Fix implemented
+
+- **R1:** `idFromString` → `idFromName` in admission/credit callers; contract §2 + Spec Kit plan/tasks/quickstart aligned; tests use dashed UUIDs.
+- **R2:** Grace queue stores re-admission params + local `graceRequestId`; reconcile re-admits then credits DO-issued id with attached usage; failures re-queue; cap reject preserves queue and emits tallied `quota_exhausted`; 4xx ≠ grace.
+- **R3:** Evict admitted on credit; TTL `creditedRequests`; abandon sweep frees `inFlight`; period rollover preserves `inFlight`; credit closes idempotency; bind `installationId` on first admit.
+- **R4:** Stage-8 client codes reduced to taxonomy-owned set; concurrency maps to `quota_exhausted`; defensive exp uses B3 skew + tally.
+- **R5:** Entitlement miss fail-closed; credit transport codes split.
+- **R6:** `scheduled` runs `reconcileGraceUsage` after flush; Spec Kit records isolate grace limitation and orchestrator ownership of POST `/v1/requests` composition (B3/C* precedent); B3 shared tally already consumed.
+- **R7:** Contract fields/`now` seam/`degraded` extension; GatewayObject forwards `now`.
+
+### 1.4 Verification
+
+Full `ai-platform` suite (`npm test`): **verify-manifests 1**, **unit 38 files / 459 tests**, **workers 19 files / 197 tests** — all passed. Modified/added coverage in `test/quota-do.test.ts` and `test/admission-credit.test.ts` (plus soft-threshold UUID helper).

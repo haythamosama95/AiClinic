@@ -3,8 +3,8 @@
 **Frozen by:** Slice B4 — Quota Durable Object and admission stage
 **Implements:** §4.3.3, §4.4, §6.1 stages 8 and 15, §6.6, §7.7, §9.17 of `docs/architecture/17-ai-platform.md`
 **Status:** Frozen. Later slices (C3 journal writer, F4 soft-threshold routing) **consume** this artifact;
-the no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g. F4 reads
-remaining-budget fields from the admission response) but may not **rewrite** the field set, discriminant
+the no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g. F4 routes on optional
+`degraded` from the admission response) but may not **rewrite** the field set, discriminant
 values, or transport shape below.
 
 **Source of truth in code:** `ai-platform/src/quota-do/index.ts` (RPC handlers and ephemeral entry
@@ -40,7 +40,7 @@ There is no third DO round trip per request lifecycle (§7.5; FR-016). No pre-fl
 Callers reach the installation-scoped instance via the A1 `DO → GatewayObject` binding unchanged:
 
 ```ts
-const id = env.DO.idFromString(installationId);
+const id = env.DO.idFromName(installationId);
 const stub = env.DO.get(id);
 const response = await stub.fetch("https://quota-do.internal/rpc", {
   method: "POST",
@@ -51,6 +51,16 @@ const response = await stub.fetch("https://quota-do.internal/rpc", {
 
 The URL path is an internal convention; only the JSON body is normative. The handler dispatches on
 the top-level `kind` discriminant (`"admission"` | `"credit"`).
+
+`installationId` on both RPC bodies **must** match the DO-bound installation id. The first
+successful admission binds `boundInstallationId` in DO storage; a later request whose
+`installationId` does not match throws / returns a non-2xx that the callers surface as a client
+error (`400` / `unknown_request` on credit). Callers always derive the stub with
+`idFromName(installationId)` so the body id and the instance id stay aligned.
+
+Optional injectable clock for ephemeral-sweep tests: the GatewayObject RPC body may carry
+`now?: number` (epoch milliseconds). When present and finite, `admissionRPC` / `creditRPC` use it
+instead of `Date.now()` for lazy sweep and expiry. Production callers omit `now`.
 
 Responses use `Content-Type: application/json`. Non-2xx from `fetch` is a transport failure (the
 stage-8 caller's fail-open grace path — §15 #3 — is **not** part of this wire contract; it lives in
@@ -90,7 +100,7 @@ interface EntitlementSnapshot {
     cost_budget: number;  // REAL — max cost in period
   };
   allowed_capabilities: string[]; // parsed from D1 `allowed_capabilities` TEXT
-  soft_threshold: number;         // REAL — F4 reads; B4 carries unchanged
+  soft_threshold: number;         // REAL — B4 may set `degraded` when crossed; F4 routes
   status: string;                 // e.g. `active`, `pending`, `suspended`
 }
 ```
@@ -120,7 +130,7 @@ Every response body is a JSON object whose shape is determined by `kind` and (fo
 | --- | --- | --- | --- |
 | `kind` | `"admission"` | Yes | Literal discriminant |
 | `jti` | `string` | Yes | B3 `Principal.jti` (B1 AAT claim) |
-| `installationId` | `string` | Yes | B3 `Principal.installationId`; must match the DO instance id |
+| `installationId` | `string` | Yes | B3 `Principal.installationId`; must match the DO-bound id (`idFromName`); first admission binds |
 | `idempotencyKey` | `string` | Yes | A6-parsed `Idempotency-Key` header |
 | `entitlement` | `EntitlementSnapshot` | Yes | A5 config cache `entitlements` kind |
 | `requestReference` | `string` | Yes | A6 adapter `requestReference` — stored on a fresh admit for idempotent replay |
@@ -175,6 +185,12 @@ interface AdmissionAdmitted {
   kind: "admission";
   outcome: "admitted";
   requestId: string; // UUID — correlates the stage-15 credit call
+  /**
+   * Optional contract extension: true when any period usage ratio
+   * (requests / tokens / cost) has crossed `entitlement.soft_threshold`.
+   * B4 computes and exposes the flag; F4 owns degraded-tier routing on it.
+   */
+  degraded?: boolean;
 }
 
 interface AdmissionReplay {
@@ -191,6 +207,8 @@ interface AdmissionIdempotent {
 interface AdmissionQuotaExhausted {
   kind: "admission";
   outcome: "quota_exhausted";
+  /** ISO-8601 period end — matches §5.4 period-reset instant for `quota_exhausted`. */
+  period_end: string;
 }
 
 interface AdmissionConcurrencyExhausted {
@@ -233,11 +251,11 @@ The admission stage caller (`src/admission/`) maps DO outcomes to pipeline resul
 
 | `outcome` | Caller result | Taxonomy / notes |
 | --- | --- | --- |
-| `admitted` | Proceed; carry `requestId` to stage 15 | — |
+| `admitted` | Proceed; carry `requestId` (and optional `degraded`) to stage 15 / F4 | Soft-threshold flag is an allowed extension; F4 routes |
 | `replay` | Reject | `unauthenticated` (§6.2 — replay is post-identity) |
 | `idempotent` | Return `priorState`; no second inference | — |
-| `quota_exhausted` | Reject | `quota_exhausted` (§5.4) |
-| `concurrency_exhausted` | Reject | Distinct from rate limiting; no separate §5.4 code in B4 |
+| `quota_exhausted` | Reject; surface `period_end` as period reset | `quota_exhausted` (§5.4) |
+| `concurrency_exhausted` | Reject | Maps to caller `quota_exhausted` (§6.1 / closed §5.4) — DO-internal outcome only |
 
 ---
 
@@ -250,7 +268,7 @@ Settles actual usage at stage 15 (§6.1; FR-008). Exactly one credit call per ad
 | Field | Type | Required | Semantics |
 | --- | --- | --- | --- |
 | `kind` | `"credit"` | Yes | Literal discriminant |
-| `installationId` | `string` | Yes | Must match the DO instance id |
+| `installationId` | `string` | Yes | Must match the DO-bound installation id (else `unknown_request`) |
 | `requestId` | `string` | Yes | `requestId` from the matching `admitted` admission response |
 | `requestReference` | `string` | Yes | Echo of admission `requestReference` — correlation for tests and reconciliation |
 | `usage` | `UsageActual` | Yes | Actual token and cost consumed |
@@ -298,10 +316,14 @@ On `ok: true`, the DO:
 
 - Adds `usage.tokens` / `usage.cost` to period counters (and increments request count by 1)
 - Decrements `inFlight` (floored at 0)
-- Marks the `requestId` credited so a duplicate credit is idempotent or returns `unknown_request`
+- Removes the `requestId` from `admittedRequests` and records it in `creditedRequests` (both
+  ephemeral-horizon bounded — see §9)
+- Closes the matching idempotency record to `completed` (or `cancelled` when `partial: true`) so a
+  repeat key returns the settled prior state
 
-The `partial` flag does not change the arithmetic — it is carried for journaling and test assertions
-(§6.4). Partial and complete credits use the same counter adjustment.
+The `partial` flag does not change the arithmetic — it is carried for journaling and for the
+idempotency close (`cancelled` vs `completed`). Partial and complete credits use the same counter
+adjustment.
 
 #### 7.2.1 `PeriodCounters`
 
@@ -363,13 +385,17 @@ later slices know what the handlers own.
 | Field | Type | Role |
 | --- | --- | --- |
 | `periodCounters` | `PeriodCounters` | Running totals for the current entitlement period |
-| `jtiReplay` | `Map<string, JtiReplayEntry>` | Seen `jti` values |
-| `idempotency` | `Map<string, IdempotencyEntry>` | Idempotency key → prior state |
-| `creditedRequests` | `Set<string>` | `requestId` values already credited |
+| `periodBounds` | `{ period_start, period_end }` | Last entitlement period applied (rollover trigger) |
+| `boundInstallationId` | `string` | Set on first admission; mismatch rejects later RPCs |
+| `jtiReplay` | `Map<string, JtiReplayEntry>` | Seen `jti` values (ephemeral horizon) |
+| `idempotency` | `Map<string, IdempotencyEntry>` | Idempotency key → prior state (ephemeral horizon) |
+| `admittedRequests` | `Map<string, { requestReference, admittedAt }>` | In-flight `requestId` awaiting credit — **ephemeral-horizon bounded** (abandoned admissions are swept and decrement `inFlight`) |
+| `creditedRequests` | `Map<string, { expiresAt }>` | `requestId` values already credited — **ephemeral-horizon bounded**, not a permanent set |
 
 Period rollover: when an admission carries `entitlement.period_bounds` outside the stored period, the
-DO resets `periodCounters` to zero before evaluating (exact rollover rules are implementation detail;
-counter reset is observable in tests).
+DO resets usage counters (`requestsUsed` / `tokensUsed` / `costUsed`) before evaluating; `inFlight`
+is carried across the rollover (exact rollover rules are implementation detail; counter reset is
+observable in tests).
 
 ---
 
@@ -380,9 +406,9 @@ counter reset is observable in tests).
 | **B4 `src/admission/`** | Builds `AdmissionRequest`; maps `AdmissionResponse` to stage-8 outcomes; applies `GRACE_ADMISSION_CAP` on transport failure |
 | **B4 `src/credit/`** | Builds `CreditRequest` with `requestId`, `requestReference`, `usage`, `partial` |
 | **B4 `src/quota-do/`** | Implements handlers; owns ephemeral maps and `PeriodCounters` |
-| **B4 `worker.ts`** | Dispatches `fetch` body `kind` to `admissionRPC` / `creditRPC` |
-| **C3 (journal writer)** | Consumes `requestId` / `requestReference` correlation; updates `IdempotencyRequestState` on terminal events (extension — does not rewrite this contract) |
-| **F4 (soft threshold)** | May read remaining budget derived from `periodCounters` and `entitlement` (extension) |
+| **B4 `worker.ts`** | Dispatches `fetch` body `kind` (and optional `now`) to `admissionRPC` / `creditRPC`; `scheduled` runs `reconcileGraceUsage` + rejection flush |
+| **C3 (journal writer)** | Consumes `requestId` / `requestReference` correlation; may further refine `IdempotencyRequestState` (e.g. `in_progress`, `failed`, `awaiting_context`). Credit already closes to `completed` / `cancelled` on settlement — C3 does not uniquely own state updates |
+| **F4 (soft threshold)** | Reads optional `degraded` on `AdmissionAdmitted` (and may still derive remaining budget from `periodCounters` / `entitlement`) — routing owner; B4 only exposes the flag |
 
 ---
 
