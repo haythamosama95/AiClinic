@@ -359,7 +359,7 @@ function extractFinalContent(outcome: ProviderInvokeResult): string {
   if (outcome.kind !== "success") {
     return "";
   }
-  const content = outcome.result["final content"];
+  const content = outcome.result.finalContent;
   if (typeof content === "string") {
     return content;
   }
@@ -383,7 +383,7 @@ function scoreQuality(
   finalContent: string,
   expectation: ExpectationDefinition,
 ): "pass" | "fail" {
-  const systemParts = composedRequest["ordered role-tagged message parts"]
+  const systemParts = composedRequest.parts
     .filter((part) => part.role === "system")
     .map((part) => part.content)
     .join("\n");

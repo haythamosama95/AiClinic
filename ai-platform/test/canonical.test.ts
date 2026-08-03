@@ -23,37 +23,37 @@ function allManifestKeys(): string[] {
 }
 
 const requestFixture: canonical.CanonicalRequest = {
-  "ordered role-tagged message parts": [
+  parts: [
     { role: "user", content: "Summarise the visit." },
     { role: "assistant", content: "Prior context." },
   ],
-  "output format directive": { type: "json", schema: { type: "object" } },
-  "sampling constraints": { temperature: 0.2, top_k: 40 },
-  "max output tokens": 512,
-  "stop conditions": ["</s>", "END"],
-  "tool/function declarations (reserved for future)": [],
-  "stream flag": true,
+  formatDirective: { type: "json", schema: { type: "object" } },
+  samplingConstraints: { temperature: 0.2, top_k: 40 },
+  maxOutputTokens: 512,
+  stopConditions: ["</s>", "END"],
+  toolDeclarations: [],
+  stream: true,
   "deadline": 30_000,
-  "correlation ids": {
+  correlationIds: {
     request_reference: "7QK4-2B9F",
     trace_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   },
 };
 
 const resultFixture: canonical.CanonicalResult = {
-  "final content": { text: "Visit summary complete." },
-  "usage counters": {
+  finalContent: { text: "Visit summary complete." },
+  usage: {
     input: 1200,
     output: 180,
     cached: 400,
   },
-  "provider+model actually used": {
+  providerModel: {
     provider: "gateway",
     model: "canonical-fixture",
   },
-  "finish reason": "stop",
-  "provider request id": "req-fixture-001",
-  "timing breakdown": {
+  finishReason: "stop",
+  providerRequestId: "req-fixture-001",
+  timing: {
     queue_ms: 12,
     provider_ms: 890,
     total_ms: 950,
@@ -61,13 +61,13 @@ const resultFixture: canonical.CanonicalResult = {
 };
 
 const errorFixture: canonical.CanonicalError = {
-  "taxonomy code": "timeout",
+  taxonomyCode: "timeout",
   "retryability": true,
-  "provider-native code and message": {
+  providerNative: {
     code: "deadline_exceeded",
     message: "upstream timed out",
   },
-  "whether the attempt consumed budget": false,
+  consumedBudget: false,
 };
 
 function chunkFixture(
@@ -75,10 +75,10 @@ function chunkFixture(
   overrides: Partial<Record<string, unknown>> = {},
 ) {
   return {
-    "sequence number": 1,
+    sequenceNumber: 1,
     kind,
     payload: { sample: kind },
-    "terminal flag": false,
+    terminal: false,
     ...overrides,
   };
 }
@@ -188,8 +188,8 @@ describe("T-A3-07 terminal flag exactly once per sequence", () => {
   it("rejects a sequence with zero terminal flags", () => {
     expect(canonical.assertExactlyOneTerminal).toBeTypeOf("function");
     const sequence = [
-      chunkFixture("text_delta", { "sequence number": 0, "terminal flag": false }),
-      chunkFixture("usage", { "sequence number": 1, "terminal flag": false }),
+      chunkFixture("text_delta", { sequenceNumber: 0, terminal: false }),
+      chunkFixture("usage", { sequenceNumber: 1, terminal: false }),
     ];
     expect(() => canonical.assertExactlyOneTerminal!(sequence)).toThrow();
   });
@@ -197,8 +197,8 @@ describe("T-A3-07 terminal flag exactly once per sequence", () => {
   it("rejects a sequence with two terminal flags", () => {
     expect(canonical.assertExactlyOneTerminal).toBeTypeOf("function");
     const sequence = [
-      chunkFixture("text_delta", { "sequence number": 0, "terminal flag": true }),
-      chunkFixture("provider_note", { "sequence number": 1, "terminal flag": true }),
+      chunkFixture("text_delta", { sequenceNumber: 0, terminal: true }),
+      chunkFixture("provider_note", { sequenceNumber: 1, terminal: true }),
     ];
     expect(() => canonical.assertExactlyOneTerminal!(sequence)).toThrow();
   });
@@ -206,8 +206,8 @@ describe("T-A3-07 terminal flag exactly once per sequence", () => {
   it("accepts a sequence with exactly one terminal flag", () => {
     expect(canonical.assertExactlyOneTerminal).toBeTypeOf("function");
     const sequence = [
-      chunkFixture("text_delta", { "sequence number": 0, "terminal flag": false }),
-      chunkFixture("text_delta", { "sequence number": 1, "terminal flag": true }),
+      chunkFixture("text_delta", { sequenceNumber: 0, terminal: false }),
+      chunkFixture("text_delta", { sequenceNumber: 1, terminal: true }),
     ];
     expect(() => canonical.assertExactlyOneTerminal!(sequence)).not.toThrow();
   });
@@ -219,37 +219,37 @@ describe("T-A3-09 typed field schema (not unknown)", () => {
       canonical.encodeCanonicalRequest!(requestFixture),
     );
 
-    expect(Array.isArray(decoded["ordered role-tagged message parts"])).toBe(
+    expect(Array.isArray(decoded.parts)).toBe(
       true,
     );
-    expect(decoded["ordered role-tagged message parts"][0]?.role).toBe("user");
-    expect(typeof decoded["max output tokens"]).toBe("number");
-    expect(typeof decoded["stream flag"]).toBe("boolean");
-    expect(Array.isArray(decoded["stop conditions"])).toBe(true);
-    expect(decoded["correlation ids"].request_reference).toBe(
+    expect(decoded.parts[0]?.role).toBe("user");
+    expect(typeof decoded.maxOutputTokens).toBe("number");
+    expect(typeof decoded.stream).toBe("boolean");
+    expect(Array.isArray(decoded.stopConditions)).toBe(true);
+    expect(decoded.correlationIds.request_reference).toBe(
       "7QK4-2B9F",
     );
-    expect(decoded["correlation ids"].trace_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/i);
+    expect(decoded.correlationIds.trace_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/i);
   });
 
   it("decoded result and error expose typed counters, provider+model, and taxonomy code", () => {
     const result = canonical.decodeCanonicalResult!(
       canonical.encodeCanonicalResult!(resultFixture),
     );
-    expect(result["usage counters"].input).toBe(1200);
-    expect(result["usage counters"].output).toBe(180);
-    expect(result["provider+model actually used"].provider).toBe("gateway");
-    expect(result["timing breakdown"].total_ms).toBe(950);
+    expect(result.usage.input).toBe(1200);
+    expect(result.usage.output).toBe(180);
+    expect(result.providerModel.provider).toBe("gateway");
+    expect(result.timing.total_ms).toBe(950);
 
     const error = canonical.decodeCanonicalError!(
       canonical.encodeCanonicalError!(errorFixture),
     );
-    expect(error["taxonomy code"]).toBe("timeout");
+    expect(error.taxonomyCode).toBe("timeout");
     expect(error.retryability).toBe(true);
-    expect(error["provider-native code and message"].code).toBe(
+    expect(error.providerNative.code).toBe(
       "deadline_exceeded",
     );
-    expect(error["whether the attempt consumed budget"]).toBe(false);
+    expect(error.consumedBudget).toBe(false);
   });
 
   it("message-part role tags are the closed §5.3 set", () => {
@@ -259,6 +259,80 @@ describe("T-A3-09 typed field schema (not unknown)", () => {
       "assistant",
       "data",
     ]);
+  });
+});
+
+describe("T-A3-10 §5.3 field identifiers (not prose contents)", () => {
+  const EXPECTED_IDENTIFIERS = {
+    request: [
+      "parts",
+      "formatDirective",
+      "samplingConstraints",
+      "maxOutputTokens",
+      "stopConditions",
+      "toolDeclarations",
+      "stream",
+      "deadline",
+      "correlationIds",
+    ],
+    streamChunk: ["sequenceNumber", "kind", "payload", "terminal"],
+    result: [
+      "finalContent",
+      "usage",
+      "providerModel",
+      "finishReason",
+      "providerRequestId",
+      "timing",
+    ],
+    error: [
+      "taxonomyCode",
+      "retryability",
+      "providerNative",
+      "consumedBudget",
+    ],
+  } as const;
+
+  const FORBIDDEN_PROSE_KEYS = [
+    "ordered role-tagged message parts",
+    "output format directive",
+    "sampling constraints",
+    "max output tokens",
+    "stop conditions",
+    "tool/function declarations (reserved for future)",
+    "stream flag",
+    "correlation ids",
+    "sequence number",
+    "terminal flag",
+    "final content",
+    "usage counters",
+    "provider+model actually used",
+    "finish reason",
+    "provider request id",
+    "timing breakdown",
+    "taxonomy code",
+    "provider-native code and message",
+    "whether the attempt consumed budget",
+  ];
+
+  it("manifest uses camelCase identifiers from amended §5.3, not contents prose", () => {
+    expect([...CANONICAL_FIELD_MANIFEST.request]).toEqual([
+      ...EXPECTED_IDENTIFIERS.request,
+    ]);
+    expect([...CANONICAL_FIELD_MANIFEST.streamChunk]).toEqual([
+      ...EXPECTED_IDENTIFIERS.streamChunk,
+    ]);
+    expect([...CANONICAL_FIELD_MANIFEST.result]).toEqual([
+      ...EXPECTED_IDENTIFIERS.result,
+    ]);
+    expect([...CANONICAL_FIELD_MANIFEST.error]).toEqual([
+      ...EXPECTED_IDENTIFIERS.error,
+    ]);
+  });
+
+  it("no prose contents key remains in the frozen manifest", () => {
+    for (const key of allManifestKeys()) {
+      expect(FORBIDDEN_PROSE_KEYS).not.toContain(key);
+    }
   });
 });
 
@@ -319,7 +393,7 @@ describe("T-A3-04 round-trip canonical error", () => {
   it("rejects an unrecognised taxonomy code on decode", () => {
     const poisoned = {
       ...errorFixture,
-      "taxonomy code": "definitely_not_a_taxonomy_code",
+      taxonomyCode: "definitely_not_a_taxonomy_code",
     };
     const wire = canonical.encodeCanonicalError!(
       poisoned as unknown as canonical.CanonicalError,

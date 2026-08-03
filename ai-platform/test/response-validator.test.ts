@@ -205,7 +205,7 @@ describe("T-D6-01 valid_output_passes", () => {
       type: "completed",
       data: {
         result: {
-          "final content": {
+          finalContent: {
             document: repairResult.ok ? repairResult.validated : null,
             authoritative: true,
           },

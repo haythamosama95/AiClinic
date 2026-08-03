@@ -2,39 +2,35 @@ import { isTaxonomyCode, type TaxonomyCode } from "../errors";
 
 /**
  * Field-name manifest for the four §5.3 canonical inference elements.
- * Types and codec derive from this; the guard test (T-A3-05) exercises it.
+ * Identifiers match amended §5.3 Field column; the guard test (T-A3-05 / T-A3-10)
+ * exercises them.
  */
 export const CANONICAL_FIELD_MANIFEST = {
   request: [
-    "ordered role-tagged message parts",
-    "output format directive",
-    "sampling constraints",
-    "max output tokens",
-    "stop conditions",
-    "tool/function declarations (reserved for future)",
-    "stream flag",
+    "parts",
+    "formatDirective",
+    "samplingConstraints",
+    "maxOutputTokens",
+    "stopConditions",
+    "toolDeclarations",
+    "stream",
     "deadline",
-    "correlation ids",
+    "correlationIds",
   ],
-  streamChunk: [
-    "sequence number",
-    "kind",
-    "payload",
-    "terminal flag",
-  ],
+  streamChunk: ["sequenceNumber", "kind", "payload", "terminal"],
   result: [
-    "final content",
-    "usage counters",
-    "provider+model actually used",
-    "finish reason",
-    "provider request id",
-    "timing breakdown",
+    "finalContent",
+    "usage",
+    "providerModel",
+    "finishReason",
+    "providerRequestId",
+    "timing",
   ],
   error: [
-    "taxonomy code",
+    "taxonomyCode",
     "retryability",
-    "provider-native code and message",
-    "whether the attempt consumed budget",
+    "providerNative",
+    "consumedBudget",
   ],
 } as const;
 
@@ -81,17 +77,17 @@ export type CorrelationIds = {
   trace_id: string;
 };
 
-/** §5.3 canonical request — typed fields (not `unknown`). */
+/** §5.3 canonical request — typed fields keyed by amended identifiers. */
 export type CanonicalRequest = {
-  "ordered role-tagged message parts": readonly CanonicalMessagePart[];
-  "output format directive": OutputFormatDirective;
-  "sampling constraints": SamplingConstraints;
-  "max output tokens": number;
-  "stop conditions": readonly string[];
-  "tool/function declarations (reserved for future)": readonly unknown[];
-  "stream flag": boolean;
+  parts: readonly CanonicalMessagePart[];
+  formatDirective: OutputFormatDirective;
+  samplingConstraints: SamplingConstraints;
+  maxOutputTokens: number;
+  stopConditions: readonly string[];
+  toolDeclarations: readonly unknown[];
+  stream: boolean;
   deadline: number | null;
-  "correlation ids": CorrelationIds;
+  correlationIds: CorrelationIds;
 };
 
 export type UsageCounters = {
@@ -118,14 +114,14 @@ export type FinalContent = {
   [key: string]: unknown;
 };
 
-/** §5.3 canonical result — typed fields (not `unknown`). */
+/** §5.3 canonical result — typed fields keyed by amended identifiers. */
 export type CanonicalResult = {
-  "final content": FinalContent;
-  "usage counters": UsageCounters;
-  "provider+model actually used": ProviderModelUsed;
-  "finish reason": string;
-  "provider request id": string;
-  "timing breakdown": TimingBreakdown;
+  finalContent: FinalContent;
+  usage: UsageCounters;
+  providerModel: ProviderModelUsed;
+  finishReason: string;
+  providerRequestId: string;
+  timing: TimingBreakdown;
 };
 
 /** Closed, exhaustive chunk-kind set (§5.3). */
@@ -140,10 +136,10 @@ export type CanonicalChunkKind = (typeof CANONICAL_CHUNK_KINDS)[number];
 
 /** §5.3 canonical stream chunk — `kind` is the closed chunk-kind union. */
 export type CanonicalStreamChunk = {
-  "sequence number": number;
+  sequenceNumber: number;
   kind: CanonicalChunkKind;
   payload: unknown;
-  "terminal flag": boolean;
+  terminal: boolean;
 };
 
 export type ProviderNativeDiagnostic = {
@@ -151,12 +147,12 @@ export type ProviderNativeDiagnostic = {
   message: string;
 };
 
-/** §5.3 canonical error — `taxonomy code` binds to A2's frozen set. */
+/** §5.3 canonical error — `taxonomyCode` binds to A2's frozen set. */
 export type CanonicalError = {
-  "taxonomy code": TaxonomyCode;
+  taxonomyCode: TaxonomyCode;
   retryability: boolean;
-  "provider-native code and message": ProviderNativeDiagnostic;
-  "whether the attempt consumed budget": boolean;
+  providerNative: ProviderNativeDiagnostic;
+  consumedBudget: boolean;
 };
 
 export function assertNoProviderShapedFieldNames(
@@ -176,14 +172,14 @@ export function isCanonicalChunkKind(
 }
 
 export function assertExactlyOneTerminal(
-  sequence: readonly Pick<CanonicalStreamChunk, "terminal flag">[],
+  sequence: readonly Pick<CanonicalStreamChunk, "terminal">[],
 ): void {
   if (sequence.length === 0) {
     throw new Error("Chunk sequence must not be empty");
   }
 
   const terminalCount = sequence.filter(
-    (chunk) => chunk["terminal flag"] === true,
+    (chunk) => chunk.terminal === true,
   ).length;
 
   if (terminalCount !== 1) {
@@ -267,7 +263,7 @@ export function decodeCanonicalChunk(wire: string): CanonicalStreamChunk {
     wire,
     CANONICAL_FIELD_MANIFEST.streamChunk,
     (decoded) => {
-      const kind = decoded["kind"];
+      const kind = decoded.kind;
       if (typeof kind !== "string" || !isCanonicalChunkKind(kind)) {
         throw new Error(`Unrecognised chunk kind: ${kind}`);
       }
@@ -299,7 +295,7 @@ export function decodeCanonicalError(wire: string): CanonicalError {
     wire,
     CANONICAL_FIELD_MANIFEST.error,
     (decoded) => {
-      const code = decoded["taxonomy code"];
+      const code = decoded.taxonomyCode;
       if (typeof code !== "string" || !isTaxonomyCode(code)) {
         throw new Error(`Unrecognised taxonomy code: ${code}`);
       }

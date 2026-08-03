@@ -330,7 +330,7 @@ describe("T-D4-07 terminal_completed_carries_validated_payload", () => {
     expect(payload).toBeDefined();
     expect(payload).not.toEqual({ assembled_from_chunks: true });
 
-    const finalContent = payload["final content"] as Record<string, unknown>;
+    const finalContent = payload.finalContent as Record<string, unknown>;
     expect(finalContent?.text).toBe(assembled);
     expect(finalContent?.authoritative).toBe(true);
   });
@@ -351,7 +351,7 @@ describe("T-D4-18 provisional_chunks_not_authoritative", () => {
     const completed = eventsOfType(events, "completed");
     expect(completed).toHaveLength(1);
     const payload = completed[0]?.data.result as Record<string, unknown>;
-    const finalContent = payload["final content"] as Record<string, unknown>;
+    const finalContent = payload.finalContent as Record<string, unknown>;
     expect(finalContent?.authoritative).toBe(true);
     expect(finalContent?.text).toBe(chunks.join(""));
   });

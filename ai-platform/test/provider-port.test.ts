@@ -55,17 +55,17 @@ const RETRY_FALLBACK_API_PATTERN =
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
-  "ordered role-tagged message parts": [
+  parts: [
     { role: "user", content: "Summarise the visit." },
   ],
-  "output format directive": { type: "text" },
-  "sampling constraints": { temperature: 0.2 },
-  "max output tokens": 256,
-  "stop conditions": [],
-  "tool/function declarations (reserved for future)": [],
-  "stream flag": false,
+  formatDirective: { type: "text" },
+  samplingConstraints: { temperature: 0.2 },
+  maxOutputTokens: 256,
+  stopConditions: [],
+  toolDeclarations: [],
+  stream: false,
   deadline: 30_000,
-  "correlation ids": {
+  correlationIds: {
     request_reference: "7QK4-2B9F",
     trace_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   },
@@ -105,7 +105,7 @@ function collectCredentialDiagnostics(
 
   if (outcome.kind === "error" || outcome.kind === "malformed") {
     diagnostics.push(outcome.error);
-    diagnostics.push(outcome.error["provider-native code and message"]);
+    diagnostics.push(outcome.error.providerNative);
   }
 
   return diagnostics;
@@ -152,8 +152,8 @@ describe("T-D2-01 fake_success", () => {
 
     expect(outcome.kind).toBe("success");
     assertCanonicalResultShape(outcome.result);
-    expect(outcome.result["finish reason"]).toBeTruthy();
-    expect(outcome.result["final content"]).toBeTruthy();
+    expect(outcome.result.finishReason).toBeTruthy();
+    expect(outcome.result.finalContent).toBeTruthy();
   });
 });
 
@@ -166,7 +166,7 @@ describe("T-D2-02 fake_retryable_<class>", () => {
 
       expect(outcome.kind).toBe("error");
       assertCanonicalErrorShape(outcome.error);
-      expect(outcome.error["taxonomy code"]).toBe(code);
+      expect(outcome.error.taxonomyCode).toBe(code);
       expect(outcome.error.retryability).toBe(true);
     },
   );
@@ -181,7 +181,7 @@ describe("T-D2-03 fake_terminal_<class>", () => {
 
       expect(outcome.kind).toBe("error");
       assertCanonicalErrorShape(outcome.error);
-      expect(outcome.error["taxonomy code"]).toBe(code);
+      expect(outcome.error.taxonomyCode).toBe(code);
       expect(outcome.error.retryability).toBe(false);
     },
   );
@@ -194,7 +194,7 @@ describe("T-D2-04 fake_truncation", () => {
 
     expect(outcome.kind).toBe("truncation");
     assertCanonicalResultShape(outcome.result);
-    expect(outcome.result["finish reason"]).toBe("length");
+    expect(outcome.result.finishReason).toBe("length");
   });
 });
 
@@ -205,7 +205,7 @@ describe("T-D2-05 fake_malformed", () => {
 
     expect(outcome.kind).toBe("malformed");
     assertCanonicalErrorShape(outcome.error);
-    expect(TAXONOMY_CODES).toContain(outcome.error["taxonomy code"]);
+    expect(TAXONOMY_CODES).toContain(outcome.error.taxonomyCode);
   });
 });
 

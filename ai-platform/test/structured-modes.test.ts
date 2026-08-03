@@ -199,7 +199,7 @@ describe("T-D6-18 structured_terminal_carries_whole_validated_document", () => {
     expect(isTerminalEventType(completed[0]?.type ?? "")).toBe(true);
 
     const payload = terminalPayload(events);
-    const finalContent = payload?.["final content"] as Record<string, unknown>;
+    const finalContent = payload?.finalContent as Record<string, unknown>;
     expect(finalContent?.document).toEqual(VALID_DOCUMENT);
     expect(finalContent?.authoritative).toBe(true);
   });
@@ -259,7 +259,7 @@ describe("T-D6-20 client_ignoring_chunks_still_correct", () => {
     expect(terminalOnly).toHaveLength(1);
 
     const payload = terminalOnly[0]?.data.result as Record<string, unknown>;
-    const finalContent = payload["final content"] as Record<string, unknown>;
+    const finalContent = payload.finalContent as Record<string, unknown>;
     expect(finalContent.document).toEqual(VALID_DOCUMENT);
   });
 });
@@ -273,7 +273,7 @@ describe("T-D6-21 terminal_payload_not_assembled_from_chunks", () => {
 
     const partials = eventsOfType(events, "partial_structured");
     const payload = terminalPayload(events);
-    const finalContent = payload?.["final content"] as Record<string, unknown>;
+    const finalContent = payload?.finalContent as Record<string, unknown>;
 
     expect(finalContent?._assembledFromChunks).toBe(false);
     expect(finalContent?.document).toEqual(VALID_DOCUMENT);
@@ -318,7 +318,7 @@ describe("T-D6-23 provisional_structured_not_committable_on_emission", () => {
 
     const partials = eventsOfType(events, "partial_structured");
     const payload = terminalPayload(events);
-    const finalContent = payload?.["final content"] as Record<string, unknown>;
+    const finalContent = payload?.finalContent as Record<string, unknown>;
 
     for (const partial of partials) {
       expect(partial.data.committed).not.toBe(true);

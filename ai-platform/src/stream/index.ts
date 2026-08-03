@@ -181,7 +181,7 @@ export function createStreamBroker(
       type: "completed",
       data: {
         result: {
-          "final content": {
+          finalContent: {
             document: validatedDocument,
             authoritative: true,
             _assembledFromChunks: false,
@@ -270,7 +270,7 @@ export function createStreamBroker(
         type: "completed",
         data: {
           result: {
-            "final content": {
+            finalContent: {
               text: assembled,
               authoritative: true,
             },

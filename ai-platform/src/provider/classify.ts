@@ -18,7 +18,7 @@ export function classifyFailure(code: TaxonomyCode): FailureClassification {
 export function setRetryabilityFromClassification(
   error: CanonicalError,
 ): CanonicalError {
-  const classification = classifyFailure(error["taxonomy code"]);
+  const classification = classifyFailure(error.taxonomyCode);
   return {
     ...error,
     retryability: classification === "retryable",

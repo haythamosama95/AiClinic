@@ -59,13 +59,13 @@ export type InvocationResult =
 function createProviderUnavailableError(): CanonicalError {
   const { consumesQuota } = getTaxonomyEntry("provider_unavailable");
   return setRetryabilityFromClassification({
-    "taxonomy code": "provider_unavailable",
+    taxonomyCode: "provider_unavailable",
     retryability: false,
-    "provider-native code and message": {
+    providerNative: {
       code: "PROVIDER_UNAVAILABLE",
       message: "All candidate providers exhausted",
     },
-    "whether the attempt consumed budget": consumesQuota !== "No",
+    consumedBudget: consumesQuota !== "No",
   });
 }
 
@@ -112,7 +112,7 @@ function processInvokeResult(
     throw new Error(`Unexpected invoke result kind: ${invokeResult.kind}`);
   }
 
-  const code = error["taxonomy code"];
+  const code = error.taxonomyCode;
   if (classifyFailure(code) === "terminal") {
     return {
       record: {

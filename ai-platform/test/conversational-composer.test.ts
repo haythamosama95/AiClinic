@@ -196,7 +196,7 @@ function goldenConversationalRequest(
   );
 
   return {
-    "ordered role-tagged message parts": [
+    parts: [
       { role: "system", content: systemInstructionArtifact },
       { role: "system", content: businessRulesArtifact },
       { role: "system", content: CONVERSATIONAL_FORMAT_INSTRUCTION },
@@ -207,19 +207,19 @@ function goldenConversationalRequest(
       },
       { role: "user", content: FIXTURE_USER_INTENT },
     ],
-    "output format directive": {
+    formatDirective: {
       mode: manifest.Output.mode,
       outputSchemaRef: manifest.Output.outputSchemaRef,
     },
-    "sampling constraints": {
+    samplingConstraints: {
       allowedLanguages: manifest.Input.allowedLanguages,
     },
-    "max output tokens": manifest.Economics.maxOutputTokens,
-    "stop conditions": [],
-    "tool/function declarations (reserved for future)": [],
-    "stream flag": false,
+    maxOutputTokens: manifest.Economics.maxOutputTokens,
+    stopConditions: [],
+    toolDeclarations: [],
+    stream: false,
     deadline: null,
-    "correlation ids": {
+    correlationIds: {
       request_reference: FIXTURE_REQUEST_REFERENCE,
       trace_id: FIXTURE_TRACE_ID,
     },
@@ -242,7 +242,7 @@ function composeConversational(options: {
 }
 
 function messageParts(request: CanonicalRequest): readonly CanonicalMessagePart[] {
-  return request["ordered role-tagged message parts"];
+  return request.parts;
 }
 
 describe("transcript_renders_as_delimited_typed_prior_turns", () => {

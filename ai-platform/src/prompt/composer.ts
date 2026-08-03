@@ -198,25 +198,25 @@ export function composeRequest(
     messageParts.push({ role: "user", content: userIntent });
 
     const request: CanonicalRequest = {
-      "ordered role-tagged message parts": messageParts,
-      "output format directive": {
+      parts: messageParts,
+      formatDirective: {
         mode: String(manifest.Output.mode),
         outputSchemaRef:
           manifest.Output.outputSchemaRef == null
             ? null
             : String(manifest.Output.outputSchemaRef),
       },
-      "sampling constraints": {
+      samplingConstraints: {
         allowedLanguages: Array.isArray(manifest.Input.allowedLanguages)
           ? manifest.Input.allowedLanguages.map(String)
           : [],
       },
-      "max output tokens": Number(manifest.Economics.maxOutputTokens),
-      "stop conditions": [],
-      "tool/function declarations (reserved for future)": [],
-      "stream flag": input.streamFlag ?? false,
+      maxOutputTokens: Number(manifest.Economics.maxOutputTokens),
+      stopConditions: [],
+      toolDeclarations: [],
+      stream: input.streamFlag ?? false,
       deadline: input.deadline ?? null,
-      "correlation ids": {
+      correlationIds: {
         request_reference: resolveRequestReference(input),
         trace_id: principal.jti,
       },
