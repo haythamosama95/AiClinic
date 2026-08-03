@@ -144,7 +144,7 @@ function buildRegistry(): void {
     load(validManifest(FIXTURE_VERSION_V1, FIXTURE_PROMPT_V1)),
     load(validManifest(FIXTURE_VERSION_V2, FIXTURE_PROMPT_V2)),
   ]);
-  setCapabilityRegistry(registry);
+  setCapabilityRegistry(registry, { replace: true });
 }
 
 function buildPrincipal(installationId: string): Principal {
