@@ -141,22 +141,13 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   wire: GeminiWireRequest;
   isStream: boolean;
 } {
-  const sampling = request["sampling constraints"] as
-    | { temperature?: number }
-    | undefined;
-  const outputFormat = request["output format directive"] as
-    | { type?: string }
-    | undefined;
-  const stopConditions = request["stop conditions"] as string[];
+  const sampling = request["sampling constraints"];
+  const outputFormat = request["output format directive"];
+  const stopConditions = request["stop conditions"];
   const isStream = Boolean(request["stream flag"]);
 
   const wire: GeminiWireRequest = {
-    contents: (
-      request["ordered role-tagged message parts"] as Array<{
-        role: string;
-        content: string;
-      }>
-    ).map((part) => ({
+    contents: request["ordered role-tagged message parts"].map((part) => ({
       role: mapRoleToGemini(part.role),
       parts: [{ text: part.content }],
     })),
@@ -170,7 +161,7 @@ function mapCanonicalToWire(request: CanonicalRequest): {
     wire.generationConfig!.maxOutputTokens = request["max output tokens"];
   }
   if (Array.isArray(stopConditions) && stopConditions.length > 0) {
-    wire.generationConfig!.stopSequences = stopConditions;
+    wire.generationConfig!.stopSequences = [...stopConditions];
   }
   if (outputFormat?.type === "json") {
     wire.generationConfig!.responseMimeType = "application/json";
@@ -534,9 +525,7 @@ export class GeminiAdapter implements ProviderPort {
 
     safeEmitLog(this.logger, "info", "gemini.invoke_complete", {
       provider: PROVIDER_ID,
-      request_reference: (
-        request["correlation ids"] as { request_reference?: string }
-      )?.request_reference,
+      request_reference: request["correlation ids"].request_reference,
     });
     safeEmitJournal(this.journal, {
       event: "provider.invoke_complete",

@@ -126,20 +126,16 @@ function resolveTimeoutMs(
 }
 
 function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
-  const sampling = request["sampling constraints"] as
-    | { temperature?: number }
-    | undefined;
-  const outputFormat = request["output format directive"] as
-    | { type?: string }
-    | undefined;
-  const stopConditions = request["stop conditions"] as string[];
+  const sampling = request["sampling constraints"];
+  const outputFormat = request["output format directive"];
+  const stopConditions = request["stop conditions"];
 
   const wire: DeepSeekWireRequest = {
     model: DEEPSEEK_MODEL,
-    messages: request["ordered role-tagged message parts"] as Array<{
-      role: string;
-      content: string;
-    }>,
+    messages: request["ordered role-tagged message parts"].map((part) => ({
+      role: part.role,
+      content: part.content,
+    })),
     stream: Boolean(request["stream flag"]),
   };
 
@@ -150,7 +146,7 @@ function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
     wire.max_tokens = request["max output tokens"];
   }
   if (Array.isArray(stopConditions) && stopConditions.length > 0) {
-    wire.stop = stopConditions;
+    wire.stop = [...stopConditions];
   }
   if (outputFormat?.type === "json") {
     wire.response_format = { type: "json_object" };
@@ -508,9 +504,7 @@ export class DeepSeekAdapter implements ProviderPort {
 
     safeEmitLog(this.logger, "info", "deepseek.invoke_complete", {
       provider: PROVIDER_ID,
-      request_reference: (
-        request["correlation ids"] as { request_reference?: string }
-      )?.request_reference,
+      request_reference: request["correlation ids"].request_reference,
     });
     safeEmitJournal(this.journal, {
       event: "provider.invoke_complete",

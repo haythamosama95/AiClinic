@@ -22,7 +22,7 @@ function allManifestKeys(): string[] {
   return Object.values(CANONICAL_FIELD_MANIFEST).flat();
 }
 
-const requestFixture = {
+const requestFixture: canonical.CanonicalRequest = {
   "ordered role-tagged message parts": [
     { role: "user", content: "Summarise the visit." },
     { role: "assistant", content: "Prior context." },
@@ -40,7 +40,7 @@ const requestFixture = {
   },
 };
 
-const resultFixture = {
+const resultFixture: canonical.CanonicalResult = {
   "final content": { text: "Visit summary complete." },
   "usage counters": {
     input: 1200,
@@ -60,7 +60,7 @@ const resultFixture = {
   },
 };
 
-const errorFixture = {
+const errorFixture: canonical.CanonicalError = {
   "taxonomy code": "timeout",
   "retryability": true,
   "provider-native code and message": {
@@ -104,6 +104,66 @@ describe("T-A3-05 provider-shaped field name rejected", () => {
 
     const poisonedKeys = [...allManifestKeys(), "messages"];
     expect(() => canonical.assertNoProviderShapedFieldNames!(poisonedKeys)).toThrow();
+  });
+
+  it("decode rejects a provider-shaped extra key on the wire (fail closed)", () => {
+    const wire = JSON.stringify({
+      ...requestFixture,
+      messages: [{ role: "user", content: "provider leak" }],
+    });
+    expect(() => canonical.decodeCanonicalRequest!(wire)).toThrow(
+      /Provider-shaped field name rejected: messages/,
+    );
+  });
+
+  it("encode rejects a provider-shaped extra key on the value (fail closed)", () => {
+    const poisoned = {
+      ...requestFixture,
+      messages: [{ role: "user", content: "provider leak" }],
+    };
+    expect(() =>
+      canonical.encodeCanonicalRequest!(
+        poisoned as unknown as canonical.CanonicalRequest,
+      ),
+    ).toThrow(/Provider-shaped field name rejected: messages/);
+  });
+});
+
+describe("T-A3-08 unknown keys rejected on decode", () => {
+  it("decode rejects an unknown non-provider extra key rather than stripping it", () => {
+    const wire = JSON.stringify({
+      ...requestFixture,
+      unexpected_canonical_field: true,
+    });
+    expect(() => canonical.decodeCanonicalRequest!(wire)).toThrow(
+      /Unknown canonical field rejected: unexpected_canonical_field/,
+    );
+  });
+
+  it("decode rejects unknown extra keys on stream chunk, result, and error", () => {
+    const chunkWire = JSON.stringify({
+      ...chunkFixture("text_delta"),
+      extra_chunk_key: 1,
+    });
+    expect(() => canonical.decodeCanonicalChunk!(chunkWire)).toThrow(
+      /Unknown canonical field rejected: extra_chunk_key/,
+    );
+
+    const resultWire = JSON.stringify({
+      ...resultFixture,
+      extra_result_key: "x",
+    });
+    expect(() => canonical.decodeCanonicalResult!(resultWire)).toThrow(
+      /Unknown canonical field rejected: extra_result_key/,
+    );
+
+    const errorWire = JSON.stringify({
+      ...errorFixture,
+      extra_error_key: "x",
+    });
+    expect(() => canonical.decodeCanonicalError!(errorWire)).toThrow(
+      /Unknown canonical field rejected: extra_error_key/,
+    );
   });
 });
 
@@ -150,6 +210,55 @@ describe("T-A3-07 terminal flag exactly once per sequence", () => {
       chunkFixture("text_delta", { "sequence number": 1, "terminal flag": true }),
     ];
     expect(() => canonical.assertExactlyOneTerminal!(sequence)).not.toThrow();
+  });
+});
+
+describe("T-A3-09 typed field schema (not unknown)", () => {
+  it("decoded request fields expose typed shapes without cast-and-hope", () => {
+    const decoded = canonical.decodeCanonicalRequest!(
+      canonical.encodeCanonicalRequest!(requestFixture),
+    );
+
+    expect(Array.isArray(decoded["ordered role-tagged message parts"])).toBe(
+      true,
+    );
+    expect(decoded["ordered role-tagged message parts"][0]?.role).toBe("user");
+    expect(typeof decoded["max output tokens"]).toBe("number");
+    expect(typeof decoded["stream flag"]).toBe("boolean");
+    expect(Array.isArray(decoded["stop conditions"])).toBe(true);
+    expect(decoded["correlation ids"].request_reference).toBe(
+      "7QK4-2B9F",
+    );
+    expect(decoded["correlation ids"].trace_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/i);
+  });
+
+  it("decoded result and error expose typed counters, provider+model, and taxonomy code", () => {
+    const result = canonical.decodeCanonicalResult!(
+      canonical.encodeCanonicalResult!(resultFixture),
+    );
+    expect(result["usage counters"].input).toBe(1200);
+    expect(result["usage counters"].output).toBe(180);
+    expect(result["provider+model actually used"].provider).toBe("gateway");
+    expect(result["timing breakdown"].total_ms).toBe(950);
+
+    const error = canonical.decodeCanonicalError!(
+      canonical.encodeCanonicalError!(errorFixture),
+    );
+    expect(error["taxonomy code"]).toBe("timeout");
+    expect(error.retryability).toBe(true);
+    expect(error["provider-native code and message"].code).toBe(
+      "deadline_exceeded",
+    );
+    expect(error["whether the attempt consumed budget"]).toBe(false);
+  });
+
+  it("message-part role tags are the closed §5.3 set", () => {
+    expect(canonical.CANONICAL_MESSAGE_ROLES).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "data",
+    ]);
   });
 });
 
@@ -212,7 +321,9 @@ describe("T-A3-04 round-trip canonical error", () => {
       ...errorFixture,
       "taxonomy code": "definitely_not_a_taxonomy_code",
     };
-    const wire = canonical.encodeCanonicalError!(poisoned);
+    const wire = canonical.encodeCanonicalError!(
+      poisoned as unknown as canonical.CanonicalError,
+    );
     expect(() => canonical.decodeCanonicalError!(wire)).toThrow();
   });
 });

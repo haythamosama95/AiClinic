@@ -3,6 +3,7 @@ import systemInstructionArtifact from "../prompts/clinic.visit_summary/system.md
 import businessRulesArtifact from "../prompts/clinic.visit_summary/rules-visit-summary.md?raw";
 import {
   encodeCanonicalRequest,
+  type CanonicalMessagePart,
   type CanonicalRequest,
 } from "../src/contracts/canonical";
 import type { Principal } from "../src/identity";
@@ -12,7 +13,6 @@ import type { Transcript } from "../src/context/validator";
 import { composeRequest } from "../src/prompt/composer";
 
 type ManifestWire = Record<string, unknown>;
-type MessagePart = { role: string; content: string };
 
 const FIXTURE_CAPABILITY_ID = "clinic.chat_assistant";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
@@ -241,8 +241,8 @@ function composeConversational(options: {
   });
 }
 
-function messageParts(request: CanonicalRequest): MessagePart[] {
-  return request["ordered role-tagged message parts"] as MessagePart[];
+function messageParts(request: CanonicalRequest): readonly CanonicalMessagePart[] {
+  return request["ordered role-tagged message parts"];
 }
 
 describe("transcript_renders_as_delimited_typed_prior_turns", () => {

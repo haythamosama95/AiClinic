@@ -6,7 +6,7 @@ stream broker, D9 validator) **consume** this artifact — they extend, never re
 these names or kinds.
 
 **Source of truth in code:** `ai-platform/src/contracts/canonical.ts` (`CANONICAL_FIELD_MANIFEST`,
-derived types, and the owned JSON codec).
+typed element interfaces — not `unknown` — and the owned JSON codec).
 
 **Traces to:** spec **Freezes** entry; FR-001–FR-009.
 
@@ -20,7 +20,8 @@ fields listed below — no provider-shaped aliases (`messages`, `completion`, `n
 `frequency_penalty`, `top_p`, `logprobs`, …) and no extra keys on the wire.
 
 The owned codec (`encodeCanonical*` / `decodeCanonical*`) emits only manifest-declared
-keys and drops any others present in the input object.
+keys and **rejects** (fail closed) any provider-shaped or unknown key present on encode
+input or decode wire — it does not silently strip extras.
 
 ---
 
@@ -114,8 +115,12 @@ this invariant; an empty sequence is rejected.
 ## 6. Provider-shape guard
 
 `assertNoProviderShapedFieldNames` rejects any manifest key equal to a known
-provider-shaped token. The contract test T-A3-05 asserts the manifest is clean and
-that introducing a provider-shaped key makes the guard fail.
+provider-shaped token. The contract test T-A3-05 asserts the manifest is clean,
+that introducing a provider-shaped key makes the guard fail, and that the codec
+rejects a provider-shaped extra key on encode/decode rather than stripping it.
+T-A3-08 asserts decode rejects unknown non-provider extra keys on every element.
+T-A3-09 asserts decoded elements expose typed field shapes and the closed
+`CANONICAL_MESSAGE_ROLES` set (`system`, `user`, `assistant`, `data`).
 
 **Frozen rejection set (A3):** `messages`, `completion`, `n`, `frequency_penalty`,
 `top_p`, `logprobs`.

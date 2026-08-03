@@ -40,6 +40,8 @@ None. §5.3 fully specifies the canonical elements; §9.10 records a rejected al
 - Q: How should the provider-shape guard enumerate the canonical types' field names so provider-shaped drift fails the contract test? → A: A runtime field-name manifest as source of truth; the TS types derive from it, and the guard test asserts the manifest equals the §5.3 names and rejects any provider-shaped or extra key. No separate lint or AST tooling. `[implementation choice — no §citation]`
 - Q: How should the round-trip contract tests serialize and parse the canonical elements? → A: A thin owned JSON codec driven by the manifest; round-trip test asserts §5.3 key names survive byte-for-byte and no extra keys are emitted. Field-name drift is directly observable. `[implementation choice — no §citation]`
 - Q: Where do the field-name manifest and owned JSON codec live within ai-platform/src/? → A: A single `contracts/canonical.ts` exporting the manifest, types derived from it, and the codec, plus a co-located `canonical.test.ts` for the contract suite. Two files; the plan may split later under §2.3 if a consumer needs its own import boundary. `[implementation choice — no §citation]`
+- Q: Should the codec silently strip unknown or provider-shaped keys on encode/decode? → A: No — fail closed. Encode and decode reject provider-shaped extras and any key outside the element's manifest (T-A3-05 codec path; T-A3-08). `[implementation choice — no §citation]`
+- Q: Are canonical element fields typed beyond `unknown`? → A: Yes — each element is a real TypeScript interface with per-field types (message parts, usage counters, taxonomy code, etc.); adapters and the composer consume those types without `as` casts (T-A3-09). Field *names* remain the §5.3 contents prose frozen by A3 (rename requires a §2.3 contract-change review). `[implementation choice — no §citation]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -71,10 +73,13 @@ Expanded from delivery plan §3.11.1 row A3 (Layer: Contract). Layer names follo
 | `T-A3-05` provider-shaped field name rejected | Contract | A provider-shaped field name fails the guard test |
 | `T-A3-06` chunk kinds exhaustive | Contract | Chunk kinds exhaustive (`text_delta`, `partial_structured`, `usage`, `provider_note`) |
 | `T-A3-07` terminal flag exactly once per sequence | Contract | Terminal flag appears exactly once per chunk sequence |
+| `T-A3-08` unknown keys rejected on decode | Contract | Decode (and encode) reject unknown/extra keys fail-closed — no silent strip |
+| `T-A3-09` typed field schema | Contract | Decoded elements expose typed field shapes (not `unknown`); closed message-part roles |
 
 ### Edge Cases
 
 - Which field names count as *provider-shaped*: the guard treats any name drawn from common provider wire formats (e.g. `messages`, `completion`, `n`, `frequency_penalty`, `top_p`, `logprobs`) as provider-shaped and rejects it from upstream types. A field present in the canonical table (§5.3) by its canonical name is never rejected.
+- Extra keys on codec I/O: encode and decode reject any key not in the element's manifest (and reject provider-shaped extras with the provider-shaped error). Silent stripping is forbidden so upstream drift is detected, not erased.
 - Unknown chunk kind: a chunk whose `kind` is not one of the four must be rejected; the canonical stream chunk type is a closed set (§5.3).
 - Zero-terminal sequences: a sequence of zero chunks must be rejected by the exactly-one-terminal invariant (§5.3 terminal flag; §5.5 rule 4).
 - Multiple-terminal sequences: a sequence with the terminal flag on more than one chunk must be rejected (§5.5 rule 4 — one terminal event, never inferred from silence).

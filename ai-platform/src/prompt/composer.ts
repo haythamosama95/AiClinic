@@ -1,5 +1,6 @@
 import {
   assertNoProviderShapedFieldNames,
+  type CanonicalMessagePart,
   type CanonicalRequest,
 } from "../contracts/canonical";
 import type { Principal } from "../identity";
@@ -102,8 +103,8 @@ function renderDelimitedContextObject(
 
 function renderTranscriptPriorTurns(
   transcript: Transcript,
-): Array<{ role: string; content: string }> {
-  const parts: Array<{ role: string; content: string }> = [];
+): CanonicalMessagePart[] {
+  const parts: CanonicalMessagePart[] = [];
 
   for (const turn of transcript) {
     switch (turn.kind) {
@@ -180,10 +181,10 @@ export function composeRequest(
         : [];
 
     const contextPart = renderDelimitedContext(manifest, filteredContext);
-    const messageParts: Array<{ role: string; content: string }> = [
+    const messageParts: CanonicalMessagePart[] = [
       { role: "system", content: systemInstruction },
       ...businessRuleFragments.map((content) => ({
-        role: "system",
+        role: "system" as const,
         content,
       })),
       { role: "system", content: outputFormatInstruction },
@@ -199,13 +200,18 @@ export function composeRequest(
     const request: CanonicalRequest = {
       "ordered role-tagged message parts": messageParts,
       "output format directive": {
-        mode: manifest.Output.mode,
-        outputSchemaRef: manifest.Output.outputSchemaRef,
+        mode: String(manifest.Output.mode),
+        outputSchemaRef:
+          manifest.Output.outputSchemaRef == null
+            ? null
+            : String(manifest.Output.outputSchemaRef),
       },
       "sampling constraints": {
-        allowedLanguages: manifest.Input.allowedLanguages,
+        allowedLanguages: Array.isArray(manifest.Input.allowedLanguages)
+          ? manifest.Input.allowedLanguages.map(String)
+          : [],
       },
-      "max output tokens": manifest.Economics.maxOutputTokens,
+      "max output tokens": Number(manifest.Economics.maxOutputTokens),
       "stop conditions": [],
       "tool/function declarations (reserved for future)": [],
       "stream flag": input.streamFlag ?? false,

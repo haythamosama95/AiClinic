@@ -5,6 +5,7 @@ import {
   assertNoProviderShapedFieldNames,
   CANONICAL_FIELD_MANIFEST,
   encodeCanonicalRequest,
+  type CanonicalMessagePart,
   type CanonicalRequest,
 } from "../src/contracts/canonical";
 import { buildErrorBody, getTaxonomyEntry } from "../src/errors";
@@ -19,7 +20,6 @@ import {
 
 type ManifestWire = Record<string, unknown>;
 type FilteredContext = Record<string, unknown>;
-type MessagePart = { role: string; content: string };
 
 const FIXTURE_CAPABILITY_ID = "clinic.visit_summary";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
@@ -224,8 +224,8 @@ function composeFixture(options: {
   });
 }
 
-function messageParts(request: CanonicalRequest): MessagePart[] {
-  return request["ordered role-tagged message parts"] as MessagePart[];
+function messageParts(request: CanonicalRequest): readonly CanonicalMessagePart[] {
+  return request["ordered role-tagged message parts"];
 }
 
 function instructionPartPayloads(request: CanonicalRequest): string[] {
