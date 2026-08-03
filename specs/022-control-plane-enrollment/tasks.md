@@ -80,16 +80,16 @@ the principal or `null`. None is optional.
   operator identity. **Proves**: FR-007, the rotate half of FR-003; **satisfies**: SC-002.
 - [X] T007 [US1] Add `lifecycle_delete_audit` (T-B2-05) to
   `ai-platform/test/control.test.ts` — assert delete writes `control_audit` with the operator
-  identity and transitions lifecycle status; the row purge itself is out of scope (F3, plan → Out of
-  Scope). **Proves**: FR-008 (delete); **satisfies**: SC-002.
+  identity and pins `installation.status === "deleted"` (row purge is F3). **Proves**: FR-008
+  (delete); **satisfies**: SC-002.
 - [X] T008 [US1] Add `non_operator_credentials_rejected` (T-B2-06) to
   `ai-platform/test/control.test.ts` — with `OperatorAuth` returning `null`, each of the five
-  mutations produces no D1 row write (read-back counts unchanged) and a terminal rejection. Emits no
-  §5.4 code (spec → Edge Cases). **Proves**: FR-001, FR-009; **satisfies**: SC-003.
+  mutations produces no D1 row write and **`401` + `{error:"unauthorized"}`**. Emits no §5.4 code.
+  **Proves**: FR-001, FR-009; **satisfies**: SC-003.
 - [X] T009 [US1] Add `duplicate_enrollment_deterministic` (T-B2-07) to
   `ai-platform/test/control.test.ts` — a second enroll for an existing `installation`/`org_id` leaves
-  D1 row counts unchanged and returns a terminal non-2xx rejection; both sides asserted per
-  Clarification Q4. **Proves**: FR-004 (one-time), FR-010; **satisfies**: SC-004.
+  D1 row counts unchanged and returns **`409` + `{error:"already_enrolled"}`** (Clarification Q4).
+  **Proves**: FR-004 (one-time), FR-010; **satisfies**: SC-004.
 
 **Checkpoint**: all seven tests red, failing for the right reason (handlers / routes absent), not for a
 harness reason.
@@ -99,34 +99,32 @@ harness reason.
 ## Phase 3: Implementation (plan Files section)
 
 **Purpose**: One task per implementation unit in `plan.md` → Files. Handlers and route wiring are the
-only code B2 adds; no migration, no binding, no `wrangler.toml` change (plan → Files note).
+code B2 adds; A5 migration is not edited. Operator Env: `OPERATOR_BEARER_TOKEN` (secret) +
+`OPERATOR_ID` (var).
 
-- [X] T010 [US1] Create `ai-platform/src/control/index.ts` — define the `OperatorAuth` port (a
-  single-method seam resolving an operator principal or rejecting; Clarification Q2) and the
-  **enroll** handler that transactionally writes `installation` + `installation_key` + `entitlement`
-  (status `pending`, plan from payload, zeroed economics, closed empty period per §8.1 amendment,
-  §7.3 status enum) + `control_audit` (operator identity, `action = enroll`), and returns the gateway
-  origin. Rejects a duplicate `org_id`/`installation` with no row write (FR-010). The same handler
-  branch serves T-B2-01 and T-B2-07. **Satisfies**: FR-001, FR-004, FR-005, FR-006, FR-010; **proved
-  by**: T-B2-01, T-B2-07.
-- [X] T011 [US1] Add the **rotate** handler to `ai-platform/src/control/index.ts` — adds a new
-  `installation_key` row with a new `kid` without removing the previous one (overlap intact, §8.1),
-  and writes `control_audit` (operator identity, `action = rotate`). Verifying both keys is the
-  guard's concern (B3) and is not implemented here (plan → Out of Scope). **Satisfies**: FR-007; **proved
-  by**: T-B2-04.
-- [X] T012 [US1] Add the **suspend**, **resume**, and **delete** handlers to
-  `ai-platform/src/control/index.ts` — each writes its `control_audit` row carrying the operator
-  identity and transitions `installation.status` (suspend → `suspended`, resume → prior active status,
-  delete → lifecycle-terminal status, not a row purge — the installation-by-`installation_id` purge is
-  F3 per plan → Out of Scope). **Satisfies**: FR-008; **proved by**: T-B2-02, T-B2-03, T-B2-05.
-- [X] T013 [US1] Add the non-operator rejection path to `ai-platform/src/control/index.ts` — every
-  handler consults `OperatorAuth` first and on `null` writes no row and returns a terminal rejection
-  (no §5.4 code; spec → Edge Cases). **Satisfies**: FR-001, FR-009; **proved by**: T-B2-06.
-- [X] T014 [US1] Modify `ai-platform/src/worker.ts` — add `/control` route dispatch with
-  operator-auth gating that routes to the handlers (Clarification Q1); the client-facing
-  `/v1/requests` and `/health` routes are unchanged. A1's `assertRequiredBindings` is untouched.
-  **Satisfies**: FR-001, FR-002; **proved by**: T-B2-01 (end-to-end route → handler → D1) and T-B2-06
-  (route-level rejection).
+- [X] T010 [US1] Create `ai-platform/src/control/` lifecycle path — `OperatorAuth` types,
+  `createSecretOperatorAuth` in `auth.ts`, and **enroll** in `lifecycle.ts` that transactionally
+  writes `installation` + `installation_key` + `entitlement` (`pending`, zeroed economics) +
+  `control_audit` (journals configured operator id, never the bearer), with payload validation and
+  UNIQUE → `already_enrolled` / `duplicate_kid` mapping. Rejects duplicate `org_id`/`installation`.
+  Barrel exports via `index.ts`. **Satisfies**: FR-001, FR-004, FR-005, FR-006, FR-010, FR-011;
+  **proved by**: T-B2-01, T-B2-07.
+- [X] T011 [US1] Add the **rotate** handler to `ai-platform/src/control/lifecycle.ts` — new
+  `installation_key` row without removing the previous; `409 duplicate_kid` on reuse; reject rotate
+  on `deleted`. **Satisfies**: FR-007, FR-008 (FSM), FR-011; **proved by**: T-B2-04,
+  `rotate_duplicate_kid`, `lifecycle_illegal_transitions`.
+- [X] T012 [US1] Add **suspend**, **resume**, and **delete** to `lifecycle.ts` — FSM: `deleted`
+  terminal; resume only from `suspended`; re-suspend → `409 illegal_lifecycle_transition`; journal
+  only real transitions; delete pins `status === "deleted"`; entitlement row untouched.
+  **Satisfies**: FR-008; **proved by**: T-B2-02, T-B2-03, T-B2-05, `lifecycle_illegal_transitions`,
+  `suspend_resume_entitlement_unchanged`.
+- [X] T013 [US1] Non-operator rejection — every handler consults `OperatorAuth` first; on `null`
+  writes no row and returns `401 unauthorized`. **Satisfies**: FR-001, FR-009; **proved by**:
+  T-B2-06.
+- [X] T014 [US1] Modify `ai-platform/src/worker.ts` — `/control` dispatch with explicit
+  `createSecretOperatorAuth({ bearerToken: OPERATOR_BEARER_TOKEN, operatorId: OPERATOR_ID })` passed
+  to `dispatchControlRequest` (no default). **Satisfies**: FR-001, FR-002, FR-009; **proved by**:
+  `control_route_end_to_end`, T-B2-06.
 
 **Checkpoint**: T-B2-01…07 green (run `npx vitest run --config vitest.workers.config.ts
 test/control.test.ts`).
@@ -150,31 +148,14 @@ latest.
 **Purpose**: Plan → Documentation. The quickstart and the frozen contract artifact are named in the
 plan and must land before the slice closes; both are written after the suite is green.
 
-- [X] T016 [US1] Create `specs/022-control-plane-enrollment/contracts/control-plane.md` — freeze the
-  `/control` HTTP surface, the five `control_audit.action` lifecycle values (`enroll`, `rotate`,
-  `suspend`, `resume`, `delete`), the operator-auth requirement, the `pending` enroll entitlement
-  initial values (§8.1 amendment), the entitlement status enum `pending`/`active`/`suspended` (§7.3
-  amendment, including the guard's "pending reads as no capability allowed → quota-exhaustion path"),
-  and the rotation overlap invariant, so B3 (guard), J3 (control_audit activations), and F3
-  (installation purge by lifecycle status) bind to an artifact, not prose (plan → Freezes → Consumes
-  Binding). **Satisfies**: the Freeze live-wire-surface obligation; not traced to an FR (contract
-  artifact).
-- [X] T017 [US1] Create `specs/022-control-plane-enrollment/quickstart.md` from
-  `.specify/templates/ai-platform-quickstart-template.md` — sections **1. Architecture context**
-  (§4.5 + §8.1; delivery plan §3.3 row B2; what the spec/plan scoped), **2. What was implemented**
-  (the five lifecycle handlers, the `/control` route, the `OperatorAuth` port, the `pending`
-  enrollment entitlement), **3. Files to review**
-  (`ai-platform/src/control/index.ts`, `ai-platform/src/worker.ts` diff,
-  `ai-platform/test/control.test.ts`, `ai-platform/vitest.workers.config.ts`,
-  `specs/022-control-plane-enrollment/contracts/control-plane.md`), **4. Prerequisites** (kept:
-  `--config vitest.workers.config.ts` flag + one-time `npm install`, since the slice's tests need the
-  workers-pool Miniflare D1), **5. Run the automated suite**
-  (`npx vitest run --config vitest.workers.config.ts test/control.test.ts`), **6. Inspect the changes**
-  (read the handlers, grep `control_audit.action` cases, read the frozen entitlement initial-values
-  contract). **No section 7** — CI is the only verification path (the control plane has no
-  user-facing behaviour beyond the suite). **Slice-only scope explicit**: no prior-slice files in the
-  review table, no combined test counts, no `npm test` for the full platform suite, no prior-slice
-  regression commands. Not traced to an FR (template-mandated review surface).
+- [X] T016 [US1] Create/update `specs/022-control-plane-enrollment/contracts/control-plane.md` —
+  freeze `/control` surface, five lifecycle `control_audit.action` values, verifying
+  `createSecretOperatorAuth` rule, §2.4 rejection table (incl. `invalid_payload`,
+  `illegal_lifecycle_transition`, `duplicate_kid`, `storage_error`), FSM terminal rules, `pending`
+  enroll entitlement, status enum, rotation overlap. **Satisfies**: Freeze obligation.
+- [X] T017 [US1] Create/update `specs/022-control-plane-enrollment/quickstart.md` — architecture
+  context, secret auth Env setup (`wrangler secret put OPERATOR_BEARER_TOKEN` + `OPERATOR_ID` var),
+  sibling module layout, suite commands. No accept-any Bearer docs.
 
 ---
 
@@ -204,7 +185,8 @@ plan and must land before the slice closes; both are written after the suite is 
   first; T011 by T006; T012 by T004/T005/T007; T013 by T008; T014 by T003).
 - The migration (`ai-platform/migrations/20260731120000_platform_schema.sql`) is applied in test
   setup, never edited — A5 owns it (plan → Consumes Binding).
-- No new binding, secret, DO class, or `wrangler.toml` change is made anywhere in the slice.
+- No new DO class or A5 migration edit. Operator Env bindings (`OPERATOR_BEARER_TOKEN`,
+  `OPERATOR_ID`) are required for verifying auth (R-20 reconciled).
 
 ### Parallel Opportunities
 
@@ -219,9 +201,13 @@ plan and must land before the slice closes; both are written after the suite is 
 - `[P]` tasks = different files, no dependencies. The single parallel pair is T016/T017.
 - The slice has one user story, `US1`; the multi-story phases and MVP/Foundational/Polish phases from
   the template are dropped (delivery plan overrides).
-- No task adds a migration, a binding, a retry, a cache, a configuration surface, or any §9.14
-  mechanism — none is named by the spec or plan (R-20; spec → Out of Scope).
-- The Row purge on delete is explicitly out of scope (F3) and is not a task here; delete only
-  transitions lifecycle status and writes the audit row.
+- Review-resolution completion evidence (in `test/control.test.ts`, no new task ids):
+  `secret_operator_auth_verifies_credential`, `control_route_end_to_end`,
+  `lifecycle_illegal_transitions` (5), `suspend_resume_entitlement_unchanged`,
+  `duplicate_enrollment_same_org_different_installation`, `enroll_invalid_payload`,
+  `rotate_duplicate_kid`, `enroll_invalid_json`, `invalid_route_rejected`, `installation_not_found`.
+- A5 migration is not edited; `UNIQUE(org_id)` on `installation` is a known A5 follow-up.
+- Operator Env: `OPERATOR_BEARER_TOKEN` (secret) + `OPERATOR_ID` (var). No accept-any Bearer.
+- Delete only transitions lifecycle status and writes the audit row; row purge is F3.
 - Commit after each task or logical group; stop at the Phase 4 checkpoint to validate the §3.10 rule
   (every prior suite green, not just the latest).
