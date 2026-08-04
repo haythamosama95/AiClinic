@@ -412,14 +412,6 @@ class DevClinicSeedService {
           }
 
           final seedKey = patientIndex + dayOffset;
-<<<<<<< HEAD
-          final doctorId = DevClinicSeedSchedule.doctorIdForAppointment(
-            primaryDoctorId: branch.primaryDoctorId,
-            secondaryDoctorId: branch.secondaryDoctorId,
-            patientIndex: patientIndex,
-          );
-=======
->>>>>>> master
           final startTime = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
@@ -437,19 +429,12 @@ class DevClinicSeedService {
             seedKey: seedKey,
             referenceUtc: referenceUtc,
           );
-<<<<<<< HEAD
-          final doctorLabel = DevClinicSeedSchedule.doctorAssignmentLabel(
-            primaryDoctorId: branch.primaryDoctorId,
-            secondaryDoctorId: branch.secondaryDoctorId,
-            patientIndex: patientIndex,
-=======
           final assignDoctor = DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
             dayOffset: dayOffset,
             patientIndex: patientIndex,
             seedKey: seedKey,
             targetStatus: targetStatus,
             dayRelation: dayRelation,
->>>>>>> master
           );
           final doctorId = assignDoctor
               ? DevClinicSeedSchedule.doctorIdForAppointment(

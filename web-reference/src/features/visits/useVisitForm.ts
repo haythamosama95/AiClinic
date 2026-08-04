@@ -2,10 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { Patient } from '@/data/patients'
 import { MOCK_PATIENTS } from '@/data/patients'
 import type { VisitInvoice } from './billing/types'
-<<<<<<< HEAD
-=======
 import { ALLERGY_OPTIONS, CHRONIC_CONDITION_OPTIONS } from './mock-data'
->>>>>>> master
 import {
   EMPTY_VISIT_FORM,
   type VisitFormData,
@@ -146,22 +143,6 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
 }
 
 function seedFromPatient(patient: Patient): VisitFormData {
-<<<<<<< HEAD
-  return {
-    ...EMPTY_VISIT_FORM,
-    allergies: patient.allergies.map((label, i) => ({
-      id: `patient-allergy-${i}`,
-      label,
-      meta: 'From record',
-    })),
-    chronicConditions: patient.diagnoses
-      .filter((d) => d.status === 'active')
-      .map((d) => ({
-        id: d.id,
-        label: d.name,
-        meta: d.code,
-      })),
-=======
   const allergies = patient.allergies
     .map((label, index) => {
       const match = ALLERGY_OPTIONS.find(
@@ -201,6 +182,5 @@ function seedFromPatient(patient: Patient): VisitFormData {
     ...EMPTY_VISIT_FORM,
     allergies,
     chronicConditions,
->>>>>>> master
   }
 }

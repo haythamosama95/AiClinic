@@ -50,8 +50,8 @@ This slice establishes, for the first time:
   admission stage follows the capped grace allowance and later reconciliation that Open Decision 3 names,
   so an infrastructure blip does not block care (§15 #3; delivery plan §3.3 row B4 "Done when").
 
-Later slices may extend these (e.g. add the soft-threshold degraded-routing read of remaining budget in
-F4) and may not rewrite them (delivery plan §2.3).
+Later slices may extend these (e.g. F4 routes on the optional `degraded` flag B4 may set when
+soft_threshold is crossed) and may not rewrite them (delivery plan §2.3).
 
 ### Consumes
 
@@ -252,18 +252,22 @@ slice's row of delivery plan §3.11.2 ("DO unit + concurrency + integration (spy
 
 ### Edge Cases
 
-- **Every error code B4 can emit.** Admission (§6.1 stage 8) owns these taxonomy codes: `unauthenticated`
-  (HTTP 401 — the consequence of an idempotency retry whose token expired in the meantime, because
-  idempotency is checked after identity), and `quota_exhausted` (the `Done when` rejection when the
-  remaining budget is gone). The HTTP status is normative and is applied by the protocol adapter (A6),
-  not by B4; B4 emits the taxonomy code, which is what clients branch on (§5.4; §4.3.1; A6 `Consumes`).
-  No other code is emitted by stage 8. A replayed `jti` is not a distinct client-facing code; it is
-  rejected through the same `unauthenticated` path an unverified caller would see, because `jti` replay
-  is only meaningful after identity has already authenticated the caller (§6.2).
+- **Every error code B4 can emit (client-facing).** Stage 8 owns only the §5.4 codes named in §6.1:
+  `unauthenticated` (HTTP 401 — expired-token-with-same-key / `jti` replay after identity) and
+  `quota_exhausted` (budget gone, concurrency ceiling, grace-cap exhaustion, or missing entitlement).
+  The Quota DO may emit an internal `concurrency_exhausted` outcome; the stage-8 caller **maps** it to
+  `quota_exhausted` — it is never a client-facing taxonomy code. The HTTP status is normative and is
+  applied by the protocol adapter (A6), not by B4; B4 emits the taxonomy code, which is what clients
+  branch on (§5.4; §4.3.1; A6 `Consumes`). No other client-facing code is emitted by stage 8. A
+  replayed `jti` is not a distinct client-facing code; it is rejected through the same
+  `unauthenticated` path an unverified caller would see, because `jti` replay is only meaningful after
+  identity has already authenticated the caller (§6.2).
 - **Idempotency after identity, not before.** A transport retry whose token expired in the meantime is
   rejected `unauthenticated` rather than returning the original result; the client re-mints the AAT and
   resubmits with the *same* idempotency key, which is what the error taxonomy already instructs it to do
-  (§6.2; §5.4). This is the boundary that makes the single-round-trip admission stage possible.
+  (§6.2; §5.4). This is the boundary that makes the single-round-trip admission stage possible. A
+  defensive stage-8 `exp` recheck uses the same B3 clock-skew seconds window and is tallied like other
+  guard rejections.
 - **User-initiated retry is a new request, not a replay.** The client's idempotency key is stable across
   transport retries of the *same* user action, but a *user*-initiated retry is a distinct new request with
   a new idempotency key, linked to the previous one — conflating the two would corrupt both quota
@@ -277,14 +281,23 @@ slice's row of delivery plan §3.11.2 ("DO unit + concurrency + integration (spy
   mechanism.
 - **Ephemeral horizon.** The `jti` replay set and idempotency records live inside the Quota DO and expire
   in place at the `ephemeral` retention horizon — minutes to hours, with no table to prune and no TTL
-  cron (§7.7; §9.17). The horizon is named by the architecture; B4 enforces in-place expiry and does not
-  choose or invent the value. Retention class is a per-capability manifest field for the *envelope*, not
-  for these ephemeral records.
+  cron (§7.7; §9.17). `admittedRequests` / `creditedRequests` are likewise ephemeral-horizon bounded, not
+  permanent per-request history. The horizon is named by the architecture; B4 enforces in-place expiry
+  and does not choose or invent the value. Retention class is a per-capability manifest field for the
+  *envelope*, not for these ephemeral records.
 - **Capped grace boundary.** Quota DO unavailability admits under a capped grace allowance and then
-  rejects once the cap is exhausted; the cap is the value Open Decision 3 recommends ("a capped grace
-  allowance and reconciliation"). B4 enforces the boundary against that configured value and does not
-  choose it (§15 #3; delivery plan §3.3 row B4 "Done when"). Grace usage is reconciled against the DO's
-  counters afterwards, never silently dropped (§15 #3).
+  rejects once the cap is exhausted with `quota_exhausted` (tallied); the reconciliation queue is
+  preserved — cap exhaustion must not destroy pending grace records. The cap is the value Open Decision 3
+  recommends ("a capped grace allowance and reconciliation"). B4 enforces the boundary against that
+  configured value and does not choose it (§15 #3; delivery plan §3.3 row B4 "Done when"). Grace
+  reconciliation re-admits the queued request to the DO (so the DO issues a real `requestId`) and then
+  credits that DO-issued id with actual usage — never silently dropped (§15 #3). Grace cap and queue live
+  in isolate memory (same pattern as B3's rejection tally); a durable D1 grace ledger would violate §4.4
+  "no store for live request state" — documented limitation (per-isolate cap; scheduled
+  `reconcileGraceUsage`).
+- **Missing entitlement fails closed.** A config-cache miss for the entitlement snapshot is not grace-
+  worthy DO unavailability; admission rejects `quota_exhausted` (tallied) and does not enter the grace
+  path.
 - **Exactly two DO calls per request, no third.** Admission is one DO round trip at stage 8; the credit
   call is one DO round trip at stage 15. A second round trip for replay, idempotency, quota, or
   concurrency is a prohibited anti-pattern (§7.5; §13.6); a third round trip is out of scope and must not
@@ -295,9 +308,13 @@ slice's row of delivery plan §3.11.2 ("DO unit + concurrency + integration (spy
   §3.11.2 row B4; §4.3.3; §4.4).
 - **Quota exhaustion never hard-locks.** A `quota_exhausted` rejection disables an additive feature and
   says so; it never blocks a clinical workflow (constitution principle V; §14 "V"; §8.8). Soft-threshold
-  degraded routing — crossing a soft threshold to downgrade a cheaper model rather than refusing — is F4,
-  not B4 (§4.3.3; delivery plan §3.7 row F4); B4 exposes the remaining budget that F4 will read as an
-  extension.
+  degraded routing is F4, not B4 (§4.3.3; delivery plan §3.7 row F4); B4 may set optional `degraded` on
+  admitted responses when `soft_threshold` is crossed so F4 can route — B4 owns the flag computation, F4
+  owns routing.
+- **Production wiring vs full pipeline.** POST `/v1/requests` full guard composition remains a later
+  orchestrator concern. B4 production wiring is the GatewayObject admission/credit RPCs plus Worker
+  `scheduled` flush and `reconcileGraceUsage` — not the complete stage-2–15 composition on the adapter
+  path.
 
 ## Requirements *(mandatory)*
 
@@ -401,7 +418,8 @@ slice's row of delivery plan §3.11.2 ("DO unit + concurrency + integration (spy
 
 - **Soft-threshold degraded routing** — crossing a soft quota threshold to downgrade routing to the
   capability's degraded tier rather than refusing — is F4, not B4 (§4.3.3; §8.8; delivery plan §3.7
-  row F4). B4 exposes the remaining-budget answer that F4 will read but builds no routing decision.
+  row F4). B4 may set optional `degraded` on admitted responses when soft_threshold is crossed; F4 owns
+  the routing decision.
 - **The cost-ceiling pre-flight** (§6.1 stage 7, `request_too_large`) is C2, which estimates input
   tokens plus the capability's maximum output tokens against the per-request ceiling before any egress
   (§4.3.3; delivery plan §3.4 row C2). B4 performs no cost pre-flight; the cost ceiling and the quota

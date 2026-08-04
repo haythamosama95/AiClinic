@@ -337,8 +337,6 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get maritalStatusWidowed => 'أرمل';
-<<<<<<< HEAD
-=======
 
   @override
   String get breadcrumbCalendar => 'التقويم';
@@ -360,5 +358,4 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get breadcrumbNotFound => 'غير موجود';
->>>>>>> master
 }

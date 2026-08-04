@@ -77,7 +77,7 @@ As the AI Gateway Worker, after the canonical request has been composed (D1), I 
 11. **Given** a capability that declares a latency class, **When** the router filters candidates, **Then** targets outside that latency class are excluded. *(router — filter latency class)*
 12. **Given** an installation override in the active routing policy, **When** the router selects targets for that installation, **Then** the override is applied. *(router — installation override)*
 13. **Given** identical capability, policy, and request inputs, **When** the router runs twice, **Then** it produces an identical candidate chain. *(router — identical inputs → identical chain)*
-14. **Given** a routing selection, **When** the router returns the chain, **Then** the selection reason is recorded on the request. *(router — selection reason recorded)*
+14. **Given** a routing selection, **When** the router returns the chain, **Then** the selection reason is present on the routing outcome (`RouterOutcome.routing_decision`). Persistence onto `ai_request.routing_decision` is C3. *(router — selection reason recorded)*
 15. **Given** a prior request whose provider attempt failed, **When** a subsequent request with the same capability, policy, and request inputs is routed, **Then** the candidate chain is unchanged — no provider history is consulted. *(router — prior failure does not change next chain)*
 
 ### Test plan
@@ -115,15 +115,20 @@ Layer: Unit (delivery plan §3.11.4, row D2; §13.5 Provider adapter tests / Pip
 - **Error codes this slice can emit.** D2 is a unit-level port, fake, and router slice; it is not on the HTTP request path and emits no platform taxonomy response of its own. The fake *produces* classified canonical errors for consumers (D3+); those codes are drawn from the A2 taxonomy via the classification contract, not newly defined here. Exhausting a chain and surfacing `provider_unavailable` is D3, not D2.
 - **Retryable vs terminal boundary.** Every failure through the port is classified exactly once; an unclassified failure is a contract violation. Adapters do not decide whether to retry or fall back — they only classify (§4.3.8). D3 owns bounded retry and fallback.
 - **Truncation and malformed responses.** Both are required fake outcomes (§3.11.4 D2; §13.5). They are fixture behaviours of the fake, not new taxonomy codes invented by D2; mapping them into the canonical error/result form stays inside the port's normalization duty (§4.3.8).
-- **Empty candidate chain after filtering.** §4.3.7 does not define a D2-emitted error for "no target matched". The router may return an empty chain; invoking that chain and producing `provider_unavailable` is D3.
+- **Empty candidate chain after filtering.** §4.3.7 does not define a D2-emitted error for "no target matched". The router may return an empty chain (`chain: []` with all targets in `excluded`); invoking that chain and producing `provider_unavailable` is D3.
+- **Document validation failures.** Before interpreting rules, the router requires `document.policy_id` / `document.policy_version` to equal the owning cache row, `schema_version` to be a supported value (currently `1` only), and the last rule to be a catch-all (empty/absent match). Failures throw typed `RoutingPolicyError` with discriminant `code` — not a bare `Error`.
+- **Cost-class sources.** Effective class is the lowest of manifest, entitlement cap, and installation `force_cost_class` from the matched **policy-document** override. `defaults.cost_class` is schema-retained for §4.3.7 table parity and does not participate. Equal-class ties resolve by `SOURCE_PRIORITY` (`installation_override` < `entitlement_cap` < `manifest`).
+- **Rule `requires` floor.** Targets must satisfy both request requirements and the matched rule's `requires` (stricter floor per dimension).
+- **Latency exclusion reason.** Latency-class mismatches are recorded as `feature_unsupported` — the frozen `reason_code` enum has no latency-specific value.
+- **Kill switch.** Optional request-context `killedProviderIds` excludes matching providers with `reason_code: kill_switch`.
 - **Stateless routing / no health state.** A sick provider is handled by retry and fallback on each request (D3), not by a circuit breaker or shared provider-health store in D2 (§4.3.7). A test asserts a prior failure does not change the next chain (T15).
 - **Soft-threshold degraded tier.** The router applies the policy's degraded tier when the request indicates the soft threshold was crossed (§4.3.7). Detecting the threshold crossing and setting that signal is F4 (Needs D2, B4); D2 does not read quota counters.
-- **Installation override vs per-clinic preference UI.** Installation overrides are a named routing-policy input (§4.3.7). A product preference surface is out of scope (Open Decision 5); D2 applies overrides present in policy data only.
-- **Outgoing-connection cap of six.** The per-request outgoing-connection cap of six bounds how much speculative parallelism a routing policy may request (§4.3.8). T20 asserts that bound; the cap value is stated in §4.3.8 and is not invented here.
+- **Installation override vs per-clinic preference UI.** Installation overrides are a named routing-policy input (§4.3.7). A product preference surface is out of scope (Open Decision 5); D2 applies overrides present in policy data only — including `force_cost_class`.
+- **Outgoing-connection cap of six.** The per-request outgoing-connection cap of six bounds how much speculative parallelism a routing policy may request (§4.3.8). T20 asserts that bound (exact clamp and rule-over-default precedence); the cap value is stated in §4.3.8 and is not invented here.
 - **Credentials.** Provider credentials come from the platform's secret store, are never logged, and are never present in the journal (§4.3.8). The fake has no real credentials; real secret-store wiring is D5. D2 still asserts the port/fake emits none (T21).
 - **No per-request server-side state.** The router and fake hold no per-request Durable Object or other server-side request state; selection is a pure function of capability, policy, and this request (§4.3.7, §4.4, §9.7).
 - **Selection reason storage.** The router records the selection reason on the request (§4.3.7; Done when). D2 asserts the reason is present on the routing outcome; persisting it into D1/R2 is the journal writer's concern (C3) and must not invent a new `ai_request` column in this slice (A5 schema is Consumed).
-
+- **Per-installation policy cache key (J3).** `selectCandidateChain` consults `${policyCacheKey}/${installationId}` before the global key; `preloadRoutingPolicyForInstallation` warms that key. Allowed delivery-plan §2.3 extension; not a second policy store.
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -137,13 +142,13 @@ Layer: Unit (delivery plan §3.11.4, row D2; §13.5 Provider adapter tests / Pip
 - **FR-007**: The per-request outgoing-connection cap of six MUST bound how much speculative parallelism a routing policy may request (§4.3.8).
 - **FR-008**: The provider router MUST select an ordered candidate chain of provider+model targets from routing policy using capability requirements (structured output support, context window, language, latency class), installation overrides, cost class, and — where a soft quota threshold was crossed — a degraded tier (§4.3.7).
 - **FR-009**: Routing policy MUST be data, versioned and auditable, not conditionals in the code path; the §7.3 `routing_policy` entity (policy id, version, content pointer, active_from, activated_by) is the versioned store (§4.3.7, §7.3).
-- **FR-010**: The router MUST record why a target was chosen (selection reason) on the request (§4.3.7; delivery plan §3.5 Done when).
+- **FR-010**: The router MUST return why a target was chosen as `RouterOutcome.routing_decision` (selection reason). Delivery-plan / §4.3.7 wording "on the request" is satisfied when C3 persists that object onto `ai_request.routing_decision`; D2 freezes the in-memory outcome shape only.
 - **FR-011**: Routing MUST be stateless: the chain MUST depend only on the capability, the policy, and this request; there MUST be no circuit breaker and no shared provider-health state (§4.3.7).
 - **FR-012**: Identical capability, policy, and request inputs MUST produce an identical candidate chain, and a prior provider failure MUST NOT change the next request's chain (§4.3.7; delivery plan §3.11.4 D2).
 
 ### Key Entities
 
-- **Provider port**: The typed boundary every provider adapter implements — canonical request in; canonical stream chunks, result, or classified error out; owns mapping, normalization, timeouts, and retryable/terminal classification; owns no retry, fallback, or logging policy (§4.3.8).
+- **Provider port**: The typed boundary every provider adapter implements — async `invoke(CanonicalRequest, options?)` returning a Promise of success/truncation (with ordered `CanonicalStreamChunk` sequence ending in exactly one terminal) or classified error; options name an abort `signal` (deadline remains on the request); owns mapping, normalization, timeouts, and retryable/terminal classification; owns no retry, fallback, or logging policy (§4.3.8).
 - **Fake adapter**: A deterministic adapter behind the provider port for tests; produces success, each retryable class, each terminal class, truncation, and malformed response (§13.5).
 - **Routing policy (`routing_policy`)**: Versioned target chains and selection rules already shaped by A5 (§7.3); D2 freezes the interpretation that yields an ordered candidate chain and a selection reason from the named inputs in §4.3.7. No new D1 columns are added.
 - **Candidate chain**: An ordered list of provider+model targets for one request, plus the selection reason recorded on that request (§4.3.7).

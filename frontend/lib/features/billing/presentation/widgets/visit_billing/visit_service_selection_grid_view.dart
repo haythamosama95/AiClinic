@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-=======
 import 'dart:async';
 
->>>>>>> master
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
@@ -103,10 +100,7 @@ class _AnimatedGridTileState extends State<_AnimatedGridTile>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _animation;
-<<<<<<< HEAD
-=======
   Timer? _startTimer;
->>>>>>> master
 
   static const _staggerStepMs = 20;
   static const _maxStaggerMs = 200;
@@ -140,11 +134,7 @@ class _AnimatedGridTileState extends State<_AnimatedGridTile>
     if (delay == Duration.zero) {
       _controller.forward();
     } else {
-<<<<<<< HEAD
-      Future<void>.delayed(delay, () {
-=======
       _startTimer = Timer(delay, () {
->>>>>>> master
         if (mounted) {
           _controller.forward();
         }
@@ -154,10 +144,7 @@ class _AnimatedGridTileState extends State<_AnimatedGridTile>
 
   @override
   void dispose() {
-<<<<<<< HEAD
-=======
     _startTimer?.cancel();
->>>>>>> master
     _controller.dispose();
     super.dispose();
   }

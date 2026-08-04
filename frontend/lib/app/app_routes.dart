@@ -29,8 +29,6 @@ abstract final class AppRoutes {
   static const settingsSecurity = '/settings/security';
   static const settingsIdleTimeout = '/settings/idle-timeout';
 
-<<<<<<< HEAD
-=======
   /// Personal settings screens (web `SETTINGS_SCREENS`).
   static const personalSettingsPaths = <String>[
     settingsAppearance,
@@ -38,7 +36,6 @@ abstract final class AppRoutes {
     settingsSecurity,
   ];
 
->>>>>>> master
   /// Clinic management hub (organization, branches, staff, roles).
   static const clinicManagement = '/clinic-management';
 
@@ -163,4 +160,7 @@ abstract final class AppRoutes {
   static const shifts = '/shifts';
 
   static const shiftStaticPaths = <String>[shiftsCalendar, shiftsNew];
+
+  /// Standalone AI feature host for widget tests and CP3 entry (E4).
+  static const aiFeatureHost = '/ai/feature-host';
 }

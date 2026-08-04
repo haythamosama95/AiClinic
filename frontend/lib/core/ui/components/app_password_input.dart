@@ -197,20 +197,6 @@ class _RevealToggle extends StatelessWidget {
       enabled: !disabled,
       label: visible ? 'Hide password' : 'Show password',
       toggled: visible,
-<<<<<<< HEAD
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(
-          visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          size: 16,
-          color: disabled ? colors.textDisabled : colors.iconMuted,
-        ),
-        padding: const EdgeInsets.all(2),
-        constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-        style: IconButton.styleFrom(
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-=======
       child: ExcludeSemantics(
         child: IconButton(
           onPressed: onPressed,
@@ -225,7 +211,6 @@ class _RevealToggle extends StatelessWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
           ),
->>>>>>> master
         ),
       ),
     );

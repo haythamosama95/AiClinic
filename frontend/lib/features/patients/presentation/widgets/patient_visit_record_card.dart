@@ -17,19 +17,12 @@ class PatientVisitRecordCard extends StatelessWidget {
     required this.doctorName,
     required this.badges,
     this.branchName,
-<<<<<<< HEAD
-    super.key,
-  });
-
-  factory PatientVisitRecordCard.fromVisit(VisitListItem visit, {Key? key}) {
-=======
     this.onTap,
     this.semanticsLabel,
     super.key,
   });
 
   factory PatientVisitRecordCard.fromVisit(VisitListItem visit, {Key? key, VoidCallback? onTap}) {
->>>>>>> master
     return PatientVisitRecordCard._(
       key: key,
       date: visit.visitDate,
@@ -42,11 +35,8 @@ class PatientVisitRecordCard extends StatelessWidget {
         (label: visit.status.label, color: _visitStatusColor(visit.status)),
       ],
       branchName: visit.branchName,
-<<<<<<< HEAD
-=======
       onTap: onTap,
       semanticsLabel: onTap != null ? 'Open ${visit.status.label.toLowerCase()} visit with ${visit.doctorName}' : null,
->>>>>>> master
     );
   }
 
@@ -81,22 +71,15 @@ class PatientVisitRecordCard extends StatelessWidget {
   final String doctorName;
   final List<({String label, BadgeColor color})> badges;
   final String? branchName;
-<<<<<<< HEAD
-=======
   final VoidCallback? onTap;
   final String? semanticsLabel;
->>>>>>> master
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final resolvedBranchName = branchName?.trim();
 
-<<<<<<< HEAD
-    return PatientRecordCard(
-=======
     final card = PatientRecordCard(
->>>>>>> master
       leading: PatientDateStamp(date: date),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.space5),
@@ -135,8 +118,6 @@ class PatientVisitRecordCard extends StatelessWidget {
         ),
       ),
     );
-<<<<<<< HEAD
-=======
 
     if (onTap == null) {
       return card;
@@ -150,7 +131,6 @@ class PatientVisitRecordCard extends StatelessWidget {
         child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(AppRadius.x2l), child: card),
       ),
     );
->>>>>>> master
   }
 }
 

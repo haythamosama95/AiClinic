@@ -59,12 +59,13 @@ exists (Delivery Plan §3.10). All at the Contract-tests / unit-CI layer (§13.5
       boolean, for a representative sample of codes. Written red — fails before `src/errors.ts`
       builds a body. Satisfies FR-004 (and the Clarification Q1 field-name pin). Proved by T20.
 - [X] T003 [P] [US1] Write `ai-platform/test/reference.test.ts` — case T21: a generation run of
-      1,000,000 references where every value matches
+      20,000 references where every value matches
       `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`, is uppercase, omits `I`/`L`/`O`/`U`, and
-      is unique across the run; plus case T28 (a lowercase or `I`/`L`/`O`-confused input
-      normalises to the stored reference form). Written red — fails before `src/reference.ts`
-      exposes the generator and the normalisation map. Satisfies FR-010, FR-011, FR-013. Proved by
-      T21 and T28.
+      is unique across the run (draw count chosen so birthday false-fail ≪ 0.1% over 32⁸; not
+      1,000,000 which is flaky under strict uniqueness); plus case T28 (a lowercase or
+      `I`/`L`/`O`-confused input normalises to the stored reference form). Written red — fails
+      before `src/reference.ts` exposes the generator and the normalisation map. Satisfies FR-010,
+      FR-011, FR-013. Proved by T21 and T28.
 - [X] T004 [P] [US1] Write `ai-platform/test/trace.test.ts` — case T22 (a supplied trace id
       appears on every log line emitted for that request); plus case T23 (an absent trace id is
       generated as a ULID — 26-char Crockford-base32 — and propagated identically to a

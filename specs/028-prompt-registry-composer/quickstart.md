@@ -37,8 +37,9 @@ adapters).
 
 ## 2. What was implemented
 
-- **`registry.ts`** (`src/prompt/registry.ts`) — `resolveArtifact`, `resolvePromptVersion`, and
-  `verifyBuildPins`: build-time bundle that resolves manifest-pinned refs to deployed artifacts; no
+- **`registry.ts`** (`src/prompt/registry.ts`) — `resolveArtifact`, `resolvePromptVersion`,
+  `verifyBuildPins`, and `verifyAllRegistryPins`: build-time `import.meta.glob` index over
+  `prompts/**/*.md` (`?raw`) and `prompts/*/registry.json`; test overlay seam for pin tests; no
   runtime I/O.
 - **`composer.ts`** (`src/prompt/composer.ts`) — `composeRequest` at stage 10: assembles the
   canonical request; derives the output-format instruction from the output schema; renders context as
@@ -58,9 +59,11 @@ traceability.
 
 | Path | Role |
 | --- | --- |
-| `ai-platform/src/prompt/registry.ts` | Build-time bundle |
+| `ai-platform/src/prompt/registry.ts` | Build-time glob index + pin verification |
 | `ai-platform/src/prompt/composer.ts` | Stage 10 `composeRequest` |
 | `ai-platform/test/prompt-registry.test.ts` | T-D1-01 through T-D1-05 |
+| `ai-platform/test/prompt-registry-gate.test.ts` | CI pin / published-manifest / disk-bytes gate |
+| `ai-platform/test/prompt-journal-seam.test.ts` | `resolvePromptVersion` ≡ C3 journal bind |
 | `ai-platform/test/prompt-composer.test.ts` | T-D1-06 through T-D1-12 |
 | `ai-platform/prompts/clinic.visit_summary/` | Four artifact files + `registry.json` |
 | `ai-platform/wrangler.toml` | `[rules]` Text imports for `prompts/**` |

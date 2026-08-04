@@ -105,9 +105,6 @@
   "maritalStatusSingle": "أعزب",
   "maritalStatusMarried": "متزوج",
   "maritalStatusDivorced": "مطلّق",
-<<<<<<< HEAD
-  "maritalStatusWidowed": "أرمل"
-=======
   "maritalStatusWidowed": "أرمل",
   "breadcrumbCalendar": "التقويم",
   "breadcrumbQueue": "الطابور",
@@ -116,5 +113,4 @@
   "breadcrumbVisitChronicle": "سجل الزيارة",
   "breadcrumbVisitBilling": "الفوترة",
   "breadcrumbNotFound": "غير موجود"
->>>>>>> master
 }

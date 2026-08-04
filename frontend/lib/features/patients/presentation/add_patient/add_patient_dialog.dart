@@ -75,10 +75,6 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   Widget build(BuildContext context) {
     final state = ref.watch(patientRegistrationProvider);
     final notifier = ref.read(patientRegistrationProvider.notifier);
-<<<<<<< HEAD
-    final reducedMotion = AppMotion.prefersReducedMotion(context);
-=======
->>>>>>> master
 
     ref.listen<String?>(
       patientRegistrationProvider.select((s) => s.pendingOpenPatientId),
@@ -101,38 +97,6 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
           title: 'Add patient',
           description: 'Register a new patient at your active branch.',
           size: AppDialogSize.lg,
-<<<<<<< HEAD
-          footer: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              AppButton(
-                variant: AppButtonVariant.secondary,
-                disabled: state.submitting,
-                onPressed: state.submitting
-                    ? null
-                    : () => _handleOpenChange(false),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(width: AppSpacing.space2),
-              AppButton(
-                variant: AppButtonVariant.primary,
-                loading: state.submitting,
-                leadingIcon: const Icon(Icons.person_add, size: 16),
-                onPressed: state.submitting ? null : _handleSubmit,
-                child: const Text('Register patient'),
-              ),
-            ],
-          ),
-          child: AddPatientFormFields(
-            values: state.values,
-            errors: state.errors,
-            trimmedName: state.trimmedName,
-            showPreview: state.showPreview,
-            reducedMotion: reducedMotion,
-            autoFocus: widget.open,
-            onSubmit: _handleSubmit,
-            onFieldChange: notifier.updateField,
-=======
           footer: Consumer(
             builder: (context, ref, _) {
               final submitting = ref.watch(
@@ -176,7 +140,6 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
                 onFieldChange: registrationNotifier.updateField,
               );
             },
->>>>>>> master
           ),
         ),
         DuplicatePatientDialog(

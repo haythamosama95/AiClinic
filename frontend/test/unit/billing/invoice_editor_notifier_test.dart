@@ -59,13 +59,6 @@ void main() {
       addTearDown(container.dispose);
 
       final provider = invoiceEditorProvider(invoiceId);
-<<<<<<< HEAD
-      await expectLater(
-        container.read(provider.future),
-        throwsA(isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND')),
-      );
-      expect(container.read(provider), isA<AsyncError>());
-=======
       final subscription = container.listen(provider, (_, _) {});
       addTearDown(subscription.close);
 
@@ -75,7 +68,6 @@ void main() {
       final asyncValue = container.read(provider);
       expect(asyncValue.hasError, isTrue);
       expect(asyncValue.error, isA<RpcFailure>().having((error) => error.code, 'code', 'NOT_FOUND'));
->>>>>>> master
     });
 
     test('reload refreshes invoice detail on success', () async {
@@ -116,15 +108,7 @@ void main() {
       final notifier = container.read(invoiceEditorProvider(invoiceId).notifier);
       await container.read(invoiceEditorProvider(invoiceId).future);
 
-<<<<<<< HEAD
-      final mutation = notifier.addItem(
-        description: 'Consultation',
-        quantity: '1',
-        unitPrice: '100.00',
-      );
-=======
       final mutation = notifier.addItem(description: 'Consultation', quantity: '1', unitPrice: '100.00');
->>>>>>> master
       expect(container.read(invoiceEditorProvider(invoiceId)).value?.isMutating, isTrue);
 
       await mutation;
@@ -199,14 +183,7 @@ void main() {
       await container.read(provider.future);
       final before = container.read(provider).value!;
 
-<<<<<<< HEAD
-      await expectLater(
-        notifier.addItemFromService(_sampleEligibleService()),
-        throwsA(isA<Exception>()),
-      );
-=======
       await expectLater(notifier.addItemFromService(_sampleEligibleService()), throwsA(isA<Exception>()));
->>>>>>> master
 
       expect(container.read(provider).value?.invoice.updatedAt, before.invoice.updatedAt);
       expect(container.read(provider).value?.isMutating, isFalse);
@@ -220,13 +197,7 @@ void main() {
 
       await expectLater(
         notifier.addItem(description: 'Too early', quantity: '1', unitPrice: '10.00'),
-<<<<<<< HEAD
-        throwsA(
-          isA<StateError>().having((error) => error.message, 'message', 'Invoice not loaded.'),
-        ),
-=======
         throwsA(isA<StateError>().having((error) => error.message, 'message', 'Invoice not loaded.')),
->>>>>>> master
       );
     });
 
@@ -237,14 +208,7 @@ void main() {
       final notifier = container.read(invoiceEditorProvider(invoiceId).notifier);
       await container.read(invoiceEditorProvider(invoiceId).future);
 
-<<<<<<< HEAD
-      await expectLater(
-        notifier.updateItemQuantity(itemId: 'missing-item', quantity: '2'),
-        throwsA(isA<StateError>()),
-      );
-=======
       await expectLater(notifier.updateItemQuantity(itemId: 'missing-item', quantity: '2'), throwsA(isA<StateError>()));
->>>>>>> master
     });
 
     test('addItemFromService uses the service catalog repository', () async {
@@ -262,11 +226,7 @@ void main() {
       expect(catalogClient.calls, ['add_invoice_item_from_service']);
       expect(billingClient.rpcLog, isNot(contains('add_invoice_item_from_service')));
       expect(
-<<<<<<< HEAD
-        catalogClient.lastParams?['p_expected_updated_at'],
-=======
         catalogClient.paramsForFunction('add_invoice_item_from_service')?['p_expected_updated_at'],
->>>>>>> master
         expectedUpdatedAt.toUtc().toIso8601String(),
       );
     });
@@ -279,54 +239,14 @@ void main() {
       final notifier = container.read(provider.notifier);
       await container.read(provider.future);
 
-<<<<<<< HEAD
-      Future<void> expectLatestExpectedUpdatedAt() async {
-        final expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
-        expect(
-          billingClient.lastParams?['p_expected_updated_at'] ?? catalogClient.lastParams?['p_expected_updated_at'],
-=======
       void expectRpcExpectedUpdatedAt(String rpcName, DateTime expectedUpdatedAt) {
         expect(
           billingClient.paramsForFunction(rpcName)?['p_expected_updated_at'] ??
               catalogClient.paramsForFunction(rpcName)?['p_expected_updated_at'],
->>>>>>> master
           expectedUpdatedAt.toUtc().toIso8601String(),
         );
       }
 
-<<<<<<< HEAD
-      await notifier.addItem(description: 'Manual item', quantity: '1', unitPrice: '40.00');
-      await expectLatestExpectedUpdatedAt();
-
-      await notifier.addItemFromService(_sampleEligibleService());
-      await expectLatestExpectedUpdatedAt();
-
-      final itemId = container.read(provider).value!.invoice.items.first.id;
-
-      await notifier.updateItemQuantity(itemId: itemId, quantity: '2');
-      await expectLatestExpectedUpdatedAt();
-
-      await notifier.updateItem(
-        itemId: itemId,
-        description: 'Updated item',
-        quantity: '2',
-        unitPrice: '45.00',
-      );
-      await expectLatestExpectedUpdatedAt();
-
-      await notifier.applyInvoiceDiscount(kind: DiscountKind.percentage, value: '10');
-      await expectLatestExpectedUpdatedAt();
-
-      await notifier.setInsuranceCoverage(
-        providerId: BillingRpcTestClient.insuranceProviderId,
-        coveredAmount: '5.00',
-      );
-      await expectLatestExpectedUpdatedAt();
-
-      final removableItemId = container.read(provider).value!.invoice.items.last.id;
-      await notifier.removeItem(removableItemId);
-      await expectLatestExpectedUpdatedAt();
-=======
       var expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.addItem(description: 'Manual item', quantity: '1', unitPrice: '40.00');
       expectRpcExpectedUpdatedAt('add_invoice_item', expectedUpdatedAt);
@@ -357,7 +277,6 @@ void main() {
       expectedUpdatedAt = container.read(provider).value!.invoice.updatedAt;
       await notifier.removeItem(removableItemId);
       expectRpcExpectedUpdatedAt('remove_invoice_item', expectedUpdatedAt);
->>>>>>> master
     });
 
     test('applyLineDiscount, issue, and discardDraft mutations', () async {
@@ -379,19 +298,9 @@ void main() {
       final itemId = discountContainer.read(discountProvider).value!.invoice.items.single.id;
       final expectedUpdatedAt = discountContainer.read(discountProvider).value!.invoice.updatedAt;
 
-<<<<<<< HEAD
-      await discountNotifier.applyLineDiscount(
-        itemId: itemId,
-        kind: DiscountKind.fixed,
-        value: '10',
-      );
-      expect(
-        discountClient.lastParams?['p_expected_updated_at'],
-=======
       await discountNotifier.applyLineDiscount(itemId: itemId, kind: DiscountKind.fixed, value: '10');
       expect(
         discountClient.paramsForFunction('apply_line_discount')?['p_expected_updated_at'],
->>>>>>> master
         expectedUpdatedAt.toUtc().toIso8601String(),
       );
 
@@ -413,11 +322,7 @@ void main() {
       final invoiceNumber = await issueNotifier.issue();
       expect(invoiceNumber, 'INV-MAIN-000001');
       expect(
-<<<<<<< HEAD
-        issueClient.lastParams?['p_expected_updated_at'],
-=======
         issueClient.paramsForFunction('issue_invoice')?['p_expected_updated_at'],
->>>>>>> master
         issueUpdatedAt.toUtc().toIso8601String(),
       );
 
@@ -437,11 +342,7 @@ void main() {
 
       await discardNotifier.discardDraft();
       expect(
-<<<<<<< HEAD
-        discardClient.lastParams?['p_expected_updated_at'],
-=======
         discardClient.paramsForFunction('discard_draft_invoice')?['p_expected_updated_at'],
->>>>>>> master
         discardUpdatedAt.toUtc().toIso8601String(),
       );
       expect(discardClient.rpcLog, contains('discard_draft_invoice'));
@@ -507,15 +408,8 @@ EligibleService _sampleEligibleService() {
   );
 }
 
-<<<<<<< HEAD
-InvoiceDetail _minimalInvoiceDetail({
-  Money discountAmount = Money.zero,
-  List<InvoiceItem> items = const [],
-}) {
-=======
 InvoiceDetail _minimalInvoiceDetail({Money? discountAmount, List<InvoiceItem> items = const []}) {
   final resolvedDiscountAmount = discountAmount ?? Money.zero;
->>>>>>> master
   final timestamp = DateTime.utc(2026, 6, 1, 10);
   return InvoiceDetail(
     id: BillingRpcTestClient.draftInvoiceId,
@@ -524,11 +418,7 @@ InvoiceDetail _minimalInvoiceDetail({Money? discountAmount, List<InvoiceItem> it
     patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     visitId: BillingRpcTestClient.visitId,
     subtotal: Money.zero,
-<<<<<<< HEAD
-    discountAmount: discountAmount,
-=======
     discountAmount: resolvedDiscountAmount,
->>>>>>> master
     insuranceCoveredAmount: Money.zero,
     currency: 'USD',
     balance: Money.zero,
@@ -539,25 +429,6 @@ InvoiceDetail _minimalInvoiceDetail({Money? discountAmount, List<InvoiceItem> it
   );
 }
 
-<<<<<<< HEAD
-class _TrackingCatalogClient extends RpcCaptureSupabaseClient {
-  final List<String> calls = <String>[];
-
-  @override
-  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
-    calls.add(fn);
-    lastFunction = fn;
-    lastParams = params == null ? null : Map<String, dynamic>.from(params);
-    return FakePostgrestRpc({
-      'success': true,
-      'data': {
-        'item_id': 'svc-item-1',
-        'quantity': '1',
-        'unit_price': '75.00',
-        'applied_rule': 'default',
-      },
-    }) as PostgrestFilterBuilder<T>;
-=======
 class _TrackingCatalogClient extends BillingRpcTestClient {
   final List<String> calls = <String>[];
 
@@ -583,7 +454,6 @@ class _TrackingCatalogClient extends BillingRpcTestClient {
           'data': {'item_id': 'svc-item-1', 'quantity': '1', 'unit_price': '75.00', 'applied_rule': 'default'},
         })
         as PostgrestFilterBuilder<T>;
->>>>>>> master
   }
 }
 

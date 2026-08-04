@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/domain/permission_matrix_view.dart';
->>>>>>> master
 import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/role_permissions_matrix.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
@@ -73,11 +70,7 @@ class RolesTab extends ConsumerWidget {
             const SizedBox(height: AppSpacing.space6),
             SizedBox(
               width: double.infinity,
-<<<<<<< HEAD
-              child: RolePermissionsMatrix(
-=======
               child: _DeferredRolePermissionsMatrix(
->>>>>>> master
                 matrix: state.workingMatrix,
                 savedMatrix: state.savedMatrix,
                 editable: state.editable,
@@ -100,8 +93,6 @@ class RolesTab extends ConsumerWidget {
   }
 }
 
-<<<<<<< HEAD
-=======
 /// Defers mounting the heavy grant matrix until after the tab transition frame.
 class _DeferredRolePermissionsMatrix extends StatefulWidget {
   const _DeferredRolePermissionsMatrix({
@@ -171,7 +162,6 @@ class _RolePermissionsMatrixSkeleton extends StatelessWidget {
   }
 }
 
->>>>>>> master
 class _RolesTabLoadingBody extends StatelessWidget {
   const _RolesTabLoadingBody();
 
@@ -185,11 +175,7 @@ class _RolesTabLoadingBody extends StatelessWidget {
         const SizedBox(height: AppSpacing.space2),
         const AppSkeleton(height: 16, width: 480),
         const SizedBox(height: AppSpacing.space6),
-<<<<<<< HEAD
-        const AppSkeleton(height: 320),
-=======
         const _RolePermissionsMatrixSkeleton(),
->>>>>>> master
       ],
     );
   }

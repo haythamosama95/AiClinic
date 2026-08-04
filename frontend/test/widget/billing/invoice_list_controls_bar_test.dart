@@ -4,10 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-=======
->>>>>>> master
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/models/invoice_list_controls.dart';
 import 'package:ai_clinic/features/billing/presentation/models/invoice_sort_key.dart';

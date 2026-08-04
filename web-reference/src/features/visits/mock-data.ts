@@ -97,8 +97,6 @@ export function getVitalSignById(id: string): VitalSignDefinition | undefined {
   return VITAL_SIGN_CATALOG.find((v) => v.id === id)
 }
 
-<<<<<<< HEAD
-=======
 export function getChronicConditionById(id: string): ComboboxItem | undefined {
   return CHRONIC_CONDITION_OPTIONS.find((item) => item.id === id)
 }
@@ -111,7 +109,6 @@ export function getCurrentMedicationById(id: string): ComboboxItem | undefined {
   return MEDICATION_OPTIONS.find((item) => item.id === id)
 }
 
->>>>>>> master
 export function getInvestigationById(id: string): ComboboxItem | undefined {
   return INVESTIGATION_OPTIONS.find((item) => item.id === id)
 }

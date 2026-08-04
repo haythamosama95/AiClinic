@@ -5,9 +5,6 @@ import 'package:ai_clinic/features/service_catalog/presentation/utils/service_pr
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-<<<<<<< HEAD
-  group('ServiceEligibility', () {
-=======
   group('AppliedPriceRule.tryParse', () {
     test('parses known wire values', () {
       expect(AppliedPriceRule.tryParse('promo'), AppliedPriceRule.promo);
@@ -77,7 +74,6 @@ void main() {
       expect(eligibility.reason, isNull);
     });
 
->>>>>>> master
     test('parses eligible resolution', () {
       final eligibility = ServiceEligibility.fromRpcData({
         'eligible': true,
@@ -123,8 +119,6 @@ void main() {
       expect(label, '\$100.00 (promo)');
     });
 
-<<<<<<< HEAD
-=======
     test('formats override price with suffix', () {
       final label = ServicePricePreview.formatWithRule(
         EffectivePrice(unitPrice: Money.parse('175.00'), appliedRule: AppliedPriceRule.override),
@@ -140,7 +134,6 @@ void main() {
       );
     });
 
->>>>>>> master
     test('promotion badge only when on promotion', () {
       expect(ServicePricePreview.promotionBadge(onPromotion: true), 'On promotion');
       expect(ServicePricePreview.promotionBadge(onPromotion: false), isNull);

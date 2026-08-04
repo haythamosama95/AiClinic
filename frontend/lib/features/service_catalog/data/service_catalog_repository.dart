@@ -446,11 +446,7 @@ class ServiceCatalogRepository with AppRpcInvoker {
             items.add(item);
           }
         } else if (raw is Map) {
-<<<<<<< HEAD
-          final item = ServiceListItem.fromRow(Map<String, dynamic>.from(raw));
-=======
           final item = ServiceListItem.fromRow(_coerceStringKeyMap(raw));
->>>>>>> master
           if (item != null) {
             items.add(item);
           }
@@ -533,13 +529,10 @@ class ServiceCatalogRepository with AppRpcInvoker {
     );
   }
 
-<<<<<<< HEAD
-=======
   Map<String, dynamic> _coerceStringKeyMap(Map raw) {
     return raw.map((key, value) => MapEntry(key.toString(), value));
   }
 
->>>>>>> master
   List<String> _parseStringList(Object? raw) {
     if (raw is! List) {
       return const [];

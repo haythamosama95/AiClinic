@@ -11,13 +11,13 @@ import {
   handleAdapterRequest,
   INGRESS_BODY_SIZE_LIMIT,
   type AdapterEventSink,
+  type AdapterEventSourceFactory,
   type AdapterSseEvent,
   type AdapterStreamContext,
   type HandleAdapterRequestOptions,
-  type StubEventSourceController,
-  type StubEventSourceFactory,
   type TerminalEventKind,
 } from "../src/adapter";
+import type { StubEventSourceController } from "./helpers/adapter-stub";
 
 const REFERENCE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
@@ -47,6 +47,7 @@ interface WellFormedRequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   omitHeaders?: HeaderName[];
+  signal?: AbortSignal;
 }
 
 /** T001 — builds a well-formed POST /v1/requests with valid JSON body and the three headers. */
@@ -69,6 +70,7 @@ function buildWellFormedRequest(
     method: "POST",
     headers,
     body: bodyText,
+    signal: options.signal,
   });
 }
 
@@ -180,7 +182,7 @@ function countTerminalEvents(events: AdapterSseEvent[]): number {
 
 /**
  * T001 — in-process stub that injects canned accepted, heartbeat, and terminal
- * sequences directly into the adapter event sink.
+ * sequences directly into the adapter event sink (test harness only).
  */
 function createCannedStubEventSource(
   plan: (
@@ -188,7 +190,7 @@ function createCannedStubEventSource(
     context: AdapterStreamContext,
     controller: StubEventSourceController,
   ) => void | Promise<void>,
-): StubEventSourceFactory {
+): AdapterEventSourceFactory {
   return (sink, context) => {
     const controller: StubEventSourceController = {
       complete(result = { status: "ok" }) {
@@ -235,6 +237,9 @@ function createCannedStubEventSource(
         }
         controller.abort();
       },
+      requestContext() {
+        // unused in A6 harness
+      },
     };
 
     void Promise.resolve(plan(sink, context, controller));
@@ -250,9 +255,11 @@ function captureContextStub(): {
 
   return {
     options: {
-      stubEventSource: (sink, context) => {
+      eventSource: (sink, context) => {
         captured = context;
-        return createCannedStubEventSource(() => undefined)(sink, context);
+        return createCannedStubEventSource((_s, _c, controller) => {
+          controller.complete();
+        })(sink, context);
       },
     },
     getContext: () => captured,
@@ -276,7 +283,9 @@ describe("T-A6-T1 oversized body rejected before any work (T002)", () => {
     const oversizedBody = "x".repeat(INGRESS_BODY_SIZE_LIMIT + 1);
     const request = buildWellFormedRequest({ body: oversizedBody });
 
-    const response = await handleAdapterRequest(request);
+    const response = await handleAdapterRequest(request, {
+      eventSource: createCannedStubEventSource(() => undefined),
+    });
 
     expect(response.status).toBe(413);
     expect(response.headers.get("content-type")).toContain("application/json");
@@ -290,6 +299,63 @@ describe("T-A6-T1 oversized body rejected before any work (T002)", () => {
       "text/event-stream",
     );
     expect(referenceSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized body with malformed headers as 413 not 422 (ordering)", async () => {
+    const referenceSpy = vi.spyOn(referenceModule, "generateRequestReference");
+    const oversizedBody = "x".repeat(INGRESS_BODY_SIZE_LIMIT + 1);
+    const request = buildWellFormedRequest({
+      body: oversizedBody,
+      omitHeaders: ["x-idempotency-key", "x-capability-version"],
+    });
+
+    const response = await handleAdapterRequest(request, {
+      eventSource: createCannedStubEventSource(() => undefined),
+    });
+
+    expect(response.status).toBe(413);
+    expect(referenceSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects when Content-Length exceeds the limit before consuming the body", async () => {
+    const referenceSpy = vi.spyOn(referenceModule, "generateRequestReference");
+    const request = new Request("http://test.local/v1/requests", {
+      method: "POST",
+      headers: {
+        ...DEFAULT_HEADERS,
+        "content-length": String(INGRESS_BODY_SIZE_LIMIT + 1),
+      },
+      // Body intentionally smaller than declared Content-Length — gate must use the header.
+      body: JSON.stringify(VALID_BODY),
+    });
+
+    const response = await handleAdapterRequest(request, {
+      eventSource: createCannedStubEventSource(() => undefined),
+    });
+
+    expect(response.status).toBe(413);
+    expect(referenceSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a multi-byte UTF-8 body that exceeds the byte limit (not UTF-16 length)", async () => {
+    // Arabic letter "م" is U+0645 — one UTF-16 code unit, two UTF-8 bytes.
+    const arabic = "م";
+    const bytesPerChar = new TextEncoder().encode(arabic).byteLength;
+    expect(bytesPerChar).toBe(2);
+
+    const charsNeeded = Math.floor(INGRESS_BODY_SIZE_LIMIT / bytesPerChar) + 1;
+    const oversized = arabic.repeat(charsNeeded);
+    expect(oversized.length).toBeLessThanOrEqual(INGRESS_BODY_SIZE_LIMIT);
+    expect(new TextEncoder().encode(oversized).byteLength).toBeGreaterThan(
+      INGRESS_BODY_SIZE_LIMIT,
+    );
+
+    const response = await handleAdapterRequest(
+      buildWellFormedRequest({ body: oversized }),
+      { eventSource: createCannedStubEventSource(() => undefined) },
+    );
+
+    expect(response.status).toBe(413);
   });
 });
 
@@ -319,6 +385,18 @@ describe("T-A6-T3 trace id parsed and propagated (T004)", () => {
     expect(response.status).toBe(200);
     expect(getContext()?.traceId).toBe(traceId);
     expect(getContext()?.headers.traceId).toBe(traceId);
+  });
+
+  it("accepts any non-empty client-supplied trace id including non-ULID", async () => {
+    const traceId = "550e8400-e29b-41d4-a716-446655440000";
+    const { options, getContext } = captureContextStub();
+    const request = buildWellFormedRequest({
+      headers: { "x-trace-id": traceId },
+    });
+
+    const response = await handleAdapterRequest(request, options);
+    expect(response.status).toBe(200);
+    expect(getContext()?.traceId).toBe(traceId);
   });
 
   it("uses resolveTraceId ULID when x-trace-id is absent", async () => {
@@ -351,29 +429,65 @@ describe("T-A6-T4 capability version pin parsed (T005)", () => {
   });
 });
 
-describe("T-A6-T5 malformed or missing required headers rejected (T006)", () => {
+describe("T-A6-T5 malformed body or headers rejected (T006)", () => {
   it.each([
     {
       case: "missing x-idempotency-key",
       omitHeaders: ["x-idempotency-key"] as HeaderName[],
       headers: undefined,
+      body: undefined,
     },
     {
-      case: "malformed x-trace-id",
+      case: "empty x-idempotency-key",
       omitHeaders: undefined,
-      headers: { "x-trace-id": "not-a-valid-trace-id!!!" },
+      headers: { "x-idempotency-key": "   " },
+      body: undefined,
     },
     {
       case: "missing x-capability-version",
       omitHeaders: ["x-capability-version"] as HeaderName[],
       headers: undefined,
+      body: undefined,
+    },
+    {
+      case: "empty x-capability-version",
+      omitHeaders: undefined,
+      headers: { "x-capability-version": "\t" },
+      body: undefined,
+    },
+    {
+      case: "present-but-empty x-trace-id",
+      omitHeaders: undefined,
+      headers: { "x-trace-id": "  " },
+      body: undefined,
+    },
+    {
+      case: "malformed JSON body",
+      omitHeaders: undefined,
+      headers: undefined,
+      body: "not json",
+    },
+    {
+      case: "JSON array body",
+      omitHeaders: undefined,
+      headers: undefined,
+      body: "[1,2,3]",
+    },
+    {
+      case: "JSON null body",
+      omitHeaders: undefined,
+      headers: undefined,
+      body: "null",
     },
   ])(
-    "rejects $case with no taxonomy error body and no stream",
-    async ({ omitHeaders, headers }) => {
-      const request = buildWellFormedRequest({ omitHeaders, headers });
-      const response = await handleAdapterRequest(request);
+    "rejects $case with bare 422, no taxonomy error body, and no stream",
+    async ({ omitHeaders, headers, body }) => {
+      const request = buildWellFormedRequest({ omitHeaders, headers, body });
+      const response = await handleAdapterRequest(request, {
+        eventSource: createCannedStubEventSource(() => undefined),
+      });
 
+      expect(response.status).toBe(422);
       expect(response.headers.get("content-type")).not.toContain(
         "text/event-stream",
       );
@@ -400,7 +514,7 @@ describe("T-A6-T6 stream opens with accepted exactly once (T007)", () => {
     });
 
     const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     expect(response.status).toBe(200);
@@ -430,15 +544,15 @@ describe("T-A6-T6 stream opens with accepted exactly once (T007)", () => {
   });
 });
 
-describe("T-A6-T7 heartbeat while idle (T008)", () => {
-  it("emits heartbeat while idle and heartbeat is neither content nor terminal", async () => {
+describe("T-A6-T7 heartbeat framing while idle (T008)", () => {
+  it("frames an injected heartbeat as neither content nor terminal", async () => {
     const stub = createCannedStubEventSource(async (_sink, _context, controller) => {
       await controller.idle();
       controller.complete();
     });
 
     const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     const events = await collectSseEvents(response);
@@ -449,6 +563,9 @@ describe("T-A6-T7 heartbeat while idle (T008)", () => {
       expect(isContentEventType(heartbeat.type)).toBe(false);
       expect(isTerminalEventType(heartbeat.type)).toBe(false);
     }
+
+    // Heartbeat does not satisfy the one-terminal-event invariant.
+    expect(countTerminalEvents(events)).toBe(1);
   });
 });
 
@@ -462,7 +579,7 @@ describe("T-A6-T12 accepted reference and trace id on every event (T009)", () =>
 
     const response = await handleAdapterRequest(
       buildWellFormedRequest({ headers: { "x-trace-id": traceId } }),
-      { stubEventSource: stub },
+      { eventSource: stub },
     );
 
     const events = await collectSseEvents(response);
@@ -486,7 +603,7 @@ describe("T-A6-T8 stream completes with one completed terminal (T010)", () => {
     });
 
     const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     const events = await collectSseEvents(response);
@@ -504,7 +621,7 @@ describe("T-A6-T9 stream fails with one failed terminal (T011)", () => {
     });
 
     const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     const events = await collectSseEvents(response);
@@ -516,8 +633,8 @@ describe("T-A6-T9 stream fails with one failed terminal (T011)", () => {
   });
 });
 
-describe("T-A6-T10 client close yields cancelled terminal (T012)", () => {
-  it("ends with exactly one cancelled terminal and cancelled is not an HTTP status on the socket", async () => {
+describe("T-A6-T10 connection-scoped cancel without dead-socket write (T012)", () => {
+  it("ends with exactly one cancelled terminal via stub abort and cancelled is not an HTTP status", async () => {
     expect(liveHttpStatusForCode("cancelled")).toBeNull();
 
     const stub = createCannedStubEventSource(async (_sink, _context, controller) => {
@@ -526,7 +643,7 @@ describe("T-A6-T10 client close yields cancelled terminal (T012)", () => {
     });
 
     const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      eventSource: stub,
     });
 
     expect(response.status).not.toBe(499);
@@ -539,46 +656,221 @@ describe("T-A6-T10 client close yields cancelled terminal (T012)", () => {
     expect(cancelled).toHaveLength(1);
     expect(countTerminalEvents(events)).toBe(1);
   });
+
+  it("reader.cancel() mid-stream marks terminal without throwing or writing cancelled", async () => {
+    let resolveHold: (() => void) | undefined;
+    const hold = new Promise<void>((resolve) => {
+      resolveHold = resolve;
+    });
+
+    const stub = createCannedStubEventSource(async (_sink, _context, controller) => {
+      await controller.idle();
+      await hold;
+      // Attempt a late terminal after client disconnect — sink must drop it.
+      controller.complete();
+    });
+
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      eventSource: stub,
+    });
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    const seen: AdapterSseEvent[] = [];
+
+    // Read until accepted + heartbeat, then cancel the reader (real disconnect path).
+    await new Promise<void>((resolve, reject) => {
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              resolve();
+              return;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+            for (const part of parts) {
+              const parsed = parseSseBlock(part);
+              if (parsed) {
+                seen.push(parsed);
+              }
+            }
+            if (
+              seen.some((e) => e.type === "accepted") &&
+              seen.some((e) => e.type === "heartbeat")
+            ) {
+              await expect(reader.cancel()).resolves.toBeUndefined();
+              resolve();
+              return;
+            }
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      void pump();
+    });
+
+    resolveHold?.();
+    // Allow the stub's late complete() to run against the marked-terminal sink.
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(seen.some((e) => e.type === "cancelled")).toBe(false);
+    expect(countTerminalEvents(seen)).toBe(0);
+  });
+
+  it("already-aborted request signal closes without hanging or writing cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    let eventSourceInvoked = false;
+    const response = await handleAdapterRequest(
+      buildWellFormedRequest({ signal: controller.signal }),
+      {
+        eventSource: () => {
+          eventSourceInvoked = true;
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const events = await collectSseEvents(response);
+    expect(events.some((e) => e.type === "accepted")).toBe(true);
+    expect(events.some((e) => e.type === "cancelled")).toBe(false);
+    expect(eventSourceInvoked).toBe(false);
+  });
+
+  it("request.signal abort mid-stream marks terminal without writing cancelled", async () => {
+    const abortController = new AbortController();
+    let resolveHold: (() => void) | undefined;
+    const hold = new Promise<void>((resolve) => {
+      resolveHold = resolve;
+    });
+
+    const stub = createCannedStubEventSource(async (_sink, _context, ctrl) => {
+      await ctrl.idle();
+      await hold;
+      ctrl.complete();
+    });
+
+    const response = await handleAdapterRequest(
+      buildWellFormedRequest({ signal: abortController.signal }),
+      { eventSource: stub },
+    );
+
+    const reader = response.body!.getReader();
+    const seen: AdapterSseEvent[] = [];
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const parsed = parseSseBlock(part);
+        if (parsed) seen.push(parsed);
+      }
+      if (
+        seen.some((e) => e.type === "accepted") &&
+        seen.some((e) => e.type === "heartbeat")
+      ) {
+        abortController.abort();
+        break;
+      }
+    }
+
+    resolveHold?.();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(seen.some((e) => e.type === "cancelled")).toBe(false);
+  });
 });
 
 describe("T-A6-T11 no second terminal after the first (T013)", () => {
   it.each([
-  { path: "completion after completed", first: "completed" as const },
-  { path: "failure after failed", first: "failed" as const },
-  { path: "abort after cancelled", first: "cancelled" as const },
-  { path: "duplicate close after cancelled", first: "cancelled" as const, duplicateClose: true },
-])(
-  "does not emit a second terminal on $path",
-  async ({ first, duplicateClose }) => {
-    const stub = createCannedStubEventSource(
-      async (_sink, _context, controller) => {
-        if (first === "completed") {
-          controller.complete();
-          controller.attemptDuplicateTerminal("failed");
-          controller.attemptDuplicateTerminal("cancelled");
-          return;
-        }
-        if (first === "failed") {
-          controller.fail("validation_failed");
-          controller.attemptDuplicateTerminal("completed");
-          controller.attemptDuplicateTerminal("cancelled");
-          return;
-        }
-        controller.abort();
-        if (duplicateClose) {
+    { path: "completion after completed", first: "completed" as const },
+    { path: "failure after failed", first: "failed" as const },
+    { path: "abort after cancelled", first: "cancelled" as const },
+    {
+      path: "duplicate close after cancelled",
+      first: "cancelled" as const,
+      duplicateClose: true,
+    },
+  ])(
+    "does not emit a second terminal on $path",
+    async ({ first, duplicateClose }) => {
+      const stub = createCannedStubEventSource(
+        async (_sink, _context, controller) => {
+          if (first === "completed") {
+            controller.complete();
+            controller.attemptDuplicateTerminal("failed");
+            controller.attemptDuplicateTerminal("cancelled");
+            return;
+          }
+          if (first === "failed") {
+            controller.fail("validation_failed");
+            controller.attemptDuplicateTerminal("completed");
+            controller.attemptDuplicateTerminal("cancelled");
+            return;
+          }
           controller.abort();
-        }
-        controller.attemptDuplicateTerminal("completed");
-        controller.attemptDuplicateTerminal("failed");
-      },
-    );
+          if (duplicateClose) {
+            controller.abort();
+          }
+          controller.attemptDuplicateTerminal("completed");
+          controller.attemptDuplicateTerminal("failed");
+        },
+      );
 
-    const response = await handleAdapterRequest(buildWellFormedRequest(), {
-      stubEventSource: stub,
+      const response = await handleAdapterRequest(buildWellFormedRequest(), {
+        eventSource: stub,
+      });
+
+      const events = await collectSseEvents(response);
+      expect(countTerminalEvents(events)).toBe(1);
+    },
+  );
+
+  it("keeps terminalEmitted connection-scoped with no per-request state object", async () => {
+    const contexts: AdapterStreamContext[] = [];
+    const stub = createCannedStubEventSource((sink, context, controller) => {
+      contexts.push(context);
+      controller.complete();
     });
 
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      eventSource: stub,
+    });
     const events = await collectSseEvents(response);
     expect(countTerminalEvents(events)).toBe(1);
-  },
-);
+
+    // Context is a plain closure-local object — no server-side request registry.
+    expect(contexts).toHaveLength(1);
+    expect(Object.keys(contexts[0]!)).toEqual([
+      "traceId",
+      "requestReference",
+      "headers",
+    ]);
+  });
+});
+
+describe("T-A6-T13 fail-fast without eventSource (T013a)", () => {
+  it("returns HTTP 503 and opens no stream when eventSource is missing", async () => {
+    const referenceSpy = vi.spyOn(referenceModule, "generateRequestReference");
+    const response = await handleAdapterRequest(buildWellFormedRequest());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).not.toContain(
+      "text/event-stream",
+    );
+    expect(referenceSpy).not.toHaveBeenCalled();
+    referenceSpy.mockRestore();
+  });
 });

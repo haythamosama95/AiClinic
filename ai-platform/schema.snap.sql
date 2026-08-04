@@ -32,6 +32,8 @@ CREATE TABLE ai_request (
   terminal_error_code TEXT,
   trace_id TEXT NOT NULL,
   payload_pointer TEXT,
+  routing_tier TEXT,
+  routing_decision TEXT,
   conversation_id TEXT,
   turn_ordinal INTEGER,
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
@@ -46,7 +48,7 @@ CREATE TABLE capability_grant (
   revoked_at TEXT,
   changed_at TEXT NOT NULL,
   changed_by TEXT NOT NULL
-);
+, lifecycle_state TEXT, successor_id TEXT, deprecated_at TEXT, retire_after TEXT);
 
 CREATE TABLE control_audit (
   audit_id TEXT PRIMARY KEY NOT NULL,
@@ -105,8 +107,15 @@ CREATE TABLE routing_policy (
   version TEXT NOT NULL,
   content_pointer TEXT NOT NULL,
   active_from TEXT NOT NULL,
-  activated_by TEXT NOT NULL,
+  activated_by TEXT NOT NULL, canary_installation_ids TEXT,
   PRIMARY KEY (policy_id, version)
+);
+
+CREATE TABLE token_contract (
+  ver TEXT PRIMARY KEY NOT NULL,
+  added_at TEXT NOT NULL,
+  retired_at TEXT,
+  changed_by TEXT NOT NULL
 );
 
 CREATE TABLE usage_event (

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConfigCache } from "../src/config-cache";
-import { selectCandidateChain } from "../src/router";
+import {
+  RoutingPolicyError,
+  selectCandidateChain,
+} from "../src/router";
 
 /** §4.3.7 routing-policy document interpretation shape (routing-decision.md §2). */
 type RoutingTier = "standard" | "degraded";
@@ -76,7 +79,7 @@ type RouterContext = {
   requirements: CapabilityRequirements;
   manifestCostClass: CostClass;
   entitlementMaxCostClass: CostClass;
-  installationForceCostClass?: CostClass;
+  killedProviderIds?: readonly string[];
   /** Simulated prior provider failure — router must ignore (FR-011). */
   priorProviderFailure?: { providerId: string; modelId: string };
 };
@@ -93,6 +96,8 @@ type ChainEntry = {
   ordinal: number;
   provider_id: string;
   model_id: string;
+  max_attempts: number;
+  timeout_ms: number;
 };
 
 type ExcludedEntry = {
@@ -138,13 +143,14 @@ function policyTarget(
   providerId: string,
   modelId: string,
   features: Partial<TargetFeatures> = {},
+  attemptBounds: { max_attempts?: number; timeout_ms?: number } = {},
 ): PolicyTarget {
   return {
     provider_id: providerId,
     model_id: modelId,
     features: defaultTargetFeatures(features),
-    max_attempts: 2,
-    timeout_ms: 30_000,
+    max_attempts: attemptBounds.max_attempts ?? 2,
+    timeout_ms: attemptBounds.timeout_ms ?? 30_000,
   };
 }
 
@@ -153,11 +159,12 @@ function catchAllRule(
   targets: PolicyTarget[],
   match: PolicyRule["match"] = {},
   maxParallelAttempts?: number,
+  requires?: PolicyRule["requires"],
 ): PolicyRule {
   return {
     rule_id: ruleId,
     match,
-    requires: {
+    requires: requires ?? {
       structured_output: false,
       min_context_window: 0,
       languages: [],
@@ -199,11 +206,12 @@ function buildPolicyDocument(
 function preloadPolicyCache(
   document: RoutingPolicyDocument,
   key: string = FIXTURE_POLICY_KEY,
+  rowIdentity?: { policy_id: string; policy_version: number },
 ): ConfigCache {
   const cache = new ConfigCache();
   cache.remember("active_routing_policy", key, {
-    policy_id: document.policy_id,
-    policy_version: document.policy_version,
+    policy_id: rowIdentity?.policy_id ?? document.policy_id,
+    policy_version: rowIdentity?.policy_version ?? document.policy_version,
     content_pointer: `control/routing-policy/${document.policy_id}/${document.policy_version}.json`,
     active_from: "2026-08-01T00:00:00.000Z",
     activated_by: "test-fixture",
@@ -225,13 +233,13 @@ function defaultRequirements(
 
 function defaultContext(overrides: Partial<RouterContext> = {}): RouterContext {
   return {
-    installationId: FIXTURE_INSTALLATION_ID,
+    installationId: overrides.installationId ?? FIXTURE_INSTALLATION_ID,
     capabilityId: FIXTURE_CAPABILITY_ID,
     routingTier: overrides.routingTier ?? "standard",
     requirements: overrides.requirements ?? defaultRequirements(),
     manifestCostClass: overrides.manifestCostClass ?? "standard",
     entitlementMaxCostClass: overrides.entitlementMaxCostClass ?? "premium",
-    installationForceCostClass: overrides.installationForceCostClass,
+    killedProviderIds: overrides.killedProviderIds,
     priorProviderFailure: overrides.priorProviderFailure,
   };
 }
@@ -387,7 +395,7 @@ describe("T-D2-10 router_filter_language", () => {
 });
 
 describe("T-D2-11 router_filter_latency_class", () => {
-  it("excludes targets outside the required latency class", () => {
+  it("excludes latency mismatches with reason_code feature_unsupported", () => {
     const document = buildPolicyDocument({
       rules: [
         catchAllRule("latency-filter", [
@@ -411,14 +419,9 @@ describe("T-D2-11 router_filter_latency_class", () => {
     );
 
     expect(chainKeys(outcome)).toEqual(["google/interactive-class"]);
-    expect(outcome.routing_decision.excluded).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          provider_id: "deepseek",
-          model_id: "batch-class",
-        }),
-      ]),
-    );
+    expect(excludedReasons(outcome, "deepseek", "batch-class")).toEqual([
+      "feature_unsupported",
+    ]);
   });
 });
 
@@ -482,14 +485,21 @@ describe("T-D2-13 router_identical_inputs_identical_chain", () => {
 });
 
 describe("T-D2-14 router_selection_reason_recorded", () => {
-  it("records routing_decision per contracts/routing-decision.md", () => {
+  it("records routing_decision including max_attempts and timeout_ms carry-through", () => {
     const document = buildPolicyDocument({
       policy_id: "policy-selection-reason",
       policy_version: 3,
       rules: [
         catchAllRule(
           "selection-reason-rule",
-          [policyTarget("deepseek", "deepseek-chat")],
+          [
+            policyTarget(
+              "deepseek",
+              "deepseek-chat",
+              {},
+              { max_attempts: 3, timeout_ms: 45_000 },
+            ),
+          ],
           {},
           2,
         ),
@@ -520,18 +530,17 @@ describe("T-D2-14 router_selection_reason_recorded", () => {
     expect(decision.cost_class_source).toBe("manifest");
     expect(decision.routing_tier).toBe("standard");
     expect(decision.required_features).toEqual(requirements);
-    expect(decision.chain).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          ordinal: 0,
-          provider_id: "deepseek",
-          model_id: "deepseek-chat",
-        }),
-      ]),
-    );
+    expect(decision.chain).toEqual([
+      {
+        ordinal: 0,
+        provider_id: "deepseek",
+        model_id: "deepseek-chat",
+        max_attempts: 3,
+        timeout_ms: 45_000,
+      },
+    ]);
     expect(decision.excluded).toEqual(expect.any(Array));
-    expect(decision.max_parallel_attempts).toBeGreaterThanOrEqual(1);
-    expect(decision.max_parallel_attempts).toBeLessThanOrEqual(6);
+    expect(decision.max_parallel_attempts).toBe(2);
   });
 });
 
@@ -569,7 +578,7 @@ describe("T-D2-15 router_prior_failure_does_not_change_chain", () => {
 });
 
 describe("T-D2-16 router_cost_class_applied", () => {
-  it("uses the lowest cost class and records which source bound it", () => {
+  it("reads force_cost_class only from the document override (no context field)", () => {
     const document = buildPolicyDocument({
       rules: [
         catchAllRule("cost-class", [
@@ -595,7 +604,6 @@ describe("T-D2-16 router_cost_class_applied", () => {
       defaultContext({
         manifestCostClass: "standard",
         entitlementMaxCostClass: "premium",
-        installationForceCostClass: "economy",
       }),
     );
     expect(boundByInstallation.routing_decision.effective_cost_class).toBe(
@@ -605,6 +613,22 @@ describe("T-D2-16 router_cost_class_applied", () => {
       "installation_override",
     );
     expect(chainKeys(boundByInstallation)).toEqual(["deepseek/economy-model"]);
+  });
+
+  it("uses entitlement_cap and manifest when no document force_cost_class is present", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("cost-class", [
+          policyTarget("deepseek", "economy-model", {
+            cost_class: "economy",
+          }),
+          policyTarget("google", "premium-model", {
+            cost_class: "premium",
+          }),
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
 
     const boundByEntitlement = route(
       cache,
@@ -633,11 +657,107 @@ describe("T-D2-16 router_cost_class_applied", () => {
     expect(boundByManifest.routing_decision.cost_class_source).toBe("manifest");
     expect(chainKeys(boundByManifest)).toEqual(["deepseek/economy-model"]);
   });
+
+  it("does not let defaults.cost_class change effective_cost_class or cost_class_source", () => {
+    const baseDocument = buildPolicyDocument({
+      defaults: {
+        cost_class: "economy",
+        max_parallel_attempts: 1,
+      },
+      rules: [
+        catchAllRule("defaults-ignored", [
+          policyTarget("deepseek", "deepseek-chat", { cost_class: "premium" }),
+        ]),
+      ],
+    });
+    const premiumDefaults = buildPolicyDocument({
+      defaults: {
+        cost_class: "premium",
+        max_parallel_attempts: 1,
+      },
+      rules: baseDocument.rules,
+    });
+
+    const withEconomyDefault = route(
+      preloadPolicyCache(baseDocument),
+      defaultContext({
+        manifestCostClass: "standard",
+        entitlementMaxCostClass: "premium",
+      }),
+    );
+    const withPremiumDefault = route(
+      preloadPolicyCache(premiumDefaults),
+      defaultContext({
+        manifestCostClass: "standard",
+        entitlementMaxCostClass: "premium",
+      }),
+    );
+
+    expect(withEconomyDefault.routing_decision.effective_cost_class).toBe(
+      "standard",
+    );
+    expect(withEconomyDefault.routing_decision.cost_class_source).toBe(
+      "manifest",
+    );
+    expect(withPremiumDefault.routing_decision.effective_cost_class).toBe(
+      withEconomyDefault.routing_decision.effective_cost_class,
+    );
+    expect(withPremiumDefault.routing_decision.cost_class_source).toBe(
+      withEconomyDefault.routing_decision.cost_class_source,
+    );
+  });
+
+  it("breaks equal-class ties using SOURCE_PRIORITY (installation_override < entitlement_cap < manifest)", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("tie-break", [
+          policyTarget("deepseek", "economy-model", { cost_class: "economy" }),
+        ]),
+      ],
+      overrides: [
+        {
+          installation_id: FIXTURE_INSTALLATION_ID,
+          force_cost_class: "economy",
+        },
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+
+    const withOverride = route(
+      cache,
+      defaultContext({
+        manifestCostClass: "economy",
+        entitlementMaxCostClass: "economy",
+      }),
+    );
+    expect(withOverride.routing_decision.effective_cost_class).toBe("economy");
+    expect(withOverride.routing_decision.cost_class_source).toBe(
+      "installation_override",
+    );
+
+    const withoutOverrideDocument = buildPolicyDocument({
+      rules: document.rules,
+    });
+    const withoutOverride = route(
+      preloadPolicyCache(withoutOverrideDocument),
+      defaultContext({
+        manifestCostClass: "economy",
+        entitlementMaxCostClass: "economy",
+      }),
+    );
+    expect(withoutOverride.routing_decision.effective_cost_class).toBe(
+      "economy",
+    );
+    expect(withoutOverride.routing_decision.cost_class_source).toBe(
+      "entitlement_cap",
+    );
+  });
 });
 
 describe("T-D2-17 router_degraded_tier_when_soft_threshold", () => {
   it("matches degraded tier rules when routing_tier is degraded", () => {
-    const document = buildPolicyDocument({
+    // Specific tier rules first; document must end with a true catch-all.
+    const withCatchAll = buildPolicyDocument({
       rules: [
         catchAllRule(
           "standard-tier",
@@ -649,9 +769,12 @@ describe("T-D2-17 router_degraded_tier_when_soft_threshold", () => {
           [policyTarget("deepseek", "deepseek-chat")],
           { tiers: ["degraded"] },
         ),
+        catchAllRule("catch-all", [
+          policyTarget("fallback", "fallback-model"),
+        ]),
       ],
     });
-    const cache = preloadPolicyCache(document);
+    const cache = preloadPolicyCache(withCatchAll);
 
     const standardOutcome = route(
       cache,
@@ -671,7 +794,7 @@ describe("T-D2-17 router_degraded_tier_when_soft_threshold", () => {
 });
 
 describe("T-D2-19 routing_policy_is_versioned_data", () => {
-  it("reads active policy from config-cache active_routing_policy, not code conditionals", () => {
+  it("consults per-installation key first, then global active_routing_policy key", () => {
     const firstDocument = buildPolicyDocument({
       policy_id: "policy-versioned-a",
       policy_version: 1,
@@ -691,10 +814,14 @@ describe("T-D2-19 routing_policy_is_versioned_data", () => {
     const consultSpy = vi.spyOn(cache, "consult");
 
     const firstOutcome = route(cache);
-    expect(consultSpy).toHaveBeenCalledWith(
+    expect(consultSpy.mock.calls[0]).toEqual([
+      "active_routing_policy",
+      `${FIXTURE_POLICY_KEY}/${FIXTURE_INSTALLATION_ID}`,
+    ]);
+    expect(consultSpy.mock.calls[1]).toEqual([
       "active_routing_policy",
       FIXTURE_POLICY_KEY,
-    );
+    ]);
     expect(firstOutcome.routing_decision.policy_id).toBe("policy-versioned-a");
     expect(firstOutcome.routing_decision.policy_version).toBe(1);
     expect(chainKeys(firstOutcome)).toEqual(["deepseek/model-a"]);
@@ -719,7 +846,7 @@ describe("T-D2-19 routing_policy_is_versioned_data", () => {
 });
 
 describe("T-D2-20 outgoing_connection_cap_bounds_parallelism", () => {
-  it("clamps or rejects max_parallel_attempts above six to the 1–6 cap", () => {
+  it("clamps policy-requested parallelism of 10 over default 12 to exactly 6", () => {
     const document = buildPolicyDocument({
       defaults: {
         cost_class: "standard",
@@ -737,9 +864,189 @@ describe("T-D2-20 outgoing_connection_cap_bounds_parallelism", () => {
     const cache = preloadPolicyCache(document);
     const outcome = route(cache);
 
-    expect(outcome.routing_decision.max_parallel_attempts).toBeGreaterThanOrEqual(
-      1,
+    expect(outcome.routing_decision.max_parallel_attempts).toBe(6);
+  });
+
+  it("prefers rule max_parallel_attempts over defaults (rule=2, default=12 → 2)", () => {
+    const document = buildPolicyDocument({
+      defaults: {
+        cost_class: "standard",
+        max_parallel_attempts: 12,
+      },
+      rules: [
+        catchAllRule(
+          "rule-wins",
+          [policyTarget("deepseek", "deepseek-chat")],
+          {},
+          2,
+        ),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(cache);
+
+    expect(outcome.routing_decision.max_parallel_attempts).toBe(2);
+  });
+});
+
+describe("router_rule_requires_floor", () => {
+  it("excludes targets that fail the matched rule requires floor", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule(
+          "requires-floor",
+          [
+            policyTarget("deepseek", "small-window", {
+              min_context_window: 8_000,
+            }),
+            policyTarget("google", "large-window", {
+              min_context_window: 128_000,
+            }),
+          ],
+          {},
+          undefined,
+          {
+            structured_output: false,
+            min_context_window: 64_000,
+            languages: [],
+          },
+        ),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        requirements: defaultRequirements({
+          min_context_window: 0,
+        }),
+      }),
     );
-    expect(outcome.routing_decision.max_parallel_attempts).toBeLessThanOrEqual(6);
+
+    expect(chainKeys(outcome)).toEqual(["google/large-window"]);
+    expect(excludedReasons(outcome, "deepseek", "small-window")).toContain(
+      "context_window_too_small",
+    );
+  });
+});
+
+describe("router_empty_chain_after_filtering", () => {
+  it("returns chain: [] with every target listed in excluded", () => {
+    const targets = [
+      policyTarget("deepseek", "batch-only", { latency_class: "batch" }),
+      policyTarget("google", "also-batch", { latency_class: "batch" }),
+    ];
+    const document = buildPolicyDocument({
+      rules: [catchAllRule("empty-chain", targets)],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        requirements: defaultRequirements({
+          latency_class: "interactive",
+        }),
+      }),
+    );
+
+    expect(outcome.routing_decision.chain).toEqual([]);
+    expect(outcome.routing_decision.excluded).toHaveLength(targets.length);
+    for (const target of targets) {
+      expect(outcome.routing_decision.excluded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider_id: target.provider_id,
+            model_id: target.model_id,
+            reason_code: "feature_unsupported",
+          }),
+        ]),
+      );
+    }
+  });
+});
+
+describe("router_kill_switch_excludes_providers", () => {
+  it("excludes killed provider ids with reason_code kill_switch", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("kill-switch", [
+          policyTarget("deepseek", "deepseek-chat"),
+          policyTarget("google", "gemini-1.5-pro"),
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        killedProviderIds: ["deepseek"],
+      }),
+    );
+
+    expect(chainKeys(outcome)).toEqual(["google/gemini-1.5-pro"]);
+    expect(excludedReasons(outcome, "deepseek", "deepseek-chat")).toEqual([
+      "kill_switch",
+    ]);
+  });
+});
+
+describe("router_document_validation", () => {
+  it("throws policy_identity_mismatch when row and document disagree", () => {
+    const document = buildPolicyDocument({
+      policy_id: "policy-doc",
+      policy_version: 2,
+    });
+    const cache = preloadPolicyCache(document, FIXTURE_POLICY_KEY, {
+      policy_id: "policy-row",
+      policy_version: 1,
+    });
+
+    expect(() => route(cache)).toThrow(RoutingPolicyError);
+    try {
+      route(cache);
+    } catch (error) {
+      expect(error).toBeInstanceOf(RoutingPolicyError);
+      expect((error as RoutingPolicyError).code).toBe(
+        "policy_identity_mismatch",
+      );
+    }
+  });
+
+  it("throws unsupported_schema_version for unknown schema_version", () => {
+    const document = buildPolicyDocument({
+      schema_version: 99,
+    });
+    const cache = preloadPolicyCache(document);
+
+    try {
+      route(cache);
+      expect.unreachable("expected RoutingPolicyError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RoutingPolicyError);
+      expect((error as RoutingPolicyError).code).toBe(
+        "unsupported_schema_version",
+      );
+    }
+  });
+
+  it("throws missing_catch_all when the last rule is not a catch-all", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule(
+          "narrow-only",
+          [policyTarget("deepseek", "deepseek-chat")],
+          { capability_ids: [FIXTURE_CAPABILITY_ID] },
+        ),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+
+    try {
+      route(cache);
+      expect.unreachable("expected RoutingPolicyError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RoutingPolicyError);
+      expect((error as RoutingPolicyError).code).toBe("missing_catch_all");
+    }
   });
 });

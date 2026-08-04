@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import 'package:flutter/foundation.dart';
-=======
 import 'package:flutter/widgets.dart';
->>>>>>> master
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
@@ -73,16 +69,8 @@ class PatientEditState {
       submitting: submitting ?? this.submitting,
       duplicateCandidates: duplicateCandidates ?? this.duplicateCandidates,
       duplicateOpen: duplicateOpen ?? this.duplicateOpen,
-<<<<<<< HEAD
-      acknowledgedDuplicate:
-          acknowledgedDuplicate ?? this.acknowledgedDuplicate,
-      pendingOpenPatientId: clearPendingOpenPatientId
-          ? null
-          : (pendingOpenPatientId ?? this.pendingOpenPatientId),
-=======
       acknowledgedDuplicate: acknowledgedDuplicate ?? this.acknowledgedDuplicate,
       pendingOpenPatientId: clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
->>>>>>> master
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
       branchName: branchName ?? this.branchName,
       hydrated: hydrated ?? this.hydrated,
@@ -91,28 +79,6 @@ class PatientEditState {
   }
 }
 
-<<<<<<< HEAD
-final patientEditProvider =
-    StateNotifierProvider.family<PatientEditNotifier, PatientEditState, String>(
-      (ref, patientId) {
-        final notifier = PatientEditNotifier(ref, patientId);
-
-        ref.listen<AsyncValue<PatientDetail>>(
-          patientDetailProvider(patientId),
-          (_, next) {
-            next.whenData(notifier.preloadFromDetail);
-          },
-          fireImmediately: true,
-        );
-
-        return notifier;
-      },
-    );
-
-class PatientEditNotifier extends StateNotifier<PatientEditState> {
-  PatientEditNotifier(this._ref, this._patientId)
-    : super(const PatientEditState());
-=======
 final patientEditProvider = StateNotifierProvider.family<PatientEditNotifier, PatientEditState, String>((
   ref,
   patientId,
@@ -142,19 +108,14 @@ BuildContext? _rootNavigatorContext(Ref ref) {
 
 class PatientEditNotifier extends StateNotifier<PatientEditState> {
   PatientEditNotifier(this._ref, this._patientId) : super(const PatientEditState());
->>>>>>> master
 
   final Ref _ref;
   final String _patientId;
 
-<<<<<<< HEAD
-  void preloadFromDetail(PatientDetail detail) {
-=======
   void preloadFromDetail(PatientDetail detail, {bool isRefreshing = false}) {
     if (isRefreshing && (state.staleUpdateOpen || (!state.hydrated && state.expectedUpdatedAt != null))) {
       return;
     }
->>>>>>> master
     if (state.hydrated && !state.staleUpdateOpen) {
       return;
     }
@@ -174,13 +135,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
       'phone' => values.copyWith(phone: value as String),
       'dateOfBirth' => values.copyWith(dateOfBirth: value as DateTime?),
       'gender' => values.copyWith(gender: value as PatientGender?),
-<<<<<<< HEAD
-      'maritalStatus' => values.copyWith(
-        maritalStatus: value as PatientMaritalStatus?,
-      ),
-=======
       'maritalStatus' => values.copyWith(maritalStatus: value as PatientMaritalStatus?),
->>>>>>> master
       'notes' => values.copyWith(notes: value as String),
       _ => values,
     };
@@ -188,13 +143,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
     state = state.copyWith(
       values: nextValues,
       errors: _clearFieldError(state.errors, key),
-<<<<<<< HEAD
-      acknowledgedDuplicate: state.acknowledgedDuplicate
-          ? false
-          : state.acknowledgedDuplicate,
-=======
       acknowledgedDuplicate: state.acknowledgedDuplicate ? false : state.acknowledgedDuplicate,
->>>>>>> master
     );
   }
 
@@ -236,14 +185,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
 
   /// Closes the duplicate dialog and signals navigation to an existing patient.
   void openExistingPatient(String patientId) {
-<<<<<<< HEAD
-    state = state.copyWith(
-      duplicateOpen: false,
-      pendingOpenPatientId: patientId,
-    );
-=======
     state = state.copyWith(duplicateOpen: false, pendingOpenPatientId: patientId);
->>>>>>> master
   }
 
   /// Reloads the form from the server after a stale-update conflict.
@@ -257,15 +199,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
   Future<bool> submit() async {
     final expectedUpdatedAt = state.expectedUpdatedAt;
     if (expectedUpdatedAt == null) {
-<<<<<<< HEAD
-      state = state.copyWith(
-        errors: const PatientFormErrors(
-          form: 'Patient details are still loading. Try again.',
-        ),
-      );
-=======
       state = state.copyWith(errors: const PatientFormErrors(form: 'Patient details are still loading. Try again.'));
->>>>>>> master
       return false;
     }
 
@@ -287,15 +221,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
         );
 
         if (candidates.isNotEmpty) {
-<<<<<<< HEAD
-          state = state.copyWith(
-            submitting: false,
-            duplicateCandidates: candidates,
-            duplicateOpen: true,
-          );
-=======
           state = state.copyWith(submitting: false, duplicateCandidates: candidates, duplicateOpen: true);
->>>>>>> master
           return false;
         }
       }
@@ -317,22 +243,11 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
         ),
       );
 
-<<<<<<< HEAD
-      final toastContext = _ref.read(rootNavigatorKeyProvider).currentContext;
-      if (toastContext != null && toastContext.mounted) {
-        appToast(
-          toastContext,
-          AppToastInput(
-            message: '${state.values.fullName.trim()} updated.',
-            variant: AppToastVariant.success,
-          ),
-=======
       final toastContext = _rootNavigatorContext(_ref);
       if (toastContext != null && toastContext.mounted) {
         appToast(
           toastContext,
           AppToastInput(message: '${state.values.fullName.trim()} updated.', variant: AppToastVariant.success),
->>>>>>> master
         );
       }
 
@@ -342,37 +257,16 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
       return true;
     } on RpcFailure catch (failure) {
       if (failure.isStalePatient) {
-<<<<<<< HEAD
-        state = state.copyWith(
-          submitting: false,
-          staleUpdateOpen: true,
-          errors: PatientFormErrors.empty,
-        );
-        return false;
-      }
-
-      state = state.copyWith(
-        submitting: false,
-        errors: PatientFormErrors(form: patientMessageForRpc(failure)),
-      );
-=======
         state = state.copyWith(submitting: false, staleUpdateOpen: true, errors: PatientFormErrors.empty);
         return false;
       }
 
       state = state.copyWith(submitting: false, errors: PatientFormErrors(form: patientMessageForRpc(failure)));
->>>>>>> master
       return false;
     } catch (_) {
       state = state.copyWith(
         submitting: false,
-<<<<<<< HEAD
-        errors: const PatientFormErrors(
-          form: 'Could not update the patient. Try again.',
-        ),
-=======
         errors: const PatientFormErrors(form: 'Could not update the patient. Try again.'),
->>>>>>> master
       );
       return false;
     }

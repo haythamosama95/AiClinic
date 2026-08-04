@@ -8,27 +8,18 @@ import 'package:ai_clinic/app/providers/branch_selection_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav_handler.dart';
 import 'package:ai_clinic/app/shell/layout/app_shell.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
-=======
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_presentation.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_view.dart';
->>>>>>> master
 import 'package:ai_clinic/app/shell/providers/shell_chrome_provider.dart';
 import 'package:ai_clinic/app/shell/providers/shell_sidebar_collapsed_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_command_bar.dart';
 import 'package:ai_clinic/core/ui/components/app_sidebar.dart';
 import 'package:ai_clinic/core/ui/components/app_top_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_scope.dart';
-=======
 import 'package:ai_clinic/features/queue/presentation/providers/queue_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_scope.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
->>>>>>> master
 
 /// Authenticated route shell: sidebar, top bar, and feature content region.
 class AuthenticatedShell extends ConsumerWidget {
@@ -43,16 +34,6 @@ class AuthenticatedShell extends ConsumerWidget {
       ref.watch(appointmentCalendarShellWarmProvider);
     }
 
-<<<<<<< HEAD
-    final location = GoRouterState.of(context).matchedLocation;
-    final uri = GoRouterState.of(context).uri;
-    final activeId = ShellNavConfig.itemIdForLocation(location) ?? '';
-    final pageContext = ShellNavConfig.breadcrumbForLocation(
-      location,
-      uri: uri,
-      onNavigate: (route) => context.go(route),
-    );
-=======
     final routerState = GoRouterState.of(context);
     // Use the actual URI path so pushed routes (e.g. visit billing) get correct shell layout.
     final location = routerState.uri.path;
@@ -75,7 +56,6 @@ class AuthenticatedShell extends ConsumerWidget {
     } else {
       pageContext = null;
     }
->>>>>>> master
 
     final auth = ref.watch(authSessionProvider);
     // Default to locked when the session context is unknown (cold-start / loading)
@@ -83,14 +63,9 @@ class AuthenticatedShell extends ConsumerWidget {
     final setupLocked = auth.context?.needsClinicSetup ?? true;
     final chrome = ref.watch(shellChromeProvider);
     final collapsed = ref.watch(shellSidebarCollapsedProvider);
-<<<<<<< HEAD
-
-    final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
-=======
     final queueCheckedInCount = ref.watch(appointmentQueueCheckedInCountProvider);
     final sidebarGroups = ShellNavConfig.groupsWithCounts(queueCheckedInCount: queueCheckedInCount);
 
->>>>>>> master
     final designSystemFullWidth = ShellNavConfig.isDesignSystemFullWidth(uri);
     final fullWidth = ShellNavConfig.isFullWidthLocation(location) || (isDesignSystemPage && designSystemFullWidth);
     final fillViewport = isDesignSystemPage || ShellNavConfig.isFillViewportLocation(location);
@@ -109,19 +84,11 @@ class AuthenticatedShell extends ConsumerWidget {
       ),
       child: ShellDevShellWrapper(
         child: AppShell(
-<<<<<<< HEAD
-          pageKey: location,
-          fullWidth: fullWidth,
-          fillViewport: fillViewport,
-          sidebar: AppSidebar(
-            items: ShellNavConfig.groups,
-=======
           pageKey: ShellNavConfig.shellPageKeyForLocation(location),
           fullWidth: fullWidth,
           fillViewport: fillViewport,
           sidebar: AppSidebar(
             items: sidebarGroups,
->>>>>>> master
             footerItems: ShellNavConfig.footerItems(),
             activeId: activeId,
             collapsed: collapsed,

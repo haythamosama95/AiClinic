@@ -1,17 +1,10 @@
-<<<<<<< HEAD
-import 'package:clock/clock.dart';
-=======
 import 'package:ai_clinic/core/ui/components/app_progress.dart';
->>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_booking_slots.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_step2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-<<<<<<< HEAD
-=======
 import '../../support/appointment_calendar_test_support.dart';
->>>>>>> master
 import 'detail_widget_test_harness.dart';
 
 void main() {
@@ -113,11 +106,7 @@ void main() {
       );
       await tester.pump();
 
-<<<<<<< HEAD
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
-=======
       expect(find.byType(AppProgress), findsWidgets);
->>>>>>> master
     });
 
     testWidgets('invalid state: date and time errors render', (tester) async {

@@ -101,21 +101,31 @@ The `EnrolledKeyVerifier` implements `TokenVerifier` and MUST, in order:
 6. `loadConfig(cache, reader, "installations", payload.iss)`; on `ConfigCacheMissError` reject
    `unauthenticated` (unknown issuer, §4.3.2).
 7. If the installation record's `status` is `suspended`, reject `installation_suspended` (§6.1 stage
-   2; B2 `installation.status` contract).
+   2; B2 `installation.status` contract). If `status !== "active"` for any other reason (including
+   `deleted`), reject `unauthenticated` — fail closed on lifecycle.
 8. `loadConfig(cache, reader, "keys", header.kid)`; on `ConfigCacheMissError` reject
    `unauthenticated` (unknown `kid`). If the key row is revoked (`revoked_at` non-null in the
-   consumed B1/A5 row shape) reject `unauthenticated` (§4.2.1).
+   consumed B1/A5 row shape) reject `unauthenticated` (§4.2.1). If
+   `keyRow.installation_id !== payload.iss`, reject `unauthenticated` — the key is selected by
+   **`iss` and `kid`** together (§4.3.2; prevents cross-installation impersonation).
 9. Require `payload.aud === ctx.audience`; reject `unauthenticated` otherwise (§4.3.2 audience).
+   *(Implementation may evaluate audience and skew before the D1 loads — pure claim checks first.)*
 10. Require `payload.iat - ctx.clockSkewSeconds <= ctx.now <= payload.exp + ctx.clockSkewSeconds`;
-    a token outside the skew window is rejected `unauthenticated`; a not-yet-valid token inside the
-    window is accepted (§4.3.2 clock-skew tolerance; `identity_accepts_notyetvalid_inside_skew`).
+    a token outside the skew window is rejected `unauthenticated`; a not-yet-valid **or expired**
+    token inside the window is accepted (§4.3.2 clock-skew tolerance;
+    `identity_accepts_notyetvalid_inside_skew`, `identity_accepts_expired_inside_skew`).
 11. Import the enrolled public key as a WebCrypto `Ed25519` key (JWK `{"kty":"OKP","crv":"Ed25519",
     "x":…}` per B1 §7, or raw 32 bytes) and call `crypto.subtle.verify("EdDSA", key, signature,
     signingInput)` where `signingInput` is the UTF-8 bytes of `header_b64.payload_b64` (B1 §2).
     Reject `unauthenticated` if verification returns false (bad signature).
-12. Construct and return the immutable `Principal` from the verified payload claims. `scopes` come
+12. Check the token's `ver` against the accepted-`ver` set via
+    `loadConfig(cache, reader, "token_contracts", payload.ver)` (§5.6; J4 extension). Miss or
+    `retired_at != null` → `unauthenticated`. Overlapping acceptance of two active `ver` values is
+    J4's concern; B3/identity performs the membership check.
+13. Construct and return the immutable `Principal` from the verified payload claims. `scopes` come
     from the verified token (B1 derives them server-side from RBAC; B3 does not re-derive and never
-    accepts a caller-supplied `scopes` — §5.6).
+    accepts a caller-supplied `scopes` — §5.6). Guard rejections from this stage MUST call
+    `recordGuardRejection` (FR-011; §4.3.12).
 
 `jti` replay rejection is **not** in this algorithm — it is B4's, inside the single Quota DO round
 trip (§4.3.2 "Replay rejection is not part of this stage's own I/O"; spec FR-014). B3 does not
@@ -125,10 +135,11 @@ pre-check, short-circuit, or contact the DO.
 
 ## 7. I/O budget
 
-On a cold isolate, identity performs exactly the same single same-region D1 read on a miss that A5
-froze — one for `installations`, one for `keys`, each via `loadConfig`. On a warm isolate both return
-from memory with zero `reader.read` calls (A5 `T-A5-18`). B3 introduces no additional read (spec
-Acceptance Scenario 24; FR-010).
+On a cold isolate, identity performs the same single same-region D1 read on a miss that A5
+froze — one for `installations`, one for `keys`, and (via the J4 extension) one for
+`token_contracts`, each via `loadConfig`. On a warm isolate all return from memory with zero
+`reader.read` calls (A5 `T-A5-18`). Audience and skew are pure claim checks and SHOULD run before
+those loads so obviously-dead tokens never touch the cache.
 
 ---
 

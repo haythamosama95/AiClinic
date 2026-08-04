@@ -1,0 +1,38 @@
+{
+  "case_id": "converges_within_round_budget",
+  "legs": [
+    {
+      "fixture": "converges_within_round_budget/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "What is the patient's chief complaint?"
+        }
+      ]
+    },
+    {
+      "fixture": "converges_within_round_budget/leg_2.json",
+      "append_before_fixture": [
+        {
+          "kind": "context_resolved",
+          "context": {
+            "visit.chief_complaint@v1": {
+              "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+              "complaint": "Persistent headache for three days."
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "required_key_requests": ["visit.chief_complaint@v1"],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "pass",
+    "round_budget": "pass"
+  }
+}

@@ -4,7 +4,6 @@
 
 import {
   type ConfigCache,
-  type ConfigEntityKind,
   ConfigCacheMissError,
   type D1Reader,
   loadConfig,
@@ -18,7 +17,11 @@ export type ResolveResult =
   | { ok: true; manifest: Manifest }
   | {
       ok: false;
-      code: "capability_unknown" | "capability_retired" | "capability_disabled";
+      code:
+        | "capability_unknown"
+        | "capability_retired"
+        | "capability_disabled"
+        | "forbidden_capability";
     };
 
 export type DiscoveryResult = {
@@ -28,27 +31,120 @@ export type DiscoveryResult = {
 
 const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
 
+/** OD-9 overlap window: two client release cycles, minimum 90 days (not a configuration surface). */
+export const OVERLAP_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+export type LifecycleOverlay = {
+  lifecycle_state?: string;
+  successor_id?: string | null;
+  deprecated_at?: string;
+  retire_after?: string;
+};
+
+export type EffectiveLifecycle = {
+  lifecycleState: string;
+  successorId: string | null;
+};
+
 let capabilityRegistry: CapabilityRegistry = new Map();
+let registryInstalled = false;
+
+export function effectiveLifecycle(
+  manifest: Manifest,
+  overlay: LifecycleOverlay | null,
+): EffectiveLifecycle {
+  const publishedState =
+    typeof manifest.Identity.lifecycleState === "string"
+      ? manifest.Identity.lifecycleState
+      : "active";
+  const publishedSuccessor =
+    typeof manifest.Identity.successorId === "string"
+      ? manifest.Identity.successorId
+      : null;
+
+  if (!overlay || overlay.lifecycle_state == null) {
+    return { lifecycleState: publishedState, successorId: publishedSuccessor };
+  }
+
+  return {
+    lifecycleState: overlay.lifecycle_state,
+    successorId:
+      overlay.successor_id != null ? overlay.successor_id : publishedSuccessor,
+  };
+}
+
+async function loadLifecycleOverlay(
+  cache: ConfigCache,
+  reader: D1Reader,
+  capabilityId: string,
+  version: string,
+): Promise<LifecycleOverlay | null> {
+  try {
+    const row = await loadConfig(
+      cache,
+      reader,
+      "grants",
+      `global/${capabilityId}/${version}`,
+    );
+    return {
+      lifecycle_state:
+        typeof row.lifecycle_state === "string" ? row.lifecycle_state : undefined,
+      successor_id:
+        typeof row.successor_id === "string" ? row.successor_id : null,
+      deprecated_at:
+        typeof row.deprecated_at === "string" ? row.deprecated_at : undefined,
+      retire_after:
+        typeof row.retire_after === "string" ? row.retire_after : undefined,
+    };
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function manifestWithEffectiveIdentity(
+  manifest: Manifest,
+  effective: EffectiveLifecycle,
+): Manifest {
+  if (
+    manifest.Identity.lifecycleState === effective.lifecycleState &&
+    manifest.Identity.successorId === effective.successorId
+  ) {
+    return manifest;
+  }
+
+  const derived = {
+    ...manifest,
+    Identity: {
+      ...manifest.Identity,
+      lifecycleState: effective.lifecycleState,
+      successorId: effective.successorId,
+    },
+  };
+  return freezeManifest(derived as Manifest);
+}
 
 function registryKey(capabilityId: string, version: string): string {
   return `${capabilityId}@${version}`;
 }
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
-}
-
 function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] {
   const raw = entitlement.allowed_capabilities;
   if (Array.isArray(raw)) {
-    return raw as string[];
+    return raw.every((entry) => typeof entry === "string") ? (raw as string[]) : [];
   }
   if (typeof raw === "string") {
-    return JSON.parse(raw) as string[];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
+        return [];
+      }
+      return parsed as string[];
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -68,17 +164,116 @@ function isKillSwitchActive(row: Record<string, unknown>): boolean {
   return row.active === true;
 }
 
+/** Absent kill-switch row ⇒ inactive (miss returns `{ active: false }`). */
 async function loadKillSwitch(
   cache: ConfigCache,
   reader: D1Reader,
   key: string,
 ): Promise<Record<string, unknown>> {
-  return loadConfig(
+  try {
+    return await loadConfig(cache, reader, "kill_switches", key);
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return { active: false };
+    }
+    throw error;
+  }
+}
+
+async function loadMatchingGrant(
+  cache: ConfigCache,
+  reader: D1Reader,
+  grantKey: string,
+  capabilityVersion: string,
+): Promise<"granted" | "missing" | "revoked" | "version_mismatch"> {
+  try {
+    const grant = await loadConfig(cache, reader, "grants", grantKey);
+    if (grant.revoked_at != null) {
+      return "revoked";
+    }
+    if (
+      typeof grant.capability_version === "string" &&
+      grant.capability_version !== capabilityVersion
+    ) {
+      return "version_mismatch";
+    }
+    return "granted";
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return "missing";
+    }
+    throw error;
+  }
+}
+
+async function assertPlanAllowance(
+  principal: Principal,
+  capabilityId: string,
+  version: string,
+  manifest: Manifest,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<{ ok: true } | { ok: false; code: "forbidden_capability" }> {
+  const installationId = principal.installationId;
+  const forbidden = {
+    ok: false as const,
+    code: "forbidden_capability" as const,
+  };
+
+  let entitlement: Record<string, unknown>;
+  try {
+    entitlement = await loadConfig(cache, reader, "entitlements", installationId);
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return forbidden;
+    }
+    throw error;
+  }
+
+  if (entitlement.status !== "active") {
+    return forbidden;
+  }
+
+  const plan = entitlement.plan;
+  if (typeof plan !== "string") {
+    return forbidden;
+  }
+
+  const allowedCapabilities = parseAllowedCapabilities(entitlement);
+  if (allowedCapabilities.length === 0 || !allowedCapabilities.includes(capabilityId)) {
+    return forbidden;
+  }
+
+  const minimumPlanTier = manifest.Access.minimumPlanTier;
+  if (
+    typeof minimumPlanTier !== "string" ||
+    !planTierMeetsMinimum(plan, minimumPlanTier)
+  ) {
+    return forbidden;
+  }
+
+  const installationGrant = await loadMatchingGrant(
     cache,
-    scopeReaderForKind(reader, "kill_switches"),
-    "kill_switches",
-    key,
+    reader,
+    `${installationId}/${capabilityId}`,
+    version,
   );
+  if (installationGrant === "revoked" || installationGrant === "version_mismatch") {
+    return forbidden;
+  }
+  if (installationGrant === "missing") {
+    const planGrant = await loadMatchingGrant(
+      cache,
+      reader,
+      `plan:${plan}/${capabilityId}`,
+      version,
+    );
+    if (planGrant !== "granted") {
+      return forbidden;
+    }
+  }
+
+  return { ok: true };
 }
 
 async function resolveProviderId(
@@ -94,7 +289,7 @@ async function resolveProviderId(
   try {
     const policy = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "active_routing_policy"),
+      reader,
       "active_routing_policy",
       policyRef,
     );
@@ -172,20 +367,21 @@ function deepFreeze<T extends object>(value: T): T {
 }
 
 function freezeManifest(manifest: Manifest): Manifest {
-  for (const entry of manifest["Context requirements"]) {
-    deepFreeze(entry);
-  }
-  deepFreeze(manifest.Identity);
-  deepFreeze(manifest.Access);
-  deepFreeze(manifest.Interaction);
-  deepFreeze(manifest.Input);
-  deepFreeze(manifest["Context requirements"]);
-  deepFreeze(manifest["Prompt binding"]);
-  deepFreeze(manifest.Output);
-  deepFreeze(manifest.Routing);
-  deepFreeze(manifest.Economics);
-  deepFreeze(manifest.Governance);
   return deepFreeze(manifest);
+}
+
+function unmodifiableRegistry(registry: Map<string, Manifest>): CapabilityRegistry {
+  return new Proxy(registry, {
+    get(target, prop, receiver) {
+      if (prop === "set" || prop === "delete" || prop === "clear") {
+        return () => {
+          throw new TypeError("CapabilityRegistry is immutable");
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? (value as Function).bind(target) : value;
+    },
+  });
 }
 
 export function createCapabilityRegistry(manifests: Manifest[]): CapabilityRegistry {
@@ -194,15 +390,26 @@ export function createCapabilityRegistry(manifests: Manifest[]): CapabilityRegis
     const capabilityId = manifest.Identity.capabilityId;
     const version = manifest.Identity.version;
     if (typeof capabilityId !== "string" || typeof version !== "string") {
-      continue;
+      throw new TypeError(
+        "createCapabilityRegistry: Identity.capabilityId and Identity.version must be strings",
+      );
     }
     registry.set(registryKey(capabilityId, version), freezeManifest(manifest));
   }
-  return registry;
+  return unmodifiableRegistry(registry);
 }
 
-export function setCapabilityRegistry(registry: CapabilityRegistry): void {
+export function setCapabilityRegistry(
+  registry: CapabilityRegistry,
+  options?: { replace?: boolean },
+): void {
+  if (registryInstalled && options?.replace !== true) {
+    throw new Error(
+      "CapabilityRegistry is already installed; pass { replace: true } to replace",
+    );
+  }
   capabilityRegistry = registry;
+  registryInstalled = true;
 }
 
 export async function resolve(
@@ -217,18 +424,35 @@ export async function resolve(
     return { ok: false, code: "capability_unknown" };
   }
 
-  if (manifest.Identity.lifecycleState === "retired") {
+  const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
+  const effective = effectiveLifecycle(manifest, overlay);
+
+  if (effective.lifecycleState === "retired") {
     return { ok: false, code: "capability_retired" };
+  }
+
+  const allowance = await assertPlanAllowance(
+    principal,
+    capabilityId,
+    version,
+    manifest,
+    cache,
+    reader,
+  );
+  if (!allowance.ok) {
+    return allowance;
   }
 
   if (await isCapabilityDisabled(principal, capabilityId, manifest, cache, reader)) {
     return { ok: false, code: "capability_disabled" };
   }
 
-  return { ok: true, manifest };
+  return { ok: true, manifest: manifestWithEffectiveIdentity(manifest, effective) };
 }
 
-export function computeDiscoveryEtag(manifestList: Manifest[]): string {
+export async function computeDiscoveryEtag(
+  manifestList: Manifest[],
+): Promise<string> {
   const sorted = sortManifests(manifestList);
   return hashManifest({
     manifests: sorted.map(manifestToHashInput),
@@ -246,39 +470,37 @@ export async function discover(
   try {
     entitlement = await loadConfig(
       cache,
-      scopeReaderForKind(reader, "entitlements"),
+      reader,
       "entitlements",
       installationId,
     );
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
       const manifests: Manifest[] = [];
-      return { manifests, etag: computeDiscoveryEtag(manifests) };
+      return { manifests, etag: await computeDiscoveryEtag(manifests) };
     }
     throw error;
   }
 
   if (entitlement.status !== "active") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: computeDiscoveryEtag(manifests) };
+    return { manifests, etag: await computeDiscoveryEtag(manifests) };
   }
 
   const plan = entitlement.plan;
   if (typeof plan !== "string") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: computeDiscoveryEtag(manifests) };
+    return { manifests, etag: await computeDiscoveryEtag(manifests) };
   }
 
   const allowedCapabilities = parseAllowedCapabilities(entitlement);
-  const manifests: Manifest[] = [];
 
+  // Kill switches are intentionally not applied in discovery — advertising killed caps is intentional.
+  const candidates: Manifest[] = [];
   for (const manifest of capabilityRegistry.values()) {
-    if (manifest.Identity.lifecycleState !== "active") {
-      continue;
-    }
-
     const capabilityId = manifest.Identity.capabilityId;
-    if (typeof capabilityId !== "string") {
+    const version = manifest.Identity.version;
+    if (typeof capabilityId !== "string" || typeof version !== "string") {
       continue;
     }
 
@@ -294,29 +516,117 @@ export async function discover(
       continue;
     }
 
-    const grantKey = `${installationId}/${capabilityId}`;
-    try {
-      const grant = await loadConfig(
-        cache,
-        scopeReaderForKind(reader, "grants"),
-        "grants",
-        grantKey,
-      );
-      if (grant.revoked_at != null) {
-        continue;
-      }
-    } catch (error) {
-      if (error instanceof ConfigCacheMissError) {
-        continue;
-      }
-      throw error;
-    }
-
-    manifests.push(manifest);
+    candidates.push(manifest);
   }
 
+  const evaluated = await Promise.all(
+    candidates.map(async (manifest) => {
+      const capabilityId = manifest.Identity.capabilityId as string;
+      const version = manifest.Identity.version as string;
+      const grantKey = `${installationId}/${capabilityId}`;
+
+      const [grantOutcome, overlay] = await Promise.all([
+        (async (): Promise<"skip" | "ok"> => {
+          try {
+            const grant = await loadConfig(cache, reader, "grants", grantKey);
+            if (grant.revoked_at != null) {
+              return "skip";
+            }
+            if (
+              typeof grant.capability_version === "string" &&
+              manifest.Identity.version !== grant.capability_version
+            ) {
+              return "skip";
+            }
+            return "ok";
+          } catch (error) {
+            if (error instanceof ConfigCacheMissError) {
+              return "skip";
+            }
+            throw error;
+          }
+        })(),
+        loadLifecycleOverlay(cache, reader, capabilityId, version),
+      ]);
+
+      if (grantOutcome === "skip") {
+        return null;
+      }
+
+      const effective = effectiveLifecycle(manifest, overlay);
+      if (effective.lifecycleState === "retired") {
+        return null;
+      }
+
+      if (
+        effective.lifecycleState !== "active" &&
+        effective.lifecycleState !== "deprecated"
+      ) {
+        return null;
+      }
+
+      return manifestWithEffectiveIdentity(manifest, effective);
+    }),
+  );
+
+  const manifests = evaluated.filter((entry): entry is Manifest => entry !== null);
   const sorted = sortManifests(manifests);
-  return { manifests: sorted, etag: computeDiscoveryEtag(sorted) };
+  return { manifests: sorted, etag: await computeDiscoveryEtag(sorted) };
+}
+
+export async function getGrantedCapabilityVersion(
+  installationId: string,
+  capabilityId: string,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<string | null> {
+  try {
+    const grant = await loadConfig(
+      cache,
+      reader,
+      "grants",
+      `${installationId}/${capabilityId}`,
+    );
+    if (grant.revoked_at != null) {
+      return null;
+    }
+    return typeof grant.capability_version === "string"
+      ? grant.capability_version
+      : null;
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** RFC 7232 weak comparison: strip optional `W/` and surrounding quotes. */
+function opaqueTagEquals(candidate: string, rawEtag: string): boolean {
+  let tag = candidate.trim();
+  if (tag.startsWith("W/")) {
+    tag = tag.slice(2).trim();
+  }
+  if (tag.length >= 2 && tag.startsWith('"') && tag.endsWith('"')) {
+    tag = tag.slice(1, -1);
+  }
+  return tag === rawEtag;
+}
+
+function ifNoneMatchMatches(ifNoneMatch: string | null, rawEtag: string): boolean {
+  if (ifNoneMatch === null) {
+    return false;
+  }
+  const header = ifNoneMatch.trim();
+  if (header === "*") {
+    return true;
+  }
+  for (const part of header.split(",")) {
+    if (opaqueTagEquals(part, rawEtag)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function buildDiscoveryResponse(
@@ -324,18 +634,25 @@ export function buildDiscoveryResponse(
   manifestList: Manifest[],
   etag: string,
 ): Response {
+  const quotedEtag = `"${etag}"`;
+  const cacheControl = "private, must-revalidate";
   const ifNoneMatch = request.headers.get("If-None-Match");
-  if (ifNoneMatch === etag) {
+
+  if (ifNoneMatchMatches(ifNoneMatch, etag)) {
     return new Response(null, {
       status: 304,
-      headers: { ETag: etag },
+      headers: {
+        ETag: quotedEtag,
+        "Cache-Control": cacheControl,
+      },
     });
   }
 
   return new Response(JSON.stringify({ manifests: manifestList }), {
     status: 200,
     headers: {
-      ETag: etag,
+      ETag: quotedEtag,
+      "Cache-Control": cacheControl,
       "Content-Type": "application/json",
     },
   });

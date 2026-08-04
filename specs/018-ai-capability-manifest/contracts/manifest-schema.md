@@ -136,7 +136,10 @@ is slice H1.
 
 **Consumed by:** Provider router.
 
-**Forbidden keys:** `provider`, `model` — see §6.
+**Forbidden keys:** any key matching `/provider|model/i` anywhere in the manifest tree, except the
+allowlisted Routing key name `requiredProviderFeatures` (nested provider/model keys under it still
+fail). Exact key-set equality per group also rejects extras such as `preferredProvider` or
+`modelHint`. See §6.
 
 ### 3.9 Economics
 
@@ -170,8 +173,7 @@ When `interactionMode` is **omitted** from the Interaction group, `load()` resol
 `single_shot`. An omitted value is a valid default, not a malformed manifest.
 
 `interactionMode` is the **only switch that changes a request's shape**. It is fixed for the life of
-a capability version: the loaded `Manifest.interactionMode` is read-only at the type level, and
-changing it is a new-version act, never an in-place edit (§5.7).
+a capability version: `load()` returns a deeply frozen `Manifest`; runtime mutation throws (§5.7).
 
 ---
 
@@ -189,20 +191,29 @@ If any of these fields appear while `interactionMode` is `single_shot` (explicit
 `load()` throws with `Conversational-only field rejected on single_shot: <field>`. There is no
 silent-stripping path.
 
-Full validation of conversational field **contents** (permitted key set, numeric bounds) is slice
-H1; A4 enforces presence/absence only.
+Full validation of conversational field **numeric bounds** remains slice H1. Vocabulary membership
+of `permittedKeySet` entries is the H1 content rule co-located in this loader (H1 Consumes A4).
+
+Content enums validated at load time: `Identity.lifecycleState` ∈ {`active`,`deprecated`,`retired`};
+`Output.mode` ∈ {`prose`,`structured`,`structured_atomic`}; `Governance.acceptanceMode` ∈
+{`advisory_display`,`human_accept_required`,`auto_apply`}.
 
 ---
 
 ## 6. Never-names-provider-or-model rule
 
-The Routing group MUST name requirements and policy references only. The following keys are
-**forbidden** anywhere in the Routing object:
+The manifest MUST name requirements and policy references only. `load()` walks every object key in
+the manifest tree and rejects any key matching `/provider|model/i`, except the allowlisted Routing
+key name `requiredProviderFeatures`. Nested keys such as `requiredProviderFeatures.model` still fail.
 
-| Forbidden key | Rejection |
+Exact key-set equality against `MANIFEST_FIELD_MANIFEST` additionally rejects unknown keys in every
+group (e.g. `preferredProvider`, `modelHint`).
+
+| Example forbidden key | Rejection |
 | --- | --- |
-| `provider` | `load()` throws: `Manifest must not name provider or model in Routing: provider` |
-| `model` | `load()` throws: `Manifest must not name provider or model in Routing: model` |
+| `provider` / `model` | denylist or exact-key failure |
+| `preferredProvider` | exact-key / denylist failure on Routing |
+| `modelHint` | exact-key / denylist failure on Prompt binding |
 
 Provider and model selection is owned by the routing policy, not the manifest.
 
@@ -220,14 +231,18 @@ MUST produce a new version — never an in-place mutation (§5.1, §5.7).
 The build enforces immutability through a checked-in append-only registry mapping
 `(capability_id, version)` → manifest content hash:
 
-1. **`hashManifest(json)`** — computes a stable content hash over the manifest JSON using
-   canonical encoding (sorted object keys, recursive; FNV-1a 32-bit, hex-padded to 8 characters).
-2. **`verifyPublishedRegistry(entries, registry)`** — for each `PublishedRegistryEntry`
+1. **Published tree** — JSON manifests under `ai-platform/manifests/published/` and
+   `ai-platform/manifests/published-registry.json`.
+2. **`hashManifest(json)`** — async WebCrypto SHA-256 over the canonical manifest encoding
+   (sorted object keys, recursive); returns 64 lowercase hex characters.
+3. **`verifyPublishedRegistry(entries, registry)`** — for each `PublishedRegistryEntry`
    `{ capabilityId, version, hash }`, looks up `registry[`${capabilityId}@${version}`]` and throws
    if the on-disk hash differs from the registry entry.
+4. **`verifyManifestTree(io)`** / **`npm run verify-manifests`** — loads every published file,
+   hashes it, and runs the registry check. Wired into `npm test`.
 
-A hash mismatch means an in-place edit to a published version and **fails the build** (contract test
-T-A4-12; CI gate per §13.5).
+A hash mismatch means an in-place edit to a published version and **fails the build** (T-A4-12,
+T-A4-23; CI gate per §13.5).
 
 ### 7.3 Registry key format
 
@@ -245,9 +260,10 @@ Example: `clinic.visit_summary@1.0.0`
 
 | Export | Role |
 | --- | --- |
-| `load(json)` | Validate and return a typed `Manifest`. |
-| `hashManifest(json)` | Stable content hash for registry checks. |
+| `load(json)` | Validate and return a deeply frozen typed `Manifest`. |
+| `hashManifest(json)` | Async WebCrypto SHA-256 content hash for registry checks. |
 | `verifyPublishedRegistry(entries, registry)` | Assert on-disk hashes match published entries. |
+| `verifyManifestTree(io)` | Build gate over checked-in published manifests + registry. |
 | `Manifest` | TypeScript type for the loaded manifest. |
 | `MANIFEST_FIELD_GROUPS` | Ordered list of the ten group names. |
 | `MANIFEST_FIELD_MANIFEST` | Field-key manifest per group (schema-as-data). |

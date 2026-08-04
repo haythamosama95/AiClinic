@@ -29,10 +29,7 @@ import 'package:ai_clinic/features/patients/presentation/widgets/patient_invoice
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_notes_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_grid.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_record_card.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/visits/presentation/navigation/visit_navigation.dart';
->>>>>>> master
 
 /// Patient profile route (`/patients/:patientId`).
 class PatientDetailPage extends ConsumerStatefulWidget {
@@ -175,25 +172,12 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
   }
 
   Widget _buildBreadcrumb(BuildContext context, String patientName) {
-<<<<<<< HEAD
-    final l10n = context.l10n;
-    return AppBreadcrumb(
-      items: [
-        AppBreadcrumbItem(
-          label: l10n.patients,
-          onTap: () => context.nav.goPatients(),
-        ),
-        AppBreadcrumbItem(label: patientName),
-      ],
-    );
-=======
     scheduleBreadcrumbEntryLabelUpdate(
       ref,
       'patient:${widget.patientId}',
       BreadcrumbLabel.fixed(patientName),
     );
     return const BreadcrumbTrailView();
->>>>>>> master
   }
 
   /// Centers tab placeholder states (empty / error) within the full content width.
@@ -213,19 +197,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
       children: [
         AppPageHeader(
           title: l10n.patientNotFound,
-<<<<<<< HEAD
-          breadcrumb: AppBreadcrumb(
-            items: [
-              AppBreadcrumbItem(
-                label: l10n.patients,
-                onTap: () => context.nav.goPatients(),
-              ),
-              AppBreadcrumbItem(label: l10n.patientDetailBreadcrumb),
-            ],
-          ),
-=======
           breadcrumb: const BreadcrumbTrailView(),
->>>>>>> master
         ),
         AppEmptyState(
           variant: AppEmptyStateVariant.error,
@@ -378,12 +350,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
           card: PatientVisitRecordCard.fromVisit(
             visit,
             key: ValueKey('visit-${visit.id}'),
-<<<<<<< HEAD
-=======
             onTap: canOpenVisitFromPatientHistory(ref, visit)
                 ? () => openVisitFromPatientHistory(context, ref, visit)
                 : null,
->>>>>>> master
           ),
         ),
     ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));

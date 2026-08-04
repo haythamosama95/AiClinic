@@ -6,23 +6,16 @@ import { Card } from '@/components/card/Card'
 import { cn } from '@/lib/cn'
 import { motionPresets, resolveTransition, staggerChildren } from '@/lib/motion'
 import {
-<<<<<<< HEAD
-=======
   getAllergyById,
   getChronicConditionById,
   getCurrentMedicationById,
->>>>>>> master
   getDurationLabel,
   getFrequencyLabel,
   getInvestigationLabel,
   getMedicationLabel,
   getVitalSignById,
 } from './mock-data'
-<<<<<<< HEAD
-import type { VisitFormData } from './types'
-=======
 import type { MedicalBackgroundEntry, VisitFormData } from './types'
->>>>>>> master
 
 export type VisitSummaryProps = {
   form: VisitFormData
@@ -44,16 +37,6 @@ function LedgerText({ value }: { value: string }) {
   return <span className="whitespace-pre-wrap">{value}</span>
 }
 
-<<<<<<< HEAD
-function LedgerInlineList({
-  items,
-  emptyLabel = '—',
-}: {
-  items: { id: string; label: string; meta?: string }[]
-  emptyLabel?: string
-}) {
-  if (items.length === 0) {
-=======
 function LedgerBackgroundList({
   entries,
   resolveItem,
@@ -64,24 +47,10 @@ function LedgerBackgroundList({
   emptyLabel: string
 }) {
   if (entries.length === 0) {
->>>>>>> master
     return <span className="text-text-tertiary">{emptyLabel}</span>
   }
 
   return (
-<<<<<<< HEAD
-    <span>
-      {items.map((item, index) => (
-        <span key={item.id}>
-          {index > 0 ? <span className="text-text-tertiary"> · </span> : null}
-          {item.label}
-          {item.meta ? (
-            <span className="text-text-secondary"> ({item.meta})</span>
-          ) : null}
-        </span>
-      ))}
-    </span>
-=======
     <ul className="space-y-1.5">
       {entries.map((entry) => {
         const item = resolveItem(entry.itemId)
@@ -99,7 +68,6 @@ function LedgerBackgroundList({
         )
       })}
     </ul>
->>>>>>> master
   )
 }
 
@@ -202,17 +170,6 @@ export function VisitSummary({ form, onEdit, onFinalize }: VisitSummaryProps) {
     { label: 'History', value: <LedgerText value={form.history} /> },
     {
       label: 'Chronic conditions',
-<<<<<<< HEAD
-      value: <LedgerInlineList items={form.chronicConditions} emptyLabel="None recorded" />,
-    },
-    {
-      label: 'Allergies',
-      value: <LedgerInlineList items={form.allergies} emptyLabel="None recorded" />,
-    },
-    {
-      label: 'Current medications',
-      value: <LedgerInlineList items={form.currentMedications} emptyLabel="None recorded" />,
-=======
       value: (
         <LedgerBackgroundList
           entries={form.chronicConditions}
@@ -240,7 +197,6 @@ export function VisitSummary({ form, onEdit, onFinalize }: VisitSummaryProps) {
           emptyLabel="None recorded"
         />
       ),
->>>>>>> master
     },
   ]
 

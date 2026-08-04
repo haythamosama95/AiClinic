@@ -22,8 +22,6 @@ void main() {
       expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.login), isFalse);
       expect(ShellNavConfig.allowsUnauthenticatedPreview(AppRoutes.bootstrap), isFalse);
       expect(ShellNavConfig.allowsUnauthenticatedPreview('/unknown'), isFalse);
-<<<<<<< HEAD
-=======
     });
   });
 
@@ -38,33 +36,19 @@ void main() {
   group('ShellNavConfig.isFullWidthLocation', () {
     test('appointment detail uses full-width shell layout', () {
       expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentDetail('apt-1')), isTrue);
->>>>>>> master
     });
-  });
 
-<<<<<<< HEAD
-  group('ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder', () {
-    test('uses placeholders for shell preview routes but not design system', () {
-      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.home), isTrue);
-      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.settings), isTrue);
-      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.foundationDemo), isFalse);
-=======
     test('appointment hub routes stay full width', () {
       expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsCalendar), isTrue);
       expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsQueue), isTrue);
->>>>>>> master
     });
-  });
 
-<<<<<<< HEAD
-=======
     test('non-detail appointment routes are not treated as detail', () {
       expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsBook), isFalse);
       expect(ShellNavConfig.isFullWidthLocation(AppRoutes.appointmentsSchedule('doc-1')), isFalse);
     });
   });
 
->>>>>>> master
   group('ShellNavConfig.isFillViewportLocation', () {
     test('billing routes fill the shell viewport', () {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
@@ -72,10 +56,7 @@ void main() {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
     });
-  });
 
-<<<<<<< HEAD
-=======
     test('personal settings routes use shell scroll (content-sized)', () {
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsAppearance), isFalse);
       expect(ShellNavConfig.isFillViewportLocation(AppRoutes.settingsNotifications), isFalse);
@@ -104,7 +85,6 @@ void main() {
     });
   });
 
->>>>>>> master
   group('LoginQueryParams', () {
     test('forgot-password intent redirect preserves query contract', () {
       expect(

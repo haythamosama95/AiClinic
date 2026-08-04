@@ -1,19 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/core/ui/components/app_button.dart';
->>>>>>> master
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/medical_background_entry_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/medical_background_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_medical_background_editor.dart';
 
-<<<<<<< HEAD
-import '../../support/visit_encounter_test_support.dart';
-=======
->>>>>>> master
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(
@@ -39,16 +32,6 @@ Future<void> _pumpEditor(
       allergies: allergies,
       currentMedications: currentMedications,
       canEdit: canEdit,
-<<<<<<< HEAD
-      onCreateCondition: onCreateCondition ?? (_, __) {},
-      onUpdateCondition: onUpdateCondition ?? (_, __, ___) {},
-      onArchiveCondition: onArchiveCondition ?? (_) {},
-      onCreateAllergy: onCreateAllergy ?? (_, __) {},
-      onUpdateAllergy: onUpdateAllergy ?? (_, __, ___) {},
-      onArchiveAllergy: onArchiveAllergy ?? (_) {},
-      onCreateMedication: onCreateMedication ?? (_, __) {},
-      onUpdateMedication: onUpdateMedication ?? (_, __, ___) {},
-=======
       onCreateCondition: onCreateCondition ?? (_, _) {},
       onUpdateCondition: onUpdateCondition ?? (_, _, _) {},
       onArchiveCondition: onArchiveCondition ?? (_) {},
@@ -57,25 +40,12 @@ Future<void> _pumpEditor(
       onArchiveAllergy: onArchiveAllergy ?? (_) {},
       onCreateMedication: onCreateMedication ?? (_, _) {},
       onUpdateMedication: onUpdateMedication ?? (_, _, _) {},
->>>>>>> master
       onArchiveMedication: onArchiveMedication ?? (_) {},
     ),
   );
   await pumpVisitsFrames(tester);
 }
 
-<<<<<<< HEAD
-Finder _columnForLabel(String label) {
-  return find.ancestor(
-    of: find.text(label),
-    matching: find.byType(Column),
-  );
-}
-
-Future<void> _tapAddInColumn(WidgetTester tester, String columnLabel) async {
-  final column = _columnForLabel(columnLabel);
-  final addButton = find.descendant(of: column, matching: find.text('Add'));
-=======
 Finder _categoryColumnScope(String columnLabel) {
   return find.ancestor(
     of: find.text(columnLabel),
@@ -88,7 +58,6 @@ Future<void> _tapAddInColumn(WidgetTester tester, String columnLabel) async {
     of: _categoryColumnScope(columnLabel),
     matching: find.widgetWithText(AppButton, 'Add'),
   );
->>>>>>> master
   await tester.ensureVisible(addButton);
   await tester.tap(addButton);
   await pumpVisitsFrames(tester);

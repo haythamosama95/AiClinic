@@ -1,11 +1,6 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
-=======
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/queue/presentation/providers/queue_shift_provider.dart';
->>>>>>> master
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/clinic-management/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';

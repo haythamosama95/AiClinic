@@ -7,13 +7,9 @@ enum ClinicManagementTab {
   organization('organization', 'Organization', Icons.apartment),
   branches('branches', 'Branches', Icons.location_on),
   staff('staff', 'Staff', Icons.group),
-<<<<<<< HEAD
-  roles('roles', 'Roles', Icons.shield);
-=======
   roles('roles', 'Roles', Icons.shield),
   services('services', 'Services', Icons.medical_services_outlined),
   settings('settings', 'Settings', Icons.settings_outlined);
->>>>>>> master
 
   const ClinicManagementTab(this.id, this.label, this.icon);
 
@@ -31,11 +27,7 @@ enum ClinicManagementTab {
   }
 }
 
-<<<<<<< HEAD
-/// Full tab catalog in display order (Organization → Branches → Staff → Roles).
-=======
 /// Full tab catalog in display order (Organization → Branches → Staff → Roles → Services → Settings).
->>>>>>> master
 const clinicManagementTabs = ClinicManagementTab.values;
 
 /// Tabs visible for the current session (§5 Phase 2 wiring).
@@ -53,10 +45,7 @@ bool _isTabVisible(ClinicManagementTab tab, AuthSessionState auth) {
     ClinicManagementTab.branches => AuthRouteGuard.canAccessBranchManagement(auth),
     ClinicManagementTab.staff => AuthRouteGuard.canAccessStaffManagement(auth),
     ClinicManagementTab.roles => AuthRouteGuard.canAccessPermissionMatrix(auth),
-<<<<<<< HEAD
-=======
     ClinicManagementTab.services => AuthRouteGuard.canAccessServiceCatalogList(auth),
     ClinicManagementTab.settings => AuthRouteGuard.canAccessBillingSettings(auth),
->>>>>>> master
   };
 }

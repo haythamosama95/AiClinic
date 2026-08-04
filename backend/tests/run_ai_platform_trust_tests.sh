@@ -22,9 +22,13 @@ psql_run() {
 sql_tests=(
   ai_keystore_rls.sql
   ai_token_issuer.sql
+  ai_token_contract_rotation.sql
+  context_provider_rpc.sql
+  ai_acceptance_recording.sql
 )
 
 for f in "${sql_tests[@]}"; do
+  psql_run -c "DELETE FROM ai_internal.ai_token_issuance;" >/dev/null
   printf '== AI platform trust suite: %s ==\n' "${f}"
   psql_run -f "${script_dir}/${f}" >/dev/null
 done

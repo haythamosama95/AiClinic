@@ -5,12 +5,6 @@ import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
-<<<<<<< HEAD
-
-/// Clinic navigation tree and route bindings for [AppSidebar].
-abstract final class ShellNavConfig {
-  static const List<AppNavGroup> groups = kClinicNavGroups;
-=======
 import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
@@ -34,17 +28,13 @@ abstract final class ShellNavConfig {
         ),
     ];
   }
->>>>>>> master
 
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
     'dashboard': AppRoutes.dashboard,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
-<<<<<<< HEAD
-=======
     'appointments-queue': AppRoutes.appointmentsQueue,
->>>>>>> master
     'appointments-calendar': AppRoutes.appointmentsCalendar,
     'encounters': AppRoutes.encounters,
     'workspace': AppRoutes.workspace,
@@ -109,8 +99,6 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
   }
 
-<<<<<<< HEAD
-=======
   static bool isPersonalSettingsLocation(String location) {
     return AppRoutes.personalSettingsPaths.contains(location);
   }
@@ -124,7 +112,6 @@ abstract final class ShellNavConfig {
     return location;
   }
 
->>>>>>> master
   static bool isDesignSystemLocation(String location) {
     return location == AppRoutes.foundationDemo;
   }
@@ -135,9 +122,6 @@ abstract final class ShellNavConfig {
         location == AppRoutes.billingInvoices ||
         location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
-<<<<<<< HEAD
-        location == AppRoutes.appointmentsCalendar;
-=======
         location == AppRoutes.appointmentsCalendar ||
         location == AppRoutes.appointmentsQueue ||
         _isAppointmentDetailLocation(location) ||
@@ -162,7 +146,6 @@ abstract final class ShellNavConfig {
     }
     return location.endsWith('/${AppRoutes.visitDocumentSegment}') ||
         location.endsWith('/${AppRoutes.visitDetailSegment}');
->>>>>>> master
   }
 
   /// Routes whose content should fill the shell viewport (no outer scroll).
@@ -196,8 +179,6 @@ abstract final class ShellNavConfig {
     if (isDesignSystemLocation(location)) {
       return 'Design System';
     }
-<<<<<<< HEAD
-=======
     if (location == AppRoutes.appointmentsQueue) {
       return 'Queue';
     }
@@ -205,16 +186,12 @@ abstract final class ShellNavConfig {
     if (settingsScreen != null) {
       return settingsScreen.label;
     }
->>>>>>> master
 
     final itemId = itemIdForLocation(location);
     return itemId != null ? labelFor(itemId) : null;
   }
 
-<<<<<<< HEAD
-=======
   @Deprecated('Use BreadcrumbTrailResolver and breadcrumbTrailProvider instead')
->>>>>>> master
   static AppBreadcrumb? breadcrumbForLocation(String location, {Uri? uri, void Function(String route)? onNavigate}) {
     final itemId = itemIdForLocation(location);
     if (itemId == null) {
@@ -273,12 +250,9 @@ abstract final class ShellNavConfig {
     if (location.startsWith(AppRoutes.billingInvoices)) {
       return 'invoices';
     }
-<<<<<<< HEAD
-=======
     if (location.startsWith('${AppRoutes.billing}/')) {
       return 'invoices';
     }
->>>>>>> master
     if (location.startsWith(AppRoutes.settingsServices)) {
       return 'services';
     }
@@ -299,12 +273,9 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.encounters) {
       return 'encounters';
     }
-<<<<<<< HEAD
-=======
     if (location.startsWith('${AppRoutes.visits}/')) {
       return 'encounters';
     }
->>>>>>> master
     if (location == AppRoutes.workspace) {
       return 'workspace';
     }
@@ -314,18 +285,13 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.foundationDemo) {
       return 'dev';
     }
-<<<<<<< HEAD
-=======
     if (AppRoutes.personalSettingsPaths.contains(location) || location == AppRoutes.settingsIdleTimeout) {
       return 'settings';
     }
->>>>>>> master
 
     return ShellDevNav.itemIdForLocation(location);
   }
 
-<<<<<<< HEAD
-=======
   static String? _settingsScreenIdFromLocation(String location) {
     if (!location.startsWith('${AppRoutes.settings}/')) {
       return null;
@@ -337,7 +303,6 @@ abstract final class ShellNavConfig {
     return SettingsScreens.byId(segment) == null ? null : segment;
   }
 
->>>>>>> master
   static String? labelFor(String itemId) {
     final devLabel = ShellDevNav.labelFor(itemId);
     if (devLabel != null) {

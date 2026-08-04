@@ -9,7 +9,8 @@ export type ConfigEntityKind =
   | "entitlements"
   | "grants"
   | "kill_switches"
-  | "active_routing_policy";
+  | "active_routing_policy"
+  | "token_contracts";
 
 type D1Row = Record<string, unknown>;
 
@@ -43,6 +44,8 @@ function cloneRow(row: D1Row): D1Row {
 
 export class ConfigCache {
   private readonly stores = new Map<ConfigEntityKind, Map<string, CacheEntry>>();
+  /** In-flight cold loads keyed by `${kind}:${key}` — single-flight / stampede protection. */
+  private readonly inflight = new Map<string, Promise<D1Row>>();
 
   private storeFor(kind: ConfigEntityKind): Map<string, CacheEntry> {
     let store = this.stores.get(kind);
@@ -80,6 +83,70 @@ export class ConfigCache {
       expiresAt: now + CACHE_TTL_MS,
     });
   }
+
+  /** @internal single-flight seam used by `loadConfig`. */
+  beginInflight(
+    kind: ConfigEntityKind,
+    key: string,
+    loader: () => Promise<D1Row>,
+  ): Promise<D1Row> {
+    const flightKey = `${kind}:${key}`;
+    const existing = this.inflight.get(flightKey);
+    if (existing !== undefined) {
+      return existing.then(cloneRow);
+    }
+
+    const promise = loader().finally(() => {
+      this.inflight.delete(flightKey);
+    });
+    this.inflight.set(flightKey, promise);
+    return promise.then(cloneRow);
+  }
+}
+
+/**
+ * Production D1Reader for enrolled-key verification and related config loads.
+ * Covers the kinds EnrolledKeyVerifier consults: installations, keys, token_contracts.
+ * Reader keys are `${kind}:${key}` (see loadConfig).
+ */
+export function createD1ConfigReader(db: D1Database): D1Reader {
+  return {
+    async read(prefixedKey: string): Promise<D1Row | "miss"> {
+      const separator = prefixedKey.indexOf(":");
+      if (separator === -1) {
+        return "miss";
+      }
+
+      const kind = prefixedKey.slice(0, separator);
+      const key = prefixedKey.slice(separator + 1);
+
+      switch (kind) {
+        case "installations": {
+          const row = await db
+            .prepare("SELECT * FROM installation WHERE installation_id = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "keys": {
+          const row = await db
+            .prepare("SELECT * FROM installation_key WHERE key_id = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "token_contracts": {
+          const row = await db
+            .prepare("SELECT * FROM token_contract WHERE ver = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        default:
+          return "miss";
+      }
+    },
+  };
 }
 
 export async function loadConfig(
@@ -94,11 +161,15 @@ export async function loadConfig(
     return cached;
   }
 
-  const row = await reader.read(key);
-  if (row === "miss") {
-    throw new ConfigCacheMissError(kind, key);
-  }
+  return cache.beginInflight(kind, key, async () => {
+    // Reader keys are `${kind}:${key}` so one D1Reader serves every entity kind
+    // without colliding on shared identifiers (installations vs entitlements).
+    const row = await reader.read(`${kind}:${key}`);
+    if (row === "miss") {
+      throw new ConfigCacheMissError(kind, key);
+    }
 
-  cache.remember(kind, key, row, now);
-  return cloneRow(row);
+    cache.remember(kind, key, row, now);
+    return cloneRow(row);
+  });
 }

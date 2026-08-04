@@ -355,10 +355,7 @@ class _DropzoneAreaState extends State<_DropzoneArea> {
       button: true,
       enabled: !widget.disabled,
       label: 'Drop files here',
-<<<<<<< HEAD
-=======
       identifier: widget.id,
->>>>>>> master
       child: Focus(
         focusNode: widget.focusNode,
         onKeyEvent: (node, event) {

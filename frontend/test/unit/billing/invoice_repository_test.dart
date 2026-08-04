@@ -279,8 +279,6 @@ void main() {
   group('InvoiceRepository discounts', () {
     final expectedUpdatedAt = DateTime.utc(2026, 6, 1, 10);
 
-<<<<<<< HEAD
-=======
     setUp(() async {
       await repo.addItem(
         invoiceId: BillingRpcTestClient.draftInvoiceId,
@@ -291,7 +289,6 @@ void main() {
       );
     });
 
->>>>>>> master
     test('applyLineDiscount sends discount kind wire value', () async {
       await repo.applyLineDiscount(
         itemId: BillingRpcTestClient.itemId,
@@ -340,12 +337,6 @@ void main() {
   });
 
   group('InvoiceRepository setInsuranceCoverage', () {
-<<<<<<< HEAD
-    test('forwards provider and covered amount on success', () async {
-      await repo.setInsuranceCoverage(
-        invoiceId: BillingRpcTestClient.draftInvoiceId,
-        expectedUpdatedAt: DateTime.utc(2026, 6, 1, 10),
-=======
     final expectedUpdatedAt = DateTime.utc(2026, 6, 1, 10);
 
     setUp(() async {
@@ -362,7 +353,6 @@ void main() {
       await repo.setInsuranceCoverage(
         invoiceId: BillingRpcTestClient.draftInvoiceId,
         expectedUpdatedAt: expectedUpdatedAt,
->>>>>>> master
         providerId: BillingRpcTestClient.insuranceProviderId,
         coveredAmount: '25.00',
       );

@@ -3,16 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
-import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
-=======
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_entry.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_route_extra.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_provider.dart';
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail_resolver.dart';
->>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
@@ -45,8 +40,6 @@ class AppNavigator {
   void goStaffCreate() => _context.go(AppRoutes.staffCreate);
   void goStaffPasswordReset() => _context.go(AppRoutes.staffPasswordReset);
   void goFoundationDemo() => _context.go(AppRoutes.foundationDemo);
-  void goDesignSystem() => _context.go(AppRoutes.foundationDemo);
-
   void goDesignSystem() => _context.go(AppRoutes.foundationDemo);
 
   // Patient management
@@ -85,18 +78,6 @@ class AppNavigator {
   void goAppointments() => goAppointmentsCalendar();
 
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
-<<<<<<< HEAD
-  void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
-  void goAppointmentsCalendar() => _context.go(AppRoutes.appointmentsCalendar);
-  void pushAppointmentDetail(String appointmentId, {AppointmentListItem? preview}) =>
-      _context.push(AppRoutes.appointmentDetail(appointmentId), extra: AppointmentDetailRouteExtra(preview: preview));
-  void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
-
-  // Billing (V1-6)
-  void goBilling() => _context.go(AppRoutes.billingInvoices);
-  void goBillingInvoices() => _context.go(AppRoutes.billingInvoices);
-  void pushBillingInvoiceDetail(String invoiceId) => _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
-=======
   void goAppointmentsQueue() {
     _context.go(AppRoutes.appointmentsQueue);
     _syncHubTrail(AppRoutes.appointmentsQueue);
@@ -143,10 +124,8 @@ class AppNavigator {
     );
   }
 
->>>>>>> master
   void pushBillingInvoiceReview(String invoiceId) => _context.push(AppRoutes.billingInvoiceReview(invoiceId));
   void pushBillingInvoiceEdit(String invoiceId) => _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
-  void pushVisitBilling(String visitId) => _context.push(AppRoutes.billingVisit(visitId));
 
   void pushVisitBilling(String visitId, {BreadcrumbTrail? trail}) => _navigatePush(
     AppRoutes.billingVisit(visitId),

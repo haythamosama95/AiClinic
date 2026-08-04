@@ -2,25 +2,16 @@ import { useCallback, useState } from 'react'
 import {
   INITIAL_BRANCHES,
   INITIAL_ORGANIZATION,
-<<<<<<< HEAD
-  INITIAL_STAFF,
-} from './mock-data'
-import type { BranchRecord, OrganizationProfile, StaffRecord } from './types'
-=======
   INITIAL_SERVICES,
   INITIAL_STAFF,
 } from './mock-data'
 import type { BranchRecord, OrganizationProfile, ServiceRecord, StaffRecord } from './types'
->>>>>>> master
 
 export function useClinicManagementState() {
   const [organization, setOrganization] = useState<OrganizationProfile>(INITIAL_ORGANIZATION)
   const [branches, setBranches] = useState<BranchRecord[]>(INITIAL_BRANCHES)
   const [staff, setStaff] = useState<StaffRecord[]>(INITIAL_STAFF)
-<<<<<<< HEAD
-=======
   const [services, setServices] = useState<ServiceRecord[]>(INITIAL_SERVICES)
->>>>>>> master
 
   const updateOrganization = useCallback((next: OrganizationProfile) => {
     setOrganization(next)
@@ -64,8 +55,6 @@ export function useClinicManagementState() {
     setStaff((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
-<<<<<<< HEAD
-=======
   const addService = useCallback((service: ServiceRecord) => {
     setServices((prev) => [...prev, service])
   }, [])
@@ -78,15 +67,11 @@ export function useClinicManagementState() {
     setServices((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
->>>>>>> master
   return {
     organization,
     branches,
     staff,
-<<<<<<< HEAD
-=======
     services,
->>>>>>> master
     updateOrganization,
     addBranch,
     updateBranch,
@@ -94,12 +79,9 @@ export function useClinicManagementState() {
     addStaff,
     updateStaff,
     removeStaff,
-<<<<<<< HEAD
-=======
     addService,
     updateService,
     removeService,
->>>>>>> master
   }
 }
 

@@ -228,6 +228,56 @@ describe("T-A5-15 request_reference_index_exists_and_unique", () => {
 
     const sample = generateRequestReference();
     assertRequestReferenceFormat(sample);
+
+    await query(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (
+        'inst-a5-15', 'org-a5-15', 'A5 T15 Clinic', 'active', 'eeur',
+        '2026-08-01T00:00:00.000Z'
+      )`,
+    );
+
+    await query(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        state, created_at, updated_at, completed_at, terminal_error_code,
+        trace_id, payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (
+        'req-a5-15', '${sample}', 'inst-a5-15', 'actor-a5-15', 'branch-a5-15',
+        'clinic.visit_summary', '1.0.0', 'prompt/a5-15@v1', 'idem-a5-15',
+        'Accepted', '2026-08-01T12:00:00.000Z', '2026-08-01T12:00:00.000Z', NULL, NULL,
+        '01A5T15TRACEREFERENCE0001', NULL, NULL, NULL
+      )`,
+    );
+
+    const stored = await query<{ request_reference: string }>(
+      "SELECT request_reference FROM ai_request WHERE request_id = 'req-a5-15'",
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.request_reference).toBe(sample);
+    assertRequestReferenceFormat(stored[0]!.request_reference);
+  });
+});
+
+describe("T-A5-15b idempotency_key_not_uniquely_indexed_on_d1", () => {
+  it("has no unique index on (installation_id, idempotency_key) — C3 Quota DO owns idempotency (§4.3.3)", async () => {
+    await applyMigrations();
+
+    const indexes = await query<{ name: string; sql: string }>(
+      `SELECT name, sql
+       FROM sqlite_master
+       WHERE type = 'index'
+         AND tbl_name = 'ai_request'
+         AND sql IS NOT NULL`,
+    );
+
+    const idempotencyUniqueIndexes = indexes.filter(
+      (index) =>
+        /idempotency/i.test(index.sql) && /UNIQUE/i.test(index.sql),
+    );
+    expect(idempotencyUniqueIndexes).toHaveLength(0);
   });
 });
 

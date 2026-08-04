@@ -34,10 +34,10 @@ and minimization), **§4.3.3** (cost-ceiling check), **§6.1 stages 6–7** (pip
   when `estimatedInputTokens` alone exceeds `maxInputTokens`; zero egress on pre-flight rejection.
 - **What the plan scoped** ([`plan.md`](./plan.md)): two new modules under `ai-platform/src/context/`
   — `validator.ts` (stage-6 `validateContext()` + `buildContextRequiredResponse()`) and
-  `preflight.ts` (stage-7 `estimateInputTokens()` + `runCostPreflight()`); one test file with 15
-  named test suites (`T-C2-01` … `T-C2-15`); one frozen contract artifact; no `worker.ts` wiring
-  (functions tested directly, mirroring B3/C1); CPU-only — no D1, Durable Object, R2, or provider
-  I/O.
+  `preflight.ts` (stage-7 `estimateInputTokens()` + `runCostPreflight()`, optional
+  `promptArtifactByteLength`); one test file with 15 named suites (`T-C2-01` … `T-C2-15`) plus
+  C2-R review cases; one frozen contract artifact; no `worker.ts` wiring (functions tested
+  directly, mirroring B3/C1); CPU-only — no D1, Durable Object, R2, or provider I/O.
 
 ## 2. What was implemented
 

@@ -64,17 +64,17 @@ type InvocationInput = {
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
-  "ordered role-tagged message parts": [
+  parts: [
     { role: "user", content: "Summarise the visit." },
   ],
-  "output format directive": { type: "text" },
-  "sampling constraints": { temperature: 0.2 },
-  "max output tokens": 256,
-  "stop conditions": [],
-  "tool/function declarations (reserved for future)": [],
-  "stream flag": false,
+  formatDirective: { type: "text" },
+  samplingConstraints: { temperature: 0.2 },
+  maxOutputTokens: 256,
+  stopConditions: [],
+  toolDeclarations: [],
+  stream: false,
   deadline: 30_000,
-  "correlation ids": {
+  correlationIds: {
     request_reference: "7QK4-2B9F",
     trace_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   },
@@ -185,13 +185,13 @@ function createRecordingSleeper(): RecordingSleeper {
 
 function createRetryableError(code: TaxonomyCode): CanonicalError {
   return setRetryabilityFromClassification({
-    "taxonomy code": code,
+    taxonomyCode: code,
     retryability: false,
-    "provider-native code and message": {
+    providerNative: {
       code: "HARNESS_ERROR",
       message: `Harness retryable ${code}`,
     },
-    "whether the attempt consumed budget": false,
+    consumedBudget: false,
   });
 }
 
@@ -205,7 +205,7 @@ function createPartialStreamHarness(
   failCode: TaxonomyCode,
 ): ProviderPort {
   return {
-    invoke(_request: CanonicalRequest): ProviderInvokeResult {
+    async invoke(_request: CanonicalRequest): Promise<ProviderInvokeResult> {
       sink.emitStreamText(partialText);
       return {
         kind: "error",
@@ -260,7 +260,7 @@ function scriptedAdapter(outcomes: ScriptedOutcome[]): FakeAdapter {
 }
 
 function finalText(result: CanonicalResult): string {
-  const content = result["final content"];
+  const content = result.finalContent;
   if (
     typeof content === "object" &&
     content !== null &&
@@ -408,7 +408,7 @@ describe("T-D3-07 retry_budget_never_exceeded", () => {
     if (result.ok) {
       return;
     }
-    expect(result.error["taxonomy code"]).toBe("provider_unavailable");
+    expect(result.error.taxonomyCode).toBe("provider_unavailable");
     expect(invokeSpy[PRIMARY_PROVIDER_ID]).toBe(2);
     expect(invokeSpy[FALLBACK_PROVIDER_ID]).toBe(2);
     expect(collector.attempts).toHaveLength(4);
@@ -473,7 +473,7 @@ describe("T-D3-02 terminal_failure_not_retried", () => {
     if (result.ok) {
       return;
     }
-    expect(result.error["taxonomy code"]).toBe("provider_rejected");
+    expect(result.error.taxonomyCode).toBe("provider_rejected");
     expect(collector.attempts).toHaveLength(1);
     expect(collector.attempts[0]).toMatchObject({
       provider_id: PRIMARY_PROVIDER_ID,
@@ -512,7 +512,7 @@ describe("T-D3-05 exhausted_chain_provider_unavailable", () => {
     if (result.ok) {
       return;
     }
-    expect(result.error["taxonomy code"]).toBe("provider_unavailable");
+    expect(result.error.taxonomyCode).toBe("provider_unavailable");
     expect(collector.attempts).toHaveLength(4);
   });
 });

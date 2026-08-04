@@ -1,0 +1,20 @@
+{
+  "id": "ds-visit-summary-001",
+  "object": "chat.completion",
+  "model": "deepseek-chat",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The patient presents with a persistent headache reported for three days. The chief complaint is documented for advisory clinician review. Timeline and symptom emphasis are included for outpatient visit summary documentation."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 84,
+    "completion_tokens": 36,
+    "total_tokens": 120
+  }
+}

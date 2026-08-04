@@ -80,17 +80,12 @@ class _TreatmentPlanFormDialogState extends ConsumerState<TreatmentPlanFormDialo
   }
 
   Future<List<AppComboboxItem>> _searchMedications(String query) async {
-<<<<<<< HEAD
-    final items = await ref.read(visitRepositoryProvider).searchMedications(query: query);
-    return [for (final item in items) AppComboboxItem(id: item.id, label: item.name)];
-=======
     try {
       final items = await ref.read(visitRepositoryProvider).searchMedications(query: query);
       return [for (final item in items) AppComboboxItem(id: item.id, label: item.name)];
     } catch (_) {
       return [];
     }
->>>>>>> master
   }
 
   void _submit() {
@@ -173,10 +168,7 @@ class _TreatmentPlanFormDialogState extends ConsumerState<TreatmentPlanFormDialo
               requiredMark: true,
               error: _dosageError,
               child: AppTextInput(
-<<<<<<< HEAD
-=======
                 id: 'treatment-dosage',
->>>>>>> master
                 controller: _dosageController,
                 placeholder: 'e.g. 500 mg',
                 invalid: _dosageError != null,

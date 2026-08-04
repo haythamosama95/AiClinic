@@ -1,0 +1,16 @@
+{
+  "parts": [
+    { "role": "user", "content": "Report usage." }
+  ],
+  "formatDirective": { "type": "text" },
+  "samplingConstraints": { "temperature": 0.2 },
+  "maxOutputTokens": 256,
+  "stopConditions": [],
+  "toolDeclarations": [],
+  "stream": false,
+  "deadline": 30000,
+  "correlationIds": {
+    "request_reference": "7QK4-USAGE",
+    "trace_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+  }
+}

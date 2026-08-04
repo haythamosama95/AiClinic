@@ -16,11 +16,7 @@ void main() {
   final thursday = DateTime(2026, 6, 4, 10, 0);
   final thursdayEnd = DateTime(2026, 6, 4, 10, 30);
 
-<<<<<<< HEAD
-  Future<AppointmentRescheduleConfirmResult?> openDialog(
-=======
   Future<PendingDialogResult<AppointmentRescheduleConfirmResult?>> openDialog(
->>>>>>> master
     WidgetTester tester, {
     required AppointmentListItem appointment,
     required DateTime newStart,
@@ -49,11 +45,7 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-<<<<<<< HEAD
-    return result;
-=======
     return PendingDialogResult(result);
->>>>>>> master
   }
 
   testWidgets('trivial: CAL-RESCHED-01 pickers and confirm key are present', (tester) async {
@@ -82,13 +74,7 @@ void main() {
       );
 
       expect(find.text('End time must be after start time.'), findsOneWidget);
-<<<<<<< HEAD
-      final moveButton = tester.widget<AppButton>(
-        find.byKey(const Key('appointment_reschedule_confirm')),
-      );
-=======
       final moveButton = tester.widget<AppButton>(find.byKey(const Key('appointment_reschedule_confirm')));
->>>>>>> master
       expect(moveButton.disabled, isTrue);
     });
   });
@@ -97,27 +83,13 @@ void main() {
     await withClock(Clock.fixed(DateTime(2026, 6, 1)), () async {
       await openDialog(
         tester,
-<<<<<<< HEAD
-        appointment: calendarAppointmentItem(
-          start: thursday,
-          end: thursdayEnd,
-          status: AppointmentStatus.confirmed,
-        ),
-=======
         appointment: calendarAppointmentItem(start: thursday, end: thursdayEnd, status: AppointmentStatus.confirmed),
->>>>>>> master
         newStart: DateTime(2026, 6, 4, 11, 0),
         newEnd: DateTime(2026, 6, 4, 11, 30),
       );
 
       expect(
-<<<<<<< HEAD
-        find.text(
-          'Only scheduled appointments can be moved. Confirmed appointments must be cancelled and re-booked.',
-        ),
-=======
         find.text('Only scheduled appointments can be moved. Confirmed appointments must be cancelled and re-booked.'),
->>>>>>> master
         findsOneWidget,
       );
     });
@@ -127,14 +99,7 @@ void main() {
     await withClock(Clock.fixed(DateTime(2026, 6, 1)), () async {
       await openDialog(
         tester,
-<<<<<<< HEAD
-        appointment: calendarAppointmentItem(
-          start: thursday,
-          end: thursday.add(const Duration(minutes: 4)),
-        ),
-=======
         appointment: calendarAppointmentItem(start: thursday, end: thursday.add(const Duration(minutes: 4))),
->>>>>>> master
         newStart: DateTime(2026, 6, 4, 11, 0),
         newEnd: DateTime(2026, 6, 4, 11, 30),
       );
@@ -152,11 +117,7 @@ void main() {
         newEnd: DateTime(2026, 6, 4, 6, 30),
       );
 
-<<<<<<< HEAD
-      expect(find.text('Appointment must be within branch working hours.'), findsOneWidget);
-=======
       expect(find.textContaining('Appointment must be within branch working hours'), findsOneWidget);
->>>>>>> master
     });
   });
 
@@ -185,11 +146,7 @@ void main() {
         branchAppointments: [appointment, blocker],
       );
 
-<<<<<<< HEAD
-      expect(find.text('This time overlaps another appointment (Patient B).'), findsOneWidget);
-=======
       expect(find.text('The doctor is not available at this time (overlaps with Patient B).'), findsOneWidget);
->>>>>>> master
     });
   });
 
@@ -224,11 +181,7 @@ void main() {
 
   testWidgets('advanced: CAL-RESCHED-08 Cancel pops without a result', (tester) async {
     await withClock(Clock.fixed(DateTime(2026, 6, 1)), () async {
-<<<<<<< HEAD
-      final resultFuture = await openDialog(
-=======
       final dialog = await openDialog(
->>>>>>> master
         tester,
         appointment: calendarAppointmentItem(start: thursday, end: thursdayEnd),
         newStart: DateTime(2026, 6, 4, 11, 0),
@@ -239,21 +192,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-<<<<<<< HEAD
-      expect(await resultFuture, isNull);
-=======
       expect(await dialog.result, isNull);
->>>>>>> master
     });
   });
 
   testWidgets('advanced: CAL-RESCHED-09 Move pops AppointmentRescheduleConfirmResult on valid move', (tester) async {
     await withClock(Clock.fixed(DateTime(2026, 6, 1)), () async {
-<<<<<<< HEAD
-      final resultFuture = await openDialog(
-=======
       final dialog = await openDialog(
->>>>>>> master
         tester,
         appointment: calendarAppointmentItem(start: thursday, end: thursdayEnd),
         newStart: DateTime(2026, 6, 4, 11, 0),
@@ -264,11 +209,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-<<<<<<< HEAD
-      final result = await resultFuture;
-=======
       final result = await dialog.result;
->>>>>>> master
       expect(result, isA<AppointmentRescheduleConfirmResult>());
       expect(result!.start, DateTime(2026, 6, 4, 11, 0));
       expect(result.end, DateTime(2026, 6, 4, 11, 30));

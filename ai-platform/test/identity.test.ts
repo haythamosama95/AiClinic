@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
   EnrolledKeyVerifier,
@@ -45,7 +46,9 @@ const CLOCK_SKEW_SECONDS = 60;
 const NOW = 1_720_000_450;
 
 const FIXTURE_ISS = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+const FIXTURE_ISS_B = "b1b2c3d4-e5f6-7890-abcd-ef1234567891";
 const FIXTURE_KID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+const FIXTURE_KID_B = "a47ac10b-58cc-4372-a567-0e02b2c3d480";
 const FIXTURE_SUB = "c1000000-0000-4000-8000-000000000001";
 const FIXTURE_ORG = "d2000000-0000-4000-8000-000000000001";
 const FIXTURE_BRANCH = "e3000000-0000-4000-8000-000000000001";
@@ -148,10 +151,14 @@ export async function mintToken(
     new TextEncoder().encode(signingInput),
   );
 
-  let signatureB64 = base64urlEncode(new Uint8Array(signature));
+  const signatureBytes = new Uint8Array(signature);
   if (options.corruptSignature) {
-    signatureB64 = `${signatureB64.slice(0, -1)}X`;
+    // Corrupt raw bytes, not the base64url tail: the last encoding character
+    // often carries padding bits, so swapping it for a fixed letter is a no-op
+    // ~25% of the time and lets verify() succeed intermittently.
+    signatureBytes[0] ^= 0xff;
   }
+  const signatureB64 = base64urlEncode(signatureBytes);
 
   return `${signingInput}.${signatureB64}`;
 }
@@ -193,9 +200,12 @@ function makeReader(
   };
 }
 
-function installationRow(status: string = "active"): Record<string, unknown> {
+function installationRow(
+  status: string = "active",
+  installationId: string = FIXTURE_ISS,
+): Record<string, unknown> {
   return {
-    installation_id: FIXTURE_ISS,
+    installation_id: installationId,
     org_id: FIXTURE_ORG,
     display_name: "Test Clinic",
     status,
@@ -204,32 +214,63 @@ function installationRow(status: string = "active"): Record<string, unknown> {
   };
 }
 
-function keyRow(keypair: TestKeypair): Record<string, unknown> {
+function keyRow(
+  keypair: TestKeypair,
+  installationId: string = FIXTURE_ISS,
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
   return {
     key_id: keypair.kid,
-    installation_id: FIXTURE_ISS,
+    installation_id: installationId,
     public_key: keypair.publicKeyB64,
     algorithm: "EdDSA",
     valid_from: new Date((NOW - 3600) * 1000).toISOString(),
     valid_until: null,
     revoked_at: null,
     jwk: keypair.jwk,
+    ...overrides,
   };
 }
+
+const DEFAULT_TOKEN_CONTRACT: Record<string, unknown> = {
+  ver: "1",
+  added_at: "2026-08-03T00:00:00.000Z",
+  retired_at: null,
+  changed_by: "seed",
+};
 
 function makeIdentityReader(
   keypair: TestKeypair,
   overrides: {
     installation?: Record<string, unknown> | "miss";
+    installationId?: string;
     key?: Record<string, unknown> | "miss";
+    contract?: Record<string, unknown> | "miss" | ((ver: string) => Record<string, unknown> | "miss");
+    /** Extra prefixed rows (e.g. a second installation/key for cross-iss cases). */
+    extra?: Record<string, Record<string, unknown> | "miss">;
   } = {},
 ): ReaderSpy {
+  const installationId = overrides.installationId ?? FIXTURE_ISS;
   return makeReader((lookupKey) => {
-    if (lookupKey === FIXTURE_ISS) {
-      return overrides.installation ?? installationRow("active");
+    if (overrides.extra && lookupKey in overrides.extra) {
+      return overrides.extra[lookupKey]!;
     }
-    if (lookupKey === keypair.kid) {
-      return overrides.key ?? keyRow(keypair);
+    if (lookupKey === `installations:${installationId}`) {
+      return overrides.installation ?? installationRow("active", installationId);
+    }
+    if (lookupKey === `keys:${keypair.kid}`) {
+      return overrides.key ?? keyRow(keypair, installationId);
+    }
+    if (lookupKey.startsWith("token_contracts:")) {
+      const ver = lookupKey.slice("token_contracts:".length);
+      const contractLookup =
+        overrides.contract ??
+        ((contractVer: string) =>
+          contractVer === "1" ? DEFAULT_TOKEN_CONTRACT : "miss");
+      if (typeof contractLookup === "function") {
+        return contractLookup(ver);
+      }
+      return contractLookup;
     }
     return "miss";
   });
@@ -297,24 +338,40 @@ async function clearIdentityTables(db: D1Database): Promise<void> {
 
 function createPlatformD1Reader(db: D1Database): D1Reader {
   return {
-    async read(key: string): Promise<Record<string, unknown> | "miss"> {
-      const installation = await db
-        .prepare("SELECT * FROM installation WHERE installation_id = ?")
-        .bind(key)
-        .first<Record<string, unknown>>();
-      if (installation) {
-        return installation;
+    async read(prefixedKey: string): Promise<Record<string, unknown> | "miss"> {
+      const separator = prefixedKey.indexOf(":");
+      if (separator === -1) {
+        return "miss";
       }
 
-      const installationKey = await db
-        .prepare("SELECT * FROM installation_key WHERE key_id = ?")
-        .bind(key)
-        .first<Record<string, unknown>>();
-      if (installationKey) {
-        return installationKey;
-      }
+      const kind = prefixedKey.slice(0, separator);
+      const key = prefixedKey.slice(separator + 1);
 
-      return "miss";
+      switch (kind) {
+        case "installations": {
+          const installation = await db
+            .prepare("SELECT * FROM installation WHERE installation_id = ?")
+            .bind(key)
+            .first<Record<string, unknown>>();
+          return installation ?? "miss";
+        }
+        case "keys": {
+          const installationKey = await db
+            .prepare("SELECT * FROM installation_key WHERE key_id = ?")
+            .bind(key)
+            .first<Record<string, unknown>>();
+          return installationKey ?? "miss";
+        }
+        case "token_contracts": {
+          const tokenContract = await db
+            .prepare("SELECT * FROM token_contract WHERE ver = ?")
+            .bind(key)
+            .first<Record<string, unknown>>();
+          return tokenContract ?? "miss";
+        }
+        default:
+          return "miss";
+      }
     },
   };
 }
@@ -377,11 +434,16 @@ describe("identity token rejection cases", () => {
     reader?: (keypair: TestKeypair) => ReaderSpy;
     ctx?: (reader: ReaderSpy) => VerifyContext;
     expectOk?: boolean;
+    expectedClaims?: Partial<AatClaims>;
     code?: "unauthenticated" | "installation_suspended";
   }> = [
     {
       name: "identity_rejects_non_eddsa_alg",
       mutate: async (token) => mutateTokenHeaderAlg(token, "none"),
+    },
+    {
+      name: "identity_rejects_hmac_alg",
+      mutate: async (token) => mutateTokenHeaderAlg(token, "HS256"),
     },
     {
       name: "identity_rejects_bad_signature",
@@ -409,6 +471,23 @@ describe("identity token rejection cases", () => {
           exp: NOW + 600,
         }),
       expectOk: true,
+      expectedClaims: {
+        iat: NOW + CLOCK_SKEW_SECONDS - 5,
+        exp: NOW + 600,
+      },
+    },
+    {
+      name: "identity_accepts_expired_inside_skew",
+      mutate: async (_token, keypair) =>
+        mintToken(keypair, {
+          iat: NOW - 900,
+          exp: NOW - CLOCK_SKEW_SECONDS + 1,
+        }),
+      expectOk: true,
+      expectedClaims: {
+        iat: NOW - 900,
+        exp: NOW - CLOCK_SKEW_SECONDS + 1,
+      },
     },
     {
       name: "identity_rejects_outside_skew",
@@ -424,6 +503,30 @@ describe("identity token rejection cases", () => {
         mintToken(keypair, { iss: "00000000-0000-4000-8000-000000009999" }),
       reader: (keypair) =>
         makeIdentityReader(keypair, { installation: "miss" }),
+    },
+    {
+      name: "identity_rejects_unknown_kid",
+      mutate: async (_token, keypair) =>
+        mintToken(keypair, {}, { header: { kid: "00000000-0000-4000-8000-00000000kid0" } }),
+      reader: (keypair) => makeIdentityReader(keypair, { key: "miss" }),
+    },
+    {
+      name: "identity_rejects_revoked_key",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          key: keyRow(keypair, FIXTURE_ISS, {
+            revoked_at: new Date(NOW * 1000).toISOString(),
+          }),
+        }),
+    },
+    {
+      name: "identity_rejects_deleted_installation",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          installation: installationRow("deleted"),
+        }),
     },
   ];
 
@@ -445,8 +548,7 @@ describe("identity token rejection cases", () => {
           if (result.ok) {
             expectPrincipalFromClaims(result.principal, {
               ...DEFAULT_CLAIMS,
-              iat: NOW + CLOCK_SKEW_SECONDS - 5,
-              exp: NOW + 600,
+              ...testCase.expectedClaims,
             });
           }
           return;
@@ -454,6 +556,98 @@ describe("identity token rejection cases", () => {
 
         expectRejected(result, testCase.code ?? "unauthenticated");
       });
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Cross-installation key binding (review Critical 1)
+// ---------------------------------------------------------------------------
+
+describe("identity_rejects_cross_installation_key", () => {
+  it("rejects when kid belongs to a different installation than iss", async () => {
+    const keypairB = await generateTestKeypair(FIXTURE_KID_B);
+    const verifier = new EnrolledKeyVerifier();
+
+    // Sign with installation B's key while claiming iss = A.
+    const token = await mintToken(keypairB, { iss: FIXTURE_ISS });
+    const reader = makeIdentityReader(fixtureKeypair, {
+      extra: {
+        [`keys:${keypairB.kid}`]: keyRow(keypairB, FIXTURE_ISS_B),
+        [`installations:${FIXTURE_ISS_B}`]: installationRow("active", FIXTURE_ISS_B),
+      },
+    });
+
+    const result = await verifier.verify(token, buildVerifyContext(reader));
+
+    expectRejected(result, "unauthenticated");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Malformed-token gauntlet (parse / claim branches)
+// ---------------------------------------------------------------------------
+
+describe("identity_rejects_malformed_token", () => {
+  const gauntlet: Array<{ name: string; token: () => Promise<string> | string }> = [
+    {
+      name: "two-segment token",
+      token: () => {
+        const headerB64 = base64urlEncode(JSON.stringify({ alg: "EdDSA", kid: FIXTURE_KID }));
+        const payloadB64 = base64urlEncode(JSON.stringify(DEFAULT_CLAIMS));
+        return `${headerB64}.${payloadB64}`;
+      },
+    },
+    {
+      name: "invalid base64url",
+      token: () => "!!!.!!!.!!!",
+    },
+    {
+      name: "non-JSON header",
+      token: async () => {
+        const headerB64 = base64urlEncode("not-json");
+        const payloadB64 = base64urlEncode(JSON.stringify(DEFAULT_CLAIMS));
+        return `${headerB64}.${payloadB64}.sig`;
+      },
+    },
+    {
+      name: "non-JSON payload",
+      token: async () => {
+        const headerB64 = base64urlEncode(
+          JSON.stringify({ alg: "EdDSA", kid: FIXTURE_KID }),
+        );
+        const payloadB64 = base64urlEncode("not-json");
+        return `${headerB64}.${payloadB64}.sig`;
+      },
+    },
+    {
+      name: "missing claim",
+      token: async () => {
+        const { org: _omit, ...withoutOrg } = DEFAULT_CLAIMS;
+        const headerB64 = base64urlEncode(
+          JSON.stringify({ alg: "EdDSA", kid: FIXTURE_KID }),
+        );
+        const payloadB64 = base64urlEncode(JSON.stringify(withoutOrg));
+        // Unsigned — claim parse rejects before signature verify.
+        return `${headerB64}.${payloadB64}.${base64urlEncode(new Uint8Array(64))}`;
+      },
+    },
+    {
+      name: "empty kid",
+      token: async () =>
+        mintToken(fixtureKeypair, {}, { header: { kid: "" } }),
+    },
+  ];
+
+  for (const testCase of gauntlet) {
+    it(`rejects ${testCase.name} as unauthenticated`, async () => {
+      const verifier = new EnrolledKeyVerifier();
+      const token = await testCase.token();
+      const result = await verifier.verify(
+        token,
+        buildVerifyContext(makeIdentityReader(fixtureKeypair)),
+      );
+      expectRejected(result, "unauthenticated");
     });
   }
 });
@@ -474,45 +668,83 @@ class FixedResultVerifier implements TokenVerifier {
   }
 }
 
+function expectedPrincipal(claims: AatClaims = DEFAULT_CLAIMS): Principal {
+  return Object.freeze({
+    installationId: claims.iss,
+    organizationId: claims.org,
+    branchId: claims.branch,
+    actorId: claims.sub,
+    role: claims.role,
+    scopes: Object.freeze([...claims.scopes]),
+    jti: claims.jti,
+    iat: claims.iat,
+    exp: claims.exp,
+    ver: claims.ver,
+  });
+}
+
 describe("verifier_swap_changes_no_outcome", () => {
   it("returns identical outcomes for fake and enrolled-key verifiers", async () => {
     const enrolledVerifier = new EnrolledKeyVerifier();
-    const reader = makeIdentityReader(fixtureKeypair);
-    const ctx = buildVerifyContext(reader);
 
-    const tokens = {
-      valid: await mintToken(fixtureKeypair),
-      badSignature: await mintToken(fixtureKeypair, {}, { corruptSignature: true }),
-      wrongAudience: await mintToken(fixtureKeypair, { aud: "wrong-audience" }),
-      unknownIssuer: await mintToken(fixtureKeypair, {
-        iss: "00000000-0000-4000-8000-000000009999",
-      }),
-    };
+    const validClaims = { ...DEFAULT_CLAIMS };
+    const validToken = await mintToken(fixtureKeypair, validClaims);
+    const badSignatureToken = await mintToken(
+      fixtureKeypair,
+      {},
+      { corruptSignature: true },
+    );
+    const wrongAudienceToken = await mintToken(fixtureKeypair, {
+      aud: "wrong-audience",
+    });
+    const unknownIssuerToken = await mintToken(fixtureKeypair, {
+      iss: "00000000-0000-4000-8000-000000009999",
+    });
 
-    const enrolledOutcomes = new Map<string, VerifyResult>();
-    for (const [label, token] of Object.entries(tokens)) {
-      const issuerReader =
-        label === "unknownIssuer"
-          ? makeIdentityReader(fixtureKeypair, { installation: "miss" })
-          : reader;
-      enrolledOutcomes.set(
-        token,
-        await enrolledVerifier.verify(token, buildVerifyContext(issuerReader)),
-      );
-    }
+    // Independent expectation table — not seeded from enrolledVerifier outcomes.
+    const cases: Array<{
+      label: string;
+      token: string;
+      reader: ReaderSpy;
+      expected: VerifyResult;
+    }> = [
+      {
+        label: "valid",
+        token: validToken,
+        reader: makeIdentityReader(fixtureKeypair),
+        expected: { ok: true, principal: expectedPrincipal(validClaims) },
+      },
+      {
+        label: "badSignature",
+        token: badSignatureToken,
+        reader: makeIdentityReader(fixtureKeypair),
+        expected: { ok: false, code: "unauthenticated" },
+      },
+      {
+        label: "wrongAudience",
+        token: wrongAudienceToken,
+        reader: makeIdentityReader(fixtureKeypair),
+        expected: { ok: false, code: "unauthenticated" },
+      },
+      {
+        label: "unknownIssuer",
+        token: unknownIssuerToken,
+        reader: makeIdentityReader(fixtureKeypair, { installation: "miss" }),
+        expected: { ok: false, code: "unauthenticated" },
+      },
+    ];
 
-    const fakeVerifier = new FixedResultVerifier(enrolledOutcomes);
+    const fakeVerifier = new FixedResultVerifier(
+      new Map(cases.map((testCase) => [testCase.token, testCase.expected])),
+    );
 
-    for (const token of Object.values(tokens)) {
-      const enrolled = await enrolledVerifier.verify(
-        token,
-        buildVerifyContext(
-          tokens.unknownIssuer === token
-            ? makeIdentityReader(fixtureKeypair, { installation: "miss" })
-            : reader,
-        ),
-      );
-      const swapped = await fakeVerifier.verify(token, ctx);
+    for (const testCase of cases) {
+      const ctx = buildVerifyContext(testCase.reader);
+      const enrolled = await enrolledVerifier.verify(testCase.token, ctx);
+      const swapped = await fakeVerifier.verify(testCase.token, ctx);
+
+      expect(enrolled).toEqual(testCase.expected);
+      expect(swapped).toEqual(testCase.expected);
       expect(swapped).toEqual(enrolled);
     }
   });
@@ -637,6 +869,7 @@ describe("identity_rejects_suspended_installation", () => {
     const workers = await import("cloudflare:test");
     db = workers.env.DB;
     await applyPlatformSchema(db, migrationSql);
+    await applyPlatformSchema(db, tokenContractMigrationSql);
   });
 
   beforeEach(async () => {

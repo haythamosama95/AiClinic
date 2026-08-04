@@ -668,19 +668,11 @@ void main() {
 
     test('edge case: waitTierFor boundaries at warning and critical thresholds', () {
       expect(
-<<<<<<< HEAD
-        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 14)),
-        AppointmentQueueWaitTier.normal,
-      );
-      expect(
-        AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 15)),
-=======
         AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 19)),
         AppointmentQueueWaitTier.normal,
       );
       expect(
         AppointmentQueueDisplay.waitTierFor(const Duration(minutes: 20)),
->>>>>>> master
         AppointmentQueueWaitTier.warning,
       );
       expect(

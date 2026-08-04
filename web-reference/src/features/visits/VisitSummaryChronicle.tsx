@@ -14,23 +14,16 @@ import type { Patient } from '@/data/patients'
 import { patientFullName } from '@/data/patients'
 import { motionPresets, resolveTransition } from '@/lib/motion'
 import {
-<<<<<<< HEAD
-=======
   getAllergyById,
   getChronicConditionById,
   getCurrentMedicationById,
->>>>>>> master
   getDurationLabel,
   getFrequencyLabel,
   getInvestigationLabel,
   getMedicationLabel,
   getVitalSignById,
 } from './mock-data'
-<<<<<<< HEAD
-import type { VisitFormData } from './types'
-=======
 import type { MedicalBackgroundEntry, VisitFormData } from './types'
->>>>>>> master
 
 export type VisitSummaryChronicleProps = {
   patient: Patient
@@ -66,8 +59,6 @@ function ProseField({ label, value }: { label: string; value: string }) {
   )
 }
 
-<<<<<<< HEAD
-=======
 function formatBackgroundLines(
   entries: MedicalBackgroundEntry[],
   resolveItem: (id: string) => { label: string; meta?: string } | undefined,
@@ -82,7 +73,6 @@ function formatBackgroundLines(
     .filter((line): line is string => line != null)
 }
 
->>>>>>> master
 function InlineList({ items }: { items: string[] }) {
   if (items.length === 0) return <p className="text-text-tertiary">None recorded</p>
   return <p>{items.join(' · ')}</p>
@@ -108,21 +98,9 @@ export function VisitSummaryChronicle({
     minute: '2-digit',
   })
 
-<<<<<<< HEAD
-  const chronicLabels = form.chronicConditions.map((item) =>
-    item.meta ? `${item.label} (${item.meta})` : item.label,
-  )
-  const allergyLabels = form.allergies.map((item) =>
-    item.meta ? `${item.label} (${item.meta})` : item.label,
-  )
-  const medicationLabels = form.currentMedications.map((item) =>
-    item.meta ? `${item.label} ${item.meta}` : item.label,
-  )
-=======
   const chronicLabels = formatBackgroundLines(form.chronicConditions, getChronicConditionById)
   const allergyLabels = formatBackgroundLines(form.allergies, getAllergyById)
   const medicationLabels = formatBackgroundLines(form.currentMedications, getCurrentMedicationById)
->>>>>>> master
 
   const vitalLines = form.vitalSigns.map((vs) => {
     const def = getVitalSignById(vs.vitalSignId)

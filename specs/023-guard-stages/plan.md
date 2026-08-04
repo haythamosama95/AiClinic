@@ -163,22 +163,30 @@ The spec's Test plan names 24 tests at layers "Unit", "Unit (spy)", "Integration
 
 | Test name | Spec layer | File | Config |
 | --- | --- | --- | --- |
-| `identity_valid_token_accepted` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_non_eddsa_alg` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_bad_signature` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_wrong_audience` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_expired_token` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_accepts_notyetvalid_inside_skew` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_outside_skew` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `identity_rejects_unknown_issuer` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `verifier_swap_changes_no_outcome` | Unit | `test/identity.test.ts` | `vitest.config.ts` |
-| `principal_immutable_to_later_stage` | Unit (spy) | `test/identity.test.ts` | `vitest.config.ts` |
+| `identity_valid_token_accepted` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_non_eddsa_alg` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_hmac_alg` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_bad_signature` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_wrong_audience` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_expired_token` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_accepts_notyetvalid_inside_skew` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_accepts_expired_inside_skew` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_outside_skew` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_unknown_issuer` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_unknown_kid` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_revoked_key` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_cross_installation_key` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_deleted_installation` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `identity_rejects_malformed_token` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `verifier_swap_changes_no_outcome` | Unit | `test/identity.test.ts` | `vitest.workers.config.ts` |
+| `principal_immutable_to_later_stage` | Unit (spy) | `test/identity.test.ts` | `vitest.workers.config.ts` |
 | `identity_rejects_suspended_installation` | Integration | `test/identity.test.ts` | `vitest.workers.config.ts` |
 | `rate_limit_installation_key_trips` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
 | `rate_limit_installation_actor_key_trips` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
 | `rate_limit_installation_capability_key_trips` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
 | `rate_limit_rejection_no_ai_request_row` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
 | `rate_limit_counters_flush_bucketed` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
+| `guard_rejection_counters_stages_2_3` | Integration (spy) | `test/rate-limit.test.ts` | `vitest.workers.config.ts` |
 | `entitlement_ai_disabled_installation_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 | `entitlement_plan_tier_too_low_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 | `entitlement_capability_not_granted_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
@@ -186,9 +194,13 @@ The spec's Test plan names 24 tests at layers "Unit", "Unit (spy)", "Integration
 | `kill_switch_capability_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 | `kill_switch_installation_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 | `kill_switch_provider_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
+| `kill_switch_absent_passes` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
+| `entitlement_plan_scoped_grant_accepted` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
+| `entitlement_revoked_grant_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
+| `entitlement_malformed_allowed_capabilities_rejected` | Integration | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 | `entitlement_warm_isolate_no_d1_read` | Integration (spy) | `test/entitlement.test.ts` | `vitest.workers.config.ts` |
 
-**Harness split (Clarification Q4):** integration cases that assert against a real schema — `identity_rejects_suspended_installation`, every `entitlement_*` case, every `kill_switch_*` case, and the three `rate_limit_*_key_trips` + `rate_limit_rejection_no_ai_request_row` + `rate_limit_counters_flush_bucketed` cases — run under `vitest.workers.config.ts` against the real Miniflare `DB` binding B2 already wired (`d1Databases: ["DB"]`), seeded with the A5 migration. Pure-unit cases (`identity_valid_token_accepted` and the seven other identity rejections, `verifier_swap_changes_no_outcome`) run under `vitest.config.ts` with no D1 binding. Spy assertions on the D1 read count (`entitlement_warm_isolate_no_d1_read`, `principal_immutable_to_later_stage`) reuse A5's `ReaderSpy` shape (`config-cache.test.ts`) against the injected `D1Reader`, in either config where the case has no other D1 dependency.
+**Harness split (Clarification Q4, corrected on review):** all three B3 test files run under `vitest.workers.config.ts` (Miniflare workers pool). Pure-unit identity cases share that file with the suspended-installation D1 case rather than splitting across Node and workers pools — T001 routed every B3 file to the workers pool and excluded them from `vitest.config.ts`. `npm test` runs both pools. Spy assertions on the D1 read count (`entitlement_warm_isolate_no_d1_read`, `principal_immutable_to_later_stage`) reuse A5's `ReaderSpy` shape against the injected `D1Reader`.
 
 Every named test places in a §13.5 layer (Unit / Unit (spy) / Integration / Integration (spy)) — stop condition 3 not triggered.
 

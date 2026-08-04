@@ -5,18 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/visit_billing_page.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
->>>>>>> master
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_billing_flow.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 import '../../support/visit_encounter_test_support.dart';
 import 'billing_widget_test_harness.dart';
 
-<<<<<<< HEAD
-=======
 class _BeginBillingTracker {
   var callCount = 0;
 }
@@ -33,7 +28,6 @@ class _TrackedVisitBillingFlowNotifier extends VisitBillingFlowNotifier {
   }
 }
 
->>>>>>> master
 void main() {
   group('VisitBillingPage', () {
     testWidgets('shows visit documentation loading state', (tester) async {
@@ -44,11 +38,7 @@ void main() {
           visitId: billingTestVisitId,
           extraOverrides: [
             visitDocumentationProvider(billingTestVisitId).overrideWith(
-<<<<<<< HEAD
-              () => _LoadingVisitDocumentationNotifier(),
-=======
               () => _LoadingVisitDocumentationNotifier(billingTestVisitId),
->>>>>>> master
             ),
           ],
         ),
@@ -88,11 +78,7 @@ void main() {
     });
 
     testWidgets('beginBilling invoked on first frame', (tester) async {
-<<<<<<< HEAD
-      final flowNotifier = SpyVisitBillingFlowNotifier(billingTestVisitId);
-=======
       final tracker = _BeginBillingTracker();
->>>>>>> master
 
       await pumpBillingSurface(
         tester,
@@ -100,14 +86,6 @@ void main() {
         overrides: billingProviderOverrides(
           visitId: billingTestVisitId,
           visitDocState: sampleEncounterDocState(),
-<<<<<<< HEAD
-          visitBillingFlowNotifier: flowNotifier,
-        ),
-      );
-      await tester.pump();
-
-      expect(flowNotifier.beginBillingCallCount, 1);
-=======
           extraOverrides: [
             visitBillingFlowProvider(billingTestVisitId).overrideWith(
               () => _TrackedVisitBillingFlowNotifier(billingTestVisitId, tracker),
@@ -118,7 +96,6 @@ void main() {
       await pumpBillingFrames(tester);
 
       expect(tracker.callCount, 1);
->>>>>>> master
     });
 
     testWidgets('back-to-review navigates to visit document route', (tester) async {
@@ -167,11 +144,8 @@ void main() {
 }
 
 class _LoadingVisitDocumentationNotifier extends VisitDocumentationNotifier {
-<<<<<<< HEAD
-=======
   _LoadingVisitDocumentationNotifier(super.visitId);
 
->>>>>>> master
   @override
   Future<VisitDocumentationState> build() async {
     return Completer<VisitDocumentationState>().future;

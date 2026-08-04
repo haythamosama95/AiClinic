@@ -1,0 +1,39 @@
+name: AI Platform Eval Live Smoke
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ai-platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run live-smoke eval entry
+        run: npx vitest run test/eval/live-smoke.test.ts
+
+      - name: Upload score report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-platform-eval-score-reports
+          path: ai-platform/test/eval/reports/*.json
+          if-no-files-found: ignore
+          retention-days: 14

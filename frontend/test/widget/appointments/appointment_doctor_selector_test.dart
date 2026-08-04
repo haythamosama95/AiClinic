@@ -1,16 +1,10 @@
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/core/ui/components/app_select.dart';
->>>>>>> master
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_selector.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-<<<<<<< HEAD
-=======
 import '../../support/appointment_calendar_test_support.dart';
->>>>>>> master
 import 'detail_widget_test_harness.dart';
 
 void main() {
@@ -35,14 +29,11 @@ void main() {
         doctors: buildTestDoctors(),
         emptyLabel: 'No preference',
       );
-<<<<<<< HEAD
-=======
 
       await tester.tap(find.byType(AppSelect));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
->>>>>>> master
       for (final option in options) {
         expect(find.text(option.label), findsWidgets);
       }

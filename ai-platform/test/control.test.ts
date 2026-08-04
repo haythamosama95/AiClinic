@@ -1,12 +1,18 @@
-import { env } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
+    R2: R2Bucket;
+    OPERATOR_BEARER_TOKEN: string;
+    OPERATOR_ID: string;
   }
 }
+
+const TEST_OPERATOR_BEARER = "test-operator-bearer-token";
+const TEST_OPERATOR_ID = "operator-test-principal";
 
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
 
@@ -20,7 +26,7 @@ export type OperatorAuth = {
 };
 
 const FAKE_OPERATOR: OperatorPrincipal = {
-  operatorId: "operator-test-principal",
+  operatorId: TEST_OPERATOR_ID,
 };
 
 /** Fake `OperatorAuth` returning a fixed operator principal or `null`. */
@@ -58,6 +64,15 @@ type ControlHandlers = {
     operatorAuth: OperatorAuth,
   ) => Promise<Response>;
   handleDelete: (
+    request: Request,
+    bindings: ControlBindings,
+    operatorAuth: OperatorAuth,
+  ) => Promise<Response>;
+  createSecretOperatorAuth: (options: {
+    bearerToken: string;
+    operatorId: string;
+  }) => OperatorAuth;
+  dispatchControlRequest: (
     request: Request,
     bindings: ControlBindings,
     operatorAuth: OperatorAuth,
@@ -136,6 +151,7 @@ async function clearLifecycleTables(): Promise<void> {
 function buildEnrollRequest(
   installationId: string = FIXTURE_INSTALLATION_ID,
   payload: EnrollPayload = DEFAULT_ENROLL_PAYLOAD,
+  bearerToken: string = "operator-test",
 ): Request {
   return new Request(
     `${GATEWAY_ORIGIN}/control/installations/${installationId}/enroll`,
@@ -143,7 +159,7 @@ function buildEnrollRequest(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: "Bearer operator-test",
+        authorization: `Bearer ${bearerToken}`,
       },
       body: JSON.stringify(payload),
     },
@@ -465,8 +481,7 @@ describe("lifecycle_delete_audit", () => {
     )
       .bind(FIXTURE_INSTALLATION_ID)
       .first<{ status: string }>();
-    expect(installation?.status).not.toBe("active");
-    expect(installation?.status).toBeTruthy();
+    expect(installation?.status).toBe("deleted");
 
     const audit = await env.DB.prepare(
       "SELECT operator_id, action FROM control_audit WHERE action = 'delete'",
@@ -479,7 +494,7 @@ describe("lifecycle_delete_audit", () => {
 });
 
 describe("non_operator_credentials_rejected", () => {
-  it("rejects all five mutations without D1 writes", async () => {
+  it("rejects all five mutations with 401 unauthorized and no D1 writes", async () => {
     const handlers = await loadControlHandlers();
     const rejectAuth = createFakeOperatorAuth(null);
 
@@ -550,10 +565,10 @@ describe("non_operator_credentials_rejected", () => {
       expect(response.ok, `${mutation.label} should reject non-operator`).toBe(
         false,
       );
-      expect(
-        response.status,
-        `${mutation.label} should be terminal non-2xx`,
-      ).toBeGreaterThanOrEqual(400);
+      expect(response.status, `${mutation.label} status`).toBe(401);
+      expect(await response.json(), `${mutation.label} body`).toEqual({
+        error: "unauthorized",
+      });
 
       const afterCounts = await readTableCounts();
       expect(afterCounts, `${mutation.label} must not write D1 rows`).toEqual(
@@ -564,7 +579,7 @@ describe("non_operator_credentials_rejected", () => {
 });
 
 describe("duplicate_enrollment_deterministic", () => {
-  it("rejects duplicate enroll without changing row counts", async () => {
+  it("rejects duplicate enroll with 409 already_enrolled without changing row counts", async () => {
     const { handleEnroll } = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
 
@@ -583,9 +598,521 @@ describe("duplicate_enrollment_deterministic", () => {
       operatorAuth,
     );
     expect(duplicateResponse.ok).toBe(false);
-    expect(duplicateResponse.status).toBeGreaterThanOrEqual(400);
+    expect(duplicateResponse.status).toBe(409);
+    expect(await duplicateResponse.json()).toEqual({
+      error: "already_enrolled",
+    });
 
     const countsAfterDuplicate = await readTableCounts();
     expect(countsAfterDuplicate).toEqual(countsAfterFirst);
+  });
+});
+
+describe("secret_operator_auth_verifies_credential", () => {
+  it("rejects missing, empty, and wrong bearer tokens; never returns the credential as operatorId", async () => {
+    const { createSecretOperatorAuth } = await loadControlHandlers();
+    const auth = createSecretOperatorAuth({
+      bearerToken: TEST_OPERATOR_BEARER,
+      operatorId: TEST_OPERATOR_ID,
+    });
+
+    expect(
+      auth.resolve(
+        new Request(`${GATEWAY_ORIGIN}/control/installations/x/enroll`),
+      ),
+    ).toBeNull();
+
+    expect(
+      auth.resolve(
+        new Request(`${GATEWAY_ORIGIN}/control/installations/x/enroll`, {
+          headers: { authorization: "Bearer " },
+        }),
+      ),
+    ).toBeNull();
+
+    expect(
+      auth.resolve(
+        new Request(`${GATEWAY_ORIGIN}/control/installations/x/enroll`, {
+          headers: { authorization: "Bearer wrong-token" },
+        }),
+      ),
+    ).toBeNull();
+
+    const principal = auth.resolve(
+      new Request(`${GATEWAY_ORIGIN}/control/installations/x/enroll`, {
+        headers: { authorization: `Bearer ${TEST_OPERATOR_BEARER}` },
+      }),
+    );
+    expect(principal).toEqual({ operatorId: TEST_OPERATOR_ID });
+    expect(principal?.operatorId).not.toBe(TEST_OPERATOR_BEARER);
+  });
+
+  it("fails closed when configured secret or operator id is empty", async () => {
+    const { createSecretOperatorAuth } = await loadControlHandlers();
+    const emptySecret = createSecretOperatorAuth({
+      bearerToken: "",
+      operatorId: TEST_OPERATOR_ID,
+    });
+    const emptyId = createSecretOperatorAuth({
+      bearerToken: TEST_OPERATOR_BEARER,
+      operatorId: "",
+    });
+    const request = new Request(
+      `${GATEWAY_ORIGIN}/control/installations/x/enroll`,
+      { headers: { authorization: `Bearer ${TEST_OPERATOR_BEARER}` } },
+    );
+    expect(emptySecret.resolve(request)).toBeNull();
+    expect(emptyId.resolve(request)).toBeNull();
+  });
+});
+
+describe("control_route_end_to_end", () => {
+  it("routes enroll through worker.fetch with secret auth and journals OPERATOR_ID", async () => {
+    const enrolled = await SELF.fetch(
+      buildEnrollRequest(
+        FIXTURE_INSTALLATION_ID,
+        DEFAULT_ENROLL_PAYLOAD,
+        TEST_OPERATOR_BEARER,
+      ),
+    );
+
+    expect(enrolled.status).toBe(200);
+    const body = (await enrolled.json()) as { platform_base_url?: string };
+    expect(body.platform_base_url).toBe(GATEWAY_ORIGIN);
+
+    const audit = await env.DB.prepare(
+      "SELECT operator_id, action FROM control_audit WHERE action = 'enroll'",
+    ).first<{ operator_id: string; action: string }>();
+    expect(audit).toEqual({
+      operator_id: TEST_OPERATOR_ID,
+      action: "enroll",
+    });
+    expect(audit?.operator_id).not.toBe(TEST_OPERATOR_BEARER);
+
+    const wrong = await SELF.fetch(
+      buildEnrollRequest(
+        "inst-e2e-unauth",
+        {
+          ...DEFAULT_ENROLL_PAYLOAD,
+          org_id: "org-e2e-unauth",
+          kid: "kid-e2e-unauth",
+        },
+        "wrong-token",
+      ),
+    );
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toEqual({ error: "unauthorized" });
+  });
+});
+
+describe("lifecycle_illegal_transitions", () => {
+  it("rejects suspend-on-deleted with 409 illegal_lifecycle_transition", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+    expect(
+      (
+        await handlers.handleDelete(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "delete"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleSuspend(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "suspend"),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_lifecycle_transition",
+    });
+
+    const afterStatus = await env.DB.prepare(
+      "SELECT status FROM installation WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ status: string }>();
+    expect(afterStatus?.status).toBe("deleted");
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects resume-on-active with 409 and no phantom resume audit", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleResume(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "resume"),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_lifecycle_transition",
+    });
+
+    const resumeAudits = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM control_audit WHERE action = 'resume'",
+    ).first<{ count: number }>();
+    expect(resumeAudits?.count ?? 0).toBe(0);
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects rotate-on-deleted with 409 illegal_lifecycle_transition", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+    expect(
+      (
+        await handlers.handleDelete(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "delete"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleRotate(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
+        kid: "kid-rotate-deleted",
+        public_key: "bmV3LXB1YmxpYy1rZXk=",
+        algorithm: "EdDSA",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_lifecycle_transition",
+    });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects double-delete with 409 illegal_lifecycle_transition", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+    expect(
+      (
+        await handlers.handleDelete(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "delete"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleDelete(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "delete"),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_lifecycle_transition",
+    });
+
+    const deleteAudits = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM control_audit WHERE action = 'delete'",
+    ).first<{ count: number }>();
+    expect(deleteAudits?.count).toBe(1);
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects suspend already-suspended with 409 illegal_lifecycle_transition", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+    expect(
+      (
+        await handlers.handleSuspend(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "suspend"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleSuspend(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "suspend"),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_lifecycle_transition",
+    });
+
+    const suspendAudits = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM control_audit WHERE action = 'suspend'",
+    ).first<{ count: number }>();
+    expect(suspendAudits?.count).toBe(1);
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
+describe("suspend_resume_entitlement_unchanged", () => {
+  it("leaves entitlement row byte-identical across suspend and resume", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    const entitlementSelect = `SELECT entitlement_id, installation_id, plan, period_start,
+            period_end, request_quota, token_budget, cost_budget,
+            allowed_capabilities, soft_threshold, status
+     FROM entitlement WHERE installation_id = ?`;
+
+    type EntitlementRow = {
+      entitlement_id: string;
+      installation_id: string;
+      plan: string;
+      period_start: string;
+      period_end: string;
+      request_quota: number;
+      token_budget: number;
+      cost_budget: number;
+      allowed_capabilities: string;
+      soft_threshold: number;
+      status: string;
+    };
+
+    const before = await env.DB.prepare(entitlementSelect)
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<EntitlementRow>();
+    expect(before).toBeTruthy();
+    const beforeSnapshot = JSON.stringify(before);
+
+    expect(
+      (
+        await handlers.handleSuspend(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "suspend"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const afterSuspend = await env.DB.prepare(entitlementSelect)
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<EntitlementRow>();
+    expect(JSON.stringify(afterSuspend)).toBe(beforeSnapshot);
+
+    expect(
+      (
+        await handlers.handleResume(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "resume"),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const afterResume = await env.DB.prepare(entitlementSelect)
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<EntitlementRow>();
+    expect(JSON.stringify(afterResume)).toBe(beforeSnapshot);
+  });
+});
+
+describe("duplicate_enrollment_same_org_different_installation", () => {
+  it("rejects same org_id with different installation_id as 409 already_enrolled", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    expect(
+      (await handleEnroll(buildEnrollRequest(), bindings(), operatorAuth)).ok,
+    ).toBe(true);
+    const countsAfterFirst = await readTableCounts();
+
+    const second = await handleEnroll(
+      buildEnrollRequest("inst-test-002", {
+        ...DEFAULT_ENROLL_PAYLOAD,
+        kid: "kid-test-002",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(second.status).toBe(409);
+    expect(await second.json()).toEqual({ error: "already_enrolled" });
+    expect(await readTableCounts()).toEqual(countsAfterFirst);
+  });
+});
+
+describe("enroll_invalid_payload", () => {
+  it("rejects enroll missing org_id with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const { org_id: _omit, ...withoutOrgId } = DEFAULT_ENROLL_PAYLOAD;
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest(
+        FIXTURE_INSTALLATION_ID,
+        withoutOrgId as typeof DEFAULT_ENROLL_PAYLOAD,
+      ),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
+describe("rotate_duplicate_kid", () => {
+  it("rejects rotate reusing an existing kid with 409 duplicate_kid", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleRotate(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
+        kid: DEFAULT_ENROLL_PAYLOAD.kid,
+        public_key: "ZHVwbGljYXRlLWtpZA==",
+        algorithm: "EdDSA",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "duplicate_kid" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
+describe("enroll_invalid_json", () => {
+  it("rejects enroll non-JSON body with 400 invalid_json", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      new Request(
+        `${GATEWAY_ORIGIN}/control/installations/${FIXTURE_INSTALLATION_ID}/enroll`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer operator-test",
+          },
+          body: "not-json{",
+        },
+      ),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_json" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
+describe("invalid_route_rejected", () => {
+  it("rejects when installation id cannot be parsed with 400 invalid_route", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleSuspend(
+      new Request(`${GATEWAY_ORIGIN}/control/not-installations/x/suspend`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer operator-test",
+        },
+        body: "{}",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_route" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
+describe("installation_not_found", () => {
+  it("rejects rotate/suspend/resume/delete on unknown id with 404", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const unknownId = "inst-does-not-exist";
+
+    const cases: Array<{ label: string; invoke: () => Promise<Response> }> = [
+      {
+        label: "rotate",
+        invoke: () =>
+          handlers.handleRotate(
+            buildLifecycleRequest(unknownId, "rotate", {
+              kid: "kid-missing",
+              public_key: "cHVibGlj",
+              algorithm: "EdDSA",
+            }),
+            bindings(),
+            operatorAuth,
+          ),
+      },
+      {
+        label: "suspend",
+        invoke: () =>
+          handlers.handleSuspend(
+            buildLifecycleRequest(unknownId, "suspend"),
+            bindings(),
+            operatorAuth,
+          ),
+      },
+      {
+        label: "resume",
+        invoke: () =>
+          handlers.handleResume(
+            buildLifecycleRequest(unknownId, "resume"),
+            bindings(),
+            operatorAuth,
+          ),
+      },
+      {
+        label: "delete",
+        invoke: () =>
+          handlers.handleDelete(
+            buildLifecycleRequest(unknownId, "delete"),
+            bindings(),
+            operatorAuth,
+          ),
+      },
+    ];
+
+    for (const testCase of cases) {
+      const beforeCounts = await readTableCounts();
+      const response = await testCase.invoke();
+      expect(response.status, `${testCase.label} status`).toBe(404);
+      expect(await response.json(), `${testCase.label} body`).toEqual({
+        error: "installation_not_found",
+      });
+      expect(await readTableCounts()).toEqual(beforeCounts);
+    }
   });
 });
