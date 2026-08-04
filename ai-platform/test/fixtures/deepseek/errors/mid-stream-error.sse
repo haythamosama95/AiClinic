@@ -1,0 +1,3 @@
+data: {"id":"ds-mid-err","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+data: {"error":{"message":"boom","type":"server_error"}}

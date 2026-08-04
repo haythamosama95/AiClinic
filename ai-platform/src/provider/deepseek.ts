@@ -4,6 +4,7 @@ import {
   type CanonicalRequest,
   type CanonicalResult,
   type CanonicalStreamChunk,
+  type TimingBreakdown,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import { setRetryabilityFromClassification } from "./classify";
@@ -57,6 +58,7 @@ type DeepSeekWireRequest = {
   max_tokens?: number;
   stop?: string[];
   stream?: boolean;
+  stream_options?: { include_usage: boolean };
   response_format?: { type: string };
 };
 
@@ -64,6 +66,7 @@ type DeepSeekUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  prompt_cache_hit_tokens?: number;
 };
 
 type DeepSeekChoice = {
@@ -83,6 +86,12 @@ type DeepSeekResponse = {
   };
 };
 
+type ParseSseResult = {
+  events: DeepSeekResponse[];
+  sawDone: boolean;
+  hadMalformedLine: boolean;
+};
+
 function consumesBudget(code: TaxonomyCode): boolean {
   const { consumesQuota } = getTaxonomyEntry(code);
   return consumesQuota !== "No";
@@ -92,6 +101,7 @@ function createCanonicalError(
   code: TaxonomyCode,
   nativeCode: string,
   nativeMessage: string,
+  consumedBudgetOverride?: boolean,
 ): CanonicalError {
   return setRetryabilityFromClassification({
     taxonomyCode: code,
@@ -100,7 +110,10 @@ function createCanonicalError(
       code: nativeCode,
       message: nativeMessage,
     },
-    consumedBudget: consumesBudget(code),
+    consumedBudget:
+      consumedBudgetOverride !== undefined
+        ? consumedBudgetOverride
+        : consumesBudget(code),
   });
 }
 
@@ -130,6 +143,9 @@ function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
     stream: Boolean(request.stream),
   };
 
+  if (wire.stream) {
+    wire.stream_options = { include_usage: true };
+  }
   if (typeof sampling?.temperature === "number") {
     wire.temperature = sampling.temperature;
   }
@@ -152,7 +168,7 @@ function mapUsage(
   return {
     input: usage?.prompt_tokens ?? 0,
     output: usage?.completion_tokens ?? 0,
-    cached: 0,
+    cached: usage?.prompt_cache_hit_tokens ?? 0,
   };
 }
 
@@ -165,10 +181,19 @@ function mapFinishReason(
   return "stop";
 }
 
+function buildTiming(providerMs: number): TimingBreakdown {
+  return {
+    queue_ms: 0,
+    provider_ms: providerMs,
+    total_ms: providerMs,
+  };
+}
+
 function buildResult(
   response: DeepSeekResponse,
   content: string,
   finishReason: string | null | undefined,
+  providerMs: number,
 ): CanonicalResult {
   return {
     finalContent: { type: "text", text: content },
@@ -179,7 +204,7 @@ function buildResult(
     },
     finishReason: mapFinishReason(finishReason),
     providerRequestId: response.id ?? "deepseek-unknown",
-    timing: { queue_ms: 0, provider_ms: 0, total_ms: 0 },
+    timing: buildTiming(providerMs),
   };
 }
 
@@ -191,8 +216,7 @@ function isContentFiltered(body: DeepSeekResponse): boolean {
     type.includes("content_filter") ||
     code.includes("content_filter") ||
     message.includes("content policy") ||
-    message.includes("content filter") ||
-    message.includes("safety")
+    message.includes("content filter")
   );
 }
 
@@ -200,9 +224,6 @@ function classifyHttpFailure(
   status: number,
   body: DeepSeekResponse,
 ): TaxonomyCode {
-  if (isContentFiltered(body)) {
-    return "provider_rejected";
-  }
   if (status === 401 || status === 403) {
     return "provider_rejected";
   }
@@ -212,27 +233,58 @@ function classifyHttpFailure(
   if (status >= 500) {
     return "internal_error";
   }
+  if (isContentFiltered(body)) {
+    return "provider_rejected";
+  }
   return "provider_rejected";
 }
 
-function parseSseEvents(body: string): DeepSeekResponse[] {
+function classifyProviderErrorFrame(body: DeepSeekResponse): TaxonomyCode {
+  if (isContentFiltered(body)) {
+    return "provider_rejected";
+  }
+  const type = (body.error?.type ?? "").toLowerCase();
+  const code = (body.error?.code ?? "").toLowerCase();
+  if (type.includes("rate_limit") || code.includes("rate_limit")) {
+    return "rate_limited";
+  }
+  if (
+    type.includes("server") ||
+    code.includes("server") ||
+    type.includes("insufficient_system_resource") ||
+    code.includes("insufficient_system_resource")
+  ) {
+    return "internal_error";
+  }
+  return "provider_rejected";
+}
+
+function parseSseEvents(body: string): ParseSseResult {
   const events: DeepSeekResponse[] = [];
+  let sawDone = false;
+  let hadMalformedLine = false;
+
   for (const line of body.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) {
       continue;
     }
     const payload = trimmed.slice("data:".length).trim();
-    if (payload === "[DONE]" || payload.length === 0) {
+    if (payload.length === 0) {
+      continue;
+    }
+    if (payload === "[DONE]") {
+      sawDone = true;
       continue;
     }
     try {
       events.push(JSON.parse(payload) as DeepSeekResponse);
     } catch {
-      // skip malformed SSE lines
+      hadMalformedLine = true;
     }
   }
-  return events;
+
+  return { events, sawDone, hadMalformedLine };
 }
 
 function normalizeStreamChunks(
@@ -240,15 +292,17 @@ function normalizeStreamChunks(
 ): CanonicalStreamChunk[] {
   const chunks: CanonicalStreamChunk[] = [];
   let sequence = 0;
-  let assembled = "";
   let usage: DeepSeekUsage | undefined;
+  let sawUsage = false;
 
   for (const event of events) {
-    usage = event.usage ?? usage;
+    if (event.usage) {
+      usage = event.usage;
+      sawUsage = true;
+    }
     const choice = event.choices?.[0];
     const delta = choice?.delta?.content;
     if (typeof delta === "string" && delta.length > 0) {
-      assembled += delta;
       chunks.push({
         sequenceNumber: sequence,
         kind: "text_delta",
@@ -259,11 +313,19 @@ function normalizeStreamChunks(
     }
   }
 
-  if (usage) {
+  if (sawUsage) {
     chunks.push({
       sequenceNumber: sequence,
       kind: "usage",
       payload: mapUsage(usage),
+      terminal: false,
+    });
+    sequence += 1;
+  } else {
+    chunks.push({
+      sequenceNumber: sequence,
+      kind: "provider_note",
+      payload: { note: "usage_absent" },
       terminal: false,
     });
     sequence += 1;
@@ -272,7 +334,7 @@ function normalizeStreamChunks(
   chunks.push({
     sequenceNumber: sequence,
     kind: "text_delta",
-    payload: { text: assembled },
+    payload: { text: "" },
     terminal: true,
   });
 
@@ -280,15 +342,30 @@ function normalizeStreamChunks(
   return chunks;
 }
 
-function minimalTerminalChunks(text: string): readonly CanonicalStreamChunk[] {
-  const chunks: CanonicalStreamChunk[] = [
-    {
-      sequenceNumber: 0,
-      kind: "text_delta",
-      payload: { text },
-      terminal: true,
-    },
-  ];
+function minimalTerminalChunks(
+  text: string,
+  usageAbsent: boolean,
+): readonly CanonicalStreamChunk[] {
+  const chunks: CanonicalStreamChunk[] = [];
+  let sequence = 0;
+
+  if (usageAbsent) {
+    chunks.push({
+      sequenceNumber: sequence,
+      kind: "provider_note",
+      payload: { note: "usage_absent" },
+      terminal: false,
+    });
+    sequence += 1;
+  }
+
+  chunks.push({
+    sequenceNumber: sequence,
+    kind: "text_delta",
+    payload: { text },
+    terminal: true,
+  });
+
   assertExactlyOneTerminal(chunks);
   return chunks;
 }
@@ -313,6 +390,32 @@ function createCancelledOutcome(): ProviderInvokeResult {
       "DeepSeek request aborted by caller signal",
     ),
   };
+}
+
+function finishReasonErrorOutcome(
+  finishReason: string,
+): ProviderInvokeResult | null {
+  if (finishReason === "content_filter") {
+    return {
+      kind: "error",
+      error: createCanonicalError(
+        "provider_rejected",
+        "content_filter",
+        "Content filtered by provider",
+      ),
+    };
+  }
+  if (finishReason === "insufficient_system_resource") {
+    return {
+      kind: "error",
+      error: createCanonicalError(
+        "internal_error",
+        "insufficient_system_resource",
+        "Provider lacked system resources to complete the request",
+      ),
+    };
+  }
+  return null;
 }
 
 type AbortGuard = {
@@ -401,6 +504,7 @@ export class DeepSeekAdapter implements ProviderPort {
           "provider_rejected",
           "missing_api_key",
           "DeepSeek API key not found in secret store",
+          false,
         ),
       };
     }
@@ -418,9 +522,11 @@ export class DeepSeekAdapter implements ProviderPort {
       signal: guard.signal,
     };
 
+    const startedAt = Date.now();
     try {
       const fetchResult = this.transport.fetch(DEEPSEEK_API_URL, fetchInit);
       const response = await awaitTransportResponse(fetchResult, guard);
+      const providerMs = Math.max(0, Date.now() - startedAt);
       if (response === null) {
         return guard.wasTimeout()
           ? createTimeoutOutcome()
@@ -430,6 +536,7 @@ export class DeepSeekAdapter implements ProviderPort {
         response,
         request,
         wireBody.stream,
+        providerMs,
       );
     } catch {
       if (guard.signal.aborted) {
@@ -454,6 +561,7 @@ export class DeepSeekAdapter implements ProviderPort {
     response: DeepSeekTransportResponse,
     _request: CanonicalRequest,
     isStream: boolean | undefined,
+    providerMs: number,
   ): ProviderInvokeResult {
     const contentType =
       response.headers["content-type"] ??
@@ -479,7 +587,7 @@ export class DeepSeekAdapter implements ProviderPort {
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
-      return this.handleStreamResponse(response.body);
+      return this.handleStreamResponse(response.body, providerMs);
     }
 
     let parsed: DeepSeekResponse;
@@ -510,8 +618,15 @@ export class DeepSeekAdapter implements ProviderPort {
     const choice = parsed.choices?.[0];
     const content = choice?.message?.content ?? "";
     const finishReason = choice?.finish_reason ?? "stop";
-    const result = buildResult(parsed, content, finishReason);
-    const chunks = minimalTerminalChunks(content);
+
+    const finishError = finishReasonErrorOutcome(finishReason);
+    if (finishError) {
+      return finishError;
+    }
+
+    const usageAbsent = parsed.usage === undefined;
+    const result = buildResult(parsed, content, finishReason, providerMs);
+    const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "length") {
       return { kind: "truncation", result, chunks };
@@ -520,27 +635,90 @@ export class DeepSeekAdapter implements ProviderPort {
     return { kind: "success", result, chunks };
   }
 
-  private handleStreamResponse(body: string): ProviderInvokeResult {
-    const events = parseSseEvents(body);
-    const chunks = normalizeStreamChunks(events);
+  private handleStreamResponse(
+    body: string,
+    providerMs: number,
+  ): ProviderInvokeResult {
+    const { events, sawDone, hadMalformedLine } = parseSseEvents(body);
 
-    const lastEvent = events[events.length - 1];
-    const choice = lastEvent?.choices?.[0];
-    const finishReason = choice?.finish_reason ?? "stop";
-    let assembled = "";
+    if (hadMalformedLine) {
+      return {
+        kind: "malformed",
+        error: createCanonicalError(
+          "internal_error",
+          "malformed_response",
+          "Provider returned unparseable SSE data line",
+        ),
+      };
+    }
+
     for (const event of events) {
-      const delta = event.choices?.[0]?.delta?.content;
-      if (typeof delta === "string") {
-        assembled += delta;
+      if (event.error) {
+        const taxonomy = classifyProviderErrorFrame(event);
+        return {
+          kind: "error",
+          error: createCanonicalError(
+            taxonomy,
+            String(event.error.code ?? event.error.type ?? "provider_error"),
+            event.error.message ?? "Provider stream error frame",
+          ),
+        };
       }
     }
 
-    const result = buildResult(lastEvent ?? {}, assembled, finishReason);
+    let finishReason: string | null | undefined;
+    let hadFinishReason = false;
+    let assembled = "";
+    let lastEvent: DeepSeekResponse = {};
+    let usage: DeepSeekUsage | undefined;
 
-    return {
-      kind: finishReason === "length" ? "truncation" : "success",
-      result,
-      chunks,
+    for (const event of events) {
+      lastEvent = event;
+      if (event.usage) {
+        usage = event.usage;
+      }
+      const choice = event.choices?.[0];
+      const delta = choice?.delta?.content;
+      if (typeof delta === "string") {
+        assembled += delta;
+      }
+      const eventFinish = choice?.finish_reason;
+      if (typeof eventFinish === "string" && eventFinish.length > 0) {
+        finishReason = eventFinish;
+        hadFinishReason = true;
+      }
+    }
+
+    if (hadFinishReason && finishReason) {
+      const finishError = finishReasonErrorOutcome(finishReason);
+      if (finishError) {
+        return finishError;
+      }
+    }
+
+    const responseForResult: DeepSeekResponse = {
+      ...lastEvent,
+      usage,
+      id: lastEvent.id,
     };
+    const effectiveFinish =
+      !sawDone && !hadFinishReason ? "length" : (finishReason ?? "stop");
+    const chunks = normalizeStreamChunks(events);
+    const result = buildResult(
+      responseForResult,
+      assembled,
+      effectiveFinish,
+      providerMs,
+    );
+
+    if (!sawDone && !hadFinishReason) {
+      return { kind: "truncation", result, chunks };
+    }
+
+    if (finishReason === "length") {
+      return { kind: "truncation", result, chunks };
+    }
+
+    return { kind: "success", result, chunks };
   }
 }

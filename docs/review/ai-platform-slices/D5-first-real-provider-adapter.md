@@ -82,3 +82,48 @@ D5 delivers the artifacts its contract names — `src/provider/deepseek.ts` (`De
 - **Move journal vocabulary to C3 or freeze it** (Deviation 1): either drop the adapter's `JournalSink` (diagnostics via the logger only) or have the emitted event names/shapes frozen in the C3 contract so the audit trail has one author.
 - **Strengthen the credential and prohibition spies** (Weak Tests 7–9): sweep the returned `CanonicalError` payloads (provider-native message included) for credential material, not just sink emissions; exercise all five emission paths including stream; in T-D5-11 assert the captured `Authorization` header carries the store secret and not the request-embedded one, with logger/journal attached; replace the export-name regexes with options-surface assertions.
 - **Resolve the `deadline` ambiguity in the A3 contract** (Deviation 5): state whether the field is remaining-ms or an absolute timestamp, and align `resolveTimeoutMs` (and D7's copy) with the ruling.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D5-R1 — Async timeout & transport containment** | Critical #1–#2; Bugs #1; Weak Tests #1, #6, #11; Recs (async port / contain failures / real timeout); Deviations #2–#3 (already closed by D2-R1) | Verified `awaitTransportResponse` + `createAbortGuard` + `try/catch` in `deepseek.ts`; strengthened `deepseek-adapter.test.ts` (T-D5-07 abort + within-deadline; transport throw/reject; caller abort → `cancelled`) |
+| **D5-R2 — Stream terminal & SSE failure paths** | Bugs #2–#4; Weak Tests #3–#5; Recs (stream chunk semantics) | `parseSseEvents` / `normalizeStreamChunks` / `handleStreamResponse`; fixtures `truncated-stream.sse`, `malformed-stream.sse`, `mid-stream-error.sse`; T-D5-02 strengthened |
+| **D5-R3 — Structured classification** | Bugs #5–#6; Weak Tests #10 (filter cases); Recs (classify by structured signals) | `mapFinishReason` path via `finishReasonErrorOutcome`; `isContentFiltered` (no bare `"safety"`); `classifyHttpFailure` status-first; finish-reason / 429+safety fixtures |
+| **D5-R4 — Budget, timing, usage honesty** | Bugs #7–#9; Weak Tests #2, #10 (usage/budget); Recs (telemetry/usage) | `consumedBudget` override on missing key; measured `provider_ms`; `stream_options.include_usage`; `prompt_cache_hit_tokens` → `cached`; `usage_absent` `provider_note` |
+| **D5-R5 — Credential & prohibition spies** | Bugs #10; Weak Tests #7–#9; Recs (strengthen spies); Deviation #1 (already closed by D2-R2 — no JournalSink) | T-D5-08/09/10/11 tightened; options-surface keys only `transport`/`secretStore`/`timeoutMs` |
+| **D5-R6 — Document architectural remainder** | Deviations #4–#5; Recs (buffered transport; deadline ambiguity without amending `17-ai-platform.md`) | Spec Kit only: `contracts/first-real-provider-adapter.md` §2.5–2.6; `spec.md` / `plan.md` / `tasks.md` |
+
+Every numbered finding is in exactly one stage. No architecture-doc edits; no escalation (Deviations 2–3 already repaired on `ai/master` via D2-R1; Deviation 5 resolved as D5 adapter interpretation of remaining-ms, not an A3 architecture amendment).
+
+### 1.2 Test cases created first
+
+- **D5-R1:** T-D5-07 asserts `signal.aborted === true` after timeout; companion within-deadline async success; `transport_throw_and_reject` (sync throw + rejecting promise → `internal_error`); `caller_abort_propagation` (already-aborted signal → `cancelled`).
+- **D5-R2:** T-D5-02 asserts content order ("Hello" / " world"), contiguous sequences, `assertExactlyOneTerminal`, empty terminal `text_delta`, assembled `finalContent`; `truncated_stream_sse` → `truncation`; `malformed_stream_sse` → `malformed`; `mid_stream_error_frame` → classified error.
+- **D5-R3:** `finish_reason_content_filter` → `provider_rejected` terminal; `finish_reason_insufficient_resource` → `internal_error` retryable; `safety_message_with_429` → `rate_limited` (status wins).
+- **D5-R4:** T-D5-03 exact `{ input: 42, output: 18, cached: 0 }` + `provider_ms ≥ 0`; `missing_credentials_consumed_budget` → `consumedBudget === false`; `usage_absent_provider_note`; `stream_wire_requests_include_usage`.
+- **D5-R5:** T-D5-08 covers timeout / missing-creds / stream outcomes + `providerNative`; T-D5-09/10 options-key runtime check; T-D5-11 Authorization = store secret and body excludes request-embedded secret.
+- **D5-R6:** Spec Kit documentation only (no new production assertions beyond the above).
+
+### 1.3 Fix implemented
+
+- **D5-R1:** No production re-write of the async path — D2-R1 already deleted `waitForPromiseOutcome`, made `invoke` async, wired `Promise.race` abort, and contained transport throw/reject. Tests now prove abort delivery and the non-timeout async path.
+- **D5-R2:** Terminal chunk is empty `text_delta` (`text: ""`); malformed SSE → `malformed`; mid-stream `error` frames classified; cut stream without `[DONE]`/finish_reason → `truncation` / `length`.
+- **D5-R3:** Status-first HTTP classification; content-filter via structured `type`/`code` + explicit policy phrases only; finish_reason `content_filter` / `insufficient_system_resource` short-circuit before success.
+- **D5-R4:** Missing key forces `consumedBudget: false`; `buildTiming` measures outbound `provider_ms`; stream wire sets `stream_options.include_usage`; cache-hit tokens map to `cached`; absent usage emits `provider_note` `{ note: "usage_absent" }`.
+- **D5-R5:** Spies strengthened; logger/journal sinks remain absent (D2-R2).
+- **D5-R6:** D5 contract documents buffered recording-mode transport and remaining-ms `deadline` interpretation. Architecture docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite green:
+
+- Manifest gates: **2 files, 4 tests passed**
+- Unit (`vitest run`): **40 files, 555 tests passed** (includes `deepseek-adapter.test.ts` **27** cases)
+- Workers (`vitest.workers.config.ts`): **19 files, 241 tests passed**
+
+Added/modified test assets: `ai-platform/test/deepseek-adapter.test.ts`; fixtures under `ai-platform/test/fixtures/deepseek/` (`truncated-stream.sse`, `malformed-stream.sse`, `mid-stream-error.sse`, finish-reason / safety-429 / usage-absent JSON). Production: `ai-platform/src/provider/deepseek.ts`. Spec Kit: `specs/032-first-real-provider-adapter/{spec,plan,tasks,contracts/first-real-provider-adapter}.md`.

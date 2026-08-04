@@ -1,0 +1,10 @@
+{
+  "status": 429,
+  "body": {
+    "error": {
+      "message": "Request blocked due to safety system overload",
+      "type": "rate_limit_error",
+      "code": "rate_limit_exceeded"
+    }
+  }
+}
