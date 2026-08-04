@@ -1,11 +1,14 @@
-import type {
-  CanonicalError,
-  CanonicalRequest,
-  CanonicalResult,
+import {
+  assertExactlyOneTerminal,
+  type CanonicalError,
+  type CanonicalRequest,
+  type CanonicalResult,
+  type CanonicalStreamChunk,
 } from "../contracts/canonical";
-import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
+import { getTaxonomyEntry, isTaxonomyCode, type TaxonomyCode } from "../errors";
 import { setRetryabilityFromClassification } from "./classify";
 import {
+  type ProviderInvokeOptions,
   type ProviderInvokeResult,
   type ProviderPort,
   type ScriptedOutcome,
@@ -47,11 +50,33 @@ function createTruncationResult(): CanonicalResult {
   };
 }
 
+function textFromResult(result: CanonicalResult): string {
+  const content = result.finalContent;
+  if (content && typeof content === "object" && "text" in content) {
+    return String((content as { text: unknown }).text ?? "");
+  }
+  return typeof content === "string" ? content : "";
+}
+
+function minimalTerminalChunks(text: string): readonly CanonicalStreamChunk[] {
+  const chunks: CanonicalStreamChunk[] = [
+    {
+      sequenceNumber: 0,
+      kind: "text_delta",
+      payload: { text },
+      terminal: true,
+    },
+  ];
+  assertExactlyOneTerminal(chunks);
+  return chunks;
+}
+
 function parsePrefixedCode(
-  outcome: ScriptedOutcome,
+  outcome: string,
   prefix: "retryable:" | "terminal:",
-): TaxonomyCode {
-  return outcome.slice(prefix.length) as TaxonomyCode;
+): TaxonomyCode | undefined {
+  const code = outcome.slice(prefix.length);
+  return isTaxonomyCode(code) ? code : undefined;
 }
 
 export class FakeAdapter implements ProviderPort {
@@ -61,18 +86,34 @@ export class FakeAdapter implements ProviderPort {
     this.queue = [...scriptedOutcomes];
   }
 
-  invoke(_request: CanonicalRequest): ProviderInvokeResult {
+  async invoke(
+    _request: CanonicalRequest,
+    _options?: ProviderInvokeOptions,
+  ): Promise<ProviderInvokeResult> {
     const outcome = this.queue.shift();
     if (outcome === undefined) {
-      throw new Error("FakeAdapter invoke called with empty outcome queue");
+      return {
+        kind: "error",
+        error: createCanonicalError("internal_error"),
+      };
     }
 
     if (outcome === "success") {
-      return { kind: "success", result: createSuccessResult() };
+      const result = createSuccessResult();
+      return {
+        kind: "success",
+        result,
+        chunks: minimalTerminalChunks(textFromResult(result)),
+      };
     }
 
     if (outcome === "truncation") {
-      return { kind: "truncation", result: createTruncationResult() };
+      const result = createTruncationResult();
+      return {
+        kind: "truncation",
+        result,
+        chunks: minimalTerminalChunks(textFromResult(result)),
+      };
     }
 
     if (outcome === "malformed") {
@@ -84,14 +125,23 @@ export class FakeAdapter implements ProviderPort {
 
     if (outcome.startsWith("retryable:")) {
       const code = parsePrefixedCode(outcome, "retryable:");
-      return { kind: "error", error: createCanonicalError(code) };
+      return {
+        kind: "error",
+        error: createCanonicalError(code ?? "internal_error"),
+      };
     }
 
     if (outcome.startsWith("terminal:")) {
       const code = parsePrefixedCode(outcome, "terminal:");
-      return { kind: "error", error: createCanonicalError(code) };
+      return {
+        kind: "error",
+        error: createCanonicalError(code ?? "internal_error"),
+      };
     }
 
-    throw new Error(`Unrecognized scripted outcome: ${outcome}`);
+    return {
+      kind: "error",
+      error: createCanonicalError("internal_error"),
+    };
   }
 }

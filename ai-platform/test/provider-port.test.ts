@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertExactlyOneTerminal,
   CANONICAL_FIELD_MANIFEST,
   type CanonicalError,
   type CanonicalRequest,
   type CanonicalResult,
 } from "../src/contracts/canonical";
 import {
+  ALL_TAXONOMY_CODES,
   getTaxonomyEntry,
   isRetrySafe,
   type TaxonomyCode,
@@ -18,40 +20,41 @@ import {
   type ScriptedOutcome,
 } from "../src/provider/port";
 
-const TAXONOMY_CODES: TaxonomyCode[] = [
-  "unauthenticated",
-  "installation_suspended",
-  "forbidden_capability",
-  "rate_limited",
-  "quota_exhausted",
-  "request_too_large",
-  "context_required",
-  "context_invalid",
-  "conversation_budget_exhausted",
-  "capability_unknown",
-  "capability_retired",
-  "capability_disabled",
-  "provider_unavailable",
-  "provider_rejected",
-  "validation_failed",
-  "cancelled",
-  "timeout",
-  "internal_error",
-];
-
-const RETRYABLE_CODES = TAXONOMY_CODES.filter((code) =>
+const RETRYABLE_CODES = ALL_TAXONOMY_CODES.filter((code) =>
   isRetrySafe(getTaxonomyEntry(code).retryable),
 );
 
-const TERMINAL_CODES = TAXONOMY_CODES.filter(
+const TERMINAL_CODES = ALL_TAXONOMY_CODES.filter(
   (code) => !isRetrySafe(getTaxonomyEntry(code).retryable),
 );
+
+/** Literal pins — must fail if classifyFailure drifts from A2 retry-safety. */
+const LITERAL_CLASSIFICATION_PINS: ReadonlyArray<{
+  code: TaxonomyCode;
+  expected: "retryable" | "terminal";
+}> = [
+  { code: "provider_rejected", expected: "terminal" },
+  { code: "timeout", expected: "retryable" },
+  { code: "cancelled", expected: "terminal" },
+  { code: "rate_limited", expected: "retryable" },
+  { code: "internal_error", expected: "retryable" },
+  { code: "validation_failed", expected: "retryable" },
+];
 
 const CREDENTIAL_FIELD_PATTERN =
   /credential|api[_-]?key|secret|token|password|authorization|bearer/i;
 
-const RETRY_FALLBACK_API_PATTERN =
-  /^(retry|withRetry|executeRetry|retryAttempt|fallback|withFallback|executeFallback|fallbackTo)/i;
+const RETRY_FALLBACK_NAME_PATTERN =
+  /(^|_)(retry|fallback|shouldRetry|maxRetries|withRetry|executeRetry|retryAttempt|withFallback|executeFallback|fallbackTo)(_|$)/i;
+
+const PROVIDER_MODULES = [
+  "../src/provider/port",
+  "../src/provider/fake",
+  "../src/provider/classify",
+  "../src/provider/deepseek",
+  "../src/provider/gemini",
+  "../src/provider/wiring",
+] as const;
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
@@ -75,10 +78,10 @@ function createFakeAdapter(scriptedOutcomes: ScriptedOutcome[]): FakeAdapter {
   return new FakeAdapter(scriptedOutcomes);
 }
 
-function invokeThroughPort(
+async function invokeThroughPort(
   port: ProviderPort,
   request: CanonicalRequest,
-): ProviderInvokeResult {
+): Promise<ProviderInvokeResult> {
   return port.invoke(request);
 }
 
@@ -136,35 +139,92 @@ function assertNoCredentialFields(value: unknown, path = "root"): void {
   }
 }
 
-function assertNoRetryOrFallbackApi(exportNames: readonly string[]): void {
-  for (const name of exportNames) {
+function collectOwnPropertyNames(value: unknown): string[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+  if (typeof value === "function") {
+    const names = [
+      ...Object.getOwnPropertyNames(value),
+      ...Object.getOwnPropertyNames(value.prototype ?? {}),
+    ];
+    return names.filter((name) => name !== "constructor" && name !== "length" && name !== "name" && name !== "prototype");
+  }
+  if (typeof value === "object") {
+    return Object.getOwnPropertyNames(value);
+  }
+  return [];
+}
+
+function assertNoRetryOrFallbackNames(
+  names: readonly string[],
+  surface: string,
+): void {
+  for (const name of names) {
     expect(
       name,
-      `export ${name} must not be a retry/fallback policy API`,
-    ).not.toMatch(RETRY_FALLBACK_API_PATTERN);
+      `${surface} member ${name} must not be a retry/fallback policy API`,
+    ).not.toMatch(RETRY_FALLBACK_NAME_PATTERN);
   }
 }
 
+function assertModuleHasNoRetryFallbackOrLoggingPolicy(
+  moduleNamespace: Record<string, unknown>,
+  modulePath: string,
+): void {
+  assertNoRetryOrFallbackNames(Object.keys(moduleNamespace), `${modulePath} exports`);
+
+  for (const [exportName, exported] of Object.entries(moduleNamespace)) {
+    assertNoRetryOrFallbackNames(
+      collectOwnPropertyNames(exported),
+      `${modulePath}.${exportName}`,
+    );
+
+    if (typeof exported === "function" && exported.prototype) {
+      const proto = exported.prototype as Record<string, unknown>;
+      expect(
+        Object.prototype.hasOwnProperty.call(proto, "logger") ||
+          Object.prototype.hasOwnProperty.call(proto, "journal"),
+        `${modulePath}.${exportName} must not own logger/journal on the prototype`,
+      ).toBe(false);
+    }
+  }
+
+  expect(
+    Object.keys(moduleNamespace).some((name) =>
+      /^(LoggerSink|JournalSink)$/i.test(name),
+    ),
+    `${modulePath} must not export LoggerSink/JournalSink (adapters own no logging policy)`,
+  ).toBe(false);
+}
+
 describe("T-D2-01 fake_success", () => {
-  it("returns a canonical result when scripted for success", () => {
+  it("returns a canonical result when scripted for success", async () => {
     const adapter = createFakeAdapter(["success"]);
-    const outcome = invokeThroughPort(adapter, requestFixture);
+    const outcome = await invokeThroughPort(adapter, requestFixture);
 
     expect(outcome.kind).toBe("success");
+    if (outcome.kind !== "success") {
+      throw new Error("Expected success outcome");
+    }
     assertCanonicalResultShape(outcome.result);
     expect(outcome.result.finishReason).toBeTruthy();
     expect(outcome.result.finalContent).toBeTruthy();
+    assertExactlyOneTerminal(outcome.chunks);
   });
 });
 
 describe("T-D2-02 fake_retryable_<class>", () => {
   it.each(RETRYABLE_CODES)(
     "retryable:%s yields a canonical error classified retryable",
-    (code) => {
+    async (code) => {
       const adapter = createFakeAdapter([`retryable:${code}`]);
-      const outcome = invokeThroughPort(adapter, requestFixture);
+      const outcome = await invokeThroughPort(adapter, requestFixture);
 
       expect(outcome.kind).toBe("error");
+      if (outcome.kind !== "error") {
+        throw new Error("Expected error outcome");
+      }
       assertCanonicalErrorShape(outcome.error);
       expect(outcome.error.taxonomyCode).toBe(code);
       expect(outcome.error.retryability).toBe(true);
@@ -175,11 +235,14 @@ describe("T-D2-02 fake_retryable_<class>", () => {
 describe("T-D2-03 fake_terminal_<class>", () => {
   it.each(TERMINAL_CODES)(
     "terminal:%s yields a canonical error classified terminal",
-    (code) => {
+    async (code) => {
       const adapter = createFakeAdapter([`terminal:${code}`]);
-      const outcome = invokeThroughPort(adapter, requestFixture);
+      const outcome = await invokeThroughPort(adapter, requestFixture);
 
       expect(outcome.kind).toBe("error");
+      if (outcome.kind !== "error") {
+        throw new Error("Expected error outcome");
+      }
       assertCanonicalErrorShape(outcome.error);
       expect(outcome.error.taxonomyCode).toBe(code);
       expect(outcome.error.retryability).toBe(false);
@@ -188,32 +251,65 @@ describe("T-D2-03 fake_terminal_<class>", () => {
 });
 
 describe("T-D2-04 fake_truncation", () => {
-  it("normalizes a scripted truncation outcome through the port", () => {
+  it("normalizes a scripted truncation outcome through the port", async () => {
     const adapter = createFakeAdapter(["truncation"]);
-    const outcome = invokeThroughPort(adapter, requestFixture);
+    const outcome = await invokeThroughPort(adapter, requestFixture);
 
     expect(outcome.kind).toBe("truncation");
+    if (outcome.kind !== "truncation") {
+      throw new Error("Expected truncation outcome");
+    }
     assertCanonicalResultShape(outcome.result);
     expect(outcome.result.finishReason).toBe("length");
+    assertExactlyOneTerminal(outcome.chunks);
   });
 });
 
 describe("T-D2-05 fake_malformed", () => {
-  it("normalizes a scripted malformed outcome through the port", () => {
+  it("normalizes a scripted malformed outcome through the port", async () => {
     const adapter = createFakeAdapter(["malformed"]);
-    const outcome = invokeThroughPort(adapter, requestFixture);
+    const outcome = await invokeThroughPort(adapter, requestFixture);
 
     expect(outcome.kind).toBe("malformed");
+    if (outcome.kind !== "malformed") {
+      throw new Error("Expected malformed outcome");
+    }
     assertCanonicalErrorShape(outcome.error);
-    expect(TAXONOMY_CODES).toContain(outcome.error.taxonomyCode);
+    expect(ALL_TAXONOMY_CODES).toContain(outcome.error.taxonomyCode);
+  });
+});
+
+describe("T-D2-R1 fake_empty_queue_and_invalid_code_are_classified", () => {
+  it("returns classified internal_error when the outcome queue is empty — never throws", async () => {
+    const adapter = createFakeAdapter([]);
+    await expect(
+      invokeThroughPort(adapter, requestFixture),
+    ).resolves.toMatchObject({
+      kind: "error",
+      error: expect.objectContaining({ taxonomyCode: "internal_error" }),
+    });
+  });
+
+  it("classifies an invalid prefixed taxonomy code as internal_error", async () => {
+    const adapter = createFakeAdapter([
+      "retryable:bogus_not_a_code" as ScriptedOutcome,
+    ]);
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(outcome.kind).toBe("error");
+    if (outcome.kind !== "error") {
+      throw new Error("Expected error outcome");
+    }
+    expect(outcome.error.taxonomyCode).toBe("internal_error");
   });
 });
 
 describe("T-D2-06 classification_exhaustive_over_taxonomy", () => {
-  it("maps every taxonomy code to exactly one retryable or terminal class", () => {
+  it("enumerates A2's exported taxonomy list and pins literal code→class mappings", () => {
     const classifications = new Map<TaxonomyCode, "retryable" | "terminal">();
 
-    for (const code of TAXONOMY_CODES) {
+    expect(ALL_TAXONOMY_CODES.length).toBeGreaterThan(0);
+
+    for (const code of ALL_TAXONOMY_CODES) {
       const classification = classifyFailure(code);
 
       expect(
@@ -221,30 +317,44 @@ describe("T-D2-06 classification_exhaustive_over_taxonomy", () => {
       ).toBe(true);
       expect(classifications.has(code)).toBe(false);
       classifications.set(code, classification);
-
-      const expectedRetryable = isRetrySafe(
-        getTaxonomyEntry(code).retryable,
-      );
-      expect(classification === "retryable").toBe(expectedRetryable);
-      expect(classification === "terminal").toBe(!expectedRetryable);
     }
 
-    expect(classifications.size).toBe(TAXONOMY_CODES.length);
+    expect(classifications.size).toBe(ALL_TAXONOMY_CODES.length);
+
+    for (const { code, expected } of LITERAL_CLASSIFICATION_PINS) {
+      expect(classifyFailure(code)).toBe(expected);
+    }
   });
 });
 
 describe("T-D2-18 adapters_own_no_retry_or_fallback", () => {
-  it("provider-port and fake export surfaces expose no retry or fallback API", async () => {
-    const portModule = await import("../src/provider/port");
-    const fakeModule = await import("../src/provider/fake");
+  it("every provider module export and prototype surface excludes retry/fallback/logging policy", async () => {
+    for (const modulePath of PROVIDER_MODULES) {
+      const moduleNamespace = (await import(modulePath)) as Record<
+        string,
+        unknown
+      >;
+      assertModuleHasNoRetryFallbackOrLoggingPolicy(
+        moduleNamespace,
+        modulePath,
+      );
+    }
 
-    assertNoRetryOrFallbackApi(Object.keys(portModule));
-    assertNoRetryOrFallbackApi(Object.keys(fakeModule));
+    const fakeProto = FakeAdapter.prototype as unknown as Record<
+      string,
+      unknown
+    >;
+    assertNoRetryOrFallbackNames(
+      Object.getOwnPropertyNames(fakeProto).filter(
+        (name) => name !== "constructor",
+      ),
+      "FakeAdapter.prototype",
+    );
   });
 });
 
 describe("T-D2-21 credentials_absent_from_fake_emissions", () => {
-  it("returns no credential fields across success, error, truncation, and malformed outcomes", () => {
+  it("returns no credential fields across success, error, truncation, and malformed outcomes", async () => {
     const scriptedOutcomes: ScriptedOutcome[] = [
       "success",
       `retryable:${RETRYABLE_CODES[0]}`,
@@ -256,7 +366,7 @@ describe("T-D2-21 credentials_absent_from_fake_emissions", () => {
     const adapter = createFakeAdapter(scriptedOutcomes);
 
     for (let index = 0; index < scriptedOutcomes.length; index += 1) {
-      const outcome = invokeThroughPort(adapter, requestFixture);
+      const outcome = await invokeThroughPort(adapter, requestFixture);
       for (const diagnostic of collectCredentialDiagnostics(outcome)) {
         assertNoCredentialFields(diagnostic, `invoke[${index}]`);
       }

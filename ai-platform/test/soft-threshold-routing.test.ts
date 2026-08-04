@@ -401,6 +401,30 @@ function buildStandardDegradedPolicy(): RoutingPolicyDocument {
           },
         ],
       },
+      {
+        rule_id: "catch-all",
+        match: {},
+        requires: {
+          structured_output: false,
+          min_context_window: 0,
+          languages: [],
+        },
+        targets: [
+          {
+            provider_id: "deepseek",
+            model_id: "deepseek-chat",
+            features: {
+              structured_output: false,
+              min_context_window: 128_000,
+              languages: ["en"],
+              latency_class: "interactive",
+              cost_class: "economy",
+            },
+            max_attempts: 2,
+            timeout_ms: 30_000,
+          },
+        ],
+      },
     ],
     overrides: [],
   };

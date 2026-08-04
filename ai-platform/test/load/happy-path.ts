@@ -422,7 +422,7 @@ async function runSingleHappyPath(input: {
   }
 
   const adapter = new FakeAdapter(["success"]);
-  const invokeResult = adapter.invoke({
+  const invokeResult = await adapter.invoke({
     parts: [{ role: "user", content: "Summarise." }],
     formatDirective: { type: "text" },
     samplingConstraints: { temperature: 0.2 },

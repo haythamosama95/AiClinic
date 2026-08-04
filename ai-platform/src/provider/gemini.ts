@@ -1,12 +1,17 @@
-import type {
-  CanonicalError,
-  CanonicalRequest,
-  CanonicalResult,
-  CanonicalStreamChunk,
+import {
+  assertExactlyOneTerminal,
+  type CanonicalError,
+  type CanonicalRequest,
+  type CanonicalResult,
+  type CanonicalStreamChunk,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import { setRetryabilityFromClassification } from "./classify";
-import type { ProviderInvokeResult, ProviderPort } from "./port";
+import type {
+  ProviderInvokeOptions,
+  ProviderInvokeResult,
+  ProviderPort,
+} from "./port";
 
 export const GEMINI_API_KEY_BINDING = "GEMINI_API_KEY";
 
@@ -40,24 +45,10 @@ export type SecretStorePort = {
   getSecret(name: string): string | undefined;
 };
 
-export type LoggerSink = {
-  log(level: string, message: string, meta?: Record<string, unknown>): void;
-};
-
-export type JournalSink = {
-  emit(record: Record<string, unknown>): void;
-};
-
 export type GeminiAdapterOptions = {
   transport: GeminiTransport;
   secretStore: SecretStorePort;
-  logger?: LoggerSink;
-  journal?: JournalSink;
   timeoutMs?: number;
-};
-
-type GeminiInvokeOutcome = ProviderInvokeResult & {
-  streamChunks?: readonly CanonicalStreamChunk[];
 };
 
 type GeminiWireRequest = {
@@ -274,7 +265,6 @@ function normalizeStreamChunks(
   const chunks: CanonicalStreamChunk[] = [];
   let sequence = 0;
   let assembled = "";
-  let finishReason: string | null | undefined;
   let usage: GeminiUsage | undefined;
 
   for (const event of events) {
@@ -290,9 +280,6 @@ function normalizeStreamChunks(
         terminal: false,
       });
       sequence += 1;
-    }
-    if (candidate?.finishReason) {
-      finishReason = candidate.finishReason;
     }
   }
 
@@ -313,92 +300,117 @@ function normalizeStreamChunks(
     terminal: true,
   });
 
+  assertExactlyOneTerminal(chunks);
   return chunks;
 }
 
-function safeEmitLog(
-  logger: LoggerSink | undefined,
-  level: string,
-  message: string,
-  meta?: Record<string, unknown>,
-): void {
-  logger?.log(level, message, meta);
+function minimalTerminalChunks(text: string): readonly CanonicalStreamChunk[] {
+  const chunks: CanonicalStreamChunk[] = [
+    {
+      sequenceNumber: 0,
+      kind: "text_delta",
+      payload: { text },
+      terminal: true,
+    },
+  ];
+  assertExactlyOneTerminal(chunks);
+  return chunks;
 }
 
-function safeEmitJournal(
-  journal: JournalSink | undefined,
-  record: Record<string, unknown>,
-): void {
-  journal?.emit(record);
+function createTimeoutOutcome(): ProviderInvokeResult {
+  return {
+    kind: "error",
+    error: createCanonicalError(
+      "timeout",
+      "deadline_exceeded",
+      "Gemini request exceeded adapter deadline",
+    ),
+  };
 }
 
-function createTimeoutOutcome(
-  logger: LoggerSink | undefined,
-  journal: JournalSink | undefined,
-): GeminiInvokeOutcome {
-  const error = createCanonicalError(
-    "timeout",
-    "deadline_exceeded",
-    "Gemini request exceeded adapter deadline",
-  );
-  safeEmitLog(logger, "warn", "gemini.timeout", {
-    provider: PROVIDER_ID,
-  });
-  safeEmitJournal(journal, {
-    event: "provider.timeout",
-    provider: PROVIDER_ID,
-  });
-  return { kind: "error", error };
+function createCancelledOutcome(): ProviderInvokeResult {
+  return {
+    kind: "error",
+    error: createCanonicalError(
+      "cancelled",
+      "aborted",
+      "Gemini request aborted by caller signal",
+    ),
+  };
 }
 
-function waitForPromiseOutcome<T>(
-  promise: Promise<T>,
+type AbortGuard = {
+  signal: AbortSignal;
+  cleanup: () => void;
+  wasTimeout: () => boolean;
+};
+
+function createAbortGuard(
   timeoutMs: number,
-): T | undefined {
-  let settled = false;
-  let value: T | undefined;
-  let error: unknown;
+  callerSignal?: AbortSignal,
+): AbortGuard {
+  const controller = new AbortController();
+  let timedOut = false;
 
-  void promise.then(
-    (resolved) => {
-      value = resolved;
-      settled = true;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  const onCallerAbort = (): void => {
+    controller.abort();
+  };
+
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    wasTimeout: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
     },
-    (reason) => {
-      error = reason;
-      settled = true;
-    },
-  );
+  };
+}
 
-  const deadline = Date.now() + timeoutMs;
-  while (!settled && Date.now() < deadline) {
+async function awaitTransportResponse(
+  fetchResult: GeminiTransportResponse | Promise<GeminiTransportResponse>,
+  guard: AbortGuard,
+): Promise<GeminiTransportResponse | null> {
+  if (guard.signal.aborted) {
+    return null;
   }
 
-  if (!settled) {
-    return undefined;
-  }
-  if (error !== undefined) {
-    throw error;
-  }
-  return value;
+  const abortPromise = new Promise<null>((resolve) => {
+    guard.signal.addEventListener("abort", () => resolve(null), {
+      once: true,
+    });
+  });
+
+  return Promise.race([Promise.resolve(fetchResult), abortPromise]);
 }
 
 export class GeminiAdapter implements ProviderPort {
   private readonly transport: GeminiTransport;
   private readonly secretStore: SecretStorePort;
-  private readonly logger?: LoggerSink;
-  private readonly journal?: JournalSink;
   private readonly defaultTimeoutMs?: number;
 
   constructor(options: GeminiAdapterOptions) {
     this.transport = options.transport;
     this.secretStore = options.secretStore;
-    this.logger = options.logger;
-    this.journal = options.journal;
     this.defaultTimeoutMs = options.timeoutMs;
   }
 
-  invoke(request: CanonicalRequest): GeminiInvokeOutcome {
+  async invoke(
+    request: CanonicalRequest,
+    options?: ProviderInvokeOptions,
+  ): Promise<ProviderInvokeResult> {
     const timeoutMs = resolveTimeoutMs(request, {
       transport: this.transport,
       secretStore: this.secretStore,
@@ -407,24 +419,19 @@ export class GeminiAdapter implements ProviderPort {
 
     const apiKey = this.secretStore.getSecret(GEMINI_API_KEY_BINDING);
     if (!apiKey) {
-      const error = createCanonicalError(
-        "provider_rejected",
-        "missing_api_key",
-        "Gemini API key not found in secret store",
-      );
-      safeEmitLog(this.logger, "error", "gemini.credentials_missing", {
-        provider: PROVIDER_ID,
-      });
-      safeEmitJournal(this.journal, {
-        event: "provider.credentials_missing",
-        provider: PROVIDER_ID,
-      });
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "provider_rejected",
+          "missing_api_key",
+          "Gemini API key not found in secret store",
+        ),
+      };
     }
 
     const { wire, isStream } = mapCanonicalToWire(request);
     const apiUrl = buildApiUrl(isStream);
-    const controller = new AbortController();
+    const guard = createAbortGuard(timeoutMs, options?.signal);
     const fetchInit: GeminiTransportRequest = {
       url: apiUrl,
       method: "POST",
@@ -433,34 +440,42 @@ export class GeminiAdapter implements ProviderPort {
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify(wire),
-      signal: controller.signal,
+      signal: guard.signal,
     };
 
-    const fetchResult = this.transport.fetch(apiUrl, fetchInit);
-
-    if (!(fetchResult instanceof Promise)) {
-      return this.handleTransportResponse(fetchResult, request, isStream);
+    try {
+      const fetchResult = this.transport.fetch(apiUrl, fetchInit);
+      const response = await awaitTransportResponse(fetchResult, guard);
+      if (response === null) {
+        return guard.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
+      return this.handleTransportResponse(response, request, isStream);
+    } catch {
+      if (guard.signal.aborted) {
+        return guard.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "transport_failure",
+          "Gemini transport failed",
+        ),
+      };
+    } finally {
+      guard.cleanup();
     }
-
-    const timeoutTimer = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-
-    const response = waitForPromiseOutcome(fetchResult, timeoutMs);
-    clearTimeout(timeoutTimer);
-
-    if (response === undefined) {
-      return createTimeoutOutcome(this.logger, this.journal);
-    }
-
-    return this.handleTransportResponse(response, request, isStream);
   }
 
   private handleTransportResponse(
     response: GeminiTransportResponse,
-    request: CanonicalRequest,
+    _request: CanonicalRequest,
     isStream: boolean,
-  ): GeminiInvokeOutcome {
+  ): ProviderInvokeResult {
     const contentType =
       response.headers["content-type"] ??
       response.headers["Content-Type"] ??
@@ -474,23 +489,14 @@ export class GeminiAdapter implements ProviderPort {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
-      const error = createCanonicalError(
-        taxonomy,
-        String(parsed.error?.status ?? parsed.error?.code ?? response.status),
-        parsed.error?.message ?? `HTTP ${response.status}`,
-      );
-      safeEmitLog(this.logger, "warn", "gemini.provider_error", {
-        provider: PROVIDER_ID,
-        status: response.status,
-        taxonomy,
-      });
-      safeEmitJournal(this.journal, {
-        event: "provider.error",
-        provider: PROVIDER_ID,
-        status: response.status,
-        taxonomy,
-      });
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          taxonomy,
+          String(parsed.error?.status ?? parsed.error?.code ?? response.status),
+          parsed.error?.message ?? `HTTP ${response.status}`,
+        ),
+      };
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
@@ -501,47 +507,43 @@ export class GeminiAdapter implements ProviderPort {
     try {
       parsed = JSON.parse(response.body) as GeminiResponse;
     } catch {
-      const error = createCanonicalError(
-        "internal_error",
-        "malformed_response",
-        "Provider returned unparseable JSON",
-      );
-      return { kind: "malformed", error };
+      return {
+        kind: "malformed",
+        error: createCanonicalError(
+          "internal_error",
+          "malformed_response",
+          "Provider returned unparseable JSON",
+        ),
+      };
     }
 
     if (isContentFiltered(parsed)) {
-      const error = createCanonicalError(
-        "provider_rejected",
-        parsed.candidates?.[0]?.finishReason ?? "SAFETY",
-        "Content filtered by provider",
-      );
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "provider_rejected",
+          parsed.candidates?.[0]?.finishReason ?? "SAFETY",
+          "Content filtered by provider",
+        ),
+      };
     }
 
     const candidate = parsed.candidates?.[0];
     const content = candidate?.content?.parts?.[0]?.text ?? "";
     const finishReason = candidate?.finishReason ?? "STOP";
     const result = buildResult(parsed, content, finishReason);
-
-    safeEmitLog(this.logger, "info", "gemini.invoke_complete", {
-      provider: PROVIDER_ID,
-      request_reference: request.correlationIds.request_reference,
-    });
-    safeEmitJournal(this.journal, {
-      event: "provider.invoke_complete",
-      provider: PROVIDER_ID,
-    });
+    const chunks = minimalTerminalChunks(content);
 
     if (finishReason === "MAX_TOKENS") {
-      return { kind: "truncation", result };
+      return { kind: "truncation", result, chunks };
     }
 
-    return { kind: "success", result };
+    return { kind: "success", result, chunks };
   }
 
-  private handleStreamResponse(body: string): GeminiInvokeOutcome {
+  private handleStreamResponse(body: string): ProviderInvokeResult {
     const events = parseSseEvents(body);
-    const streamChunks = normalizeStreamChunks(events);
+    const chunks = normalizeStreamChunks(events);
 
     const lastEvent = events[events.length - 1];
     const candidate = lastEvent?.candidates?.[0];
@@ -559,7 +561,7 @@ export class GeminiAdapter implements ProviderPort {
     return {
       kind: finishReason === "MAX_TOKENS" ? "truncation" : "success",
       result,
-      streamChunks,
+      chunks,
     };
   }
 }
