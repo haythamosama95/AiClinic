@@ -76,7 +76,7 @@ type RouterContext = {
   };
   manifestCostClass: "economy" | "standard" | "premium";
   entitlementMaxCostClass: "economy" | "standard" | "premium";
-  installationForceCostClass?: "economy" | "standard" | "premium";
+  killedProviderIds?: readonly string[];
 };
 
 function loadPlatformPolicyDocument(): RoutingPolicyDocument {
@@ -113,7 +113,7 @@ function defaultContext(overrides: Partial<RouterContext> = {}): RouterContext {
     },
     manifestCostClass: overrides.manifestCostClass ?? "standard",
     entitlementMaxCostClass: overrides.entitlementMaxCostClass ?? "premium",
-    installationForceCostClass: overrides.installationForceCostClass,
+    killedProviderIds: overrides.killedProviderIds,
   };
 }
 

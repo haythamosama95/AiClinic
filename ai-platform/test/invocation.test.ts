@@ -205,7 +205,7 @@ function createPartialStreamHarness(
   failCode: TaxonomyCode,
 ): ProviderPort {
   return {
-    invoke(_request: CanonicalRequest): ProviderInvokeResult {
+    async invoke(_request: CanonicalRequest): Promise<ProviderInvokeResult> {
       sink.emitStreamText(partialText);
       return {
         kind: "error",

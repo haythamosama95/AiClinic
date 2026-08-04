@@ -183,7 +183,7 @@ export async function runInvocation(
     ) {
       attemptNo++;
       const port = portResolver(entry.provider_id);
-      const invokeResult = port.invoke(request);
+      const invokeResult = await port.invoke(request);
       const processed = processInvokeResult(
         invokeResult,
         entry,

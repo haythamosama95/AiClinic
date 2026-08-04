@@ -66,3 +66,44 @@ D2 delivers the four modules its plan names — `src/provider/classify.ts` (`cla
 - **Strengthen the prohibition test** (Weak Test 2, Deviation 2): enumerate `FakeAdapter` prototype methods and the `ProviderPort` member surface, widen the name pattern, and extend the assertion to every adapter module under `src/provider/` so the merged real adapters' logger/journal ownership is caught.
 - **Add the missing cases**: empty chain with full `excluded` list; latency-exclusion reason code (after the contract names it); `max_attempts`/`timeout_ms` carry-through; cost-source tie-break; document/row version mismatch; unknown `schema_version`; no-match behaviour; a `kill_switch` emitting path or a contract amendment removing the code; T-D2-20 asserting the exact clamped value and rule-over-default precedence.
 - **Amend the frozen contracts for the merged reality** (Deviations 1–3): add the per-installation policy-key lookup and `preloadRoutingPolicyForInstallation` to `contracts/routing-decision.md`, resolve the adapters-and-logging clause against what D5/D7 actually merged, and reconcile "recorded on the request" with the returned `RouterOutcome` — exactly as the C-slice and D1 contracts owe their amendments.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D2-R1 — Async port, chunks, abort; fake classified failures** | Critical #1; Bugs #6; Recommended Improvements (port repair) | `src/provider/port.ts`, `fake.ts`, `deepseek.ts`, `gemini.ts`, `src/invocation/index.ts`; adapter/port/invocation/eval/load consumers; `contracts/provider-port.md` |
+| **D2-R2 — Exhaustiveness + prohibition + no adapter logging** | Missing/Weak Tests #1–#2; Architectural Deviation #2; Recommended Improvements (taxonomy list, prohibition, logging) | `src/errors.ts` (`ALL_TAXONOMY_CODES`); `test/provider-port.test.ts` T-D2-06/T-D2-18; logger/journal removed from DeepSeek/Gemini |
+| **D2-R3 — Cost class, requires, defaults** | Bugs #1–#3; Weak Test #3; Recommended Improvements (force_cost_class, requires/defaults) | `src/router/index.ts`; `test/router.test.ts` T-D2-16; `second-provider-policy.test.ts`; Spec Kit `routing-decision.md` (`defaults.cost_class` schema-only) |
+| **D2-R4 — Document validation & typed no-match** | Bugs #4–#5; Weak Test #7 | `RoutingPolicyError`; identity/schema/catch-all validation; `soft-threshold-routing.test.ts` catch-all fixtures |
+| **D2-R5 — Filters, reason codes, missing cases** | Bug #7; Weak Tests #4–#6, #8–#9; Deviation #1 (J3 consult assert + contract) | Latency→`feature_unsupported` asserted; empty chain; carry-through; SOURCE_PRIORITY; `killedProviderIds`→`kill_switch`; T-D2-20 exact clamp; T-D2-19 dual consult |
+| **D2-R6 — Spec Kit amendments for merged reality** | Architectural Deviations #1, #3, #4; Recommended Improvements (contract amendments) | `contracts/routing-decision.md` (J3 preload); `spec.md` FR-010 / acceptance #14 (`RouterOutcome`); unwired consumers remain deferred to D3/CP3 per contract |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) were not edited.
+
+### 1.2 Test cases created first
+
+- **D2-R1:** `T-D2-R1 fake_empty_queue_and_invalid_code_are_classified` (empty queue / bogus taxonomy → classified `internal_error`, never throw); async invoke + `assertExactlyOneTerminal` on success/truncation chunks; adapter suites rewritten off sync/`streamChunks`/logger assertions before deleting `waitForPromiseOutcome` and sinks.
+- **D2-R2:** T-D2-06 rewritten to enumerate `ALL_TAXONOMY_CODES` and pin literal pairs (`provider_rejected`→terminal, `timeout`→retryable, …); T-D2-18 extended to every `src/provider/` module + prototypes + no `LoggerSink`/`JournalSink` exports.
+- **D2-R3:** T-D2-16 driven only by document `force_cost_class` (context field removed); new requires-floor exclusion case; defaults.cost_class no-effect case.
+- **D2-R4:** Cases for `policy_identity_mismatch`, `unsupported_schema_version`, `missing_catch_all`, `no_matching_rule` via `RoutingPolicyError`.
+- **D2-R5:** Empty-chain + full `excluded`; T-D2-11 asserts latency `reason_code === "feature_unsupported"`; carry-through of `max_attempts`/`timeout_ms`; SOURCE_PRIORITY tie-break; `kill_switch` via `killedProviderIds`; T-D2-20 expects exactly `6` and rule=2→`2`; T-D2-19 asserts per-install then global consult.
+- **D2-R6:** Spec Kit only (no new production tests beyond the above documentation alignment).
+
+### 1.3 Fix implemented
+
+- **D2-R1:** `ProviderPort.invoke` is async with `ProviderInvokeOptions.signal`; success/truncation carry `chunks`; FakeAdapter returns classified errors; DeepSeek/Gemini `await` fetch, emit port `chunks`, deleted busy-spin `waitForPromiseOutcome`, combined abort; all invoke call sites await.
+- **D2-R2:** Exported `ALL_TAXONOMY_CODES` from A2 `errors.ts`; strengthened T-D2-06/T-D2-18; removed adapter logger/journal ownership to match §4.3.8 / contract §2.1.
+- **D2-R3:** Installation `force_cost_class` read from policy override; `installationForceCostClass` removed from `RouterContext`; `rules[].requires` merged into the filter floor; `defaults.cost_class` retained for schema parity but non-operational (three-source model authoritative; only `defaults.max_parallel_attempts` applied).
+- **D2-R4:** Row↔document identity + supported `schema_version` + terminal catch-all enforced; bare `Error` replaced with `RoutingPolicyError`.
+- **D2-R5:** Documented latency→`feature_unsupported` mapping; kill-switch exclusion path; missing router cases added; J3 dual-key lookup asserted and contracted.
+- **D2-R6:** Spec Kit reconciles selection reason on `RouterOutcome` (C3 persists), J3 preload extension, and adapter no-logging clause. Deviation #4 (unwired until D3/CP3) acknowledged in contracts — no production wiring in this slice.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **59 files, 751 tests passed** (main vitest **40 files / 510 tests**; workers **19 files / 241 tests**).
+
+Test files added or modified include: `provider-port.test.ts`, `router.test.ts`, `deepseek-adapter.test.ts`, `gemini-adapter.test.ts`, `invocation.test.ts`, `second-provider-policy.test.ts`, `soft-threshold-routing.test.ts`, `conversational-journaling.test.ts`, `eval/harness.ts`, `load/happy-path.ts`.

@@ -1,12 +1,17 @@
-import type {
-  CanonicalError,
-  CanonicalRequest,
-  CanonicalResult,
-  CanonicalStreamChunk,
+import {
+  assertExactlyOneTerminal,
+  type CanonicalError,
+  type CanonicalRequest,
+  type CanonicalResult,
+  type CanonicalStreamChunk,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import { setRetryabilityFromClassification } from "./classify";
-import type { ProviderInvokeResult, ProviderPort } from "./port";
+import type {
+  ProviderInvokeOptions,
+  ProviderInvokeResult,
+  ProviderPort,
+} from "./port";
 
 export const DEEPSEEK_API_KEY_BINDING = "DEEPSEEK_API_KEY";
 
@@ -39,24 +44,10 @@ export type SecretStorePort = {
   getSecret(name: string): string | undefined;
 };
 
-export type LoggerSink = {
-  log(level: string, message: string, meta?: Record<string, unknown>): void;
-};
-
-export type JournalSink = {
-  emit(record: Record<string, unknown>): void;
-};
-
 export type DeepSeekAdapterOptions = {
   transport: DeepSeekTransport;
   secretStore: SecretStorePort;
-  logger?: LoggerSink;
-  journal?: JournalSink;
   timeoutMs?: number;
-};
-
-type DeepSeekInvokeOutcome = ProviderInvokeResult & {
-  streamChunks?: readonly CanonicalStreamChunk[];
 };
 
 type DeepSeekWireRequest = {
@@ -250,7 +241,6 @@ function normalizeStreamChunks(
   const chunks: CanonicalStreamChunk[] = [];
   let sequence = 0;
   let assembled = "";
-  let finishReason: string | null | undefined;
   let usage: DeepSeekUsage | undefined;
 
   for (const event of events) {
@@ -266,9 +256,6 @@ function normalizeStreamChunks(
         terminal: false,
       });
       sequence += 1;
-    }
-    if (choice?.finish_reason) {
-      finishReason = choice.finish_reason;
     }
   }
 
@@ -289,92 +276,117 @@ function normalizeStreamChunks(
     terminal: true,
   });
 
+  assertExactlyOneTerminal(chunks);
   return chunks;
 }
 
-function safeEmitLog(
-  logger: LoggerSink | undefined,
-  level: string,
-  message: string,
-  meta?: Record<string, unknown>,
-): void {
-  logger?.log(level, message, meta);
+function minimalTerminalChunks(text: string): readonly CanonicalStreamChunk[] {
+  const chunks: CanonicalStreamChunk[] = [
+    {
+      sequenceNumber: 0,
+      kind: "text_delta",
+      payload: { text },
+      terminal: true,
+    },
+  ];
+  assertExactlyOneTerminal(chunks);
+  return chunks;
 }
 
-function safeEmitJournal(
-  journal: JournalSink | undefined,
-  record: Record<string, unknown>,
-): void {
-  journal?.emit(record);
+function createTimeoutOutcome(): ProviderInvokeResult {
+  return {
+    kind: "error",
+    error: createCanonicalError(
+      "timeout",
+      "deadline_exceeded",
+      "DeepSeek request exceeded adapter deadline",
+    ),
+  };
 }
 
-function createTimeoutOutcome(
-  logger: LoggerSink | undefined,
-  journal: JournalSink | undefined,
-): DeepSeekInvokeOutcome {
-  const error = createCanonicalError(
-    "timeout",
-    "deadline_exceeded",
-    "DeepSeek request exceeded adapter deadline",
-  );
-  safeEmitLog(logger, "warn", "deepseek.timeout", {
-    provider: PROVIDER_ID,
-  });
-  safeEmitJournal(journal, {
-    event: "provider.timeout",
-    provider: PROVIDER_ID,
-  });
-  return { kind: "error", error };
+function createCancelledOutcome(): ProviderInvokeResult {
+  return {
+    kind: "error",
+    error: createCanonicalError(
+      "cancelled",
+      "aborted",
+      "DeepSeek request aborted by caller signal",
+    ),
+  };
 }
 
-function waitForPromiseOutcome<T>(
-  promise: Promise<T>,
+type AbortGuard = {
+  signal: AbortSignal;
+  cleanup: () => void;
+  wasTimeout: () => boolean;
+};
+
+function createAbortGuard(
   timeoutMs: number,
-): T | undefined {
-  let settled = false;
-  let value: T | undefined;
-  let error: unknown;
+  callerSignal?: AbortSignal,
+): AbortGuard {
+  const controller = new AbortController();
+  let timedOut = false;
 
-  void promise.then(
-    (resolved) => {
-      value = resolved;
-      settled = true;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  const onCallerAbort = (): void => {
+    controller.abort();
+  };
+
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    wasTimeout: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
     },
-    (reason) => {
-      error = reason;
-      settled = true;
-    },
-  );
+  };
+}
 
-  const deadline = Date.now() + timeoutMs;
-  while (!settled && Date.now() < deadline) {
+async function awaitTransportResponse(
+  fetchResult: DeepSeekTransportResponse | Promise<DeepSeekTransportResponse>,
+  guard: AbortGuard,
+): Promise<DeepSeekTransportResponse | null> {
+  if (guard.signal.aborted) {
+    return null;
   }
 
-  if (!settled) {
-    return undefined;
-  }
-  if (error !== undefined) {
-    throw error;
-  }
-  return value;
+  const abortPromise = new Promise<null>((resolve) => {
+    guard.signal.addEventListener("abort", () => resolve(null), {
+      once: true,
+    });
+  });
+
+  return Promise.race([Promise.resolve(fetchResult), abortPromise]);
 }
 
 export class DeepSeekAdapter implements ProviderPort {
   private readonly transport: DeepSeekTransport;
   private readonly secretStore: SecretStorePort;
-  private readonly logger?: LoggerSink;
-  private readonly journal?: JournalSink;
   private readonly defaultTimeoutMs?: number;
 
   constructor(options: DeepSeekAdapterOptions) {
     this.transport = options.transport;
     this.secretStore = options.secretStore;
-    this.logger = options.logger;
-    this.journal = options.journal;
     this.defaultTimeoutMs = options.timeoutMs;
   }
 
-  invoke(request: CanonicalRequest): DeepSeekInvokeOutcome {
+  async invoke(
+    request: CanonicalRequest,
+    options?: ProviderInvokeOptions,
+  ): Promise<ProviderInvokeResult> {
     const timeoutMs = resolveTimeoutMs(request, {
       transport: this.transport,
       secretStore: this.secretStore,
@@ -383,23 +395,18 @@ export class DeepSeekAdapter implements ProviderPort {
 
     const apiKey = this.secretStore.getSecret(DEEPSEEK_API_KEY_BINDING);
     if (!apiKey) {
-      const error = createCanonicalError(
-        "provider_rejected",
-        "missing_api_key",
-        "DeepSeek API key not found in secret store",
-      );
-      safeEmitLog(this.logger, "error", "deepseek.credentials_missing", {
-        provider: PROVIDER_ID,
-      });
-      safeEmitJournal(this.journal, {
-        event: "provider.credentials_missing",
-        provider: PROVIDER_ID,
-      });
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "provider_rejected",
+          "missing_api_key",
+          "DeepSeek API key not found in secret store",
+        ),
+      };
     }
 
     const wireBody = mapCanonicalToWire(request);
-    const controller = new AbortController();
+    const guard = createAbortGuard(timeoutMs, options?.signal);
     const fetchInit: DeepSeekTransportRequest = {
       url: DEEPSEEK_API_URL,
       method: "POST",
@@ -408,38 +415,46 @@ export class DeepSeekAdapter implements ProviderPort {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(wireBody),
-      signal: controller.signal,
+      signal: guard.signal,
     };
 
-    const fetchResult = this.transport.fetch(DEEPSEEK_API_URL, fetchInit);
-
-    if (!(fetchResult instanceof Promise)) {
+    try {
+      const fetchResult = this.transport.fetch(DEEPSEEK_API_URL, fetchInit);
+      const response = await awaitTransportResponse(fetchResult, guard);
+      if (response === null) {
+        return guard.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
       return this.handleTransportResponse(
-        fetchResult,
+        response,
         request,
         wireBody.stream,
       );
+    } catch {
+      if (guard.signal.aborted) {
+        return guard.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "transport_failure",
+          "DeepSeek transport failed",
+        ),
+      };
+    } finally {
+      guard.cleanup();
     }
-
-    const timeoutTimer = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-
-    const response = waitForPromiseOutcome(fetchResult, timeoutMs);
-    clearTimeout(timeoutTimer);
-
-    if (response === undefined) {
-      return createTimeoutOutcome(this.logger, this.journal);
-    }
-
-    return this.handleTransportResponse(response, request, wireBody.stream);
   }
 
   private handleTransportResponse(
     response: DeepSeekTransportResponse,
-    request: CanonicalRequest,
+    _request: CanonicalRequest,
     isStream: boolean | undefined,
-  ): DeepSeekInvokeOutcome {
+  ): ProviderInvokeResult {
     const contentType =
       response.headers["content-type"] ??
       response.headers["Content-Type"] ??
@@ -453,23 +468,14 @@ export class DeepSeekAdapter implements ProviderPort {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
-      const error = createCanonicalError(
-        taxonomy,
-        String(parsed.error?.code ?? response.status),
-        parsed.error?.message ?? `HTTP ${response.status}`,
-      );
-      safeEmitLog(this.logger, "warn", "deepseek.provider_error", {
-        provider: PROVIDER_ID,
-        status: response.status,
-        taxonomy,
-      });
-      safeEmitJournal(this.journal, {
-        event: "provider.error",
-        provider: PROVIDER_ID,
-        status: response.status,
-        taxonomy,
-      });
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          taxonomy,
+          String(parsed.error?.code ?? response.status),
+          parsed.error?.message ?? `HTTP ${response.status}`,
+        ),
+      };
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
@@ -480,47 +486,43 @@ export class DeepSeekAdapter implements ProviderPort {
     try {
       parsed = JSON.parse(response.body) as DeepSeekResponse;
     } catch {
-      const error = createCanonicalError(
-        "internal_error",
-        "malformed_response",
-        "Provider returned unparseable JSON",
-      );
-      return { kind: "malformed", error };
+      return {
+        kind: "malformed",
+        error: createCanonicalError(
+          "internal_error",
+          "malformed_response",
+          "Provider returned unparseable JSON",
+        ),
+      };
     }
 
     if (isContentFiltered(parsed)) {
-      const error = createCanonicalError(
-        "provider_rejected",
-        parsed.error?.code ?? "content_filter",
-        parsed.error?.message ?? "Content filtered by provider",
-      );
-      return { kind: "error", error };
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "provider_rejected",
+          parsed.error?.code ?? "content_filter",
+          parsed.error?.message ?? "Content filtered by provider",
+        ),
+      };
     }
 
     const choice = parsed.choices?.[0];
     const content = choice?.message?.content ?? "";
     const finishReason = choice?.finish_reason ?? "stop";
     const result = buildResult(parsed, content, finishReason);
-
-    safeEmitLog(this.logger, "info", "deepseek.invoke_complete", {
-      provider: PROVIDER_ID,
-      request_reference: request.correlationIds.request_reference,
-    });
-    safeEmitJournal(this.journal, {
-      event: "provider.invoke_complete",
-      provider: PROVIDER_ID,
-    });
+    const chunks = minimalTerminalChunks(content);
 
     if (finishReason === "length") {
-      return { kind: "truncation", result };
+      return { kind: "truncation", result, chunks };
     }
 
-    return { kind: "success", result };
+    return { kind: "success", result, chunks };
   }
 
-  private handleStreamResponse(body: string): DeepSeekInvokeOutcome {
+  private handleStreamResponse(body: string): ProviderInvokeResult {
     const events = parseSseEvents(body);
-    const streamChunks = normalizeStreamChunks(events);
+    const chunks = normalizeStreamChunks(events);
 
     const lastEvent = events[events.length - 1];
     const choice = lastEvent?.choices?.[0];
@@ -538,7 +540,7 @@ export class DeepSeekAdapter implements ProviderPort {
     return {
       kind: finishReason === "length" ? "truncation" : "success",
       result,
-      streamChunks,
+      chunks,
     };
   }
 }

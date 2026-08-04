@@ -465,8 +465,8 @@ function runCase(
   });
 
   return composeWithPromptBuild(manifest, caseDef, promptBuild).then(
-    (request) => {
-      const outcome = adapter.invoke(request);
+    async (request) => {
+      const outcome = await adapter.invoke(request);
       const finalContent = extractFinalContent(outcome);
       const quality = scoreQuality(request, finalContent, expectation);
       const schema = scoreSchema(outcome, expectation);

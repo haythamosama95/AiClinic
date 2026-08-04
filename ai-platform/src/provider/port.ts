@@ -2,6 +2,7 @@ import type {
   CanonicalError,
   CanonicalRequest,
   CanonicalResult,
+  CanonicalStreamChunk,
 } from "../contracts/canonical";
 import type { TaxonomyCode } from "../errors";
 
@@ -20,14 +21,34 @@ export type ScriptedOutcome =
   | `retryable:${TaxonomyCode}`
   | `terminal:${TaxonomyCode}`;
 
-/** Discriminated invoke result — success, classified error, truncation, or malformed. */
+/** Port-named options for a single invoke (deadline remains on CanonicalRequest). */
+export type ProviderInvokeOptions = {
+  signal?: AbortSignal;
+};
+
+/**
+ * Discriminated invoke result — success, classified error, truncation, or malformed.
+ * Success and truncation carry an ordered chunk sequence ending with exactly one
+ * terminal chunk (assert via `assertExactlyOneTerminal`).
+ */
 export type ProviderInvokeResult =
-  | { kind: "success"; result: CanonicalResult }
+  | {
+      kind: "success";
+      result: CanonicalResult;
+      chunks: readonly CanonicalStreamChunk[];
+    }
   | { kind: "error"; error: CanonicalError }
-  | { kind: "truncation"; result: CanonicalResult }
+  | {
+      kind: "truncation";
+      result: CanonicalResult;
+      chunks: readonly CanonicalStreamChunk[];
+    }
   | { kind: "malformed"; error: CanonicalError };
 
 /** Every provider adapter implements this port. */
 export interface ProviderPort {
-  invoke(request: CanonicalRequest): ProviderInvokeResult;
+  invoke(
+    request: CanonicalRequest,
+    options?: ProviderInvokeOptions,
+  ): Promise<ProviderInvokeResult>;
 }

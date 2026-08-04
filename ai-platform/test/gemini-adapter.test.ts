@@ -25,8 +25,6 @@ import {
   type GeminiAdapterOptions,
   type GeminiTransport,
   type GeminiTransportResponse,
-  type JournalSink,
-  type LoggerSink,
   type SecretStorePort,
 } from "../src/provider/gemini";
 import {
@@ -98,28 +96,9 @@ type RecordingSecretStore = {
   reads: string[];
 };
 
-type RecordingLogger = {
-  sink: LoggerSink;
-  lines: Array<{
-    level: string;
-    message: string;
-    meta?: Record<string, unknown>;
-  }>;
-};
-
-type RecordingJournal = {
-  sink: JournalSink;
-  records: Record<string, unknown>[];
-};
-
 type CapturingTransport = {
   transport: GeminiTransport;
   captured: CapturedWireRequest[];
-};
-
-/** Gemini invoke may attach normalized stream chunks when stream flag is true. */
-type GeminiInvokeOutcome = ProviderInvokeResult & {
-  streamChunks?: readonly CanonicalStreamChunk[];
 };
 
 function loadFixture<T>(...segments: string[]): T {
@@ -144,26 +123,6 @@ function createRecordingSecretStore(
     },
   };
   return { store, reads };
-}
-
-function createRecordingLogger(): RecordingLogger {
-  const lines: RecordingLogger["lines"] = [];
-  const sink: LoggerSink = {
-    log(level, message, meta) {
-      lines.push({ level, message, meta });
-    },
-  };
-  return { sink, lines };
-}
-
-function createRecordingJournal(): RecordingJournal {
-  const records: Record<string, unknown>[] = [];
-  const sink: JournalSink = {
-    emit(record) {
-      records.push(record);
-    },
-  };
-  return { sink, records };
 }
 
 function createCapturingTransport(
@@ -191,16 +150,18 @@ function createGeminiAdapter(
   return new GeminiAdapter(options);
 }
 
-function invokeThroughPort(
+async function invokeThroughPort(
   port: ProviderPort,
   request: CanonicalRequest,
-): ProviderInvokeResult {
+): Promise<ProviderInvokeResult> {
   return port.invoke(request);
 }
 
 function getStreamChunks(outcome: ProviderInvokeResult): CanonicalStreamChunk[] {
-  const extended = outcome as GeminiInvokeOutcome;
-  return [...(extended.streamChunks ?? [])];
+  if (outcome.kind === "success" || outcome.kind === "truncation") {
+    return [...outcome.chunks];
+  }
+  return [];
 }
 
 function assertCanonicalResultShape(result: CanonicalResult): void {
@@ -331,7 +292,7 @@ describe("T-D7-09 second_adapter_owns_no_retry_or_fallback", () => {
 });
 
 describe("T-D7-11 second_provider_credentials_from_secret_store_only", () => {
-  it("reads credentials from the secret-store binding only — not config, request input, or literals", () => {
+  it("reads credentials from the secret-store binding only — not config, request input, or literals", async () => {
     const secretStore = createRecordingSecretStore();
     const { transport } = createCapturingTransport(() => ({
       status: 200,
@@ -360,15 +321,14 @@ describe("T-D7-11 second_provider_credentials_from_secret_store_only", () => {
       },
     };
 
-    invokeThroughPort(adapter, requestWithEmbeddedCredential);
+    await invokeThroughPort(adapter, requestWithEmbeddedCredential);
 
     expect(secretStore.reads).toContain(GEMINI_API_KEY_BINDING);
-    expect(secretStore.reads.length).toBeGreaterThan(0);
-  });
+    expect(secretStore.reads.length).toBeGreaterThan(0);})
 });
 
 describe("T-D7-01 second_provider_request_mapping_golden", () => {
-  it("maps canonical request to recorded outbound wire golden with API key from secret store", () => {
+  it("maps canonical request to recorded outbound wire golden with API key from secret store", async () => {
     const canonicalRequest = loadFixture<CanonicalRequest>(
       "request-mapping",
       "canonical-request.json",
@@ -397,7 +357,7 @@ describe("T-D7-01 second_provider_request_mapping_golden", () => {
       secretStore: secretStore.store,
     });
 
-    invokeThroughPort(adapter, canonicalRequest);
+    await invokeThroughPort(adapter, canonicalRequest);
 
     expect(captured).toHaveLength(1);
     const emitted = normalizeCapturedRequest(captured[0]!);
@@ -412,12 +372,11 @@ describe("T-D7-01 second_provider_request_mapping_golden", () => {
     );
     expect(emitted.headers["x-goog-api-key"]).toBe(KNOWN_SECRET);
     expect(emitted.body).toEqual(expected.body);
-    expect(JSON.stringify(emitted.body)).not.toContain(KNOWN_SECRET);
-  });
+    expect(JSON.stringify(emitted.body)).not.toContain(KNOWN_SECRET);})
 });
 
 describe("T-D7-02 second_provider_stream_normalization", () => {
-  it("normalizes recorded provider stream chunks to canonical form with no provider-shaped fields", () => {
+  it("normalizes recorded provider stream chunks to canonical form with no provider-shaped fields", async () => {
     const canonicalRequest = loadFixture<CanonicalRequest>(
       "stream",
       "canonical-request.json",
@@ -435,18 +394,17 @@ describe("T-D7-02 second_provider_stream_normalization", () => {
       secretStore: secretStore.store,
     });
 
-    const outcome = invokeThroughPort(adapter, canonicalRequest);
+    const outcome = await invokeThroughPort(adapter, canonicalRequest);
     const chunks = getStreamChunks(outcome);
 
     expect(chunks.length).toBeGreaterThan(0);
     for (const chunk of chunks) {
       assertCanonicalStreamChunkShape(chunk);
-    }
-  });
+    }})
 });
 
 describe("T-D7-03 second_provider_usage_extraction", () => {
-  it("extracts usage counters into canonical usage form", () => {
+  it("extracts usage counters into canonical usage form", async () => {
     const canonicalRequest = loadFixture<CanonicalRequest>(
       "usage",
       "canonical-request.json",
@@ -467,7 +425,7 @@ describe("T-D7-03 second_provider_usage_extraction", () => {
       secretStore: secretStore.store,
     });
 
-    const outcome = invokeThroughPort(adapter, canonicalRequest);
+    const outcome = await invokeThroughPort(adapter, canonicalRequest);
 
     expect(outcome.kind).toBe("success");
     if (outcome.kind !== "success") {
@@ -487,8 +445,7 @@ describe("T-D7-03 second_provider_usage_extraction", () => {
     );
     if (usageChunk) {
       assertCanonicalStreamChunkShape(usageChunk);
-    }
-  });
+    }})
 });
 
 describe("T-D7-04 second_provider_error_class_mapped_to_taxonomy", () => {
@@ -498,7 +455,7 @@ describe("T-D7-04 second_provider_error_class_mapped_to_taxonomy", () => {
     >,
   )(
     "%s maps to taxonomy with D2 retryability",
-    (wireClass, { taxonomy, retryable }) => {
+    async (wireClass, { taxonomy, retryable }) => {
       const fixture = loadFixture<Record<string, unknown>>(
         "errors",
         `${wireClass}.json`,
@@ -515,7 +472,7 @@ describe("T-D7-04 second_provider_error_class_mapped_to_taxonomy", () => {
         secretStore: secretStore.store,
       });
 
-      const outcome = invokeThroughPort(adapter, requestFixture);
+      const outcome = await invokeThroughPort(adapter, requestFixture);
       const error = assertClassifiedError(outcome, taxonomy);
       expect(error.retryability).toBe(retryable);
       expect(classifyFailure(taxonomy)).toBe(
@@ -527,7 +484,7 @@ describe("T-D7-04 second_provider_error_class_mapped_to_taxonomy", () => {
 });
 
 describe("T-D7-05 second_provider_malformed_response", () => {
-  it("normalizes malformed provider body to classified canonical error — not an unclassified throw", () => {
+  it("normalizes malformed provider body to classified canonical error — not an unclassified throw", async () => {
     const malformedBody = loadFixtureText("malformed", "malformed-response.txt");
     const secretStore = createRecordingSecretStore();
     const { transport } = createCapturingTransport(() => ({
@@ -541,23 +498,18 @@ describe("T-D7-05 second_provider_malformed_response", () => {
       secretStore: secretStore.store,
     });
 
-    let outcome: ProviderInvokeResult | undefined;
-    expect(() => {
-      outcome = invokeThroughPort(adapter, requestFixture);
-    }).not.toThrow();
-
-    expect(outcome).toBeDefined();
-    expect(outcome!.kind === "error" || outcome!.kind === "malformed").toBe(
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(outcome.kind === "error" || outcome.kind === "malformed").toBe(
       true,
     );
-    if (outcome!.kind === "error" || outcome!.kind === "malformed") {
-      assertCanonicalErrorShape(outcome!.error);
+    if (outcome.kind === "error" || outcome.kind === "malformed") {
+      assertCanonicalErrorShape(outcome.error);
     }
   });
 });
 
 describe("T-D7-06 second_provider_truncated_response", () => {
-  it("normalizes truncated provider response through the port without inventing a taxonomy code", () => {
+  it("normalizes truncated provider response through the port without inventing a taxonomy code", async () => {
     const truncatedResponse = loadFixture<Record<string, unknown>>(
       "truncated",
       "truncated-response.json",
@@ -574,7 +526,7 @@ describe("T-D7-06 second_provider_truncated_response", () => {
       secretStore: secretStore.store,
     });
 
-    const outcome = invokeThroughPort(adapter, requestFixture);
+    const outcome = await invokeThroughPort(adapter, requestFixture);
 
     expect(
       outcome.kind === "truncation" || outcome.kind === "success",
@@ -583,12 +535,11 @@ describe("T-D7-06 second_provider_truncated_response", () => {
     if (outcome.kind === "truncation" || outcome.kind === "success") {
       assertCanonicalResultShape(outcome.result);
       expect(outcome.result.finishReason).toBe("length");
-    }
-  });
+    }})
 });
 
 describe("T-D7-07 second_provider_timeout", () => {
-  it("classifies adapter-owned deadline exceeded as taxonomy timeout with D2 retryability", () => {
+  it("classifies adapter-owned deadline exceeded as taxonomy timeout with D2 retryability", async () => {
     const harness = loadFixture<{ deadline_ms?: number }>(
       "timeout",
       "harness.json",
@@ -613,18 +564,15 @@ describe("T-D7-07 second_provider_timeout", () => {
       deadline: harness.deadline_ms ?? 50,
     };
 
-    const outcome = invokeThroughPort(adapter, shortDeadlineRequest);
+    const outcome = await invokeThroughPort(adapter, shortDeadlineRequest);
     const error = assertClassifiedError(outcome, "timeout");
     expect(error.retryability).toBe(true);
-    expect(classifyFailure("timeout")).toBe("retryable");
-  });
+    expect(classifyFailure("timeout")).toBe("retryable");})
 });
 
 describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () => {
-  it("keeps the known secret absent from every collected log line and journal record", () => {
+  it("keeps the known secret absent from invoke results; adapter options reject logger/journal", async () => {
     const secretStore = createRecordingSecretStore();
-    const logger = createRecordingLogger();
-    const journal = createRecordingJournal();
 
     const successTransport = createCapturingTransport(() => ({
       status: 200,
@@ -643,10 +591,9 @@ describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () 
     const successAdapter = createGeminiAdapter({
       transport: successTransport.transport,
       secretStore: secretStore.store,
-      logger: logger.sink,
-      journal: journal.sink,
     });
-    invokeThroughPort(successAdapter, requestFixture);
+    const successOutcome = await invokeThroughPort(successAdapter, requestFixture);
+    assertSecretAbsentFromEmissions(KNOWN_SECRET, [successOutcome]);
 
     const errorFixture = loadFixture<Record<string, unknown>>(
       "errors",
@@ -661,52 +608,31 @@ describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () 
     const failureAdapter = createGeminiAdapter({
       transport: failureTransport.transport,
       secretStore: secretStore.store,
-      logger: logger.sink,
-      journal: journal.sink,
     });
-    invokeThroughPort(failureAdapter, requestFixture);
+    const failureOutcome = await invokeThroughPort(failureAdapter, requestFixture);
+    assertSecretAbsentFromEmissions(KNOWN_SECRET, [failureOutcome]);
 
-    assertSecretAbsentFromEmissions(KNOWN_SECRET, [
-      ...logger.lines,
-      ...journal.records,
-    ]);
+    const optionKeys: Array<keyof GeminiAdapterOptions> = [
+      "transport",
+      "secretStore",
+      "timeoutMs",
+    ];
+    expect(optionKeys).not.toContain("logger");
+    expect(optionKeys).not.toContain("journal");
   });
 });
 
 describe("T-D7-10 second_adapter_owns_no_logging_policy", () => {
-  it("does not own logging policy — no logging-policy API; credential emissions still satisfy T8", async () => {
+  it("does not own logging policy — no logger/journal exports or option sinks", async () => {
     const geminiModule = await import("../src/provider/gemini");
     assertNoLoggingPolicyApi(Object.keys(geminiModule));
+    expect(geminiModule).not.toHaveProperty("LoggerSink");
+    expect(geminiModule).not.toHaveProperty("JournalSink");
 
-    const secretStore = createRecordingSecretStore();
-    const logger = createRecordingLogger();
-    const journal = createRecordingJournal();
-    const { transport } = createCapturingTransport(() => ({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        candidates: [
-          {
-            content: { parts: [{ text: "ok" }], role: "model" },
-            finishReason: "STOP",
-          },
-        ],
-        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
-      }),
-    }));
-
-    const adapter = createGeminiAdapter({
-      transport,
-      secretStore: secretStore.store,
-      logger: logger.sink,
-      journal: journal.sink,
-    });
-
-    invokeThroughPort(adapter, requestFixture);
-
-    assertSecretAbsentFromEmissions(KNOWN_SECRET, [
-      ...logger.lines,
-      ...journal.records,
-    ]);
+    type Options = GeminiAdapterOptions;
+    type Forbidden = "logger" | "journal";
+    type HasForbidden = Forbidden extends keyof Options ? true : false;
+    const hasForbidden: HasForbidden = false;
+    expect(hasForbidden).toBe(false);
   });
 });

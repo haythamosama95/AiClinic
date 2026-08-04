@@ -470,7 +470,7 @@ async function runConversationalLeg(
   expect(createResult.ok).toBe(true);
 
   const adapter = new FakeAdapter(["success"]);
-  const invokeResult = adapter.invoke({
+  const invokeResult = await adapter.invoke({
     parts: [{ role: "user", content: "Hello." }],
     formatDirective: { type: "text" },
     samplingConstraints: { temperature: 0.2 },
