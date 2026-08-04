@@ -331,6 +331,7 @@ async function composeWithPromptBuild(
       filteredContext: caseDef.context,
       userIntent: caseDef.user_intent,
       principal,
+      requestReference: "EVAL-REQ-01",
       streamFlag: false,
     });
     if (!composed.ok) {
@@ -347,6 +348,7 @@ async function composeWithPromptBuild(
     filteredContext: caseDef.context,
     userIntent: caseDef.user_intent,
     principal,
+    requestReference: "EVAL-REQ-01",
     streamFlag: false,
   });
   if (!composed.ok) {

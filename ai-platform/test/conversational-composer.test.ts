@@ -7,7 +7,7 @@ import {
   type CanonicalRequest,
 } from "../src/contracts/canonical";
 import type { Principal } from "../src/identity";
-import { load, type Manifest } from "../src/manifest";
+import { load } from "../src/manifest";
 import { CONTEXT_REQUEST_SCHEMA_ID } from "../src/context/context-request";
 import type { Transcript } from "../src/context/validator";
 import { composeRequest } from "../src/prompt/composer";
@@ -154,8 +154,10 @@ function renderDelimitedContextBlock(
   return `<key name="${key}" shape="${shape}">\n${serialized}\n</key>`;
 }
 
-function renderTranscriptPriorTurns(transcript: Transcript): MessagePart[] {
-  const parts: MessagePart[] = [];
+function renderTranscriptPriorTurns(
+  transcript: Transcript,
+): CanonicalMessagePart[] {
+  const parts: CanonicalMessagePart[] = [];
 
   for (const turn of transcript) {
     switch (turn.kind) {
@@ -172,8 +174,9 @@ function renderTranscriptPriorTurns(transcript: Transcript): MessagePart[] {
         });
         break;
       case "context_resolved": {
-        const blocks = Object.entries(turn.context).map(([key, value]) =>
-          renderDelimitedContextBlock(key, value),
+        const keys = Object.keys(turn.context).sort();
+        const blocks = keys.map((key) =>
+          renderDelimitedContextBlock(key, turn.context[key]),
         );
         parts.push({ role: "data", content: blocks.join("\n") });
         break;
@@ -186,14 +189,28 @@ function renderTranscriptPriorTurns(transcript: Transcript): MessagePart[] {
   return parts;
 }
 
+function renderFilteredContextInPermittedOrder(
+  filteredContext: Record<string, unknown>,
+  permittedKeySet: readonly string[],
+): string {
+  const blocks: string[] = [];
+  for (const key of permittedKeySet) {
+    if (!(key in filteredContext)) {
+      continue;
+    }
+    blocks.push(renderDelimitedContextBlock(key, filteredContext[key]));
+  }
+  return blocks.join("\n");
+}
+
 function goldenConversationalRequest(
   transcript: Transcript = fixtureTranscript(),
   filteredContext: Record<string, unknown> = fixtureFilteredContext(),
 ): CanonicalRequest {
   const manifest = load(conversationalManifest());
-  const contextBlocks = Object.entries(filteredContext).map(([key, value]) =>
-    renderDelimitedContextBlock(key, value),
-  );
+  const permittedKeySet = (
+    manifest["Context requirements"] as { permittedKeySet: readonly string[] }
+  ).permittedKeySet;
 
   return {
     parts: [
@@ -203,7 +220,10 @@ function goldenConversationalRequest(
       ...renderTranscriptPriorTurns(transcript),
       {
         role: "data",
-        content: contextBlocks.join("\n"),
+        content: renderFilteredContextInPermittedOrder(
+          filteredContext,
+          permittedKeySet,
+        ),
       },
       { role: "user", content: FIXTURE_USER_INTENT },
     ],
@@ -260,6 +280,33 @@ describe("transcript_renders_as_delimited_typed_prior_turns", () => {
     );
     expect(result.request).toEqual(golden);
   });
+
+  it("renders filtered context in permittedKeySet order, not Object.entries order", () => {
+    const filteredContext = {
+      [PERMITTED_KEY_DEMOGRAPHICS]: {
+        patient_id: "550e8400-e29b-41d4-a716-446655440001",
+        display_name: "Test Patient",
+      },
+      [PERMITTED_KEY_COMPLAINT]: {
+        visit_id: "550e8400-e29b-41d4-a716-446655440000",
+        complaint: "Persistent headache for three days.",
+      },
+    };
+
+    const result = composeConversational({ filteredContext });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const dataParts = messageParts(result.request).filter(
+      (part) => part.role === "data",
+    );
+    const filteredDataPart = dataParts[dataParts.length - 1];
+    expect(filteredDataPart?.content.indexOf(PERMITTED_KEY_COMPLAINT)).toBeLessThan(
+      filteredDataPart?.content.indexOf(PERMITTED_KEY_DEMOGRAPHICS) ?? -1,
+    );
+  });
 });
 
 describe("role_tags_user_assistant_data_for_transcript", () => {
@@ -293,6 +340,9 @@ describe("role_tags_user_assistant_data_for_transcript", () => {
     });
     expect(transcriptParts[2]?.role).toBe("data");
     expect(transcriptParts[2]?.content).toContain(PERMITTED_KEY_COMPLAINT);
+    expect(transcriptParts[2]?.content).toContain(
+      `shape="${PERMITTED_KEY_COMPLAINT}"`,
+    );
 
     const roles = new Set(transcriptParts.map((part) => part.role));
     expect(roles).toEqual(new Set(["user", "assistant", "data"]));

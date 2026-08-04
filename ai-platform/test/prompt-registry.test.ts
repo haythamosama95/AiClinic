@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Principal } from "../src/identity";
 import { load, type Manifest } from "../src/manifest";
 import {
+  __resetArtifactContentForTest,
+  __setArtifactContentForTest,
   resolveArtifact,
   resolvePromptVersion,
   verifyBuildPins,
@@ -25,9 +27,22 @@ const SYSTEM_INSTRUCTION_REF = "clinic.visit_summary/system@v1";
 const RULES_FRAGMENT_REF = "clinic.visit_summary/rules-visit-summary@v1";
 const TEMPLATE_REF = "clinic.visit_summary/template-visit-summary@v1";
 
-/** Identifiers that would store prompt text — not hashes or pointers. */
-const PROMPT_TEXT_IDENTIFIER_PATTERN =
-  /^(prompt|system_instruction|instruction)$/i;
+/**
+ * Identifiers that would store prompt text — not hashes or pointer columns.
+ * Matches prompt-text vocabulary as whole segments (prompt_text, system_prompt,
+ * instructions, …). Pointer suffixes (_hash / _ref / _id) are excluded so
+ * columns like prompt_artifact_hash stay allowed.
+ */
+const PROMPT_TEXT_VOCABULARY_PATTERN =
+  /(?:^|_)(prompt_text|prompt_body|system_prompt|system_instruction|instructions?|prompt)(?:_|$)/i;
+const PROMPT_TEXT_POINTER_SUFFIX_PATTERN = /_(hash|ref|id)$/i;
+
+function isPromptTextIdentifier(name: string): boolean {
+  if (PROMPT_TEXT_POINTER_SUFFIX_PATTERN.test(name)) {
+    return false;
+  }
+  return PROMPT_TEXT_VOCABULARY_PATTERN.test(name);
+}
 
 type ManifestWire = Record<string, unknown>;
 
@@ -189,13 +204,13 @@ function assertNoPromptTextIdentifiersInMigrations(): void {
     const sql = readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
     for (const { table, body } of extractCreateTableBlocks(sql)) {
       expect(
-        PROMPT_TEXT_IDENTIFIER_PATTERN.test(table),
+        isPromptTextIdentifier(table),
         `${file}: table "${table}" must not store prompt text`,
       ).toBe(false);
 
       for (const column of extractColumnNames(body)) {
         expect(
-          PROMPT_TEXT_IDENTIFIER_PATTERN.test(column),
+          isPromptTextIdentifier(column),
           `${file}: column "${column}" must not store prompt text`,
         ).toBe(false);
       }
@@ -209,6 +224,7 @@ function assertRegistryNeverTouchesD1(): void {
 
 beforeEach(() => {
   d1BindingSpy.mockClear();
+  __resetArtifactContentForTest();
   void mockD1Binding;
   void fixtureFilteredContext();
   void buildPrincipal();
@@ -216,8 +232,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __resetArtifactContentForTest();
   vi.restoreAllMocks();
-  vi.unmock("../prompts/clinic.visit_summary/system.md");
 });
 
 describe("T-D1-01 registry_pinned_hash_resolves_to_artifact", () => {
@@ -236,33 +252,79 @@ describe("T-D1-01 registry_pinned_hash_resolves_to_artifact", () => {
 });
 
 describe("T-D1-02 registry_altered_artifact_fails_build", () => {
-  it("verifyBuildPins throws when pinned artifact content no longer matches registry.json", async () => {
-    vi.resetModules();
-    vi.doMock("../prompts/clinic.visit_summary/system.md", () => ({
-      default: "tampered system instruction content",
-    }));
-
-    const { verifyBuildPins: verifyAlteredPins } = await import(
-      "../src/prompt/registry"
+  it("verifyBuildPins throws when system instruction content no longer matches registry.json", () => {
+    __setArtifactContentForTest(
+      SYSTEM_INSTRUCTION_REF,
+      "tampered system instruction content",
     );
 
-    expect(() => verifyAlteredPins(load(validManifest()))).toThrow();
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /hash mismatch/i,
+    );
+    assertRegistryNeverTouchesD1();
+  });
+
+  it("verifyBuildPins throws when rules-fragment content no longer matches registry.json", () => {
+    __setArtifactContentForTest(
+      RULES_FRAGMENT_REF,
+      "tampered rules fragment content",
+    );
+
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /hash mismatch/i,
+    );
+    assertRegistryNeverTouchesD1();
+  });
+
+  it("verifyBuildPins throws when template content no longer matches registry.json", () => {
+    __setArtifactContentForTest(TEMPLATE_REF, "tampered template content");
+
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /hash mismatch/i,
+    );
     assertRegistryNeverTouchesD1();
   });
 });
 
 describe("T-D1-03 registry_missing_artifact_fails_build", () => {
-  it("verifyBuildPins throws when a manifest-pinned artifact is absent from the deployment", async () => {
-    vi.resetModules();
-    vi.doMock("../prompts/clinic.visit_summary/system.md", () => ({
-      default: undefined,
-    }));
+  it("verifyBuildPins throws when system instruction is absent from the deployment", () => {
+    __setArtifactContentForTest(SYSTEM_INSTRUCTION_REF, undefined);
 
-    const { verifyBuildPins: verifyMissingPins } = await import(
-      "../src/prompt/registry"
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /Missing pinned artifact/i,
     );
+    assertRegistryNeverTouchesD1();
+  });
 
-    expect(() => verifyMissingPins(load(validManifest()))).toThrow();
+  it("verifyBuildPins throws when rules fragment is absent from the deployment", () => {
+    __setArtifactContentForTest(RULES_FRAGMENT_REF, undefined);
+
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /Missing pinned artifact/i,
+    );
+    assertRegistryNeverTouchesD1();
+  });
+
+  it("verifyBuildPins throws when template is absent from the deployment", () => {
+    __setArtifactContentForTest(TEMPLATE_REF, undefined);
+
+    expect(() => verifyBuildPins(load(validManifest()))).toThrow(
+      /Missing pinned artifact/i,
+    );
+    assertRegistryNeverTouchesD1();
+  });
+
+  it("verifyBuildPins throws when a pinned ref has content but no registry.json pin", () => {
+    const orphanRef = "clinic.visit_summary/orphan-unpinned@v1";
+    __setArtifactContentForTest(orphanRef, "orphan content with no pin");
+
+    const manifest = validManifest();
+    (manifest["Prompt binding"] as Record<string, unknown>).systemInstructionArtifactRef =
+      orphanRef;
+
+    expect(() => verifyBuildPins(load(manifest))).toThrow(
+      /Missing registry pin/i,
+    );
     assertRegistryNeverTouchesD1();
   });
 });
@@ -281,6 +343,20 @@ describe("T-D1-04 registry_no_prompt_text_in_any_d1_table", () => {
     verifyBuildPins(manifest);
 
     assertRegistryNeverTouchesD1();
+  });
+
+  it("(c) prompt-text guard catches plural and suffixed identifiers", () => {
+    expect(isPromptTextIdentifier("prompt_text")).toBe(true);
+    expect(isPromptTextIdentifier("system_prompt")).toBe(true);
+    expect(isPromptTextIdentifier("instructions")).toBe(true);
+    expect(isPromptTextIdentifier("prompt_body")).toBe(true);
+    expect(isPromptTextIdentifier("prompt")).toBe(true);
+    expect(isPromptTextIdentifier("system_instruction")).toBe(true);
+    expect(isPromptTextIdentifier("instruction")).toBe(true);
+
+    expect(isPromptTextIdentifier("prompt_artifact_hash")).toBe(false);
+    expect(isPromptTextIdentifier("prompt_artifact_ref")).toBe(false);
+    expect(isPromptTextIdentifier("prompt_id")).toBe(false);
   });
 });
 
