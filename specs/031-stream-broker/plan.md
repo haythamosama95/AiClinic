@@ -26,7 +26,7 @@ Slice D4 freezes the stream broker: after D3's invocation loop produces normaliz
 
 **Constraints**: Exactly one terminal event ends every broker path — `completed`, `failed`, or `cancelled` (§5.5 rule 4; FR-005). Closing the stream cancels; deliberate Cancel and network drop are the same path (§5.5 rule 5; FR-006). No separate cancel endpoint, no Session Durable Object, no stream resume, no out-of-band cancel (§4.3.10; §6.5; §9.7; FR-007, FR-010). Provisional `text_delta` chunks are not authoritative; only the validated terminal payload is (§6.4 invariants 1–2; FR-013). Structured / `structured_atomic` modes remain D6. Retry/fallback/`regenerating` remain D3 — the broker relays, it does not re-decide. No mechanism from §9.14 added because it looks prudent (R-20).
 
-**Scale/Scope**: One sibling module under `ai-platform/src/` (`stream/`). One §4 component group touched (§4.3.10 — see Components Touched). Nineteen named integration (spy) tests (T1–T19). Roughly 18–22 tasks.
+**Scale/Scope**: One sibling module under `ai-platform/src/` (`stream/` — prose `index.ts` + `prose-guards.ts`; `structured.ts` is D6-owned). One §4 component group touched (§4.3.10 — see Components Touched). Nineteen named integration (spy) tests (T1–T19) plus review-resolution T20–T27. Roughly 18–22 tasks for the original slice.
 
 ## Constitution Check
 
@@ -64,22 +64,23 @@ specs/031-stream-broker/
 ai-platform/
 ├── src/
 │   └── stream/
-│       ├── index.ts                    # Stream broker: chunk relay, heartbeat ticker, cancel wiring, terminal emit (FR-001, FR-004–FR-013)
-│       └── prose-guards.ts             # Incremental cheap guards + full guard set on assembled text (FR-002, FR-003)
+│       ├── index.ts                    # Prose stream broker: chunk relay, heartbeat ticker (notifyActivity), cancel wiring, terminal emit, createChunkSourceFromInvocationEvents (FR-001, FR-004–FR-013)
+│       ├── prose-guards.ts             # Incremental cheap guards + full guard set on assembled text (FR-002, FR-003)
+│       └── structured.ts               # D6-owned structured broker (`createStructuredStreamBroker`) — not a D4 deliverable; listed for path clarity only
 └── test/
-    └── stream-broker.test.ts           # T1–T19 (integration spy against fake/invocation output + injectable sinks/ticker)
+    └── stream-broker.test.ts           # T1–T19 plus review-resolution T20–T27 (integration spy against scripted/invocation-adapter sources + injectable sinks/ticker)
 ```
 
-No `frontend/` or `backend/` tree is shown — D4 touches neither. No migration, no `wrangler.toml` change, and no prompt/asset tree — D4 is a pure TypeScript module plus integration tests. A6's `adapter.ts` and D3's `invocation/` are consumed unchanged and are not listed as this slice's source tree.
+No `frontend/` or `backend/` tree is shown — D4 touches neither. No migration, no `wrangler.toml` change, and no prompt/asset tree — D4 is a pure TypeScript module plus integration tests. A6's `adapter.ts` and D3's `invocation/` are consumed unchanged and are not listed as this slice's source tree. Production wiring of `createStreamBroker` into the Worker pipeline remains deferred (B4/C3 sinks / E4).
 
-**Structure Decision**: D4 extends the `ai-platform/` tree (delivery plan §7.1) with sibling module `src/stream/` (Clarification Q1), sibling to existing `src/invocation/` and `src/adapter.ts` it consumes. The Spec Kit template's `frontend/`/`backend/` conventions are deleted as unused, per the skill's repository-layout rule.
+**Structure Decision**: D4 extends the `ai-platform/` tree (delivery plan §7.1) with sibling module `src/stream/` (Clarification Q1), sibling to existing `src/invocation/` and `src/adapter.ts` it consumes. The Spec Kit template's `frontend/`/`backend/` conventions are deleted as unused, per the skill's repository-layout rule. Prose API surface on `index.ts`: `createStreamBroker`, `createChunkSourceFromInvocationEvents`, `ChunkSource.getPartialUsage()`, `HeartbeatScheduleHandle.notifyActivity()`, journal-terminal on all three states.
 
 ## Consumes Binding
 
 | Consumes entry (from spec) | Bound to (existing module / file / type) |
 | --- | --- |
 | From A6 — SSE event framing; `accepted` opening event; heartbeat event shape; terminal kinds `completed` / `failed` / `cancelled`; one-terminal-event invariant; connection-scoped cancellation at the framing level | `ai-platform/src/adapter.ts` (`AdapterSseEvent`, `AdapterEventSink`, `TerminalEventKind`, `handleAdapterRequest` stream `cancel` → `cancelled`, one-terminal guard); frozen in `specs/020-ai-protocol-adapter-sse/contracts/sse-framing.md`. D4 emits content/heartbeat/terminal events through that framing and does not redefine wire vocabulary or the one-terminal rule |
-| From D3 — platform-internal attempt loop; normalized stream chunks; per-attempt journal feed; `regenerating` / discard-on-fallback / no-splice | `ai-platform/src/invocation/index.ts` (`runInvocation`, `InvocationSink.emitStreamText` / `emitRegenerating`, `AttemptRecord`); frozen in `specs/030-invocation-retry-fallback/contracts/invocation-attempt-loop.md`. D4 relays what invocation emits (including `regenerating` when present) and does not own retry, fallback, or the regenerating decision |
+| From D3 — platform-internal attempt loop; normalized stream chunks; per-attempt journal feed; `regenerating` / discard-on-fallback / no-splice | `ai-platform/src/invocation/index.ts` (`runInvocation`, `InvocationSink.emitStreamText` / `emitRegenerating`, `AttemptRecord`); frozen in `specs/030-invocation-retry-fallback/contracts/invocation-attempt-loop.md`. D4 bridges InvocationSink-shaped events via `createChunkSourceFromInvocationEvents` and relays what invocation emits (including `regenerating` when present); it does not own retry, fallback, or the regenerating decision |
 
 Every **Consumes** entry binds to an existing implementation. None requires modification (stop condition 2 not triggered). B4's `creditUsage` (`ai-platform/src/credit/index.ts`) and C3's `recordTerminalState` (`ai-platform/src/journal/index.ts`) are Assumptions used via injectable sinks (Clarification Q4), not Consumes — they are not modified.
 
@@ -93,13 +94,13 @@ One §4 component group: **§4.3.10 Stream broker** — relay of normalized chun
 
 | File | FRs traced |
 | --- | --- |
-| `ai-platform/src/stream/index.ts` | FR-001, FR-004–FR-013 (ordered relay + heartbeats; terminal `completed` with validated payload; one-terminal-event; disconnect → abort → `cancelled`; connection-scoped cancel; partial-usage credit; journal-terminal outcome; no OOB cancel/Session DO; cancel-before-first-token and mid-stream; no D1-per-chunk / no per-request state; provisional chunks non-authoritative) |
-| `ai-platform/src/stream/prose-guards.ts` | FR-002, FR-003 (incremental length ceiling / stop-sequence / system-prompt-leak; abort + fail terminally; full guard set on assembled text at completion) |
-| `ai-platform/test/stream-broker.test.ts` | T1–T19 (FR-001–FR-013; controllable heartbeat ticker per Clarification Q2; AbortSignal disconnect harness per Clarification Q3; in-memory credit + journal-terminal sinks per Clarification Q4) |
+| `ai-platform/src/stream/index.ts` | FR-001, FR-004–FR-013 (ordered relay + heartbeats with `notifyActivity`; terminal `completed` with validated payload; one-terminal-event; disconnect → abort → `cancelled`; live `getPartialUsage` credit; journal-terminal on completed/failed/cancelled; D3 invocation adapter; source-error containment; no OOB cancel/Session DO; no D1-per-chunk / no per-request state; provisional chunks non-authoritative) |
+| `ai-platform/src/stream/prose-guards.ts` | FR-002, FR-003 (incremental assembled length ceiling / stop-sequence / system-prompt-leak; abort + fail terminally; full guard set returns violation — assembled length + deferred `empty_output`) |
+| `ai-platform/test/stream-broker.test.ts` | T1–T19 (FR-001–FR-013) plus review-resolution T20–T27; controllable heartbeat ticker per Clarification Q2; AbortSignal disconnect harness per Clarification Q3; in-memory credit + journal-terminal sinks per Clarification Q4 |
 | `specs/031-stream-broker/contracts/stream-broker.md` | Freezes → broker relay/heartbeat/one-terminal; prose path; connection-scoped cancel; no OOB cancel / Session DO / resume |
 | `specs/031-stream-broker/quickstart.md` | Documentation task (written after implementation/verification) |
 
-Every file traces to an FR or a Freezes entry. No untraced file is introduced.
+Every file traces to an FR or a Freezes entry. No untraced file is introduced. `structured.ts` is D6-owned and is not a D4 Files row.
 
 ## Test Layout
 
@@ -126,8 +127,16 @@ Per the architecture's testing strategy (§13.5 Pipeline tests with fake provide
 | T17 `no_out_of_band_cancel_endpoint_or_session_do` | Integration (Pipeline with fake; spy — absence of cancel endpoint / Session DO) | `ai-platform/test/stream-broker.test.ts` |
 | T18 `provisional_chunks_not_authoritative` | Integration (Pipeline with fake) | `ai-platform/test/stream-broker.test.ts` |
 | T19 `no_d1_row_per_stream_chunk` | Integration (Pipeline with fake; spy — absence of per-chunk D1 writes) | `ai-platform/test/stream-broker.test.ts` |
+| T20 `abort_rejecting_source_still_cancels` | Integration (Pipeline with fake; AbortError-throwing source) | `ai-platform/test/stream-broker.test.ts` |
+| T21 `mid_stream_source_throw_fails_terminally` | Integration (Pipeline with fake) | `ai-platform/test/stream-broker.test.ts` |
+| T22 `zero_usage_cancel_skips_credit` | Integration (Pipeline with fake; credit-sink spy) | `ai-platform/test/stream-broker.test.ts` |
+| T23 `disconnect_after_completion_noop` | Integration (Pipeline with fake) | `ai-platform/test/stream-broker.test.ts` |
+| T24 `journal_on_completed_and_failed` | Integration (Pipeline with fake; journal-terminal spy) | `ai-platform/test/stream-broker.test.ts` |
+| T25 `sink_throw_does_not_suppress_terminal` | Integration (Pipeline with fake; throwing sinks) | `ai-platform/test/stream-broker.test.ts` |
+| T26 `signal_ignoring_source_disconnect_emits_cancelled` | Integration (Pipeline with fake) | `ai-platform/test/stream-broker.test.ts` |
+| T27 `invocation_adapter_relays_regenerating` | Integration (Pipeline with fake; `createChunkSourceFromInvocationEvents`) | `ai-platform/test/stream-broker.test.ts` |
 
-Every named test in the spec's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). T2 forces a silent gap via an injectable heartbeat ticker and asserts ≥1 heartbeat (Clarification Q2). T8/T13/T14 close the client stream and assert the broker-held `AbortSignal` is aborted (Clarification Q3). T10/T11 assert `credit(partial)` and a complete terminal `cancelled` record on injectable sinks (Clarification Q4). Incremental-guard aborts emit exactly one `failed` terminal using an existing A2 taxonomy code (`validation_failed`); this slice does not add or rename codes (spec Assumptions / Edge Cases).
+Every named test in the spec's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). T20–T27 were added by the 2026-08-04 review resolution (assembled-length / empty_output / live usage / notifyActivity / error containment / D3 adapter). T2 forces a silent gap via an injectable heartbeat ticker and asserts ≥1 heartbeat; activity reset is covered via `notifyActivity` (Clarification Q2 + review resolution). T8/T13/T14 close the client stream and assert the broker-held `AbortSignal` is aborted (Clarification Q3). T10/T11 assert `credit(partial)` and a complete terminal `cancelled` record on injectable sinks (Clarification Q4). Incremental-guard aborts emit exactly one `failed` terminal using an existing A2 taxonomy code (`validation_failed`); this slice does not add or rename codes (spec Assumptions / Edge Cases).
 
 ## Sequencing
 

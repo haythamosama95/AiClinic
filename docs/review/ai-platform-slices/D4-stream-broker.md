@@ -65,3 +65,44 @@ D4 delivers the two modules its plan names — `src/stream/index.ts` (`createStr
 - **Tie heartbeats to idleness or document the simpler contract** (Bug 6, Weak Test 7): either reset the heartbeat schedule on each relayed chunk (ticker needs a `reset()`/`notifyActivity()` surface) and assert suppression during content flow, or amend contract §2 to state heartbeats are unconditional on the open stream and drop the "during provider silence" wording.
 - **Join the broker to D3's actual output surface** (Deviation 3): type `ChunkSource` against what the invocation sink/port actually emits once the D2 port repair lands (or amend the contract to name the adapter that bridges them), so the relay — `regenerating` included — is proven against a producer that exists.
 - **Strengthen the prohibition tests** (Weak Tests 4, 6, 8): assert the broker's options/import surface carries no DO-namespace or registry binding rather than grepping export names; add disconnect-after-completion (exactly one terminal, still `completed`); assert abort-signal firing on the network-drop path directly rather than via summary equality.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D4-R6 — Strip structured from D4** | Architectural Deviations #1 | `ai-platform/src/stream/structured.ts` (new, D6-owned); prose-only `index.ts`; `test/structured-modes.test.ts` re-pointed |
+| **D4-R1 — Contain source errors / abort terminal** | Critical Issues #1; Missing/Weak Tests #1 | `src/stream/index.ts` (`catch`, abortable iteration, sync `disconnect` → `cancelled`); T-D4-20, T-D4-21, T-D4-26 |
+| **D4-R2 — Length ceiling + real completion guards** | Bugs #1–#3; Missing/Weak Tests #2–#3 | `src/stream/prose-guards.ts` (assembled length; non-throwing full set + deferred `empty_output`); T-D4-03, T-D4-06 |
+| **D4-R3 — Journal all terminals + isolate sinks** | Bugs #4, #7; Architectural Deviations #4 | `index.ts` terminal-first settle; journal on completed/failed/cancelled + `terminalErrorCode`; T-D4-24, T-D4-25 |
+| **D4-R4 — Live partial usage + zero-usage** | Bugs #5; Missing/Weak Tests #5 | `ChunkSource.getPartialUsage()`; T-D4-10/13/14, T-D4-22 |
+| **D4-R5 — Silence-driven heartbeats** | Bugs #6; Missing/Weak Tests #7 | `HeartbeatScheduleHandle.notifyActivity()`; T-D4-02 (silence + suppression) |
+| **D4-R7 — D3 ChunkSource adapter** | Architectural Deviations #3 | `createChunkSourceFromInvocationEvents`; Spec Kit Consumes; T-D4-27 |
+| **D4-R8 — Unwired broker deferral** | Architectural Deviations #2 | Spec Kit contract §2.1 / quickstart — production wiring deferred (no CP call-site required) |
+| **D4-R9 — Strengthen prohibition & edge tests** | Missing/Weak Tests #4, #6, #8 | T-D4-12/16/17 surface assertions; T-D4-23 disconnect-after-completion |
+
+Every numbered finding is covered exactly once. No architecture-doc amendments; no escalation.
+
+### 1.2 Test cases created first
+
+- **D4-R1:** T-D4-20 (abort-rejecting source → cancelled + credit + journal); T-D4-21 (mid-stream throw → `failed`/`internal_error` + journal); T-D4-26 (signal-ignoring source → sync cancelled).
+- **D4-R2:** T-D4-03 cumulative assembled overflow + exact-ceiling pass; T-D4-06 empty assembled → `empty_output` / `validation_failed`.
+- **D4-R3:** T-D4-24 journal on completed and failed; T-D4-25 sink throws do not suppress terminal.
+- **D4-R4:** Live-usage assertions on T-D4-10/14; T-D4-22 zero-usage skip credit.
+- **D4-R5:** T-D4-02 silence heartbeat + content-suppression via `notifyActivity`.
+- **D4-R7:** T-D4-27 invocation adapter relays regenerating then text.
+- **D4-R9:** Strengthened T-D4-12/17 options/import surface; T-D4-16 abort on network-drop; T-D4-23 disconnect-after-completion.
+
+### 1.3 Fix implemented
+
+- Prose broker rewritten: error containment, abortable iteration, sync cancel on disconnect, terminal-first settlement with isolated sinks, live `getPartialUsage`, silence-reset heartbeats, D3 named adapter.
+- Guards: assembled-length incremental ceiling; full set returns violation (includes deferred `empty_output`).
+- Structured path moved to D6 `createStructuredStreamBroker` in `structured.ts`; D6 tests re-pointed.
+- Spec Kit (`spec.md`, `plan.md`, `tasks.md`, `quickstart.md`, `contracts/stream-broker.md`) updated for review clarifications and deferred wiring. Architecture / delivery-plan docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **verify-manifests 4**; Node pool **40 files / 542 tests**; Workers pool **19 files / 241 tests** — all passed. Modified/added: `stream/index.ts`, `stream/prose-guards.ts`, `stream/structured.ts`, `test/stream-broker.test.ts`, `test/structured-modes.test.ts`, Spec Kit under `specs/031-stream-broker/`.
