@@ -6,17 +6,17 @@
 
 ## Summary
 
-Slice D7 freezes the second real provider adapter (Gemini) behind the same D2 provider port already used by D5: one adapter that maps the canonical inference request to Gemini's wire format, normalizes streamed chunks, usage counters, and failures into the canonical form and shared error taxonomy, proves the full D5 recorded-fixture suite shape against Gemini (including malformed, truncated, timeout, and credential-absence spies), and registers Gemini as a low-priority fallback target by a routing-policy data edit alone — with no inference-pipeline change — so fallback ordering is honoured. D7 sits after D5 in band D; the capability-eval half of CP4 is deferred to F1 (`blocked_on_F1`) and is not planned or implemented here.
+Slice D7 freezes the second real provider adapter (Gemini) behind the same D2 provider port already used by D5: one adapter that maps the canonical inference request to Gemini's wire format (wire-mapping floor in contract §2.7), normalizes streamed chunks onto port `chunks` (exactly one empty-terminal marker), usage counters (`cached` / `usage_absent`), and failures into the canonical form and shared error taxonomy, proves the full D5 recorded-fixture suite shape against Gemini (including malformed JSON/SSE, truncated `MAX_TOKENS`/stream-cut, timeout with abort, and credential-absence spies with `consumedBudget: false`), and registers Gemini as a low-priority fallback target by a routing-policy data edit alone — with no inference-pipeline change — so fallback ordering is honoured at router output + wiring constructibility (contract §2.9). Fixture transport is buffered (full-body string, post-hoc SSE parse — contract §2.6); deadline is remaining-ms (contract §2.5). D7 sits after D5 in band D. F1 has landed; live-smoke targets `gemini-1.5-flash`; golden-eval inclusion of Gemini remains the permanent proof path for the CP4 eval half (contract §5.3). Review resolution aligned `gemini.ts` patterns with D5/DeepSeek, added fixtures, and strengthened tests — architecture docs untouched.
 
 ## Technical Context
 
 **Language/Version**: TypeScript (Cloudflare Workers runtime, `compatibility_date` 2026-05-03). No new language or runtime version is introduced.
 
-**Primary Dependencies**: The Cloudflare Worker in `ai-platform/` (Wrangler bundler, Vitest). No new external package or provider SDK is added. Outbound HTTP is exercised through an injectable transport/fetch port fed with recorded request/response (or stream) pairs, duplicating D5's inject pattern without modifying `deepseek.ts` (Clarification Q6). Credentials are read through an injectable secret-store binding; credential-absence spies use recording logger and journal sinks. Consumes D5's DeepSeek adapter / fixture-suite shape / secret-store path (unchanged), D2's `ProviderPort` / classification / routing-policy-as-data (unchanged), and A3 canonical types via those slices.
+**Primary Dependencies**: The Cloudflare Worker in `ai-platform/` (Wrangler bundler, Vitest). No new external package or provider SDK is added. Outbound HTTP is exercised through an injectable transport/fetch port fed with recorded request/response (or stream) pairs — full response body as one string; post-hoc SSE parse (Clarification Q6; contract §2.6). Credentials are read through an injectable secret-store binding; credential-absence spies inspect returned canonical errors and captured wire artifacts (no adapter logger/journal sinks per D2 repair). Consumes D5's DeepSeek adapter / fixture-suite shape / secret-store path (unchanged), D2's async `ProviderPort` (`chunks`, caller `signal`) / classification / routing-policy-as-data (unchanged), A3 canonical types via those slices, and F1 eval harness (`specs/039-eval-suite-harness/`, `ai-platform/test/eval/`).
 
 **Storage**: None. The adapter holds no per-request Durable Object or other server-side request state (§4.3.8; §4.4 / §9.7). Credentials come from the platform secrets binding (§4.4; §13.4), never from D1, R2, config files, or request input. D7 adds no D1 migration, no R2 write, and no Quota DO round trip. Routing-policy registration is a versioned **data** document under the D2 contract, not a schema change.
 
-**Testing**: Vitest (`npx vitest run`). Named tests T1–T11 are Adapter fixtures / Provider adapter tests (delivery plan §3.11.4 row D7 ← D5; §13.5 Provider adapter tests). T13 is Adapter fixtures + policy / structural (path allowlist). T14 is Unit (router + policy). T12 is excluded — `blocked_on_F1` (spec Deferred tests). No live provider egress in the permanent suite. No substitute eval harness.
+**Testing**: Vitest (`npx vitest run`). Named tests T1–T11 are Adapter fixtures / Provider adapter tests (delivery plan §3.11.4 row D7 ← D5; §13.5 Provider adapter tests) — review resolution strengthened empty terminal, exact usage/`cached`, malformed SSE, truncated SSE, abort signal, `consumedBudget: false`. T13 is Adapter fixtures + policy / structural (path allowlist). T14 is Unit (router + policy). T12 capability-eval clause is unblocked by F1; live-smoke covers `gemini-1.5-flash`; golden-eval inclusion remains the permanent proof path (contract §5.3). No live provider egress in the adapter-fixture suite.
 
 **Target Platform**: Cloudflare Worker (`ai-platform-gateway`). No `frontend/` (Flutter) or `backend/` (Supabase) code is touched.
 
@@ -24,7 +24,7 @@ Slice D7 freezes the second real provider adapter (Gemini) behind the same D2 pr
 
 **Performance Goals**: Adapter work is in-isolate mapping plus one outbound provider call when wired; this slice's permanent suite uses recorded fixtures with no live egress (delivery plan §3.5 Done when adapter/fixture/policy half; §3.11.4 D7). No Quota DO round trip, no D1 insert, and no R2 object from this slice (§7.5, §13.6; delivery plan §6.4). Outgoing-connection cap of six remains a D2 router bound — D7 does not raise, bypass, or add speculative fan-out (§4.3.8).
 
-**Constraints**: Adapters own authentication, request/response mapping, stream-chunk normalization, provider-specific structured-output *wire* mechanics, timeouts, and retryable/terminal classification — and nothing else: no retry decisions, no fallback decisions, no logging policy (§4.3.8). No new taxonomy codes (Consumes D2 / D5). Exactly one adapter per provider; Gemini is a separate module and MUST NOT be folded into `deepseek.ts` (FR-004; Consumes D5). Credentials never logged and never journaled (§4.3.8). Registration as low-priority fallback is a routing-policy *data* edit with no change to invocation, retry/fallback, stream broker, validator, or journal pipeline modules (FR-011; Clarification Q3). FR-010 / T12 / SC-005 / acceptance scenario 9 are `blocked_on_F1` — no file, task, or test traces to them. No per-request server-side state (§4.4, §9.7). No mechanism from §9.14 (R-20). Provider names and model identifiers never enter the Flutter client (R-12). Open Decision 11 (no on-LAN adapter now) and Open Decision 5 (no per-clinic preference initially) hold.
+**Constraints**: Adapters own authentication, request/response mapping (wire-mapping floor — contract §2.7), stream-chunk normalization (empty terminal), provider-specific structured-output *wire* mechanics, timeouts (remaining-ms `deadline` min'd with `timeoutMs`; caller `signal` — contract §2.5), measured `provider_ms`, and retryable/terminal classification — and nothing else: no retry decisions, no fallback decisions, no logging policy / no logger-journal sinks (§4.3.8; D2 repair). No new taxonomy codes (Consumes D2 / D5). Exactly one adapter per provider; Gemini is a separate module and MUST NOT be folded into `deepseek.ts` (FR-004; Consumes D5). Credentials never in returned canonical errors or captured wire artifacts; missing key → `consumedBudget: false` (§4.3.8). Registration as low-priority fallback is a routing-policy *data* edit with no change to invocation, retry/fallback, stream broker, validator, or journal pipeline modules (FR-011; Clarification Q3); wiring map hand-off and model pin per contract §2.8–§2.9. FR-010 / T12 / SC-005 unblocked by F1; golden-eval inclusion is the permanent proof path. Fixture harness is buffered (contract §2.6). No per-request server-side state (§4.4, §9.7). No mechanism from §9.14 (R-20). Provider names and model identifiers never enter the Flutter client (R-12). Open Decision 11 (no on-LAN adapter now) and Open Decision 5 (no per-clinic preference initially) hold. Architecture docs not amended.
 
 **Scale/Scope**: One real Gemini adapter module under existing `ai-platform/src/provider/` (sibling to port, fake, and DeepSeek; Clarification Q2). One §4 component group touched (§4.3.8 — see Components Touched). Thirteen named tests in this slice's Test plan (T1–T11, T13, T14); T12 deferred. Roughly 18–22 tasks.
 
@@ -56,9 +56,9 @@ specs/034-second-provider-adapter/
         # secret-store path, and policy-data registration / independence proof (adapter half)
 ```
 
-`quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`: (1) Architecture context — cites delivery plan §3.5 row D7 and `17-ai-platform.md` §4.3.8 / §13.5; (2) What was implemented — Gemini real adapter behind the D2 port, recorded-fixture suite (full D5 case list), secret-store credential path with absence spy, routing-policy low-priority registration with no pipeline diff, fallback ordering; note that capability-eval acceptance is deferred to F1; (3) Files to review — this slice's source, fixture, policy-data, and test files only; (4) Run the automated suite — slice-only `npx vitest run` against this slice's test files (no full-suite `npm test`); (5) Inspect the changes — the frozen contract under `contracts/` and the `provider/gemini.ts` module plus policy data; (6) Manual validation omitted — CI is the only verification path (no behaviour beyond CI; permanent suite uses recorded fixtures, not live egress).
+`quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`: (1) Architecture context — cites delivery plan §3.5 row D7 and `17-ai-platform.md` §4.3.8 / §13.5; (2) What was implemented — Gemini real adapter behind the D2 port, recorded-fixture suite (full D5 case list), secret-store credential path with absence spy, routing-policy low-priority registration with no pipeline diff, fallback ordering; note F1 landed and capability-eval permanent proof path; (3) Files to review — this slice's source, fixture, policy-data, and test files only; (4) Run the automated suite — slice-only `npx vitest run` against this slice's test files (no full-suite `npm test`); (5) Inspect the changes — the frozen contract under `contracts/` and the `provider/gemini.ts` module plus policy data; (6) Manual validation omitted — CI is the only verification path (no behaviour beyond CI; permanent suite uses recorded fixtures, not live egress).
 
-`contracts/second-provider-adapter.md` freezes the second real (Gemini) adapter's duties behind `ProviderPort`, the recorded-fixture suite shape mirrored from D5, the secret-store credential path, and the routing-policy data registration / no-pipeline-diff independence proof that this slice lands. The F1 capability-eval half is explicitly out of this contract (`blocked_on_F1`). `data-model.md` is not produced — D7 defines no D1 entities (spec Key Entities). `research.md` is not produced — research is `17-ai-platform.md`.
+`contracts/second-provider-adapter.md` freezes the second real (Gemini) adapter's duties behind `ProviderPort`, the recorded-fixture suite shape mirrored from D5, the secret-store credential path, the routing-policy data registration / no-pipeline-diff independence proof, and review-resolution semantics (deadline §2.5, buffered transport §2.6, wire-mapping floor §2.7, model identity §2.8, wiring map hand-off §2.9; stream/SSE/usage/credentials; F1 capability-eval clause §5.3). `data-model.md` is not produced — D7 defines no D1 entities (spec Key Entities). `research.md` is not produced — research is `17-ai-platform.md`.
 
 ### Source Code (repository root)
 
@@ -66,23 +66,23 @@ specs/034-second-provider-adapter/
 ai-platform/
 ├── src/
 │   └── provider/
-│       ├── gemini.ts                   # GeminiAdapter implements ProviderPort; injectable transport + secret store (FR-001..FR-009)
-│       └── wiring.ts                   # Thin provider_id → adapter wiring map (DeepSeek + Gemini); allowlisted under FR-011 / T13 — not pipeline
+│       ├── gemini.ts                   # GeminiAdapter implements ProviderPort; injectable transport + secret store (FR-001..FR-009); review resolution aligned with D5 patterns
+│       └── wiring.ts                   # Thin provider_id → adapter wiring map (DeepSeek + Gemini); allowlisted under FR-011 / T13 — not pipeline; constructibility hand-off (§2.9)
 ├── control/
 │   └── routing-policy/
 │       └── platform-default/
 │           └── 1.json                  # Versioned routing-policy document listing Gemini as low-priority fallback (FR-011, FR-012)
 └── test/
-    ├── gemini-adapter.test.ts          # T1–T11 (adapter fixtures / spy)
+    ├── gemini-adapter.test.ts          # T1–T11 (adapter fixtures / spy; strengthened asserts)
     ├── second-provider-policy.test.ts  # T13 (structural allowlist) + T14 (fallback ordering)
     └── fixtures/
-        └── gemini/                     # Recorded request/response and stream pairs (FR-005, FR-006, FR-007)
+        └── gemini/                     # Recorded request/response and stream pairs (FR-005, FR-006, FR-007); review-resolution fixtures added
             ├── request-mapping/        # Canonical request → outbound wire golden (T1)
             ├── stream/                 # Provider stream fixtures (T2)
             ├── usage/                  # Usage-bearing responses (T3)
             ├── errors/                 # One recorded failure per mapped Gemini wire error class (T4)
-            ├── malformed/              # Malformed body (T5)
-            ├── truncated/              # Truncated body / finish (T6)
+            ├── malformed/              # Malformed body + SSE (T5)
+            ├── truncated/              # Truncated body / finish + stream-cut (T6)
             └── timeout/                # Deadline-exceeded harness input (T7)
 ```
 
@@ -94,37 +94,38 @@ No `frontend/` or `backend/` tree is shown — D7 touches neither. No migration 
 
 | Consumes entry (from spec) | Bound to (existing module / file / type) |
 | --- | --- |
-| From D5 — first real provider adapter; recorded-fixture adapter suite shape; secret-store credential path | `ai-platform/src/provider/deepseek.ts` (`DeepSeekAdapter`, injectable transport / `SecretStorePort` / logger / journal sinks); `ai-platform/test/deepseek-adapter.test.ts` + `ai-platform/test/fixtures/deepseek/`; frozen in `specs/032-first-real-provider-adapter/contracts/first-real-provider-adapter.md`. D7 mirrors the suite shape for Gemini and does **not** rewrite DeepSeek's adapter, suite contract, or secret-store binding rules (Clarification Q6: duplicate inject pattern in D7 tests if helpers are not already shared) |
+| From D5 — first real provider adapter; recorded-fixture adapter suite shape; secret-store credential path | `ai-platform/src/provider/deepseek.ts` (`DeepSeekAdapter`, injectable transport / `SecretStorePort`); `ai-platform/test/deepseek-adapter.test.ts` + `ai-platform/test/fixtures/deepseek/`; frozen in `specs/032-first-real-provider-adapter/contracts/first-real-provider-adapter.md`. D7 mirrors the suite shape for Gemini and does **not** rewrite DeepSeek's adapter, suite contract, or secret-store binding rules (Clarification Q6: duplicate inject pattern in D7 tests if helpers are not already shared) |
 | From D5 / D2 — provider port contract (canonical request in; canonical stream chunks, result, or classified error out; adapters own mapping, normalization, timeouts, and retryable/terminal classification; adapters own no retry, fallback, or logging policy; classification exhaustive over the error taxonomy) | `ai-platform/src/provider/port.ts` (`ProviderPort`, `ProviderInvokeResult`); `ai-platform/src/provider/classify.ts` (`classifyFailure`, `setRetryabilityFromClassification`); frozen in `specs/029-provider-port-routing/contracts/provider-port.md`. D7 implements `GeminiAdapter` against this port and does not redefine the port, the taxonomy, or retryability |
 | From D5 / D2 — routing-policy-as-data contract (versioned policy → ordered candidate chain; selection stateless; selection reason recorded; outgoing-connection cap of six) | `ai-platform/src/router/index.ts` (`selectCandidateChain`, `RoutingDecision`, `ChainEntry`); frozen in `specs/029-provider-port-routing/contracts/routing-decision.md`. D7 registers Gemini by editing policy **data** only and does not alter router selection logic, the cap, or policy schema meaning |
 | From D5 / D2 / A3 — canonical request, stream chunk, result, and error types (taxonomy code, retryability, provider-native diagnostics); no provider-shaped field upstream of adapters | `ai-platform/src/contracts/canonical.ts` (`CanonicalRequest`, `CanonicalStreamChunk`, `CanonicalResult`, `CanonicalError`, `assertNoProviderShapedFieldNames`); `ai-platform/src/errors.ts` (`TaxonomyCode`, `getTaxonomyEntry`). D7 maps into these types and adds no taxonomy code |
+| From F1 — capability eval harness | `specs/039-eval-suite-harness/`; `ai-platform/test/eval/` (incl. live-smoke targeting `gemini-1.5-flash`). Golden-eval inclusion of Gemini remains the permanent proof path for FR-010 / T12 / SC-005 (contract §5.3) |
 
-Every **Consumes** entry binds to an existing implementation. None requires modification (stop condition 2 not triggered). The F1 capability-eval harness is **deferred** (`blocked_on_F1`) — it has **no** Consumes Binding row and must not be treated as a missing implementation (spec Binding rule for the plan phase).
+Every **Consumes** entry binds to an existing implementation. None requires modification (stop condition 2 not triggered). The F1 capability-eval clause is **unblocked** by F1 presence — golden-eval inclusion is the permanent proof path; architecture is not amended.
 
 ## Components Touched
 
 One §4 component group: **§4.3.8 Provider adapters and egress** — the second real provider adapter behind the provider port (wire mapping, stream normalization, usage extraction, error classification, secret-store credentials, adapter-owned timeouts), plus the thin provider wiring map that registers the new adapter by `provider_id` without touching pipeline stages.
 
-D2's port, fake, classification, and router are **consumed**, not modified. Routing-policy registration is a **data** edit under the Consumed §4.3.7 routing-policy-as-data contract; the router module itself is unchanged. D3 retry/fallback, D4 stream broker, D6 validation/repair, C3 journal writer, and F1 eval harness are neighbouring / deferred slices and are not modified here.
+D2's port, fake, classification, and router are **consumed**, not modified. Routing-policy registration is a **data** edit under the Consumed §4.3.7 routing-policy-as-data contract; the router module itself is unchanged. D3 retry/fallback, D4 stream broker, D6 validation/repair, and C3 journal writer are neighbouring slices and are not modified here. F1 eval harness is consumed for the capability-eval clause.
 
 ## Files
 
 | File | FRs traced |
 | --- | --- |
-| `ai-platform/src/provider/gemini.ts` | FR-001–FR-009 (Gemini adapter behind `ProviderPort`; owns auth, mapping, stream normalization, structured-output wire mechanics, timeouts, classification; owns no retry/fallback/logging policy; credentials from injectable secret store; separate module from DeepSeek — FR-004) |
-| `ai-platform/src/provider/wiring.ts` | FR-011 (thin `provider_id` → adapter wiring for DeepSeek + Gemini; allowlisted with adapter + policy data under T13; does not change invocation / retry-fallback / stream-broker / validator / journal) |
-| `ai-platform/control/routing-policy/platform-default/1.json` | FR-011, FR-012 (versioned policy document listing Gemini as a low-priority fallback after higher-priority targets) |
-| `ai-platform/test/fixtures/gemini/**` | FR-005, FR-006, FR-007 (recorded request/response and stream pairs for wire golden, stream, usage, error classes, malformed, truncated, timeout) |
-| `ai-platform/test/gemini-adapter.test.ts` | T1–T11 (FR-001–FR-009; injectable transport duplicating D5 inject pattern; fake secret store + recording logger/journal sinks) |
+| `ai-platform/src/provider/gemini.ts` | FR-001–FR-009 (Gemini adapter behind `ProviderPort`; owns auth, mapping, stream normalization, structured-output wire mechanics, timeouts, classification; owns no retry/fallback/logging policy; credentials from injectable secret store; separate module from DeepSeek — FR-004; review resolution aligned with D5/DeepSeek patterns) |
+| `ai-platform/src/provider/wiring.ts` | FR-011 (thin `provider_id` → adapter wiring for DeepSeek + Gemini; allowlisted with adapter + policy data under T13; constructibility hand-off — contract §2.9; does not change invocation / retry-fallback / stream-broker / validator / journal) |
+| `ai-platform/control/routing-policy/platform-default/1.json` | FR-011, FR-012 (versioned policy document listing Gemini as a low-priority fallback after higher-priority targets; `model_id` decorative vs adapter pin — contract §2.8) |
+| `ai-platform/test/fixtures/gemini/**` | FR-005, FR-006, FR-007 (recorded request/response and stream pairs for wire golden, stream, usage, error classes, malformed JSON/SSE, truncated finish/stream-cut, timeout; review-resolution fixtures added) |
+| `ai-platform/test/gemini-adapter.test.ts` | T1–T11 (FR-001–FR-009; injectable buffered transport duplicating D5 inject pattern; strengthened asserts; fake secret store) |
 | `ai-platform/test/second-provider-policy.test.ts` | T13 (FR-011 structural allowlist), T14 (FR-012 fallback ordering via unchanged `selectCandidateChain`) |
-| `specs/034-second-provider-adapter/contracts/second-provider-adapter.md` | Freezes → second real adapter duties; D5 suite shape applied to second provider; secret-store path; policy-data registration / independence proof (adapter half); F1 eval half explicitly deferred |
+| `specs/034-second-provider-adapter/contracts/second-provider-adapter.md` | Freezes → second real adapter duties; D5 suite shape applied to second provider; secret-store path; policy-data registration / independence proof; review-resolution semantics (§2.5–§2.9, §3.2–§3.6, §5.3) |
 | `specs/034-second-provider-adapter/quickstart.md` | Documentation task (written after implementation/verification) |
 
-Every file traces to an FR or a Freezes entry. No untraced file is introduced. No file traces to FR-010. Consumed D5/D2/A3 modules are not modified.
+Every file traces to an FR or a Freezes entry. No untraced file is introduced. Consumed D5/D2/A3 modules are not modified.
 
 ## Test Layout
 
-Per the architecture's testing strategy (§13.5 Provider adapter tests — recorded provider fixtures) and delivery plan §3.11.4 row D7 ("Adapter fixtures + evals" — eval case lands with F1, not here):
+Per the architecture's testing strategy (§13.5 Provider adapter tests — recorded provider fixtures) and delivery plan §3.11.4 row D7 ("Adapter fixtures + evals"):
 
 | Named test (spec Test plan) | Layer (§13.5) | File |
 | --- | --- | --- |
@@ -139,25 +140,35 @@ Per the architecture's testing strategy (§13.5 Provider adapter tests — recor
 | T9 `second_adapter_owns_no_retry_or_fallback` | Provider adapter tests / Adapter fixtures | `ai-platform/test/gemini-adapter.test.ts` |
 | T10 `second_adapter_owns_no_logging_policy` | Provider adapter tests / Adapter fixtures (spy) | `ai-platform/test/gemini-adapter.test.ts` |
 | T11 `second_provider_credentials_from_secret_store_only` | Provider adapter tests / Adapter fixtures (spy) | `ai-platform/test/gemini-adapter.test.ts` |
+| T12 `capability_evals_pass_with_second_provider` | Capability evals (A9) / CI | F1 harness under `ai-platform/test/eval/` — unblocked; live-smoke covers `gemini-1.5-flash`; golden-eval inclusion permanent proof (contract §5.3) |
 | T13 `added_by_routing_policy_edit_no_pipeline_diff` | Adapter fixtures + policy / structural | `ai-platform/test/second-provider-policy.test.ts` |
 | T14 `fallback_ordering_honoured` | Unit (router + policy) | `ai-platform/test/second-provider-policy.test.ts` |
 
-Every named test in this slice's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). **T12 is excluded** — listed only under Deferred tests (`blocked_on_F1`); the plan does not place it.
+Every named test in this slice's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). T12 is tracked as the F1 capability-eval clause (unblocked; permanent proof = golden-eval inclusion).
 
-T1–T7 drive the adapter through an injected transport that returns recorded pairs — no live egress. T4 expands to one named subcase per Gemini wire error class enumerated in `contracts/second-provider-adapter.md`, each mapping to an existing `TaxonomyCode` under D2 classification with no new codes. T8 / T10 / T11 inject a fake secret-store binding plus recording logger and journal sinks. T9 asserts the Gemini adapter export surface exposes classification only. T13 asserts a structural path allowlist: only second-adapter + routing-policy data (+ provider wiring map) may be required; fails if invocation / retry-fallback / stream-broker / validator / journal pipeline modules must change (Clarification Q3). T14 drives unchanged `selectCandidateChain` with the versioned policy document and asserts Gemini appears after higher-priority targets with selection reason recorded.
+T1–T7 drive the adapter through an injected buffered transport that returns recorded full-body pairs — no live egress; post-hoc SSE parse (Clarification Q6; contract §2.6). T4 expands to one named subcase per Gemini wire error class enumerated in `contracts/second-provider-adapter.md`, each mapping to an existing `TaxonomyCode` under D2 classification with no new codes. T8 / T10 / T11 inject a fake secret-store binding and assert the secret was read and never appears in returned canonical errors / captured wire artifacts; T10 asserts no logger-journal sink surface. T9 asserts the Gemini adapter export surface exposes classification only. T2 asserts `assertExactlyOneTerminal` with empty terminal payload; T3 asserts concrete usage counters / `cached` / `usage_absent`; T5 covers malformed JSON/SSE; T6 covers `MAX_TOKENS` and stream-cut; T7 asserts abort signal fired. T13 asserts a structural path allowlist: only second-adapter + routing-policy data (+ provider wiring map) may be required; fails if invocation / retry-fallback / stream-broker / validator / journal pipeline modules must change (Clarification Q3). T14 drives unchanged `selectCandidateChain` with the versioned policy document and asserts Gemini appears after higher-priority targets with selection reason recorded (router output + wiring constructibility — contract §2.9).
 
 ## Sequencing
 
 Tests and implementation land together, tests first or alongside — never after (skill rule). The order within the slice:
 
-1. **Frozen contract first.** `contracts/second-provider-adapter.md` constrains the Gemini adapter, suite shape, secret-store path, and policy-registration proof; later slices (F1 closing the eval half, F5) bind to this artifact, not to prose (delivery plan DP-4).
+1. **Frozen contract first.** `contracts/second-provider-adapter.md` constrains the Gemini adapter, suite shape, secret-store path, and policy-registration proof (incl. review-resolution §2.5–§2.9); later slices (F1 closing the eval half, F5) bind to this artifact, not to prose (delivery plan DP-4).
 2. **Adapter skeleton + injectable ports + T9, T11.** `GeminiAdapter` implements `ProviderPort`; constructor takes transport/fetch and secret-store ports (duplicate D5 inject pattern; Clarification Q6); T11 proves credentials are read from the secret store only; T9 locks no retry/fallback API on the adapter surface.
-3. **Request-mapping golden + T1.** Canonical request → Gemini wire body/headers match recorded outbound golden; auth uses the secret-store value without placing it in mapped body fields.
-4. **Stream normalization + usage + T2, T3.** Recorded stream fixtures normalize to `CanonicalStreamChunk` (no provider-shaped fields at the adapter/port boundary); usage counters land in canonical usage form.
-5. **Error classes + malformed + truncated + timeout + T4–T7.** One fixture per mapped wire error class → taxonomy + D2 retryability; malformed → classified failure; truncated → port-normalized outcome without a new code; adapter-owned deadline → `timeout` with D2 retryability.
-6. **Credential absence + logging-policy prohibition + T8, T10.** Recording logger and journal sinks assert credentials absent from every emission; adapter does not own logging policy.
+3. **Request-mapping golden + T1.** Canonical request → Gemini wire body/headers match recorded outbound golden (wire-mapping floor §2.7); auth uses the secret-store value without placing it in mapped body fields.
+4. **Stream normalization + usage + T2, T3.** Recorded stream fixtures normalize to port `chunks` (empty terminal; no provider-shaped fields); usage counters / `cached` / `usage_absent` land in canonical form.
+5. **Error classes + malformed + truncated + timeout + T4–T7.** One fixture per mapped wire error class → taxonomy + D2 retryability; malformed JSON/SSE → classified failure; truncated `MAX_TOKENS` / stream-cut → port `truncation`; adapter-owned deadline (remaining-ms) → `timeout` with abort + D2 retryability.
+6. **Credential absence + logging-policy prohibition + T8, T10.** Spy asserts credentials absent from returned errors / wire; missing key → `consumedBudget: false`; adapter does not own logging policy.
 7. **Policy data + wiring map + T13, T14.** Versioned routing-policy document lists Gemini as low-priority fallback; thin wiring map registers the adapter by `provider_id`; T13 proves structural allowlist (no pipeline module change); T14 proves ordered chain and recorded selection reason via unchanged router.
-8. **Quickstart.** `quickstart.md` is written last, after the suite is green, documenting only this slice's files and commands — including the F1 deferral note.
+8. **Quickstart.** `quickstart.md` is written last, after the suite is green, documenting only this slice's files and commands — including the F1 capability-eval permanent proof note.
+
+## Review resolution (2026-08-04)
+
+Review-resolution file changes (architecture docs untouched):
+
+- `ai-platform/src/provider/gemini.ts` — patterns aligned with D5/DeepSeek (async invoke, empty terminal, SSE malformed/truncation, abort on timeout, measured `provider_ms`, `consumedBudget: false`, wire-mapping floor).
+- Fixtures added/strengthened under `ai-platform/test/fixtures/gemini/` (malformed SSE, truncated stream-cut, usage-absent, mapping-floor cases as needed).
+- Tests strengthened in `ai-platform/test/gemini-adapter.test.ts` (empty terminal; exact usage + `cached`; malformed SSE; truncated SSE; abort signal; `consumedBudget: false`).
+- Spec Kit: contract §2.5 (deadline), §2.6 (buffered transport), §2.7 (wire mapping floor), §2.8 (model identity), §2.9 (wiring map hand-off), §5.3 (F1 capability-eval clause); `spec.md` / `plan.md` / `tasks.md` synced.
 
 ## Complexity Tracking
 

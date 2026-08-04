@@ -4,6 +4,7 @@ import {
   type CanonicalRequest,
   type CanonicalResult,
   type CanonicalStreamChunk,
+  type TimingBreakdown,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import { setRetryabilityFromClassification } from "./classify";
@@ -56,18 +57,27 @@ type GeminiWireRequest = {
     role: string;
     parts: Array<{ text: string }>;
   }>;
+  systemInstruction?: {
+    parts: Array<{ text: string }>;
+  };
   generationConfig?: {
     temperature?: number;
     maxOutputTokens?: number;
     stopSequences?: string[];
+    topK?: number;
     responseMimeType?: string;
+    responseSchema?: unknown;
   };
+  tools?: Array<{
+    functionDeclarations: unknown[];
+  }>;
 };
 
 type GeminiUsage = {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  cachedContentTokenCount?: number;
 };
 
 type GeminiCandidate = {
@@ -76,6 +86,7 @@ type GeminiCandidate = {
 };
 
 type GeminiResponse = {
+  responseId?: string;
   candidates?: GeminiCandidate[];
   usageMetadata?: GeminiUsage;
   error?: {
@@ -88,6 +99,11 @@ type GeminiResponse = {
   };
 };
 
+type ParseSseResult = {
+  events: GeminiResponse[];
+  hadMalformedLine: boolean;
+};
+
 function consumesBudget(code: TaxonomyCode): boolean {
   const { consumesQuota } = getTaxonomyEntry(code);
   return consumesQuota !== "No";
@@ -97,6 +113,7 @@ function createCanonicalError(
   code: TaxonomyCode,
   nativeCode: string,
   nativeMessage: string,
+  consumedBudgetOverride?: boolean,
 ): CanonicalError {
   return setRetryabilityFromClassification({
     taxonomyCode: code,
@@ -105,7 +122,10 @@ function createCanonicalError(
       code: nativeCode,
       message: nativeMessage,
     },
-    consumedBudget: consumesBudget(code),
+    consumedBudget:
+      consumedBudgetOverride !== undefined
+        ? consumedBudgetOverride
+        : consumesBudget(code),
   });
 }
 
@@ -125,7 +145,10 @@ function mapRoleToGemini(role: string): string {
   if (role === "assistant") {
     return "model";
   }
-  return role;
+  if (role === "data") {
+    return "user";
+  }
+  return "user";
 }
 
 function mapCanonicalToWire(request: CanonicalRequest): {
@@ -137,16 +160,49 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   const stopConditions = request.stopConditions;
   const isStream = Boolean(request.stream);
 
-  const wire: GeminiWireRequest = {
-    contents: request.parts.map((part) => ({
+  const systemTexts: string[] = [];
+  const contentParts: Array<{ role: string; text: string }> = [];
+
+  for (const part of request.parts) {
+    if (part.role === "system") {
+      systemTexts.push(part.content);
+      continue;
+    }
+    contentParts.push({
       role: mapRoleToGemini(part.role),
-      parts: [{ text: part.content }],
-    })),
+      text: part.content,
+    });
+  }
+
+  const contents: GeminiWireRequest["contents"] = [];
+  for (const part of contentParts) {
+    const last = contents[contents.length - 1];
+    if (last && last.role === part.role) {
+      last.parts.push({ text: part.text });
+    } else {
+      contents.push({
+        role: part.role,
+        parts: [{ text: part.text }],
+      });
+    }
+  }
+
+  const wire: GeminiWireRequest = {
+    contents,
     generationConfig: {},
   };
 
+  if (systemTexts.length > 0) {
+    wire.systemInstruction = {
+      parts: [{ text: systemTexts.join("\n") }],
+    };
+  }
+
   if (typeof sampling?.temperature === "number") {
     wire.generationConfig!.temperature = sampling.temperature;
+  }
+  if (typeof sampling?.top_k === "number") {
+    wire.generationConfig!.topK = sampling.top_k;
   }
   if (typeof request.maxOutputTokens === "number") {
     wire.generationConfig!.maxOutputTokens = request.maxOutputTokens;
@@ -156,6 +212,9 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   }
   if (outputFormat?.type === "json") {
     wire.generationConfig!.responseMimeType = "application/json";
+    if (outputFormat.schema !== undefined) {
+      wire.generationConfig!.responseSchema = outputFormat.schema;
+    }
   }
 
   if (
@@ -163,6 +222,21 @@ function mapCanonicalToWire(request: CanonicalRequest): {
     Object.keys(wire.generationConfig).length === 0
   ) {
     delete wire.generationConfig;
+  }
+
+  if (
+    Array.isArray(request.toolDeclarations) &&
+    request.toolDeclarations.length > 0
+  ) {
+    const functionDeclarations = request.toolDeclarations.filter(
+      (declaration): declaration is object =>
+        typeof declaration === "object" &&
+        declaration !== null &&
+        !Array.isArray(declaration),
+    );
+    if (functionDeclarations.length > 0) {
+      wire.tools = [{ functionDeclarations }];
+    }
   }
 
   return { wire, isStream };
@@ -180,7 +254,7 @@ function mapUsage(
   return {
     input: usage?.promptTokenCount ?? 0,
     output: usage?.candidatesTokenCount ?? 0,
-    cached: 0,
+    cached: usage?.cachedContentTokenCount ?? 0,
   };
 }
 
@@ -193,10 +267,19 @@ function mapFinishReason(
   return "stop";
 }
 
+function buildTiming(providerMs: number): TimingBreakdown {
+  return {
+    queue_ms: 0,
+    provider_ms: providerMs,
+    total_ms: providerMs,
+  };
+}
+
 function buildResult(
   response: GeminiResponse,
   content: string,
   finishReason: string | null | undefined,
+  providerMs: number,
 ): CanonicalResult {
   return {
     finalContent: { type: "text", text: content },
@@ -206,9 +289,21 @@ function buildResult(
       model: GEMINI_MODEL,
     },
     finishReason: mapFinishReason(finishReason),
-    providerRequestId: "gemini-unknown",
-    timing: { queue_ms: 0, provider_ms: 0, total_ms: 0 },
+    providerRequestId: response.responseId ?? "gemini-unknown",
+    timing: buildTiming(providerMs),
   };
+}
+
+function extractCandidateText(
+  candidate: GeminiCandidate | undefined,
+): string {
+  const parts = candidate?.content?.parts;
+  if (!parts || parts.length === 0) {
+    return "";
+  }
+  return parts
+    .map((part) => (typeof part.text === "string" ? part.text : ""))
+    .join("");
 }
 
 function isContentFiltered(body: GeminiResponse): boolean {
@@ -224,9 +319,6 @@ function classifyHttpFailure(
   status: number,
   body: GeminiResponse,
 ): TaxonomyCode {
-  if (isContentFiltered(body)) {
-    return "provider_rejected";
-  }
   if (status === 401 || status === 403) {
     return "provider_rejected";
   }
@@ -236,11 +328,45 @@ function classifyHttpFailure(
   if (status >= 500) {
     return "internal_error";
   }
+  if (isContentFiltered(body)) {
+    return "provider_rejected";
+  }
   return "provider_rejected";
 }
 
-function parseSseEvents(body: string): GeminiResponse[] {
+function classifyProviderErrorFrame(body: GeminiResponse): TaxonomyCode {
+  if (isContentFiltered(body)) {
+    return "provider_rejected";
+  }
+  const status = (body.error?.status ?? "").toUpperCase();
+  const message = (body.error?.message ?? "").toLowerCase();
+  if (
+    status === "RESOURCE_EXHAUSTED" ||
+    status.includes("RATE") ||
+    message.includes("rate") ||
+    message.includes("quota")
+  ) {
+    return "rate_limited";
+  }
+  if (
+    status === "INTERNAL" ||
+    status === "UNAVAILABLE" ||
+    status === "DEADLINE_EXCEEDED" ||
+    status.includes("SERVER") ||
+    (typeof body.error?.code === "number" && body.error.code >= 500)
+  ) {
+    return "internal_error";
+  }
+  if (status.includes("SAFETY") || message.includes("safety")) {
+    return "provider_rejected";
+  }
+  return "provider_rejected";
+}
+
+function parseSseEvents(body: string): ParseSseResult {
   const events: GeminiResponse[] = [];
+  let hadMalformedLine = false;
+
   for (const line of body.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) {
@@ -253,10 +379,11 @@ function parseSseEvents(body: string): GeminiResponse[] {
     try {
       events.push(JSON.parse(payload) as GeminiResponse);
     } catch {
-      // skip malformed SSE lines
+      hadMalformedLine = true;
     }
   }
-  return events;
+
+  return { events, hadMalformedLine };
 }
 
 function normalizeStreamChunks(
@@ -264,15 +391,16 @@ function normalizeStreamChunks(
 ): CanonicalStreamChunk[] {
   const chunks: CanonicalStreamChunk[] = [];
   let sequence = 0;
-  let assembled = "";
   let usage: GeminiUsage | undefined;
+  let sawUsage = false;
 
   for (const event of events) {
-    usage = event.usageMetadata ?? usage;
-    const candidate = event.candidates?.[0];
-    const delta = candidate?.content?.parts?.[0]?.text;
-    if (typeof delta === "string" && delta.length > 0) {
-      assembled += delta;
+    if (event.usageMetadata) {
+      usage = event.usageMetadata;
+      sawUsage = true;
+    }
+    const delta = extractCandidateText(event.candidates?.[0]);
+    if (delta.length > 0) {
       chunks.push({
         sequenceNumber: sequence,
         kind: "text_delta",
@@ -283,11 +411,19 @@ function normalizeStreamChunks(
     }
   }
 
-  if (usage) {
+  if (sawUsage) {
     chunks.push({
       sequenceNumber: sequence,
       kind: "usage",
       payload: mapUsage(usage),
+      terminal: false,
+    });
+    sequence += 1;
+  } else {
+    chunks.push({
+      sequenceNumber: sequence,
+      kind: "provider_note",
+      payload: { note: "usage_absent" },
       terminal: false,
     });
     sequence += 1;
@@ -296,7 +432,7 @@ function normalizeStreamChunks(
   chunks.push({
     sequenceNumber: sequence,
     kind: "text_delta",
-    payload: { text: assembled },
+    payload: { text: "" },
     terminal: true,
   });
 
@@ -304,15 +440,30 @@ function normalizeStreamChunks(
   return chunks;
 }
 
-function minimalTerminalChunks(text: string): readonly CanonicalStreamChunk[] {
-  const chunks: CanonicalStreamChunk[] = [
-    {
-      sequenceNumber: 0,
-      kind: "text_delta",
-      payload: { text },
-      terminal: true,
-    },
-  ];
+function minimalTerminalChunks(
+  text: string,
+  usageAbsent: boolean,
+): readonly CanonicalStreamChunk[] {
+  const chunks: CanonicalStreamChunk[] = [];
+  let sequence = 0;
+
+  if (usageAbsent) {
+    chunks.push({
+      sequenceNumber: sequence,
+      kind: "provider_note",
+      payload: { note: "usage_absent" },
+      terminal: false,
+    });
+    sequence += 1;
+  }
+
+  chunks.push({
+    sequenceNumber: sequence,
+    kind: "text_delta",
+    payload: { text },
+    terminal: true,
+  });
+
   assertExactlyOneTerminal(chunks);
   return chunks;
 }
@@ -337,6 +488,33 @@ function createCancelledOutcome(): ProviderInvokeResult {
       "Gemini request aborted by caller signal",
     ),
   };
+}
+
+function finishReasonErrorOutcome(
+  finishReason: string,
+): ProviderInvokeResult | null {
+  const upper = finishReason.toUpperCase();
+  if (upper === "SAFETY" || upper === "BLOCKLIST") {
+    return {
+      kind: "error",
+      error: createCanonicalError(
+        "provider_rejected",
+        upper,
+        "Content filtered by provider",
+      ),
+    };
+  }
+  if (upper === "RECITATION" || upper === "OTHER" || upper === "SPII") {
+    return {
+      kind: "error",
+      error: createCanonicalError(
+        "provider_rejected",
+        upper,
+        "Provider rejected the request",
+      ),
+    };
+  }
+  return null;
 }
 
 type AbortGuard = {
@@ -425,6 +603,7 @@ export class GeminiAdapter implements ProviderPort {
           "provider_rejected",
           "missing_api_key",
           "Gemini API key not found in secret store",
+          false,
         ),
       };
     }
@@ -443,15 +622,22 @@ export class GeminiAdapter implements ProviderPort {
       signal: guard.signal,
     };
 
+    const startedAt = Date.now();
     try {
       const fetchResult = this.transport.fetch(apiUrl, fetchInit);
       const response = await awaitTransportResponse(fetchResult, guard);
+      const providerMs = Math.max(0, Date.now() - startedAt);
       if (response === null) {
         return guard.wasTimeout()
           ? createTimeoutOutcome()
           : createCancelledOutcome();
       }
-      return this.handleTransportResponse(response, request, isStream);
+      return this.handleTransportResponse(
+        response,
+        request,
+        isStream,
+        providerMs,
+      );
     } catch {
       if (guard.signal.aborted) {
         return guard.wasTimeout()
@@ -475,6 +661,7 @@ export class GeminiAdapter implements ProviderPort {
     response: GeminiTransportResponse,
     _request: CanonicalRequest,
     isStream: boolean,
+    providerMs: number,
   ): ProviderInvokeResult {
     const contentType =
       response.headers["content-type"] ??
@@ -500,7 +687,7 @@ export class GeminiAdapter implements ProviderPort {
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
-      return this.handleStreamResponse(response.body);
+      return this.handleStreamResponse(response.body, providerMs);
     }
 
     let parsed: GeminiResponse;
@@ -522,17 +709,26 @@ export class GeminiAdapter implements ProviderPort {
         kind: "error",
         error: createCanonicalError(
           "provider_rejected",
-          parsed.candidates?.[0]?.finishReason ?? "SAFETY",
+          parsed.candidates?.[0]?.finishReason ??
+            parsed.promptFeedback?.blockReason ??
+            "SAFETY",
           "Content filtered by provider",
         ),
       };
     }
 
     const candidate = parsed.candidates?.[0];
-    const content = candidate?.content?.parts?.[0]?.text ?? "";
+    const content = extractCandidateText(candidate);
     const finishReason = candidate?.finishReason ?? "STOP";
-    const result = buildResult(parsed, content, finishReason);
-    const chunks = minimalTerminalChunks(content);
+
+    const finishError = finishReasonErrorOutcome(finishReason);
+    if (finishError) {
+      return finishError;
+    }
+
+    const usageAbsent = parsed.usageMetadata === undefined;
+    const result = buildResult(parsed, content, finishReason, providerMs);
+    const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "MAX_TOKENS") {
       return { kind: "truncation", result, chunks };
@@ -541,27 +737,103 @@ export class GeminiAdapter implements ProviderPort {
     return { kind: "success", result, chunks };
   }
 
-  private handleStreamResponse(body: string): ProviderInvokeResult {
-    const events = parseSseEvents(body);
-    const chunks = normalizeStreamChunks(events);
+  private handleStreamResponse(
+    body: string,
+    providerMs: number,
+  ): ProviderInvokeResult {
+    const { events, hadMalformedLine } = parseSseEvents(body);
 
-    const lastEvent = events[events.length - 1];
-    const candidate = lastEvent?.candidates?.[0];
-    const finishReason = candidate?.finishReason ?? "STOP";
-    let assembled = "";
+    if (hadMalformedLine) {
+      return {
+        kind: "malformed",
+        error: createCanonicalError(
+          "internal_error",
+          "malformed_response",
+          "Provider returned unparseable SSE data line",
+        ),
+      };
+    }
+
     for (const event of events) {
-      const delta = event.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (typeof delta === "string") {
-        assembled += delta;
+      if (event.error) {
+        const taxonomy = classifyProviderErrorFrame(event);
+        return {
+          kind: "error",
+          error: createCanonicalError(
+            taxonomy,
+            String(event.error.status ?? event.error.code ?? "provider_error"),
+            event.error.message ?? "Provider stream error frame",
+          ),
+        };
       }
     }
 
-    const result = buildResult(lastEvent ?? {}, assembled, finishReason);
+    for (const event of events) {
+      if (isContentFiltered(event)) {
+        return {
+          kind: "error",
+          error: createCanonicalError(
+            "provider_rejected",
+            event.candidates?.[0]?.finishReason ??
+              event.promptFeedback?.blockReason ??
+              "SAFETY",
+            "Content filtered by provider",
+          ),
+        };
+      }
+    }
 
-    return {
-      kind: finishReason === "MAX_TOKENS" ? "truncation" : "success",
-      result,
-      chunks,
+    let finishReason: string | null | undefined;
+    let hadFinishReason = false;
+    let assembled = "";
+    let lastEvent: GeminiResponse = {};
+    let usage: GeminiUsage | undefined;
+
+    for (const event of events) {
+      lastEvent = event;
+      if (event.usageMetadata) {
+        usage = event.usageMetadata;
+      }
+      const candidate = event.candidates?.[0];
+      assembled += extractCandidateText(candidate);
+      const eventFinish = candidate?.finishReason;
+      if (typeof eventFinish === "string" && eventFinish.length > 0) {
+        finishReason = eventFinish;
+        hadFinishReason = true;
+      }
+    }
+
+    if (hadFinishReason && finishReason) {
+      const finishError = finishReasonErrorOutcome(finishReason);
+      if (finishError) {
+        return finishError;
+      }
+    }
+
+    const responseForResult: GeminiResponse = {
+      ...lastEvent,
+      usageMetadata: usage,
+      responseId: lastEvent.responseId,
     };
+    const effectiveFinish = !hadFinishReason
+      ? "length"
+      : (finishReason ?? "STOP");
+    const chunks = normalizeStreamChunks(events);
+    const result = buildResult(
+      responseForResult,
+      assembled,
+      effectiveFinish,
+      providerMs,
+    );
+
+    if (!hadFinishReason) {
+      return { kind: "truncation", result, chunks };
+    }
+
+    if (finishReason === "MAX_TOKENS") {
+      return { kind: "truncation", result, chunks };
+    }
+
+    return { kind: "success", result, chunks };
   }
 }

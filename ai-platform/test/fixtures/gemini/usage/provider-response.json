@@ -11,6 +11,7 @@
   "usageMetadata": {
     "promptTokenCount": 42,
     "candidatesTokenCount": 18,
-    "totalTokenCount": 60
+    "totalTokenCount": 60,
+    "cachedContentTokenCount": 7
   }
 }

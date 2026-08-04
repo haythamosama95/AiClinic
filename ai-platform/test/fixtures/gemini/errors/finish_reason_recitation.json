@@ -1,0 +1,13 @@
+{
+  "candidates": [
+    {
+      "content": { "parts": [{ "text": "copied" }], "role": "model" },
+      "finishReason": "RECITATION"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 2,
+    "candidatesTokenCount": 1,
+    "totalTokenCount": 3
+  }
+}

@@ -1,0 +1,5 @@
+data: {"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"},"finishReason":null}]}
+
+data: {not-json
+
+data: {"candidates":[{"content":{"parts":[{"text":" there"}],"role":"model"},"finishReason":null}]}

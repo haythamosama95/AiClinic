@@ -1,0 +1,11 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{ "text": "No usage metadata." }],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ]
+}
