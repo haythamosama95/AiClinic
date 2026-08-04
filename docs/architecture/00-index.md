@@ -37,11 +37,11 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 
 - Auth, staff, roles, and branch setup: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus `docs/specs/002-auth-rbac/`, `docs/specs/003-org-branch-management/`.
 - Operational features:
-  - Patients: `docs/specs/004-patient-management/`
-  - Appointments: `docs/specs/005-appointment-management/`
-  - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `docs/specs/013-visits/`, `docs/specs/014-visit-encounter-workspace/`
-  - Billing: `15-billing.md`, `docs/specs/007-billing/`
-  - Shifts: `docs/specs/008-shift-management/`
+  - Patients: `specs/004-patient-management/`
+  - Appointments: `specs/005-appointment-management/`
+  - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `specs/013-visits/`, `specs/014-visit-encounter-workspace/`
+  - Billing: `15-billing.md`, `specs/007-billing/`
+  - Shifts: `specs/008-shift-management/`
 - AI features: `17-ai-platform.md`, `17a-ai-platform-overview.md`, `17b-ai-platform-delivery-plan.md`, plus `specs/` AI feature directories (e.g. `017-ai-canonical-inference/`, `019-ai-context-keys-d1-config/`).
 - Deployment and installer work: `03-deployment-networking.md`, `07-frontend.md`, `10-resilience-and-scale.md`.
 - Analytics: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md` (V3-1).
