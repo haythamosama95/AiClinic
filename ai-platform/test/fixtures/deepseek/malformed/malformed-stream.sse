@@ -1,0 +1,5 @@
+data: {"id":"ds-malformed-stream","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+data: {not-json
+
+data: {"id":"ds-malformed-stream","object":"chat.completion.chunk","model":"deepseek-chat","choices":[{"index":0,"delta":{"content":" there"},"finish_reason":null}]}

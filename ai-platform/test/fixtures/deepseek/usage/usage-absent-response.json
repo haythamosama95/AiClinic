@@ -1,0 +1,12 @@
+{
+  "id": "ds-no-usage",
+  "object": "chat.completion",
+  "model": "deepseek-chat",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "No usage block." },
+      "finish_reason": "stop"
+    }
+  ]
+}
