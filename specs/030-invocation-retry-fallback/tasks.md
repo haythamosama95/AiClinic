@@ -96,6 +96,7 @@
 - [P] tasks = different files, no dependencies. This slice has no `[P]` tasks — one test file and one implementation file.
 - Every named test T1–T13 from `spec.md` is covered by its own task (including spy T11); no cases dropped; task list is 16 (under the 25-task cap).
 - Every task traces to an `FR-###` from `spec.md` (tests also state the `SC-###` they satisfy) — no task adds a requirement the spec does not name. Clarifications Q1–Q4 guide how (module path, harness, sleeper, sink), not what.
+- **Review resolution (2026-08-04):** Implementation and suite were amended in place under T014/T015 evidence — injectable RNG; `timeout_ms` race + AbortSignal; `BACKOFF_CAP_MS` / deadline-truncated sleeps; exhausting-failure `fallback_after_timeout` (incl. mixed scripts); local sink wrap + `text_delta` relay (optional error `chunks`); required feed `idempotency_key` and `truncation` outcome; unmapped kinds → `internal_error`; empty chain / `max_attempts = 1`. Spec/contract/plan updated to match; no new task IDs.
 - No Polish phase and no Foundational phase — prerequisites are the already-merged slices in the plan's Consumes Binding (D2).
 - Consumed modules are imported, not modified (delivery plan §2.3 — extend, never rewrite).
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).

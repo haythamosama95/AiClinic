@@ -37,13 +37,23 @@ export type ProviderInvokeResult =
       result: CanonicalResult;
       chunks: readonly CanonicalStreamChunk[];
     }
-  | { kind: "error"; error: CanonicalError }
+  | {
+      kind: "error";
+      error: CanonicalError;
+      /** Optional partial stream observed before the failure (D3 regenerating path). */
+      chunks?: readonly CanonicalStreamChunk[];
+    }
   | {
       kind: "truncation";
       result: CanonicalResult;
       chunks: readonly CanonicalStreamChunk[];
     }
-  | { kind: "malformed"; error: CanonicalError };
+  | {
+      kind: "malformed";
+      error: CanonicalError;
+      /** Optional partial stream observed before the malformed outcome. */
+      chunks?: readonly CanonicalStreamChunk[];
+    };
 
 /** Every provider adapter implements this port. */
 export interface ProviderPort {

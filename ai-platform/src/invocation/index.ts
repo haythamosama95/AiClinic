@@ -2,11 +2,15 @@ import type {
   CanonicalError,
   CanonicalRequest,
   CanonicalResult,
+  CanonicalStreamChunk,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import { classifyFailure, setRetryabilityFromClassification } from "../provider/classify";
 import type { ProviderInvokeResult, ProviderPort } from "../provider/port";
 import type { RoutingDecision } from "../router";
+
+/** Documented ceiling for inter-retry backoff (inclusive of jitter). */
+export const BACKOFF_CAP_MS = 10_000;
 
 export type SelectionReason =
   | "primary"
@@ -15,6 +19,7 @@ export type SelectionReason =
 
 export type AttemptOutcome =
   | "success"
+  | "truncation"
   | "retryable_failure"
   | "terminal_failure"
   | "timeout";
@@ -27,18 +32,18 @@ export type AttemptRecord = {
   outcome: AttemptOutcome;
   error_code?: TaxonomyCode;
   request_id: string;
+  idempotency_key: string;
+  latency_ms?: number;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost?: number;
+  provider_request_id?: string;
 };
 
 export interface InvocationSink {
   recordAttempt(record: AttemptRecord): void;
   emitRegenerating(): void;
   emitStreamText(text: string): void;
-}
-
-export interface ProviderHistoryStore {
-  getProviderHealth(providerId: string): unknown;
-  getRecentFailures(providerId: string): unknown;
-  isCircuitOpen(providerId: string): boolean;
 }
 
 export type InvocationInput = {
@@ -49,7 +54,8 @@ export type InvocationInput = {
   portResolver: (providerId: string) => ProviderPort;
   sink: InvocationSink;
   sleeper: (ms: number) => Promise<void>;
-  providerHistoryStore?: ProviderHistoryStore;
+  /** Injectable RNG for jitter proofs; defaults to `Math.random`. */
+  random?: () => number;
 };
 
 export type InvocationResult =
@@ -60,7 +66,7 @@ function createProviderUnavailableError(): CanonicalError {
   const { consumesQuota } = getTaxonomyEntry("provider_unavailable");
   return setRetryabilityFromClassification({
     taxonomyCode: "provider_unavailable",
-    retryability: false,
+    retryability: true,
     providerNative: {
       code: "PROVIDER_UNAVAILABLE",
       message: "All candidate providers exhausted",
@@ -69,11 +75,50 @@ function createProviderUnavailableError(): CanonicalError {
   });
 }
 
-function computeJitteredBackoff(retryIndex: number): number {
+function createTimeoutError(): CanonicalError {
+  const { consumesQuota } = getTaxonomyEntry("timeout");
+  return setRetryabilityFromClassification({
+    taxonomyCode: "timeout",
+    retryability: true,
+    providerNative: {
+      code: "ATTEMPT_TIMEOUT",
+      message: "Provider invoke exceeded chain-entry timeout_ms",
+    },
+    consumedBudget: consumesQuota !== "No",
+  });
+}
+
+function createInternalError(message: string): CanonicalError {
+  const { consumesQuota } = getTaxonomyEntry("internal_error");
+  return setRetryabilityFromClassification({
+    taxonomyCode: "internal_error",
+    retryability: true,
+    providerNative: {
+      code: "UNEXPECTED_INVOKE_RESULT",
+      message,
+    },
+    consumedBudget: consumesQuota !== "No",
+  });
+}
+
+/**
+ * Exponential backoff with full-jitter, capped at {@link BACKOFF_CAP_MS}.
+ * `retryIndex` is 0-based within the current target (first inter-retry sleep = 0).
+ */
+export function computeJitteredBackoff(
+  retryIndex: number,
+  random: () => number = Math.random,
+): number {
   const baseMs = 100;
-  const exponential = baseMs * 2 ** retryIndex;
-  const jitter = Math.random() * exponential * 0.5;
-  return Math.floor(exponential + jitter);
+  const exponential = Math.min(baseMs * 2 ** retryIndex, BACKOFF_CAP_MS);
+  const jitter = random() * exponential * 0.5;
+  return Math.floor(Math.min(exponential + jitter, BACKOFF_CAP_MS));
+}
+
+/** Pure exponential component without jitter — used by tests to prove jitter is present. */
+export function pureExponentialBackoffMs(retryIndex: number): number {
+  const baseMs = 100;
+  return Math.min(baseMs * 2 ** retryIndex, BACKOFF_CAP_MS);
 }
 
 type ProcessedInvoke = {
@@ -82,12 +127,78 @@ type ProcessedInvoke = {
   terminalError?: CanonicalError;
 };
 
+function usageFieldsFromResult(
+  result: CanonicalResult,
+): Pick<
+  AttemptRecord,
+  "latency_ms" | "tokens_in" | "tokens_out" | "cost" | "provider_request_id"
+> {
+  return {
+    latency_ms: result.timing?.total_ms,
+    tokens_in: result.usage.input,
+    tokens_out: result.usage.output,
+    // Cost attribution lands when a pricing table is wired; carry a stable zero for now.
+    cost: 0,
+    provider_request_id: result.providerRequestId,
+  };
+}
+
+function textFromChunkPayload(payload: unknown): string | undefined {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "text" in payload &&
+    typeof (payload as { text: unknown }).text === "string"
+  ) {
+    return (payload as { text: string }).text;
+  }
+  if (typeof payload === "string") {
+    return payload;
+  }
+  return undefined;
+}
+
+function chunksFromResult(
+  invokeResult: ProviderInvokeResult,
+): readonly CanonicalStreamChunk[] | undefined {
+  if (invokeResult.kind === "success" || invokeResult.kind === "truncation") {
+    return invokeResult.chunks;
+  }
+  if (
+    (invokeResult.kind === "error" || invokeResult.kind === "malformed") &&
+    "chunks" in invokeResult &&
+    Array.isArray((invokeResult as { chunks?: unknown }).chunks)
+  ) {
+    return (invokeResult as { chunks: readonly CanonicalStreamChunk[] }).chunks;
+  }
+  return undefined;
+}
+
+function relayTextDeltas(
+  chunks: readonly CanonicalStreamChunk[] | undefined,
+  sink: InvocationSink,
+): void {
+  if (!chunks) {
+    return;
+  }
+  for (const chunk of chunks) {
+    if (chunk.kind !== "text_delta") {
+      continue;
+    }
+    const text = textFromChunkPayload(chunk.payload);
+    if (text !== undefined && text.length > 0) {
+      sink.emitStreamText(text);
+    }
+  }
+}
+
 function processInvokeResult(
   invokeResult: ProviderInvokeResult,
   entry: { provider_id: string; model_id: string },
   attemptNo: number,
   selectionReason: SelectionReason,
   requestId: string,
+  idempotencyKey: string,
 ): ProcessedInvoke {
   const base: Omit<AttemptRecord, "outcome" | "error_code"> = {
     attempt_no: attemptNo,
@@ -95,11 +206,27 @@ function processInvokeResult(
     model_id: entry.model_id,
     selection_reason: selectionReason,
     request_id: requestId,
+    idempotency_key: idempotencyKey,
   };
 
-  if (invokeResult.kind === "success" || invokeResult.kind === "truncation") {
+  if (invokeResult.kind === "success") {
     return {
-      record: { ...base, outcome: "success" },
+      record: {
+        ...base,
+        outcome: "success",
+        ...usageFieldsFromResult(invokeResult.result),
+      },
+      success: invokeResult.result,
+    };
+  }
+
+  if (invokeResult.kind === "truncation") {
+    return {
+      record: {
+        ...base,
+        outcome: "truncation",
+        ...usageFieldsFromResult(invokeResult.result),
+      },
       success: invokeResult.result,
     };
   }
@@ -109,7 +236,16 @@ function processInvokeResult(
       ? invokeResult.error
       : undefined;
   if (!error) {
-    throw new Error(`Unexpected invoke result kind: ${invokeResult.kind}`);
+    const internal = createInternalError(
+      `Unexpected invoke result kind: ${(invokeResult as { kind: string }).kind}`,
+    );
+    return {
+      record: {
+        ...base,
+        outcome: "retryable_failure",
+        error_code: internal.taxonomyCode,
+      },
+    };
   }
 
   const code = error.taxonomyCode;
@@ -131,6 +267,68 @@ function processInvokeResult(
   };
 }
 
+async function invokeWithTimeout(
+  port: ProviderPort,
+  request: CanonicalRequest,
+  timeoutMs: number,
+): Promise<ProviderInvokeResult> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<ProviderInvokeResult>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve({ kind: "error", error: createTimeoutError() });
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      port.invoke(request, { signal: controller.signal }).catch((cause: unknown) => {
+        const message =
+          cause instanceof Error ? cause.message : "Provider invoke rejected";
+        return {
+          kind: "error" as const,
+          error: createInternalError(message),
+        };
+      }),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function remainingDeadlineMs(
+  deadlineBudgetMs: number | null,
+  startedAtMs: number,
+  nowMs: number,
+): number | null {
+  if (deadlineBudgetMs === null) {
+    return null;
+  }
+  return deadlineBudgetMs - (nowMs - startedAtMs);
+}
+
+async function sleepWithinDeadline(
+  sleeper: (ms: number) => Promise<void>,
+  delayMs: number,
+  deadlineBudgetMs: number | null,
+  startedAtMs: number,
+  nowMs: () => number = Date.now,
+): Promise<void> {
+  const remaining = remainingDeadlineMs(deadlineBudgetMs, startedAtMs, nowMs());
+  if (remaining === null) {
+    await sleeper(delayMs);
+    return;
+  }
+  if (remaining <= 0) {
+    return;
+  }
+  await sleeper(Math.min(delayMs, remaining));
+}
+
 export async function runInvocation(
   input: InvocationInput,
 ): Promise<InvocationResult> {
@@ -138,9 +336,11 @@ export async function runInvocation(
     request,
     routingDecision,
     requestId,
+    idempotencyKey,
     portResolver,
     sink,
     sleeper,
+    random = Math.random,
   } = input;
 
   const chain = routingDecision.chain;
@@ -148,33 +348,42 @@ export async function runInvocation(
     return { ok: false, error: createProviderUnavailableError() };
   }
 
+  const startedAtMs = Date.now();
   let attemptNo = 0;
-  let prevExhaustedViaTimeoutsOnly = false;
+  /** True when the prior target's exhausting (final) failure was timeout-classified. */
+  let prevExhaustedViaTimeout = false;
   let prevTargetHadPartialStream = false;
 
+  // Run-scoped observing sink — never mutate the caller-owned sink object.
   let currentTargetHadPartialStream = false;
-  const originalEmitStreamText = sink.emitStreamText.bind(sink);
-  sink.emitStreamText = (text: string) => {
-    currentTargetHadPartialStream = true;
-    originalEmitStreamText(text);
+  const observingSink: InvocationSink = {
+    recordAttempt(record) {
+      sink.recordAttempt(record);
+    },
+    emitRegenerating() {
+      sink.emitRegenerating();
+    },
+    emitStreamText(text) {
+      currentTargetHadPartialStream = true;
+      sink.emitStreamText(text);
+    },
   };
 
   for (let chainIndex = 0; chainIndex < chain.length; chainIndex++) {
     if (chainIndex > 0 && prevTargetHadPartialStream) {
-      sink.emitRegenerating();
+      observingSink.emitRegenerating();
     }
 
     const entry = chain[chainIndex];
     const selectionReason: SelectionReason =
       chainIndex === 0
         ? "primary"
-        : prevExhaustedViaTimeoutsOnly
+        : prevExhaustedViaTimeout
           ? "fallback_after_timeout"
           : "fallback_after_retryable_error";
 
     currentTargetHadPartialStream = false;
-    let targetFailuresAllTimeout = true;
-    let hadAnyFailure = false;
+    let lastFailureWasTimeout = false;
 
     for (
       let attemptOnTarget = 0;
@@ -183,16 +392,24 @@ export async function runInvocation(
     ) {
       attemptNo++;
       const port = portResolver(entry.provider_id);
-      const invokeResult = await port.invoke(request);
+      const invokeResult = await invokeWithTimeout(
+        port,
+        request,
+        entry.timeout_ms,
+      );
+
+      relayTextDeltas(chunksFromResult(invokeResult), observingSink);
+
       const processed = processInvokeResult(
         invokeResult,
         entry,
         attemptNo,
         selectionReason,
         requestId,
+        idempotencyKey,
       );
 
-      sink.recordAttempt(processed.record);
+      observingSink.recordAttempt(processed.record);
 
       if (processed.success) {
         return { ok: true, result: processed.success };
@@ -202,17 +419,20 @@ export async function runInvocation(
         return { ok: false, error: processed.terminalError };
       }
 
-      hadAnyFailure = true;
-      if (processed.record.outcome !== "timeout") {
-        targetFailuresAllTimeout = false;
-      }
+      lastFailureWasTimeout = processed.record.outcome === "timeout";
 
       if (attemptOnTarget < entry.max_attempts - 1) {
-        await sleeper(computeJitteredBackoff(attemptOnTarget));
+        const delay = computeJitteredBackoff(attemptOnTarget, random);
+        await sleepWithinDeadline(
+          sleeper,
+          delay,
+          request.deadline,
+          startedAtMs,
+        );
       }
     }
 
-    prevExhaustedViaTimeoutsOnly = hadAnyFailure && targetFailuresAllTimeout;
+    prevExhaustedViaTimeout = lastFailureWasTimeout;
     prevTargetHadPartialStream = currentTargetHadPartialStream;
   }
 

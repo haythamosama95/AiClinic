@@ -66,3 +66,49 @@ D3 delivers the one module its plan names — `src/invocation/index.ts` (`runInv
 - **Remove `providerHistoryStore` from the frozen input type** (Deviation 1): the spy test can supply the store structurally (an object the module never receives proves non-consultation just as well) without advertising the prohibited seam on the contract surface; amend contract §2.1 if a fourth injectable is genuinely wanted.
 - **Add the missing cases**: empty chain → `provider_unavailable` with zero attempts; fallback without prior streaming emits no `regenerating`; partial text then terminal failure emits no `regenerating`; regenerating emitted exactly once and before the fallback target's first output; mixed timeout/non-timeout exhaustion reason; `truncation` and `malformed` through the loop; each remaining terminal taxonomy code not retried; `max_attempts = 1`; no sleeper call on a target's final attempt.
 - **Clean up the attempt record fidelity** (Bugs 6–7, Deviation 3): distinguish truncation from clean success in the feed (or amend contract §6's outcome enum), carry usage/timing fields when the port returns them so C3's `ai_attempt` columns have a source, replace the bare throw with a classified outcome, and delete the dead `retryability: false` initializer in `createProviderUnavailableError`.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D3-R1 — Async chunk relay + regenerating** | Critical #1; Architectural Deviations #2; Missing/Weak Tests #4; Rec: sequence port repair / rework invoke+detection | `ai-platform/src/invocation/index.ts` (`relayTextDeltas`, observing sink); `ai-platform/src/provider/port.ts` (optional error/malformed `chunks`); `ai-platform/test/invocation.test.ts` (T-D3-06, T-D3-R-01, T-D3-R-02); Spec Kit D2/D3 contracts |
+| **D3-R2 — `timeout_ms` enforcement** | Bugs #1; Rec: enforce `timeout_ms` | `invokeWithTimeout` (race + `AbortSignal`); T-D3-R-09 |
+| **D3-R3 — Backoff cap, deadline, real jitter** | Bugs #2; Missing/Weak Tests #1, #8; Rec: cap backoff / jitter proof | `computeJitteredBackoff` + `BACKOFF_CAP_MS`; `sleepWithinDeadline`; injectable `random`; T-D3-03, T-D3-R-10, T-D3-R-11 |
+| **D3-R4 — Mixed-script fallback reason** | Bugs #3; Missing/Weak Tests #5; Rec: timeout-reason rule | Exhausting (final) failure drives `fallback_after_timeout`; T-D3-R-08; contract §3 |
+| **D3-R5 — Sink wrapper, history store removal, idempotency feed** | Bugs #4, #5; Architectural Deviations #1; Missing/Weak Tests #2; Rec: stop mutating sink / remove store / assert artifacts | Run-scoped `observingSink`; `providerHistoryStore` removed; `idempotency_key` on `AttemptRecord`; T-D3-11, T-D3-12 |
+| **D3-R6 — Attempt-record fidelity** | Bugs #6, #7; Architectural Deviations #3; Missing/Weak Tests #6; Rec: cleanup fidelity | `truncation` outcome; usage/timing fields; classified `internal_error` instead of bare throw; `retryability: true` initializer; T-D3-R-05..07 |
+| **D3-R7 — Remaining coverage gaps** | Missing/Weak Tests #3, #7; Rec: missing cases | Empty chain; `max_attempts = 1` / no sleeper on final attempt; T-D3-R-03, T-D3-R-04 |
+| **Accepted no-op** | Architectural Deviations #4 (module unwired) | Intentional — production wiring deferred to CP3/D4 per frozen contract; no code change |
+
+Every numbered Critical, Bug, Deviation, Weak Test, and Recommended Improvement is covered above. No escalations — D2's async/chunked port repair was already on `ai/master`; D3 now consumes it.
+
+### 1.2 Test cases created first
+
+- **D3-R1:** T-D3-06 rewritten (chunk harness, exactly one `regenerating` before fallback output); T-D3-R-01 (no regenerating without prior chunks); T-D3-R-02 (partial then terminal → no regenerating).
+- **D3-R2:** T-D3-R-09 hung-port + small `timeout_ms` → taxonomy `timeout` / fallback or `provider_unavailable`.
+- **D3-R3:** T-D3-03 asserts delay ≠ `pureExponentialBackoffMs` with fixed RNG and ≤ `BACKOFF_CAP_MS`; T-D3-R-10 deadline truncation; T-D3-R-11 unit cap.
+- **D3-R4:** T-D3-R-08 §8.6 mixed script (`internal_error` then `timeout`) → `fallback_after_timeout`.
+- **D3-R5:** T-D3-11 asserts no `providerHistoryStore` on input; T-D3-12 asserts journaled `request_id` + `idempotency_key`.
+- **D3-R6:** T-D3-R-05 truncation outcome; T-D3-R-06 malformed; T-D3-R-07 every terminal taxonomy code not retried.
+- **D3-R7:** T-D3-R-03 empty chain; T-D3-R-04 `max_attempts = 1` with zero sleeper calls.
+
+### 1.3 Fix implemented
+
+- **D3-R1:** Loop awaits async `port.invoke`, relays `text_delta` chunks (including optional error/malformed `chunks`) through a run-scoped observing sink; regenerating fires only after prior partial stream. D2 port result extended with optional failure `chunks` (allowed extension).
+- **D3-R2:** Each attempt raced against `entry.timeout_ms` with `AbortSignal`; loser classified as `timeout`.
+- **D3-R3:** Backoff capped at 10_000 ms; sleeps truncated to remaining relative `request.deadline` budget; injectable `random`.
+- **D3-R4:** `fallback_after_timeout` when the prior target's exhausting failure was timeout-classified (matches §8.6).
+- **D3-R5:** Caller sink never mutated; `providerHistoryStore` removed from `InvocationInput`; idempotency key journaled on every attempt.
+- **D3-R6:** Distinct `truncation` outcome; optional usage/timing on success/truncation records; unmapped kinds → classified `internal_error`; `createProviderUnavailableError` initializer matches taxonomy retryability.
+- **D3-R7:** Empty-chain and `max_attempts = 1` paths covered.
+- Spec Kit: `specs/030-invocation-retry-fallback/{spec,plan,tasks,contracts/invocation-attempt-loop}.md` and D2 `provider-port.md` optional-chunks note updated. Architecture docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **manifest gates 4 tests** + **40 files / 529 tests** (node) + **19 files / 241 tests** (workers) — all passed.
+
+Modified/added test surface: `ai-platform/test/invocation.test.ts` (T-D3-01..13 retained; T-D3-R-01..11 added).
