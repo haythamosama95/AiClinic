@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   CANONICAL_FIELD_MANIFEST,
+  assertExactlyOneTerminal,
   assertNoProviderShapedFieldNames,
   type CanonicalError,
   type CanonicalRequest,
@@ -28,6 +29,7 @@ import {
   type SecretStorePort,
 } from "../src/provider/gemini";
 import {
+  type ProviderInvokeOptions,
   type ProviderInvokeResult,
   type ProviderPort,
 } from "../src/provider/port";
@@ -36,6 +38,13 @@ const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_ROOT = path.join(TEST_ROOT, "fixtures", "gemini");
 
 const KNOWN_SECRET = "gemini-test-api-key-secret-value-do-not-log";
+const DECOY_SECRET = "request-embedded-decoy-not-the-store-secret";
+
+const ALLOWED_ADAPTER_OPTION_KEYS = new Set([
+  "transport",
+  "secretStore",
+  "timeoutMs",
+]);
 
 const RETRY_FALLBACK_API_PATTERN =
   /^(retry|withRetry|executeRetry|retryAttempt|fallback|withFallback|executeFallback|fallbackTo)/i;
@@ -112,14 +121,18 @@ function loadFixtureText(...segments: string[]): string {
   return readFileSync(fixturePath, "utf8");
 }
 
+/** Pass `null` for a missing binding (plain `undefined` would hit the default). */
 function createRecordingSecretStore(
-  secret: string = KNOWN_SECRET,
+  secret: string | null = KNOWN_SECRET,
 ): RecordingSecretStore {
   const reads: string[] = [];
   const store: SecretStorePort = {
     getSecret(name: string): string | undefined {
       reads.push(name);
-      return name === GEMINI_API_KEY_BINDING ? secret : undefined;
+      if (name !== GEMINI_API_KEY_BINDING) {
+        return undefined;
+      }
+      return secret === null ? undefined : secret;
     },
   };
   return { store, reads };
@@ -150,15 +163,36 @@ function createGeminiAdapter(
   return new GeminiAdapter(options);
 }
 
+function assertAdapterOptionsKeysOnly(
+  options: Record<string, unknown>,
+): void {
+  const keys = Object.keys(options);
+  expect(keys.length).toBeGreaterThan(0);
+  for (const key of keys) {
+    expect(
+      ALLOWED_ADAPTER_OPTION_KEYS.has(key),
+      `unexpected GeminiAdapterOptions key: ${key}`,
+    ).toBe(true);
+  }
+  expect(keys.every((key) => ALLOWED_ADAPTER_OPTION_KEYS.has(key))).toBe(true);
+}
+
 async function invokeThroughPort(
   port: ProviderPort,
   request: CanonicalRequest,
+  options?: ProviderInvokeOptions,
 ): Promise<ProviderInvokeResult> {
-  return port.invoke(request);
+  return port.invoke(request, options);
 }
 
 function getStreamChunks(outcome: ProviderInvokeResult): CanonicalStreamChunk[] {
   if (outcome.kind === "success" || outcome.kind === "truncation") {
+    return [...outcome.chunks];
+  }
+  if (
+    (outcome.kind === "error" || outcome.kind === "malformed") &&
+    outcome.chunks
+  ) {
     return [...outcome.chunks];
   }
   return [];
@@ -270,6 +304,18 @@ function normalizeCapturedRequest(
   };
 }
 
+function successJsonBody(content = "ok"): string {
+  return JSON.stringify({
+    candidates: [
+      {
+        content: { parts: [{ text: content }], role: "model" },
+        finishReason: "STOP",
+      },
+    ],
+    usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+  });
+}
+
 describe("T-D7-09 second_adapter_owns_no_retry_or_fallback", () => {
   it("Gemini adapter export surface exposes classification only — no retry or fallback API", async () => {
     const secretStore = createRecordingSecretStore();
@@ -279,10 +325,14 @@ describe("T-D7-09 second_adapter_owns_no_retry_or_fallback", () => {
       body: "{}",
     }));
 
-    const adapter = createGeminiAdapter({
+    const plainOptions = {
       transport,
       secretStore: secretStore.store,
-    });
+      timeoutMs: 1_000,
+    };
+    assertAdapterOptionsKeysOnly(plainOptions);
+
+    const adapter = createGeminiAdapter(plainOptions);
     expect(adapter).toBeInstanceOf(GeminiAdapter);
     expect(typeof adapter.invoke).toBe("function");
 
@@ -294,18 +344,10 @@ describe("T-D7-09 second_adapter_owns_no_retry_or_fallback", () => {
 describe("T-D7-11 second_provider_credentials_from_secret_store_only", () => {
   it("reads credentials from the secret-store binding only — not config, request input, or literals", async () => {
     const secretStore = createRecordingSecretStore();
-    const { transport } = createCapturingTransport(() => ({
+    const { transport, captured } = createCapturingTransport(() => ({
       status: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        candidates: [
-          {
-            content: { parts: [{ text: "ok" }], role: "model" },
-            finishReason: "STOP",
-          },
-        ],
-        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2 },
-      }),
+      body: successJsonBody("ok"),
     }));
 
     const adapter = createGeminiAdapter({
@@ -317,14 +359,21 @@ describe("T-D7-11 second_provider_credentials_from_secret_store_only", () => {
       ...requestFixture,
       correlationIds: {
         ...requestFixture.correlationIds,
-        request_reference: KNOWN_SECRET,
+        request_reference: DECOY_SECRET,
       },
     };
 
     await invokeThroughPort(adapter, requestWithEmbeddedCredential);
 
     expect(secretStore.reads).toContain(GEMINI_API_KEY_BINDING);
-    expect(secretStore.reads.length).toBeGreaterThan(0);})
+    expect(secretStore.reads.length).toBeGreaterThan(0);
+
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    expect(wire.headers["x-goog-api-key"]).toBe(KNOWN_SECRET);
+    expect(wire.headers["x-goog-api-key"]).not.toBe(DECOY_SECRET);
+    expect(JSON.stringify(wire.body)).not.toContain(KNOWN_SECRET);
+  });
 });
 
 describe("T-D7-01 second_provider_request_mapping_golden", () => {
@@ -372,7 +421,8 @@ describe("T-D7-01 second_provider_request_mapping_golden", () => {
     );
     expect(emitted.headers["x-goog-api-key"]).toBe(KNOWN_SECRET);
     expect(emitted.body).toEqual(expected.body);
-    expect(JSON.stringify(emitted.body)).not.toContain(KNOWN_SECRET);})
+    expect(JSON.stringify(emitted.body)).not.toContain(KNOWN_SECRET);
+  });
 });
 
 describe("T-D7-02 second_provider_stream_normalization", () => {
@@ -400,7 +450,34 @@ describe("T-D7-02 second_provider_stream_normalization", () => {
     expect(chunks.length).toBeGreaterThan(0);
     for (const chunk of chunks) {
       assertCanonicalStreamChunkShape(chunk);
-    }})
+    }
+
+    assertExactlyOneTerminal(chunks);
+
+    const nonTerminalTextDeltas = chunks.filter(
+      (chunk) => chunk.kind === "text_delta" && chunk.terminal !== true,
+    );
+    expect(
+      nonTerminalTextDeltas.map(
+        (chunk) => (chunk.payload as { text: string }).text,
+      ),
+    ).toEqual(["Hello", " world"]);
+
+    expect(chunks.map((chunk) => chunk.sequenceNumber)).toEqual(
+      chunks.map((_, index) => index),
+    );
+    expect(chunks[0]!.sequenceNumber).toBe(0);
+
+    const terminal = chunks.find((chunk) => chunk.terminal === true)!;
+    expect(terminal.kind).toBe("text_delta");
+    expect((terminal.payload as { text: string }).text).toBe("");
+
+    expect(outcome.kind).toBe("success");
+    if (outcome.kind !== "success") {
+      throw new Error("Expected success outcome");
+    }
+    expect(outcome.result.finalContent.text).toBe("Hello world");
+  });
 });
 
 describe("T-D7-03 second_provider_usage_extraction", () => {
@@ -433,19 +510,21 @@ describe("T-D7-03 second_provider_usage_extraction", () => {
     }
 
     assertCanonicalResultShape(outcome.result);
-    expect(outcome.result.usage).toEqual(
-      expect.objectContaining({
-        input: expect.any(Number),
-        output: expect.any(Number),
-      }),
-    );
+    expect(outcome.result.usage).toEqual({
+      input: 42,
+      output: 18,
+      cached: 7,
+    });
+    expect(typeof outcome.result.timing.provider_ms).toBe("number");
+    expect(outcome.result.timing.provider_ms).toBeGreaterThanOrEqual(0);
 
     const usageChunk = getStreamChunks(outcome).find(
       (chunk) => chunk.kind === "usage",
     );
     if (usageChunk) {
       assertCanonicalStreamChunkShape(usageChunk);
-    }})
+    }
+  });
 });
 
 describe("T-D7-04 second_provider_error_class_mapped_to_taxonomy", () => {
@@ -528,14 +607,13 @@ describe("T-D7-06 second_provider_truncated_response", () => {
 
     const outcome = await invokeThroughPort(adapter, requestFixture);
 
-    expect(
-      outcome.kind === "truncation" || outcome.kind === "success",
-    ).toBe(true);
-
-    if (outcome.kind === "truncation" || outcome.kind === "success") {
-      assertCanonicalResultShape(outcome.result);
-      expect(outcome.result.finishReason).toBe("length");
-    }})
+    expect(outcome.kind).toBe("truncation");
+    if (outcome.kind !== "truncation") {
+      throw new Error("Expected truncation outcome");
+    }
+    assertCanonicalResultShape(outcome.result);
+    expect(outcome.result.finishReason).toBe("length");
+  });
 });
 
 describe("T-D7-07 second_provider_timeout", () => {
@@ -545,8 +623,10 @@ describe("T-D7-07 second_provider_timeout", () => {
       "harness.json",
     );
     const secretStore = createRecordingSecretStore();
+    let capturedSignal: AbortSignal | undefined;
     const neverResolvingTransport: GeminiTransport = {
-      fetch(_url, _init) {
+      fetch(_url, init) {
+        capturedSignal = init.signal;
         return new Promise(() => {
           /* never resolves — adapter-owned timeout should fire */
         });
@@ -567,7 +647,36 @@ describe("T-D7-07 second_provider_timeout", () => {
     const outcome = await invokeThroughPort(adapter, shortDeadlineRequest);
     const error = assertClassifiedError(outcome, "timeout");
     expect(error.retryability).toBe(true);
-    expect(classifyFailure("timeout")).toBe("retryable");})
+    expect(classifyFailure("timeout")).toBe("retryable");
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(true);
+  });
+
+  it("resolves within deadline via async transport as success", async () => {
+    const secretStore = createRecordingSecretStore();
+    const asyncTransport: GeminiTransport = {
+      async fetch() {
+        await Promise.resolve();
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: successJsonBody("within-deadline"),
+        };
+      },
+    };
+
+    const adapter = createGeminiAdapter({
+      transport: asyncTransport,
+      secretStore: secretStore.store,
+      timeoutMs: 5_000,
+    });
+
+    const outcome = await invokeThroughPort(adapter, {
+      ...requestFixture,
+      deadline: 5_000,
+    });
+    expect(outcome.kind).toBe("success");
+  });
 });
 
 describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () => {
@@ -577,22 +686,17 @@ describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () 
     const successTransport = createCapturingTransport(() => ({
       status: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        candidates: [
-          {
-            content: { parts: [{ text: "ok" }], role: "model" },
-            finishReason: "STOP",
-          },
-        ],
-        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
-      }),
+      body: successJsonBody("ok"),
     }));
 
     const successAdapter = createGeminiAdapter({
       transport: successTransport.transport,
       secretStore: secretStore.store,
     });
-    const successOutcome = await invokeThroughPort(successAdapter, requestFixture);
+    const successOutcome = await invokeThroughPort(
+      successAdapter,
+      requestFixture,
+    );
     assertSecretAbsentFromEmissions(KNOWN_SECRET, [successOutcome]);
 
     const errorFixture = loadFixture<Record<string, unknown>>(
@@ -609,9 +713,68 @@ describe("T-D7-08 second_provider_credentials_absent_from_logs_and_journal", () 
       transport: failureTransport.transport,
       secretStore: secretStore.store,
     });
-    const failureOutcome = await invokeThroughPort(failureAdapter, requestFixture);
+    const failureOutcome = await invokeThroughPort(
+      failureAdapter,
+      requestFixture,
+    );
     assertSecretAbsentFromEmissions(KNOWN_SECRET, [failureOutcome]);
+    if (
+      failureOutcome.kind === "error" ||
+      failureOutcome.kind === "malformed"
+    ) {
+      expect(failureOutcome.error.providerNative).toBeDefined();
+      assertSecretAbsentFromEmissions(KNOWN_SECRET, [
+        failureOutcome.error.providerNative,
+      ]);
+    }
 
+    const timeoutTransport: GeminiTransport = {
+      fetch() {
+        return new Promise(() => {
+          /* never resolves */
+        });
+      },
+    };
+    const timeoutAdapter = createGeminiAdapter({
+      transport: timeoutTransport,
+      secretStore: secretStore.store,
+      timeoutMs: 30,
+    });
+    const timeoutOutcome = await invokeThroughPort(timeoutAdapter, {
+      ...requestFixture,
+      deadline: 30,
+    });
+    assertSecretAbsentFromEmissions(KNOWN_SECRET, [timeoutOutcome]);
+
+    const missingStore = createRecordingSecretStore(null);
+    const missingAdapter = createGeminiAdapter({
+      transport: successTransport.transport,
+      secretStore: missingStore.store,
+    });
+    const missingOutcome = await invokeThroughPort(
+      missingAdapter,
+      requestFixture,
+    );
+    assertSecretAbsentFromEmissions(KNOWN_SECRET, [missingOutcome]);
+
+    const streamBody = loadFixtureText("stream", "provider-stream.sse");
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const streamTransport = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: streamBody,
+    }));
+    const streamAdapter = createGeminiAdapter({
+      transport: streamTransport.transport,
+      secretStore: secretStore.store,
+    });
+    const streamOutcome = await invokeThroughPort(streamAdapter, streamRequest);
+    assertSecretAbsentFromEmissions(KNOWN_SECRET, [streamOutcome]);
+
+    // Adapters must not accept logger/journal sinks (§4.3.8).
     const optionKeys: Array<keyof GeminiAdapterOptions> = [
       "transport",
       "secretStore",
@@ -634,5 +797,378 @@ describe("T-D7-10 second_adapter_owns_no_logging_policy", () => {
     type HasForbidden = Forbidden extends keyof Options ? true : false;
     const hasForbidden: HasForbidden = false;
     expect(hasForbidden).toBe(false);
+
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody(),
+    }));
+    const plainOptions = {
+      transport,
+      secretStore: secretStore.store,
+      timeoutMs: 500,
+    };
+    assertAdapterOptionsKeysOnly(plainOptions);
+    createGeminiAdapter(plainOptions);
+  });
+});
+
+describe("transport_throw_and_reject", () => {
+  it("sync throw from fetch classifies as internal_error without escaping", async () => {
+    const secretStore = createRecordingSecretStore();
+    const throwingTransport: GeminiTransport = {
+      fetch() {
+        throw new Error("sync transport boom");
+      },
+    };
+    const adapter = createGeminiAdapter({
+      transport: throwingTransport,
+      secretStore: secretStore.store,
+    });
+
+    let escaped: unknown;
+    let outcome: ProviderInvokeResult | undefined;
+    try {
+      outcome = await invokeThroughPort(adapter, requestFixture);
+    } catch (error) {
+      escaped = error;
+    }
+    expect(escaped).toBeUndefined();
+    expect(outcome).toBeDefined();
+    assertClassifiedError(outcome!, "internal_error");
+  });
+
+  it("rejecting transport promise classifies as internal_error", async () => {
+    const secretStore = createRecordingSecretStore();
+    const rejectingTransport: GeminiTransport = {
+      fetch() {
+        return Promise.reject(new Error("async transport boom"));
+      },
+    };
+    const adapter = createGeminiAdapter({
+      transport: rejectingTransport,
+      secretStore: secretStore.store,
+    });
+
+    let escaped: unknown;
+    let outcome: ProviderInvokeResult | undefined;
+    try {
+      outcome = await invokeThroughPort(adapter, requestFixture);
+    } catch (error) {
+      escaped = error;
+    }
+    expect(escaped).toBeUndefined();
+    expect(outcome).toBeDefined();
+    assertClassifiedError(outcome!, "internal_error");
+  });
+});
+
+describe("caller_abort_propagation", () => {
+  it("already-aborted caller signal yields cancelled taxonomy", async () => {
+    const secretStore = createRecordingSecretStore();
+    const neverResolvingTransport: GeminiTransport = {
+      fetch() {
+        return new Promise(() => {
+          /* never resolves */
+        });
+      },
+    };
+    const adapter = createGeminiAdapter({
+      transport: neverResolvingTransport,
+      secretStore: secretStore.store,
+      timeoutMs: 5_000,
+    });
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const outcome = await invokeThroughPort(adapter, requestFixture, {
+      signal: controller.signal,
+    });
+    assertClassifiedError(outcome, "cancelled");
+  });
+});
+
+describe("truncated_stream_sse", () => {
+  it("stream without finish_reason or [DONE] is truncation — not clean stop success", async () => {
+    const streamBody = loadFixtureText("truncated", "truncated-stream.sse");
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: streamBody,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    expect(outcome.kind).toBe("truncation");
+    expect(outcome.kind).not.toBe("success");
+  });
+});
+
+describe("malformed_stream_sse", () => {
+  it("corrupted SSE line mid-stream classifies as malformed or error — not success", async () => {
+    const streamBody = loadFixtureText("malformed", "malformed-stream.sse");
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: streamBody,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    expect(outcome.kind === "malformed" || outcome.kind === "error").toBe(
+      true,
+    );
+    expect(outcome.kind).not.toBe("success");
+  });
+});
+
+describe("mid_stream_error_frame", () => {
+  it("mid-stream provider error frame classifies as error — not success", async () => {
+    const streamBody = loadFixtureText("errors", "mid-stream-error.sse");
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: streamBody,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    expect(outcome.kind === "error" || outcome.kind === "malformed").toBe(
+      true,
+    );
+    expect(outcome.kind).not.toBe("success");
+  });
+});
+
+describe("stream_finish_reason_safety", () => {
+  it("stream finishReason SAFETY maps to provider_rejected", async () => {
+    const streamBody = loadFixtureText("errors", "stream-safety.sse");
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: streamBody,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    assertClassifiedError(outcome, "provider_rejected");
+  });
+});
+
+describe("finish_reason_recitation", () => {
+  it("200 finishReason RECITATION maps to provider_rejected", async () => {
+    const body = loadFixture<Record<string, unknown>>(
+      "errors",
+      "finish_reason_recitation.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "provider_rejected");
+    expect(error.retryability).toBe(false);
+  });
+});
+
+describe("prompt_feedback_block", () => {
+  it("promptFeedback.blockReason maps to provider_rejected", async () => {
+    const body = loadFixture<Record<string, unknown>>(
+      "errors",
+      "prompt_feedback_block.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "provider_rejected");
+    expect(error.retryability).toBe(false);
+  });
+});
+
+describe("missing_credentials_consumed_budget", () => {
+  it("absent secret store value yields error with consumedBudget false", async () => {
+    const secretStore = createRecordingSecretStore(null);
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody(),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(outcome.kind === "error" || outcome.kind === "malformed").toBe(
+      true,
+    );
+    if (outcome.kind !== "error" && outcome.kind !== "malformed") {
+      throw new Error("Expected classified error for missing credentials");
+    }
+    expect(outcome.error.consumedBudget).toBe(false);
+  });
+});
+
+describe("usage_absent_provider_note", () => {
+  it("200 JSON without usageMetadata succeeds with usage_absent provider_note", async () => {
+    const body = loadFixture<Record<string, unknown>>(
+      "usage",
+      "usage-absent-response.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(
+      outcome.kind === "success" || outcome.kind === "truncation",
+    ).toBe(true);
+    if (outcome.kind !== "success" && outcome.kind !== "truncation") {
+      throw new Error("Expected success or truncation");
+    }
+    expect(typeof outcome.result.timing.provider_ms).toBe("number");
+
+    const note = getStreamChunks(outcome).find(
+      (chunk) => chunk.kind === "provider_note",
+    );
+    expect(note).toBeDefined();
+    expect(note!.payload).toEqual({ note: "usage_absent" });
+  });
+});
+
+describe("wire_mapping_system_and_roles", () => {
+  it("maps system to systemInstruction and folds data into user contents", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport, captured } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody("mapped"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const multiRoleRequest: CanonicalRequest = {
+      ...requestFixture,
+      parts: [
+        { role: "system", content: "You are a clinic assistant." },
+        { role: "user", content: "Summarise the visit." },
+        { role: "data", content: "vitals: 120/80" },
+      ],
+    };
+
+    await invokeThroughPort(adapter, multiRoleRequest);
+
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    const body = wire.body as {
+      systemInstruction?: unknown;
+      contents?: Array<{ role?: string; parts?: unknown }>;
+    };
+
+    expect(body.systemInstruction).toBeDefined();
+    expect(body.contents).toBeDefined();
+    const roles = (body.contents ?? []).map((entry) => entry.role);
+    expect(roles).not.toContain("system");
+    expect(roles).not.toContain("data");
+    expect(roles).toContain("user");
+  });
+});
+
+describe("wire_mapping_top_k_and_schema", () => {
+  it("maps top_k and json schema into generationConfig", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport, captured } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody("schema-ok"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const schemaRequest: CanonicalRequest = {
+      ...requestFixture,
+      samplingConstraints: { temperature: 0.2, top_k: 3 },
+      formatDirective: {
+        type: "json",
+        schema: { type: "object" },
+      },
+    };
+
+    await invokeThroughPort(adapter, schemaRequest);
+
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    const body = wire.body as {
+      generationConfig?: {
+        topK?: number;
+        responseMimeType?: string;
+        responseSchema?: unknown;
+      };
+    };
+
+    expect(body.generationConfig?.topK).toBe(3);
+    expect(body.generationConfig?.responseMimeType).toBe("application/json");
+    expect(body.generationConfig?.responseSchema).toEqual({ type: "object" });
   });
 });

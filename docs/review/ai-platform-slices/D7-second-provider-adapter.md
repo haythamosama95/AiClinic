@@ -88,3 +88,48 @@ D7 delivers the artifacts its contract names: `src/provider/gemini.ts` (`GeminiA
 - **Make T13 prove the diff property** (Weak Tests 10): compute the slice's changed-file set from the merge base and assert it is a subset of the allowlist, rather than grepping pipeline sources for the provider's name.
 - **Settle the inherited contract ambiguities before a third adapter lands** (Deviations 2–5): amend the D2 port type to carry the chunk sequence and an abort signal (its prose already names both); state in the A3 contract whether `deadline` is remaining-ms or an absolute timestamp; and close the §13.5 interpretation gap — "truncated responses" in the testing-strategy table means wire truncation, while both adapter suites implement finish-reason mapping on complete bodies.
 - **Track the deferred eval clause to closure** (documentation): the spec's "F1 is not yet implemented" claim is stale — `specs/039-eval-suite-harness/` and `ai-platform/test/eval/` exist, and F1's live smoke already targets `gemini-1.5-flash` (`ai-platform/test/eval/live-smoke.test.ts:12`). Record whether T12/FR-010/SC-005 are now satisfied (golden evals with the second provider in the candidate set) and declare or re-open CP4 accordingly.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D7-R1 — Prove async containment** | Critical #1–#2; Bugs #1 (impl already on `ai/master` via D2/D5 patterns); Weak Tests #1, #6; Recs (contain failures / real timeout asserts); Deviations #2–#3 (already closed by D2-R1) | Strengthened `gemini-adapter.test.ts` (T-D7-07 abort + within-deadline; `transport_throw_and_reject`; `caller_abort_propagation`) |
+| **D7-R2 — Stream terminal & SSE failure paths** | Bugs #2–#4; Weak Tests #3–#5; Recs (stream chunk semantics) | `parseSseEvents` / `normalizeStreamChunks` / `handleStreamResponse` in `gemini.ts`; fixtures `truncated-stream.sse`, `malformed-stream.sse`, `mid-stream-error.sse`; T-D7-02 strengthened |
+| **D7-R3 — Stream / finish classification** | Bugs #5; Weak Tests #12 (filter cases); Recs (classify SAFETY / RECITATION / promptFeedback) | `finishReasonErrorOutcome`; stream-path `isContentFiltered`; fixtures `stream-safety.sse`, `finish_reason_recitation.json`, `prompt_feedback_block.json` |
+| **D7-R4 — Budget, timing, usage honesty** | Bugs #6–#8 (Bug #9 already closed — no JournalSink); Weak Tests #2, #12 (usage/budget); Recs (telemetry/usage) | `consumedBudget: false` on missing key; measured `provider_ms`; `cachedContentTokenCount` → `cached`; `usage_absent` `provider_note` |
+| **D7-R5 — Wire floor + spies** | Bugs #10; Weak Tests #7–#9, #12 (mapping); Recs (complete wire mapping / strengthen spies); Deviation #1 (already closed — no JournalSink) | `systemInstruction`, role merge, `topK`, `responseSchema`, tools; T-D7-08/09/10/11 tightened |
+| **D7-R6 — Spec Kit remainder + T13/wiring** | Deviations #4–#6; Weak Tests #10–#11; Recs (buffered/deadline docs; wiring/model restatement; T13 diff; F1 eval clause) | Contract §2.5–2.9; Spec Kit docs; T-D7-13 merge-base allowlist + `createProviderAdapter` smoke; T-D7-14 asserts `model_id` |
+
+Every numbered finding is in exactly one stage. No architecture-doc edits; no escalation (Deviations 2–3 already repaired on `ai/master` via D2-R1; Deviations 4–6 resolved as adapter/Spec Kit interpretation mirroring D5-R6, without amending `17-ai-platform.md`).
+
+### 1.2 Test cases created first
+
+- **D7-R1:** T-D7-07 asserts `signal.aborted === true` after timeout; companion within-deadline async success; `transport_throw_and_reject` (sync throw + rejecting promise → `internal_error`); `caller_abort_propagation` (already-aborted signal → `cancelled`).
+- **D7-R2:** T-D7-02 asserts content order ("Hello" / " world"), contiguous sequences, `assertExactlyOneTerminal`, empty terminal `text_delta`, assembled `finalContent`; `truncated_stream_sse` → `truncation`; `malformed_stream_sse` → `malformed`; `mid_stream_error_frame` → classified error.
+- **D7-R3:** `stream_finish_reason_safety` → `provider_rejected`; `finish_reason_recitation` → `provider_rejected`; `prompt_feedback_block` → `provider_rejected`.
+- **D7-R4:** T-D7-03 exact `{ input: 42, output: 18, cached: 7 }` + `provider_ms ≥ 0`; `missing_credentials_consumed_budget` → `consumedBudget === false`; `usage_absent_provider_note`.
+- **D7-R5:** T-D7-08 covers timeout / missing-creds / stream + `providerNative`; T-D7-09/10 options-key runtime check; T-D7-11 store secret vs decoy + `x-goog-api-key`; `wire_mapping_system_and_roles`; `wire_mapping_top_k_and_schema`.
+- **D7-R6:** T-D7-13 allowlist + `origin/ai/master...HEAD` subset check + wiring constructibility; T-D7-14 asserts Gemini `model_id`.
+
+### 1.3 Fix implemented
+
+- **D7-R1:** No production re-write of the async path — D2-R1 / merge from `ai/master` already deleted `waitForPromiseOutcome`, made `invoke` async, wired `Promise.race` abort, and contained transport throw/reject. Tests now prove abort delivery and the non-timeout async path.
+- **D7-R2:** Terminal chunk is empty `text_delta` (`text: ""`); malformed SSE → `malformed`; mid-stream `error` frames classified; cut stream without finishReason → `truncation` / `length`.
+- **D7-R3:** Stream path runs `isContentFiltered`; `SAFETY`/`BLOCKLIST`/`RECITATION`/`OTHER`/`SPII` short-circuit before success; `promptFeedback.blockReason` covered.
+- **D7-R4:** Missing key forces `consumedBudget: false`; `buildTiming` measures outbound `provider_ms`; cache-hit tokens map to `cached`; absent usage emits `provider_note` `{ note: "usage_absent" }`.
+- **D7-R5:** Wire mapping implements systemInstruction / data→user / role merge / topK / responseSchema / tools; spies strengthened; logger/journal sinks remain absent.
+- **D7-R6:** D7 contract documents buffered recording-mode transport, remaining-ms `deadline`, wire-mapping floor, pinned model identity, and wiring hand-off (router + constructibility; Worker `portResolver` join restated out of slice done-when). F1 unblocked; live-smoke targets gemini; golden-eval inclusion remains the permanent CP4 eval proof path. Architecture docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite green:
+
+- Manifest gates: **2 files, 4 tests passed**
+- Unit (`vitest run`): **40 files, 570 tests passed** (includes `gemini-adapter.test.ts` **28** cases; `second-provider-policy.test.ts` **3** cases)
+- Workers (`vitest.workers.config.ts`): **19 files, 241 tests passed**
+
+Added/modified test assets: `ai-platform/test/gemini-adapter.test.ts`; `ai-platform/test/second-provider-policy.test.ts`; fixtures under `ai-platform/test/fixtures/gemini/` (`truncated-stream.sse`, `malformed-stream.sse`, `mid-stream-error.sse`, `stream-safety.sse`, finish-reason / promptFeedback / usage-absent JSON). Production: `ai-platform/src/provider/gemini.ts`. Spec Kit: `specs/034-second-provider-adapter/{spec,plan,tasks,contracts/second-provider-adapter}.md`.

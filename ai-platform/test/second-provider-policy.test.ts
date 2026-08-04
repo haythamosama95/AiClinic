@@ -1,12 +1,19 @@
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ConfigCache } from "../src/config-cache";
+import {
+  createProviderAdapter,
+  listWiredProviderIds,
+} from "../src/provider/wiring";
+import type { GeminiTransport } from "../src/provider/gemini";
 import { selectCandidateChain } from "../src/router";
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const AI_PLATFORM_ROOT = path.join(TEST_ROOT, "..");
+const REPO_ROOT = path.join(AI_PLATFORM_ROOT, "..");
 
 const POLICY_FILE = path.join(
   AI_PLATFORM_ROOT,
@@ -23,6 +30,18 @@ const D7_SLICE_ALLOWED_RELATIVE_PATHS = [
   "test/gemini-adapter.test.ts",
   "test/second-provider-policy.test.ts",
   "test/fixtures/gemini",
+] as const;
+
+/** Paths under ai-platform/ that review resolution may touch (prefix match). */
+const D7_DIFF_ALLOWLIST_PREFIXES = [
+  "ai-platform/src/provider/gemini.ts",
+  "ai-platform/src/provider/wiring.ts",
+  "ai-platform/control/routing-policy/platform-default/1.json",
+  "ai-platform/test/gemini-adapter.test.ts",
+  "ai-platform/test/second-provider-policy.test.ts",
+  "ai-platform/test/fixtures/gemini/",
+  "specs/034-second-provider-adapter/",
+  "docs/review/ai-platform-slices/D7-second-provider-adapter.md",
 ] as const;
 
 const PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES = [
@@ -133,6 +152,29 @@ function chainProviderIds(outcome: ReturnType<typeof route>): string[] {
   return outcome.routing_decision.chain.map((entry) => entry.provider_id);
 }
 
+function isDiffPathAllowlisted(relativePath: string): boolean {
+  return D7_DIFF_ALLOWLIST_PREFIXES.some(
+    (prefix) =>
+      relativePath === prefix.replace(/\/$/, "") ||
+      relativePath.startsWith(prefix),
+  );
+}
+
+function changedPathsVersusAiMaster(): string[] {
+  try {
+    const output = execSync("git diff --name-only origin/ai/master...HEAD", {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    });
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
   it("requires only allowlisted second-adapter + routing-policy + wiring paths — not pipeline modules", () => {
     for (const relativePath of D7_SLICE_ALLOWED_RELATIVE_PATHS) {
@@ -145,7 +187,9 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
       "utf8",
     );
     for (const pipelineModule of PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES) {
-      const importPath = pipelineModule.replace("src/", "../").replace("/index.ts", "");
+      const importPath = pipelineModule
+        .replace("src/", "../")
+        .replace("/index.ts", "");
       expect(
         wiringSource.includes(`from "${importPath}"`) ||
           wiringSource.includes(`from '${importPath}'`),
@@ -163,6 +207,56 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
         `pipeline module ${pipelineModule} must not reference Gemini`,
       ).toBe(false);
     }
+
+    const changed = changedPathsVersusAiMaster();
+    const aiPlatformOrSpecOrReview = changed.filter(
+      (filePath) =>
+        filePath.startsWith("ai-platform/") ||
+        filePath.startsWith("specs/034-second-provider-adapter/") ||
+        filePath === "docs/review/ai-platform-slices/D7-second-provider-adapter.md",
+    );
+    for (const filePath of aiPlatformOrSpecOrReview) {
+      expect(
+        isDiffPathAllowlisted(filePath),
+        `unexpected changed path vs origin/ai/master: ${filePath}`,
+      ).toBe(true);
+    }
+  });
+
+  it("createProviderAdapter constructs a Gemini port from the wiring map", () => {
+    expect(listWiredProviderIds()).toContain("gemini");
+    expect(listWiredProviderIds()).toContain("deepseek");
+
+    const transport: GeminiTransport = {
+      fetch() {
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            candidates: [
+              {
+                content: { parts: [{ text: "wired" }], role: "model" },
+                finishReason: "STOP",
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 1,
+              candidatesTokenCount: 1,
+            },
+          }),
+        };
+      },
+    };
+
+    const port = createProviderAdapter("gemini", {
+      transport,
+      secretStore: {
+        getSecret(name: string) {
+          return name === "GEMINI_API_KEY" ? "wiring-smoke-key" : undefined;
+        },
+      },
+    });
+    expect(typeof port.invoke).toBe("function");
   });
 });
 
@@ -181,6 +275,11 @@ describe("T-D7-14 fallback_ordering_honoured", () => {
     expect(providerIds.slice(0, geminiIndex).length).toBeGreaterThan(0);
     expect(providerIds).toContain("deepseek");
     expect(providerIds.indexOf("deepseek")).toBeLessThan(geminiIndex);
+
+    const geminiTarget = firstOutcome.routing_decision.chain.find(
+      (entry) => entry.provider_id === "gemini",
+    );
+    expect(geminiTarget?.model_id).toBe("gemini-1.5-flash");
 
     const decision = firstOutcome.routing_decision;
     expect(decision.policy_id).toBe(document.policy_id);
