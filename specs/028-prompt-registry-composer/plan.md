@@ -109,11 +109,21 @@ One §4 component group: **§4.3.6 Prompt composer and prompt registry** (the sl
 | `ai-platform/src/prompt/composer.ts` | FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010 (assembles canonical request; derives format instruction from output schema; renders context as delimited typed data; carries output constraints; surfaces resolved prompt version; emits `internal_error` on failure; pure function) |
 | `ai-platform/wrangler.toml` (modified — add `[rules]` for `"Text"` imports of `prompts/**`) | FR-001 (artifacts bundled with the Worker) |
 | `ai-platform/test/prompt-registry.test.ts` | T1, T2, T3, T4, T5 (FR-001, FR-002, FR-003, FR-008) |
+| `ai-platform/test/prompt-registry-gate.test.ts` | Build gate: `verifyAllRegistryPins` + published-manifest `verifyBuildPins` + disk/indexed hash equality (D1-R4) |
+| `ai-platform/test/prompt-journal-seam.test.ts` | Journal seam: `resolvePromptVersion` ≡ C3 `prompt_artifact_hash` bind expression (D1-R7) |
 | `ai-platform/test/prompt-composer.test.ts` | T6, T7, T8, T9, T10, T11, T12 (FR-004..FR-010) |
 | `specs/028-prompt-registry-composer/contracts/composer-output.md` | Freezes → composer output contract (the wire shape D2/D3/D6 bind to) |
 | `specs/028-prompt-registry-composer/quickstart.md` | Documentation task (written after implementation/verification) |
 
 Every file traces to an FR. No untraced file is introduced.
+
+**Registry mechanism (D1-R4 / Clarification Q1):** `registry.ts` builds the ref→content map via
+`import.meta.glob('../../prompts/**/*.md', { query: '?raw', import: 'default', eager: true })`
+(`prompts/<cap>/<name>.md` → `<cap>/<name>@v1`) and loads every `prompts/*/registry.json` the same way.
+`verifyAllRegistryPins()` checks all pins; tests overlay content through `__setArtifactContentForTest` /
+`__resetArtifactContentForTest` (single `?raw` source — no dynamic-import second path). Published
+`clinic.visit_summary@1.0.0` Prompt binding refs are the real deployed refs
+(`clinic.visit_summary/system@v1`, `…/rules-visit-summary@v1`, `…/template-visit-summary@v1`).
 
 ## Test Layout
 

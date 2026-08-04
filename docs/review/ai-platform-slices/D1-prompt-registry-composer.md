@@ -66,3 +66,52 @@ None. At the library level this slice scopes itself to, the done-when criteria a
 - **Amend the frozen contract for the merged H2 reality** (Deviation 1): add the `transcript` input, the `assistant` parts, the conversational format instruction, and the conversational rendering branches to contracts/composer-output.md — including fixing the `shape`-echo and ordering deviations — exactly as C1's, C2's, and C3's contracts owe their amendments.
 - **Log composition failures** (Bug 7): `console.error` with the trace id before returning `internal_error`; stage-10 throws are platform defects and should be diagnosable.
 - **Add the missing cases**: altered/missing rules-fragment and template pins; the missing-registry-pin branch; the three uncovered `internal_error` branches; a frozen-file golden; a journal-row assertion that the recorded prompt version equals the surfaced one; a substring-based prompt-text identifier guard; a manifest that declares stop conditions forwarded onto the request.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D1-R1 — Template governs rendering** | Bugs #1; Rec (make template real) | `composer.ts` `renderThroughTemplate`; fixture template substitution; golden + T-D1-06/08 |
+| **D1-R2 — Mandatory requestReference** | Bugs #2; Rec (remove minting fallback) | `ComposeRequestInput.requestReference` required; no `generateRequestReference`; eval harness + tests |
+| **D1-R3 — Stop / tone / refusal operationalization** | Bugs #3, #4; Missing/Weak Tests #8; Rec (source stop/tone or amend contract) | `stopConditionsFromManifest`; Spec Kit contract §4.2/§4.3 + spec Assumptions/FR-004 clarification (no `17-ai-platform.md` edit; A4 §5.1 has no stop/tone/refusal fields) |
+| **D1-R4 — Build-time registry index + pin gate** | Bugs #5, #6; Architectural Deviations #2, #4; Missing/Weak Tests #2; Rec (generalize registry; prove bytes) | `registry.ts` `import.meta.glob` index; test overlay seam; `verifyAllRegistryPins`; `prompt-registry-gate.test.ts`; published manifest refs aligned |
+| **D1-R5 — Log composition failures** | Bugs #7; Rec (log failures) | `console.error` with `trace_id` in catch; T-D1-12 log case |
+| **D1-R6 — H2 contract + conversational rendering** | Architectural Deviations #1; Rec (amend frozen contract for H2) | `contracts/composer-output.md` §2/§4.4; permittedKeySet-ordered conversational context; stable key order for transcript `context_resolved` |
+| **D1-R7 — Prompt-version journal seam** | Architectural Deviations #3; Missing/Weak Tests #6 | `test/prompt-journal-seam.test.ts` — `resolvePromptVersion` equals C3's `systemInstructionArtifactRef` bind |
+| **D1-R8 — Remaining coverage** | Missing/Weak Tests #1, #3, #4, #5, #7; Rec (add missing cases) | Prompt-text vocabulary guard; all `internal_error` branches; frozen golden file; R-10 role/adapter-bind pin; nested provider-shape walk |
+| **D1-R9 — Unwired composer observation** | Architectural Deviations #5 | Docs only — consumption deferred to D2/D3 per contract; no production change |
+
+Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched.
+
+### 1.2 Test cases created first
+
+- **D1-R1:** T-D1-06 frozen golden + case that data-part tracks template substitution; T-D1-08 template-driven render / strip absent-key blocks.
+- **D1-R2:** runtime omit/`""` `requestReference` → `internal_error`.
+- **D1-R3:** T-D1-10 asserts `stopConditions === stopConditionsFromManifest(manifest)`; fixture has no tone/refusal fields; tone/refusal language present in system+rules parts.
+- **D1-R4:** altered/missing system, rules, and template via `__setArtifactContentForTest`; missing-registry-pin orphan ref; gate: `verifyAllRegistryPins`, disk==?raw==pin, `verifyBuildPins` on published manifests.
+- **D1-R5:** composition throw logs `trace_id` via `console.error` spy.
+- **D1-R6:** conversational suite updated for permittedKeySet order / contract extension.
+- **D1-R7:** journal-seam equality of surfaced version vs C3 bind expression.
+- **D1-R8:** missing system / rules / underivable format → `internal_error`; nested provider-shape keys; prompt-text plural/suffix guard; R-10 `data` role + adapter-bind never promotes to `system`.
+
+### 1.3 Fix implemented
+
+- **D1-R1:** Context `data` payload rendered by substituting `{{key}}` in the pinned template; absent keys strip their `<key>` blocks; unresolved placeholders throw → `internal_error`.
+- **D1-R2:** Removed composer-side request-reference minting; callers (including eval harness) must supply the stage-9 reference.
+- **D1-R3:** Spec Kit corrected — stopConditions forward A4 absence as `[]` via helper; tone/refusal live in reviewed prompt artifacts until §5.1/§5.3 gain fields. No architecture amendment.
+- **D1-R4:** Glob-based build-time artifact index; single `?raw` resolution path; test overlay replaces dynamic-import mock; CI gate wired into `verify-manifests`; published `clinic.visit_summary` Prompt binding refs aligned to deployed `clinic.visit_summary/…@v1` artifacts.
+- **D1-R5:** Catch logs trace id + error before returning `internal_error`.
+- **D1-R6:** Frozen contract extended for H2 transcript/`assistant`/conversational format instruction; conversational filtered context iterates `permittedKeySet` order.
+- **D1-R7:** Seam test only — journal.ts unchanged.
+- **D1-R8:** Coverage listed in 1.2; frozen golden at `test/fixtures/d1-canonical-request.golden.json`.
+- **D1-R9:** No code change.
+
+### 1.4 Verification
+
+Full `ai-platform` suite via `npm test` (verify-manifests + Node pool + workers pool): **40 Node files (498 tests) + 19 workers files (241 tests)**, all passed.
+
+Added/modified test surfaces: `prompt-composer.test.ts`, `prompt-registry.test.ts`, `conversational-composer.test.ts`, `prompt-registry-gate.test.ts`, `prompt-journal-seam.test.ts`, `fixtures/d1-canonical-request.golden.json`, `eval/harness.ts` (`requestReference`).

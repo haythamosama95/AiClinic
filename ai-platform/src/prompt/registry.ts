@@ -1,37 +1,91 @@
 import type { Manifest } from "../manifest";
-import artifactRegistry from "../../prompts/clinic.visit_summary/registry.json";
-import rulesVisitSummary from "../../prompts/clinic.visit_summary/rules-visit-summary.md?raw";
-import systemInstructionBundled from "../../prompts/clinic.visit_summary/system.md?raw";
-import templateVisitSummary from "../../prompts/clinic.visit_summary/template-visit-summary.md?raw";
 
-const SYSTEM_INSTRUCTION_REF = "clinic.visit_summary/system@v1";
-const RULES_FRAGMENT_REF = "clinic.visit_summary/rules-visit-summary@v1";
-const TEMPLATE_REF = "clinic.visit_summary/template-visit-summary@v1";
+type ArtifactModuleMap = Record<string, string>;
+type RegistryModuleMap = Record<string, Record<string, string>>;
 
-async function loadSystemInstruction(): Promise<string | undefined> {
-  try {
-    const mockable = await import(
-      /* @vite-ignore */
-      "../../prompts/clinic.visit_summary/system.md"
-    );
-    if (Object.hasOwn(mockable, "default")) {
-      return mockable.default as string | undefined;
-    }
-  } catch {
-    // Vitest build-pin tests mock the non-?raw module id; keep the bundled import.
+/**
+ * Build-time index over prompts/ (Clarification Q1): every `.md` under
+ * `prompts/<cap>/` maps to ref `<cap>/<name>@v1`. Uniform `?raw` imports only —
+ * no second dynamic-import resolution path.
+ */
+const artifactModules = import.meta.glob("../../prompts/**/*.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as ArtifactModuleMap;
+
+const registryModules = import.meta.glob("../../prompts/**/registry.json", {
+  eager: true,
+  import: "default",
+}) as RegistryModuleMap;
+
+function modulePathToArtifactRef(modulePath: string): string {
+  const normalized = modulePath.replace(/\\/g, "/");
+  const promptsIdx = normalized.indexOf("prompts/");
+  if (promptsIdx < 0) {
+    throw new Error(`Artifact path outside prompts/: ${modulePath}`);
   }
-  return systemInstructionBundled;
+  const relative = normalized.slice(promptsIdx + "prompts/".length);
+  if (!relative.endsWith(".md")) {
+    throw new Error(`Expected .md artifact path: ${modulePath}`);
+  }
+  return `${relative.slice(0, -".md".length)}@v1`;
 }
 
-const systemInstruction = await loadSystemInstruction();
+function buildBaseArtifactMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const [modulePath, content] of Object.entries(artifactModules)) {
+    const ref = modulePathToArtifactRef(modulePath);
+    if (Object.hasOwn(map, ref)) {
+      throw new Error(`Duplicate artifact ref from glob: ${ref}`);
+    }
+    map[ref] = content;
+  }
+  return map;
+}
 
-const ARTIFACT_MAP: Readonly<Record<string, string | undefined>> = Object.freeze({
-  [SYSTEM_INSTRUCTION_REF]: systemInstruction,
-  [RULES_FRAGMENT_REF]: rulesVisitSummary,
-  [TEMPLATE_REF]: templateVisitSummary,
-});
+function buildPinRegistry(): Record<string, string> {
+  const pins: Record<string, string> = {};
+  for (const registry of Object.values(registryModules)) {
+    for (const [ref, hash] of Object.entries(registry)) {
+      if (Object.hasOwn(pins, ref) && pins[ref] !== hash) {
+        throw new Error(`Duplicate conflicting registry pin for ${ref}`);
+      }
+      pins[ref] = hash;
+    }
+  }
+  return pins;
+}
 
-function stableContentHash(content: string): string {
+const BASE_ARTIFACT_MAP: Readonly<Record<string, string>> = Object.freeze(
+  buildBaseArtifactMap(),
+);
+const PIN_REGISTRY: Readonly<Record<string, string>> = Object.freeze(
+  buildPinRegistry(),
+);
+
+/** Test-only overlay; production always reads BASE_ARTIFACT_MAP. */
+const testOverlay = new Map<string, string | undefined>();
+
+export function __setArtifactContentForTest(
+  ref: string,
+  content: string | undefined,
+): void {
+  testOverlay.set(ref, content);
+}
+
+export function __resetArtifactContentForTest(): void {
+  testOverlay.clear();
+}
+
+function resolveContent(ref: string): string | undefined {
+  if (testOverlay.has(ref)) {
+    return testOverlay.get(ref);
+  }
+  return BASE_ARTIFACT_MAP[ref];
+}
+
+export function stableContentHash(content: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < content.length; index += 1) {
     hash ^= content.charCodeAt(index);
@@ -40,12 +94,22 @@ function stableContentHash(content: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/** Base indexed ?raw content (ignores the test overlay). */
+export function indexedArtifactContent(ref: string): string | undefined {
+  return BASE_ARTIFACT_MAP[ref];
+}
+
+/** Every pin key across all prompts registry.json files. */
+export function allRegistryPins(): Readonly<Record<string, string>> {
+  return PIN_REGISTRY;
+}
+
 export function resolveArtifact(
   ref: string,
   manifest: Manifest,
 ): string | undefined {
   void manifest;
-  return ARTIFACT_MAP[ref];
+  return resolveContent(ref);
 }
 
 export function resolvePromptVersion(manifest: Manifest): string {
@@ -62,12 +126,12 @@ export function verifyBuildPins(manifest: Manifest): void {
 
   for (const ref of pinnedRefs) {
     const refKey = String(ref);
-    const content = ARTIFACT_MAP[refKey];
+    const content = resolveContent(refKey);
     if (content === undefined) {
       throw new Error(`Missing pinned artifact: ${refKey}`);
     }
 
-    const expectedHash = artifactRegistry[refKey as keyof typeof artifactRegistry];
+    const expectedHash = PIN_REGISTRY[refKey];
     if (expectedHash === undefined) {
       throw new Error(`Missing registry pin for artifact: ${refKey}`);
     }
@@ -76,6 +140,25 @@ export function verifyBuildPins(manifest: Manifest): void {
     if (actualHash !== expectedHash) {
       throw new Error(
         `Pinned artifact hash mismatch for ${refKey}: expected ${expectedHash}, got ${actualHash}`,
+      );
+    }
+  }
+}
+
+/**
+ * Verifies every pin in every per-capability registry.json against the
+ * build-time indexed artifact content (hash mismatch / missing throws).
+ */
+export function verifyAllRegistryPins(): void {
+  for (const [ref, expectedHash] of Object.entries(PIN_REGISTRY)) {
+    const content = BASE_ARTIFACT_MAP[ref];
+    if (content === undefined) {
+      throw new Error(`Missing pinned artifact: ${ref}`);
+    }
+    const actualHash = stableContentHash(content);
+    if (actualHash !== expectedHash) {
+      throw new Error(
+        `Pinned artifact hash mismatch for ${ref}: expected ${expectedHash}, got ${actualHash}`,
       );
     }
   }
