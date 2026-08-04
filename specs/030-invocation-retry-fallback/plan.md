@@ -6,7 +6,7 @@
 
 ## Summary
 
-Slice D3 freezes the platform-internal attempt loop: given D2's ordered candidate chain, the gateway walks targets through the provider port with per-target `max_attempts`, jittered backoff only for adapter-classified retryable failures, attempt-level `selection_reason` values, separate journal feeds per invoke, exhausted-chain `provider_unavailable`, and regenerating/no-splice on fallback after partial streaming. D3 sits after D2 in band D and is the retry/fallback boundary that D4 (stream broker), D5/D7, D6 (`repair_retry`), and CP3 consume.
+Slice D3 freezes the platform-internal attempt loop: given D2's ordered candidate chain, the gateway walks targets through the async provider port with per-target `max_attempts`, per-attempt `timeout_ms` racing (AbortSignal), exponential+jitter backoff capped at `BACKOFF_CAP_MS` (deadline-truncated), attempt-level `selection_reason` values (exhausting-failure rule for `fallback_after_timeout`), separate journal feeds per invoke (required `idempotency_key`, distinct `truncation`), exhausted-chain / empty-chain `provider_unavailable`, and regenerating/no-splice on fallback after relayed `text_delta` chunks. D3 sits after D2 in band D and is the retry/fallback boundary that D4 (stream broker), D5/D7, D6 (`repair_retry`), and CP3 consume.
 
 ## Technical Context
 
@@ -14,18 +14,16 @@ Slice D3 freezes the platform-internal attempt loop: given D2's ordered candidat
 
 **Primary Dependencies**: The Cloudflare Worker in `ai-platform/` (Wrangler bundler, Vitest). No new external package is added. Consumes D2's `provider/` (port, classify, fake) and `router/` (candidate chain / `routing_decision`) unchanged. Real provider SDKs remain D5/D7.
 
-**Storage**: None. The attempt loop is CPU-only with an in-memory event/attempt sink (Clarification Q4). D3 adds no D1 migration, no R2 write, and no Durable Object round trip. C3's journal write-path is not modified; production later wires the sink to C3 / the stream path.
+**Storage**: None. The attempt loop is CPU-only with an in-memory event/attempt sink (Clarification Q4), injectable sleeper (Q3), and injectable RNG for jitter proofs (2026-08-04 clarification). D3 adds no D1 migration, no R2 write, and no Durable Object round trip. C3's journal write-path is not modified; production later wires the sink to C3 / the stream path.
 
-**Testing**: Vitest (`npx vitest run`). All named tests are Integration (delivery plan §3.11.4 row D3; §13.5 Pipeline tests with fake provider). No live provider, no Cloudflare resource, and no HTTP path. T6 uses a test-only port double/harness; D2's production fake outcome set is unchanged (Clarification Q2).
-
+**Testing**: Vitest (`npx vitest run`). All named tests are Integration (delivery plan §3.11.4 row D3; §13.5 Pipeline tests with fake provider). No live provider, no Cloudflare resource, and no HTTP path. T6 uses a test-only port double/harness (optional error `chunks` for partial text); D2's production fake outcome set is unchanged (Clarification Q2). Review-resolution coverage also asserts empty chain, `max_attempts = 1`, mixed timeout exhaustion → `fallback_after_timeout`, backoff cap / deadline truncation, `idempotency_key` on the feed, and `truncation` outcome.
 **Target Platform**: Cloudflare Worker (`ai-platform-gateway`). No `frontend/` (Flutter) or `backend/` (Supabase) code is touched.
 
 **Project Type**: Additive, non-primary AI gateway component. Per the §14 acknowledgement: the Worker holds no domain logic, no business data, and no write path into Supabase.
 
 **Performance Goals**: Invocation is in-isolate only (§8.6, §6.6). No quota DO round trip, no D1 read/write, no R2 object from this slice. I/O budgets in §6.1 / §7.5 / §13.6 are preserved by not introducing any of those calls.
 
-**Constraints**: Retries are platform-internal, bounded, jittered, and only for adapter-classified retryable failures (§6.6). Terminal failures are not retried and do not continue the fallback walk (§6.6; §4.3.7). Fallback walks only the router-supplied chain; no circuit breaker and no shared provider-health state (§4.3.7; §8.6). Never splice providers' text; emit `regenerating` and discard earlier partial text on fallback after streaming (§8.6). Do not emit `repair_retry` (D6). Speculative parallel attempts (`max_parallel_attempts > 1`) are out of scope. No per-request server-side state (§4.4, §9.7).
-
+**Constraints**: Retries are platform-internal, bounded (attempt count + `BACKOFF_CAP_MS` + deadline truncation), jittered, and only for adapter-classified retryable failures (§6.6). Each invoke is raced against chain-entry `timeout_ms` with `AbortSignal`. Terminal failures are not retried and do not continue the fallback walk (§6.6; §4.3.7). Fallback walks only the router-supplied chain; no circuit breaker, no shared provider-health state, and no `providerHistoryStore` on the input (§4.3.7; §8.6; §9.14). Never splice providers' text; emit `regenerating` via a run-scoped sink wrapper on fallback after relayed `text_delta` (§8.6). Do not emit `repair_retry` (D6). Speculative parallel attempts (`max_parallel_attempts > 1`) are out of scope. No per-request server-side state (§4.4, §9.7).
 **Scale/Scope**: One sibling module under `ai-platform/src/` (`invocation/`). One §4 component group touched (§4.3.7 — see Components Touched). Thirteen named integration tests (T1–T13). Roughly 15–20 tasks.
 
 ## Constitution Check
@@ -64,7 +62,7 @@ specs/030-invocation-retry-fallback/
 ai-platform/
 ├── src/
 │   └── invocation/
-│       └── index.ts                    # Attempt loop: walk chain, bounded jittered retry, fallback, regenerating, sink feed (FR-001..FR-011)
+│       └── index.ts                    # Attempt loop: walk chain, timeout race, capped jittered retry, fallback, regenerating, sink feed (FR-001..FR-011)
 └── test/
     └── invocation.test.ts              # T1–T13 (integration against fake + test-only streaming harness)
 ```
@@ -77,9 +75,9 @@ No `frontend/` or `backend/` tree is shown — D3 touches neither. No migration,
 
 | Consumes entry (from spec) | Bound to (existing module / file / type) |
 | --- | --- |
-| From D2 — provider port, deterministic fake adapter, and retryable-versus-terminal classification contract | `ai-platform/src/provider/port.ts` (`ProviderPort`, `ProviderInvokeResult`); `ai-platform/src/provider/fake.ts` (`FakeAdapter`); `ai-platform/src/provider/classify.ts` (`classifyFailure`, `FailureClassification`); frozen in `specs/029-provider-port-routing/contracts/provider-port.md`. D3 retries only classified-retryable failures and does not modify these modules |
+| From D2 — provider port, deterministic fake adapter, and retryable-versus-terminal classification contract | `ai-platform/src/provider/port.ts` (`ProviderPort`, `ProviderInvokeResult`, `ProviderInvokeOptions.signal`); `ai-platform/src/provider/fake.ts` (`FakeAdapter`); `ai-platform/src/provider/classify.ts` (`classifyFailure`, `FailureClassification`); frozen in `specs/029-provider-port-routing/contracts/provider-port.md`. Optional `chunks` on error/malformed is an allowed extension for regenerating detection. D3 retries only classified-retryable failures and does not modify these modules beyond consuming the async/options shape |
 | From D2 — ordered candidate chain, request-level `routing_decision`, and stateless chain rule (no circuit breaker / no provider-history) | `ai-platform/src/router/index.ts` — `RoutingDecision`, `ChainEntry`, `selectCandidateChain` / router outcome; frozen in `specs/029-provider-port-routing/contracts/routing-decision.md`. D3 walks the given `chain[]` and does not rebuild, reorder, or consult history |
-| From D2 — per-target `max_attempts` and `timeout_ms` on `routing_decision.chain[]` | `ChainEntry.max_attempts` and `ChainEntry.timeout_ms` in `ai-platform/src/router/index.ts` (carried from `rules[].targets[]` per `contracts/routing-decision.md` §4.1–§4.2). D3 reads these bounds off the chain entry; it does not re-interpret policy or invent caps |
+| From D2 — per-target `max_attempts` and `timeout_ms` on `routing_decision.chain[]` | `ChainEntry.max_attempts` and `ChainEntry.timeout_ms` in `ai-platform/src/router/index.ts` (carried from `rules[].targets[]` per `contracts/routing-decision.md` §4.1–§4.2). D3 reads **and enforces** these bounds (attempt count + invoke race); it does not re-interpret policy or invent caps |
 
 Every **Consumes** entry binds to an existing implementation. None requires modification (stop condition 2 not triggered).
 
@@ -93,8 +91,8 @@ One §4 component group: **§4.3.7 Provider router and policy engine** — speci
 
 | File | FRs traced |
 | --- | --- |
-| `ai-platform/src/invocation/index.ts` | FR-001–FR-011 (ordered walk; bounded jittered retryable-only retries; terminal no-fallback; selection_reason; `provider_unavailable`; regenerating/no-splice; chain-only fallback; no history/circuit breaker; same-request internal retries; retry budget; no `repair_retry`) |
-| `ai-platform/test/invocation.test.ts` | T1–T13 (FR-001–FR-011; includes test-only partial-stream harness per Clarification Q2 and recording sleeper per Clarification Q3) |
+| `ai-platform/src/invocation/index.ts` | FR-001–FR-011 (ordered walk; `timeout_ms` race + AbortSignal; capped jittered retryable-only retries; terminal no-fallback; selection_reason / exhausting-failure timeout rule; `provider_unavailable` incl. empty chain; regenerating via local sink wrap; chain-only fallback; no history/circuit breaker; same-request + `idempotency_key` on feed; `truncation` outcome; retry budget / `max_attempts = 1`; no `repair_retry`) |
+| `ai-platform/test/invocation.test.ts` | T1–T13 + review-resolution edges (empty chain, `max_attempts = 1`, mixed timeout reason, backoff cap/deadline, feed `idempotency_key` / truncation; Clarifications Q2–Q4 + 2026-08-04) |
 | `specs/030-invocation-retry-fallback/contracts/invocation-attempt-loop.md` | Freezes → attempt loop, selection_reason, exhausted-chain outcome, regenerating/no-splice, per-attempt journal feed |
 | `specs/030-invocation-retry-fallback/quickstart.md` | Documentation task (written after implementation/verification) |
 
@@ -108,7 +106,7 @@ Per the architecture's testing strategy (§13.5 Pipeline tests with fake provide
 | --- | --- | --- |
 | T1 `retryable_retried_to_cap_then_fallback` | Integration (Pipeline with fake) | `ai-platform/test/invocation.test.ts` |
 | T2 `terminal_failure_not_retried` | Integration (Pipeline with fake) | `ai-platform/test/invocation.test.ts` |
-| T3 `jitter_applied_on_backoff` | Integration (Pipeline with fake; recording sleeper) | `ai-platform/test/invocation.test.ts` |
+| T3 `jitter_applied_on_backoff` | Integration (Pipeline with fake; recording sleeper + injectable RNG; cap / deadline) | `ai-platform/test/invocation.test.ts` |
 | T4 `every_attempt_journaled_separately` | Integration (Pipeline with fake; attempt sink) | `ai-platform/test/invocation.test.ts` |
 | T5 `exhausted_chain_provider_unavailable` | Integration (Pipeline with fake) | `ai-platform/test/invocation.test.ts` |
 | T6 `fallback_after_partial_stream_emits_regenerating` | Integration (Pipeline with fake; test-only streaming harness) | `ai-platform/test/invocation.test.ts` |
@@ -120,7 +118,7 @@ Per the architecture's testing strategy (§13.5 Pipeline tests with fake provide
 | T12 `internal_retry_same_request_not_user_retry` | Integration (Pipeline with fake) | `ai-platform/test/invocation.test.ts` |
 | T13 `repair_retry_reason_not_emitted` | Integration (Pipeline with fake) | `ai-platform/test/invocation.test.ts` |
 
-Every named test in the spec's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). T3 asserts requested delays across retries are not all identical via an injectable recording sleeper (Clarification Q3). T4/T6 assert on the in-memory event/attempt sink (Clarification Q4). T6's partial-stream path uses a test-only harness; production `FakeAdapter` is unchanged (Clarification Q2). T11 is a spy asserting absence of provider-history / circuit-breaker consultation when choosing the next target.
+Every named test in the spec's Test plan is placed in a §13.5 layer (stop condition 3 not triggered). T3 asserts jitter via injectable RNG (delay ≠ pure exponential) and that requested delays respect `BACKOFF_CAP_MS` / remaining deadline (Clarification Q3 + 2026-08-04). T4/T6 assert on the in-memory event/attempt sink (Clarification Q4); regenerating detection uses a local sink wrapper, not mutation of the injected sink. T6's partial-stream path uses a test-only harness with optional error `chunks`; production `FakeAdapter` is unchanged (Clarification Q2). T11 is a spy asserting absence of provider-history / circuit-breaker consultation — the store is not on the input surface (§9.14). T5/T7 coverage includes empty chain and `max_attempts = 1`. T9 includes mixed non-timeout then timeout exhaustion → `fallback_after_timeout`. T12 asserts `idempotency_key` on the attempt feed.
 
 ## Sequencing
 

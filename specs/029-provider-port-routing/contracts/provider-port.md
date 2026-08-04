@@ -43,7 +43,7 @@ secret-store credential wiring are D5/D7.
 | `ProviderInvokeOptions` | `{ signal?: AbortSignal }` — caller cancellation combined with adapter-owned timeout abort on the in-flight fetch |
 | Invoke success | `{ kind: "success"; result: CanonicalResult; chunks: readonly CanonicalStreamChunk[] }` — ordered chunk sequence ending with exactly one terminal chunk (A3 invariant; callers/adapters assert via `assertExactlyOneTerminal`) |
 | Invoke truncation | `{ kind: "truncation"; result: CanonicalResult; chunks: readonly CanonicalStreamChunk[] }` — same chunk invariant as success |
-| Invoke failure | `{ kind: "error" \| "malformed"; error: CanonicalError }` — taxonomy code, retryability, provider-native diagnostics, and consumed-budget flag (A3). Error/malformed omit chunks |
+| Invoke failure | `{ kind: "error" \| "malformed"; error: CanonicalError; chunks?: readonly CanonicalStreamChunk[] }` — taxonomy code, retryability, provider-native diagnostics, and consumed-budget flag (A3). **`chunks` is optional**: when present, it carries partial stream observed before the failure (allowed extension for D3 regenerating detection). Omitting `chunks` remains valid. Optional error/malformed chunks do **not** change the meaning of required success/truncation `chunks` (still exactly one terminal) |
 
 ### 2.1 Ownership
 
@@ -127,7 +127,7 @@ credential fields**. Real secret-store wiring is D5.
 
 | Slice | Binding |
 | --- | --- |
-| **D3** | Invokes adapters through the port; retries only classified-retryable failures; falls back along the candidate chain |
+| **D3** | Invokes adapters through the port (async + `ProviderInvokeOptions.signal`); retries only classified-retryable failures; falls back along the candidate chain; may relay optional error/malformed `chunks` for regenerating detection |
 | **D4** | Relays normalized stream chunks produced at the adapter boundary |
 | **D5 / D7** | Implement real adapters against this port; replace the fake for fixture suites |
 | **CP3** | Walking skeleton runs against the fake |

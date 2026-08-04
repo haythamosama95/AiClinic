@@ -4,63 +4,27 @@ import {
   type CanonicalRequest,
   type CanonicalResult,
 } from "../src/contracts/canonical";
-import { type TaxonomyCode } from "../src/errors";
-import { setRetryabilityFromClassification } from "../src/provider/classify";
+import { ALL_TAXONOMY_CODES, type TaxonomyCode } from "../src/errors";
+import { classifyFailure } from "../src/provider/classify";
 import { FakeAdapter } from "../src/provider/fake";
 import {
   type ProviderInvokeResult,
   type ProviderPort,
   type ScriptedOutcome,
 } from "../src/provider/port";
-import { runInvocation } from "../src/invocation";
+import {
+  BACKOFF_CAP_MS,
+  computeJitteredBackoff,
+  pureExponentialBackoffMs,
+  runInvocation,
+  type AttemptRecord,
+  type InvocationInput,
+  type InvocationSink,
+} from "../src/invocation";
 import {
   type ChainEntry,
   type RoutingDecision,
 } from "../src/router";
-
-type SelectionReason =
-  | "primary"
-  | "fallback_after_retryable_error"
-  | "fallback_after_timeout";
-
-type AttemptOutcome =
-  | "success"
-  | "retryable_failure"
-  | "terminal_failure"
-  | "timeout";
-
-type AttemptRecord = {
-  attempt_no: number;
-  provider_id: string;
-  model_id: string;
-  selection_reason: SelectionReason;
-  outcome: AttemptOutcome;
-  error_code?: TaxonomyCode;
-  request_id: string;
-};
-
-interface InvocationSink {
-  recordAttempt(record: AttemptRecord): void;
-  emitRegenerating(): void;
-  emitStreamText(text: string): void;
-}
-
-interface ProviderHistoryStore {
-  getProviderHealth(providerId: string): unknown;
-  getRecentFailures(providerId: string): unknown;
-  isCircuitOpen(providerId: string): boolean;
-}
-
-type InvocationInput = {
-  request: CanonicalRequest;
-  routingDecision: RoutingDecision;
-  requestId: string;
-  idempotencyKey: string;
-  portResolver: (providerId: string) => ProviderPort;
-  sink: InvocationSink;
-  sleeper: (ms: number) => Promise<void>;
-  providerHistoryStore?: ProviderHistoryStore;
-};
 
 /** Minimal §5.3 canonical request — every manifest field present, values kept small. */
 const requestFixture: CanonicalRequest = {
@@ -184,32 +148,69 @@ function createRecordingSleeper(): RecordingSleeper {
 }
 
 function createRetryableError(code: TaxonomyCode): CanonicalError {
-  return setRetryabilityFromClassification({
+  return {
     taxonomyCode: code,
-    retryability: false,
+    retryability: true,
     providerNative: {
       code: "HARNESS_ERROR",
       message: `Harness retryable ${code}`,
     },
     consumedBudget: false,
-  });
+  };
 }
 
 /**
- * Test-only port double: yields partial stream text then a retryable failure (Clarification Q2).
- * Production FakeAdapter scripted-outcome set is unchanged.
+ * Test-only port double: returns partial stream chunks then a retryable/terminal
+ * failure. Does not call the caller sink — the loop relays text via observing sink.
  */
 function createPartialStreamHarness(
-  sink: InvocationSink,
   partialText: string,
   failCode: TaxonomyCode,
 ): ProviderPort {
   return {
     async invoke(_request: CanonicalRequest): Promise<ProviderInvokeResult> {
-      sink.emitStreamText(partialText);
       return {
         kind: "error",
         error: createRetryableError(failCode),
+        chunks: [
+          {
+            kind: "text_delta",
+            payload: { text: partialText },
+            terminal: false,
+            sequenceNumber: 0,
+          },
+        ],
+      };
+    },
+  };
+}
+
+/** Terminal variant: same chunks, but a terminal taxonomy code. */
+function createPartialStreamThenTerminalHarness(
+  partialText: string,
+  failCode: TaxonomyCode,
+): ProviderPort {
+  return {
+    async invoke(_request: CanonicalRequest): Promise<ProviderInvokeResult> {
+      return {
+        kind: "error",
+        error: {
+          taxonomyCode: failCode,
+          retryability: false,
+          providerNative: {
+            code: "HARNESS_TERMINAL",
+            message: `Harness terminal ${failCode}`,
+          },
+          consumedBudget: false,
+        },
+        chunks: [
+          {
+            kind: "text_delta",
+            payload: { text: partialText },
+            terminal: false,
+            sequenceNumber: 0,
+          },
+        ],
       };
     },
   };
@@ -240,18 +241,19 @@ function buildInvocationInput(options: {
   sleeper?: (ms: number) => Promise<void>;
   requestId?: string;
   idempotencyKey?: string;
-  providerHistoryStore?: ProviderHistoryStore;
   invokeSpy?: Record<string, number>;
+  random?: () => number;
+  request?: CanonicalRequest;
 }): InvocationInput {
   return {
-    request: requestFixture,
+    request: options.request ?? requestFixture,
     routingDecision: routingDecisionFixture(options.chain),
     requestId: options.requestId ?? FIXTURE_REQUEST_ID,
     idempotencyKey: options.idempotencyKey ?? FIXTURE_IDEMPOTENCY_KEY,
     portResolver: createPortResolver(options.adapters, options.invokeSpy),
     sink: options.sink,
     sleeper: options.sleeper ?? (async () => {}),
-    providerHistoryStore: options.providerHistoryStore,
+    ...(options.random !== undefined ? { random: options.random } : {}),
   };
 }
 
@@ -271,6 +273,10 @@ function finalText(result: CanonicalResult): string {
   }
   return "";
 }
+
+const TERMINAL_TAXONOMY_CODES = ALL_TAXONOMY_CODES.filter(
+  (code) => classifyFailure(code) === "terminal",
+);
 
 describe("T-D3-08 first_attempt_success_no_fallback", () => {
   it("succeeds on the first attempt with selection_reason primary and no fallback", async () => {
@@ -298,6 +304,7 @@ describe("T-D3-08 first_attempt_success_no_fallback", () => {
       selection_reason: "primary",
       outcome: "success",
       request_id: FIXTURE_REQUEST_ID,
+      idempotency_key: FIXTURE_IDEMPOTENCY_KEY,
     });
     expect(
       collector.attempts.some((attempt) => attempt.provider_id === FALLBACK_PROVIDER_ID),
@@ -350,10 +357,11 @@ describe("T-D3-01 retryable_retried_to_cap_then_fallback", () => {
 });
 
 describe("T-D3-03 jitter_applied_on_backoff", () => {
-  it("requests non-identical backoff delays across same-target retries", async () => {
+  it("applies jitter so recorded delays differ from pure exponential and stay within cap", async () => {
     const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 3)];
     const collector = createAttemptSink();
     const recording = createRecordingSleeper();
+    const fixedRandom = () => 0.5;
     const adapters: AdapterRegistry = {
       [PRIMARY_PROVIDER_ID]: scriptedAdapter([
         "retryable:internal_error",
@@ -368,12 +376,24 @@ describe("T-D3-03 jitter_applied_on_backoff", () => {
         adapters,
         sink: collector.sink,
         sleeper: recording.sleeper,
+        random: fixedRandom,
       }),
     );
 
     expect(result.ok).toBe(true);
     expect(recording.delays.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(recording.delays).size).toBeGreaterThan(1);
+
+    const differsFromPure = recording.delays.some(
+      (delay, index) => delay !== pureExponentialBackoffMs(index),
+    );
+    expect(differsFromPure).toBe(true);
+
+    for (const delay of recording.delays) {
+      expect(delay).toBeLessThanOrEqual(BACKOFF_CAP_MS);
+    }
+
+    expect(recording.delays[0]).toBe(computeJitteredBackoff(0, fixedRandom));
+    expect(recording.delays[1]).toBe(computeJitteredBackoff(1, fixedRandom));
   });
 });
 
@@ -416,7 +436,7 @@ describe("T-D3-07 retry_budget_never_exceeded", () => {
 });
 
 describe("T-D3-12 internal_retry_same_request_not_user_retry", () => {
-  it("retains the same request identity across platform-internal retries", async () => {
+  it("journals the same request_id and idempotency_key on every attempt record", async () => {
     const chain = twoEntryChainFixture(3, 2);
     const collector = createAttemptSink();
     const requestId = "req-internal-retry-42";
@@ -430,22 +450,21 @@ describe("T-D3-12 internal_retry_same_request_not_user_retry", () => {
       [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
     };
 
-    const input = buildInvocationInput({
-      chain,
-      adapters,
-      sink: collector.sink,
-      requestId,
-      idempotencyKey,
-    });
-
-    const result = await runInvocation(input);
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        requestId,
+        idempotencyKey,
+      }),
+    );
 
     expect(result.ok).toBe(true);
-    expect(input.requestId).toBe(requestId);
-    expect(input.idempotencyKey).toBe(idempotencyKey);
     expect(collector.attempts.length).toBeGreaterThan(1);
     for (const attempt of collector.attempts) {
       expect(attempt.request_id).toBe(requestId);
+      expect(attempt.idempotency_key).toBe(idempotencyKey);
     }
   });
 });
@@ -588,10 +607,10 @@ describe("T-D3-10 fallback_only_walks_given_chain", () => {
 });
 
 describe("T-D3-11 no_provider_history_consulted", () => {
-  it("performs zero reads of the provider-history store when choosing the next target", async () => {
+  it("never accepts or consults a provider-history store; walk is chain-only", async () => {
     const chain = twoEntryChainFixture(2, 1);
     const collector = createAttemptSink();
-    const providerHistoryStore: ProviderHistoryStore = {
+    const localHistoryStore = {
       getProviderHealth: vi.fn(() => ({ healthy: true })),
       getRecentFailures: vi.fn(() => []),
       isCircuitOpen: vi.fn(() => false),
@@ -604,19 +623,30 @@ describe("T-D3-11 no_provider_history_consulted", () => {
       [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
     };
 
-    const result = await runInvocation(
-      buildInvocationInput({
-        chain,
-        adapters,
-        sink: collector.sink,
-        providerHistoryStore,
-      }),
+    const input = buildInvocationInput({
+      chain,
+      adapters,
+      sink: collector.sink,
+    });
+
+    expect(Object.prototype.hasOwnProperty.call(input, "providerHistoryStore")).toBe(
+      false,
     );
+    expect("providerHistoryStore" in input).toBe(false);
+
+    const result = await runInvocation(input);
 
     expect(result.ok).toBe(true);
-    expect(providerHistoryStore.getProviderHealth).not.toHaveBeenCalled();
-    expect(providerHistoryStore.getRecentFailures).not.toHaveBeenCalled();
-    expect(providerHistoryStore.isCircuitOpen).not.toHaveBeenCalled();
+    expect(localHistoryStore.getProviderHealth).not.toHaveBeenCalled();
+    expect(localHistoryStore.getRecentFailures).not.toHaveBeenCalled();
+    expect(localHistoryStore.isCircuitOpen).not.toHaveBeenCalled();
+
+    const invokedProviderIds = collector.attempts.map((a) => a.provider_id);
+    expect(invokedProviderIds).toEqual([
+      PRIMARY_PROVIDER_ID,
+      PRIMARY_PROVIDER_ID,
+      FALLBACK_PROVIDER_ID,
+    ]);
   });
 });
 
@@ -690,13 +720,12 @@ describe("T-D3-04 every_attempt_journaled_separately", () => {
 });
 
 describe("T-D3-06 fallback_after_partial_stream_emits_regenerating", () => {
-  it("emits regenerating, discards partial text, and never splices providers on fallback", async () => {
+  it("emits regenerating exactly once before the fallback provider's first output", async () => {
     const chain = twoEntryChainFixture(2, 2);
     const collector = createAttemptSink();
     const partialText = "Partial streamed text from primary.";
     const adapters: AdapterRegistry = {
       [PRIMARY_PROVIDER_ID]: createPartialStreamHarness(
-        collector.sink,
         partialText,
         "internal_error",
       ),
@@ -716,9 +745,22 @@ describe("T-D3-06 fallback_after_partial_stream_emits_regenerating", () => {
       return;
     }
 
-    expect(
-      collector.events.some((event) => event.kind === "regenerating"),
-    ).toBe(true);
+    const regeneratingIndexes = collector.events
+      .map((event, index) => (event.kind === "regenerating" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(regeneratingIndexes).toHaveLength(1);
+
+    const regeneratingIndex = regeneratingIndexes[0];
+    const firstFallbackEventIndex = collector.events.findIndex(
+      (event) =>
+        (event.kind === "attempt" &&
+          event.record.provider_id === FALLBACK_PROVIDER_ID) ||
+        (event.kind === "stream_text" &&
+          event.text === "Fake adapter summary."),
+    );
+    expect(firstFallbackEventIndex).toBeGreaterThan(-1);
+    expect(regeneratingIndex).toBeLessThan(firstFallbackEventIndex);
+
     expect(
       collector.events.some(
         (event) => event.kind === "stream_text" && event.text === partialText,
@@ -734,5 +776,381 @@ describe("T-D3-06 fallback_after_partial_stream_emits_regenerating", () => {
     );
     expect(fallbackAttempts).toHaveLength(1);
     expect(fallbackAttempts[0].outcome).toBe("success");
+  });
+});
+
+describe("T-D3-R-01 regenerating_absent_without_prior_chunks", () => {
+  it("does not emit regenerating on fallback when the prior target streamed no text", async () => {
+    const chain = twoEntryChainFixture(2, 1);
+    const collector = createAttemptSink();
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter([
+        "retryable:internal_error",
+        "retryable:internal_error",
+      ]),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(
+      collector.events.some((event) => event.kind === "regenerating"),
+    ).toBe(false);
+    expect(
+      collector.attempts.some(
+        (attempt) => attempt.provider_id === FALLBACK_PROVIDER_ID,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("T-D3-R-02 regenerating_absent_after_partial_then_terminal", () => {
+  it("does not emit regenerating when partial chunks precede a terminal failure (no fallback)", async () => {
+    const chain = twoEntryChainFixture(2, 2);
+    const collector = createAttemptSink();
+    const partialText = "Partial then terminal.";
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: createPartialStreamThenTerminalHarness(
+        partialText,
+        "provider_rejected",
+      ),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("provider_rejected");
+    expect(
+      collector.events.some((event) => event.kind === "regenerating"),
+    ).toBe(false);
+    expect(
+      collector.events.some(
+        (event) => event.kind === "stream_text" && event.text === partialText,
+      ),
+    ).toBe(true);
+    expect(
+      collector.attempts.some(
+        (attempt) => attempt.provider_id === FALLBACK_PROVIDER_ID,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("T-D3-R-03 empty_chain_provider_unavailable", () => {
+  it("fails with provider_unavailable and zero attempts when the chain is empty", async () => {
+    const collector = createAttemptSink();
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain: [],
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("provider_unavailable");
+    expect(collector.attempts).toHaveLength(0);
+  });
+});
+
+describe("T-D3-R-04 max_attempts_one_no_sleeper", () => {
+  it("invokes once with no sleeper calls then falls back when max_attempts is 1", async () => {
+    const chain = [
+      chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1),
+      chainEntry(1, FALLBACK_PROVIDER_ID, "fake-v2", 1),
+    ];
+    const collector = createAttemptSink();
+    const recording = createRecordingSleeper();
+    const invokeSpy: Record<string, number> = {};
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter(["retryable:internal_error"]),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        sleeper: recording.sleeper,
+        invokeSpy,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(invokeSpy[PRIMARY_PROVIDER_ID]).toBe(1);
+    expect(invokeSpy[FALLBACK_PROVIDER_ID]).toBe(1);
+    expect(recording.delays).toHaveLength(0);
+    expect(collector.attempts[1]?.selection_reason).toBe(
+      "fallback_after_retryable_error",
+    );
+  });
+});
+
+describe("T-D3-R-05 truncation_outcome_distinct_from_success", () => {
+  it("journals truncation as outcome truncation and returns ok", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1)];
+    const collector = createAttemptSink();
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter(["truncation"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(collector.attempts).toHaveLength(1);
+    expect(collector.attempts[0].outcome).toBe("truncation");
+    expect(collector.attempts[0].outcome).not.toBe("success");
+  });
+});
+
+describe("T-D3-R-06 malformed_through_loop", () => {
+  it("journals malformed as retryable_failure and retries or falls back", async () => {
+    const chain = twoEntryChainFixture(2, 1);
+    const collector = createAttemptSink();
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter(["malformed", "malformed"]),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const primaryAttempts = collector.attempts.filter(
+      (attempt) => attempt.provider_id === PRIMARY_PROVIDER_ID,
+    );
+    expect(primaryAttempts).toHaveLength(2);
+    for (const attempt of primaryAttempts) {
+      expect(attempt.outcome).toBe("retryable_failure");
+      expect(attempt.error_code).toBe("internal_error");
+    }
+    expect(collector.attempts[2]?.selection_reason).toBe(
+      "fallback_after_retryable_error",
+    );
+  });
+});
+
+describe("T-D3-R-07 every_terminal_taxonomy_code_not_retried", () => {
+  it.each(TERMINAL_TAXONOMY_CODES)(
+    "does not retry terminal code %s",
+    async (code) => {
+      const chain = twoEntryChainFixture(3, 2);
+      const collector = createAttemptSink();
+      const invokeSpy: Record<string, number> = {};
+      const adapters: AdapterRegistry = {
+        [PRIMARY_PROVIDER_ID]: scriptedAdapter([`terminal:${code}`]),
+        [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+      };
+
+      const result = await runInvocation(
+        buildInvocationInput({
+          chain,
+          adapters,
+          sink: collector.sink,
+          invokeSpy,
+        }),
+      );
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        return;
+      }
+      expect(result.error.taxonomyCode).toBe(code);
+      expect(collector.attempts).toHaveLength(1);
+      expect(collector.attempts[0]).toMatchObject({
+        outcome: "terminal_failure",
+        error_code: code,
+      });
+      expect(invokeSpy[PRIMARY_PROVIDER_ID]).toBe(1);
+      expect(invokeSpy[FALLBACK_PROVIDER_ID]).toBeUndefined();
+    },
+  );
+});
+
+describe("T-D3-R-08 mixed_script_fallback_after_timeout", () => {
+  it("records fallback_after_timeout when the exhausting failure was timeout (§8.6)", async () => {
+    const chain = twoEntryChainFixture(2, 1);
+    const collector = createAttemptSink();
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter([
+        "retryable:internal_error",
+        "retryable:timeout",
+      ]),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(collector.attempts[0]).toMatchObject({
+      outcome: "retryable_failure",
+      error_code: "internal_error",
+    });
+    expect(collector.attempts[1]).toMatchObject({
+      outcome: "timeout",
+      error_code: "timeout",
+    });
+    expect(collector.attempts[2]).toMatchObject({
+      provider_id: FALLBACK_PROVIDER_ID,
+      selection_reason: "fallback_after_timeout",
+      outcome: "success",
+    });
+  });
+});
+
+describe("T-D3-R-09 timeout_ms_enforced_on_hung_port", () => {
+  it("times out a hung port and yields timeout / provider_unavailable", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1, 20)];
+    const collector = createAttemptSink();
+    const hungPort: ProviderPort = {
+      async invoke() {
+        return new Promise(() => {});
+      },
+    };
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: hungPort,
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("provider_unavailable");
+    expect(collector.attempts).toHaveLength(1);
+    expect(collector.attempts[0]).toMatchObject({
+      outcome: "timeout",
+      error_code: "timeout",
+    });
+  });
+
+  it("falls back after hung primary timeout when a second chain entry exists", async () => {
+    const chain = [
+      chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1, 20),
+      chainEntry(1, FALLBACK_PROVIDER_ID, "fake-v2", 1, 30_000),
+    ];
+    const collector = createAttemptSink();
+    const hungPort: ProviderPort = {
+      async invoke() {
+        return new Promise(() => {});
+      },
+    };
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: hungPort,
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(collector.attempts[0]).toMatchObject({
+      provider_id: PRIMARY_PROVIDER_ID,
+      outcome: "timeout",
+    });
+    expect(collector.attempts[1]).toMatchObject({
+      provider_id: FALLBACK_PROVIDER_ID,
+      selection_reason: "fallback_after_timeout",
+      outcome: "success",
+    });
+  });
+});
+
+describe("T-D3-R-10 deadline_truncates_backoff_sleeps", () => {
+  it("truncates or skips sleeper delays so they do not exceed the remaining deadline budget", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 3)];
+    const collector = createAttemptSink();
+    const recording = createRecordingSleeper();
+    const tinyDeadlineMs = 40;
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter([
+        "retryable:internal_error",
+        "retryable:internal_error",
+        "success",
+      ]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        sleeper: recording.sleeper,
+        random: () => 0.5,
+        request: { ...requestFixture, deadline: tinyDeadlineMs },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const uncappedFirst = computeJitteredBackoff(0, () => 0.5);
+    expect(uncappedFirst).toBeGreaterThan(tinyDeadlineMs);
+
+    for (const delay of recording.delays) {
+      expect(delay).toBeLessThanOrEqual(tinyDeadlineMs);
+    }
+  });
+});
+
+describe("T-D3-R-11 backoff_cap_unit", () => {
+  it("caps computeJitteredBackoff at BACKOFF_CAP_MS for large retry indexes", () => {
+    expect(BACKOFF_CAP_MS).toBe(10_000);
+    expect(computeJitteredBackoff(20, () => 1)).toBeLessThanOrEqual(
+      BACKOFF_CAP_MS,
+    );
+    expect(computeJitteredBackoff(20, () => 1)).toBe(BACKOFF_CAP_MS);
   });
 });
