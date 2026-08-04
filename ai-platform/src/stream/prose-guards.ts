@@ -7,7 +7,8 @@ export interface ProseGuardThresholds {
 export type GuardViolationKind =
   | "length_ceiling"
   | "stop_sequence"
-  | "system_prompt_leak";
+  | "system_prompt_leak"
+  | "empty_output";
 
 function checkStopSequenceAndLeak(
   text: string,
@@ -26,24 +27,39 @@ function checkStopSequenceAndLeak(
   return null;
 }
 
+/**
+ * Cheap incremental guards. Length is evaluated against assembled text
+ * (cumulative), not the individual chunk.
+ */
 export function checkIncrementalGuards(
-  chunk: string,
+  _chunk: string,
   assembled: string,
   thresholds: ProseGuardThresholds,
 ): GuardViolationKind | null {
-  if (chunk.length > thresholds.maxLength) {
+  if (assembled.length > thresholds.maxLength) {
     return "length_ceiling";
   }
 
   return checkStopSequenceAndLeak(assembled, thresholds);
 }
 
+/**
+ * Full guard set on assembled text at completion.
+ * Includes assembled length plus a deferred empty-output check that is not
+ * part of the incremental set (empty streams never trip incremental guards).
+ * Returns a violation kind instead of throwing.
+ */
 export function runFullGuardSet(
   text: string,
   thresholds: ProseGuardThresholds,
-): void {
-  const violation = checkStopSequenceAndLeak(text, thresholds);
-  if (violation !== null) {
-    throw new Error(`guard_violation:${violation}`);
+): GuardViolationKind | null {
+  if (text.length === 0) {
+    return "empty_output";
   }
+
+  if (text.length > thresholds.maxLength) {
+    return "length_ceiling";
+  }
+
+  return checkStopSequenceAndLeak(text, thresholds);
 }

@@ -1,34 +1,77 @@
 import type { AdapterSseEvent } from "../adapter";
 import type { TaxonomyCode } from "../errors";
 import {
-  runValidationPhases,
-  type BusinessRuleRegistry,
-  type SafetyMarkers,
-  type SchemaRegistry,
-} from "../validate";
-import {
   checkIncrementalGuards,
   runFullGuardSet,
   type ProseGuardThresholds,
 } from "./prose-guards";
 
-export type { ProseGuardThresholds } from "./prose-guards";
+export type { ProseGuardThresholds, GuardViolationKind } from "./prose-guards";
 
+/**
+ * Broker-facing chunk union. Aligns with D3 `InvocationSink` emissions:
+ * `emitStreamText(text)` → string chunks; `emitRegenerating()` → regenerating.
+ * See `createChunkSourceFromInvocationEvents` for the named adapter bridge.
+ */
 export type StreamChunk = string | { kind: "regenerating" };
 
-export type OutputMode = "prose" | "structured" | "structured_atomic";
+/** Event shape produced by an InvocationSink-compatible relay into the broker. */
+export type InvocationStreamEvent =
+  | { kind: "text"; text: string }
+  | { kind: "regenerating" };
 
 export interface ChunkSource {
-  partialUsage?: { tokens: number; cost: number };
+  /**
+   * Live partial usage at cancel time. Called when cancel settles — must reflect
+   * tokens actually generated before the cancel point, not a constructor snapshot.
+   * Absent or undefined → credit sink is not called (FR-011).
+   */
+  getPartialUsage?(): { tokens: number; cost: number } | undefined;
   stream(input: { signal: AbortSignal }): AsyncIterable<StreamChunk>;
+}
+
+/**
+ * Named adapter (Spec Kit Consumes): bridges D3 invocation stream events into
+ * a `ChunkSource` the broker can pull. Production wiring later feeds this from
+ * the invocation loop; regenerating is preserved as a first-class chunk.
+ */
+export function createChunkSourceFromInvocationEvents(
+  events: AsyncIterable<InvocationStreamEvent>,
+  getPartialUsage?: () => { tokens: number; cost: number } | undefined,
+): ChunkSource {
+  return {
+    getPartialUsage,
+    async *stream({
+      signal,
+    }: {
+      signal: AbortSignal;
+    }): AsyncIterable<StreamChunk> {
+      for await (const event of events) {
+        if (signal.aborted) {
+          return;
+        }
+        if (event.kind === "regenerating") {
+          yield { kind: "regenerating" };
+        } else {
+          yield event.text;
+        }
+      }
+    },
+  };
 }
 
 export interface StreamBrokerEventSink {
   push(event: AdapterSseEvent): void;
 }
 
+export interface HeartbeatScheduleHandle {
+  cancel(): void;
+  /** Reset silence window — called by the broker on each relayed content chunk. */
+  notifyActivity(): void;
+}
+
 export interface HeartbeatTicker {
-  schedule(callback: () => void): { cancel(): void };
+  schedule(callback: () => void): HeartbeatScheduleHandle;
 }
 
 export interface CreditSink {
@@ -47,15 +90,6 @@ export interface JournalTerminalSink {
   }): void;
 }
 
-export interface StructuredValidationConfig {
-  outputSchemaRef: string | null;
-  businessValidationRuleRefs: readonly string[];
-  schemaRegistry: SchemaRegistry;
-  ruleRegistry: BusinessRuleRegistry;
-  context?: unknown;
-  safetyMarkers?: SafetyMarkers;
-}
-
 export interface StreamBrokerOptions {
   traceId: string;
   requestId: string;
@@ -65,8 +99,6 @@ export interface StreamBrokerOptions {
   creditSink: CreditSink;
   journalTerminalSink: JournalTerminalSink;
   guardThresholds: ProseGuardThresholds;
-  outputMode?: OutputMode;
-  structuredValidation?: StructuredValidationConfig;
 }
 
 export interface StreamBrokerController {
@@ -81,22 +113,74 @@ function isRegeneratingChunk(
   return typeof chunk === "object" && chunk !== null && chunk.kind === "regenerating";
 }
 
-function tryParsePartialStructured(assembled: string): unknown | null {
+function isAbortError(error: unknown): boolean {
+  if (error === null || error === undefined) {
+    return false;
+  }
+  if (typeof error === "object") {
+    const name = (error as { name?: string }).name;
+    if (name === "AbortError") {
+      return true;
+    }
+    const code = (error as { code?: string }).code;
+    if (code === "ABORT_ERR") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Iterate an async iterable, racing each `next()` against abort so a
+ * signal-ignoring source cannot hang the broker after disconnect.
+ */
+async function* abortableAsyncIterate<T>(
+  iterable: AsyncIterable<T>,
+  signal: AbortSignal,
+): AsyncIterable<T> {
+  const iterator = iterable[Symbol.asyncIterator]();
   try {
-    return JSON.parse(assembled) as unknown;
-  } catch {
-    return null;
+    while (!signal.aborted) {
+      const nextPromise = iterator.next();
+      const result = await new Promise<IteratorResult<T>>((resolve, reject) => {
+        if (signal.aborted) {
+          resolve({ done: true, value: undefined as T });
+          return;
+        }
+        const onAbort = () => {
+          resolve({ done: true, value: undefined as T });
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        nextPromise.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      });
+      if (result.done) {
+        return;
+      }
+      yield result.value;
+    }
+  } finally {
+    if (typeof iterator.return === "function") {
+      await iterator.return(undefined);
+    }
   }
 }
 
 export function createStreamBroker(
   options: StreamBrokerOptions,
 ): StreamBrokerController {
-  const outputMode = options.outputMode ?? "prose";
   const abortController = new AbortController();
   let disconnected = false;
   let terminalEmitted = false;
-  let heartbeatHandle: { cancel(): void } | null = null;
+  let heartbeatHandle: HeartbeatScheduleHandle | null = null;
 
   const emitEvent = (event: AdapterSseEvent): void => {
     if (terminalEmitted) {
@@ -114,82 +198,92 @@ export function createStreamBroker(
     options.eventSink.push(event);
   };
 
-  const handleCancel = (): void => {
-    if (terminalEmitted) {
-      return;
-    }
-
-    const usage = options.chunkSource.partialUsage;
-    if (usage) {
+  const safeCredit = (usage: { tokens: number; cost: number }): void => {
+    try {
       options.creditSink({
         requestId: options.requestId,
         usage,
         partial: true,
       });
+    } catch {
+      // Settlement failure must not suppress the terminal SSE event (§5.5 rule 4).
     }
+  };
 
-    options.journalTerminalSink({
-      requestId: options.requestId,
-      state: "cancelled",
-    });
+  const safeJournal = (record: {
+    requestId: string;
+    state: "cancelled" | "completed" | "failed";
+    terminalErrorCode?: TaxonomyCode;
+  }): void => {
+    try {
+      options.journalTerminalSink(record);
+    } catch {
+      // Settlement failure must not suppress the terminal SSE event.
+    }
+  };
+
+  const handleCancel = (): void => {
+    if (terminalEmitted) {
+      return;
+    }
 
     emitTerminalOnce({
       type: "cancelled",
       data: { trace_id: options.traceId },
       trace_id: options.traceId,
     });
+
+    const usage = options.chunkSource.getPartialUsage?.();
+    if (usage !== undefined) {
+      safeCredit(usage);
+    }
+
+    safeJournal({
+      requestId: options.requestId,
+      state: "cancelled",
+    });
   };
 
-  const handleValidationFailure = (): void => {
+  const handleFailed = (code: TaxonomyCode): void => {
+    if (terminalEmitted) {
+      return;
+    }
+
     emitTerminalOnce({
       type: "failed",
-      data: { code: "validation_failed" },
+      data: { code },
       trace_id: options.traceId,
     });
-  };
 
-  const handleGuardFailure = (): void => {
-    handleValidationFailure();
-  };
-
-  const completeStructured = (assembled: string): void => {
-    const config = options.structuredValidation;
-    if (!config) {
-      handleValidationFailure();
-      return;
-    }
-
-    const validation = runValidationPhases({
-      output: { raw: assembled, transportValid: true },
-      mode: outputMode === "structured_atomic" ? "structured_atomic" : "structured",
-      outputSchemaRef: config.outputSchemaRef,
-      businessValidationRuleRefs: config.businessValidationRuleRefs,
-      schemaRegistry: config.schemaRegistry,
-      ruleRegistry: config.ruleRegistry,
-      context: config.context,
-      safetyMarkers: config.safetyMarkers,
+    safeJournal({
+      requestId: options.requestId,
+      state: "failed",
+      terminalErrorCode: code,
     });
+  };
 
-    if (!validation.ok) {
-      handleValidationFailure();
+  const handleCompleted = (assembled: string): void => {
+    if (terminalEmitted) {
       return;
     }
-
-    const validatedDocument = validation.validated;
 
     emitTerminalOnce({
       type: "completed",
       data: {
         result: {
           finalContent: {
-            document: validatedDocument,
+            text: assembled,
             authoritative: true,
-            _assembledFromChunks: false,
           },
         },
         trace_id: options.traceId,
       },
       trace_id: options.traceId,
+    });
+
+    safeJournal({
+      requestId: options.requestId,
+      state: "completed",
     });
   };
 
@@ -207,9 +301,14 @@ export function createStreamBroker(
     });
 
     try {
-      for await (const chunk of chunkSource.stream({
+      const rawStream = chunkSource.stream({
         signal: abortController.signal,
-      })) {
+      });
+
+      for await (const chunk of abortableAsyncIterate(
+        rawStream,
+        abortController.signal,
+      )) {
         if (terminalEmitted) {
           return;
         }
@@ -227,6 +326,7 @@ export function createStreamBroker(
           });
           assembled = "";
           sequence = 0;
+          heartbeatHandle?.notifyActivity();
           continue;
         }
 
@@ -234,7 +334,7 @@ export function createStreamBroker(
 
         if (checkIncrementalGuards(chunk, assembled, guardThresholds) !== null) {
           abortController.abort();
-          handleGuardFailure();
+          handleFailed("validation_failed");
           return;
         }
 
@@ -248,6 +348,7 @@ export function createStreamBroker(
           trace_id: traceId,
         });
         sequence += 1;
+        heartbeatHandle?.notifyActivity();
 
         if (disconnected || abortController.signal.aborted) {
           handleCancel();
@@ -264,125 +365,42 @@ export function createStreamBroker(
         return;
       }
 
-      runFullGuardSet(assembled, guardThresholds);
-
-      emitTerminalOnce({
-        type: "completed",
-        data: {
-          result: {
-            finalContent: {
-              text: assembled,
-              authoritative: true,
-            },
-          },
-          trace_id: traceId,
-        },
-        trace_id: traceId,
-      });
-    } finally {
-      heartbeatHandle?.cancel();
-    }
-  };
-
-  const runStructured = async (): Promise<void> => {
-    const { traceId, chunkSource, heartbeatTicker } = options;
-    let assembled = "";
-    let sequence = 0;
-    const emitPartials = outputMode === "structured";
-
-    heartbeatHandle = heartbeatTicker.schedule(() => {
-      emitEvent({
-        type: "heartbeat",
-        data: { trace_id: traceId },
-        trace_id: traceId,
-      });
-    });
-
-    try {
-      for await (const chunk of chunkSource.stream({
-        signal: abortController.signal,
-      })) {
-        if (terminalEmitted) {
-          return;
-        }
-
-        if (disconnected || abortController.signal.aborted) {
-          handleCancel();
-          return;
-        }
-
-        if (isRegeneratingChunk(chunk)) {
-          emitEvent({
-            type: "regenerating",
-            data: { trace_id: traceId },
-            trace_id: traceId,
-          });
-          assembled = "";
-          sequence = 0;
-          continue;
-        }
-
-        assembled += chunk;
-
-        if (outputMode === "structured_atomic") {
-          emitEvent({
-            type: "progress",
-            data: { trace_id: traceId, bytesReceived: assembled.length },
-            trace_id: traceId,
-          });
-        } else if (emitPartials) {
-          const partialDocument = tryParsePartialStructured(assembled);
-          emitEvent({
-            type: "partial_structured",
-            data: {
-              sequence,
-              provisional: true,
-              document: partialDocument ?? { _partial: true },
-              committed: false,
-              committable: false,
-            },
-            trace_id: traceId,
-          });
-          sequence += 1;
-        }
-
-        if (disconnected || abortController.signal.aborted) {
-          handleCancel();
-          return;
-        }
-      }
-
-      if (!terminalEmitted && (disconnected || abortController.signal.aborted)) {
-        handleCancel();
+      const fullViolation = runFullGuardSet(assembled, guardThresholds);
+      if (fullViolation !== null) {
+        handleFailed("validation_failed");
         return;
       }
 
+      handleCompleted(assembled);
+    } catch (error: unknown) {
       if (terminalEmitted) {
         return;
       }
-
-      completeStructured(assembled);
+      if (
+        disconnected ||
+        abortController.signal.aborted ||
+        isAbortError(error)
+      ) {
+        handleCancel();
+        return;
+      }
+      handleFailed("internal_error");
     } finally {
       heartbeatHandle?.cancel();
     }
-  };
-
-  const run = async (): Promise<void> => {
-    if (outputMode === "prose") {
-      await runProse();
-      return;
-    }
-    await runStructured();
   };
 
   return {
-    run,
+    run: runProse,
     disconnect(_reason: "client_close" | "network_drop") {
       if (terminalEmitted) {
         return;
       }
       disconnected = true;
       abortController.abort();
+      // Emit cancelled synchronously so a signal-ignoring source cannot hang
+      // the one-terminal / credit / journal guarantees (§5.5 rule 4).
+      handleCancel();
     },
     fetchSignal: abortController.signal,
   };

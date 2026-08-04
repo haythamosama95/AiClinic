@@ -34,7 +34,7 @@ Contracts this slice establishes for the first time:
 Contracts frozen by the slices in `Needs` (A6, D3). Changing any of these is out of scope by definition:
 
 - **From A6 (protocol adapter and SSE framing)**: the SSE event framing; the `accepted` opening event carrying the request reference; the heartbeat event shape; the terminal event kinds `completed`, `failed`, and `cancelled`; the one-terminal-event invariant under every path including abort; and connection-scoped cancellation at the framing level — closing the stream ends the request as `cancelled`, with no separate cancel endpoint and no cross-invocation state (§4.3.1, §5.5 Freezes in A6). D4 owns broker behaviour that *uses* this framing (chunk relay, heartbeat emission during provider silence, provider-fetch abort, partial-usage credit); it does not redefine wire framing or the one-terminal-event rule.
-- **From D3 (invocation with bounded retry and fallback)**: the platform-internal attempt loop that invokes the provider port, produces normalized stream chunks, journals each attempt separately, emits `regenerating` and discards earlier partial text on fallback after partial streaming, and never splices two providers' text (§4.3.7, §8.6 Freezes in D3). D4 relays what invocation emits; it does not own retry, fallback, or the regenerating decision.
+- **From D3 (invocation with bounded retry and fallback)**: the platform-internal attempt loop that invokes the provider port, produces normalized stream chunks, journals each attempt separately, emits `regenerating` and discards earlier partial text on fallback after partial streaming, and never splices two providers' text (§4.3.7, §8.6 Freezes in D3). D4 relays what invocation emits via the named adapter `createChunkSourceFromInvocationEvents` (InvocationSink-shaped `text` / `regenerating` → `ChunkSource`); it does not own retry, fallback, or the regenerating decision.
 
 ### Open decisions relied on
 
@@ -48,6 +48,17 @@ None. D4's stream broker, prose guards, heartbeats, and connection-scoped cancel
 - Q: How should T2 assert a heartbeat during provider silence without freezing a heartbeat interval? → A: Inject a controllable heartbeat ticker; force a silent gap and assert ≥1 heartbeat `[implementation choice — no §citation]`
 - Q: How should cancel tests (T8, T13, T14) drive disconnect and prove the provider fetch was aborted via its abort signal? → A: Broker takes an `AbortSignal` for the in-flight fetch; test closes the client stream and asserts `signal.aborted` `[implementation choice — no §citation]`
 - Q: How should T10/T11 assert partial-usage credit and journal completeness without owning B4’s Quota DO or C3’s D1 writer? → A: Inject in-memory credit + journal-terminal sinks; tests assert credit(partial) and a complete terminal `cancelled` record `[implementation choice — no §citation]`
+
+### Session 2026-08-04 (review resolution)
+
+- Q: Is the length ceiling per-chunk or assembled? → A: Assembled (cumulative) text for both incremental and full-set checks — never per-chunk alone `[clarifies §6.4 / FR-002]`
+- Q: What does the full guard set add at completion? → A: Non-throwing violation return; assembled length plus deferred `empty_output` (empty assembled checked only at completion) `[clarifies §6.4 / FR-003]`
+- Q: How is partial usage measured on cancel? → A: Live `ChunkSource.getPartialUsage()` at cancel settle time; absent/`undefined` → credit sink not called `[clarifies FR-008, FR-011]`
+- Q: How do heartbeats track provider silence? → A: Schedule handle exposes `notifyActivity()`; broker resets silence on each relayed content chunk `[clarifies FR-001 / Clarification Q2]`
+- Q: How does D4 consume D3 stream events? → A: Named adapter `createChunkSourceFromInvocationEvents` bridges InvocationSink-shaped `text` / `regenerating` into `ChunkSource` `[implementation choice — no §citation]`
+- Q: Where do structured modes live? → A: Out of D4; D6 owns `src/stream/structured.ts` (`createStructuredStreamBroker`) `[clarifies Out of Scope / D6]`
+- Q: Is `createStreamBroker` wired into the Worker pipeline? → A: Intentionally deferred (B4/C3 sinks / E4); injectable surface is frozen; `worker.ts` unchanged `[implementation choice — no §citation]`
+- Q: How are source errors contained? → A: Abort/disconnect-path throws → `cancelled`; other throws → `failed`/`internal_error` + journal; disconnect emits `cancelled` synchronously; abortable iteration bounds signal-ignoring sources. Terminal SSE before sinks; sink throws must not suppress terminal `[clarifies §5.5 rule 4 / FR-005–FR-009]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -107,19 +118,25 @@ Layer: Integration (spy) (delivery plan §3.11.4, row D4; §13.5 Pipeline tests 
 ### Edge Cases
 
 - **Error codes / terminal kinds this slice can emit.** `cancelled` when the client closes the stream or the connection drops (§5.5 rules 4–5; §6.5; Done when). Incremental prose-guard violations abort the stream and **fail terminally** as a `failed` terminal event with a taxonomy code (§6.4; §5.5 rule 4). This slice does not invent taxonomy codes; it uses the existing closed set (A2 via A6) and does not rename codes.
-- **Length ceiling / stop-sequence / system-prompt-leak.** Each of the three named incremental cheap guards, when violated, aborts the stream and fails terminally (T3–T5; §6.4). Boundaries are the named guards themselves; numeric thresholds are not invented in this slice beyond what the cited sections name.
-- **Full guard set at completion.** After streaming without an incremental abort, the full guard set runs on the assembled text before `completed` (T6–T7; §6.4). Schema/business-rule validation, bounded repair, and structured output modes remain D6.
+- **Length ceiling / stop-sequence / system-prompt-leak.** Each of the three named incremental cheap guards, when violated, aborts the stream and fails terminally (T3–T5; §6.4). Length is evaluated against **assembled** text (cumulative), not per-chunk. Boundaries are the named guards themselves; numeric thresholds are not invented in this slice beyond what the cited sections name.
+- **Full guard set at completion.** After streaming without an incremental abort, the full guard set runs on the assembled text before `completed` (T6–T7; §6.4). Returns a violation (non-throwing); includes assembled length plus deferred `empty_output`. Schema/business-rule validation, bounded repair, and structured output modes remain D6 (`src/stream/structured.ts`).
 - **Cancel before first token vs mid-stream.** Separate cases (T13–T14); both abort via abort signal, terminate as `cancelled`, and credit partial usage when any exists (§6.5).
+- **Zero-usage cancel skips credit.** When `getPartialUsage()` is absent/`undefined` at cancel settle, the credit sink is not called (T22; FR-011).
+- **Disconnect after completion.** Calling `disconnect` after a terminal already emitted is a no-op — no second terminal (T23; §5.5 rule 4).
+- **Abort-rejecting source still cancels.** A source that throws `AbortError` (or equivalent) after disconnect still yields `cancelled` + journal + credit-when-present (T20).
+- **Mid-stream source throw.** Non-abort throws map to exactly one `failed`/`internal_error` + journal; no credit (T21).
+- **Signal-ignoring source.** Disconnect emits `cancelled` synchronously; abortable iteration bounds the run (T26).
 - **Deliberate Cancel vs network drop.** Indistinguishable; same path (T16; §5.5 rule 5; §6.5).
 - **Out-of-band cancel / resume.** Not supported; no cancel endpoint; no Session Durable Object; no stream resume after reconnect (T17; §4.3.10; §6.5; §9.7).
-- **One terminal event.** Guard abort and disconnect each still yield exactly one terminal event; no duplicate terminal (T15; §5.5 rule 4; A6).
-- **Partial usage on cancel.** Tokens already generated are billed by the provider; cancellation credits partial usage rather than zeroing cost — free cancellation would be quota evasion (T10; §6.5).
-- **Journal survival.** Cancelled or dropped requests remain explainable; the journal row exists from acceptance and survives cancellation (T11; §5.5 rule 6; §6.5). Writing the row remains C3; D4 must leave a terminal `cancelled` outcome the journal can record.
+- **One terminal event.** Guard abort and disconnect each still yield exactly one terminal event; no duplicate terminal (T15; §5.5 rule 4; A6). Sink throws must not suppress the terminal SSE (T25).
+- **Partial usage on cancel.** Tokens already generated are billed by the provider; cancellation credits live partial usage rather than zeroing cost — free cancellation would be quota evasion (T10; §6.5). Usage is read live via `getPartialUsage()` at cancel time, not a constructor snapshot.
+- **Journal survival.** Cancelled, completed, or failed requests remain explainable; the journal-terminal sink records all three states (`failed` carries `terminalErrorCode`) (T11, T24; §5.5 rule 6; §6.5). Writing the row remains C3.
 - **No per-request state.** An in-flight request exists only as an open connection plus a journal row; the broker creates no per-request Durable Object or other live request registry (T12; §4.3.10; §9.7).
 - **No D1 row per chunk.** Stream chunks are not journaled as rows (T19; delivery plan §6.4 / §7.5).
 - **Authoritative terminal payload.** Clients must not assemble the final result from chunks; provisional streamed text is never the committed answer (T7, T18; §6.4 invariants 1–2 as enforced on emission). Client UI commit affordances are E4.
-- **Regenerating / fallback splice.** Owned by D3; D4 relays normalized events and must not reintroduce splicing across providers.
-- **Structured / `structured_atomic` modes.** Named in §6.4 but owned by D6 (Needs D4); out of scope for this slice's Done when, which names incremental cheap guards for `prose`.
+- **Regenerating / fallback splice.** Owned by D3; D4 relays via `createChunkSourceFromInvocationEvents` and must not reintroduce splicing across providers (T27).
+- **Structured / `structured_atomic` modes.** Named in §6.4 but owned by D6 (`createStructuredStreamBroker` in `structured.ts`); out of scope for this slice's Done when, which names incremental cheap guards for `prose`.
+- **Unwired deferral.** Production wiring of `createStreamBroker` into the Worker pipeline (B4/C3 sinks / E4) is intentionally deferred; done-whens are proven against injectable fixtures.
 
 ## Requirements *(mandatory)*
 
@@ -157,8 +174,9 @@ Not applicable — this slice defines no entities. It relays and terminates stre
 Neighbouring slices this slice touches but does not implement:
 
 - **A6 (protocol adapter / SSE framing)**: D4 consumes framing, `accepted`, heartbeat shape, terminal kinds, and the one-terminal-event invariant; it does not redefine wire parsing or HTTP error mapping.
-- **D3 (invocation / retry / fallback)**: D4 relays chunks and `regenerating` when present; it does not own attempt bounds, jitter, fallback walk, or splice prevention.
-- **D6 (response validator, bounded repair, structured modes)**: Transport/schema/business validation order, repair re-ask, `validation_failed` after repair exhaustion, `partial_structured` / `structured_atomic` streaming semantics are D6 (§4.3.9; §6.4 structured rows). D4 owns the `prose` incremental cheap guards and completion-time full guard set named in §6.4's `prose` row.
+- **D3 (invocation / retry / fallback)**: D4 relays chunks and `regenerating` when present via `createChunkSourceFromInvocationEvents`; it does not own attempt bounds, jitter, fallback walk, or splice prevention.
+- **D6 (response validator, bounded repair, structured modes)**: Transport/schema/business validation order, repair re-ask, `validation_failed` after repair exhaustion, `partial_structured` / `structured_atomic` streaming semantics are D6 (§4.3.9; §6.4 structured rows), including `ai-platform/src/stream/structured.ts` (`createStructuredStreamBroker`). D4 owns the `prose` incremental cheap guards and completion-time full guard set named in §6.4's `prose` row (`index.ts` + `prose-guards.ts` only).
+- **Worker pipeline wiring (B4/C3 sinks / E4)**: Calling `createStreamBroker` from the Worker entry and production sink wiring are deferred; D4 freezes the module and injectable surface only.
 - **D5 / D7 (real provider adapters)**: D4 runs against D2's fake via D3; live wire fixtures are D5/D7.
 - **C3 (journal writer / get-request)**: D4 produces terminal `cancelled` / `completed` / `failed` outcomes the journal can record; writing `ai_request` updates, R2 envelopes, and get-request lookup remain C3.
 - **B4 (Quota DO credit)**: D4 invokes partial-usage credit on cancel using B4's existing credit call; it does not redefine admission or credit RPCs.

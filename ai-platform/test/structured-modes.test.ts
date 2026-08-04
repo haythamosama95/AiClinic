@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdapterSseEvent } from "../src/adapter";
+import * as proseGuards from "../src/stream/prose-guards";
 import {
-  createStreamBroker,
+  createStructuredStreamBroker,
   type ChunkSource,
   type CreditSink,
   type HeartbeatTicker,
   type JournalTerminalSink,
   type StreamBrokerEventSink,
-  type StreamBrokerOptions,
-} from "../src/stream";
-import * as proseGuards from "../src/stream/prose-guards";
+  type StructuredStreamBrokerOptions,
+} from "../src/stream/structured";
 import type {
   BusinessRuleRegistry,
   SafetyMarkers,
@@ -92,7 +92,15 @@ function createControllableHeartbeatTicker(): ControllableHeartbeatTicker {
   return {
     schedule(callback: () => void) {
       onHeartbeat = callback;
-      return { cancel() { onHeartbeat = null; } };
+      return {
+        cancel() {
+          onHeartbeat = null;
+        },
+        notifyActivity() {
+          // Activity resets silence window; controllable fixture keeps the
+          // scheduled callback until cancel or a silent-gap trigger.
+        },
+      };
     },
     triggerSilentGap() {
       onHeartbeat?.();
@@ -136,7 +144,7 @@ async function runStructuredBrokerHarness(
   options: StructuredBrokerHarnessOptions,
 ): Promise<{ events: AdapterSseEvent[] }> {
   const collector = createEventSinkCollector();
-  const brokerOptions: StreamBrokerOptions = {
+  const brokerOptions: StructuredStreamBrokerOptions = {
     traceId: FIXTURE_TRACE_ID,
     requestId: FIXTURE_REQUEST_ID,
     eventSink: collector.sink,
@@ -156,7 +164,7 @@ async function runStructuredBrokerHarness(
     },
   };
 
-  const controller = createStreamBroker(brokerOptions);
+  const controller = createStructuredStreamBroker(brokerOptions);
   await controller.run();
   return { events: collector.events };
 }
@@ -210,7 +218,7 @@ describe("T-D6-19 structured_atomic_progress_only", () => {
     const heartbeatTicker = createControllableHeartbeatTicker();
     const collector = createEventSinkCollector();
 
-    const controller = createStreamBroker({
+    const controller = createStructuredStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
       eventSink: collector.sink,
@@ -288,10 +296,12 @@ describe("T-D6-22 no_per_request_state_for_repair_or_structured", () => {
   it("does not introduce per-request server-side state in validate or structured paths", async () => {
     const validateExports = await import("../src/validate");
     const streamExports = await import("../src/stream");
+    const structuredExports = await import("../src/stream/structured");
 
     for (const exportName of [
       ...Object.keys(validateExports),
       ...Object.keys(streamExports),
+      ...Object.keys(structuredExports),
     ]) {
       const lowered = exportName.toLowerCase();
       expect(lowered).not.toMatch(/requestregistry/);
@@ -329,29 +339,19 @@ describe("T-D6-23 provisional_structured_not_committable_on_emission", () => {
 });
 
 describe("T-D6-24 prose_path_unchanged_by_this_slice", () => {
-  it("keeps D4 prose incremental guards and relay contracts intact", async () => {
+  it("does not invoke prose guards on the structured broker path", async () => {
     const incrementalSpy = vi.spyOn(proseGuards, "checkIncrementalGuards");
     const fullSpy = vi.spyOn(proseGuards, "runFullGuardSet");
 
-    const collector = createEventSinkCollector();
-    const controller = createStreamBroker({
-      traceId: FIXTURE_TRACE_ID,
-      requestId: FIXTURE_REQUEST_ID,
-      eventSink: collector.sink,
-      chunkSource: createScriptedChunkSource(["Hello", " prose"]),
-      heartbeatTicker: createControllableHeartbeatTicker(),
-      creditSink: createNoopCreditSink(),
-      journalTerminalSink: createNoopJournalSink(),
-      guardThresholds: GUARD_THRESHOLDS,
-      outputMode: "prose",
+    const { events } = await runStructuredBrokerHarness({
+      mode: "structured",
+      chunks: structuredChunksFor(VALID_DOCUMENT),
     });
 
-    await controller.run();
-
-    expect(incrementalSpy).toHaveBeenCalled();
-    expect(fullSpy).toHaveBeenCalledOnce();
-    expect(eventsOfType(collector.events, "text_delta").length).toBeGreaterThan(0);
-    expect(eventsOfType(collector.events, "partial_structured")).toHaveLength(0);
-    expect(eventsOfType(collector.events, "completed")).toHaveLength(1);
+    expect(incrementalSpy).not.toHaveBeenCalled();
+    expect(fullSpy).not.toHaveBeenCalled();
+    expect(eventsOfType(events, "partial_structured").length).toBeGreaterThan(0);
+    expect(eventsOfType(events, "text_delta")).toHaveLength(0);
+    expect(eventsOfType(events, "completed")).toHaveLength(1);
   });
 });

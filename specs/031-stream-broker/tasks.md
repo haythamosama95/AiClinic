@@ -75,6 +75,12 @@
 
 ---
 
+## Review resolution (completion evidence)
+
+Review resolution (2026-08-04) added T-D4-20..T-D4-27 (error containment, zero-usage cancel, disconnect-after-completion, journal on completed/failed, sink-throw isolation, signal-ignoring disconnect, D3 invocation adapter) and moved structured streaming to the D6-owned module `src/stream/structured.ts`. Architecture docs untouched. Original T001–T023 remain complete (unchecked tasks must not be unmarked).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -107,3 +113,4 @@
 - Consumed modules are imported, not modified (delivery plan §2.3 — extend, never rewrite).
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).
 - Preserve the I/O budget: no second Quota DO round trip, no second R2 object, no D1 row per chunk; cancel uses the existing credit shape via an injectable sink (§6.1, §7.5, §13.6).
+- **Review resolution (2026-08-04):** added T-D4-20..T-D4-27 (error containment, cumulative length, live usage, journal-all-terminals, sink isolation, D3 adapter, prohibition surface); moved structured streaming to D6-owned `src/stream/structured.ts`.
