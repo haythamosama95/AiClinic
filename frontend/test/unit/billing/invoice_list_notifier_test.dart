@@ -18,10 +18,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
-<<<<<<< HEAD
-import '../../support/fake_postgrest_rpc.dart';
-=======
->>>>>>> master
 
 void main() {
   group('InvoiceListNotifier access control', () {
@@ -386,9 +382,6 @@ void main() {
 AuthSessionState _authorizedSession() {
   return AuthSessionState(
     status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-    context: sampleAuthSessionContext(permissions: RolePermissionSeed.receptionist),
-=======
     context: sampleAuthSessionContext(
       permissions: RolePermissionSeed.receptionist,
       branchIds: [
@@ -396,7 +389,6 @@ AuthSessionState _authorizedSession() {
         '77777777-7777-4777-8777-777777777777',
       ],
     ),
->>>>>>> master
   );
 }
 
@@ -417,28 +409,6 @@ class _SlowBillingRpcTestClient extends BillingRpcTestClient {
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     if (fn == 'list_invoices') {
-<<<<<<< HEAD
-      rpcLog.add(fn);
-      lastFunction = fn;
-      lastParams = params == null ? null : Map<String, dynamic>.from(params);
-      final payload = rpcResults[fn] ?? _defaultPayload(fn);
-      return _DelayedFakePostgrestRpc(payload, delay) as PostgrestFilterBuilder<T>;
-    }
-    return super.rpc(fn, params: params, get: get);
-  }
-}
-
-class _DelayedFakePostgrestRpc extends FakePostgrestRpc {
-  _DelayedFakePostgrestRpc(super.result, this.delay);
-
-  final Duration delay;
-
-  @override
-  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
-    return Future<void>.delayed(delay).then((_) => super.then(onValue, onError: onError));
-  }
-}
-=======
       final inner = super.rpc<T>(fn, params: params, get: get);
       return _DelayedPostgrestRpcWrapper(inner, delay) as PostgrestFilterBuilder<T>;
     }
@@ -457,4 +427,3 @@ class _DelayedPostgrestRpcWrapper extends Fake implements PostgrestFilterBuilder
     return Future<void>.delayed(delay).then((_) => _inner.then(onValue, onError: onError));
   }
 }
->>>>>>> master

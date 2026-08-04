@@ -6,10 +6,6 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_badge.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-=======
->>>>>>> master
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';

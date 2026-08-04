@@ -26,8 +26,6 @@ void main() {
       expect(promotion.isExpiredOn(DateTime(2026, 1, 31)), isFalse);
     });
   });
-<<<<<<< HEAD
-=======
 
   group('ServicePromotion.tryParse', () {
     test('parses valid promotion wire values', () {
@@ -76,5 +74,4 @@ void main() {
       expect(promotion.wireEndDate, '2026-01-20');
     });
   });
->>>>>>> master
 }

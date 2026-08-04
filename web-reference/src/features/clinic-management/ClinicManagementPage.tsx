@@ -1,36 +1,24 @@
 import { useState } from 'react'
-<<<<<<< HEAD
-import { Building2, MapPin, Shield, Users } from 'lucide-react'
-=======
 import { Building2, MapPin, Settings, Shield, Stethoscope, Users } from 'lucide-react'
->>>>>>> master
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs } from '@/components/navigation/Tabs'
 import { OrganizationTab } from './components/OrganizationTab'
 import { BranchesTab } from './components/BranchesTab'
 import { StaffTab } from './components/StaffTab'
 import { RolesTab } from './components/RolesTab'
-<<<<<<< HEAD
-import { useClinicManagementState } from './useClinicManagementState'
-import type { BranchFormValues, StaffFormValues, StaffRole } from './types'
-=======
 import { ServicesTab } from './components/ServicesTab'
 import { ClinicSettingsTab } from './components/ClinicSettingsTab'
 import { useClinicManagementState } from './useClinicManagementState'
 import type { BranchFormValues, StaffFormValues, StaffRole } from './types'
 import type { ServiceFormValues } from './forms/ServiceFormFields'
->>>>>>> master
 
 const TAB_ITEMS = [
   { id: 'organization', label: 'Organization' },
   { id: 'branches', label: 'Branches' },
   { id: 'staff', label: 'Staff' },
   { id: 'roles', label: 'Roles' },
-<<<<<<< HEAD
-=======
   { id: 'services', label: 'Services' },
   { id: 'settings', label: 'Settings' },
->>>>>>> master
 ] as const
 
 type TabId = (typeof TAB_ITEMS)[number]['id']
@@ -83,8 +71,6 @@ export function ClinicManagementPage() {
     })
   }
 
-<<<<<<< HEAD
-=======
   const handleAddService = (values: ServiceFormValues) => {
     state.addService({
       id: newId('service'),
@@ -121,7 +107,6 @@ export function ClinicManagementPage() {
     }
   }
 
->>>>>>> master
   return (
     <div className="space-y-8 pb-8">
       <PageHeader
@@ -134,19 +119,7 @@ export function ClinicManagementPage() {
           ...item,
           label: (
             <span className="inline-flex items-center gap-2">
-<<<<<<< HEAD
-              {item.id === 'organization' ? (
-                <Building2 size={15} strokeWidth={1.75} />
-              ) : item.id === 'branches' ? (
-                <MapPin size={15} strokeWidth={1.75} />
-              ) : item.id === 'staff' ? (
-                <Users size={15} strokeWidth={1.75} />
-              ) : (
-                <Shield size={15} strokeWidth={1.75} />
-              )}
-=======
               {tabIcon(item.id)}
->>>>>>> master
               {item.label}
             </span>
           ),
@@ -187,8 +160,6 @@ export function ClinicManagementPage() {
       ) : null}
 
       {tab === 'roles' ? <RolesTab /> : null}
-<<<<<<< HEAD
-=======
 
       {tab === 'services' ? (
         <ServicesTab
@@ -202,7 +173,6 @@ export function ClinicManagementPage() {
       ) : null}
 
       {tab === 'settings' ? <ClinicSettingsTab /> : null}
->>>>>>> master
     </div>
   )
 }

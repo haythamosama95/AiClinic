@@ -105,9 +105,6 @@
   "maritalStatusSingle": "Single",
   "maritalStatusMarried": "Married",
   "maritalStatusDivorced": "Divorced",
-<<<<<<< HEAD
-  "maritalStatusWidowed": "Widowed"
-=======
   "maritalStatusWidowed": "Widowed",
   "breadcrumbCalendar": "Calendar",
   "breadcrumbQueue": "Queue",
@@ -116,5 +113,4 @@
   "breadcrumbVisitChronicle": "Visit chronicle",
   "breadcrumbVisitBilling": "Billing",
   "breadcrumbNotFound": "Not found"
->>>>>>> master
 }

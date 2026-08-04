@@ -1,9 +1,16 @@
-import type { CanonicalResult } from "../contracts/canonical";
-import type { TaxonomyCode } from "../errors";
-import type { Principal } from "../identity";
-import type { Manifest } from "../manifest";
-import { normalizeRequestReference } from "../reference";
+import { buildErrorBody, type TaxonomyCode } from "../errors";
+import {
+  EnrolledKeyVerifier,
+  type Principal,
+} from "../identity";
+import type { InteractionMode, Manifest } from "../manifest";
+import {
+  generateRequestReference,
+  normalizeRequestReference,
+} from "../reference";
 import { generateUlid } from "../trace";
+import { ConfigCache, createD1ConfigReader } from "../config-cache";
+import type { CanonicalResult } from "../contracts/canonical";
 
 export type TransitionState =
   | "Accepted"
@@ -26,6 +33,7 @@ export type RequestRowInput = {
   traceId: string;
   conversationId?: string | null;
   turnOrdinal?: number | null;
+  routingTier?: "standard" | "degraded";
 };
 
 export type AttemptInput = {
@@ -65,13 +73,21 @@ export type Envelope = {
 
 export type GetRequestResult =
   | { found: true; state: "Completed"; result: CanonicalResult }
+  | { found: true; state: "Completed"; resultMissing: true }
   | { found: true; state: "Failed"; terminalErrorCode: TaxonomyCode }
   | { found: true; state: "Cancelled" }
+  | { found: true; state: "AwaitingContext" }
+  | { found: true; state: TransitionState; pending: true }
   | { found: false };
 
 type CreateRequestRowResult =
   | { ok: true }
-  | { ok: false; code: "internal_error" };
+  | {
+      ok: false;
+      code: "internal_error";
+      request_reference: string;
+      trace_id: string;
+    };
 
 type WritePostResponseBindings = {
   db: D1Database;
@@ -84,6 +100,10 @@ type GetRequestBindings = {
   r2: R2Bucket;
 };
 
+export type GetRequestOptions = {
+  installationId?: string;
+};
+
 const TERMINAL_TRANSITION_STATES = new Set<TransitionState>([
   "Completed",
   "Failed",
@@ -91,34 +111,48 @@ const TERMINAL_TRANSITION_STATES = new Set<TransitionState>([
   "AwaitingContext",
 ]);
 
-/** In-isolate guard-rejection tally keyed by time bucket + dimension set (§4.3.12). */
-const guardRejectionTally = new Map<string, number>();
+const KNOWN_TRANSITION_STATES = new Set<TransitionState>([
+  "Accepted",
+  "Composing",
+  "Invoking",
+  "Streaming",
+  "Validating",
+  "Repairing",
+  "AwaitingContext",
+  "Completed",
+  "Failed",
+  "Cancelled",
+]);
 
-function currentTimeBucket(now = new Date()): string {
-  const iso = now.toISOString();
-  return `${iso.slice(0, 16)}:00`;
+/** SQL fragment: refuse writes once a terminal state is reached (§6.3). */
+const TERMINAL_IMMUTABLE_WHERE =
+  "request_id = ? AND state NOT IN ('Completed','Failed','Cancelled','AwaitingContext')";
+
+export const JOURNAL_TERMINAL_IMMUTABLE_STATES: readonly TransitionState[] = [
+  "Completed",
+  "Failed",
+  "Cancelled",
+  "AwaitingContext",
+];
+
+export function isJournalTerminalState(state: TransitionState): boolean {
+  return TERMINAL_TRANSITION_STATES.has(state);
 }
 
-function dimensionSetFor(errorCode: string, installationId: string): string {
-  return JSON.stringify({
-    error_code: errorCode,
-    installation_id: installationId,
-  });
+export function isJournalTransitionAllowed(
+  from: TransitionState,
+  to: TransitionState,
+): boolean {
+  if (TERMINAL_TRANSITION_STATES.has(from)) {
+    return false;
+  }
+  return true;
 }
 
-function tallyMapKey(timeBucket: string, dimensionSet: string): string {
-  return `${timeBucket}\0${dimensionSet}`;
-}
-
-async function counterIdFor(
-  dimensionSet: string,
-  timeBucket: string,
-): Promise<string> {
-  const data = new TextEncoder().encode(`${timeBucket}:${dimensionSet}`);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+export function canReachAwaitingContext(
+  interactionMode: InteractionMode,
+): boolean {
+  return interactionMode === "conversational";
 }
 
 function envelopeKey(requestId: string): string {
@@ -133,6 +167,10 @@ function buildEnvelope(input: PostResponseInput): string {
     result: input.validatedResult,
   };
   return JSON.stringify(envelope);
+}
+
+function isTransitionState(value: string): value is TransitionState {
+  return KNOWN_TRANSITION_STATES.has(value as TransitionState);
 }
 
 export async function createRequestRow(
@@ -154,8 +192,8 @@ export async function createRequestRow(
           request_id, request_reference, installation_id, actor_id, branch_id,
           capability_id, capability_version, prompt_artifact_hash, idempotency_key,
           trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
-          payload_pointer, conversation_id, turn_ordinal
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+          payload_pointer, conversation_id, turn_ordinal, routing_tier
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
       )
       .bind(
         input.requestId,
@@ -173,11 +211,22 @@ export async function createRequestRow(
         now,
         conversationId,
         turnOrdinal,
+        input.routingTier ?? null,
       )
       .run();
     return { ok: true };
   } catch {
-    return { ok: false, code: "internal_error" };
+    const body = buildErrorBody({
+      code: "internal_error",
+      requestReference: input.requestReference,
+      traceId: input.traceId,
+    });
+    return {
+      ok: false,
+      code: "internal_error",
+      request_reference: body.request_reference,
+      trace_id: body.trace_id,
+    };
   }
 }
 
@@ -192,7 +241,7 @@ export async function journalTransition(
       .prepare(
         `UPDATE ai_request
          SET state = ?, updated_at = ?, completed_at = ?
-         WHERE request_id = ?`,
+         WHERE ${TERMINAL_IMMUTABLE_WHERE}`,
       )
       .bind(state, now, now, requestId)
       .run();
@@ -201,7 +250,8 @@ export async function journalTransition(
 
   await db
     .prepare(
-      `UPDATE ai_request SET state = ?, updated_at = ? WHERE request_id = ?`,
+      `UPDATE ai_request SET state = ?, updated_at = ?
+       WHERE ${TERMINAL_IMMUTABLE_WHERE}`,
     )
     .bind(state, now, requestId)
     .run();
@@ -215,13 +265,16 @@ export async function recordTerminalState(
   db: D1Database,
 ): Promise<void> {
   if (state === "Failed") {
+    if (terminalErrorCode === undefined) {
+      throw new Error("Failed terminal state requires terminalErrorCode");
+    }
     await db
       .prepare(
         `UPDATE ai_request
          SET state = ?, updated_at = ?, completed_at = ?, terminal_error_code = ?
-         WHERE request_id = ?`,
+         WHERE ${TERMINAL_IMMUTABLE_WHERE}`,
       )
-      .bind(state, now, now, terminalErrorCode ?? null, requestId)
+      .bind(state, now, now, terminalErrorCode, requestId)
       .run();
     return;
   }
@@ -230,7 +283,7 @@ export async function recordTerminalState(
     .prepare(
       `UPDATE ai_request
        SET state = ?, updated_at = ?, completed_at = ?
-       WHERE request_id = ?`,
+       WHERE ${TERMINAL_IMMUTABLE_WHERE}`,
     )
     .bind(state, now, now, requestId)
     .run();
@@ -241,8 +294,8 @@ async function persistPostResponseDetail(
   db: D1Database,
   r2: R2Bucket,
 ): Promise<void> {
-  for (const attempt of input.attempts) {
-    await db
+  const statements: D1PreparedStatement[] = input.attempts.map((attempt) =>
+    db
       .prepare(
         `INSERT INTO ai_attempt (
           attempt_id, request_id, attempt_no, provider, model, outcome,
@@ -262,28 +315,30 @@ async function persistPostResponseDetail(
         attempt.cost,
         attempt.providerRequestId ?? null,
         attempt.errorCode ?? null,
-      )
-      .run();
-  }
+      ),
+  );
 
-  await db
-    .prepare(
-      `INSERT INTO usage_event (
-        usage_event_id, installation_id, period, request_id,
-        quota_weight, tokens, cost, recorded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      generateUlid(),
-      input.installationId,
-      input.period,
-      input.requestId,
-      input.quotaWeight,
-      input.totalTokens,
-      input.totalCost,
-      input.recordedAt,
-    )
-    .run();
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO usage_event (
+          usage_event_id, installation_id, period, request_id,
+          quota_weight, tokens, cost, recorded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        generateUlid(),
+        input.installationId,
+        input.period,
+        input.requestId,
+        input.quotaWeight,
+        input.totalTokens,
+        input.totalCost,
+        input.recordedAt,
+      ),
+  );
+
+  await db.batch(statements);
 
   const key = envelopeKey(input.requestId);
   await r2.put(key, buildEnvelope(input));
@@ -300,13 +355,19 @@ export function writePostResponseDetail(
 ): void {
   bindings.ctx.waitUntil(
     persistPostResponseDetail(input, bindings.db, bindings.r2).catch(
-      () => undefined,
+      (err) => {
+        console.error("stage16_post_response_detail_failed", {
+          request_id: input.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      },
     ),
   );
 }
 
 type AiRequestLookupRow = {
   request_id: string;
+  installation_id: string;
   state: string;
   terminal_error_code: string | null;
   payload_pointer: string | null;
@@ -315,11 +376,12 @@ type AiRequestLookupRow = {
 export async function getRequest(
   reference: string,
   bindings: GetRequestBindings,
+  options?: GetRequestOptions,
 ): Promise<GetRequestResult> {
   const normalized = normalizeRequestReference(reference);
   const row = await bindings.db
     .prepare(
-      `SELECT request_id, state, terminal_error_code, payload_pointer
+      `SELECT request_id, installation_id, state, terminal_error_code, payload_pointer
        FROM ai_request WHERE request_reference = ?`,
     )
     .bind(normalized)
@@ -329,25 +391,44 @@ export async function getRequest(
     return { found: false };
   }
 
+  if (
+    options?.installationId !== undefined &&
+    row.installation_id !== options.installationId
+  ) {
+    return { found: false };
+  }
+
   if (row.state === "Completed") {
-    const pointer = row.payload_pointer ?? envelopeKey(row.request_id);
-    const object = await bindings.r2.get(pointer);
-    if (!object) {
-      return { found: false };
+    if (row.payload_pointer === null) {
+      return { found: true, state: "Completed", resultMissing: true };
     }
-    const envelope = JSON.parse(await object.text()) as Envelope;
-    return {
-      found: true,
-      state: "Completed",
-      result: envelope.result,
-    };
+
+    const object = await bindings.r2.get(row.payload_pointer);
+    if (!object) {
+      return { found: true, state: "Completed", resultMissing: true };
+    }
+
+    try {
+      const envelope = JSON.parse(await object.text()) as Envelope;
+      return {
+        found: true,
+        state: "Completed",
+        result: envelope.result,
+      };
+    } catch {
+      return { found: true, state: "Completed", resultMissing: true };
+    }
   }
 
   if (row.state === "Failed") {
+    const code =
+      row.terminal_error_code && row.terminal_error_code.length > 0
+        ? (row.terminal_error_code as TaxonomyCode)
+        : "internal_error";
     return {
       found: true,
       state: "Failed",
-      terminalErrorCode: row.terminal_error_code as TaxonomyCode,
+      terminalErrorCode: code,
     };
   }
 
@@ -355,45 +436,86 @@ export async function getRequest(
     return { found: true, state: "Cancelled" };
   }
 
+  if (row.state === "AwaitingContext") {
+    return { found: true, state: "AwaitingContext" };
+  }
+
+  if (isTransitionState(row.state) && !TERMINAL_TRANSITION_STATES.has(row.state)) {
+    return { found: true, state: row.state, pending: true };
+  }
+
   return { found: false };
 }
 
-export function recordGuardRejection(input: {
-  installationId: string;
-  errorCode: string;
-  traceId: string;
-}): void {
-  void input.traceId;
-  const timeBucket = currentTimeBucket();
-  const dimensionSet = dimensionSetFor(
-    input.errorCode,
-    input.installationId,
-  );
-  const key = tallyMapKey(timeBucket, dimensionSet);
-  guardRejectionTally.set(key, (guardRejectionTally.get(key) ?? 0) + 1);
+export type AuthenticateGetRequestResult =
+  | { ok: true; principal: Principal }
+  | { ok: false; code: "unauthenticated" | "installation_suspended" };
+
+/**
+ * Authenticate GET /v1/requests/{reference} with the §5.6 enrolled-key verifier.
+ * Requires `Authorization: Bearer <token>`; scopes subsequent getRequest by installation.
+ */
+export async function authenticateGetRequest(
+  request: Request,
+  env: { DB: D1Database },
+): Promise<AuthenticateGetRequestResult> {
+  const header = request.headers.get("Authorization");
+  if (header === null || !header.startsWith("Bearer ")) {
+    return { ok: false, code: "unauthenticated" };
+  }
+
+  const token = header.slice("Bearer ".length).trim();
+  if (token.length === 0) {
+    return { ok: false, code: "unauthenticated" };
+  }
+
+  const verifier = new EnrolledKeyVerifier();
+  const result = await verifier.verify(token, {
+    audience: "ai-platform",
+    clockSkewSeconds: 60,
+    now: Math.floor(Date.now() / 1000),
+    cache: new ConfigCache(),
+    reader: createD1ConfigReader(env.DB),
+  });
+
+  if (!result.ok) {
+    return { ok: false, code: result.code };
+  }
+
+  return { ok: true, principal: result.principal };
 }
 
-export async function flushGuardRejectionCounters(bindings: {
-  DB: D1Database;
-}): Promise<void> {
-  if (guardRejectionTally.size === 0) {
-    return;
-  }
+/** Build a taxonomy error body for failed get-request authentication. */
+export function getRequestAuthErrorBody(
+  code: "unauthenticated" | "installation_suspended" = "unauthenticated",
+): ReturnType<typeof buildErrorBody> {
+  return buildErrorBody({
+    code,
+    requestReference: generateRequestReference(),
+    traceId: generateUlid(),
+  });
+}
 
-  for (const [mapKey, count] of guardRejectionTally) {
-    const separator = mapKey.indexOf("\0");
-    const timeBucket = mapKey.slice(0, separator);
-    const dimensionSet = mapKey.slice(separator + 1);
-    const counterId = await counterIdFor(dimensionSet, timeBucket);
+export type ConversationLegRow = {
+  request_id: string;
+  conversation_id: string;
+  turn_ordinal: number;
+  state: TransitionState;
+};
 
-    await bindings.DB.prepare(
-      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(counter_id) DO UPDATE SET count = count + excluded.count`,
+export async function listConversationLegs(
+  conversationId: string,
+  db: D1Database,
+): Promise<ConversationLegRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT request_id, conversation_id, turn_ordinal, state
+       FROM ai_request
+       WHERE conversation_id = ?
+       ORDER BY turn_ordinal`,
     )
-      .bind(counterId, dimensionSet, timeBucket, count)
-      .run();
-  }
+    .bind(conversationId)
+    .all<ConversationLegRow>();
 
-  guardRejectionTally.clear();
+  return result.results ?? [];
 }

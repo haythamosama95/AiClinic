@@ -158,18 +158,43 @@ describe("T-A5-02 context_key_malformed_format_rejected", () => {
 });
 
 describe("T-A5-03 context_key_storage_named_rejected", () => {
-  it("rejects visits_vitals_table@v1", () => {
-    assertRejected(validateKey("visits_vitals_table@v1"));
+  it("rejects visits_vitals_table@v1 as storage_named_key", () => {
+    assertRejected(validateKey("visits_vitals_table@v1"), "storage_named_key");
   });
 
-  it("rejects get_visit_vitals_rpc@v1", () => {
-    assertRejected(validateKey("get_visit_vitals_rpc@v1"));
+  it("rejects get_visit_vitals_rpc@v1 as storage_named_key", () => {
+    assertRejected(validateKey("get_visit_vitals_rpc@v1"), "storage_named_key");
+  });
+
+  it("rejects visits.vitals_table@v1 (well-formed, concept ends with _table)", () => {
+    assertRejected(validateKey("visits.vitals_table@v1"), "storage_named_key");
+  });
+
+  it("rejects visits.vitals_view@v1 (well-formed, concept ends with _view)", () => {
+    assertRejected(validateKey("visits.vitals_view@v1"), "storage_named_key");
+  });
+
+  it("rejects clinic.get_visit_vitals_rpc@v1 (well-formed get_*_rpc concept)", () => {
+    assertRejected(
+      validateKey("clinic.get_visit_vitals_rpc@v1"),
+      "storage_named_key",
+    );
   });
 });
 
 describe("T-A5-04 context_key_unknown_version_rejected", () => {
-  it("rejects visit.vitals@v9 for an unpublished version", () => {
-    assertRejected(validateKey("visit.vitals@v9"));
+  it("rejects visit.vitals@v9 for a known concept with unpublished version", () => {
+    assertRejected(validateKey("visit.vitals@v9"), "unknown_version");
+  });
+
+  it("rejects patient.demographics@v2 for a known concept with unpublished version", () => {
+    assertRejected(validateKey("patient.demographics@v2"), "unknown_version");
+  });
+});
+
+describe("T-A5-04b context_key_unknown_key_rejected", () => {
+  it("rejects a well-formed key whose domain.concept is outside the vocabulary as unknown_key", () => {
+    assertRejected(validateKey("patient.allergies@v1"), "unknown_key");
   });
 });
 

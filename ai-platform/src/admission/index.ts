@@ -3,8 +3,8 @@
  */
 
 import {
+  ConfigCacheMissError,
   type ConfigCache,
-  type ConfigEntityKind,
   type D1Reader,
   loadConfig,
 } from "../config-cache";
@@ -13,8 +13,14 @@ import type {
   AdmissionResponse,
   EntitlementSnapshot,
 } from "../quota-do/index";
+import {
+  flushRejectionCounters,
+  recordGuardRejection,
+} from "../rate-limit";
 
 const GRACE_ADMISSION_CAP = 5;
+/** Matches B3 identity default skew (seconds) for the defensive stage-8 recheck. */
+const ADMISSION_CLOCK_SKEW_SECONDS = 60;
 
 type D1Row = Record<string, unknown>;
 
@@ -50,39 +56,44 @@ type IdempotencyPriorState = {
 };
 
 type AdmissionSuccess =
-  | { ok: true; outcome: "admitted"; requestId: string }
+  | { ok: true; outcome: "admitted"; requestId: string; degraded?: boolean }
   | { ok: true; outcome: "grace_admitted"; requestId: string; requestReference: string }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "concurrency_exhausted" | "internal_error";
+  /** Stage 8 owns only §5.4 codes named in §6.1: `unauthenticated` | `quota_exhausted`. */
+  code: "unauthenticated" | "quota_exhausted" | "internal_error";
+  periodReset?: string;
 };
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
 
+/**
+ * Queued grace admission params for later DO re-admission + settlement.
+ * `graceRequestId` is Worker-local tracking only — never a DO-issued requestId.
+ */
 export type PendingGraceAdmission = {
   installationId: string;
-  requestId: string;
   requestReference: string;
   jti: string;
   idempotencyKey: string;
   entitlement: EntitlementSnapshot;
+  /** Local Worker-side tracking id returned as `grace_admitted.requestId`. */
+  graceRequestId: string;
+  usage?: { tokens: number; cost: number };
+  partial?: boolean;
 };
 
-/** In-isolate rejection tally keyed by time bucket + dimension set (§4.3.12). */
-const rejectionTally = new Map<string, number>();
+type AdmissionDoTransportResult =
+  | { ok: true; body: AdmissionResponse }
+  | { ok: false; reason: "unavailable" }
+  | { ok: false; reason: "client_error" };
 
 /** Grace admissions consumed per installation during a DO unavailability episode. */
 const graceAdmissionsUsed = new Map<string, number>();
 
 const graceReconciliationQueue: PendingGraceAdmission[] = [];
-
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read: (key) => reader.read(`${kind}:${key}`),
-  };
-}
 
 function parseAllowedCapabilities(entitlement: D1Row): string[] {
   const raw = entitlement.allowed_capabilities;
@@ -90,7 +101,12 @@ function parseAllowedCapabilities(entitlement: D1Row): string[] {
     return raw as string[];
   }
   if (typeof raw === "string") {
-    return JSON.parse(raw) as string[];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -113,40 +129,6 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
   };
 }
 
-function currentTimeBucket(now = new Date()): string {
-  const iso = now.toISOString();
-  return `${iso.slice(0, 16)}:00`;
-}
-
-function dimensionSetFor(errorCode: string, installationId: string): string {
-  return JSON.stringify({
-    error_code: errorCode,
-    installation_id: installationId,
-  });
-}
-
-function tallyMapKey(timeBucket: string, dimensionSet: string): string {
-  return `${timeBucket}\0${dimensionSet}`;
-}
-
-function recordRejection(errorCode: string, installationId: string): void {
-  const timeBucket = currentTimeBucket();
-  const dimensionSet = dimensionSetFor(errorCode, installationId);
-  const key = tallyMapKey(timeBucket, dimensionSet);
-  rejectionTally.set(key, (rejectionTally.get(key) ?? 0) + 1);
-}
-
-async function counterIdFor(
-  dimensionSet: string,
-  timeBucket: string,
-): Promise<string> {
-  const data = new TextEncoder().encode(`${timeBucket}:${dimensionSet}`);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 function resetGraceCounterOnDoSuccess(installationId: string): void {
   graceAdmissionsUsed.delete(installationId);
 }
@@ -155,9 +137,41 @@ function queueGraceAdmission(entry: PendingGraceAdmission): void {
   graceReconciliationQueue.push(entry);
 }
 
+/** Re-queues a pending grace entry after a failed reconcile attempt. */
+export function requeueGraceAdmission(entry: PendingGraceAdmission): void {
+  graceReconciliationQueue.push(entry);
+}
+
 /** Drains pending grace admissions for stage-15 reconciliation (§15 #3). */
 export function drainPendingGraceAdmissions(): PendingGraceAdmission[] {
   return graceReconciliationQueue.splice(0);
+}
+
+/** Non-destructive view of the grace reconciliation queue (tests / diagnostics). */
+export function peekPendingGraceAdmissions(): readonly PendingGraceAdmission[] {
+  return graceReconciliationQueue.slice();
+}
+
+/**
+ * Attaches usage to a pending grace entry before reconcile (stage-15 path for
+ * grace-admitted requests). Matches by `graceRequestId` or `requestReference`.
+ */
+export function attachGraceUsage(
+  graceRequestIdOrReference: string,
+  usage: { tokens: number; cost: number },
+  partial = false,
+): boolean {
+  const entry = graceReconciliationQueue.find(
+    (candidate) =>
+      candidate.graceRequestId === graceRequestIdOrReference ||
+      candidate.requestReference === graceRequestIdOrReference,
+  );
+  if (!entry) {
+    return false;
+  }
+  entry.usage = usage;
+  entry.partial = partial;
+  return true;
 }
 
 /** Resets the in-isolate grace cap for an installation after reconciliation (Open Decision 3). */
@@ -169,20 +183,29 @@ async function callAdmissionDo(
   bindings: AdmissionBindings,
   installationId: string,
   body: Record<string, unknown>,
-): Promise<AdmissionResponse | null> {
-  const id = bindings.DO.idFromString(installationId);
+): Promise<AdmissionDoTransportResult> {
+  const id = bindings.DO.idFromName(installationId);
   const stub = bindings.DO.get(id);
-  const response = await stub.fetch("https://quota-do.internal/rpc", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
 
-  if (!response.ok) {
-    return null;
+  let response: Response;
+  try {
+    response = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { ok: false, reason: "unavailable" };
   }
 
-  return (await response.json()) as AdmissionResponse;
+  if (response.status >= 500) {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (!response.ok) {
+    return { ok: false, reason: "client_error" };
+  }
+
+  return { ok: true, body: (await response.json()) as AdmissionResponse };
 }
 
 function mapDoOutcome(
@@ -191,28 +214,39 @@ function mapDoOutcome(
 ): AdmissionResult {
   switch (body.outcome) {
     case "admitted":
-      return { ok: true, outcome: "admitted", requestId: body.requestId };
+      return {
+        ok: true,
+        outcome: "admitted",
+        requestId: body.requestId,
+        ...(body.degraded ? { degraded: true } : {}),
+      };
     case "replay":
-      recordRejection("unauthenticated", installationId);
+      recordGuardRejection({
+        error_code: "unauthenticated",
+        installation_id: installationId,
+      });
       return { ok: false, code: "unauthenticated" };
     case "idempotent":
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
     case "quota_exhausted":
-      recordRejection("quota_exhausted", installationId);
-      return { ok: false, code: "quota_exhausted" };
+      recordGuardRejection({
+        error_code: "quota_exhausted",
+        installation_id: installationId,
+      });
+      return {
+        ok: false,
+        code: "quota_exhausted",
+        periodReset: body.period_end,
+      };
     case "concurrency_exhausted":
-      recordRejection("concurrency_exhausted", installationId);
-      return { ok: false, code: "concurrency_exhausted" };
+      // §6.1 stage 8 / Edge Cases: map onto `quota_exhausted` (closed §5.4 taxonomy).
+      recordGuardRejection({
+        error_code: "quota_exhausted",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "quota_exhausted" };
     default:
       return { ok: false, code: "internal_error" };
-  }
-}
-
-function removeGraceQueueEntriesFor(installationId: string): void {
-  for (let index = graceReconciliationQueue.length - 1; index >= 0; index -= 1) {
-    if (graceReconciliationQueue[index]?.installationId === installationId) {
-      graceReconciliationQueue.splice(index, 1);
-    }
   }
 }
 
@@ -225,23 +259,31 @@ function admitUnderGrace(
   const installationId = principal.installationId;
   const used = graceAdmissionsUsed.get(installationId) ?? 0;
   if (used >= GRACE_ADMISSION_CAP) {
-    removeGraceQueueEntriesFor(installationId);
-    return { ok: false, code: "internal_error" };
+    recordGuardRejection({
+      error_code: "quota_exhausted",
+      installation_id: installationId,
+    });
+    return { ok: false, code: "quota_exhausted" };
   }
 
   graceAdmissionsUsed.set(installationId, used + 1);
-  const requestId = crypto.randomUUID();
+  const graceRequestId = crypto.randomUUID();
 
   queueGraceAdmission({
     installationId: principal.installationId,
-    requestId,
     requestReference,
     jti: principal.jti,
     idempotencyKey,
     entitlement,
+    graceRequestId,
   });
 
-  return { ok: true, outcome: "grace_admitted", requestId, requestReference };
+  return {
+    ok: true,
+    outcome: "grace_admitted",
+    requestId: graceRequestId,
+    requestReference,
+  };
 }
 
 export async function runAdmission(
@@ -252,16 +294,33 @@ export async function runAdmission(
   const now = ctx?.now ?? Date.now();
   const { principal, idempotencyKey, requestReference, cache, reader } = input;
 
-  if (principal.exp <= now) {
+  // Defensive recheck for §6.2 harness / mis-ordered pipeline: align with B3 skew.
+  if (now > principal.exp + ADMISSION_CLOCK_SKEW_SECONDS) {
+    recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: principal.installationId,
+    });
     return { ok: false, code: "unauthenticated" };
   }
 
-  const entitlementRow = await loadConfig(
-    cache,
-    scopeReaderForKind(reader, "entitlements"),
-    "entitlements",
-    principal.installationId,
-  );
+  let entitlementRow: D1Row;
+  try {
+    entitlementRow = await loadConfig(
+      cache,
+      reader,
+      "entitlements",
+      principal.installationId,
+    );
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      recordGuardRejection({
+        error_code: "quota_exhausted",
+        installation_id: principal.installationId,
+      });
+      return { ok: false, code: "quota_exhausted" };
+    }
+    throw error;
+  }
   const entitlement = mapEntitlementSnapshot(entitlementRow);
 
   const rpcBody = {
@@ -273,40 +332,34 @@ export async function runAdmission(
     requestReference,
   };
 
-  try {
-    const body = await callAdmissionDo(bindings, principal.installationId, rpcBody);
-    if (body === null || body.kind !== "admission") {
+  const transport = await callAdmissionDo(
+    bindings,
+    principal.installationId,
+    rpcBody,
+  );
+
+  if (!transport.ok) {
+    if (transport.reason === "unavailable") {
       return admitUnderGrace(principal, idempotencyKey, requestReference, entitlement);
     }
-
-    resetGraceCounterOnDoSuccess(principal.installationId);
-    return mapDoOutcome(body, principal.installationId);
-  } catch {
-    return admitUnderGrace(principal, idempotencyKey, requestReference, entitlement);
+    recordGuardRejection({
+      error_code: "internal_error",
+      installation_id: principal.installationId,
+    });
+    return { ok: false, code: "internal_error" };
   }
+
+  if (transport.body.kind !== "admission") {
+    recordGuardRejection({
+      error_code: "internal_error",
+      installation_id: principal.installationId,
+    });
+    return { ok: false, code: "internal_error" };
+  }
+
+  resetGraceCounterOnDoSuccess(principal.installationId);
+  return mapDoOutcome(transport.body, principal.installationId);
 }
 
-export async function flushRejectionCounters(
-  bindings: Pick<AdmissionBindings, "DB">,
-): Promise<void> {
-  if (rejectionTally.size === 0) {
-    return;
-  }
-
-  for (const [mapKey, count] of rejectionTally) {
-    const separator = mapKey.indexOf("\0");
-    const timeBucket = mapKey.slice(0, separator);
-    const dimensionSet = mapKey.slice(separator + 1);
-    const counterId = await counterIdFor(dimensionSet, timeBucket);
-
-    await bindings.DB.prepare(
-      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(counter_id) DO UPDATE SET count = count + excluded.count`,
-    )
-      .bind(counterId, dimensionSet, timeBucket, count)
-      .run();
-  }
-
-  rejectionTally.clear();
-}
+/** Re-export B3 shared flush — admission no longer keeps a private tally. */
+export { flushRejectionCounters };

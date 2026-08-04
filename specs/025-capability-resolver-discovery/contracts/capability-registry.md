@@ -21,8 +21,9 @@ computation, the `If-None-Match` → `304` rule, or the resolved-manifest immuta
 C1 owns the in-memory **capability registry** (a map from registry keys to A4 manifests),
 the pipeline **resolver** stage (§6.1 stage 5), and the **discovery** surface (§5.5, §5.2).
 A submit request supplies a capability id and an exact version pin; `resolve()` returns one
-immutable manifest or a taxonomy error code. `discover()` returns the granted, `active`
-manifest set for the caller's installation and plan, plus a stable etag for client caching.
+immutable manifest or a taxonomy error code. `discover()` returns the granted manifests whose
+effective lifecycle is `active` or `deprecated` for the caller's installation and plan, plus a
+stable etag for client caching.
 
 The module does not re-implement manifest validation (A4's `load()` owns that) and does not
 translate taxonomy codes to HTTP statuses (A6 owns that). It emits codes and wire shapes only.
@@ -51,7 +52,7 @@ manifest's `Identity.capabilityId` and `Identity.version`. Lookup is exact: ther
 
 | Branch | Shape | Meaning |
 | --- | --- | --- |
-| Success | `{ ok: true, manifest: Manifest }` | The pinned version exists, is not `retired`, and is not kill-switched. |
+| Success | `{ ok: true, manifest: Manifest }` | The pinned version exists, is not effectively `retired`, passes plan-level allowance and grant-version checks, and is not kill-switched. |
 | Failure | `{ ok: false, code: <taxonomy code> }` | Resolution failed; see §4. |
 
 The `code` field on failure is exactly one of:
@@ -59,17 +60,21 @@ The `code` field on failure is exactly one of:
 | Code | Condition |
 | --- | --- |
 | `capability_unknown` | No registry entry for `capabilityId@version`. |
-| `capability_retired` | Entry exists and `Identity.lifecycleState === "retired"`. |
-| `capability_disabled` | Entry exists, is not `retired`, and any kill-switch scope is active (§4.3). |
+| `capability_retired` | Entry exists and effective lifecycle is `retired` (§4.2, §5.1). |
+| `forbidden_capability` | Entry exists and is not effectively `retired`, but the installation fails plan-level allowance or grant-version match (§4.3). |
+| `capability_disabled` | Entry exists, is not effectively `retired`, passes allowance/grant, and any kill-switch scope is active (§4.4). |
 
-No other failure codes are emitted by `resolve()`. Entitlement and plan-tier gating are
-discovery-only filters; an ineligible installation that pins an existing version receives
-`{ ok: true, manifest }` from `resolve()` (B3's `forbidden_capability` applies at stage 3, not
-here).
+No other failure codes are emitted by `resolve()`. Plan-level allowances and grant-version
+match are enforced in `resolve()` (fail closed with `forbidden_capability`); B3's stage 3
+still owns entitlement rejection on the submit path, and `resolve()` also fails closed on the
+same class of allowance/grant failures.
 
 ---
 
 ## 4. Resolver behaviour
+
+Evaluation order: **lookup → retired (effective lifecycle via overlay) → allowance/grant →
+kill switches**.
 
 ### 4.1 Exact version pin
 
@@ -79,24 +84,44 @@ Resolution honours the client's requested version literally. A request for `1.2.
 
 ### 4.2 Lifecycle states
 
-| `Identity.lifecycleState` | `resolve()` outcome |
+Effective lifecycle is derived from the published `Identity` overridden by a lifecycle overlay
+when present (§5.1). `resolve()` uses that effective state:
+
+| Effective `lifecycleState` | `resolve()` outcome |
 | --- | --- |
-| `active` | Served when not kill-switched. |
-| `deprecated` | Served when not kill-switched (deprecation is not a rejection; overlap window is J1). |
+| `active` | Continues to allowance/grant and kill-switch checks. |
+| `deprecated` | Continues (deprecation is not a rejection; overlap window is J1). |
 | `retired` | `{ ok: false, code: "capability_retired" }`. |
 
-### 4.3 Kill-switch evaluation
+### 4.3 Plan-level allowance and grant-version check
 
-After registry lookup and the retired check, `resolve()` reads kill-switch rows via
-`loadConfig(cache, reader, "kill_switches", …)` (B3 config-cache surface). The capability is
-disabled when **any** of the following scopes has `active === true`:
+After the retired check and before kill switches, `resolve()` enforces plan-level allowances
+and grant version match for the principal's installation:
+
+| Check | Rule | Failure |
+| --- | --- | --- |
+| Entitlement / plan | Installation entitlement is active and its `plan` meets or exceeds the manifest's `Access.minimumPlanTier`; `capabilityId` is listed in `allowed_capabilities`. Malformed `allowed_capabilities` fails closed. | `forbidden_capability` |
+| Grant presence | An installation grant `${installationId}/${capabilityId}` is tried first; on miss, a plan grant `plan:${plan}/${capabilityId}` is accepted (same B3 semantics). Revoked → reject. | `forbidden_capability` |
+| Grant version | When `capability_version` on the matched grant is a string, it must equal the requested (pinned) version. | `forbidden_capability` |
+
+Helper `getGrantedCapabilityVersion(installationId, capabilityId, cache, reader)` returns the
+grant's `capability_version` string, or `null` when the grant is missing, revoked, or has no
+string version.
+
+### 4.4 Kill-switch evaluation
+
+After registry lookup, the retired check, and the allowance/grant check, `resolve()` reads
+kill-switch rows via `loadConfig(cache, reader, "kill_switches", …)` (B3 config-cache
+surface). A **miss** (`ConfigCacheMissError`) is treated as `{ active: false }` / inactive —
+absent means inactive. The capability is disabled when **any** of the following scopes has
+`active === true`:
 
 | Scope key | Composition |
 | --- | --- |
 | `global` | Platform-wide kill switch. |
 | `capability:<capabilityId>` | Capability-scoped kill switch. |
 | `installation:<installationId>` | Installation-scoped kill switch (`principal.installationId`). |
-| `provider:<providerId>` | Provider-scoped kill switch; `providerId` is resolved from the manifest's `Routing.routingPolicyRef` via `active_routing_policy` config. Omitted when the policy row is absent. |
+| `provider:<providerId>` | Provider-scoped kill switch; `providerId` is resolved from the manifest's `Routing.routingPolicyRef` via `active_routing_policy` config. **Omitted** when the policy row is absent (miss) or when `routingPolicyRef` is not a string. |
 
 When any scope is active, `resolve()` returns `{ ok: false, code: "capability_disabled" }`.
 
@@ -115,12 +140,28 @@ When any scope is active, `resolve()` returns `{ ok: false, code: "capability_di
 
 | Field | Contents |
 | --- | --- |
-| `manifests` | Granted, `active`-lifecycle manifests for the principal's installation, sorted by registry key ascending. |
-| `etag` | Stable content hash of the granted+active set (§6). |
+| `manifests` | Granted manifests whose effective lifecycle is `active` or `deprecated` for the principal's installation, sorted by registry key ascending. When the overlay or published `Identity` provides a successor, the returned (possibly derived) manifest carries that successor identity. |
+| `etag` | Stable content hash of the filtered discovery set after effective-identity derivation (§6, §7). |
 
 The HTTP response body produced by `buildDiscoveryResponse()` serialises only
 `{ manifests: Manifest[] }`; the etag is carried on the `ETag` response header, not inside
 the JSON body.
+
+### 5.1 Lifecycle overlay and effective identity
+
+A lifecycle overlay may be loaded from the config cache at
+`grants` / `global/<capabilityId>/<version>`. When present, overlay fields override the
+published manifest `Identity` for effective lifecycle and successor (architecture §5.1):
+
+| Type / helper | Role |
+| --- | --- |
+| `LifecycleOverlay` | Overlay row shape (`lifecycle_state`, `successor_id`, optional timestamps). |
+| `EffectiveLifecycle` | `{ lifecycleState, successorId }` after overlay wins over published Identity. |
+| `effectiveLifecycle(manifest, overlay)` | Pure derivation; overlay `lifecycle_state` wins when set; successor falls back to published when overlay omits it. |
+
+When effective Identity differs from the published registry entry, `resolve()` / `discover()`
+return a derived, deep-frozen manifest copy with the effective `Identity` fields — the
+registry's published bytes remain untouched.
 
 ---
 
@@ -131,11 +172,14 @@ following hold:
 
 | Filter | Rule |
 | --- | --- |
-| Lifecycle | `Identity.lifecycleState === "active"` (`deprecated` and `retired` are excluded). |
+| Lifecycle | Effective lifecycle ∈ `{ active, deprecated }` (overlay wins over published Identity per §5.1). Effectively `retired` is excluded. |
 | Entitlement status | Installation entitlement row exists with `status === "active"`. |
 | Allowed capabilities | `capabilityId` is listed in entitlement `allowed_capabilities`. |
 | Plan tier | Entitlement `plan` meets or exceeds `Access.minimumPlanTier` (ordered: `starter` < `standard` < `professional` < `enterprise`). |
-| Grant | A `grants` row for `${installationId}/${capabilityId}` exists and `revoked_at` is null. |
+| Grant | A `grants` row for `${installationId}/${capabilityId}` exists, `revoked_at` is null, **and** when `capability_version` is a string it must equal the manifest version. |
+
+Kill switches are **not** applied to discovery: a killed capability may still be advertised.
+The discovery etag does **not** change on a kill-switch flip alone.
 
 Capabilities that fail any filter are **absent** from the result — not emitted as errors.
 When entitlement is missing, inactive, or has no plan, `discover()` returns an empty
@@ -154,40 +198,65 @@ When entitlement is missing, inactive, or has no plan, `discover()` returns an e
    - `Identity`, `Access`, `Interaction`, `Input`, `Context requirements`, `Prompt binding`,
      `Output`, `Routing`, `Economics`, `Governance`.
 3. **Hash** the wrapper object `{ manifests: [<hash inputs in sorted order>] }` with A4's
-   `hashManifest()` — canonical encoding (sorted object keys, recursive; FNV-1a 32-bit,
-   hex-padded to 8 characters). No separate hashing mechanism is introduced (R-20).
+   `hashManifest()` — canonical encoding (sorted object keys, recursive; **SHA-256**, hex
+   digest). No separate hashing mechanism is introduced (R-20).
 
-Any change to the granted+active set — adding or removing a manifest, or changing any field
-group on a member manifest — produces a different etag.
+The input list is the **filtered discovery set after effective-identity derivation**
+(overlay-derived manifests when Identity changed) — not raw published-only registry entries.
+Any change to that set — adding or removing a manifest, or changing any field group on a
+member (including overlay-driven Identity flips) — produces a different etag. Kill-switch
+flips alone do not.
 
 ---
 
 ## 8. Conditional discovery response
 
-`buildDiscoveryResponse(request, manifestList, etag)` implements §5.2 revalidation:
+`buildDiscoveryResponse(request, manifestList, etag)` implements §5.2 revalidation.
+
+**Wire ETag.** The value returned by `computeDiscoveryEtag` is the raw hash. On the wire the
+`ETag` header is the quoted strong tag `"${rawHash}"` (e.g. `ETag: "9f3a…"`).
+
+**`If-None-Match` matching:**
 
 | Condition | Response |
 | --- | --- |
-| `request.headers.get("If-None-Match") === etag` | `304 Not Modified`, empty body, `ETag` header set to `etag`. The manifest list is **not** re-serialised. |
-| Otherwise | `200 OK`, JSON body `{ manifests: manifestList }`, headers `ETag: <etag>` and `Content-Type: application/json`. |
+| Header absent | `200 OK` with body. |
+| Header is `*` | `304 Not Modified`, empty body (no re-serialisation). |
+| Comma-separated list | Weak comparison: optional `W/` prefix stripped; surrounding quotes stripped per tag; match if any list member equals the raw hash (bare unquoted raw hash also accepted). On match → `304`; otherwise `200`. |
 
-The comparison is a strict string equality on the full etag value.
+**Headers on both 200 and 304:**
+
+| Header | Value |
+| --- | --- |
+| `ETag` | `"${rawHash}"` (quoted strong tag) |
+| `Cache-Control` | `private, must-revalidate` |
+| `Content-Type` | `application/json` on `200` only |
+
+A `304` does **not** re-serialise the manifest list (empty body). A `200` returns JSON body
+`{ manifests: manifestList }`.
 
 ---
 
 ## 9. Resolved-manifest immutability
 
-Manifests enter the registry through `createCapabilityRegistry()`, which applies `deepFreeze`
-to every field group (including each `Context requirements` entry) before insertion. A4's
-`Proxy`-based freeze from `load()` is therefore reinforced at the registry boundary.
+`createCapabilityRegistry(manifests)` deep-freezes every field group of each manifest
+(including each `Context requirements` entry) before insertion, and returns an
+**unmodifiable** `Map` facade: `set` / `delete` / `clear` throw. A4's `Proxy`-based freeze
+from `load()` is therefore reinforced at the registry boundary.
 
-`resolve()` returns the registry's frozen `Manifest` reference — not a copy. A caller that
-attempts to mutate any field group or reassign a top-level group key has no observable effect
-on what subsequent readers see (`T-C1-06 resolver_manifest_immutable`). No `withManifest` or
-other mutator is exported.
+`resolve()` returns either the registry's frozen `Manifest` reference (when effective
+Identity matches published) **or** a derived deep-frozen copy when a lifecycle overlay
+changes Identity (§5.1). A caller that attempts to mutate any field group or reassign a
+top-level group key has no observable effect on what subsequent readers see
+(`T-C1-06 resolver_manifest_immutable`). No `withManifest` or other mutator is exported.
+
+`setCapabilityRegistry(registry)` is **install-once**: a second call without options throws.
+Replacing the process-wide registry requires `{ replace: true }`
+(`setCapabilityRegistry(registry, { replace: true })`).
 
 Later stages (C2 context validator, D1 prompt composer) must treat the resolved manifest as
-read-only for the lifetime of the request.
+read-only for the lifetime of the request. Discovery callers likewise receive frozen
+manifests (registry references or derived frozen copies).
 
 ---
 
@@ -200,12 +269,17 @@ read-only for the lifetime of the request.
 | `CapabilityRegistry` | `Map<string, Manifest>` type alias. |
 | `ResolveResult` | Discriminated union for resolver outcomes. |
 | `DiscoveryResult` | Discovery payload type (`manifests` + `etag`). |
-| `createCapabilityRegistry(manifests)` | Build a frozen registry from loaded manifests. |
-| `setCapabilityRegistry(registry)` | Install the process-wide registry (test and bootstrap hook). |
+| `LifecycleOverlay` | Overlay row type for effective lifecycle derivation. |
+| `EffectiveLifecycle` | Effective `{ lifecycleState, successorId }` type. |
+| `OVERLAP_WINDOW_MS` | OD-9 overlap window constant (two client release cycles, minimum 90 days — not a configuration surface). |
+| `effectiveLifecycle(manifest, overlay)` | Pure effective-lifecycle derivation (§5.1). |
+| `getGrantedCapabilityVersion(…)` | Grant `capability_version` helper (or `null`). |
+| `createCapabilityRegistry(manifests)` | Build a frozen, unmodifiable registry from loaded manifests. |
+| `setCapabilityRegistry(registry, options?)` | Install the process-wide registry (install-once; `{ replace: true }` to replace). |
 | `resolve(…)` | Pipeline stage-5 resolver. |
 | `discover(…)` | Installation-scoped discovery enumeration. |
-| `computeDiscoveryEtag(manifestList)` | Etag helper (shared by `discover` and contract tests). |
-| `buildDiscoveryResponse(request, manifestList, etag)` | HTTP response builder with conditional `304`. |
+| `computeDiscoveryEtag(manifestList)` | Etag helper (shared by `discover` and contract tests); returns the raw hash. |
+| `buildDiscoveryResponse(request, manifestList, etag)` | HTTP response builder with conditional `304`, quoted `ETag`, and `Cache-Control`. |
 
 Kill-switch scope evaluation and plan-tier comparison are internal; they are not exported.
 
@@ -227,7 +301,7 @@ Kill-switch scope evaluation and plan-tier comparison are internal; they are not
 | Behaviour | Owner | Reason |
 | --- | --- | --- |
 | Manifest schema and `load()` validation | A4 | Ten field groups, never-names-provider/model rule, published-version hash registry. |
-| Entitlement rejection at submit (`forbidden_capability`) | B3 | Stage 3; not a resolver error code. |
+| Stage-3 entitlement rejection (`forbidden_capability`) | B3 | Stage 3 still owns submit-path entitlement; `resolve()` also fails closed with the same code for allowance/grant failures (§4.3). |
 | HTTP status mapping for taxonomy codes | A6 | C1 emits codes only. |
-| Deprecation overlap window | J1 | `deprecated` manifests are served by `resolve()` and excluded from `discover()`. |
+| Deprecation overlap window | J1 | Effectively `deprecated` manifests are served by `resolve()` and may appear in discovery with successor identity when overlay/published provides it; the overlap window itself remains J1. |
 | Live Worker route wiring | Later slice | C1 exposes library functions; `worker.ts` is not modified in this slice. |

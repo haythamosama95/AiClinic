@@ -88,11 +88,6 @@ class AppDialog extends StatefulWidget {
   State<AppDialog> createState() => _AppDialogState();
 }
 
-<<<<<<< HEAD
-class _AppDialogState extends State<AppDialog> {
-  var _presented = false;
-  NavigatorState? _navigator;
-=======
 /// Live snapshot of [AppDialog] props for the presented overlay route.
 ///
 /// Controlled [AppDialog] captures [child] when `showDialog` runs; this notifier
@@ -138,7 +133,6 @@ class _AppDialogState extends State<AppDialog> {
   var _presented = false;
   NavigatorState? _navigator;
   _AppDialogPresentation? _presentation;
->>>>>>> master
 
   @override
   void initState() {
@@ -157,23 +151,17 @@ class _AppDialogState extends State<AppDialog> {
         if (!mounted) return;
         _syncPresentation();
       });
-<<<<<<< HEAD
-=======
       return;
     }
 
     if (widget.open && _presented) {
       _presentation?.syncFrom(widget);
->>>>>>> master
     }
   }
 
   @override
   void dispose() {
-<<<<<<< HEAD
-=======
     _presentation?.dispose();
->>>>>>> master
     if (_presented) {
       _navigator?.maybePop();
     }
@@ -184,24 +172,6 @@ class _AppDialogState extends State<AppDialog> {
     if (!mounted) return;
 
     if (widget.open && !_presented) {
-<<<<<<< HEAD
-      _presented = true;
-      _navigator = Navigator.of(context, rootNavigator: true);
-      await AppDialog.show<void>(
-        context,
-        title: widget.title,
-        description: widget.description,
-        size: widget.size,
-        barrierDismissible: widget.barrierDismissible,
-        blur: widget.blur,
-        showCloseButton: widget.showCloseButton,
-        showHeader: widget.showHeader,
-        footer: widget.footer,
-        child: widget.child,
-      );
-      _presented = false;
-      _navigator = null;
-=======
       _presentation = _AppDialogPresentation(widget);
       _presented = true;
       _navigator = Navigator.of(context, rootNavigator: true);
@@ -230,7 +200,6 @@ class _AppDialogState extends State<AppDialog> {
       _navigator = null;
       _presentation?.dispose();
       _presentation = null;
->>>>>>> master
       if (mounted && widget.open) {
         widget.onOpenChange(false);
       }
@@ -477,26 +446,6 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.zero,
-      child: _AppDialogTransition(
-        animation: _animation,
-        barrierDismissible: widget.barrierDismissible,
-        blur: widget.blur,
-        child: AppDialogPanel(
-          title: widget.title,
-          description: widget.description,
-          size: widget.size,
-          maxWidth: widget.maxWidth,
-          footer: widget.footer,
-          onClose: widget.onClose,
-          showCloseButton: widget.showCloseButton,
-          showHeader: widget.showHeader,
-          child: widget.child,
-=======
     return PopScope(
       canPop: widget.barrierDismissible,
       child: Dialog(
@@ -518,7 +467,6 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
             showHeader: widget.showHeader,
             child: widget.child,
           ),
->>>>>>> master
         ),
       ),
     );

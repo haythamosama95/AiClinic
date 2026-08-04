@@ -4,10 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-=======
->>>>>>> master
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
@@ -15,22 +11,13 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_disp
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
-=======
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
 import 'package:ai_clinic/features/queue/domain/queue_start_doctor.dart';
->>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/utils/appointment_detail_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_start_doctor_dialog.dart';
-=======
 import 'package:ai_clinic/features/queue/presentation/widgets/queue_start_doctor_dialog.dart';
->>>>>>> master
 
 /// Inline outlined action buttons for managing an appointment from the status journey card.
 class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
@@ -76,8 +63,6 @@ class _AppointmentDetailStatusActionsState
     ),
   );
 
-<<<<<<< HEAD
-=======
   AppointmentInProgressBlockedPredicate get _inProgressBlocked =>
       (item, siblings) => AppointmentQueueStartDoctor.isForwardInProgressBlocked(
         item: item,
@@ -85,16 +70,11 @@ class _AppointmentDetailStatusActionsState
         shiftLookup: widget.shiftLookup,
       );
 
->>>>>>> master
   AppointmentStatus? get _forwardTarget => forwardStatusTargetFor(
     _listItem,
     organizationTimezone: _organizationTimezone,
     siblingAppointments: widget.siblingAppointments,
-<<<<<<< HEAD
-    shiftLookup: widget.shiftLookup,
-=======
     inProgressBlocked: _inProgressBlocked,
->>>>>>> master
   );
 
   AppointmentStatus? get _revertTarget => previousStatusTargetFor(_listItem);
@@ -105,11 +85,7 @@ class _AppointmentDetailStatusActionsState
     _listItem,
     organizationTimezone: _organizationTimezone,
     siblingAppointments: widget.siblingAppointments,
-<<<<<<< HEAD
-    shiftLookup: widget.shiftLookup,
-=======
     inProgressBlocked: _inProgressBlocked,
->>>>>>> master
   );
 
   String get _displayForwardLabel {
@@ -240,11 +216,7 @@ class _AppointmentDetailStatusActionsState
     if (!mounted) {
       return null;
     }
-<<<<<<< HEAD
-    return AppointmentStartDoctorDialog.show(context, options: options);
-=======
     return QueueStartDoctorDialog.show(context, options: options);
->>>>>>> master
   }
 
   Future<void> _handleAdvanceStatus() async {

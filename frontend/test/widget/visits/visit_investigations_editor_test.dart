@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-=======
 import 'package:flutter/material.dart';
->>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
@@ -9,10 +6,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/investigation_ent
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_form_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_investigations_editor.dart';
 
-<<<<<<< HEAD
-import '../../support/visit_encounter_test_support.dart';
-=======
->>>>>>> master
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(
@@ -25,14 +18,6 @@ Future<void> _pumpEditor(
 }) async {
   await pumpVisitsSurface(
     tester,
-<<<<<<< HEAD
-    child: VisitInvestigationsEditor(
-      entries: entries,
-      canEdit: canEdit,
-      onCreate: onCreate ?? ({required name, note, investigationId}) {},
-      onUpdate: onUpdate ?? (id, {required name, note, investigationId}) {},
-      onArchive: onArchive ?? (_) {},
-=======
     child: SingleChildScrollView(
       child: VisitInvestigationsEditor(
         entries: entries,
@@ -41,7 +26,6 @@ Future<void> _pumpEditor(
         onUpdate: onUpdate ?? (id, {required name, note, investigationId}) {},
         onArchive: onArchive ?? (_) {},
       ),
->>>>>>> master
     ),
   );
   await pumpVisitsFrames(tester);
@@ -158,12 +142,9 @@ void main() {
 
         await _pumpEditor(tester, entries: entries);
 
-<<<<<<< HEAD
-=======
         expect(find.text('Investigation 0'), findsOneWidget);
         await tester.scrollUntilVisible(find.text('Investigation 19'), 100);
         await pumpVisitsFrames(tester);
->>>>>>> master
         expect(find.byType(InvestigationEntryCard), findsNWidgets(20));
         expect(find.text('20 investigations to order'), findsOneWidget);
       });

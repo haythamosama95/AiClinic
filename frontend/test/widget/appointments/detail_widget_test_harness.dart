@@ -4,18 +4,6 @@
 import 'dart:async';
 
 import 'package:ai_clinic/app/app_routes.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_toast.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
-=======
 import 'package:ai_clinic/app/navigation/breadcrumb/breadcrumb_trail.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
@@ -25,7 +13,6 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/queue/domain/queue_shift_doctors.dart';
->>>>>>> master
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_update_result.dart';
@@ -54,18 +41,12 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-<<<<<<< HEAD
-=======
 import 'package:flutter_riverpod/misc.dart';
->>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../helpers/auth_test_support.dart';
-<<<<<<< HEAD
-=======
 import '../../helpers/breadcrumb_test_support.dart';
->>>>>>> master
 import '../../helpers/patient_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/appointment_calendar_test_support.dart';
@@ -178,16 +159,10 @@ List<StaffListItem> buildTestDoctors() {
 }
 
 AppointmentQueueShiftDoctorLookup buildShiftLookup({
-<<<<<<< HEAD
-  DateTime shiftDate = DateTime(2026, 6, 15),
-  List<StaffListItem> doctors = const [],
-}) {
-=======
   DateTime? shiftDate,
   List<StaffListItem> doctors = const [],
 }) {
   final resolvedShiftDate = shiftDate ?? DateTime(2026, 6, 15);
->>>>>>> master
   final doctorList = doctors.isEmpty ? buildTestDoctors() : doctors;
   return AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
     organizationTimezone: 'UTC',
@@ -195,11 +170,7 @@ AppointmentQueueShiftDoctorLookup buildShiftLookup({
       ShiftListItem(
         id: 'shift-1',
         branchId: calendarTestBranchAId,
-<<<<<<< HEAD
-        shiftDate: shiftDate,
-=======
         shiftDate: resolvedShiftDate,
->>>>>>> master
         startTime: '06:00',
         endTime: '23:59',
         status: ShiftStatus.active,
@@ -301,11 +272,8 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required DateTime from,
     required DateTime to,
     String? doctorId,
-<<<<<<< HEAD
-=======
     List<AppointmentStatus>? statuses,
     String? patientId,
->>>>>>> master
   }) async {
     return listAppointmentsResult;
   }
@@ -316,14 +284,9 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     required String patientId,
     String? doctorId,
     required AppointmentType type,
-<<<<<<< HEAD
-    required DateTime startTime,
-    required int durationMinutes,
-=======
     DateTime? startTime,
     int? durationMinutes,
     DateTime? endTime,
->>>>>>> master
     String? notes,
   }) async {
     createCallCount++;
@@ -333,48 +296,32 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (createAppointmentCompleter != null) {
       return createAppointmentCompleter!.future;
     }
-<<<<<<< HEAD
-    return CreateAppointmentResult(
-      appointmentId: 'new-appointment-id',
-      startTime: startTime,
-      endTime: startTime.add(Duration(minutes: durationMinutes)),
-=======
     final resolvedStart = startTime ?? DateTime.utc(2026, 6, 15, 10);
     final resolvedDuration = durationMinutes ?? 30;
     return CreateAppointmentResult(
       appointmentId: 'new-appointment-id',
       startTime: resolvedStart,
       endTime: endTime ?? resolvedStart.add(Duration(minutes: resolvedDuration)),
->>>>>>> master
       status: AppointmentStatus.scheduled,
       type: type,
     );
   }
 
   @override
-<<<<<<< HEAD
-  Future<void> updateAppointment({
-=======
   Future<CreateAppointmentResult> updateAppointment({
->>>>>>> master
     required String appointmentId,
     required String patientId,
     String? doctorId,
     String? branchId,
     required DateTime startTime,
     int? durationMinutes,
-<<<<<<< HEAD
-=======
     DateTime? endTime,
->>>>>>> master
     String? notes,
   }) async {
     updateCallCount++;
     if (updateFailure != null) {
       throw updateFailure!;
     }
-<<<<<<< HEAD
-=======
     final resolvedDuration = durationMinutes ?? 30;
     return CreateAppointmentResult(
       appointmentId: appointmentId,
@@ -383,7 +330,6 @@ class HarnessAppointmentRepository extends AppointmentRepository {
       status: AppointmentStatus.scheduled,
       type: AppointmentType.planned,
     );
->>>>>>> master
   }
 
   @override
@@ -403,11 +349,7 @@ class HarnessAppointmentRepository extends AppointmentRepository {
   }
 
   @override
-<<<<<<< HEAD
-  Future<void> cancelAppointment({
-=======
   Future<AppointmentStatus> cancelAppointment({
->>>>>>> master
     required String appointmentId,
     String? reason,
   }) async {
@@ -415,26 +357,16 @@ class HarnessAppointmentRepository extends AppointmentRepository {
     if (cancelFailure != null) {
       throw cancelFailure!;
     }
-<<<<<<< HEAD
-  }
-
-  @override
-  Future<void> markAppointmentNoShow({required String appointmentId}) async {
-=======
     return AppointmentStatus.cancelled;
   }
 
   @override
   Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) async {
->>>>>>> master
     noShowCallCount++;
     if (noShowFailure != null) {
       throw noShowFailure!;
     }
-<<<<<<< HEAD
-=======
     return AppointmentStatus.noShow;
->>>>>>> master
   }
 }
 
@@ -556,14 +488,9 @@ List<Override> harnessDetailProviderOverrides({
   List<BranchListItem>? branches,
   List<StaffListItem>? doctors,
   String appointmentId = detailTestAppointmentId,
-<<<<<<< HEAD
-  Future<AppointmentDetail>? loadingDetailFuture,
-  Object? detailError,
-=======
   bool loadingDetail = false,
   Object? detailError,
   BreadcrumbTrail? breadcrumbTrail,
->>>>>>> master
 }) {
   final resolvedDetail = detail ?? buildAppointmentDetail();
   final siblingsQuery = AppointmentDetailSiblingsQuery(
@@ -578,10 +505,7 @@ List<Override> harnessDetailProviderOverrides({
   appointmentRepo.detailOverride = resolvedDetail;
 
   return [
-<<<<<<< HEAD
-=======
     if (breadcrumbTrail != null) breadcrumbTrailOverride(breadcrumbTrail),
->>>>>>> master
     authSessionProvider.overrideWith(
       () => MutableAuthSessionNotifier(auth ?? harnessAuthSession()),
     ),
@@ -601,23 +525,12 @@ List<Override> harnessDetailProviderOverrides({
     appointmentCalendarDoctorsProvider.overrideWith(
       (ref) async => doctors ?? buildTestDoctors(),
     ),
-<<<<<<< HEAD
-    if (loadingDetailFuture != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) => loadingDetailFuture)
-    else if (detailError != null)
-      appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError!)
-    else
-      appointmentDetailProvider(appointmentId).overrideWith(
-        (ref) async => appointmentRepo.getAppointment(appointmentId: appointmentId),
-      ),
-=======
     if (loadingDetail)
       appointmentDetailProvider(appointmentId).overrideWithValue(
         const AsyncLoading<AppointmentDetail>(),
       )
     else if (detailError != null)
       appointmentDetailProvider(appointmentId).overrideWith((ref) async => throw detailError),
->>>>>>> master
     appointmentDetailSiblingsProvider(siblingsQuery).overrideWith(
       (ref) async => siblings ?? const [],
     ),
@@ -677,8 +590,6 @@ GoRouter buildDetailTestRouter({
         ),
       ),
       GoRoute(
-<<<<<<< HEAD
-=======
         path: AppRoutes.appointmentsQueue,
         builder: (context, state) => Scaffold(
           body: Center(
@@ -687,7 +598,6 @@ GoRouter buildDetailTestRouter({
         ),
       ),
       GoRoute(
->>>>>>> master
         path: '/appointments/:appointmentId',
         builder: (context, state) => detailPage,
       ),
@@ -724,11 +634,7 @@ Future<void> pumpAppointmentDetail(
   await tester.binding.setSurfaceSize(surfaceSize);
   tester.binding.platformDispatcher.textScaleFactorTestValue = 1.0;
   addTearDown(() {
-<<<<<<< HEAD
-    tester.binding.resetTextScaleFactor();
-=======
     tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
->>>>>>> master
     tester.binding.setSurfaceSize(null);
   });
 
@@ -767,10 +673,7 @@ Future<void> pumpBookingSheetHost(
   String? initialDoctorId,
   List<StaffListItem>? doctors,
   String? branchName = 'Main',
-<<<<<<< HEAD
-=======
   Duration settleAfterOpen = const Duration(milliseconds: 300),
->>>>>>> master
 }) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -815,13 +718,9 @@ Future<void> pumpBookingSheetHost(
 
   await tester.tap(find.byKey(const Key('open_booking_sheet')));
   await tester.pump();
-<<<<<<< HEAD
-  await tester.pump(const Duration(milliseconds: 300));
-=======
   if (settleAfterOpen > Duration.zero) {
     await tester.pump(settleAfterOpen);
   }
->>>>>>> master
 }
 
 Future<void> tapAppSelectOption(
@@ -829,9 +728,6 @@ Future<void> tapAppSelectOption(
   Key selectKey,
   String optionLabel,
 ) async {
-<<<<<<< HEAD
-  await tester.tap(find.byKey(selectKey));
-=======
   final keyFinder = find.byKey(selectKey);
   final descendantSelect = find.descendant(
     of: keyFinder,
@@ -842,7 +738,6 @@ Future<void> tapAppSelectOption(
       ? descendantSelect
       : keyFinder;
   await tester.tap(select);
->>>>>>> master
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.tap(find.text(optionLabel).last);
@@ -864,28 +759,6 @@ Future<void> selectPatientAndAdvanceToStep2(
   String patientSearch = 'Booking',
   String patientName = 'Booking Patient',
 }) async {
-<<<<<<< HEAD
-  await tester.enterText(
-    find.byKey(const Key('appointment_booking_patient_search')),
-    patientSearch,
-  );
-  await tester.pump(const Duration(milliseconds: 100));
-  await tester.tap(find.text(patientName));
-  await tester.pump();
-  await tester.tap(find.byKey(const Key('appointment_booking_choose_time')));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
-}
-
-Future<void> enterBookingNotes(WidgetTester tester, String text) async {
-  await tester.enterText(
-    find.descendant(
-      of: find.text('Notes (optional)'),
-      matching: find.byType(TextField),
-    ),
-    text,
-  );
-=======
   final searchField = find.descendant(
     of: find.bySemanticsIdentifier('patient_picker_search'),
     matching: find.byType(TextField),
@@ -916,15 +789,11 @@ Future<void> enterBookingNotes(WidgetTester tester, String text) async {
   await tester.tap(notesField);
   await tester.pump();
   await tester.enterText(notesField, text);
->>>>>>> master
   await tester.pump(const Duration(milliseconds: 50));
 }
 
 Future<void> tapBookingDialogBackdrop(WidgetTester tester) async {
   await tester.tapAt(const Offset(5, 5));
-<<<<<<< HEAD
-=======
   await tester.pump();
->>>>>>> master
   await tester.pump(const Duration(milliseconds: 100));
 }

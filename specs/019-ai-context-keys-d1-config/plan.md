@@ -29,7 +29,7 @@ context keys) and must land before B2/B3/C3/E3/H3/F3.
 
 **Testing**: `npx vitest run` in three layers (delivery plan §3.11.1 row A5: "Contract + migration + unit (spy)"):
 - Contract tests for the context-key vocabulary + shape (`ai-platform/test/context.test.ts`).
-- Migration tests applying the migrations to an empty Miniflare D1 and snapshotting schema DDL (`ai-platform/test/migrations.test.ts`, snapshot artifact `ai-platform/test/schema.snap.sql`).
+- Migration tests applying the migrations to an empty Miniflare D1 and snapshotting schema DDL (`ai-platform/test/migrations.test.ts`, snapshot artifact `ai-platform/schema.snap.sql`).
 - Spy-based unit tests for the config cache counting `D1Reader.read` calls (`ai-platform/test/config-cache.test.ts`).
 
 The full suite runs in CI on every change (§13.5, Contract + Pipeline-test rows). No request path is exercised.
@@ -151,8 +151,9 @@ All named tests from the spec's `### Test plan` are placed in the layers deliver
 | --- | --- | --- | --- | --- |
 | `context_key_valid_accepted` | T-A5-01 | `test/context.test.ts` | Contract | FR-001 / SC-001 — `domain.concept@vN` accepted. |
 | `context_key_malformed_format_rejected` | T-A5-02 | `test/context.test.ts` | Contract | FR-001 / SC-001 — malformed key rejected. |
-| `context_key_storage_named_rejected` | T-A5-03 | `test/context.test.ts` | Contract | FR-002 / SC-001 — `visits_vitals_table@v1`, `get_visit_vitals_rpc@v1` rejected. |
-| `context_key_unknown_version_rejected` | T-A5-04 | `test/context.test.ts` | Contract | FR-006 / SC-001 — unknown key version rejected. |
+| `context_key_storage_named_rejected` | T-A5-03 | `test/context.test.ts` | Contract | FR-002 / SC-001 — `visits_vitals_table@v1`, `get_visit_vitals_rpc@v1`, `visits.vitals_view@v1` rejected as `storage_named_key`. |
+| `context_key_unknown_version_rejected` | T-A5-04 | `test/context.test.ts` | Contract | FR-006 / SC-001 — unpublished version of a known concept rejected as `unknown_version`. |
+| `context_key_unknown_key_rejected` | T-A5-04b | `test/context.test.ts` | Contract | FR-006 / SC-001 — well-formed key outside vocabulary rejected as `unknown_key`. |
 | `context_key_payload_validates` | T-A5-05 | `test/context.test.ts` | Contract | FR-005 / SC-002 — conforming payload passes. |
 | `context_key_shape_violation_type` | T-A5-06 | `test/context.test.ts` | Contract | FR-005 / SC-002 — type violation rejected. |
 | `context_key_shape_violation_cardinality` | T-A5-07 | `test/context.test.ts` | Contract | FR-005 / SC-002 — cardinality violation rejected. |
@@ -163,13 +164,15 @@ All named tests from the spec's `### Test plan` are placed in the layers deliver
 | `migrations_rerun_is_noop` | T-A5-12 | `test/migrations.test.ts` | Migration | FR-009 / SC-003 — re-applying is a no-op (enforced by Wrangler's applied-migrations table per Clarification Q1). |
 | `schema_snapshot_matches` | T-A5-13 | `test/migrations.test.ts` | Contract (snapshot) | FR-010 / SC-003 — post-migration DDL dump equals `ai-platform/schema.snap.sql` (per Clarification Q2). |
 | `entity_presence_<entity>` (one per §7.3 entity: `installation`, `installation_key`, `entitlement`, `capability_grant`, `routing_policy`, `ai_request`, `ai_attempt`, `usage_event`, `usage_rollup`, `platform_counter`, `control_audit`) | T-A5-14a .. T-A5-14k | `test/migrations.test.ts` | Migration | FR-013 / SC-003 — each entity present after migration. |
-| `request_reference_index_exists_and_unique` | T-A5-15 | `test/migrations.test.ts` | Migration | FR-011 / SC-004 — `ai_request` request-reference index is unique; stores A2 format unchanged. |
+| `request_reference_index_exists_and_unique` | T-A5-15 | `test/migrations.test.ts` | Migration | FR-011 / SC-004 — `ai_request` request-reference index is unique; column accepts and returns the A2 format via insert/select. |
+| `idempotency_key_not_uniquely_indexed_on_d1` | T-A5-15b | `test/migrations.test.ts` | Migration | Out of scope — no D1 unique index on `(installation_id, idempotency_key)`; C3 Quota DO owns idempotency (§4.3.3). |
 | `conversation_id_and_turn_ordinal_nullable` | T-A5-16 | `test/migrations.test.ts` | Migration | FR-012 / SC-004 — both columns nullable. |
 | `config_cache_cold_isolate_one_d1_read` | T-A5-17 | `test/config-cache.test.ts` | Unit (spy) | FR-017 / SC-005 — cold isolate performs exactly one `.read` (per Clarification Q3). |
 | `config_cache_warm_isolate_zero_io` | T-A5-18 | `test/config-cache.test.ts` | Unit (spy) | FR-016 / SC-005 — warm isolate performs zero `.read`. |
 | `config_cache_ttl_expiry_one_refetch` | T-A5-19 | `test/config-cache.test.ts` | Unit (spy) | FR-018 / SC-005 — TTL expiry triggers exactly one refetch. |
 | `config_cache_entity_kind_<kind>` (one per kind: installations, keys, entitlements, grants, kill switches, active routing policy) | T-A5-20a .. T-A5-20f | `test/config-cache.test.ts` | Unit (spy) | FR-016 / SC-005 — each cached kind answered from memory when warm. |
 | `config_cache_d1_miss_typed_failure` | T-A5-21 | `test/config-cache.test.ts` | Unit (spy) | FR-019 / SC-006 — D1 miss surfaces typed failure, not an empty cached entry. |
+| `config_cache_cold_load_single_flight` | T-A5-21b | `test/config-cache.test.ts` | Unit (spy) | Concurrent cold loads for the same `(kind, key)` coalesce to exactly one `reader.read`. |
 | `config_cache_owns_nothing` | T-A5-22 | `test/config-cache.test.ts` | Unit (spy) | FR-015 / SC-006 — cache holds copies; a D1 update changes truth without a cache flush (§4.4). |
 | `config_cache_uses_in_isolate_memory_not_kv` | T-A5-23 | `test/config-cache.test.ts` | Contract | FR-014 — no KV binding introduced; cache is in-isolate memory backed by D1 on miss (§9.15 rejected). |
 | `no_per_request_state_introduced` | T-A5-24 | `test/config-cache.test.ts` | Unit | FR-015 — the cache exposes no per-request handle; only installation-scoped copies (§4.4, §9.7). |

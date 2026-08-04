@@ -1,9 +1,6 @@
 import 'dart:typed_data';
 
-<<<<<<< HEAD
-=======
 import 'package:flutter/material.dart';
->>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_file_dropzone.dart';
@@ -12,10 +9,6 @@ import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachments_editor.dart';
 
-<<<<<<< HEAD
-import '../../support/visit_encounter_test_support.dart';
-=======
->>>>>>> master
 import 'visit_widget_test_harness.dart';
 
 Future<void> _pumpEditor(
@@ -33,21 +26,6 @@ Future<void> _pumpEditor(
 }) async {
   await pumpVisitsSurface(
     tester,
-<<<<<<< HEAD
-    child: VisitAttachmentsEditor(
-      attachments: attachments,
-      uploadedBy: encounterTestDoctorId,
-      uploadedByName: 'Dr Test',
-      canEdit: canEdit,
-      onStage: onStage ??
-          ({
-            required pick,
-            required label,
-            required uploadedBy,
-            uploadedByName,
-          }) {},
-      onDelete: onDelete ?? (_) {},
-=======
     child: SingleChildScrollView(
       child: VisitAttachmentsEditor(
         attachments: attachments,
@@ -63,7 +41,6 @@ Future<void> _pumpEditor(
             }) {},
         onDelete: onDelete ?? (_) {},
       ),
->>>>>>> master
     ),
   );
   await pumpVisitsFrames(tester);
@@ -174,11 +151,6 @@ void main() {
         await _pumpEditor(tester, attachments: attachments);
 
         expect(find.text('File 0.pdf'), findsOneWidget);
-<<<<<<< HEAD
-        expect(find.text('File 19.pdf'), findsOneWidget);
-        expect(find.text('Remove File 0.pdf'), findsOneWidget);
-        expect(find.text('Remove File 19.pdf'), findsOneWidget);
-=======
         await tester.scrollUntilVisible(find.text('File 19.pdf'), 100);
         await pumpVisitsFrames(tester);
         expect(find.text('File 19.pdf'), findsOneWidget);
@@ -189,7 +161,6 @@ void main() {
         );
         await pumpVisitsFrames(tester);
         expect(find.bySemanticsLabel('Remove File 19.pdf'), findsOneWidget);
->>>>>>> master
       });
 
       testWidgets('very long filename does not throw', (tester) async {

@@ -29,8 +29,10 @@ test-injectable constant, and no number is authored here (spec Assumptions; Clar
 
 **Testing**: `npx vitest run test/adapter.test.ts` — integration layer (§13.5 "Pipeline tests: stage
 ordering, guard rejection paths, cancellation on disconnect — fake provider adapter, deterministic").
-A small in-process stub injects canned `accepted`, heartbeat, and terminal sequences directly into
-the adapter's event sink — no broker, no provider, no network (Clarification Q2).
+A small in-process stub in the test harness (`test/helpers/adapter-stub.ts`, used by
+`test/adapter.test.ts`) injects canned `accepted`, heartbeat, and terminal sequences directly into
+the adapter's event sink — no broker, no provider, no network (Clarification Q2; review resolution
+A6). Expected: **33 passing tests**.
 
 **Target Platform**: Cloudflare Workers — `ai-platform/` at the repository root (Delivery Plan §7.1).
 
@@ -119,11 +121,15 @@ kind. A later slice's **Consumes** must bind to a frozen artifact, not to prose.
 ai-platform/                          # existing — created by A1
 ├── src/
 │   ├── worker.ts                      # MODIFIED: replace the placeholder POST /v1/requests JSON
-│   │                                  #   handler with the real SSE adapter; health endpoint unchanged
-│   ├── adapter.ts                     # NEW: the §4.3.1 protocol adapter — request parsing, ingress
-│   │                                  #   body-size gate, header parsing, SSE event framing,
-│   │                                  #   error-to-HTTP translation, one-terminal-event guard,
-│   │                                  #   connection-scoped cancellation (FR-001–012)
+│   │                                  #   handler with the real SSE adapter; live route fails fast
+│   │                                  #   (503) until D4 injects an eventSource; health unchanged
+│   ├── adapter.ts                     # NEW: the §4.3.1 protocol adapter — request parsing, UTF-8
+│   │                                  #   byte-accurate ingress body-size gate, header parsing,
+│   │                                  #   SSE event framing, error-to-HTTP translation (bare 422
+│   │                                  #   for adapter-local parse failures), one-terminal-event
+│   │                                  #   guard, connection-scoped cancellation (mark terminal
+│   │                                  #   only — never enqueue cancelled on dead socket). Requires
+│   │                                  #   injected eventSource (FR-001–012). No production stubs.
 │   ├── errors.ts                      # existing (A2) — consumed: buildErrorBody, liveHttpStatusForCode
 │   ├── reference.ts                   # existing (A2) — consumed: generateRequestReference
 │   ├── trace.ts                       # existing (A2) — consumed: resolveTraceId, createStructuredLogger
@@ -131,7 +137,9 @@ ai-platform/                          # existing — created by A1
 │       └── canonical.ts               # existing (A3) — consumed: CanonicalChunkKind (content-event kinds
 │                                      #   the framing carries; A6 provides framing only, not content)
 └── test/
-    └── adapter.test.ts                # NEW: T1–T12 (integration, §13.5)
+    ├── adapter.test.ts                # NEW: T1–T13 (integration, §13.5) — 33 tests
+    └── helpers/
+        └── adapter-stub.ts            # NEW: test-harness stub event source (not shipped in src/)
 ```
 
 **Structure Decision**: The gateway lives in `ai-platform/` at the repository root as a sibling of
@@ -141,8 +149,10 @@ contract modules (`errors.ts`, `reference.ts`, `trace.ts`) and A3 added the cano
 `worker.ts` fetch path to wire it in. No `frontend/` or `backend/` path is touched. The adapter is a
 single module because §4.3.1 is one component and the framing invariants (open/heartbeat/terminal,
 exactly-one, abort) are inseparable from the request parsing that gates them; splitting them would
-introduce an abstraction the architecture does not name (D-15, R-20). The content-event kind
-vocabulary is A3's, imported and framed but not relaid — the relay is D4.
+introduce an abstraction the architecture does not name (D-15, R-20). Stubs live only in the test
+harness. The content-event kind vocabulary is A3's, imported and framed but not relaid — the relay
+and autonomous heartbeat emission are D4. The adapter requires an injected `eventSource` and fails
+fast (HTTP 503) without one so the live route cannot hang until D4.
 
 ## Consumes Binding
 
@@ -153,7 +163,7 @@ A6 has `Needs: A2` (Delivery Plan §3.2). It consumes the diagnostic contracts A
 | A2 — The error taxonomy (§5.4): closed code set, normative HTTP mapping, `internal_error` fallback | `ai-platform/src/errors.ts` — `TaxonomyCode` union, `TAXONOMY` table, `classifyErrorCode`, `getTaxonomyEntry`, `liveHttpStatusForCode` (returns `null` for `cancelled`) | Exists, created by A2 on `ai/016-a2-diagnostic-envelope`. A6 translates these to HTTP on the wire via the adapter; it adds no codes and changes no statuses. |
 | A2 — The error-body contract `{"code","request_reference","trace_id","retry_safe"}` | `ai-platform/src/errors.ts` — `buildErrorBody(input: ErrorBodyInput): ErrorBody`, `ErrorBody` interface | Exists. A6's error responses emit this body. A6 does not alter the shape. |
 | A2 — The request-reference generator and format `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$` | `ai-platform/src/reference.ts` — `generateRequestReference(): string` | Exists. A6's `accepted` event carries the reference this produces. A6 does not redefine the generator. |
-| A2 — The trace-id propagation contract: client-generated, gateway-generated ULID when absent, on every log line | `ai-platform/src/trace.ts` — `resolveTraceId(supplied: string \| null \| undefined): string`, `createStructuredLogger(context)` | Exists. A6 parses the `x-trace-id` header (the name A2 established in `worker.ts`), calls `resolveTraceId`, and propagates the result to every emitted event and log line. |
+| A2 — The trace-id propagation contract: client-generated (any non-empty string), gateway-generated ULID when absent, on every log line | `ai-platform/src/trace.ts` — `resolveTraceId(supplied: string \| null \| undefined): string`, `createStructuredLogger(context)` | Exists. A6 parses the `x-trace-id` header (the name A2 established in `worker.ts`), calls `resolveTraceId` with no ULID-only client constraint, and propagates the result to every emitted event and log line. |
 
 No Consumes entry has a missing implementation (stop condition 2 not triggered).
 
@@ -181,35 +191,39 @@ adapter's ingress gate. Stop condition 5 is not triggered.
 | Path | Created / Modified | Traced to |
 | --- | --- | --- |
 | `ai-platform/src/adapter.ts` | Created | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-011, FR-012 |
-| `ai-platform/src/worker.ts` | Modified — replace the placeholder `POST /v1/requests` JSON handler with the real SSE adapter; `/health` route and `GatewayObject` DO class unchanged | FR-001, FR-002, FR-007, FR-010, FR-011 |
-| `ai-platform/test/adapter.test.ts` | Created | T1–T12 (Test plan) |
+| `ai-platform/src/worker.ts` | Modified — replace the placeholder `POST /v1/requests` JSON handler with the real SSE adapter (fails fast without `eventSource` until D4); `/health` route and `GatewayObject` DO class unchanged | FR-001, FR-002, FR-007, FR-010, FR-011 |
+| `ai-platform/test/adapter.test.ts` | Created | T1–T13 (Test plan); 33 tests |
+| `ai-platform/test/helpers/adapter-stub.ts` | Created | Clarification Q2; review resolution A6 (stubs out of `src/`) |
 | `specs/020-ai-protocol-adapter-sse/contracts/sse-framing.md` | Created | Freezes (the SSE event vocabulary, header set, and one-terminal-event invariant, documented for D4/E2/H1's Consumes) |
 | `specs/020-ai-protocol-adapter-sse/quickstart.md` | Created (during the Documentation task after implementation and verification) | Documentation |
 
 ## Test Layout
 
 Layer: Integration (Delivery Plan §3.11.1 A6; §13.5 "Pipeline tests — fake provider adapter,
-deterministic"). All twelve tests live in `ai-platform/test/adapter.test.ts` and are run with
-`npx vitest run test/adapter.test.ts`. The adapter is exercised against a small in-process stub event
-source that injects canned `accepted`, heartbeat, and terminal sequences directly into the adapter's
-event sink — no broker (D4), no provider (D2), no network (Clarification Q2). The oversized-request
-fixture (T1) reads the same ingress body-size config value the adapter uses and builds a body one
-byte larger, asserting only the relation "body just over the limit" (Clarification Q1).
+deterministic"). All named cases live in `ai-platform/test/adapter.test.ts` (**33 tests**) and are
+run with `npx vitest run test/adapter.test.ts`. The adapter is exercised against a small in-process
+stub event source in `test/helpers/adapter-stub.ts` that injects canned `accepted`, heartbeat, and
+terminal sequences directly into the adapter's event sink — no broker (D4), no provider (D2), no
+network (Clarification Q2). The oversized-request fixture (T1) reads the same ingress body-size
+config value the adapter uses and builds a body one byte larger (UTF-8), asserting only the relation
+"body just over the limit" (Clarification Q1); it also covers `Content-Length` pre-check, multi-byte
+UTF-8, and oversized+malformed → 413.
 
 | Test | Layer (§13.5) | What it asserts | File |
 | --- | --- | --- | --- |
-| T1 | Integration | A body exceeding the ingress body-size config value is rejected as `request_too_large` (HTTP 413, A2 error body) before any other work — no header handled, no `accepted` event, no reference generated | `ai-platform/test/adapter.test.ts` |
+| T1 | Integration | UTF-8 byte-accurate oversize → `request_too_large` HTTP 413 with empty correlation fields before any other work; Content-Length path; oversized+malformed → 413 not 422 | `ai-platform/test/adapter.test.ts` |
 | T2 | Integration | The `x-idempotency-key` header is parsed and made available to later stages | `ai-platform/test/adapter.test.ts` |
-| T3 | Integration | The `x-trace-id` header is parsed and propagated; when absent, A2's `resolveTraceId` ULID is used | `ai-platform/test/adapter.test.ts` |
+| T3 | Integration | The `x-trace-id` header is parsed and propagated (any non-empty, including non-ULID); when absent, A2's `resolveTraceId` ULID is used | `ai-platform/test/adapter.test.ts` |
 | T4 | Integration | The `x-capability-version` header is parsed and made available to the capability resolver (a later stage) | `ai-platform/test/adapter.test.ts` |
-| T5 | Integration | A malformed or missing required header (idempotency key, trace id, or version pin) is rejected by the adapter's own parsing, produces no taxonomy-coded error body, and opens no stream | `ai-platform/test/adapter.test.ts` |
+| T5 | Integration | Malformed body or malformed/missing/empty/whitespace required header → bare HTTP 422, no taxonomy body, no stream | `ai-platform/test/adapter.test.ts` |
 | T6 | Integration | A stream opens with an `accepted` event carrying an A2-format request reference, emitted exactly once and before any content or terminal event | `ai-platform/test/adapter.test.ts` |
-| T7 | Integration | A heartbeat event is emitted while the stream is idle and receives no content; the heartbeat is neither content nor a terminal event | `ai-platform/test/adapter.test.ts` |
+| T7 | Integration | An injected heartbeat is framed as neither content nor a terminal event (autonomous emission is D4) | `ai-platform/test/adapter.test.ts` |
 | T8 | Integration | A stream whose request completes ends with exactly one `completed` terminal event and no second terminal event | `ai-platform/test/adapter.test.ts` |
 | T9 | Integration | A stream whose request fails ends with exactly one `failed` terminal event carrying a §5.4 taxonomy code, and no second terminal event | `ai-platform/test/adapter.test.ts` |
-| T10 | Integration | A stream whose client closes mid-stream ends with exactly one `cancelled` terminal event, and `cancelled`/`499` is not written to the live socket as an HTTP status | `ai-platform/test/adapter.test.ts` |
-| T11 | Integration | A stream that has already emitted a terminal event does not emit a second one under any subsequent path (completion, failure, abort, duplicate close) | `ai-platform/test/adapter.test.ts` |
-| T12 | Integration | The `accepted` event's request reference matches A2's `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$` format, and the trace id on every emitted event matches the parsed or A2-generated value | `ai-platform/test/adapter.test.ts` |
+| T10 | Integration | Real disconnect (`reader.cancel()`, already-aborted, signal abort) marks `terminalEmitted` without enqueueing `cancelled`; stub abort yields one `cancelled` without HTTP `499` on the live socket | `ai-platform/test/adapter.test.ts` |
+| T11 | Integration | No second terminal under any subsequent path; `terminalEmitted` is connection-scoped with no per-request state object | `ai-platform/test/adapter.test.ts` |
+| T12 | Integration | The `accepted` event's request reference matches A2's format, and the trace id on every emitted event matches the parsed or A2-generated value | `ai-platform/test/adapter.test.ts` |
+| T13 | Integration | Missing injected `eventSource` → HTTP 503, no stream | `ai-platform/test/adapter.test.ts` |
 
 ## Sequencing
 
@@ -218,28 +232,33 @@ chain inside the adapter: the ingress gate and header parsing are testable befor
 the SSE framing and the one-terminal-event guard are testable with the stub once the event sink
 exists; cancellation is tested last because it closes the framing loop.
 
-1. **`adapter.ts` — ingress gate + header parsing (T1–T5).** The adapter reads the body, enforces the
-   ingress body-size limit (a test-injectable constant), parses the three headers, and rejects
-   oversized or malformed requests with A2's error body and §5.4 HTTP mapping before any other work.
-   T1–T5 are written alongside this and pass. (FR-001–FR-006)
+1. **`adapter.ts` — ingress gate + header parsing (T1–T5).** The adapter stream-reads the body with
+   UTF-8 byte accounting (`Content-Length` pre-check), enforces the ingress body-size limit (a
+   test-injectable constant), parses JSON as a non-null plain object, parses the three headers (any
+   non-empty trace id via `resolveTraceId`), and rejects oversized bodies with 413 (empty correlation
+   fields) or malformed requests with bare 422 before any other work. T1–T5 pass. (FR-001–FR-006)
 2. **`adapter.ts` — SSE event framing + `accepted` opening (T6, T12).** The event vocabulary
    (`accepted`, heartbeat, `completed`, `failed`, `cancelled`), the SSE encoding, the event sink, and
    the `accepted` opening carrying A2's reference are implemented. T6 and T12 pass. (FR-007, FR-008)
-3. **`adapter.ts` — heartbeat (T7).** The idle-heartbeat emission is implemented against the stub.
-   T7 passes. (FR-009)
+3. **`adapter.ts` — heartbeat framing (T7).** Heartbeat framing (neither content nor terminal) is
+   implemented; autonomous emission is deferred to D4. T7 passes against an injected heartbeat.
+   (FR-009)
 4. **`adapter.ts` — terminal events + one-terminal-event guard (T8, T9, T11).** The state machine
    that emits exactly one terminal event and refuses a second is implemented. T8, T9, T11 pass.
    (FR-010, FR-012)
-5. **`adapter.ts` — connection-scoped cancellation (T10).** The client-disconnect → `cancelled`
-   path is implemented; `499` is never written to the live socket. T10 passes. (FR-011)
-6. **`worker.ts` wiring.** The placeholder `POST /v1/requests` handler is replaced with a call into
-   the adapter; the `/health` route and `GatewayObject` are untouched. T1–T12 still pass against the
-   wired adapter. (FR-001, FR-002, FR-007, FR-010, FR-011)
-7. **Documentation task.** `contracts/sse-framing.md` documents the frozen event vocabulary, header
-   set, and one-terminal-event invariant for D4/E2/H1's Consumes, and `quickstart.md` is filled per
-   the `ai-platform-quickstart-template` (files to review, slice-only suite invocation, focused
-   inspection). No manual-validation section — CI is the only verification path (the framing is
-   exercised by the stub, not by a live deployment).
+5. **`adapter.ts` — connection-scoped cancellation (T10).** Real disconnect paths mark
+   `terminalEmitted` only and never enqueue `cancelled` on the dead socket; `499` is never written as
+   an HTTP status. T10 passes. (FR-011)
+6. **`adapter.ts` — required `eventSource` (T13).** Missing injection → HTTP 503. Stubs live only in
+   `test/helpers/adapter-stub.ts`. (FR-001)
+7. **`worker.ts` wiring.** The placeholder `POST /v1/requests` handler is replaced with a call into
+   the adapter (fails fast until D4 supplies an event source); the `/health` route and `GatewayObject`
+   are untouched. Suite still passes. (FR-001, FR-002, FR-007, FR-010, FR-011)
+8. **Documentation task.** `contracts/sse-framing.md` documents the frozen event vocabulary, header
+   set, cancellation (no dead-socket enqueue), body-size gate, bare 422, and event-source requirement
+   for D4/E2/H1's Consumes, and `quickstart.md` is filled per the `ai-platform-quickstart-template`
+   (files to review, slice-only suite invocation, focused inspection). No manual-validation section —
+   CI is the only verification path (the framing is exercised by the stub, not by a live deployment).
 
 ## Complexity Tracking
 

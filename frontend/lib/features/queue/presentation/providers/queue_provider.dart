@@ -357,10 +357,6 @@ final appointmentQueueShellWarmProvider = Provider<void>((ref) {
   // setup orchestrator) and invalidate cached appointment surface state so the
   // queue/calendar refresh without the setup feature importing appointments
   // directly (review §6.2).
-<<<<<<< HEAD:frontend/lib/features/appointments/presentation/providers/appointment_queue_provider.dart
-  ref.watch(clinicDataChangedProvider);
-=======
->>>>>>> master:frontend/lib/features/queue/presentation/providers/queue_provider.dart
   ref.listen<int>(clinicDataChangedProvider, (_, _) {
     invalidateAppointmentSurfaceProviders(ref);
   });

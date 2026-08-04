@@ -1,0 +1,37 @@
+{
+  "case_id": "cannot_obtain_key_outside_permitted_set",
+  "legs": [
+    {
+      "fixture": "cannot_obtain_key_outside_permitted_set/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "Pull the active medication list."
+        }
+      ]
+    },
+    {
+      "fixture": "cannot_obtain_key_outside_permitted_set/leg_2.json",
+      "append_before_fixture": [
+        {
+          "kind": "context_resolved",
+          "context": {
+            "medication.active_list@v1": {
+              "medications": [{ "name": "Aspirin", "dose": "81mg" }]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "required_key_requests": [],
+    "forbidden_resolved_keys": ["medication.active_list@v1"],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "pass",
+    "round_budget": "pass"
+  }
+}

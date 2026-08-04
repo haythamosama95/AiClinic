@@ -126,11 +126,7 @@ void main() {
 
       final sorted = sortInvoiceListItemsClientSide(items, const InvoiceListFilters());
 
-<<<<<<< HEAD
-      expect(identical(sorted, items), isFalse);
-=======
       expect(sorted, items);
->>>>>>> master
       expect(sorted.map((item) => item.id).toList(), ['a', 'b']);
     });
 

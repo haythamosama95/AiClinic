@@ -17,13 +17,9 @@ abstract final class ShellDevBootstrapSignIn {
   /// Returns an error message when sign-in fails, or null when a session is ready.
   static Future<String?> ensureSignedIn(WidgetRef ref) => ensureSignedInWithReader(ref.read);
 
-<<<<<<< HEAD
-  @visibleForTesting
-=======
   /// Same as [ensureSignedIn] for notifiers and other [Ref]-only contexts.
   static Future<String?> ensureSignedInWithRef(Ref ref) => ensureSignedInWithReader(ref.read);
 
->>>>>>> master
   static Future<String?> ensureSignedInWithReader(DevToolReader read) async {
     if (!kDebugMode) {
       return 'Dev tools are not available in release builds.';

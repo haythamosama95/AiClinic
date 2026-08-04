@@ -1,11 +1,6 @@
-<<<<<<< HEAD
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-=======
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
->>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -56,11 +51,7 @@ StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
 }
 
 AppRichTextEditor _richTextEditor(WidgetTester tester, String semanticsId) {
-<<<<<<< HEAD
-  final finder = find.descendant(
-=======
   final finder = find.ancestor(
->>>>>>> master
     of: find.bySemanticsIdentifier(semanticsId),
     matching: find.byType(AppRichTextEditor),
   );
@@ -82,16 +73,12 @@ Future<void> _submitMedicalBackgroundDialog(WidgetTester tester, {required Strin
   if (note != null) {
     await tester.enterText(fields.at(1), note);
   }
-<<<<<<< HEAD
-  await tester.tap(find.widgetWithText(AppButton, 'Add'));
-=======
   final submitButton = find.descendant(
     of: dialog,
     matching: find.widgetWithText(AppButton, 'Add'),
   );
   await tester.ensureVisible(submitButton);
   await tester.tap(submitButton);
->>>>>>> master
   await pumpVisitsFrames(tester);
 }
 
@@ -141,10 +128,6 @@ void main() {
         ),
       );
 
-<<<<<<< HEAD
-      expect(find.text('Sore throat'), findsOneWidget);
-      expect(find.textContaining('Started 3 days ago'), findsOneWidget);
-=======
       expect(
         plainTextFromQuillDocument(_richTextEditor(tester, 'chief-complaint-input').controller!.document),
         'Sore throat',
@@ -153,7 +136,6 @@ void main() {
         plainTextFromQuillDocument(_richTextEditor(tester, 'history-of-present-illness-input').controller!.document),
         'Started 3 days ago with mild fever',
       );
->>>>>>> master
     });
 
     testWidgets('trivial: empty patient safety shows nothing-documented copy in each category', (tester) async {
@@ -190,19 +172,11 @@ void main() {
       await _pumpIntakeSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final complaintSemantics = tester.getSemantics(find.bySemanticsIdentifier('chief-complaint-input'));
-<<<<<<< HEAD
-      expect(complaintSemantics.hasFlag(SemanticsFlag.hasEnabledState), isTrue);
-      expect(complaintSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
-
-      final historySemantics = tester.getSemantics(find.bySemanticsIdentifier('history-of-present-illness-input'));
-      expect(historySemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
-=======
       expect(complaintSemantics.flagsCollection.isEnabled, isNot(Tristate.none));
       expect(complaintSemantics.flagsCollection.isEnabled, Tristate.isFalse);
 
       final historySemantics = tester.getSemantics(find.bySemanticsIdentifier('history-of-present-illness-input'));
       expect(historySemantics.flagsCollection.isEnabled, Tristate.isFalse);
->>>>>>> master
     });
 
     testWidgets('trivial: canEdit false hides medical background add affordances', (tester) async {

@@ -35,11 +35,7 @@ class AppFormField extends StatelessWidget {
       children: [
         Row(
           children: [
-<<<<<<< HEAD
-            Text(label, style: AppTypography.bodyStrong(context)),
-=======
             Text(label, style: AppTypography.title(context)),
->>>>>>> master
             if (requiredMark) ...[
               const SizedBox(width: 2),
               Text('*', style: AppTypography.bodyStrong(context).copyWith(color: colors.statusDangerFg)),
@@ -69,9 +65,6 @@ class AppFormField extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.space2),
-<<<<<<< HEAD
-        Semantics(container: true, textField: true, label: label, hint: helperText, value: error, child: child),
-=======
         Semantics(
           container: true,
           textField: true,
@@ -81,7 +74,6 @@ class AppFormField extends StatelessWidget {
           value: error,
           child: child,
         ),
->>>>>>> master
         if (error != null) ...[
           const SizedBox(height: AppSpacing.space2),
           Semantics(

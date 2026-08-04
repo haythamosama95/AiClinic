@@ -6,11 +6,10 @@ import type { Principal } from "../src/identity";
 import { load, type Manifest } from "../src/manifest";
 import { generateRequestReference } from "../src/reference";
 import {
+  authenticateGetRequest,
   createRequestRow,
-  flushGuardRejectionCounters,
   getRequest,
   journalTransition,
-  recordGuardRejection,
   recordTerminalState,
   writePostResponseDetail,
   type AttemptInput,
@@ -18,6 +17,10 @@ import {
   type RequestRowInput,
   type TransitionState,
 } from "../src/journal";
+import {
+  flushRejectionCounters,
+  recordGuardRejection,
+} from "../src/rate-limit";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -211,19 +214,19 @@ function buildPrincipal(seed: PrincipalSeed = {}): Principal {
 
 function canonicalResultFixture(): CanonicalResult {
   return {
-    "final content": { text: "Journal fixture result." },
-    "usage counters": {
+    finalContent: { text: "Journal fixture result." },
+    usage: {
       input: 512,
       output: 96,
       cached: 0,
     },
-    "provider+model actually used": {
+    providerModel: {
       provider: "deepseek",
       model: "journal-fixture",
     },
-    "finish reason": "stop",
-    "provider request id": "provider-req-journal-001",
-    "timing breakdown": {
+    finishReason: "stop",
+    providerRequestId: "provider-req-journal-001",
+    timing: {
       queue_ms: 5,
       provider_ms: 420,
       total_ms: 450,
@@ -386,51 +389,54 @@ function createD1Spy(realDb: D1Database): D1Spy {
   let prepareCalls = 0;
 
   const spy: D1Spy = {
-  ...realDb,
-  prepare(query: string) {
-    prepareCalls += 1;
-    const normalized = normalizeSql(query);
+    ...realDb,
+    prepare(query: string) {
+      prepareCalls += 1;
+      const normalized = normalizeSql(query);
 
-    if (normalized.startsWith("insert into ai_request")) {
-      aiRequestInserts += 1;
-    }
-    if (normalized.startsWith("insert into ai_attempt")) {
-      aiAttemptInserts += 1;
-    }
-    if (normalized.startsWith("insert into usage_event")) {
-      usageEventInserts += 1;
-    }
-    if (
-      normalized.includes("from ai_request") &&
-      normalized.includes("request_reference")
-    ) {
-      requestReferenceQueries += 1;
-    }
+      if (normalized.startsWith("insert into ai_request")) {
+        aiRequestInserts += 1;
+      }
+      if (normalized.startsWith("insert into ai_attempt")) {
+        aiAttemptInserts += 1;
+      }
+      if (normalized.startsWith("insert into usage_event")) {
+        usageEventInserts += 1;
+      }
+      if (
+        normalized.includes("from ai_request") &&
+        normalized.includes("request_reference")
+      ) {
+        requestReferenceQueries += 1;
+      }
 
-    return realDb.prepare(query);
-  },
-  aiRequestInsertCount() {
-    return aiRequestInserts;
-  },
-  aiAttemptInsertCount() {
-    return aiAttemptInserts;
-  },
-  usageEventInsertCount() {
-    return usageEventInserts;
-  },
-  requestReferenceQueryCount() {
-    return requestReferenceQueries;
-  },
-  prepareCallCount() {
-    return prepareCalls;
-  },
-  resetCounts() {
-    aiRequestInserts = 0;
-    aiAttemptInserts = 0;
-    usageEventInserts = 0;
-    requestReferenceQueries = 0;
-    prepareCalls = 0;
-  },
+      return realDb.prepare(query);
+    },
+    batch(statements: D1PreparedStatement[]) {
+      return realDb.batch(statements);
+    },
+    aiRequestInsertCount() {
+      return aiRequestInserts;
+    },
+    aiAttemptInsertCount() {
+      return aiAttemptInserts;
+    },
+    usageEventInsertCount() {
+      return usageEventInserts;
+    },
+    requestReferenceQueryCount() {
+      return requestReferenceQueries;
+    },
+    prepareCallCount() {
+      return prepareCalls;
+    },
+    resetCounts() {
+      aiRequestInserts = 0;
+      aiAttemptInserts = 0;
+      usageEventInserts = 0;
+      requestReferenceQueries = 0;
+      prepareCalls = 0;
+    },
   };
 
   return spy;
@@ -531,20 +537,27 @@ beforeEach(async () => {
 describe("T-C3-01 request_row_exists_before_provider_invoked", () => {
   it("creates the ai_request row at stage 9 before the fake provider is invoked", async () => {
     const db = createD1Spy(env.DB);
-    const fakeProvider = createFakeProvider();
     const input = buildRequestRowInput();
+    let rowSeenInsideProvider: AiRequestRow | null = null;
+    let countSeenInsideProvider = 0;
+
+    const fakeProvider = vi.fn(async () => {
+      rowSeenInsideProvider = await readAiRequestRow(input.requestId);
+      countSeenInsideProvider = await readAiRequestCount();
+      expect(rowSeenInsideProvider).not.toBeNull();
+      expect(rowSeenInsideProvider?.state).toBe("Accepted");
+      expect(countSeenInsideProvider).toBe(1);
+      return { completion: "provider response" };
+    });
 
     const createResult = await createRequestRow(input, db);
     expect(createResult).toEqual({ ok: true });
     expect(db.aiRequestInsertCount()).toBe(1);
 
-    const row = await readAiRequestRow(input.requestId);
-    expect(row).not.toBeNull();
-    expect(row?.state).toBe("Accepted");
-
     await fakeProvider();
     expect(fakeProvider).toHaveBeenCalledTimes(1);
-    expect(await readAiRequestCount()).toBe(1);
+    expect(rowSeenInsideProvider).not.toBeNull();
+    expect(countSeenInsideProvider).toBe(1);
   });
 });
 
@@ -568,7 +581,7 @@ describe("T-C3-03 terminal_state_failed", () => {
     await recordTerminalState(
       input.requestId,
       "Failed",
-      "provider_error",
+      "provider_unavailable",
       FIXTURE_NOW,
       env.DB,
     );
@@ -576,7 +589,7 @@ describe("T-C3-03 terminal_state_failed", () => {
     const row = await readAiRequestRow(input.requestId);
     expect(row?.state).toBe("Failed");
     expect(row?.completed_at).toBe(FIXTURE_NOW);
-    expect(row?.terminal_error_code).toBe("provider_error");
+    expect(row?.terminal_error_code).toBe("provider_unavailable");
   });
 });
 
@@ -600,12 +613,11 @@ describe("T-C3-05 guard_rejected_produces_no_row", () => {
     const countersBefore = await readPlatformCounterRows();
     const aiRequestsBefore = await readAiRequestCount();
 
-    await recordGuardRejection({
-      installationId: principal.installationId,
-      errorCode: "unauthenticated",
-      traceId: FIXTURE_TRACE_ID,
+    recordGuardRejection({
+      error_code: "unauthenticated",
+      installation_id: principal.installationId,
     });
-    await flushGuardRejectionCounters({ DB: db });
+    await flushRejectionCounters({ DB: db });
 
     expect(db.aiRequestInsertCount()).toBe(0);
     expect(await readAiRequestCount()).toBe(aiRequestsBefore);
@@ -627,7 +639,7 @@ describe("T-C3-06 every_state_transition_timestamped", () => {
       const transitionAt = "2026-07-31T12:05:00.000Z";
 
       if (TERMINAL_STATES.has(state)) {
-        const errorCode = state === "Failed" ? "provider_error" : undefined;
+        const errorCode = state === "Failed" ? "provider_unavailable" : undefined;
         await recordTerminalState(input.requestId, state, errorCode, transitionAt, env.DB);
       } else {
         await journalTransition(input.requestId, state, transitionAt, env.DB);
@@ -654,7 +666,7 @@ describe("T-C3-07 row_survives_failed_generation", () => {
     await recordTerminalState(
       input.requestId,
       "Failed",
-      "provider_error",
+      "provider_unavailable",
       FIXTURE_NOW,
       env.DB,
     );
@@ -663,7 +675,7 @@ describe("T-C3-07 row_survives_failed_generation", () => {
 
     const row = await readAiRequestRow(input.requestId);
     expect(row?.state).toBe("Failed");
-    expect(row?.terminal_error_code).toBe("provider_error");
+    expect(row?.terminal_error_code).toBe("provider_unavailable");
   });
 });
 
@@ -706,6 +718,12 @@ describe("T-C3-09 envelope_contains_all_four_sections", () => {
     expect(envelope).toHaveProperty("prompt");
     expect(envelope).toHaveProperty("attempts");
     expect(envelope).toHaveProperty("result");
+    expect(Object.keys(envelope).sort()).toEqual([
+      "attempts",
+      "context",
+      "prompt",
+      "result",
+    ]);
 
     expect(envelope.context).toEqual(postInput.filteredContext);
     expect(envelope.prompt).toEqual(postInput.composedPrompt);
@@ -867,7 +885,7 @@ describe("T-C3-15 get_request_failed_returns_state_and_error_no_content", () => 
     await recordTerminalState(
       input.requestId,
       "Failed",
-      "provider_error",
+      "provider_unavailable",
       FIXTURE_NOW,
       db,
     );
@@ -879,7 +897,7 @@ describe("T-C3-15 get_request_failed_returns_state_and_error_no_content", () => 
     expect(result).toEqual({
       found: true,
       state: "Failed",
-      terminalErrorCode: "provider_error",
+      terminalErrorCode: "provider_unavailable",
     });
     expect(r2.getCallCount()).toBe(0);
   });
@@ -918,7 +936,7 @@ describe("T-C3-18 get_request_uses_exactly_one_indexed_query", () => {
     await recordTerminalState(
       failedInput.requestId,
       "Failed",
-      "provider_error",
+      "provider_unavailable",
       FIXTURE_NOW,
       env.DB,
     );
@@ -954,5 +972,362 @@ describe("T-C3-18 get_request_uses_exactly_one_indexed_query", () => {
     });
     expect(cancelledDb.requestReferenceQueryCount()).toBe(1);
     expect(cancelledR2.getCallCount()).toBe(0);
+  });
+});
+
+describe("stage9_insert_failure_returns_internal_error_before_provider", () => {
+  it("returns internal_error when stage-9 INSERT fails and never invokes the provider", async () => {
+    const input = buildRequestRowInput();
+    const fakeProvider = createFakeProvider();
+
+    const failingDb = {
+      prepare(_query: string) {
+        return {
+          bind(..._args: unknown[]) {
+            return {
+              async run() {
+                throw new Error("injected stage-9 INSERT failure");
+              },
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const createResult = await createRequestRow(input, failingDb);
+
+    expect(createResult).toEqual({
+      ok: false,
+      code: "internal_error",
+      request_reference: input.requestReference,
+      trace_id: input.traceId,
+    });
+    expect(fakeProvider).not.toHaveBeenCalled();
+    expect(await readAiRequestCount()).toBe(0);
+  });
+});
+
+describe("journal_transition_terminal_branch_stamps_completed_at", () => {
+  it.each(["Completed", "AwaitingContext"] as const)(
+    "stamps completed_at via journalTransition for %s",
+    async (state) => {
+      const input = await seedRequestRow();
+      const transitionAt = "2026-07-31T12:10:00.000Z";
+
+      await journalTransition(input.requestId, state, transitionAt, env.DB);
+
+      const row = await readAiRequestRow(input.requestId);
+      expect(row?.state).toBe(state);
+      expect(row?.completed_at).toBe(transitionAt);
+      expect(row?.updated_at).toBe(transitionAt);
+    },
+  );
+});
+
+describe("terminal_immutability_rejects_overwrite", () => {
+  it("leaves a Completed row unchanged when later terminal or in-flight writes are attempted", async () => {
+    const input = await seedRequestRow();
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, env.DB);
+    const before = await readAiRequestRow(input.requestId);
+    expect(before?.state).toBe("Completed");
+    expect(before?.completed_at).toBe(FIXTURE_NOW);
+
+    await recordTerminalState(
+      input.requestId,
+      "Failed",
+      "provider_unavailable",
+      "2026-07-31T13:00:00.000Z",
+      env.DB,
+    );
+    await journalTransition(
+      input.requestId,
+      "Invoking",
+      "2026-07-31T13:05:00.000Z",
+      env.DB,
+    );
+
+    const after = await readAiRequestRow(input.requestId);
+    expect(after?.state).toBe("Completed");
+    expect(after?.completed_at).toBe(FIXTURE_NOW);
+    expect(after?.updated_at).toBe(before?.updated_at);
+    expect(after?.terminal_error_code).toBeNull();
+  });
+});
+
+describe("record_terminal_failed_requires_taxonomy_code", () => {
+  it("throws when Failed is recorded without a taxonomy code", async () => {
+    const input = await seedRequestRow();
+
+    await expect(
+      recordTerminalState(input.requestId, "Failed", undefined, FIXTURE_NOW, env.DB),
+    ).rejects.toThrow("Failed terminal state requires terminalErrorCode");
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Accepted");
+    expect(row?.completed_at).toBeNull();
+    expect(row?.terminal_error_code).toBeNull();
+  });
+});
+
+describe("get_request_awaiting_context", () => {
+  it("returns AwaitingContext without reading R2", async () => {
+    const db = createD1Spy(env.DB);
+    const r2 = createR2Spy(env.R2);
+    const input = await seedRequestRow(db);
+    await journalTransition(input.requestId, "AwaitingContext", FIXTURE_NOW, db);
+    db.resetCounts();
+    r2.resetCounts();
+
+    const result = await getRequest(input.requestReference, { db, r2 });
+
+    expect(result).toEqual({ found: true, state: "AwaitingContext" });
+    expect(r2.getCallCount()).toBe(0);
+  });
+});
+
+describe("get_request_in_flight_pending", () => {
+  it.each([
+    { label: "Accepted", transition: null },
+    { label: "Composing", transition: "Composing" as const },
+  ])(
+    "returns pending:true for in-flight state $label",
+    async ({ transition }) => {
+      const input = await seedRequestRow();
+      if (transition !== null) {
+        await journalTransition(input.requestId, transition, FIXTURE_NOW, env.DB);
+      }
+
+      const result = await getRequest(input.requestReference, {
+        db: env.DB,
+        r2: env.R2,
+      });
+
+      expect(result).toEqual({
+        found: true,
+        state: transition ?? "Accepted",
+        pending: true,
+      });
+    },
+  );
+});
+
+describe("get_request_completed_missing_envelope_result_missing", () => {
+  it("returns resultMissing when Completed has a null payload_pointer", async () => {
+    const r2 = createR2Spy(env.R2);
+    const input = await seedRequestRow();
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, env.DB);
+    r2.resetCounts();
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.payload_pointer).toBeNull();
+
+    const result = await getRequest(input.requestReference, { db: env.DB, r2 });
+
+    expect(result).toEqual({
+      found: true,
+      state: "Completed",
+      resultMissing: true,
+    });
+    expect(r2.getCallCount()).toBe(0);
+  });
+});
+
+describe("get_request_completed_corrupt_envelope_result_missing", () => {
+  it("returns resultMissing when the R2 envelope JSON is corrupt", async () => {
+    const r2 = createR2Spy(env.R2);
+    const input = await seedRequestRow();
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, env.DB);
+
+    const key = envelopeKey(input.requestId);
+    await env.R2.put(key, "not-valid-json{{{");
+    await env.DB.prepare(
+      "UPDATE ai_request SET payload_pointer = ? WHERE request_id = ?",
+    )
+      .bind(key, input.requestId)
+      .run();
+    r2.resetCounts();
+
+    const result = await getRequest(input.requestReference, { db: env.DB, r2 });
+
+    expect(result).toEqual({
+      found: true,
+      state: "Completed",
+      resultMissing: true,
+    });
+    expect(r2.getCallCount()).toBe(1);
+  });
+});
+
+describe("get_request_installation_scope_mismatch_not_found", () => {
+  it("returns found:false when installationId does not match the row", async () => {
+    const input = await seedRequestRow();
+
+    const result = await getRequest(input.requestReference, {
+      db: env.DB,
+      r2: env.R2,
+    }, { installationId: "other-inst" });
+
+    expect(result).toEqual({ found: false });
+  });
+});
+
+describe("get_request_failed_null_error_code_falls_back_internal_error", () => {
+  it("falls back to internal_error when Failed has a NULL terminal_error_code", async () => {
+    const input = await seedRequestRow();
+    await env.DB.prepare(
+      `UPDATE ai_request
+       SET state = ?, updated_at = ?, completed_at = ?, terminal_error_code = NULL
+       WHERE request_id = ?`,
+    )
+      .bind("Failed", FIXTURE_NOW, FIXTURE_NOW, input.requestId)
+      .run();
+
+    const result = await getRequest(input.requestReference, {
+      db: env.DB,
+      r2: env.R2,
+    });
+
+    expect(result).toEqual({
+      found: true,
+      state: "Failed",
+      terminalErrorCode: "internal_error",
+    });
+  });
+});
+
+describe("stage16_sets_payload_pointer_on_success", () => {
+  it("sets payload_pointer to request/{id}/envelope after a successful stage-16 drain", async () => {
+    const input = await seedRequestRow();
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, env.DB);
+
+    const attempts = [buildAttempt(1, { text: "pointer success" })];
+    const postInput = buildPostResponseInput(input.requestId, attempts);
+    const ctx = createFakeCtx();
+    writePostResponseDetail(postInput, { db: env.DB, r2: env.R2, ctx });
+    await ctx.drainWaitUntil();
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.payload_pointer).toBe(envelopeKey(input.requestId));
+  });
+});
+
+describe("stage16_mid_sequence_r2_failure_leaves_d1_detail", () => {
+  it("keeps attempt/usage rows and null payload_pointer when R2 put fails after batch", async () => {
+    const db = createD1Spy(env.DB);
+    const input = await seedRequestRow(db);
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, db);
+
+    const failingR2 = createR2Spy(env.R2);
+    failingR2.put = async () => {
+      throw new Error("injected mid-sequence R2 put failure");
+    };
+
+    const attempts = [buildAttempt(1, { text: "d1 detail survives" })];
+    const postInput = buildPostResponseInput(input.requestId, attempts);
+    const ctx = createFakeCtx();
+    db.resetCounts();
+
+    writePostResponseDetail(postInput, { db, r2: failingR2, ctx });
+    await expect(ctx.drainWaitUntil()).resolves.toBeUndefined();
+
+    const attemptCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM ai_attempt WHERE request_id = ?",
+    )
+      .bind(input.requestId)
+      .first<{ count: number }>();
+    const usageCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM usage_event WHERE request_id = ?",
+    )
+      .bind(input.requestId)
+      .first<{ count: number }>();
+
+    expect(attemptCount?.count).toBe(1);
+    expect(usageCount?.count).toBe(1);
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Completed");
+    expect(row?.completed_at).toBe(FIXTURE_NOW);
+    expect(row?.payload_pointer).toBeNull();
+  });
+});
+
+describe("stage16_write_order_attempts_ledger_then_envelope_pointer", () => {
+  it("writes attempt/usage batch before R2 put before payload_pointer update", async () => {
+    const callOrder: string[] = [];
+    const realDb = env.DB;
+    const db = createD1Spy(realDb);
+    const originalBatch = db.batch.bind(db);
+    const originalPrepare = db.prepare.bind(db);
+
+    db.batch = async (statements: D1PreparedStatement[]) => {
+      callOrder.push("batch");
+      return originalBatch(statements);
+    };
+    db.prepare = (query: string) => {
+      const normalized = normalizeSql(query);
+      if (
+        normalized.startsWith("update ai_request") &&
+        normalized.includes("payload_pointer")
+      ) {
+        callOrder.push("pointer");
+      }
+      return originalPrepare(query);
+    };
+
+    const r2 = createR2Spy(env.R2);
+    const originalPut = r2.put.bind(r2);
+    r2.put = async (key, value, options) => {
+      callOrder.push("r2.put");
+      return originalPut(key, value, options);
+    };
+
+    const input = await seedRequestRow(db);
+    await recordTerminalState(input.requestId, "Completed", undefined, FIXTURE_NOW, db);
+
+    const attempts = [buildAttempt(1, { text: "ordered write" })];
+    const postInput = buildPostResponseInput(input.requestId, attempts);
+    const ctx = createFakeCtx();
+    callOrder.length = 0;
+
+    writePostResponseDetail(postInput, { db, r2, ctx });
+    await ctx.drainWaitUntil();
+
+    expect(callOrder).toEqual(["batch", "r2.put", "pointer"]);
+  });
+});
+
+describe("get_request_auth_requires_bearer", () => {
+  it("rejects missing Authorization header as unauthenticated", async () => {
+    const result = await authenticateGetRequest(
+      new Request("https://example.test/v1/requests/AAAA-AAAA"),
+      { DB: env.DB },
+    );
+    expect(result).toEqual({ ok: false, code: "unauthenticated" });
+  });
+
+  it("rejects empty Bearer token as unauthenticated", async () => {
+    const result = await authenticateGetRequest(
+      new Request("https://example.test/v1/requests/AAAA-AAAA", {
+        headers: { Authorization: "Bearer " },
+      }),
+      { DB: env.DB },
+    );
+    expect(result).toEqual({ ok: false, code: "unauthenticated" });
+  });
+
+  it("rejects malformed token as unauthenticated", async () => {
+    const result = await authenticateGetRequest(
+      new Request("https://example.test/v1/requests/AAAA-AAAA", {
+        headers: { Authorization: "Bearer not-a-jws" },
+      }),
+      { DB: env.DB },
+    );
+    expect(result).toEqual({ ok: false, code: "unauthenticated" });
   });
 });

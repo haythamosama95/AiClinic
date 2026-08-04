@@ -66,19 +66,6 @@ class _InvestigationFormDialogState extends ConsumerState<InvestigationFormDialo
   }
 
   Future<List<AppComboboxItem>> _searchInvestigations(String query) async {
-<<<<<<< HEAD
-    final items = await ref.read(visitRepositoryProvider).searchInvestigations(query: query);
-    return [
-      for (final item in items)
-        AppComboboxItem(
-          id: item.id,
-          label: item.name,
-          meta: item.defaultUnit,
-          disabled: widget.usedInvestigationIds.contains(item.id) && item.id != widget.editingEntry?.investigationId,
-          disabledReason: 'Already added',
-        ),
-    ];
-=======
     try {
       final items = await ref.read(visitRepositoryProvider).searchInvestigations(query: query);
       return [
@@ -94,7 +81,6 @@ class _InvestigationFormDialogState extends ConsumerState<InvestigationFormDialo
     } catch (_) {
       return [];
     }
->>>>>>> master
   }
 
   void _submit() {

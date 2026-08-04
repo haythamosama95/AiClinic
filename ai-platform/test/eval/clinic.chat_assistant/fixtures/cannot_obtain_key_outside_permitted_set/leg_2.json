@@ -1,0 +1,7 @@
+{
+  "leg_id": "leg_2",
+  "assistant_turn": {
+    "kind": "model",
+    "text": "I cannot access the medication list with the permitted context keys for this capability."
+  }
+}

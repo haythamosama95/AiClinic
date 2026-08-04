@@ -1,11 +1,6 @@
-<<<<<<< HEAD
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-=======
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
->>>>>>> master
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -47,48 +42,21 @@ StubVisitDocumentationNotifier _docNotifier({VisitDocumentationState? state}) {
   );
 }
 
-<<<<<<< HEAD
-void _driveRichText(WidgetTester tester, String semanticsId, String text) {
-  final finder = find.descendant(
-=======
 AppRichTextEditor _richTextEditor(WidgetTester tester, String semanticsId) {
   final finder = find.ancestor(
->>>>>>> master
     of: find.bySemanticsIdentifier(semanticsId),
     matching: find.byType(AppRichTextEditor),
   );
   expect(finder, findsOneWidget);
-<<<<<<< HEAD
-  final editor = tester.widget<AppRichTextEditor>(finder);
-=======
   return tester.widget<AppRichTextEditor>(finder);
 }
 
 void _driveRichText(WidgetTester tester, String semanticsId, String text) {
   final editor = _richTextEditor(tester, semanticsId);
->>>>>>> master
   expect(editor.controller, isNotNull);
   setQuillControllerPlainText(editor.controller!, text);
 }
 
-<<<<<<< HEAD
-Future<void> _tapSelectOption(WidgetTester tester, String semanticsId, String optionLabel) async {
-  await tester.tap(find.bySemanticsIdentifier(semanticsId));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 100));
-  await tester.tap(find.text(optionLabel).last);
-  await tester.pump();
-}
-
-Future<void> _selectComboboxOption(WidgetTester tester, String semanticsId, String query, String optionLabel) async {
-  final combobox = find.bySemanticsIdentifier(semanticsId);
-  await tester.tap(combobox);
-  await tester.pump();
-  await tester.enterText(combobox, query);
-  await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.text(optionLabel).last);
-  await tester.pump();
-=======
 Future<void> _scrollTargetIntoView(WidgetTester tester, Finder target) async {
   final scrollable = find.ancestor(of: target, matching: find.byType(Scrollable));
   if (scrollable.evaluate().isNotEmpty) {
@@ -150,7 +118,6 @@ Future<void> _selectComboboxOption(
   await tester.tap(option);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
->>>>>>> master
 }
 
 Future<void> _submitTreatmentPlanDialog(
@@ -164,17 +131,6 @@ Future<void> _submitTreatmentPlanDialog(
   final dialog = find.byType(TreatmentPlanFormDialog);
   expect(dialog, findsOneWidget);
 
-<<<<<<< HEAD
-  await _selectComboboxOption(tester, 'treatment-medication', medicationQuery, 'Amoxicillin');
-  final dosageField = find.descendant(
-    of: find.ancestor(of: find.text('Dosage'), matching: find.byType(AppFormField)),
-    matching: find.byType(EditableText),
-  );
-  await tester.enterText(dosageField, dosage);
-  await _tapSelectOption(tester, 'treatment-frequency-select', frequencyLabel);
-  await _tapSelectOption(tester, 'treatment-duration-select', durationLabel);
-  await tester.tap(find.widgetWithText(AppButton, submitLabel));
-=======
   await _selectComboboxOption(
     tester,
     'treatment-medication',
@@ -198,7 +154,6 @@ Future<void> _submitTreatmentPlanDialog(
   );
   await _scrollTargetIntoView(tester, submitButton);
   await tester.tap(submitButton);
->>>>>>> master
   await pumpVisitsFrames(tester);
 }
 
@@ -214,14 +169,6 @@ Future<void> _submitInvestigationDialog(
   await _selectComboboxOption(tester, 'investigation-type', investigationQuery, 'Complete Blood Count');
   if (note != null) {
     final noteField = find.descendant(
-<<<<<<< HEAD
-      of: find.ancestor(of: find.text('Clinical note'), matching: find.byType(AppFormField)),
-      matching: find.byType(EditableText),
-    );
-    await tester.enterText(noteField, note);
-  }
-  await tester.tap(find.widgetWithText(AppButton, submitLabel));
-=======
       of: dialog,
       matching: find.byType(TextField),
     ).last;
@@ -233,7 +180,6 @@ Future<void> _submitInvestigationDialog(
   );
   await _scrollTargetIntoView(tester, submitButton);
   await tester.tap(submitButton);
->>>>>>> master
   await pumpVisitsFrames(tester);
 }
 
@@ -284,14 +230,10 @@ void main() {
         ),
       );
 
-<<<<<<< HEAD
-      expect(find.textContaining('Rest and fluids'), findsOneWidget);
-=======
       expect(
         plainTextFromQuillDocument(_richTextEditor(tester, 'treatment-notes-input').controller!.document),
         contains('Rest and fluids'),
       );
->>>>>>> master
     });
 
     testWidgets('trivial: renders existing prescriptions, investigations, and attachments', (tester) async {
@@ -337,11 +279,7 @@ void main() {
       await _pumpTreatmentSection(tester, docNotifier: _docNotifier(), canEdit: false);
 
       final notesSemantics = tester.getSemantics(find.bySemanticsIdentifier('treatment-notes-input'));
-<<<<<<< HEAD
-      expect(notesSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
-=======
       expect(notesSemantics.flagsCollection.isEnabled, Tristate.isFalse);
->>>>>>> master
     });
 
     testWidgets('trivial: canEdit false hides structured editor mutation affordances', (tester) async {
@@ -365,16 +303,11 @@ void main() {
       expect(find.bySemanticsLabel('Remove Complete Blood Count'), findsNothing);
       expect(find.bySemanticsLabel('Remove Lab PDF'), findsNothing);
 
-<<<<<<< HEAD
-      final dropzoneSemantics = tester.getSemantics(find.bySemanticsIdentifier('visit-attachments'));
-      expect(dropzoneSemantics.hasFlag(SemanticsFlag.isEnabled), isFalse);
-=======
       final dropzone = find.bySemanticsIdentifier('visit-attachments');
       await tester.scrollUntilVisible(dropzone, 100);
       await pumpVisitsFrames(tester);
       final dropzoneSemantics = tester.getSemantics(dropzone);
       expect(dropzoneSemantics.flagsCollection.isEnabled, Tristate.isFalse);
->>>>>>> master
     });
 
     testWidgets('advanced: canEdit true shows add affordances in empty editors', (tester) async {
@@ -521,13 +454,9 @@ void main() {
       );
       await _pumpTreatmentSection(tester, docNotifier: notifier);
 
-<<<<<<< HEAD
-      await tester.tap(find.bySemanticsLabel('Edit Complete Blood Count'));
-=======
       final editButton = find.bySemanticsLabel('Edit Complete Blood Count');
       await tester.ensureVisible(editButton);
       await tester.tap(editButton);
->>>>>>> master
       await pumpVisitsFrames(tester);
       await _submitInvestigationDialog(
         tester,
@@ -554,13 +483,9 @@ void main() {
       );
       await _pumpTreatmentSection(tester, docNotifier: notifier);
 
-<<<<<<< HEAD
-      await tester.tap(find.bySemanticsLabel('Remove Lab PDF'));
-=======
       final removeButton = find.bySemanticsLabel('Remove Lab PDF');
       await tester.ensureVisible(removeButton);
       await tester.tap(removeButton);
->>>>>>> master
       await pumpVisitsFrames(tester);
 
       expect(notifier.stageDeleteAttachmentCallCount, 1);

@@ -5,10 +5,6 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
-=======
->>>>>>> master
 import 'package:ai_clinic/features/billing/presentation/providers/billing_settings_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,10 +13,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/role_permission_seed.dart';
 import '../../support/billing_rpc_test_client.dart';
-<<<<<<< HEAD
-import '../../support/fake_postgrest_rpc.dart';
-=======
->>>>>>> master
 
 void main() {
   group('BillingSettingsNotifier', () {
@@ -32,14 +24,7 @@ void main() {
             () => _PresetAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  role: StaffRole.doctor,
-                  permissions: RolePermissionSeed.doctor,
-                ),
-=======
                 context: sampleAuthSessionContext(role: StaffRole.doctor, permissions: RolePermissionSeed.doctor),
->>>>>>> master
               ),
             ),
           ),
@@ -96,13 +81,7 @@ void main() {
             () => _PresetAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {PermissionKeys.paymentsRecord},
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {PermissionKeys.paymentsRecord}),
->>>>>>> master
               ),
             ),
           ),
@@ -111,12 +90,6 @@ void main() {
       );
       addTearDown(container.dispose);
 
-<<<<<<< HEAD
-      await expectLater(
-        container.read(billingSettingsProvider.future),
-        throwsA(isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR')),
-      );
-=======
       final subscription = container.listen(billingSettingsProvider, (_, _) {});
       addTearDown(subscription.close);
 
@@ -126,7 +99,6 @@ void main() {
       final state = container.read(billingSettingsProvider);
       expect(state.hasError, isTrue);
       expect(state.error, isA<RpcFailure>().having((error) => error.code, 'code', 'RPC_ERROR'));
->>>>>>> master
     });
 
     test('reload refreshes settings on success', () async {
@@ -187,11 +159,7 @@ void main() {
       expect(state.error, isA<RpcFailure>());
     });
 
-<<<<<<< HEAD
-    test('updateAllowPartialPayments sends RPC, refreshes state, and shows loading', () async {
-=======
     test('updateAllowPartialPayments optimistically updates while pending', () async {
->>>>>>> master
       final client = _DelayedUpdateBillingRpcClient(updateDelay: const Duration(milliseconds: 50));
       final container = ProviderContainer(
         overrides: [
@@ -213,14 +181,6 @@ void main() {
 
       final updateFuture = container.read(billingSettingsProvider.notifier).updateAllowPartialPayments(true);
       await Future<void>.delayed(Duration.zero);
-<<<<<<< HEAD
-      expect(container.read(billingSettingsProvider), isA<AsyncLoading<BillingSettings>>());
-
-      await updateFuture;
-
-      expect(client.lastFunction, 'update_billing_settings');
-      expect(client.lastParams?['p_allow_partial_payments'], isTrue);
-=======
       expect(container.read(billingSettingsProvider).value?.allowPartialPayments, isTrue);
       expect(container.read(billingSettingsProvider).isLoading, isFalse);
 
@@ -232,7 +192,6 @@ void main() {
         lessThan(client.rpcLog.lastIndexWhere((fn) => fn == 'get_billing_settings')),
       );
       expect(client.allowPartialPayments, isTrue);
->>>>>>> master
       expect(client.rpcLog.where((fn) => fn == 'get_billing_settings').length, greaterThanOrEqualTo(2));
       expect(container.read(billingSettingsProvider).value?.allowPartialPayments, isTrue);
     });
@@ -293,19 +252,12 @@ void main() {
       );
       addTearDown(container.dispose);
 
-<<<<<<< HEAD
-      await expectLater(
-        container.read(billingSettingsProvider.future),
-        throwsA(isA<RpcFailure>()),
-      );
-=======
       final subscription = container.listen(billingSettingsProvider, (_, _) {});
       addTearDown(subscription.close);
 
       container.read(billingSettingsProvider);
       await pumpEventQueue();
       expect(container.read(billingSettingsProvider).hasError, isTrue);
->>>>>>> master
 
       client.rpcResults.remove('get_billing_settings');
       client.rpcResults['update_billing_settings'] = {
@@ -344,21 +296,11 @@ class _DelayedUpdateBillingRpcClient extends BillingRpcTestClient {
       lastFunction = fn;
       lastParams = params == null ? null : Map<String, dynamic>.from(params);
       allowPartialPayments = lastParams?['p_allow_partial_payments'] == true;
-<<<<<<< HEAD
-      return _DelayedFakePostgrestRpc(
-        {
-          'success': true,
-          'data': {'allow_partial_payments': allowPartialPayments},
-        },
-        updateDelay,
-      ) as PostgrestFilterBuilder<T>;
-=======
       return _DelayedFakePostgrestRpc({
             'success': true,
             'data': {'allow_partial_payments': allowPartialPayments},
           }, updateDelay)
           as PostgrestFilterBuilder<T>;
->>>>>>> master
     }
     return super.rpc<T>(fn, params: params, get: get);
   }

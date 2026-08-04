@@ -44,20 +44,11 @@ class _FakeProvisioningRepository extends Fake implements ProvisioningRepository
     );
   }
 
-<<<<<<< HEAD
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-=======
->>>>>>> master
 }
 
 AuthSessionContext _authContext({
   String? activeBranchId,
-<<<<<<< HEAD
-  List<String> branchIds = const [],
-=======
   List<String> branchIds = const ['00000000-0000-4000-8000-000000000001'],
->>>>>>> master
 }) {
   return sampleAuthSessionContext(
     permissions: {'settings.manage_staff'},

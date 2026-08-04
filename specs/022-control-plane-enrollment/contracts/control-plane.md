@@ -7,8 +7,12 @@
 (Delivery Plan §2.3). A later slice may **extend** (e.g. J3 adds further `control_audit.action`
 values for routing-policy activations) but may not **rewrite** anything below.
 
-**Source of truth in code:** `ai-platform/src/control/index.ts` (lifecycle handlers, `OperatorAuth`
-port, `dispatchControlRequest`); `ai-platform/src/worker.ts` (`/control` route dispatch).
+**Source of truth in code:** sibling modules under `ai-platform/src/control/` with barrel
+`index.ts` — `types`, `http`, `auth` (`createSecretOperatorAuth`), `audit` (`writeAudit` for
+non-batched token-contract), `lifecycle` (five handlers; audit inlined in D1 batch),
+`capability-lifecycle`, `cohort`, `routing-policy`, `token-contract`, `support-purge`, and
+`dispatchControlRequest` / `isControlRoute` on the barrel; `ai-platform/src/worker.ts`
+(`/control` route dispatch wires Env → `createSecretOperatorAuth`).
 
 ---
 
@@ -82,9 +86,13 @@ JSON `{"error": "<reason>"}` with a terminal HTTP status:
 | --- | --- | --- |
 | Missing or invalid operator credentials | `401` | `unauthorized` |
 | Malformed JSON body | `400` | `invalid_json` |
+| Required enroll/rotate field missing or empty | `400` | `invalid_payload` |
 | Route does not match expected pattern | `400` | `invalid_route` |
 | Duplicate enroll (existing `installation_id` or `org_id`) | `409` | `already_enrolled` |
+| Illegal lifecycle transition (e.g. mutate `deleted`, resume non-`suspended`, re-suspend) | `409` | `illegal_lifecycle_transition` |
+| Rotate/`kid` already present (or UNIQUE on `installation_key`) | `409` | `duplicate_kid` |
 | Installation not found (lifecycle mutations) | `404` | `installation_not_found` |
+| Non-UNIQUE D1 / storage failure | `500` | `storage_error` |
 
 ---
 
@@ -106,10 +114,15 @@ type OperatorPrincipal = {
 When `resolve` returns `null`, the handler **MUST** return a terminal rejection (`401
 unauthorized`) and **MUST NOT** write any D1 row.
 
-The production Worker uses `defaultOperatorAuth`, which accepts a non-empty `Authorization: Bearer
-<token>` header and maps the token string to `operatorId`. The real operator credential scheme is
-out of band and out of scope for B2 (R-20); tests inject a fake `OperatorAuth` returning a fixed
-principal or `null`.
+Production auth is `createSecretOperatorAuth({ bearerToken, operatorId })` (`src/control/auth.ts`):
+timing-safe compare of `Authorization: Bearer <token>` against the configured secret; on match,
+return the configured stable `operatorId` — **never** the bearer credential. Fail-closed: empty
+`bearerToken` or empty `operatorId` → `resolve` returns `null`.
+
+The Worker wires this from Env bindings: `OPERATOR_BEARER_TOKEN` (secret) and `OPERATOR_ID` (var).
+Audit rows journal `OPERATOR_ID`, never the bearer. `dispatchControlRequest` requires an explicit
+`operatorAuth` argument (no default). Tests inject a fake `OperatorAuth`; end-to-end coverage uses
+`SELF.fetch` with Miniflare bindings for the secret scheme.
 
 Operator identity is **not** clinic identity. Clinic AATs and installation-scoped tokens are not
 accepted on `/control`.
@@ -186,9 +199,18 @@ B2 writes `pending` on enroll only. Suspend/resume in B2 toggle `installation.st
 | Mutation | `installation.status` after |
 | --- | --- |
 | enroll | `active` |
-| suspend | `suspended` |
-| resume | `active` (when prior status was `suspended`) |
+| suspend | `suspended` (only from non-`deleted`, non-`suspended`) |
+| resume | `active` (only from `suspended`) |
 | delete | `deleted` (lifecycle-terminal; row purge is F3) |
+
+**Terminal / transition rules:**
+
+- `deleted` is terminal: suspend, rotate, or delete on `deleted` → `409 illegal_lifecycle_transition`.
+- Resume is allowed only from `suspended`; resume on `active` (or any non-`suspended`) → `409
+  illegal_lifecycle_transition`.
+- Suspend when already `suspended` → `409 illegal_lifecycle_transition`.
+- Journal a `control_audit` row only for transitions that actually change state.
+- Delete pins `installation.status === "deleted"` (not merely “not active”).
 
 ---
 
@@ -212,6 +234,12 @@ the overlap").
 Enrollment is one-time per clinic installation. A second enroll for an existing `installation_id`
 **or** `org_id` **MUST** produce `409 already_enrolled` with **no** additional D1 rows (FR-004,
 FR-010).
+
+Handlers reject known duplicates via SELECT, then map D1 `UNIQUE` failures from `DB.batch`:
+`installation` → `409 already_enrolled`; `installation_key` → `409 duplicate_kid`; other storage
+failures → `500 storage_error`. **Known follow-up (A5):** `installation` has no `UNIQUE(org_id)`
+today — concurrent same-`org_id` / different-`installation_id` enrolls are not DB-backed; do not
+amend the A5 migration in B2; add `UNIQUE(org_id)` in a later A5 amendment.
 
 ---
 

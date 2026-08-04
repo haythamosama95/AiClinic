@@ -136,10 +136,13 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
   },
 };
 
-const TAXONOMY_CODES = new Set<string>(Object.keys(TAXONOMY));
+/** Closed ordered list of every A2 taxonomy code — single source for exhaustiveness tests. */
+export const ALL_TAXONOMY_CODES = Object.keys(TAXONOMY) as TaxonomyCode[];
+
+const TAXONOMY_CODE_SET = new Set<string>(ALL_TAXONOMY_CODES);
 
 export function isTaxonomyCode(code: string): code is TaxonomyCode {
-  return TAXONOMY_CODES.has(code);
+  return TAXONOMY_CODE_SET.has(code);
 }
 
 export function classifyErrorCode(code: string): TaxonomyCode {

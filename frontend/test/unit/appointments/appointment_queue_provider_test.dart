@@ -1,15 +1,4 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
-import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-=======
 import 'package:ai_clinic/features/queue/data/queue_realtime.dart';
 import 'package:ai_clinic/features/queue/data/queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
@@ -20,7 +9,6 @@ import 'package:ai_clinic/features/clinic-management/data/branch_repository.dart
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
->>>>>>> master
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -392,14 +380,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -465,14 +446,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -504,14 +478,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -546,14 +513,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -591,14 +551,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -624,14 +577,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -669,14 +615,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -703,12 +642,9 @@ void main() {
 
     test('realtime change applies in place when payload is sufficient', () async {
       const branchId = '00000000-0000-4000-8000-000000000001';
-<<<<<<< HEAD
-=======
       final today = DateTime.now().toUtc();
       final updatedStart = DateTime.utc(today.year, today.month, today.day, 11);
       final updatedEnd = updatedStart.add(const Duration(minutes: 30));
->>>>>>> master
       final realtimeClient = _CapturingAppointmentQueueRealtimeClient(onSubscribe: (_) {});
       final container = ProviderContainer(
         overrides: [
@@ -716,14 +652,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -743,13 +672,8 @@ void main() {
           eventType: PostgresChangeEvent.update,
           newRecord: {
             'id': targetId,
-<<<<<<< HEAD
-            'start_time': DateTime.utc(2026, 6, 4, 11).toIso8601String(),
-            'end_time': DateTime.utc(2026, 6, 4, 11, 30).toIso8601String(),
-=======
             'start_time': updatedStart.toIso8601String(),
             'end_time': updatedEnd.toIso8601String(),
->>>>>>> master
             'status': 'confirmed',
             'type': 'planned',
           },
@@ -770,14 +694,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -792,14 +709,7 @@ void main() {
       final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
 
       realtimeClient.onAppointmentChange?.call(
-<<<<<<< HEAD
-        const AppointmentQueueRealtimeChange(
-          eventType: PostgresChangeEvent.insert,
-          newRecord: {'id': 'new'},
-        ),
-=======
         const AppointmentQueueRealtimeChange(eventType: PostgresChangeEvent.insert, newRecord: {'id': 'new'}),
->>>>>>> master
       );
       await pumpEventQueue();
 
@@ -808,18 +718,9 @@ void main() {
 
     test('comparison items are null when previous working day cannot be resolved', () async {
       const branchId = '00000000-0000-4000-8000-000000000001';
-<<<<<<< HEAD
-      final closedSchedule = BranchWorkingSchedule(
-        days: [
-          for (final day in BranchWeekday.values)
-            BranchWorkingDayHours(day: day, isWorkingDay: false),
-        ],
-      );
-=======
       final closedSchedule = BranchWorkingSchedule([
         for (final day in BranchWeekday.values) BranchWorkingDayHours(day: day, isWorkingDay: false),
       ]);
->>>>>>> master
 
       final container = ProviderContainer(
         overrides: [
@@ -827,14 +728,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -864,14 +758,7 @@ void main() {
             () => _MutableAuthSessionNotifier(
               AuthSessionState(
                 status: AuthSessionStatus.authenticated,
-<<<<<<< HEAD
-                context: sampleAuthSessionContext(
-                  permissions: {'appointments.read'},
-                  activeBranchId: branchId,
-                ),
-=======
                 context: sampleAuthSessionContext(permissions: {'appointments.read'}, activeBranchId: branchId),
->>>>>>> master
               ),
             ),
           ),
@@ -900,19 +787,7 @@ class _ClosedBranchRepository implements BranchRepository {
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) async {
-<<<<<<< HEAD
-    return [
-      BranchListItem(
-        id: branchId,
-        name: 'Closed Branch',
-        code: 'CB',
-        isActive: true,
-        workingSchedule: schedule,
-      ),
-    ];
-=======
     return [BranchListItem(id: branchId, name: 'Closed Branch', code: 'CB', isActive: true, workingSchedule: schedule)];
->>>>>>> master
   }
 
   @override

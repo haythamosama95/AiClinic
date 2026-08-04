@@ -68,7 +68,7 @@ consume the AAT contract it freezes.
 - [x] Protected writes, validation, permissions, and transactional rules remain enforced
       through PostgreSQL constraints, triggers, RLS, or RPC functions — the keystore is RLS-locked
       to `anon`/`authenticated` deny; the issuer and keypair routines are `SECURITY DEFINER` in
-      `auth_internal` with `public` INVOKER wrappers, matching F4; `scopes` derivation is a
+      `auth_internal` with `public` `SECURITY DEFINER` wrappers, matching F4; `scopes` derivation is a
       server-side RBAC read, not client input (constitution III, IV).
 - [x] Security remains authenticated, tenant-scoped, branch-scoped, permission-gated,
       auditable, and soft-delete-preserving — the issuer requires `auth.uid()` (§4.2 "Verify the
@@ -107,7 +107,7 @@ The quickstart is written during the Documentation task after the suite is green
 `.specify/templates/ai-platform-quickstart-template.md`. Sections it will contain: (1) Architecture
 context — cites delivery plan §3.3 row B1 and `17-ai-platform.md` §4.2 / §4.2.1 / §5.6 / §8.1;
 (2) What was implemented — the `ai_internal` keystore, the `auth_internal` keypair routines and
-issuer RPC, the `public` wrappers; (3) Files to review — the three migrations and two SQL suites;
+issuer RPC, the `public` wrappers; (3) Files to review — the four migrations (incl. review overlay) and two SQL suites;
 (4) Prerequisites — local Supabase stack up, `pgsodium` enabled by the migration; (5) Run the
 automated suite — `psql -f backend/tests/ai_keystore_rls.sql` and `backend/tests/ai_token_issuer.sql`
 (or `bash backend/tests/run_ai_platform_trust_tests.sh`); (6) Inspect the changes —
@@ -120,20 +120,21 @@ validation omitted (CI is the only verification path — the slice exposes no us
 backend/supabase/migrations/
 ├── 20260801120000_ai_keystore_schema.sql         # pgsodium enable, ai_internal schema, keystore + ledger tables, RLS deny, config keys
 ├── 20260801120100_ai_installation_keypair_routines.sql  # enroll / rotate / revoke keypair (auth_internal) + public wrappers
-└── 20260801120200_ai_token_issuer_rpc.sql        # auth_internal.issue_ai_token + public.issue_ai_token; auth_internal.verify_aat self-test helper
+├── 20260801120200_ai_token_issuer_rpc.sql        # auth_internal.issue_ai_token + public.issue_ai_token; auth_internal.verify_aat self-test helper
+└── 20260803140000_b1_review_resolution.sql       # review fixes overlay (public_jwk return, advisory lock, iss bind, grants, singleton trigger) — idempotent with updated originals
 
 backend/tests/
-├── ai_keystore_rls.sql                            # T01–T06
-├── ai_token_issuer.sql                            # T07a–T07k, T08–T12
+├── ai_keystore_rls.sql                            # T01–T10 (public_jwk, rotation, verify iss/malformed, admin/error paths)
+├── ai_token_issuer.sql                            # T07–T16 (claims, header alg, omissions, exact error codes, per-actor rate limit)
 └── run_ai_platform_trust_tests.sh                 # runner for the two suites above
 ```
 
 **Structure Decision**: B1 extends the existing `backend/` tree only. The keystore lives in a new
 restricted `ai_internal` schema (matching §4.2 "restricted schema" and the clarification Q2); the
 issuer and keypair routines live in `auth_internal` as `SECURITY DEFINER` with thin `public`
-`SECURITY INVOKER` wrappers, exactly as the existing auth/RBAC migrations
-(`20260521110000_auth_rbac_definer_internal_schema.sql`) do for every privileged clinic function
-(F4). No `ai-platform/` and no `frontend/` files are created.
+`SECURITY DEFINER` wrappers (EXECUTE revoked on internals), following the privileged clinic-function
+pattern in `20260521110000_auth_rbac_definer_internal_schema.sql` (F4). No `ai-platform/` and no
+`frontend/` files are created.
 
 ## Consumes Binding
 
@@ -166,13 +167,14 @@ timestamp; each is idempotent and re-runnable, matching the existing migration c
 
 | File | Traces to |
 | --- | --- |
-| `backend/supabase/migrations/20260801120000_ai_keystore_schema.sql` | FR-001 (keystore in restricted schema, anon/authenticated denied), FR-002 (rotation is additive — schema permits multiple active rows per installation with distinct `kid`), FR-003 (revoked key rejected — `revoked_at` column), FR-012 (issuance ledger row), FR-013 (rate-limit ledger counted within the configured window). Also `CREATE EXTENSION pgsodium` and `GRANT pgsodium_keymaker` to the enrollment role, per §4.2.1. |
-| `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | FR-001 (only the issuing/keypair function reads the secret key), FR-002 (`auth_internal.rotate_installation_key` adds a new `kid` row without removing the previous; §8.1 rotation paragraph), FR-003 (`auth_internal.revoke_installation_key(kid)` sets `revoked_at`). Public `public.enroll_installation_keypair` / `public.rotate_installation_key` / `public.revoke_installation_key` INVOKER wrappers, operator-gated via `auth_internal.assert_owner_or_administrator()` (existing). |
-| `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` | FR-004 (verify session via `auth.uid()`, reject absent/expired), FR-005 (resolve `iss`/`sub`/`org`/`branch`/`role` from RBAC via `auth_internal.build_staff_claims`), FR-006 (mint JWS, populate every §5.6 claim, omit patient/quota/provider-model), FR-007 (`scopes` from `roles_permissions` `ai.*` granted to the caller's role; caller-supplied `scopes` parameter is ignored), FR-008 (`aud` = AI platform audience), FR-009 (`jti` = `gen_random_uuid()`), FR-010 (`exp` = `iat` + configured minutes), FR-011 (`ver` = configured token-contract version), FR-012 (insert issuance ledger row), FR-013 (count caller's ledger rows in the window before minting; reject over the configured ceiling). `auth_internal.verify_aat(token)` uses `pgsodium.crypto_sign_verify_detached` for the §4.2.1 clinic-side self-test. `public.issue_ai_token` INVOKER wrapper. |
-| `backend/tests/ai_keystore_rls.sql` | T01–T06 (keystore access + rotation + revoked-key rejection). |
-| `backend/tests/ai_token_issuer.sql` | T07a–T07k (one per §5.6 claim populated), T08 (scopes from RBAC, caller-supplied ignored), T09 (absent/expired session rejected), T10 (issuance row written), T11 (rate limit trips), T12 (`exp` within configured minutes). |
+| `backend/supabase/migrations/20260801120000_ai_keystore_schema.sql` | FR-001 (keystore in restricted schema, anon/authenticated denied), FR-002 (rotation is additive — schema permits multiple active rows per installation with distinct `kid`), FR-002b (singleton installation trigger), FR-003 (revoked key rejected — `revoked_at` column), FR-012 (issuance ledger row), FR-013 (rate-limit ledger counted within the configured window). Also `CREATE EXTENSION pgsodium` and `GRANT pgsodium_keymaker TO postgres` (enrollment definer role, §4.2.1). Schema `USAGE` to `postgres` only at B1 (`service_role` re-granted by F2 for `acceptance_targets`). |
+| `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | FR-001, FR-002 / FR-002a (`rotate`/`enroll` return `public_jwk` + `kid` + `installation_id`; additive insert with `clock_timestamp()`), FR-003 (`revoke` sets `revoked_at`). Public `SECURITY DEFINER` wrappers; `REVOKE EXECUTE … FROM PUBLIC/anon/authenticated` on `auth_internal` B1 functions. |
+| `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` | FR-004–FR-013a: session gates, RBAC claims, EdDSA mint, issuance ledger, per-actor `pg_advisory_xact_lock` + rate limit, bare issuer exception codes; `verify_aat` returns `false` on malformed/`iss` mismatch and does not check `exp`. |
+| `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` | Same FRs as the three originals — applies review fixes on DBs that already ran `20260801120000`–`20260801120200` (idempotent `CREATE OR REPLACE` / grant overlay). |
+| `backend/tests/ai_keystore_rls.sql` | T01–T10 (keystore access, `public_jwk`, rotation, previous-key verify, post-rotate mint kid, malformed/`iss` verify, revoked-key, admin FORBIDDEN, revoke/rotate errors). Suite ends in `ROLLBACK`. |
+| `backend/tests/ai_token_issuer.sql` | T07–T16 (claim correctness, header `alg`, omissions, session codes, issuance row, per-actor rate limit, `exp`, remaining issuer codes). Restores rate-limit settings after mutation. |
 | `backend/tests/run_ai_platform_trust_tests.sh` | Verification mechanics — runs the two SQL suites against the local stack, mirroring `run_auth_backend_tests.sh`. Also appended to that script's `sql_tests` array. |
-| `specs/021-installation-keystore-aat-issuer/contracts/aat-token.md` | Freezes — the AAT JWS contract (header `{alg:"EdDSA", kid}`, §5.6 claim set, JWK `OKP`/`Ed25519` public-key format from §4.2.1). Pinned by T07/T12. |
+| `specs/021-installation-keystore-aat-issuer/contracts/aat-token.md` | Freezes — the AAT JWS contract (header `{alg:"EdDSA", kid}`, §5.6 claim set, JWK `OKP`/`Ed25519` public-key format from §4.2.1, issuer error codes §9). Pinned by T07/T12 and keystore T05/T06. |
 | `specs/021-installation-keystore-aat-issuer/quickstart.md` | Documentation task — slice-only quickstart per the template. |
 
 ## Test Layout
@@ -180,23 +182,33 @@ timestamp; each is idempotent and re-runnable, matching the existing migration c
 Every named test from `spec.md`'s Test plan is placed in the **SQL / RLS** layer (delivery plan
 §3.11.2 row B1; §13.5 "Contract tests … CI, on every change"). The runner is
 `backend/tests/run_ai_platform_trust_tests.sh`; the two suites follow the
-`BEGIN … CREATE TEMP TABLE <name>_results … DO $$ … $$ … RAISE EXCEPTION on failure … COMMIT … SELECT`
+`BEGIN … CREATE TEMP TABLE <name>_results … DO $$ … $$ … RAISE EXCEPTION on failure …`
 pattern already used by `auth_security_extensions.sql` and `dev_reset_clinic_installation.sql`.
+`ai_keystore_rls.sql` ends with `ROLLBACK`; `ai_token_issuer.sql` restores rate-limit settings it
+mutates.
+
+Numbering is **per suite** (keystore T01–T10; issuer T07–T16) — the labels overlap intentionally.
 
 | Test | File | Layer | Construction |
 | --- | --- | --- | --- |
-| T01 keystore anon read denied | `ai_keystore_rls.sql` | SQL/RLS | `SET LOCAL role anon;` attempt to `SELECT` from `ai_internal.installation_keys` → `insufficient_privilege` (matches `auth_security_extensions.sql`'s anon-deny block). |
+| T01 keystore anon read denied | `ai_keystore_rls.sql` | SQL/RLS | `SET LOCAL role anon;` attempt to `SELECT` from `ai_internal.installation_keys` → `insufficient_privilege`. |
 | T02 keystore authenticated read denied | `ai_keystore_rls.sql` | SQL/RLS | `SET LOCAL role authenticated;` SELECT → denied. |
-| T03 issuing function reads keystore successfully | `ai_keystore_rls.sql` | SQL/RLS | Call `auth_internal.issue_ai_token` (or the keypair function) as a bootstrapped authenticated fixture; assert the secret key row is reachable by the `SECURITY DEFINER` path. |
-| T04 rotation adds key without removing previous | `ai_keystore_rls.sql` | SQL/RLS | Enroll, then rotate; assert two rows for the installation with distinct `kid`, both `revoked_at IS NULL`. |
-| T05 previous-key AAT still verifies within validity window | `ai_keystore_rls.sql` | SQL/RLS | Mint an AAT under the previous key, rotate, then `auth_internal.verify_aat` returns true (§4.2.1 `pgsodium.crypto_sign_verify_detached`). |
-| T06 revoked key rejected | `ai_keystore_rls.sql` | SQL/RLS | Mint under a key, revoke it, `auth_internal.verify_aat` returns false. |
-| T07a–T07k each §5.6 claim populated | `ai_token_issuer.sql` | SQL/RLS | Mint via `public.issue_ai_token` as a fixture staff member; decode the JWS payload (base64url via `encode`/`translate`, per §4.2.1) and assert each of `iss`,`aud`,`sub`,`org`,`branch`,`role`,`scopes`,`jti`,`iat`,`exp`,`ver` is present and non-null. |
-| T08 scopes derived from RBAC, caller-supplied ignored | `ai_token_issuer.sql` | SQL/RLS | Fixture role has `ai.access` granted; call `public.issue_ai_token(p_scopes := ARRAY['ai.forge'])`; assert payload `scopes` equals the RBAC-derived set (contains `ai.access`, does **not** contain `ai.forge`). |
-| T09 expired or absent session rejected | `ai_token_issuer.sql` | SQL/RLS | Call with no `auth.uid()` context → rejection; call with a fixture whose `auth.users` row is simulated expired → rejection. |
-| T10 issuance row written | `ai_token_issuer.sql` | SQL/RLS | After a successful mint, assert exactly one `ai_internal.ai_token_issuance` row for the `jti`. |
-| T11 issuer rate limit trips | `ai_token_issuer.sql` | SQL/RLS | Set the configured window/ceiling to a small fixture value; mint up to the ceiling; assert the next mint is rejected. |
-| T12 exp within configured minutes | `ai_token_issuer.sql` | SQL/RLS | Mint; assert `exp - iat <= configured_minutes` and `> 0`. |
+| T03 enroll returns `public_jwk` | `ai_keystore_rls.sql` | SQL/RLS | Admin enroll; assert `rpc_success` data has `kid`, `installation_id`, and JWK `OKP`/`Ed25519`/`x`/`kid`. |
+| T04 rotation additive + `public_jwk` | `ai_keystore_rls.sql` | SQL/RLS | Enroll, then rotate; assert two active rows and rotate payload includes `public_jwk`. |
+| T05 previous-key verifies after rotation | `ai_keystore_rls.sql` | SQL/RLS | Mint under previous key, rotate, `verify_aat` true. Does **not** assert `exp` (B3). |
+| T05b post-rotation mint uses new `kid` | `ai_keystore_rls.sql` | SQL/RLS | After rotate in same txn (`clock_timestamp` ordering), new mint header `kid` equals rotate result. |
+| T05c malformed sig → false | `ai_keystore_rls.sql` | SQL/RLS | Tampered signature segment; `verify_aat` returns false, no throw. |
+| T05d `iss` mismatch → false | `ai_keystore_rls.sql` | SQL/RLS | Payload `iss` ≠ key row `installation_id`; `verify_aat` false. |
+| T06 revoked key rejected | `ai_keystore_rls.sql` | SQL/RLS | Mint, revoke, `verify_aat` false. |
+| T07 keystore admin FORBIDDEN | `ai_keystore_rls.sql` | SQL/RLS | Non-admin enroll/rotate/revoke → `FORBIDDEN` via `rpc_result`. |
+| T08–T10 revoke/rotate errors | `ai_keystore_rls.sql` | SQL/RLS | Empty kid → `INVALID_INPUT`; unknown kid → `KEY_NOT_FOUND`; rotate-before-enroll → `INSTALLATION_NOT_ENROLLED`. |
+| T07 / T07b claims + header | `ai_token_issuer.sql` | SQL/RLS | Mint; assert claim correctness + header `alg: EdDSA` / non-null `kid`. |
+| T08 / T08b scopes + omissions | `ai_token_issuer.sql` | SQL/RLS | Caller-supplied scopes ignored; deliberate-omission keys absent. |
+| T09 session codes | `ai_token_issuer.sql` | SQL/RLS | Absent → `UNAUTHENTICATED`; expired → `SESSION_EXPIRED` (after enrollment). |
+| T10 issuance row | `ai_token_issuer.sql` | SQL/RLS | One ledger row per `jti`. |
+| T11 rate limit | `ai_token_issuer.sql` | SQL/RLS | Ceiling exceeded → `RATE_LIMITED`; other actor still mints (advisory lock path). |
+| T12 `exp` window | `ai_token_issuer.sql` | SQL/RLS | `0 < exp − iat ≤ configured_minutes`. |
+| T13–T16 issuer codes | `ai_token_issuer.sql` | SQL/RLS | `STAFF_NOT_FOUND`, `BRANCH_NOT_FOUND`, `INSTALLATION_NOT_ENROLLED`, `AI_ACCESS_DENIED`. |
 
 No named test is unplaceable. No test is pulled forward from B2/B3/B4.
 
@@ -214,11 +226,14 @@ this order so each step is independently green:
    use `auth_internal.verify_aat`, which is added with the issuer in step 3 — so T05/T06 are
    written here but executed after step 3 lands; T04 passes now.
 3. **Issuer RPC** (`20260801120200_ai_token_issuer_rpc.sql`) — `issue_ai_token`, `verify_aat`,
-   public wrappers. Then T07a–T07k, T08–T12. Now the full keystore suite (T01–T06) also passes.
+   public wrappers. Then issuer T07–T16. Now the full keystore suite (T01–T10) also passes.
 4. **Runner + CI wiring** (`run_ai_platform_trust_tests.sh`, appended to
    `run_auth_backend_tests.sh`). Full B1 suite green.
 5. **Documentation task** — write `contracts/aat-token.md` (frozen contract, pinned by T07/T12)
    and `quickstart.md`.
+6. **Review-resolution overlay** (`20260803140000_b1_review_resolution.sql`) — applied after the
+   original three migrations for DBs that already ran them; originals were updated in lockstep so
+   fresh resets need no separate behavioural delta.
 
 ## Complexity Tracking
 

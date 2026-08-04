@@ -70,6 +70,11 @@ const PUBLISHED_KEY_SHAPES: ReadonlyMap<string, KeyShape> = new Map([
   [VISIT_CHIEF_COMPLAINT_V1, VISIT_CHIEF_COMPLAINT_V1_SHAPE],
 ]);
 
+/** Lookup a platform-published shape by key (single source for A5 + C2). */
+export function publishedShapeForKey(key: string): KeyShape | undefined {
+  return PUBLISHED_KEY_SHAPES.get(key);
+}
+
 const PUBLISHED_CONTEXT_KEYS = new Set<string>(SECTION_5_2_EXAMPLE_KEYS);
 
 const CONTEXT_KEY_FORMAT =
@@ -85,15 +90,35 @@ function reject(code: string, field?: string): ValidationResult {
   return field === undefined ? { ok: false, code } : { ok: false, code, field };
 }
 
+function conceptSegments(key: string): string[] {
+  const beforeAt = key.split("@")[0] ?? "";
+  const lastSegment = beforeAt.includes(".")
+    ? (beforeAt.split(".").at(-1) ?? beforeAt)
+    : beforeAt;
+  return lastSegment === beforeAt ? [beforeAt] : [beforeAt, lastSegment];
+}
+
 function isStorageNamedKey(key: string): boolean {
-  const conceptPart = key.split("@")[0] ?? "";
-  if (conceptPart.endsWith("_table")) {
-    return true;
-  }
-  if (/^get_.+_rpc$/.test(conceptPart)) {
-    return true;
+  for (const part of conceptSegments(key)) {
+    if (part.endsWith("_table") || part.endsWith("_view")) {
+      return true;
+    }
+    if (/^get_.+_rpc$/.test(part)) {
+      return true;
+    }
   }
   return false;
+}
+
+function publishedConceptBases(): Set<string> {
+  const bases = new Set<string>();
+  for (const published of PUBLISHED_CONTEXT_KEYS) {
+    const match = CONTEXT_KEY_FORMAT.exec(published);
+    if (match?.[1]) {
+      bases.add(match[1]);
+    }
+  }
+  return bases;
 }
 
 function isFieldRequired(cardinality: FieldCardinality): boolean {
@@ -193,12 +218,20 @@ function validateFieldValue(
 }
 
 export function validateKey(key: string): ValidationResult {
-  if (!CONTEXT_KEY_FORMAT.test(key)) {
+  // Storage-named rejection precedes format so contract examples without a
+  // domain.concept dot (e.g. visits_vitals_table@v1) still get storage_named_key.
+  if (isStorageNamedKey(key)) {
+    return reject("storage_named_key");
+  }
+
+  const match = CONTEXT_KEY_FORMAT.exec(key);
+  if (!match) {
     return reject("malformed_key");
   }
 
-  if (isStorageNamedKey(key)) {
-    return reject("storage_named_key");
+  const conceptBase = match[1];
+  if (!publishedConceptBases().has(conceptBase)) {
+    return reject("unknown_key");
   }
 
   if (!PUBLISHED_CONTEXT_KEYS.has(key)) {

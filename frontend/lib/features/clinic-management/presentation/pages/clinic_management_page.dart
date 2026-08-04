@@ -5,13 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-<<<<<<< HEAD
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/components/branches_tab.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/components/organization_tab.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/components/roles_tab.dart';
-=======
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
@@ -20,16 +13,12 @@ import 'package:ai_clinic/features/clinic-management/presentation/components/cli
 import 'package:ai_clinic/features/clinic-management/presentation/components/organization_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/roles_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/services_tab.dart';
->>>>>>> master
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/branch_form_values.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/clinic_management_tab.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/staff_form_values.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/clinic_management_notifier.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
->>>>>>> master
 
 /// Clinic management hub: organization, branches, staff, and roles (web `ClinicManagementPage`).
 class ClinicManagementPage extends ConsumerStatefulWidget {
@@ -66,13 +55,10 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
       if (current.hasValue) {
         ref.read(clinicManagementProvider.notifier).reload();
       }
-<<<<<<< HEAD
-=======
       final auth = ref.read(authSessionProvider);
       if (AuthRouteGuard.canAccessPermissionMatrix(auth)) {
         ref.read(rolePermissionsProvider.future);
       }
->>>>>>> master
     });
   }
 
@@ -251,11 +237,7 @@ class _ClinicManagementShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Column(
-=======
     final content = Column(
->>>>>>> master
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -278,8 +260,6 @@ class _ClinicManagementShell extends StatelessWidget {
         SizedBox(width: double.infinity, child: body),
       ],
     );
-<<<<<<< HEAD
-=======
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -289,7 +269,6 @@ class _ClinicManagementShell extends StatelessWidget {
         return content;
       },
     );
->>>>>>> master
   }
 }
 
@@ -341,11 +320,8 @@ class _ActiveTabBody extends StatelessWidget {
             onRemove: onRemoveStaff,
           ),
           'roles' => const RolesTab(),
-<<<<<<< HEAD
-=======
           'services' => _buildServicesTab(),
           'settings' => const ClinicSettingsTab(),
->>>>>>> master
           _ => const SizedBox.shrink(),
         },
       ],
@@ -370,8 +346,6 @@ class _ActiveTabBody extends StatelessWidget {
       activeBranchCount: state.branches.where((branch) => branch.isActive).length,
     );
   }
-<<<<<<< HEAD
-=======
 
   Widget _buildServicesTab() {
     final organization = state.organization;
@@ -385,7 +359,6 @@ class _ActiveTabBody extends StatelessWidget {
 
     return ServicesTab(branches: state.branches, organization: organization);
   }
->>>>>>> master
 }
 
 class _TabSkeletonBody extends StatelessWidget {
@@ -401,11 +374,8 @@ class _TabSkeletonBody extends StatelessWidget {
         'branches' => const _BranchesTabSkeleton(),
         'staff' => const _StaffTabSkeleton(),
         'roles' => const _RolesTabSkeleton(),
-<<<<<<< HEAD
-=======
         'services' => const _ServicesTabSkeleton(),
         'settings' => const _ClinicSettingsTabSkeleton(),
->>>>>>> master
         _ => const _OrganizationTabSkeleton(),
       },
     );
@@ -566,8 +536,6 @@ class _RolesTabSkeleton extends StatelessWidget {
     );
   }
 }
-<<<<<<< HEAD
-=======
 
 class _ServicesTabSkeleton extends StatelessWidget {
   const _ServicesTabSkeleton();
@@ -621,4 +589,3 @@ class _ClinicSettingsTabSkeleton extends StatelessWidget {
     );
   }
 }
->>>>>>> master

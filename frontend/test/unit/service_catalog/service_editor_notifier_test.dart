@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-=======
 import 'dart:async';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
->>>>>>> master
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
@@ -21,8 +18,6 @@ import '../../support/fake_postgrest_rpc.dart';
 
 void main() {
   group('ServiceEditorNotifier', () {
-<<<<<<< HEAD
-=======
     test('build returns empty state when user lacks editor permission', () async {
       final container = ProviderContainer(
         overrides: [
@@ -408,7 +403,6 @@ void main() {
       expect(state.value?.detail, isNotNull);
     });
 
->>>>>>> master
     test('createService calls RPCs and stores loaded detail', () async {
       final rpcClient = _ServiceCatalogRpcClient();
       final container = ProviderContainer(
@@ -529,8 +523,6 @@ void main() {
       expect(state.value?.detail?.service.name, 'General Consultation');
     });
 
-<<<<<<< HEAD
-=======
     test('updateService reloads detail when provider state was disposed', () async {
       final rpcClient = _ServiceCatalogRpcClient();
       final container = ProviderContainer(
@@ -572,7 +564,6 @@ void main() {
       expect(state.value?.detail?.service.name, 'General Consultation');
     });
 
->>>>>>> master
     test('softDeleteService calls soft delete RPC', () async {
       final rpcClient = _ServiceCatalogRpcClient();
       final container = ProviderContainer(
@@ -600,8 +591,6 @@ void main() {
       final state = container.read(serviceEditorProvider('service-1'));
       expect(state.value?.detail, isNull);
     });
-<<<<<<< HEAD
-=======
 
     test('softDeleteService skips state updates when provider is disposed during load', () async {
       final rpcClient = _DelayedGetServiceRpcClient();
@@ -632,29 +621,19 @@ void main() {
       await expectLater(deleteFuture, completes);
       expect(rpcClient.calls, contains('soft_delete_service'));
     });
->>>>>>> master
   });
 }
 
 class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
-<<<<<<< HEAD
-=======
   _ServiceCatalogRpcClient({this.rpcErrors = const {}});
 
   final Map<String, RpcFailure> rpcErrors;
->>>>>>> master
   final List<String> calls = <String>[];
   int _getServiceCalls = 0;
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     calls.add(fn);
-<<<<<<< HEAD
-    return FakePostgrestRpc(_payloadFor(fn)) as PostgrestFilterBuilder<T>;
-  }
-
-  Map<String, dynamic> _payloadFor(String fn) {
-=======
     final failure = rpcErrors[fn];
     if (failure != null) {
       return FakePostgrestRpc({
@@ -667,7 +646,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
   }
 
   Map<String, dynamic> _payloadFor(String fn, Map<String, dynamic>? params) {
->>>>>>> master
     return switch (fn) {
       'create_service' => {
         'success': true,
@@ -685,8 +663,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'service_branch_id': 'sb-1', 'has_promotion': true, 'updated_at': '2026-01-03T10:00:00.000Z'},
       },
-<<<<<<< HEAD
-=======
       'set_service_branch_assignment' => {
         'success': true,
         'data': _branchAssignmentPayload(params),
@@ -699,7 +675,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
           'updated_at': '2026-01-04T10:00:00.000Z',
         },
       },
->>>>>>> master
       'update_service' => {
         'success': true,
         'data': {'service_id': 'service-1', 'updated_at': '2026-01-02T10:00:00.000Z'},
@@ -712,8 +687,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
     };
   }
 
-<<<<<<< HEAD
-=======
   Map<String, dynamic> _branchAssignmentPayload(Map<String, dynamic>? params) {
     final branchIds = params?['p_branch_ids'];
     final ids = branchIds is List ? List<String>.from(branchIds.map((id) => id.toString())) : <String>['branch-2'];
@@ -723,7 +696,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
     return {'unassigned_branch_ids': ids};
   }
 
->>>>>>> master
   Map<String, dynamic> _getServicePayload() {
     final call = _getServiceCalls++;
     final updated = call > 0;
@@ -755,8 +727,6 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
   }
 }
 
-<<<<<<< HEAD
-=======
 class _DelayedGetServiceRpcClient extends _ServiceCatalogRpcClient {
   Completer<void>? _getServiceGate;
 
@@ -789,7 +759,6 @@ class _DelayedPostgrestRpc extends FakePostgrestRpc {
   }
 }
 
->>>>>>> master
 class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   _PresetAuthSessionNotifier(this.initial);
 

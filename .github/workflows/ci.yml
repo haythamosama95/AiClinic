@@ -30,6 +30,30 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Architecture guard (client R-12 lint)
+        shell: pwsh
+        run: |
+          $guard = "tool/architecture_guard/architecture_guard.dart"
+          $fixtures = @(
+            "tool/architecture_guard/fixtures/prompt_like_string",
+            "tool/architecture_guard/fixtures/provider_name",
+            "tool/architecture_guard/fixtures/model_identifier"
+          )
+          foreach ($fixture in $fixtures) {
+            Write-Host "guard_prompt_like_string_fails_build / provider / model: expect-fail on $fixture"
+            dart $guard $fixture
+            if ($LASTEXITCODE -eq 0) {
+              Write-Error "Expected non-zero exit scanning fixture: $fixture"
+              exit 1
+            }
+          }
+          Write-Host "guard_clean_tree_passes / guard_covers_every_client_source_path: expect-success"
+          dart $guard --assert-coverage
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Expected zero exit on clean client scan roots"
+            exit 1
+          }
+
       - name: Analyze
         run: flutter analyze
 
@@ -53,4 +77,37 @@ jobs:
         with:
           name: windows-build
           path: frontend/build/windows/x64/runner/Release/
+          retention-days: 7
+
+  ai-platform-eval-golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ai-platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run golden eval suite
+        run: npx vitest run test/eval/golden.test.ts test/eval/conversation.test.ts test/eval/prohibitions.test.ts
+
+      - name: Upload score report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-platform-golden-eval-reports
+          path: ai-platform/test/eval/reports/*.json
+          if-no-files-found: ignore
           retention-days: 7

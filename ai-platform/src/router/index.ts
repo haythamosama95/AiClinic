@@ -6,6 +6,8 @@
 import {
   type ConfigCache,
   ConfigCacheMissError,
+  type D1Reader,
+  loadConfig,
 } from "../config-cache";
 
 export type RoutingTier = "standard" | "degraded";
@@ -29,7 +31,11 @@ export type RouterContext = {
   requirements: CapabilityRequirements;
   manifestCostClass: CostClass;
   entitlementMaxCostClass: CostClass;
-  installationForceCostClass?: CostClass;
+  /**
+   * Optional provider ids excluded by an upstream kill-switch guard (B3).
+   * Targets whose provider_id is listed are dropped with reason_code `kill_switch`.
+   */
+  killedProviderIds?: readonly string[];
   /** Ignored — routing is stateless (FR-011). */
   priorProviderFailure?: { providerId: string; modelId: string };
 };
@@ -74,6 +80,22 @@ export type RouterOutcome = {
   routing_decision: RoutingDecision;
 };
 
+export type RoutingPolicyErrorCode =
+  | "policy_identity_mismatch"
+  | "unsupported_schema_version"
+  | "missing_catch_all"
+  | "no_matching_rule";
+
+export class RoutingPolicyError extends Error {
+  readonly code: RoutingPolicyErrorCode;
+
+  constructor(code: RoutingPolicyErrorCode, message: string) {
+    super(message);
+    this.name = "RoutingPolicyError";
+    this.code = code;
+  }
+}
+
 type TargetFeatures = {
   structured_output: boolean;
   min_context_window: number;
@@ -99,14 +121,16 @@ type PolicyRuleMatch = {
   latency_classes?: string[];
 };
 
+type PolicyRuleRequires = {
+  structured_output: boolean;
+  min_context_window: number;
+  languages: string[];
+};
+
 type PolicyRule = {
   rule_id: string;
   match: PolicyRuleMatch;
-  requires: {
-    structured_output: boolean;
-    min_context_window: number;
-    languages: string[];
-  };
+  requires: PolicyRuleRequires;
   targets: PolicyTarget[];
   max_parallel_attempts?: number;
 };
@@ -123,6 +147,10 @@ type RoutingPolicyDocument = {
   policy_id: string;
   policy_version: number;
   defaults: {
+    /**
+     * Schema-retained for §4.3.7 table parity. Does **not** participate in
+     * effective cost-class calculation (three-source minimum only).
+     */
     cost_class: CostClass;
     max_parallel_attempts: number;
   };
@@ -135,6 +163,23 @@ type ActiveRoutingPolicyRow = {
   policy_version: number;
   document: RoutingPolicyDocument;
 };
+
+/** Cache/D1 rows may expose `version` (§7.3) or `policy_version` (document/test fixtures). */
+function normalizePolicyRow(row: unknown): ActiveRoutingPolicyRow {
+  const raw = row as Record<string, unknown>;
+  const document = raw.document as RoutingPolicyDocument;
+  const policyId = String(raw.policy_id ?? "");
+  const versionRaw =
+    raw.policy_version !== undefined ? raw.policy_version : raw.version;
+  const policyVersion =
+    typeof versionRaw === "number" ? versionRaw : Number(versionRaw);
+
+  return {
+    policy_id: policyId,
+    policy_version: policyVersion,
+    document,
+  };
+}
 
 const COST_CLASS_ORDER: Record<CostClass, number> = {
   economy: 0,
@@ -149,6 +194,7 @@ const SOURCE_PRIORITY: Record<CostClassSource, number> = {
 };
 
 const OUTGOING_CONNECTION_CAP = 6;
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1]);
 
 function clampParallelAttempts(value: number): number {
   return Math.min(OUTGOING_CONNECTION_CAP, Math.max(1, value));
@@ -166,6 +212,50 @@ function matchAllLanguages(
     return true;
   }
   return required.every((language) => allowed.includes(language));
+}
+
+function isCatchAllMatch(match: PolicyRuleMatch | undefined): boolean {
+  if (!match) {
+    return true;
+  }
+  return (
+    (!match.capability_ids || match.capability_ids.length === 0) &&
+    (!match.installation_ids || match.installation_ids.length === 0) &&
+    (!match.cost_classes || match.cost_classes.length === 0) &&
+    (!match.tiers || match.tiers.length === 0) &&
+    (!match.languages || match.languages.length === 0) &&
+    (!match.latency_classes || match.latency_classes.length === 0)
+  );
+}
+
+function validatePolicyDocument(
+  policyRow: ActiveRoutingPolicyRow,
+  document: RoutingPolicyDocument,
+): void {
+  if (
+    document.policy_id !== policyRow.policy_id ||
+    document.policy_version !== policyRow.policy_version
+  ) {
+    throw new RoutingPolicyError(
+      "policy_identity_mismatch",
+      `Document identity ${document.policy_id}@${document.policy_version} does not match row ${policyRow.policy_id}@${policyRow.policy_version}`,
+    );
+  }
+
+  if (!SUPPORTED_SCHEMA_VERSIONS.has(document.schema_version)) {
+    throw new RoutingPolicyError(
+      "unsupported_schema_version",
+      `Unsupported routing policy schema_version ${document.schema_version}`,
+    );
+  }
+
+  const lastRule = document.rules[document.rules.length - 1];
+  if (!lastRule || !isCatchAllMatch(lastRule.match)) {
+    throw new RoutingPolicyError(
+      "missing_catch_all",
+      "Routing policy document must end with a catch-all rule (empty/absent match)",
+    );
+  }
 }
 
 function ruleMatches(
@@ -198,17 +288,23 @@ function ruleMatches(
   return true;
 }
 
+/**
+ * Effective cost class is the lowest of three sources only:
+ * manifest, entitlement_cap, and optional installation `force_cost_class`
+ * from the matched policy-document override. `defaults.cost_class` is ignored.
+ */
 function resolveEffectiveCostClass(
   context: RouterContext,
+  forceCostClassFromDocument?: CostClass,
 ): { class: CostClass; source: CostClassSource } {
   const candidates: { class: CostClass; source: CostClassSource }[] = [
     { class: context.manifestCostClass, source: "manifest" },
     { class: context.entitlementMaxCostClass, source: "entitlement_cap" },
   ];
 
-  if (context.installationForceCostClass !== undefined) {
+  if (forceCostClassFromDocument !== undefined) {
     candidates.push({
-      class: context.installationForceCostClass,
+      class: forceCostClassFromDocument,
       source: "installation_override",
     });
   }
@@ -228,6 +324,30 @@ function resolveEffectiveCostClass(
     }
     return lowest;
   });
+}
+
+/**
+ * Merge request requirements with the matched rule's `requires` floor.
+ * Target features must satisfy the stricter floor on each dimension.
+ */
+function mergeRequirementFloors(
+  requirements: CapabilityRequirements,
+  ruleRequires: PolicyRuleRequires,
+): CapabilityRequirements {
+  const languages = Array.from(
+    new Set([...requirements.languages, ...ruleRequires.languages]),
+  );
+
+  return {
+    structured_output_required:
+      requirements.structured_output_required || ruleRequires.structured_output,
+    min_context_window: Math.max(
+      requirements.min_context_window,
+      ruleRequires.min_context_window,
+    ),
+    languages,
+    latency_class: requirements.latency_class,
+  };
 }
 
 function applyInstallationOverride(
@@ -290,13 +410,24 @@ function filterTargets(
   targets: PolicyTarget[],
   requirements: CapabilityRequirements,
   effectiveCostClass: CostClass,
+  killedProviderIds?: readonly string[],
 ): { chain: ChainEntry[]; excluded: ExcludedEntry[] } {
   const chain: ChainEntry[] = [];
   const excluded: ExcludedEntry[] = [];
+  const killed = killedProviderIds ? new Set(killedProviderIds) : undefined;
   let ordinal = 0;
 
   for (const target of targets) {
     const { features } = target;
+
+    if (killed?.has(target.provider_id)) {
+      excluded.push({
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+        reason_code: "kill_switch",
+      });
+      continue;
+    }
 
     if (
       requirements.structured_output_required &&
@@ -332,6 +463,7 @@ function filterTargets(
       continue;
     }
 
+    // Latency has no distinct reason_code in the frozen enum; map to feature_unsupported.
     if (features.latency_class !== requirements.latency_class) {
       excluded.push({
         provider_id: target.provider_id,
@@ -372,27 +504,34 @@ export function selectCandidateChain({
   policyCacheKey: string;
   context: RouterContext;
 }): RouterOutcome {
-  const row = cache.consult("active_routing_policy", policyCacheKey);
+  const installationPolicyKey = `${policyCacheKey}/${context.installationId}`;
+  let row = cache.consult("active_routing_policy", installationPolicyKey);
+  if (row === undefined) {
+    row = cache.consult("active_routing_policy", policyCacheKey);
+  }
   if (row === undefined) {
     throw new ConfigCacheMissError("active_routing_policy", policyCacheKey);
   }
 
-  const policyRow = row as ActiveRoutingPolicyRow;
+  const policyRow = normalizePolicyRow(row);
   const document = policyRow.document;
+
+  validatePolicyDocument(policyRow, document);
 
   const installationOverride = document.overrides.find(
     (override) => override.installation_id === context.installationId,
   );
 
   const { class: effectiveCostClass, source: costClassSource } =
-    resolveEffectiveCostClass(context);
+    resolveEffectiveCostClass(context, installationOverride?.force_cost_class);
 
   const matchedRule = document.rules.find((rule) =>
     ruleMatches(rule, context, effectiveCostClass),
   );
 
   if (!matchedRule) {
-    throw new Error(
+    throw new RoutingPolicyError(
+      "no_matching_rule",
       `No routing policy rule matched for installation ${context.installationId}`,
     );
   }
@@ -400,10 +539,16 @@ export function selectCandidateChain({
   const { targets: narrowedTargets, excluded: overrideExcluded } =
     applyInstallationOverride(matchedRule.targets, installationOverride);
 
+  const effectiveRequirements = mergeRequirementFloors(
+    context.requirements,
+    matchedRule.requires,
+  );
+
   const { chain, excluded: filterExcluded } = filterTargets(
     narrowedTargets,
-    context.requirements,
+    effectiveRequirements,
     effectiveCostClass,
+    context.killedProviderIds,
   );
 
   const rawParallelAttempts =
@@ -424,4 +569,24 @@ export function selectCandidateChain({
       max_parallel_attempts: clampParallelAttempts(rawParallelAttempts),
     },
   };
+}
+
+/**
+ * Preload installation-specific active routing policy into the config cache (J3).
+ * Cache key is `${policyCacheKey}/${installationId}` — an allowed extension of
+ * the single-document cache contract (delivery plan §2.3). `selectCandidateChain`
+ * consults that key first, then falls back to the global `policyCacheKey`.
+ */
+export async function preloadRoutingPolicyForInstallation(
+  cache: ConfigCache,
+  reader: D1Reader,
+  policyCacheKey: string,
+  installationId: string,
+): Promise<void> {
+  await loadConfig(
+    cache,
+    reader,
+    "active_routing_policy",
+    `${policyCacheKey}/${installationId}`,
+  );
 }

@@ -33,10 +33,6 @@ class AppointmentDoctorSelector extends StatelessWidget {
           hint ??
           'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
       child: AppSelect(
-<<<<<<< HEAD
-        key: key,
-=======
->>>>>>> master
         options: AppointmentDoctorSelectItems.buildOptions(
           branchId: branchId,
           doctors: doctors,

@@ -3,10 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
->>>>>>> master
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_form_dialog.dart';
 
 import 'visit_widget_test_harness.dart';
@@ -19,24 +16,17 @@ final _vitalSignCatalog = <CatalogItem>[
   const CatalogItem(id: _heartRateId, name: 'Heart Rate', defaultUnit: 'bpm'),
 ];
 
-<<<<<<< HEAD
-Future<void> _tapAppSelectOption(WidgetTester tester, Key selectKey, String optionLabel) async {
-  await tester.tap(find.byKey(selectKey));
-=======
 Future<void> _tapAppSelectOption(WidgetTester tester, String selectId, String optionLabel) async {
   final select = find.bySemanticsIdentifier(selectId);
   await tester.ensureVisible(select);
   await tester.pump();
   await tester.tap(select);
->>>>>>> master
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
   await tester.tap(find.text(optionLabel).last);
   await tester.pump();
 }
 
-<<<<<<< HEAD
-=======
 Future<void> _tapDialogButton(WidgetTester tester, String label) async {
   final button = find.widgetWithText(AppButton, label);
   await tester.ensureVisible(button);
@@ -45,7 +35,6 @@ Future<void> _tapDialogButton(WidgetTester tester, String label) async {
   await tester.pump();
 }
 
->>>>>>> master
 Future<VitalSignFormResult?> _pumpAndOpenDialog(
   WidgetTester tester, {
   required Set<String> usedPredefinedIds,
@@ -131,14 +120,8 @@ void main() {
 
       await tester.enterText(_valueField(tester), '120/80');
       await tester.pump();
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Add vital sign'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-=======
       await _tapDialogButton(tester, 'Add vital sign');
       await tester.pumpAndSettle();
->>>>>>> master
 
       expect(captured, isNotNull);
       expect(captured!.predefinedVitalSignId, _bloodPressureId);
@@ -285,11 +268,7 @@ void main() {
         editingEntry: editing,
       );
 
-<<<<<<< HEAD
-      await _tapAppSelectOption(tester, const Key('vital-sign-type-select'), 'Heart Rate');
-=======
       await _tapAppSelectOption(tester, 'vital-sign-type-select', 'Heart Rate');
->>>>>>> master
       await tester.pump();
 
       final field = tester.widget<TextField>(_valueField(tester));
@@ -381,14 +360,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-=======
       await _tapDialogButton(tester, 'Cancel');
       await tester.pumpAndSettle();
->>>>>>> master
 
       expect(captured, isNull);
       expect(find.byType(VitalSignFormDialog), findsNothing);
@@ -417,11 +390,7 @@ void main() {
 
       await tester.tapAt(const Offset(8, 8));
       await tester.pump();
-<<<<<<< HEAD
-      await tester.pump(const Duration(milliseconds: 100));
-=======
       await tester.pumpAndSettle();
->>>>>>> master
 
       expect(captured, isNull);
       expect(find.byType(VitalSignFormDialog), findsNothing);

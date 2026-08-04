@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-<<<<<<< HEAD
-import 'package:ai_clinic/core/ui/components/app_segmented_control.dart';
-import 'package:ai_clinic/core/ui/theme/app_radius.dart';
-import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-=======
->>>>>>> master
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
@@ -42,16 +35,7 @@ class _VisitServiceSelectionStepState
     extends ConsumerState<VisitServiceSelectionStep> {
   final _searchController = TextEditingController();
   _ServiceSelectionView _view = _ServiceSelectionView.grid;
-<<<<<<< HEAD
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCatalog(''));
-  }
-=======
   String? _loadedCatalogBranchId;
->>>>>>> master
 
   @override
   void dispose() {
@@ -88,8 +72,6 @@ class _VisitServiceSelectionStepState
         ? const AsyncValue<List<EligibleService>>.loading()
         : ref.watch(serviceSelectorProvider(branchId));
 
-<<<<<<< HEAD
-=======
     if (branchId != null &&
         branchId.isNotEmpty &&
         branchId != _loadedCatalogBranchId) {
@@ -101,7 +83,6 @@ class _VisitServiceSelectionStepState
       });
     }
 
->>>>>>> master
     final currency = ref.watch(organizationCurrencyProvider);
     final selectedIds = billing.selectedLines
         .map((line) => line.serviceId)
@@ -153,63 +134,12 @@ class _VisitServiceSelectionStepState
                             ],
                           ),
                         ),
-<<<<<<< HEAD
-                        catalogAsync.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.all(AppSpacing.space6),
-                            child: AppSkeleton(
-                              variant: SkeletonVariant.rectangular,
-                              height: 220,
-                            ),
-                          ),
-                          error: (_, _) => _ServiceSelectionEmpty(
-                            message:
-                                'Could not load services. Try searching again.',
-                          ),
-                          data: (services) {
-                            if (services.isEmpty) {
-                              return _ServiceSelectionEmpty(
-                                message: _searchController.text.trim().isEmpty
-                                    ? 'No services in the catalog yet.'
-                                    : 'No services match your search.',
-                              );
-                            }
-
-                            if (_view == _ServiceSelectionView.grid) {
-                              return VisitServiceSelectionGridView(
-                                services: services,
-                                selectedIds: selectedIds,
-                                selectedLines: billing.selectedLines,
-                                currency: currency,
-                                onToggle: (service, selected) => billingNotifier
-                                    .toggleService(service, selected: selected),
-                                onQuantityChange:
-                                    billingNotifier.updateQuantity,
-                              );
-                            }
-
-                            return ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 448),
-                              child: VisitServiceSelectionListView(
-                                services: services,
-                                selectedIds: selectedIds,
-                                selectedLines: billing.selectedLines,
-                                currency: currency,
-                                onToggle: (service, selected) => billingNotifier
-                                    .toggleService(service, selected: selected),
-                                onQuantityChange:
-                                    billingNotifier.updateQuantity,
-                              ),
-                            );
-                          },
-=======
                         _buildCatalogBody(
                           catalogAsync,
                           billing,
                           billingNotifier,
                           currency,
                           selectedIds,
->>>>>>> master
                         ),
                       ],
                     ),
@@ -253,8 +183,6 @@ class _VisitServiceSelectionStepState
       ],
     );
   }
-<<<<<<< HEAD
-=======
 
   Widget _buildCatalogBody(
     AsyncValue<List<EligibleService>> catalogAsync,
@@ -316,7 +244,6 @@ class _VisitServiceSelectionStepState
       },
     );
   }
->>>>>>> master
 }
 
 class _ServiceSelectionHeader extends StatelessWidget {

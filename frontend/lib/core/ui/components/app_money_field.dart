@@ -59,8 +59,6 @@ class _AppMoneyFieldState extends State<AppMoneyField> {
   }
 
   @override
-<<<<<<< HEAD
-=======
   void didUpdateWidget(covariant AppMoneyField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialValue != widget.initialValue && !_focused) {
@@ -70,7 +68,6 @@ class _AppMoneyFieldState extends State<AppMoneyField> {
   }
 
   @override
->>>>>>> master
   void dispose() {
     _focusNode.removeListener(_handleFocusChange);
     _displayController.dispose();

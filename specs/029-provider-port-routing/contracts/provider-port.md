@@ -38,9 +38,12 @@ secret-store credential wiring are D5/D7.
 | Element | Role |
 | --- | --- |
 | `ProviderPort` | Typed boundary every adapter implements |
-| Invoke input | `CanonicalRequest` (A3) plus adapter-local options the port names (e.g. abort signal / deadline already on the request) |
-| Invoke success | `CanonicalResult` and/or an ordered sequence of `CanonicalStreamChunk` ending with exactly one terminal chunk (A3 invariant) |
-| Invoke failure | `CanonicalError` with taxonomy code, retryability, provider-native diagnostics, and consumed-budget flag (A3) |
+| `invoke` | **Async** — `invoke(request, options?): Promise<ProviderInvokeResult>` so adapters can await provider I/O without busy-spinning the isolate event loop |
+| Invoke input | `CanonicalRequest` (A3). Deadline remains on the request (`CanonicalRequest.deadline`). Port-named options are `ProviderInvokeOptions` |
+| `ProviderInvokeOptions` | `{ signal?: AbortSignal }` — caller cancellation combined with adapter-owned timeout abort on the in-flight fetch |
+| Invoke success | `{ kind: "success"; result: CanonicalResult; chunks: readonly CanonicalStreamChunk[] }` — ordered chunk sequence ending with exactly one terminal chunk (A3 invariant; callers/adapters assert via `assertExactlyOneTerminal`) |
+| Invoke truncation | `{ kind: "truncation"; result: CanonicalResult; chunks: readonly CanonicalStreamChunk[] }` — same chunk invariant as success |
+| Invoke failure | `{ kind: "error" \| "malformed"; error: CanonicalError; chunks?: readonly CanonicalStreamChunk[] }` — taxonomy code, retryability, provider-native diagnostics, and consumed-budget flag (A3). **`chunks` is optional**: when present, it carries partial stream observed before the failure (allowed extension for D3 regenerating detection). Omitting `chunks` remains valid. Optional error/malformed chunks do **not** change the meaning of required success/truncation `chunks` (still exactly one terminal) |
 
 ### 2.1 Ownership
 
@@ -57,12 +60,15 @@ Adapters **MUST NOT** own:
 
 - Retry decisions
 - Fallback decisions
-- Logging policy
+- Logging policy (no logger/journal sinks on adapter constructors)
 
 ### 2.2 Export-surface prohibition (T18)
 
-The provider-port and fake export surfaces MUST expose no retry API and no
-fallback API. Classification is the only failure-policy signal on the port.
+Every module under `ai-platform/src/provider/` (port, fake, classify, deepseek,
+gemini, wiring) MUST expose no retry API, no fallback API, and no logging-policy
+sinks (`LoggerSink` / `JournalSink`). The prohibition covers module exports **and**
+class prototype / interface member names (not only `Object.keys` on the module
+namespace). Classification is the only failure-policy signal on the port.
 Bounded retry and fallback are D3.
 
 ---
@@ -78,7 +84,7 @@ set: every code has exactly one adapter classification — `retryable` or
 
 | Rule | Detail |
 | --- | --- |
-| Source set | `TaxonomyCode` from `ai-platform/src/errors.ts` — no code may be added, removed, or renamed |
+| Source set | `TaxonomyCode` from `ai-platform/src/errors.ts` — no code may be added, removed, or renamed. Exhaustiveness tests MUST enumerate `ALL_TAXONOMY_CODES` exported from that module (never a hand-copied list) and MUST pin several literal code→class pairs |
 | Mapping | Each code maps to exactly one of `retryable` / `terminal` for adapter purposes |
 | Carry field | `CanonicalError["retryability"]` (boolean) |
 | Alignment | Derived from A2's taxonomy `retryable` column via the same retry-safety rule A2 already freezes (`isRetrySafe`): codes whose taxonomy retryability is `"No"` or `"—"` are terminal; all others are retryable |
@@ -101,11 +107,12 @@ queue of scripted outcomes**; each invoke consumes the next outcome
 
 | Outcome | Port result |
 | --- | --- |
-| `success` | Canonical result (success) |
-| `retryable:<TaxonomyCode>` | Canonical error with `retryability: true` for a retryable class |
-| `terminal:<TaxonomyCode>` | Canonical error with `retryability: false` for a terminal class |
-| `truncation` | Truncated response outcome normalized through the port (fixture behaviour — not a new taxonomy code) |
+| `success` | Canonical result (success) plus a minimal valid `chunks` sequence with exactly one terminal |
+| `retryable:<TaxonomyCode>` | Canonical error with `retryability: true` for a retryable class; invalid codes are classified `internal_error` |
+| `terminal:<TaxonomyCode>` | Canonical error with `retryability: false` for a terminal class; invalid codes are classified `internal_error` |
+| `truncation` | Truncated response outcome plus `chunks` (fixture behaviour — not a new taxonomy code) |
 | `malformed` | Malformed response outcome normalized through the port (fixture behaviour — not a new taxonomy code) |
+| Empty queue / unrecognized | Classified `{ kind: "error"; error: CanonicalError }` with `internal_error` — never a bare throw |
 
 ### 4.2 Credentials (T21)
 
@@ -120,7 +127,7 @@ credential fields**. Real secret-store wiring is D5.
 
 | Slice | Binding |
 | --- | --- |
-| **D3** | Invokes adapters through the port; retries only classified-retryable failures; falls back along the candidate chain |
+| **D3** | Invokes adapters through the port (async + `ProviderInvokeOptions.signal`); retries only classified-retryable failures; falls back along the candidate chain; may relay optional error/malformed `chunks` for regenerating detection |
 | **D4** | Relays normalized stream chunks produced at the adapter boundary |
 | **D5 / D7** | Implement real adapters against this port; replace the fake for fixture suites |
 | **CP3** | Walking skeleton runs against the fake |

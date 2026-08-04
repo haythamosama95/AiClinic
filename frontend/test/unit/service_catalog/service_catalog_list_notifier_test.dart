@@ -63,11 +63,6 @@ void main() {
       expect(state.items, isEmpty);
       expect(state.total, 0);
     });
-<<<<<<< HEAD
-  });
-}
-
-=======
 
     test('reload re-fetches with current filters', () async {
       final rpcClient = _ConfigurableListServicesRpcClient();
@@ -259,7 +254,6 @@ class _ConfigurableListServicesRpcClient extends RpcCaptureSupabaseClient {
   }
 }
 
->>>>>>> master
 class _ListServicesRpcClient extends RpcCaptureSupabaseClient {
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {

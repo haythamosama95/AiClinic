@@ -87,11 +87,7 @@ void main() {
     test('trivial: successful fetch maps RPC into VisitDetailViewState', () async {
       final container = _createContainer(client: client, authState: _authenticated());
       final transitions = <AsyncValue<VisitDetailViewState>>[];
-<<<<<<< HEAD
-      container.listen(visitDetailViewProvider(_visitIdA), transitions.add, fireImmediately: true);
-=======
       container.listen(visitDetailViewProvider(_visitIdA), (_, next) => transitions.add(next), fireImmediately: true);
->>>>>>> master
 
       final view = await container.read(visitDetailViewProvider(_visitIdA).future);
 
@@ -190,17 +186,6 @@ void main() {
         'error_message': 'Service unavailable',
       };
       final container = _createContainer(client: client, authState: _authenticated());
-<<<<<<< HEAD
-      final transitions = <AsyncValue<VisitDetailViewState>>[];
-      container.listen(visitDetailViewProvider(_visitIdA), transitions.add, fireImmediately: true);
-
-      await expectLater(
-        container.read(visitDetailViewProvider(_visitIdA).future),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_ERROR')),
-      );
-      expect(transitions.any((value) => value is AsyncLoading), isTrue);
-      expect(container.read(visitDetailViewProvider(_visitIdA)), isA<AsyncError>());
-=======
       final provider = visitDetailViewProvider(_visitIdA);
       final transitions = <AsyncValue<VisitDetailViewState>>[];
       final subscription = container.listen(provider, (_, next) => transitions.add(next), fireImmediately: true);
@@ -216,7 +201,6 @@ void main() {
         isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_ERROR'),
       );
       expect(transitions.any((value) => value is AsyncLoading), isTrue);
->>>>>>> master
     });
 
     test('regression: NOT_FOUND propagates from get_visit', () async {
@@ -226,12 +210,6 @@ void main() {
         'error_message': 'Missing',
       };
       final container = _createContainer(client: client, authState: _authenticated());
-<<<<<<< HEAD
-
-      await expectLater(
-        container.read(visitDetailViewProvider(_visitIdA).future),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND')),
-=======
       final provider = visitDetailViewProvider(_visitIdA);
       final subscription = container.listen(provider, (_, _) {});
       addTearDown(subscription.close);
@@ -244,7 +222,6 @@ void main() {
       expect(
         asyncValue.error,
         isA<RpcFailure>().having((e) => e.code, 'code', 'NOT_FOUND'),
->>>>>>> master
       );
     });
 

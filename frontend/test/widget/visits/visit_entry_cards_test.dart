@@ -35,13 +35,8 @@ void main() {
         );
 
         expect(find.text('BLOOD PRESSURE'), findsOneWidget);
-<<<<<<< HEAD
-        expect(find.text('120/80'), findsOneWidget);
-        expect(find.textContaining('mmHg'), findsOneWidget);
-=======
         expect(tester.widget<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).value, '120/80');
         expect(tester.widget<VitalSignEntryCard>(find.byType(VitalSignEntryCard)).unit, 'mmHg');
->>>>>>> master
       });
 
       testWidgets('edit and remove buttons invoke callbacks once', (tester) async {

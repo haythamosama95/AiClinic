@@ -88,3 +88,16 @@
 - The T07a–T07k per-claim cases are grouped into one `T07` named test (and one task) at the behavioural-coverage level — one mint, one decoded payload, eleven assertions (§3.10 coverage is behavioural; §3.11.2's "one case per §5.6 claim populated" is satisfied by iterating the claim set in a single case). The spec's Test plan was amended to reflect this grouping so tasks stay traceable to it.
 - Preserve layer boundaries: B1 is `backend/` only; no `ai-platform/` or `frontend/` files.
 - Commit after each task or logical group; stop at the verification checkpoint (T021) to confirm the full B1 + prior band-A suite is green.
+
+---
+
+## Review resolution note (2026-08-03)
+
+Completed tasks above remain checked. Post-review hardening landed as an overlay migration
+`backend/supabase/migrations/20260803140000_b1_review_resolution.sql` plus expanded suites
+(`ai_keystore_rls.sql` T01–T10 including T05b–d; `ai_token_issuer.sql` T07–T16). Behavioural
+deltas encoded in `spec.md` / `plan.md` / `contracts/aat-token.md` / `quickstart.md`:
+`public_jwk` on enroll/rotate, per-actor advisory rate lock, installation-scoped signing
+selection + singleton trigger, `verify_aat` `iss` bind and malformed→false (no `exp`), dual
+error conventions documented in contract §9, and grant hygiene (`ai_internal` USAGE to
+`postgres` only at B1).

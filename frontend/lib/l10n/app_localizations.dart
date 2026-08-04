@@ -733,8 +733,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Widowed'**
   String get maritalStatusWidowed;
-<<<<<<< HEAD
-=======
 
   /// No description provided for @breadcrumbCalendar.
   ///
@@ -777,7 +775,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not found'**
   String get breadcrumbNotFound;
->>>>>>> master
 }
 
 class _AppLocalizationsDelegate

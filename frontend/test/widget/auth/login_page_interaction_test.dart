@@ -211,17 +211,11 @@ void main() {
     });
 
     testWidgets('navigating away while authenticated does not reset sign-in form state', (tester) async {
-<<<<<<< HEAD
-      final session = TestAuthSessionNotifier()..setAuthenticated();
-
-      await pumpLoginRouter(tester, sessionNotifier: session);
-=======
       final session = TestAuthSessionNotifier();
 
       await pumpLoginRouter(tester, sessionNotifier: session);
       session.setAuthenticated();
       await tester.pump();
->>>>>>> master
 
       readAuthNotifier(tester).showForgotPasswordMessage();
       await tester.pump();

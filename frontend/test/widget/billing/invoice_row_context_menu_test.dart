@@ -150,11 +150,7 @@ void main() {
             routes: [
               GoRoute(
                 path: '/test',
-<<<<<<< HEAD
-                builder: (_, __) => Scaffold(
-=======
                 builder: (_, _) => Scaffold(
->>>>>>> master
                   body: Center(
                     child: InvoiceRowContextMenu(
                       row: _row(id: invoiceId, status: InvoiceStatus.issued, patientId: 'patient-1'),
@@ -195,11 +191,7 @@ void main() {
             routes: [
               GoRoute(
                 path: '/test',
-<<<<<<< HEAD
-                builder: (_, __) => Scaffold(
-=======
                 builder: (_, _) => Scaffold(
->>>>>>> master
                   body: Center(
                     child: InvoiceRowContextMenu(
                       row: _row(id: 'inv-1', status: InvoiceStatus.issued, patientId: patientId),

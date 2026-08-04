@@ -4,24 +4,14 @@
 
 import {
   type ConfigCache,
-  type ConfigEntityKind,
   ConfigCacheMissError,
   type D1Reader,
   loadConfig,
 } from "../config-cache";
+import type { Principal } from "../identity";
+import { recordGuardRejection } from "../rate-limit";
 
-export type Principal = {
-  readonly installationId: string;
-  readonly organizationId: string;
-  readonly branchId: string;
-  readonly actorId: string;
-  readonly role: string;
-  readonly scopes: readonly string[];
-  readonly jti: string;
-  readonly iat: number;
-  readonly exp: number;
-  readonly ver: string;
-};
+export type { Principal };
 
 export type EntitlementContext = {
   capabilityId: string;
@@ -47,24 +37,28 @@ export type EntitlementResult =
       path: EntitlementRejectionPath;
     };
 
-/** Plan tier rank — lower index means lower tier (§4.3.4 plan-level allowances). */
+/**
+ * Plan tier rank — lower index means lower tier (§4.3.4 plan-level allowances).
+ * Vocabulary is the closed set used by entitlement rows in this platform; unknown
+ * tiers fail closed.
+ */
 const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
 
-function scopeReaderForKind(reader: D1Reader, kind: ConfigEntityKind): D1Reader {
-  return {
-    read(key: string) {
-      return reader.read(`${kind}:${key}`);
-    },
-  };
-}
-
-function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] {
+function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] | null {
   const raw = entitlement.allowed_capabilities;
   if (Array.isArray(raw)) {
-    return raw as string[];
+    return raw.every((entry) => typeof entry === "string") ? (raw as string[]) : null;
   }
   if (typeof raw === "string") {
-    return JSON.parse(raw) as string[];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
+        return null;
+      }
+      return parsed as string[];
+    } catch {
+      return null;
+    }
   }
   return [];
 }
@@ -80,24 +74,76 @@ function planTierMeetsMinimum(plan: string, minimum: string): boolean {
   return planRank >= minimumRank;
 }
 
-function rejectForbidden(path: EntitlementRejectionPath): EntitlementResult {
+function rejectForbidden(
+  path: EntitlementRejectionPath,
+  installationId: string,
+): EntitlementResult {
+  recordGuardRejection({
+    error_code: "forbidden_capability",
+    installation_id: installationId,
+  });
   return { ok: false, code: "forbidden_capability", path };
 }
 
-function rejectKillSwitch(path: EntitlementRejectionPath): EntitlementResult {
+function rejectKillSwitch(
+  path: EntitlementRejectionPath,
+  installationId: string,
+): EntitlementResult {
+  recordGuardRejection({
+    error_code: "capability_disabled",
+    installation_id: installationId,
+  });
   return { ok: false, code: "capability_disabled", path };
 }
 
-async function loadKillSwitch(
+/**
+ * Miss = inactive (fail-open for absence). An explicit `{ active: true }` row fails closed.
+ * Production persistence of kill-switch rows is a control-plane/A5 concern; B3 only
+ * evaluates the config-cache shape.
+ */
+async function loadKillSwitchOrInactive(
   cache: ConfigCache,
   reader: D1Reader,
   key: string,
 ): Promise<Record<string, unknown>> {
-  return loadConfig(cache, scopeReaderForKind(reader, "kill_switches"), "kill_switches", key);
+  try {
+    return await loadConfig(cache, reader, "kill_switches", key);
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return { active: false };
+    }
+    throw error;
+  }
 }
 
 function isKillSwitchActive(row: Record<string, unknown>): boolean {
   return row.active === true;
+}
+
+async function loadMatchingGrant(
+  cache: ConfigCache,
+  reader: D1Reader,
+  grantKey: string,
+  capabilityVersion: string,
+): Promise<"granted" | "missing" | "revoked" | "version_mismatch"> {
+  try {
+    const grant = await loadConfig(cache, reader, "grants", grantKey);
+    if (grant.revoked_at != null) {
+      return "revoked";
+    }
+    if (
+      typeof grant.capability_version === "string" &&
+      grant.capability_version !== capabilityVersion
+    ) {
+      return "version_mismatch";
+    }
+    return "granted";
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      return "missing";
+    }
+    throw error;
+  }
 }
 
 export async function evaluateEntitlement(
@@ -110,74 +156,81 @@ export async function evaluateEntitlement(
 
   const entitlement = await loadConfig(
     cache,
-    scopeReaderForKind(reader, "entitlements"),
+    reader,
     "entitlements",
     installationId,
   );
 
   const entitlementStatus = entitlement.status;
   if (entitlementStatus !== "active") {
-    return rejectForbidden("ai_disabled");
+    return rejectForbidden("ai_disabled", installationId);
   }
 
   const plan = entitlement.plan;
   if (typeof plan !== "string" || !planTierMeetsMinimum(plan, ctx.minimumPlanTier)) {
-    return rejectForbidden("plan_tier");
+    return rejectForbidden("plan_tier", installationId);
   }
 
   const allowedCapabilities = parseAllowedCapabilities(entitlement);
+  if (allowedCapabilities === null) {
+    return rejectForbidden("capability_not_granted", installationId);
+  }
   if (!allowedCapabilities.includes(ctx.capabilityId)) {
-    return rejectForbidden("capability_not_granted");
+    return rejectForbidden("capability_not_granted", installationId);
   }
 
-  const grantKey = `${installationId}/${ctx.capabilityId}`;
-  try {
-    const grant = await loadConfig(
+  // Grants at installation or plan scope (§7.3); capabilityVersion must match when present.
+  const installationGrant = await loadMatchingGrant(
+    cache,
+    reader,
+    `${installationId}/${ctx.capabilityId}`,
+    ctx.capabilityVersion,
+  );
+  if (installationGrant === "revoked" || installationGrant === "version_mismatch") {
+    return rejectForbidden("capability_not_granted", installationId);
+  }
+  if (installationGrant === "missing") {
+    const planGrant = await loadMatchingGrant(
       cache,
-      scopeReaderForKind(reader, "grants"),
-      "grants",
-      grantKey,
+      reader,
+      `plan:${plan}/${ctx.capabilityId}`,
+      ctx.capabilityVersion,
     );
-    if (grant.revoked_at != null) {
-      return rejectForbidden("capability_not_granted");
+    if (planGrant !== "granted") {
+      return rejectForbidden("capability_not_granted", installationId);
     }
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      return rejectForbidden("capability_not_granted");
-    }
-    throw error;
   }
 
-  const globalSwitch = await loadKillSwitch(cache, reader, "global");
+  const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");
   if (isKillSwitchActive(globalSwitch)) {
-    return rejectKillSwitch("kill_switch_global");
+    return rejectKillSwitch("kill_switch_global", installationId);
   }
 
-  const capabilitySwitch = await loadKillSwitch(
+  const capabilitySwitch = await loadKillSwitchOrInactive(
     cache,
     reader,
     `capability:${ctx.capabilityId}`,
   );
   if (isKillSwitchActive(capabilitySwitch)) {
-    return rejectKillSwitch("kill_switch_capability");
+    return rejectKillSwitch("kill_switch_capability", installationId);
   }
 
-  const installationSwitch = await loadKillSwitch(
+  const installationSwitch = await loadKillSwitchOrInactive(
     cache,
     reader,
     `installation:${installationId}`,
   );
   if (isKillSwitchActive(installationSwitch)) {
-    return rejectKillSwitch("kill_switch_installation");
+    return rejectKillSwitch("kill_switch_installation", installationId);
   }
 
-  const providerSwitch = await loadKillSwitch(
+  const providerSwitch = await loadKillSwitchOrInactive(
     cache,
     reader,
     `provider:${ctx.providerId}`,
   );
   if (isKillSwitchActive(providerSwitch)) {
-    return rejectKillSwitch("kill_switch_provider");
+    return rejectKillSwitch("kill_switch_provider", installationId);
   }
 
   return { ok: true };

@@ -40,6 +40,9 @@ None. §5.3 fully specifies the canonical elements; §9.10 records a rejected al
 - Q: How should the provider-shape guard enumerate the canonical types' field names so provider-shaped drift fails the contract test? → A: A runtime field-name manifest as source of truth; the TS types derive from it, and the guard test asserts the manifest equals the §5.3 names and rejects any provider-shaped or extra key. No separate lint or AST tooling. `[implementation choice — no §citation]`
 - Q: How should the round-trip contract tests serialize and parse the canonical elements? → A: A thin owned JSON codec driven by the manifest; round-trip test asserts §5.3 key names survive byte-for-byte and no extra keys are emitted. Field-name drift is directly observable. `[implementation choice — no §citation]`
 - Q: Where do the field-name manifest and owned JSON codec live within ai-platform/src/? → A: A single `contracts/canonical.ts` exporting the manifest, types derived from it, and the codec, plus a co-located `canonical.test.ts` for the contract suite. Two files; the plan may split later under §2.3 if a consumer needs its own import boundary. `[implementation choice — no §citation]`
+- Q: Should the codec silently strip unknown or provider-shaped keys on encode/decode? → A: No — fail closed. Encode and decode reject provider-shaped extras and any key outside the element's manifest (T-A3-05 codec path; T-A3-08). `[implementation choice — no §citation]`
+- Q: Are canonical element fields typed beyond `unknown`? → A: Yes — each element is a real TypeScript interface with per-field types (message parts, usage counters, taxonomy code, etc.); adapters and the composer consume those types without `as` casts (T-A3-09). Field identifiers are the amended §5.3 Field column (`parts`, `maxOutputTokens`, …), not contents prose (T-A3-10). `[implementation choice — no §citation]`
+- Q: May contents prose from the original §5.3 table be used as wire keys? → A: No — after the A3 contract-change amendment, only the Field identifiers are valid keys; T-A3-10 forbids the prose set. `[§5.3]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -71,15 +74,19 @@ Expanded from delivery plan §3.11.1 row A3 (Layer: Contract). Layer names follo
 | `T-A3-05` provider-shaped field name rejected | Contract | A provider-shaped field name fails the guard test |
 | `T-A3-06` chunk kinds exhaustive | Contract | Chunk kinds exhaustive (`text_delta`, `partial_structured`, `usage`, `provider_note`) |
 | `T-A3-07` terminal flag exactly once per sequence | Contract | Terminal flag appears exactly once per chunk sequence |
+| `T-A3-08` unknown keys rejected on decode | Contract | Decode (and encode) reject unknown/extra keys fail-closed — no silent strip |
+| `T-A3-09` typed field schema | Contract | Decoded elements expose typed field shapes (not `unknown`); closed message-part roles |
+| `T-A3-10` §5.3 field identifiers | Contract | Manifest uses amended §5.3 camelCase identifiers; prose contents keys are absent |
 
 ### Edge Cases
 
 - Which field names count as *provider-shaped*: the guard treats any name drawn from common provider wire formats (e.g. `messages`, `completion`, `n`, `frequency_penalty`, `top_p`, `logprobs`) as provider-shaped and rejects it from upstream types. A field present in the canonical table (§5.3) by its canonical name is never rejected.
+- Extra keys on codec I/O: encode and decode reject any key not in the element's manifest (and reject provider-shaped extras with the provider-shaped error). Silent stripping is forbidden so upstream drift is detected, not erased.
 - Unknown chunk kind: a chunk whose `kind` is not one of the four must be rejected; the canonical stream chunk type is a closed set (§5.3).
 - Zero-terminal sequences: a sequence of zero chunks must be rejected by the exactly-one-terminal invariant (§5.3 terminal flag; §5.5 rule 4).
 - Multiple-terminal sequences: a sequence with the terminal flag on more than one chunk must be rejected (§5.5 rule 4 — one terminal event, never inferred from silence).
-- Reserved-but-unused fields: the canonical request lists "tool/function declarations (reserved for future)" (§5.3); A3 defines the placeholder shape but wires no behaviour — wiring belongs to later bands.
-- This slice emits no platform error codes: it is a contract-only slice with no request handler, so no §5.4 code is produced by A3. The canonical error element's `taxonomy code` field accepts only codes A2 freezes; an unrecognized value is rejected by the type, mirroring A2's "unrecognised code → `internal_error`" rule.
+- Reserved-but-unused fields: the canonical request lists `toolDeclarations` (reserved for future) (§5.3); A3 defines the placeholder shape but wires no behaviour — wiring belongs to later bands.
+- This slice emits no platform error codes: it is a contract-only slice with no request handler, so no §5.4 code is produced by A3. The canonical error element's `taxonomyCode` field accepts only codes A2 freezes; an unrecognized value is rejected by the type, mirroring A2's "unrecognised code → `internal_error`" rule.
 
 ## Requirements *(mandatory)*
 
@@ -132,7 +139,7 @@ This slice defines the four canonical contract *types* of §5.3: Canonical reque
 
 ## Assumptions
 
-- The canonical element field names and contents are taken verbatim from the §5.3 table; no field is added, removed, renamed, or inferred beyond that table.
+- The canonical element **field identifiers** are taken from the amended §5.3 Field column (`parts`, `formatDirective`, `maxOutputTokens`, `terminal`, `consumedBudget`, …). Contents prose describes meaning only and MUST NOT be used as wire keys (T-A3-10).
 - The implementer places the types in the Worker source under `ai-platform/`, consistent with the repo layout in delivery plan §7.1, rather than forcing Worker code into `backend/`.
-- A2's frozen error-code set is the authoritative enumeration the canonical error's `taxonomy code` field accepts; A3 does not re-derive it.
+- A2's frozen error-code set is the authoritative enumeration the canonical error's `taxonomyCode` field accepts; A3 does not re-derive it.
 - Chunk-kind exhaustiveness and the terminal-flag invariant are enforced as type/contract tests, since A3 defines no runtime request path that could observe them dynamically.

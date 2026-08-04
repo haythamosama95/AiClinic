@@ -34,10 +34,7 @@ class AppTabs extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.variant = AppTabsVariant.underline,
-<<<<<<< HEAD
-=======
     this.equalWidth = false,
->>>>>>> master
     this.ariaLabel = 'Tabs',
     super.key,
   });
@@ -46,10 +43,7 @@ class AppTabs extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
   final AppTabsVariant variant;
-<<<<<<< HEAD
-=======
   final bool equalWidth;
->>>>>>> master
   final String ariaLabel;
 
   @override
@@ -70,10 +64,7 @@ class AppTabs extends StatelessWidget {
         onChanged: onChanged,
         ariaLabel: ariaLabel,
         isVertical: true,
-<<<<<<< HEAD
-=======
         equalWidth: equalWidth,
->>>>>>> master
       ),
       AppTabsVariant.underline => _AppTabList(
         items: items,
@@ -81,10 +72,7 @@ class AppTabs extends StatelessWidget {
         onChanged: onChanged,
         ariaLabel: ariaLabel,
         isVertical: false,
-<<<<<<< HEAD
-=======
         equalWidth: equalWidth,
->>>>>>> master
       ),
     };
   }
@@ -97,10 +85,7 @@ class _AppTabList extends StatefulWidget {
     required this.onChanged,
     required this.ariaLabel,
     required this.isVertical,
-<<<<<<< HEAD
-=======
     this.equalWidth = false,
->>>>>>> master
   });
 
   final List<AppTabItem> items;
@@ -108,10 +93,7 @@ class _AppTabList extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final String ariaLabel;
   final bool isVertical;
-<<<<<<< HEAD
-=======
   final bool equalWidth;
->>>>>>> master
 
   @override
   State<_AppTabList> createState() => _AppTabListState();
@@ -269,10 +251,7 @@ class _AppTabListState extends State<_AppTabList> {
           item: widget.items[index],
           selected: widget.items[index].id == widget.value,
           isVertical: widget.isVertical,
-<<<<<<< HEAD
-=======
           expand: widget.equalWidth && !widget.isVertical,
->>>>>>> master
           focusNode: _focusNodes[index],
           onSelected: () => widget.onChanged(widget.items[index].id),
         ),
@@ -302,36 +281,6 @@ class _AppTabListState extends State<_AppTabList> {
     return Semantics(
       container: true,
       label: widget.ariaLabel,
-<<<<<<< HEAD
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: context.appColors.borderSubtle)),
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomLeft,
-          children: [
-            Row(
-              key: _tabListKey,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var index = 0; index < tabButtons.length; index++) ...[
-                  if (index > 0) const SizedBox(width: AppSpacing.space1),
-                  tabButtons[index],
-                ],
-              ],
-            ),
-            if (_signalLeft != null && _signalWidth != null)
-              AnimatedPositioned(
-                duration: duration,
-                curve: curve,
-                left: _signalLeft,
-                bottom: 0,
-                width: _signalWidth,
-                child: const AppSignal(orientation: Axis.horizontal),
-              ),
-          ],
-=======
       child: SizedBox(
         width: widget.equalWidth ? double.infinity : null,
         child: DecoratedBox(
@@ -366,7 +315,6 @@ class _AppTabListState extends State<_AppTabList> {
                 ),
             ],
           ),
->>>>>>> master
         ),
       ),
     );
@@ -380,20 +328,14 @@ class _AppTabButton extends StatefulWidget {
     required this.isVertical,
     required this.focusNode,
     required this.onSelected,
-<<<<<<< HEAD
-=======
     this.expand = false,
->>>>>>> master
     super.key,
   });
 
   final AppTabItem item;
   final bool selected;
   final bool isVertical;
-<<<<<<< HEAD
-=======
   final bool expand;
->>>>>>> master
   final FocusNode focusNode;
   final VoidCallback onSelected;
 
@@ -444,23 +386,13 @@ class _AppTabButtonState extends State<_AppTabButton> {
                 ? [BoxShadow(color: appInputFocusRingColor(context), blurRadius: 0, spreadRadius: 2)]
                 : null;
             final label = Row(
-<<<<<<< HEAD
-              mainAxisSize: MainAxisSize.min,
-=======
               mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
               mainAxisAlignment: widget.expand ? MainAxisAlignment.center : MainAxisAlignment.start,
->>>>>>> master
               children: [
                 if (widget.item.icon != null) ...[
                   Icon(widget.item.icon, size: 16, color: _textColor(colors)),
                   const SizedBox(width: AppSpacing.space2),
                 ],
-<<<<<<< HEAD
-                Text(
-                  widget.item.label,
-                  style: textStyle.copyWith(color: _textColor(colors)),
-                  textAlign: widget.isVertical ? TextAlign.start : TextAlign.center,
-=======
                 Flexible(
                   child: Text(
                     widget.item.label,
@@ -469,7 +401,6 @@ class _AppTabButtonState extends State<_AppTabButton> {
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
->>>>>>> master
                 ),
               ],
             );
@@ -507,14 +438,10 @@ class _AppTabButtonState extends State<_AppTabButton> {
                 behavior: HitTestBehavior.opaque,
                 child: DecoratedBox(
                   decoration: BoxDecoration(boxShadow: focusRing),
-<<<<<<< HEAD
-                  child: Padding(padding: padding, child: label),
-=======
                   child: Padding(
                     padding: padding,
                     child: widget.expand ? Center(child: label) : label,
                   ),
->>>>>>> master
                 ),
               ),
             );

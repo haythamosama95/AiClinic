@@ -2,8 +2,8 @@
 
 Slice **B2** implements the operator-authenticated control plane: enroll, rotate keys, suspend,
 resume, and delete for clinic installations. Each mutation writes a `control_audit` row carrying
-the operator identity; enroll additionally creates `installation`, `installation_key`, and a
-`pending` `entitlement` row with zeroed economics.
+the stable operator id (`OPERATOR_ID`); enroll additionally creates `installation`,
+`installation_key`, and a `pending` `entitlement` row with zeroed economics.
 
 Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](plan.md).
 
@@ -14,49 +14,68 @@ lifecycle*), which maps to §4.5 and §8.1 of
 [`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row B2 of
 [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
 
-- The **spec** freezes the installation-lifecycle control-plane surface (five mutations, operator
-  identity, audit journaling), the enroll write set (four D1 tables), one-time enrollment, rotation
-  overlap, and the `pending` entitlement initial snapshot with zeroed economics.
-- The **plan** scopes one new source module (`src/control/`), a `/control` route addition in
-  `worker.ts`, a workers-pool integration harness (`vitest.workers.config.ts` + `control.test.ts`),
-  and the frozen `contracts/control-plane.md` artifact. No migration, binding, or `wrangler.toml`
-  change — B2 writes into the four entities A5 froze.
+- The **spec** freezes the installation-lifecycle control-plane surface (five mutations, verifying
+  operator auth, audit journaling), the enroll write set (four D1 tables), one-time enrollment,
+  rotation overlap, lifecycle FSM terminal rules, and the `pending` entitlement initial snapshot.
+- The **plan** scopes sibling modules under `src/control/` (barrel `index.ts`), `/control` route
+  wiring with `OPERATOR_BEARER_TOKEN` + `OPERATOR_ID`, a workers-pool harness, and
+  `contracts/control-plane.md`. No A5 migration edit — `UNIQUE(org_id)` on `installation` is a known
+  A5 follow-up.
 
 ## 2. What was implemented
 
-- **Five lifecycle handlers** — `ai-platform/src/control/index.ts` exports `handleEnroll`,
-  `handleRotate`, `handleSuspend`, `handleResume`, and `handleDelete`. Each consults the
-  `OperatorAuth` port, writes the appropriate D1 rows, and journals a `control_audit` row with the
-  operator identity.
-- **`OperatorAuth` port** — a single-method seam (`resolve(request) → principal | null`) with a
-  `defaultOperatorAuth` implementation (Bearer token → `operatorId`). Tests inject a fake returning a
-  fixed principal or `null`.
-- **`/control` route dispatch** — `ai-platform/src/worker.ts` routes `POST
-  /control/installations/{id}/{action}` to `dispatchControlRequest`; `/v1/requests` and `/health`
-  are unchanged.
-- **`pending` enrollment entitlement** — enroll creates an `entitlement` row with status `pending`,
-  zeroed quotas/budgets, empty `allowed_capabilities`, and a closed empty period
-  (`period_start = period_end`).
-- **Frozen lifecycle contract** — `contracts/control-plane.md` documents the HTTP surface, the five
-  `control_audit.action` values, operator-auth rule, entitlement status enum, enroll initial values,
-  and rotation overlap invariant for B3/J3/F3 Consumes review.
-- **Integration test suite** — `ai-platform/test/control.test.ts` runs seven named tests (T-B2-01
-  through T-B2-07) against a real Miniflare D1 with the A5 migration applied.
+- **Five lifecycle handlers** — `ai-platform/src/control/lifecycle.ts` (`handleEnroll`,
+  `handleRotate`, `handleSuspend`, `handleResume`, `handleDelete`). Each consults `OperatorAuth`,
+  validates payloads / FSM, writes D1 in a batch (audit inlined), and maps UNIQUE failures to contract
+  §2.4 codes. Barrel: `ai-platform/src/control/index.ts`.
+- **`createSecretOperatorAuth`** — `ai-platform/src/control/auth.ts`: timing-safe Bearer compare
+  against a configured secret; returns configured `operatorId` (never the credential); fail-closed if
+  secret or id empty. Tests inject a fake `OperatorAuth`; e2e uses Miniflare bindings.
+- **`/control` route dispatch** — `worker.ts` builds auth from Env and passes it explicitly to
+  `dispatchControlRequest` (no default). `/v1/requests` and `/health` unchanged.
+- **`pending` enrollment entitlement** — enroll creates `entitlement` with status `pending`, zeroed
+  quotas/budgets, empty `allowed_capabilities`, closed empty period.
+- **Frozen lifecycle contract** — `contracts/control-plane.md` (routes, actions, secret auth, FSM,
+  rejection table, entitlement enum/initial values, rotation overlap).
+- **Integration suite** — `test/control.test.ts`: T-B2-01..07 plus review-resolution cases (secret
+  auth, route e2e, illegal transitions, entitlement unchanged, payload/kid/json/route/not-found).
 
 ## 3. Files to review
 
 | Path | Role |
 | --- | --- |
-| `ai-platform/src/control/index.ts` | `OperatorAuth` port, five lifecycle handlers, `dispatchControlRequest` |
-| `ai-platform/src/worker.ts` | `/control` route dispatch with operator-auth gating |
-| `ai-platform/test/control.test.ts` | T-B2-01..07 integration suite (real Miniflare D1 + fake `OperatorAuth`) |
-| `ai-platform/vitest.workers.config.ts` | Scoped `@cloudflare/vitest-pool-workers` pool with ephemeral D1 binding |
-| `specs/022-control-plane-enrollment/contracts/control-plane.md` | Frozen HTTP surface, audit vocabulary, entitlement initial values |
+| `ai-platform/src/control/lifecycle.ts` | Five lifecycle handlers, FSM, payload/D1 error mapping |
+| `ai-platform/src/control/auth.ts` | `createSecretOperatorAuth` |
+| `ai-platform/src/control/index.ts` | Barrel + `dispatchControlRequest` / `isControlRoute` |
+| `ai-platform/src/worker.ts` | Env → secret auth → `/control` dispatch |
+| `ai-platform/test/control.test.ts` | T-B2-01..07 + review-resolution cases |
+| `ai-platform/vitest.workers.config.ts` | Workers pool; Miniflare `DB` + `OPERATOR_*` |
+| `specs/022-control-plane-enrollment/contracts/control-plane.md` | Frozen contract |
 
 ## 4. Prerequisites
 
-This slice's tests use the `@cloudflare/vitest-pool-workers` Miniflare D1 pool, not the default
-Node-pool config. A one-time `npm install` in `ai-platform/` is required.
+This slice's tests use the `@cloudflare/vitest-pool-workers` Miniflare D1 pool. A one-time
+`npm install` in `ai-platform/` is required.
+
+### 4.1 Operator auth Env (local Worker / deploy)
+
+| Binding | Kind | Purpose |
+| --- | --- | --- |
+| `OPERATOR_BEARER_TOKEN` | secret | Bearer credential verified by timing-safe compare |
+| `OPERATOR_ID` | var (`wrangler.toml` `[env.*.vars]`) | Stable id journaled in `control_audit` |
+
+```bash
+cd ai-platform
+# Per environment (development | staging | production):
+npx wrangler secret put OPERATOR_BEARER_TOKEN --env development
+# OPERATOR_ID is already set in wrangler.toml vars (e.g. platform-operator)
+```
+
+Do **not** put the bearer token in committed config. Empty secret or empty `OPERATOR_ID` fail-closes
+all `/control` mutations (`401 unauthorized`).
+
+Vitest Miniflare bindings supply test values in `vitest.workers.config.ts` for
+`control_route_end_to_end`.
 
 ## 5. Run the automated suite
 
@@ -68,17 +87,27 @@ npm install   # first time only
 npx vitest run --config vitest.workers.config.ts test/control.test.ts
 ```
 
-Expected: **7 passing tests** for this slice only:
+Expected: all cases in `test/control.test.ts` passing (T-B2-01..07 plus review-resolution describes):
 
 | Test name | Asserts |
 | --- | --- |
-| `enroll_writes_all_four_tables` | Enroll writes all four tables; `pending` entitlement; gateway origin in response |
+| `enroll_writes_all_four_tables` | Enroll writes all four tables; `pending` entitlement; gateway origin |
 | `lifecycle_suspend_audit` | Suspend audit + `installation.status = suspended` |
 | `lifecycle_resume_audit` | Resume audit + prior active status restored |
 | `lifecycle_rotate_audit` | New `kid` row added; previous key remains; rotate audit |
-| `lifecycle_delete_audit` | Delete audit + lifecycle-terminal status (no row purge) |
-| `non_operator_credentials_rejected` | All five mutations reject without D1 writes |
-| `duplicate_enrollment_deterministic` | Second enroll unchanged row count + non-2xx |
+| `lifecycle_delete_audit` | Delete audit + `status === "deleted"` |
+| `non_operator_credentials_rejected` | `401 unauthorized` on all five; no D1 writes |
+| `duplicate_enrollment_deterministic` | `409 already_enrolled`; unchanged row counts |
+| `secret_operator_auth_verifies_credential` | Secret scheme; never journals credential |
+| `control_route_end_to_end` | `SELF.fetch` route → D1; journals `OPERATOR_ID` |
+| `lifecycle_illegal_transitions` | Five illegal FSM cases → `409 illegal_lifecycle_transition` |
+| `suspend_resume_entitlement_unchanged` | Entitlement row unchanged |
+| `duplicate_enrollment_same_org_different_installation` | Same org, different id → `409` |
+| `enroll_invalid_payload` | `400 invalid_payload` |
+| `rotate_duplicate_kid` | `409 duplicate_kid` |
+| `enroll_invalid_json` | `400 invalid_json` |
+| `invalid_route_rejected` | `400 invalid_route` |
+| `installation_not_found` | `404 installation_not_found` |
 
 To run a single test:
 
@@ -94,27 +123,21 @@ Read the frozen control-plane contract:
 cat specs/022-control-plane-enrollment/contracts/control-plane.md
 ```
 
-Inspect the five `control_audit.action` values in the handlers:
+Inspect lifecycle + auth modules:
 
 ```bash
-grep -n "'enroll'\|'rotate'\|'suspend'\|'resume'\|'delete'" \
-  ai-platform/src/control/index.ts
+grep -n "illegal_lifecycle_transition\|createSecretOperatorAuth\|invalid_payload\|duplicate_kid" \
+  ai-platform/src/control/lifecycle.ts ai-platform/src/control/auth.ts
 ```
 
-Read the enroll entitlement initial values (`pending`, zeroed economics):
+Inspect Worker Env wiring:
 
 ```bash
-grep -n "pending\|request_quota\|allowed_capabilities\|period_start" \
-  ai-platform/src/control/index.ts
+grep -n 'createSecretOperatorAuth\|OPERATOR_BEARER_TOKEN\|OPERATOR_ID\|dispatchControlRequest' \
+  ai-platform/src/worker.ts
 ```
 
-Inspect the `/control` route wiring in the Worker:
-
-```bash
-grep -n 'isControlRoute\|dispatchControlRequest\|/control' ai-platform/src/worker.ts
-```
-
-List the named test cases:
+List named test describes:
 
 ```bash
 grep -n '^describe(' ai-platform/test/control.test.ts

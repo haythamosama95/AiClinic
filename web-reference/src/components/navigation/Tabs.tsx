@@ -16,10 +16,7 @@ export type TabsProps = {
   value: string
   onChange: (id: string) => void
   variant?: 'underline' | 'segmented' | 'vertical'
-<<<<<<< HEAD
-=======
   equalWidth?: boolean
->>>>>>> master
   'aria-label'?: string
   className?: string
 }
@@ -31,10 +28,7 @@ export function Tabs({
   value,
   onChange,
   variant = 'underline',
-<<<<<<< HEAD
-=======
   equalWidth = false,
->>>>>>> master
   'aria-label': ariaLabel = 'Tabs',
   className,
 }: TabsProps) {
@@ -151,15 +145,11 @@ export function Tabs({
       aria-label={ariaLabel}
       id={tablistId}
       onKeyDown={handleKeyDown}
-<<<<<<< HEAD
-      className={cn('flex gap-1 border-b border-border-subtle', className)}
-=======
       className={cn(
         'flex border-b border-border-subtle',
         equalWidth ? 'w-full gap-0' : 'gap-1',
         className,
       )}
->>>>>>> master
     >
       {items.map((item, index) => {
         const selected = item.id === value
@@ -179,10 +169,7 @@ export function Tabs({
             className={cn(
               'focus-ring relative px-4 pb-3 pt-2 text-body transition-colors',
               'data-[density=compact]:px-3 data-[density=compact]:pb-2',
-<<<<<<< HEAD
-=======
               equalWidth && 'min-w-0 flex-1 text-center',
->>>>>>> master
               selected
                 ? 'text-text-primary font-medium'
                 : 'text-text-secondary hover:text-text-primary',

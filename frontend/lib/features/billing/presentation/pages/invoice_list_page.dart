@@ -220,38 +220,14 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage>
     final isLoading = listAsync.isLoading;
     final hasInvoices = state?.hasInvoices ?? false;
 
-<<<<<<< HEAD
-    final content = listAsync.when(
-      loading: () => _buildPageContent(
-        context: context,
-        state: state,
-        controls: controls,
-        isLoading: true,
-        hasInvoices: hasInvoices,
-      ),
-      error: (error, _) => _buildPageContent(
-=======
     final Widget content;
     if (listAsync.hasError && !listAsync.hasValue) {
       content = _buildPageContent(
->>>>>>> master
         context: context,
         state: state,
         controls: controls,
         isLoading: false,
         hasInvoices: hasInvoices,
-<<<<<<< HEAD
-        error: error,
-      ),
-      data: (loadedState) => _buildPageContent(
-        context: context,
-        state: loadedState,
-        controls: controls,
-        isLoading: isLoading,
-        hasInvoices: loadedState.hasInvoices,
-      ),
-    );
-=======
         error: listAsync.error,
       );
     } else {
@@ -280,7 +256,6 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage>
         ),
       );
     }
->>>>>>> master
 
     return FadeTransition(
       opacity: _enterAnimation ?? _enterController,

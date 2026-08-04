@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
-<<<<<<< HEAD
-=======
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
->>>>>>> master
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_form_dialog.dart';
 
 import '../../support/visit_rpc_test_client.dart';
@@ -30,8 +27,6 @@ Future<void> _tapComboboxOption(
   await tester.pump();
   await tester.tap(find.text(optionLabel).last);
   await tester.pump();
-<<<<<<< HEAD
-=======
   await tester.pump(const Duration(milliseconds: 100));
 }
 
@@ -41,7 +36,6 @@ Future<void> _tapDialogButton(WidgetTester tester, String label) async {
   await tester.pump();
   await tester.tap(button);
   await tester.pump();
->>>>>>> master
 }
 
 Future<void> _openInvestigationDialog(
@@ -141,12 +135,7 @@ void main() {
       await tester.enterText(noteField, 'Fasting sample');
       await tester.pump();
 
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Add investigation'));
-      await tester.pump();
-=======
       await _tapDialogButton(tester, 'Add investigation');
->>>>>>> master
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(captured, isNotNull);
@@ -169,12 +158,7 @@ void main() {
         query: 'blood',
         optionLabel: 'Complete Blood Count',
       );
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Add investigation'));
-      await tester.pump();
-=======
       await _tapDialogButton(tester, 'Add investigation');
->>>>>>> master
 
       expect(captured?.note, isNull);
     });
@@ -200,12 +184,7 @@ void main() {
       ).last;
       await tester.enterText(noteField, '  urgent  ');
       await tester.pump();
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Add investigation'));
-      await tester.pump();
-=======
       await _tapDialogButton(tester, 'Add investigation');
->>>>>>> master
 
       expect(captured?.note, 'urgent');
     });
@@ -347,17 +326,11 @@ void main() {
         onShow: (future) async => captured = await future,
       );
 
-<<<<<<< HEAD
-      await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-=======
       final cancelButton = find.widgetWithText(AppButton, 'Cancel');
       await tester.ensureVisible(cancelButton);
       await tester.pump();
       await tester.tap(cancelButton);
       await tester.pumpAndSettle();
->>>>>>> master
 
       expect(captured, isNull);
       expect(find.byType(InvestigationFormDialog), findsNothing);
@@ -406,11 +379,7 @@ void main() {
       await tester.pump();
 
       final exception = tester.takeException();
-<<<<<<< HEAD
-      expect(exception, isNotNull);
-=======
       expect(exception, isNull);
->>>>>>> master
       expect(find.text('Could not search investigations.'), findsNothing);
     });
   });

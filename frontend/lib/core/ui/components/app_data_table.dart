@@ -12,10 +12,7 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 import 'app_data_table_animated_body.dart';
-<<<<<<< HEAD
-=======
 import 'app_data_table_column_layout.dart';
->>>>>>> master
 
 enum TableDensity { compact, standard, comfortable }
 
@@ -31,11 +28,8 @@ class TableColumn<T> {
     this.align = TableAlign.start,
     this.sortable = false,
     this.width,
-<<<<<<< HEAD
-=======
     this.minWidth,
     this.resizable = true,
->>>>>>> master
   });
 
   final String id;
@@ -44,12 +38,6 @@ class TableColumn<T> {
   final TableAlign align;
   final bool sortable;
   final double? width;
-<<<<<<< HEAD
-}
-
-/// Lays out a table column cell: fixed [TableColumn.width] or flex fill.
-Widget layoutAppDataTableColumn({required Widget child, double? width}) {
-=======
   final double? minWidth;
   final bool resizable;
 }
@@ -59,7 +47,6 @@ Widget layoutAppDataTableColumn({required Widget child, double? width, bool fill
   if (fill) {
     return Expanded(child: child);
   }
->>>>>>> master
   if (width != null) {
     return SizedBox(width: width, child: child);
   }
@@ -100,9 +87,6 @@ class AppDataTable<T> extends StatefulWidget {
     this.rowActions,
     this.animateRows = false,
     this.headerTextStyle,
-<<<<<<< HEAD
-    this.ariaLabel = 'Data table',
-=======
     this.rowHeightOverride,
     this.headerRowHeightOverride,
     this.resizableColumns = false,
@@ -111,7 +95,6 @@ class AppDataTable<T> extends StatefulWidget {
     this.ariaLabel = 'Data table',
     this.rowBackgroundColor,
     this.rowBorder,
->>>>>>> master
     super.key,
   });
 
@@ -136,15 +119,6 @@ class AppDataTable<T> extends StatefulWidget {
   final Widget? Function(T row)? rowActions;
   final bool animateRows;
   final TextStyle? headerTextStyle;
-<<<<<<< HEAD
-  final String ariaLabel;
-
-  double get rowHeight => switch (density) {
-    TableDensity.compact => 36,
-    TableDensity.standard => 40,
-    TableDensity.comfortable => 48,
-  };
-=======
   final double? rowHeightOverride;
   final double? headerRowHeightOverride;
   final bool resizableColumns;
@@ -173,7 +147,6 @@ class AppDataTable<T> extends StatefulWidget {
         TableDensity.standard => 32,
         TableDensity.comfortable => 36,
       };
->>>>>>> master
 
   bool get showBodyInTable => loading || (errorState == null && !(data.isEmpty && emptyState != null));
 
@@ -188,8 +161,6 @@ class AppDataTable<T> extends StatefulWidget {
 
 class _AppDataTableState<T> extends State<AppDataTable<T>> {
   late _AppDataGridSource<T> _source;
-<<<<<<< HEAD
-=======
   final Map<String, double> _columnWidths = {};
   final ScrollController _horizontalScrollController = ScrollController();
   var _lastLayoutWidth = 0.0;
@@ -200,14 +171,10 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
   bool _isFillColumn(TableColumn<T> column) {
     return widget.resizableColumns && AppDataTableColumnLayout.isFillColumn(widget.columns, column.id);
   }
->>>>>>> master
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _source = _AppDataGridSource<T>(table: widget, context: context);
-=======
     _source = _AppDataGridSource<T>(table: widget, context: context)
       ..columnWidths = _effectiveColumnWidths
       ..resizableColumns = widget.resizableColumns;
@@ -365,17 +332,11 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
         child: SizedBox(width: tableWidth, child: child),
       ),
     );
->>>>>>> master
   }
 
   @override
   void didUpdateWidget(covariant AppDataTable<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-<<<<<<< HEAD
-    _source
-      ..table = widget
-      ..context = context
-=======
     if (widget.resizableColumns &&
         (oldWidget.columns != widget.columns || oldWidget.columnWidthsStorageKey != widget.columnWidthsStorageKey)) {
       _columnWidths
@@ -390,7 +351,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
       ..context = context
       ..columnWidths = _effectiveColumnWidths
       ..resizableColumns = widget.resizableColumns
->>>>>>> master
       ..notifyListeners();
   }
 
@@ -482,11 +442,7 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
       gridColumns.add(
         GridColumn(
           columnName: _selectionColumnName,
-<<<<<<< HEAD
-          width: 40,
-=======
           width: widget.resizableColumns ? AppDataTableColumnLayout.selectionColumnWidth : 40,
->>>>>>> master
           allowSorting: false,
           label: Container(
             alignment: Alignment.center,
@@ -504,19 +460,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
     }
 
     for (final column in widget.columns) {
-<<<<<<< HEAD
-      gridColumns.add(
-        GridColumn(
-          columnName: column.id,
-          width: column.width ?? double.nan,
-          columnWidthMode: column.width != null ? ColumnWidthMode.none : ColumnWidthMode.fill,
-          allowSorting: false,
-          label: Container(
-            color: colors.surfaceMuted,
-            alignment: _cellAlignment(column.align),
-            child: _headerLabel(context, column, colors),
-          ),
-=======
       final width = _columnWidthFor(column);
       final usesFill = _usesFillColumnLayout(column);
       gridColumns.add(
@@ -533,7 +476,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
                   child: _headerLabel(context, column, colors),
                 ),
->>>>>>> master
         ),
       );
     }
@@ -542,11 +484,7 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
       gridColumns.add(
         GridColumn(
           columnName: _actionsColumnName,
-<<<<<<< HEAD
-          width: 48,
-=======
           width: AppDataTableColumnLayout.actionsColumnWidth,
->>>>>>> master
           allowSorting: false,
           label: Container(
             alignment: Alignment.center,
@@ -567,13 +505,9 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-<<<<<<< HEAD
-        return Semantics(
-=======
         _ensureColumnWidths(constraints.maxWidth);
 
         final tableContent = Semantics(
->>>>>>> master
           container: true,
           label: widget.ariaLabel,
           child: Container(
@@ -604,52 +538,13 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
             ),
           ),
         );
-<<<<<<< HEAD
-=======
 
         return _wrapResizableWidth(tableContent, constraints.maxWidth);
->>>>>>> master
       },
     );
   }
 
   Widget _buildGridTable(BuildContext context, AppSemanticColors colors) {
-<<<<<<< HEAD
-    return SfDataGridTheme(
-      data: SfDataGridThemeData(
-        headerColor: colors.surfaceMuted,
-        gridLineColor: colors.borderSubtle,
-        gridLineStrokeWidth: 1,
-        rowHoverColor: widget.onRowClick == null ? Colors.transparent : colors.surfaceHover,
-      ),
-      child: SfDataGrid(
-        source: _source,
-        columns: _buildGridColumns(colors),
-        rowHeight: widget.rowHeight,
-        headerRowHeight: widget.rowHeight,
-        shrinkWrapRows: true,
-        frozenColumnsCount: widget.frozenColumnsCount,
-        gridLinesVisibility: GridLinesVisibility.horizontal,
-        headerGridLinesVisibility: GridLinesVisibility.none,
-        columnWidthMode: ColumnWidthMode.fill,
-        selectionMode: SelectionMode.none,
-        highlightRowOnHover: widget.onRowClick != null,
-        showHorizontalScrollbar: true,
-        showVerticalScrollbar: false,
-        onCellTap: widget.onRowClick == null
-            ? null
-            : (details) {
-                final rowIndex = details.rowColumnIndex.rowIndex - 1;
-                if (rowIndex < 0 || rowIndex >= widget.data.length || widget.loading) return;
-                if (details.column.columnName == _selectionColumnName ||
-                    details.column.columnName == _actionsColumnName) {
-                  return;
-                }
-                widget.onRowClick!(widget.data[rowIndex]);
-              },
-        placeholder: const SizedBox.shrink(),
-      ),
-=======
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -691,7 +586,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
           ),
         ),
       ],
->>>>>>> master
     );
   }
 
@@ -712,11 +606,8 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
               item: item,
               rowIndex: index,
               backgroundColor: backgroundColor,
-<<<<<<< HEAD
-=======
               columnWidths: widget.resizableColumns ? _effectiveColumnWidths : null,
               fillColumnExpanded: widget.resizableColumns && !_overflowsHorizontally,
->>>>>>> master
             ),
           ),
       ],
@@ -724,35 +615,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
   }
 
   Widget _buildAnimatedHeader(BuildContext context, AppSemanticColors colors) {
-<<<<<<< HEAD
-    final cells = <Widget>[];
-
-    if (widget.selectable) {
-      cells.add(
-        Expanded(
-          child: _buildAnimatedHeaderCell(
-            context: context,
-            colors: colors,
-            align: TableAlign.center,
-            child: const SizedBox.shrink(),
-          ),
-        ),
-      );
-    }
-
-    for (final column in widget.columns) {
-      cells.add(
-        layoutAppDataTableColumn(
-          width: column.width,
-          child: _buildAnimatedHeaderCell(
-            context: context,
-            colors: colors,
-            align: column.align,
-            child: _headerLabel(context, column, colors),
-          ),
-        ),
-      );
-=======
     return _buildTableHeaderRow(context, colors);
   }
 
@@ -795,17 +657,12 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
 
     for (final column in widget.columns) {
       cells.add(_buildHeaderColumnCell(context: context, colors: colors, column: column));
->>>>>>> master
     }
 
     if (widget.rowActions != null) {
       cells.add(
         SizedBox(
-<<<<<<< HEAD
-          width: 48,
-=======
           width: AppDataTableColumnLayout.actionsColumnWidth,
->>>>>>> master
           child: _buildAnimatedHeaderCell(
             context: context,
             colors: colors,
@@ -822,18 +679,12 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
         border: Border(bottom: BorderSide(color: colors.borderSubtle)),
       ),
       child: SizedBox(
-<<<<<<< HEAD
-        height: widget.rowHeight,
-=======
         height: widget.headerRowHeight,
->>>>>>> master
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells),
       ),
     );
   }
 
-<<<<<<< HEAD
-=======
   Widget _buildHeaderColumnCell({
     required BuildContext context,
     required AppSemanticColors colors,
@@ -878,7 +729,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
     );
   }
 
->>>>>>> master
   Widget _buildAnimatedHeaderCell({
     required BuildContext context,
     required AppSemanticColors colors,
@@ -893,11 +743,7 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
           TableAlign.end => Alignment.centerRight,
           TableAlign.center => Alignment.center,
         },
-<<<<<<< HEAD
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-=======
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
->>>>>>> master
         child: DefaultTextStyle(
           style: widget.headerTextStyle ?? AppTypography.overline(context).copyWith(color: colors.textTertiary),
           child: child,
@@ -920,18 +766,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (widget.selectable)
-<<<<<<< HEAD
-                  Expanded(
-                    child: Container(
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-                      child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 16, height: 16),
-                    ),
-                  ),
-                for (final column in widget.columns)
-                  layoutAppDataTableColumn(
-                    width: column.width,
-=======
                   widget.resizableColumns
                       ? SizedBox(
                           width: AppDataTableColumnLayout.selectionColumnWidth,
@@ -952,15 +786,11 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
                   layoutAppDataTableColumn(
                     width: _columnWidthFor(column),
                     fill: _usesFillColumnLayout(column),
->>>>>>> master
                     child: Container(
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
                       child: AppSkeleton(
                         variant: SkeletonVariant.rectangular,
-<<<<<<< HEAD
-                        width: column.width != null ? (column.width! - AppSpacing.space3 * 2).clamp(48, 120) : 120,
-=======
                         width: () {
                           final width = _columnWidthFor(column);
                           if (width != null) {
@@ -968,16 +798,11 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
                           }
                           return 120.0;
                         }(),
->>>>>>> master
                         height: 16,
                       ),
                     ),
                   ),
-<<<<<<< HEAD
-                if (widget.rowActions != null) const SizedBox(width: 48),
-=======
                 if (widget.rowActions != null) const SizedBox(width: AppDataTableColumnLayout.actionsColumnWidth),
->>>>>>> master
               ],
             ),
           ),
@@ -1003,8 +828,6 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
   }
 }
 
-<<<<<<< HEAD
-=======
 class _AppDataTableColumnResizeHandle extends StatefulWidget {
   const _AppDataTableColumnResizeHandle({required this.colors, required this.onDrag, required this.onDragEnd});
 
@@ -1080,17 +903,13 @@ class _AppDataTableColumnResizeHandleState extends State<_AppDataTableColumnResi
   }
 }
 
->>>>>>> master
 class _AppDataGridSource<T> extends DataGridSource {
   _AppDataGridSource({required this.table, required this.context});
 
   AppDataTable<T> table;
   BuildContext context;
-<<<<<<< HEAD
-=======
   Map<String, double> columnWidths = {};
   bool resizableColumns = false;
->>>>>>> master
 
   AppSemanticColors get _colors => context.appColors;
 
@@ -1143,18 +962,11 @@ class _AppDataGridSource<T> extends DataGridSource {
     required Widget child,
     required TableAlign align,
     Color? backgroundColor,
-<<<<<<< HEAD
-    EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-  }) {
-    return ColoredBox(
-      color: backgroundColor ?? Colors.transparent,
-=======
     BoxBorder? border,
     EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
   }) {
     return DecoratedBox(
       decoration: BoxDecoration(color: backgroundColor, border: border),
->>>>>>> master
       child: Container(alignment: _cellAlignment(align), padding: padding, child: child),
     );
   }
@@ -1174,15 +986,11 @@ class _AppDataGridSource<T> extends DataGridSource {
     final isLoadingRow = item == null;
     final selected = !isLoadingRow && table.selectedIds.contains(table.getRowId(item as T));
     final zebraRow = table.zebra && rowIndex.isOdd;
-<<<<<<< HEAD
-    final rowBackground = selected ? _colors.surfaceSelected : (zebraRow ? _colors.surfaceMuted : null);
-=======
     final customBackground = !isLoadingRow ? table.rowBackgroundColor?.call(item as T, rowIndex) : null;
     final rowBackground = selected
         ? _colors.surfaceSelected
         : (customBackground ?? (zebraRow ? _colors.surfaceMuted : null));
     final rowBorder = !isLoadingRow ? table.rowBorder?.call(item as T, rowIndex) : null;
->>>>>>> master
 
     return DataGridRowAdapter(
       color: rowBackground,
@@ -1241,17 +1049,11 @@ class _AppDataGridSource<T> extends DataGridSource {
         }
 
         final column = table.columns.firstWhere((col) => col.id == cell.columnName);
-<<<<<<< HEAD
-        return _wrapCell(
-          align: column.align,
-          backgroundColor: rowBackground,
-=======
         final isFirstDataColumn = table.columns.first.id == column.id;
         return _wrapCell(
           align: column.align,
           backgroundColor: rowBackground,
           border: isFirstDataColumn ? rowBorder : null,
->>>>>>> master
           child: DefaultTextStyle(
             style: AppTypography.bodySm(context).copyWith(color: _colors.textPrimary),
             textAlign: _textAlign(column.align),
