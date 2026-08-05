@@ -1,0 +1,82 @@
+{
+  "manifests": [
+    {
+      "Identity": {
+        "capabilityId": "clinic.visit_summary",
+        "version": "1.0.0",
+        "title": "Visit summary",
+        "lifecycleState": "active",
+        "successorId": null
+      },
+      "Access": {
+        "requiredCapabilityScope": "ai.visit_summary",
+        "minimumPlanTier": "standard",
+        "allowedStaffRoles": [
+          "clinician",
+          "nurse"
+        ],
+        "killSwitchFlag": false
+      },
+      "Interaction": {
+        "interactionMode": "single_shot"
+      },
+      "Input": {
+        "userIntentShape": "plain_text",
+        "priorTurnShape": null,
+        "sizeLimits": {
+          "maxChars": 8000
+        },
+        "allowedLanguages": [
+          "en"
+        ]
+      },
+      "Context requirements": [
+        {
+          "key": "visit.chief_complaint@v1",
+          "required": true,
+          "shapeRef": "visit.chief_complaint@v1",
+          "maxSize": 4096,
+          "freshnessHint": "session"
+        }
+      ],
+      "Prompt binding": {
+        "systemInstructionArtifactRef": "clinic.visit_summary/system@v1",
+        "businessRuleFragmentRefs": [
+          "clinic.visit_summary/rules-visit-summary@v1"
+        ],
+        "contextRenderingTemplateRef": "clinic.visit_summary/template-visit-summary@v1",
+        "outputFormatInstructionDerivationRule": "derive_from_output_mode"
+      },
+      "Output": {
+        "mode": "prose",
+        "outputSchemaRef": null,
+        "businessValidationRuleRefs": [],
+        "repairPolicy": {
+          "allowed": false,
+          "maxAttempts": 0
+        }
+      },
+      "Routing": {
+        "routingPolicyRef": "routing/standard@v1",
+        "requiredProviderFeatures": {
+          "structuredOutput": false,
+          "contextWindow": 32000,
+          "language": "en"
+        },
+        "latencyClass": "standard",
+        "degradedTierPolicy": "fallback_chain"
+      },
+      "Economics": {
+        "maxInputTokens": 8000,
+        "maxOutputTokens": 1024,
+        "perRequestCostCeiling": 9024,
+        "quotaWeight": 1
+      },
+      "Governance": {
+        "acceptanceMode": "advisory_display",
+        "retentionClass": "diagnostic_30d",
+        "evalSuiteRef": "evals/visit-summary@v1"
+      }
+    }
+  ]
+}

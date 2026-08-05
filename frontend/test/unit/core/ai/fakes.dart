@@ -477,3 +477,15 @@ class DenyingContextProviderPort implements ContextProviderPort {
   @override
   Future<Map<String, Object?>> fetchVisitChiefComplaint() async => {};
 }
+
+/// Context provider whose RPC path throws (resolution-failure path).
+class ThrowingContextProviderPort implements ContextProviderPort {
+  ThrowingContextProviderPort([this.error]);
+
+  final Object? error;
+
+  @override
+  Future<Map<String, Object?>> fetchVisitChiefComplaint() async {
+    throw error ?? StateError('simulated context provider failure');
+  }
+}

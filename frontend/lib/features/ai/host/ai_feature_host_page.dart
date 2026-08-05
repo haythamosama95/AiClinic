@@ -33,6 +33,12 @@ class InMemoryPlatformNetworkSpy implements PlatformNetworkSpy {
 }
 
 /// Dependencies injectable by widget tests and production wiring.
+///
+/// Production hosts SHOULD construct [contextProvider] as a per-visit
+/// `SupabaseContextProviderPort(client: …, visitId: visitId)` so the
+/// argument-free [ContextProviderPort.fetchVisitChiefComplaint] can reach
+/// `public.get_visit_chief_complaint`. Widget tests may inject
+/// `HarnessContextProviderPort` instead.
 class AiFeatureHostDependencies {
   const AiFeatureHostDependencies({
     required this.availabilityReader,
@@ -78,6 +84,13 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   void initState() {
     super.initState();
     unawaited(_bootstrap());
+  }
+
+  @override
+  void dispose() {
+    _resolver?.dispose();
+    _resolver = null;
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {

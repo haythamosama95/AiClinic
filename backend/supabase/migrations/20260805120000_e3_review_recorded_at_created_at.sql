@@ -1,4 +1,8 @@
--- E3: first ordinary context provider RPC for visit.chief_complaint@v1.
+-- =============================================================================
+-- E3 review resolution (E3-R2): recorded_at from visit_clinical_notes.created_at
+-- (not updated_at). Idempotent CREATE OR REPLACE for DBs that already applied
+-- 20260802120000_context_provider_chief_complaint.sql.
+-- =============================================================================
 
 CREATE OR REPLACE FUNCTION auth_internal.get_visit_chief_complaint(p_visit_id uuid)
 RETURNS public.rpc_result

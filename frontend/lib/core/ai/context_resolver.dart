@@ -11,14 +11,23 @@ class ContextResolveSuccess extends ContextResolveResult {
   final Map<String, Object?> payload;
 }
 
+/// Typed Resolver failure. Closed failure codes for this slice:
+/// - `unknown_context_key` — [unknownKey] set
+/// - `resolution_failed` — [failedKey] set (registered key whose port threw)
 class ContextResolveFailure extends ContextResolveResult {
   const ContextResolveFailure({
     required this.code,
-    required this.unknownKey,
+    this.unknownKey,
+    this.failedKey,
   });
 
   final String code;
-  final String unknownKey;
+
+  /// Set when [code] is `unknown_context_key`.
+  final String? unknownKey;
+
+  /// Set when [code] is `resolution_failed`.
+  final String? failedKey;
 }
 
 /// Generic context key → resolver registry (§4.1).
@@ -30,13 +39,13 @@ class ContextResolver {
   final Map<String, Map<String, Object?>> _cache = <String, Map<String, Object?>>{};
   var _disposed = false;
 
-  /// Discards screen-scoped cache (Clarification Q1).
+  /// Discards screen-scoped cache (Clarification Q1). Idempotent.
   void dispose() {
     _disposed = true;
     _cache.clear();
   }
 
-  /// Resolves [keys] to an assembled payload or a typed unknown-key failure.
+  /// Resolves [keys] to an assembled payload or a typed failure.
   Future<ContextResolveResult> resolve(List<String> keys) async {
     if (_disposed) {
       throw StateError('ContextResolver disposed');
@@ -48,7 +57,10 @@ class ContextResolver {
 
     for (final key in keys) {
       if (!contextRegistration.containsKey(key)) {
-        return ContextResolveFailure(code: 'unknown_context_key', unknownKey: key);
+        return ContextResolveFailure(
+          code: 'unknown_context_key',
+          unknownKey: key,
+        );
       }
     }
 
@@ -61,10 +73,17 @@ class ContextResolver {
       }
 
       final resolver = contextRegistration[key]!;
-      final value = await resolver(_providerPort);
-      final snapshot = Map<String, Object?>.from(value);
-      _cache[key] = snapshot;
-      payload[key] = snapshot;
+      try {
+        final value = await resolver(_providerPort);
+        final snapshot = Map<String, Object?>.from(value);
+        _cache[key] = snapshot;
+        payload[key] = snapshot;
+      } catch (_) {
+        return ContextResolveFailure(
+          code: 'resolution_failed',
+          failedKey: key,
+        );
+      }
     }
 
     return ContextResolveSuccess(payload);
