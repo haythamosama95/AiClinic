@@ -45,17 +45,18 @@ It is not a Worker pipeline stage, emits **no** §5.4 taxonomy codes, and adds
 | Runtime module | **None** — no `ai-platform/src/eval/` |
 | First capability | `clinic.visit_summary` (D1 fixture capability; OD-1 recommended default) |
 | Scope | Per capability — the harness does not require a cross-capability aggregate gate |
-| Consumes | D1 pinned prompt artifacts + composer output; D5 recorded fixtures behind the D2 provider port — unchanged |
+| Consumes | D1 pinned prompt artifacts + composer output; D5 recorded fixtures under `ai-platform/test/fixtures/deepseek/` resolved via each case's `d5_fixture_subdir` + `provider_response_file` behind the D2 provider port — unchanged |
 
 ### 2.2 Golden cases (CI)
 
 | Rule | Contract |
 | --- | --- |
 | Gate | Golden cases for the capability under eval **MUST** run in CI on every change that joins the permanent suite (delivery plan §3.10) |
-| Fixtures | Golden cases **MUST** run against **recorded provider fixtures**, not live provider egress as the permanent regression gate (§13.5; Consumes D5) |
-| What is tested | Output **quality** and **schema conformance** per capability (§13.5) |
-| Quality assertion | Per-case golden expectations under `test/eval/` — structured checks and/or expected-output fixtures |
+| Fixtures | Golden cases **MUST** run against **recorded provider fixtures** from the D5 fixture tree, not live provider egress as the permanent regression gate (§13.5; Consumes D5) |
+| What is tested | **Composition + schema conformance** on the fixture-backed path, plus canned-output sanity checks; true live **output-quality** drift is caught by the scheduled live smoke (§2.3) |
+| Quality assertion | Per-case golden expectations under `test/eval/`: `system_instruction_must_contain` and optional `request_system_golden_file` (composition), plus `output_must_contain` / `output_min_length` sanity checks against the **recorded** fixture body (not a live model sample) |
 | Schema assertion | Schema validation of the fixture-backed result |
+| Empty suite | An empty case set **MUST** score overall `fail` (no vacuously green run) |
 | Outcome | **Pass/fail only** — no numeric score cutoff is part of this contract |
 | Current prompt | The golden set **MUST** pass on the current pinned production prompt artifact for the first capability |
 
@@ -63,9 +64,10 @@ It is not a Worker pipeline stage, emits **no** §5.4 taxonomy codes, and adds
 
 | Rule | Contract |
 | --- | --- |
-| Trigger | GitHub Actions **scheduled** workflow runs the live-smoke Vitest entry |
-| Harness | Same `test/eval/` harness as CI goldens (separate Vitest entry) |
-| Models | Smoke **MUST** target **pinned model versions** from routing policy (never floating aliases) |
+| Trigger | GitHub Actions **scheduled** workflow runs the live-smoke Vitest entry with provider API secrets supplied (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`) |
+| Harness | Same `test/eval/` harness as CI goldens (separate Vitest entry); invokes wired adapters per routing-policy target and writes a score report with `run_kind: "live_smoke"` |
+| Credentials | Local/CI runs **MAY** skip live egress when credentials are absent; the scheduled workflow **MUST** supply secrets so smoke actually exercises providers |
+| Models | Smoke **MUST** target **pinned model versions** from routing policy (never floating aliases such as `latest` / `auto` / `default`, legacy `deepseek-chat` / `deepseek-reasoner`, or bare family aliases such as `gemini-1.5-flash`) |
 | Role | Smaller set that catches silent model drift; **not** a substitute for the CI golden gate; **not** an unbounded live matrix (OD-5) |
 
 ### 2.4 What later slices must not redefine
@@ -115,9 +117,9 @@ Each completed run **MUST** write a JSON score report with at least:
 | `recorded_at` | string (ISO-8601) | When the run completed |
 | `cases` | array | One entry per case |
 | `cases[].case_id` | string | Stable case identifier |
-| `cases[].quality` | `"pass"` \| `"fail"` | Output-quality outcome for the case |
+| `cases[].quality` | `"pass"` \| `"fail"` | Quality outcome for the case — on golden runs: composition needles / request-system golden and canned-output sanity; on live smoke: live response quality checks |
 | `cases[].schema` | `"pass"` \| `"fail"` | Schema-conformance outcome for the case |
-| `overall` | `"pass"` \| `"fail"` | Run overall — fail if any required case fails quality or schema |
+| `overall` | `"pass"` \| `"fail"` | Run overall — **fail** if the case set is empty or any required case fails quality or schema |
 
 ### 4.2 Recording rules
 

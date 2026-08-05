@@ -14,14 +14,14 @@ Slice F1 freezes the capability eval harness (A9): golden cases for `clinic.visi
 
 ## 2. What was implemented
 
-- `ai-platform/test/eval/harness.ts` — runner/scorer: per-capability cases, D1 compose + D5 fixture-backed adapter invoke, quality + schema scoring, current vs deliberately regressed prompt builds.
-- `ai-platform/test/eval/score-report.ts` — JSON score-report writer (per-case quality + schema pass/fail; no numeric cutoff).
-- `ai-platform/test/eval/clinic.visit_summary/` — first-capability cases, fixture bindings, and golden expectations.
+- `ai-platform/test/eval/harness.ts` — runner/scorer: per-capability cases, D1 compose + D5 fixture-backed adapter invoke (`d5_fixture_subdir` → `test/fixtures/deepseek/`), quality + schema scoring, current vs deliberately regressed prompt builds, `runLiveSmokeSuite` for scheduled live egress.
+- `ai-platform/test/eval/score-report.ts` — JSON score-report writer (per-case quality + schema pass/fail; empty suite → fail; no numeric cutoff).
+- `ai-platform/test/eval/clinic.visit_summary/` — first-capability cases, D5 fixture bindings, request-system goldens, and golden expectations.
 - `ai-platform/test/eval/prompts/clinic.visit_summary.worse/` — checked-in deliberately worse prompt artifact for T2.
 - `ai-platform/test/eval/reports/` — per-run score report output directory (runtime JSON gitignored).
-- `ai-platform/test/eval/golden.test.ts`, `live-smoke.test.ts`, `prohibitions.test.ts` — named tests T1–T8.
+- `ai-platform/test/eval/golden.test.ts`, `live-smoke.test.ts`, `scorer.test.ts`, `prohibitions.test.ts` — named tests T1–T8 plus scorer branch coverage.
 - `.github/workflows/ci.yml` — `ai-platform-eval-golden` job gates CI on golden + prohibitions entries.
-- `.github/workflows/ai-platform-eval-live-smoke.yml` — scheduled live-smoke workflow.
+- `.github/workflows/ai-platform-eval-live-smoke.yml` — scheduled live-smoke workflow with provider API secrets.
 - Frozen contract: [`contracts/capability-eval-harness.md`](contracts/capability-eval-harness.md).
 
 See [`spec.md`](spec.md) for full requirements and [`plan.md`](plan.md) for file-level traceability.
@@ -37,10 +37,11 @@ See [`spec.md`](spec.md) for full requirements and [`plan.md`](plan.md) for file
 | `ai-platform/test/eval/clinic.visit_summary/expectations/` | Per-case quality + schema expectations |
 | `ai-platform/test/eval/prompts/clinic.visit_summary.worse/` | Deliberately worse prompt artifact (T2) |
 | `ai-platform/test/eval/golden.test.ts` | T1, T2, T3, T5, T6 |
-| `ai-platform/test/eval/live-smoke.test.ts` | T4 |
+| `ai-platform/test/eval/live-smoke.test.ts` | T4 (+ live-smoke execution / skip paths) |
+| `ai-platform/test/eval/scorer.test.ts` | Scorer branch coverage (§3.10) |
 | `ai-platform/test/eval/prohibitions.test.ts` | T7, T8 |
 | `.github/workflows/ci.yml` | CI golden-eval job |
-| `.github/workflows/ai-platform-eval-live-smoke.yml` | Scheduled live-smoke workflow |
+| `.github/workflows/ai-platform-eval-live-smoke.yml` | Scheduled live-smoke workflow (provider secrets) |
 | `specs/039-eval-suite-harness/contracts/capability-eval-harness.md` | Frozen harness gate, regression gate, score report |
 
 ## 4. Prerequisites
@@ -52,7 +53,7 @@ cd ai-platform
 npm install
 ```
 
-Golden and prohibitions tests are CPU-only (recorded fixtures, injectable transport). Live-smoke tests assert pinned model targeting and workflow schedule without requiring live provider credentials.
+Golden and prohibitions tests are CPU-only (D5 recorded fixtures, injectable transport). Live-smoke tests exercise `runLiveSmokeSuite` with an injected recorded-live transport in CI; credential-less local runs skip real egress. The scheduled workflow supplies `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` from GitHub Actions secrets for true provider smoke.
 
 ## 5. Run the automated suite
 
@@ -60,10 +61,10 @@ From the repository root:
 
 ```bash
 cd ai-platform
-npx vitest run test/eval/golden.test.ts test/eval/live-smoke.test.ts test/eval/prohibitions.test.ts
+npx vitest run test/eval/golden.test.ts test/eval/live-smoke.test.ts test/eval/prohibitions.test.ts test/eval/scorer.test.ts
 ```
 
-Expected: **9 passing tests** for this slice only (5 in `golden.test.ts`, 2 in `live-smoke.test.ts`, 2 in `prohibitions.test.ts`).
+Expected: all F1 eval entries green (T1–T8 plus scorer branch coverage and live-smoke execution/skip cases).
 
 To run a subset by named case:
 

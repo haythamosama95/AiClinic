@@ -16,9 +16,10 @@ import type {
 
 export const GEMINI_API_KEY_BINDING = "GEMINI_API_KEY";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
 const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
+/** Default pin — must match platform-default routing policy `model_id` for gemini. */
+export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
 const PROVIDER_ID = "gemini";
 
 export type GeminiTransportResponse = {
@@ -50,6 +51,8 @@ export type GeminiAdapterOptions = {
   transport: GeminiTransport;
   secretStore: SecretStorePort;
   timeoutMs?: number;
+  /** Pinned model id sent on the wire; defaults to {@link GEMINI_DEFAULT_MODEL}. */
+  modelId?: string;
 };
 
 type GeminiWireRequest = {
@@ -242,10 +245,10 @@ function mapCanonicalToWire(request: CanonicalRequest): {
   return { wire, isStream };
 }
 
-function buildApiUrl(isStream: boolean): string {
+function buildApiUrl(isStream: boolean, modelId: string): string {
   const action = isStream ? "streamGenerateContent" : "generateContent";
   const suffix = isStream ? "?alt=sse" : "";
-  return `${GEMINI_API_BASE}/${GEMINI_MODEL}:${action}${suffix}`;
+  return `${GEMINI_API_BASE}/${modelId}:${action}${suffix}`;
 }
 
 function mapUsage(
@@ -280,13 +283,14 @@ function buildResult(
   content: string,
   finishReason: string | null | undefined,
   providerMs: number,
+  modelId: string,
 ): CanonicalResult {
   return {
     finalContent: { type: "text", text: content },
     usage: mapUsage(response.usageMetadata),
     providerModel: {
       provider: PROVIDER_ID,
-      model: GEMINI_MODEL,
+      model: modelId,
     },
     finishReason: mapFinishReason(finishReason),
     providerRequestId: response.responseId ?? "gemini-unknown",
@@ -578,11 +582,13 @@ export class GeminiAdapter implements ProviderPort {
   private readonly transport: GeminiTransport;
   private readonly secretStore: SecretStorePort;
   private readonly defaultTimeoutMs?: number;
+  private readonly modelId: string;
 
   constructor(options: GeminiAdapterOptions) {
     this.transport = options.transport;
     this.secretStore = options.secretStore;
     this.defaultTimeoutMs = options.timeoutMs;
+    this.modelId = options.modelId ?? GEMINI_DEFAULT_MODEL;
   }
 
   async invoke(
@@ -609,7 +615,7 @@ export class GeminiAdapter implements ProviderPort {
     }
 
     const { wire, isStream } = mapCanonicalToWire(request);
-    const apiUrl = buildApiUrl(isStream);
+    const apiUrl = buildApiUrl(isStream, this.modelId);
     const guard = createAbortGuard(timeoutMs, options?.signal);
     const fetchInit: GeminiTransportRequest = {
       url: apiUrl,
@@ -727,7 +733,13 @@ export class GeminiAdapter implements ProviderPort {
     }
 
     const usageAbsent = parsed.usageMetadata === undefined;
-    const result = buildResult(parsed, content, finishReason, providerMs);
+    const result = buildResult(
+      parsed,
+      content,
+      finishReason,
+      providerMs,
+      this.modelId,
+    );
     const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "MAX_TOKENS") {
@@ -824,6 +836,7 @@ export class GeminiAdapter implements ProviderPort {
       assembled,
       effectiveFinish,
       providerMs,
+      this.modelId,
     );
 
     if (!hadFinishReason) {

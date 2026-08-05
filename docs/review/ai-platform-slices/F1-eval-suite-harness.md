@@ -67,3 +67,49 @@ Coverage is measured against the §3.11.6 F1 floor and §3.10 (every branch of e
 - **Add scorer branch cases** (Weak Test 3): one cheap synthetic case per failure branch (failing output needle, short output, non-success outcome, JSON-shaped prose, missing result field) — these need no new fixtures beyond small expectation/response files and bring §3.10 item 3 to met for the scorer.
 - **Fix the Windows path assertions** (Bug 4): build expected substrings with `path.join` or normalize both sides before `toContain`.
 - **Lean on E1's guard for T7 and make T6 forward-compatible** (Weak Tests 5–6): either delete T7's path-shape assertions in favour of a pointer to the E1 architecture-guard coverage, or give T7 its own client sweep; change T6 to assert structural per-capability properties (each capability with `expectations/` has cases, bindings, and expectations that align 1:1) rather than equality with today's single-capability layout.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **F1-R1 — Live smoke execution + report** | Critical #1; Architectural Deviations #1, #4; Missing/Weak Tests #1; Recommended Improvements (implement live smoke) | `harness.ts` (`runLiveSmokeSuite`, HTTP/env ports); `live-smoke.test.ts`; `.github/workflows/ai-platform-eval-live-smoke.yml`; Spec Kit contract §2.3 / quickstart |
+| **F1-R2 — Pinned model versions + semantic T4** | Bugs #1; Recommended Improvements (pin models) | `control/routing-policy/platform-default/1.json`; `deepseek.ts` / `gemini.ts` `modelId` option; outbound wire goldens; `second-provider-policy.test.ts` T-D7-14; `isPinnedModelId` / `FLOATING_MODEL_ALIASES` |
+| **F1-R3 — D5 fixture binding** | Bugs #3; Architectural Deviations #2; Recommended Improvements (bind D5) | `resolveProviderResponsePath` → `D5_FIXTURES_ROOT`; `test/fixtures/deepseek/visit-summary/`; binding JSON; delete eval-local duplicate response |
+| **F1-R4 — Quality gate honesty + T2 strength** | Bugs #2; Architectural Deviations #3; Missing/Weak Tests #4; Recommended Improvements (quality gap) | Expanded system needles + `request_system_golden_file`; T2 asserts `quality === "fail"` on happy-path case; contract §2.2 / §4.1 honesty |
+| **F1-R5 — Runner capability plumbing** | Bugs #5–7; Missing/Weak Tests #6; Recommended Improvements (runner plumbing) | `manifestForCapability`; per-capability fixture resolve; `capabilityIds: [capabilityId]`; `deriveOverall([])` → fail; T6 structural asserts |
+| **F1-R6 — Windows path assertions** | Bugs #4; Recommended Improvements (Windows paths) | `golden.test.ts` T3/T5 use `path.join` / `path.normalize` |
+| **F1-R7 — T5 egress observability** | Missing/Weak Tests #2; Recommended Improvements (T5 spy) | Fixture transport marks `fixtureTransportUsed`; live smoke sets `usedLiveEgress`; T5 spies `globalThis.fetch` + asserts D5 fixture paths |
+| **F1-R8 — Scorer branch coverage** | Missing/Weak Tests #3, #7; Recommended Improvements (scorer cases) | Exported `scoreQuality` / `scoreSchema`; `scorer.test.ts` covers all fail branches + empty-suite / schema-only overall fail |
+| **F1-R9 — T7 Flutter client sweep** | Missing/Weak Tests #5; Recommended Improvements (T7) | F1 T7 scans all `frontend/lib/**/*.dart` against forbidden patterns |
+| **F1-R10 — Prompt-build isolation** | Missing/Weak Tests #8 | Removed `vi.doMock` registry dance; regressed build swaps system-instruction text post-compose; isolation test after T2 |
+
+### 1.2 Test cases created first
+
+- **F1-R1:** `live-smoke.test.ts` — live suite with injected recorded-live transport asserts `usedLiveEgress`, `run_kind: "live_smoke"`, per-provider cases, and credential-absent skip; workflow assertions require secret wiring.
+- **F1-R2:** T4 pin assertions rewritten to expect `deepseek-v4-flash` / `gemini-3.5-flash` and reject known floating aliases via `isPinnedModelId`.
+- **F1-R3 / R7:** T5 rewritten to assert D5 fixture paths and zero `fetch` calls before relying on the binding fix.
+- **F1-R4:** T2 strengthened to assert happy-path `quality === "fail"` / `schema === "pass"` before expanding needles / request golden.
+- **F1-R5:** T6 structural + `capabilityIds` assertions; `deriveOverall([])` fail case in `scorer.test.ts`.
+- **F1-R6:** Path assertions rewritten with `path.join` before any harness path change.
+- **F1-R8:** `scorer.test.ts` written with one case per previously unexercised branch.
+- **F1-R9:** T7 Flutter sweep assertions added.
+- **F1-R10:** Isolation test asserting current build passes after a regressed run (failed under the old mock; drove the compose rewrite).
+
+### 1.3 Fix implemented
+
+- **F1-R1:** Added `runLiveSmokeSuite` (adapter invoke per pinned target, live_smoke score report); workflow injects `DEEPSEEK_API_KEY` / `GEMINI_API_KEY`; credential-less skip preserved.
+- **F1-R2:** Policy + adapter defaults pinned to `deepseek-v4-flash` / `gemini-3.5-flash`; adapters honour optional `modelId` on the wire; T4 semantic pin check.
+- **F1-R3:** Goldens resolve `d5_fixture_subdir` under `test/fixtures/deepseek/`; visit-summary recording moved to D5 tree; eval-local duplicate deleted.
+- **F1-R4:** Contract clarifies fixture goldens gate composition + schema (+ canned sanity); request-system golden + richer needles; T2 specificity.
+- **F1-R5–R10:** Capability plumbing, empty-suite fail, Windows-safe paths, observable egress, scorer branches, Flutter sweep, mock-free regressed compose.
+- Spec Kit: `contracts/capability-eval-harness.md`, `spec.md` clarifications, `plan.md`, `quickstart.md` updated. Architecture / delivery-plan docs untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **41 Node files / 593 tests passed** + **19 workers files / 241 tests passed** (`npm test`).
+
+Eval entries touched/added: `golden.test.ts`, `live-smoke.test.ts`, `prohibitions.test.ts`, `scorer.test.ts`, `harness.ts`, `score-report.ts`.

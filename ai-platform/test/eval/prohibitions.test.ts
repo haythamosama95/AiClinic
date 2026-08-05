@@ -12,7 +12,9 @@ const FORBIDDEN_CLIENT_PATTERNS = [
   /deepseek/i,
   /gemini/i,
   /deepseek-chat/,
+  /deepseek-v4-flash/,
   /gemini-1\.5-flash/,
+  /gemini-3\.5-flash/,
   /clinical documentation assistant/i,
   /You are a clinical documentation assistant/i,
 ];
@@ -56,6 +58,13 @@ describe("T7 no_prompt_text_in_flutter_client", () => {
     for (const file of listFilesRecursive(promptArtifacts)) {
       expect(file.startsWith(EVAL_ROOT)).toBe(true);
       expect(file.includes("frontend")).toBe(false);
+    }
+
+    for (const file of listFilesRecursive(FRONTEND_LIB)) {
+      const source = readFileSync(file, "utf8");
+      for (const pattern of FORBIDDEN_CLIENT_PATTERNS) {
+        expect(source).not.toMatch(pattern);
+      }
     }
   });
 });
