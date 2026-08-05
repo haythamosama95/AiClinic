@@ -1,12 +1,14 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import {
   EPHEMERAL_HORIZON_MS,
   admissionRPC,
   type AdmissionRequest,
 } from "../src/quota-do";
 import {
+  createManifestRetentionClassResolver,
   JOURNAL_HORIZON_DAYS,
   LEDGER_HORIZON_DAYS,
   MS_PER_DAY,
@@ -88,6 +90,7 @@ async function clearTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM usage_event"),
     env.DB.prepare("DELETE FROM usage_rollup"),
+    env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM ai_attempt"),
@@ -98,6 +101,7 @@ async function clearTables(): Promise<void> {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, retentionIndexesSql);
 });
 
 beforeEach(async () => {
@@ -211,6 +215,107 @@ describe("retention_expiry_journal", () => {
 
     expect(oldCount?.c).toBe(0);
     expect(newCount?.c).toBe(1);
+  });
+
+  it("expires credited journal requests with attempts while retaining nulled usage_event", async () => {
+    const oldDate = new Date(
+      FIXTURE_NOW.getTime() - (JOURNAL_HORIZON_DAYS + 1) * MS_PER_DAY,
+    ).toISOString();
+
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+        payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)`,
+    )
+      .bind(
+        "req-journal-credited",
+        "REF-JCRD",
+        FIXTURE_INSTALLATION_A,
+        "actor",
+        "branch",
+        "cap",
+        "1.0.0",
+        "prompt@v1",
+        "idem-credited",
+        "trace-credited",
+        "Completed",
+        oldDate,
+        oldDate,
+        oldDate,
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO ai_attempt (
+        attempt_id, request_id, attempt_no, provider, model, outcome,
+        latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    )
+      .bind(
+        "attempt-journal-credited",
+        "req-journal-credited",
+        1,
+        "deepseek",
+        "fixture",
+        "success",
+        100,
+        10,
+        5,
+        0.01,
+        "prov-credited",
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO usage_event (
+        usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        "ue-journal-credited",
+        FIXTURE_INSTALLATION_A,
+        "2026-05",
+        "req-journal-credited",
+        1,
+        15,
+        0.01,
+        oldDate,
+      )
+      .run();
+
+    await runRetentionPurge({ db: env.DB, r2: env.R2, now: FIXTURE_NOW });
+
+    const requestCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM ai_request WHERE request_id = ?",
+    )
+      .bind("req-journal-credited")
+      .first<{ c: number }>();
+    const attemptCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM ai_attempt WHERE request_id = ?",
+    )
+      .bind("req-journal-credited")
+      .first<{ c: number }>();
+    const usageEvent = await env.DB.prepare(
+      "SELECT request_id FROM usage_event WHERE usage_event_id = ?",
+    )
+      .bind("ue-journal-credited")
+      .first<{ request_id: string | null }>();
+
+    expect(requestCount?.c).toBe(0);
+    expect(attemptCount?.c).toBe(0);
+    expect(usageEvent).toBeDefined();
+    expect(usageEvent?.request_id).toBeNull();
+  });
+});
+
+describe("manifest_retention_class_resolver", () => {
+  it("returns published diagnostic_30d for clinic.visit_summary@1.0.0", () => {
+    const resolve = createManifestRetentionClassResolver();
+    expect(resolve("clinic.visit_summary", "1.0.0")).toBe("diagnostic_30d");
+    expect(resolve("unknown.capability", "9.9.9")).toBe("diagnostic_7d");
   });
 });
 
@@ -406,6 +511,59 @@ describe("retention_purge_by_installation_id", () => {
     await seedRequestWithEnvelope("req-purge-a", FIXTURE_INSTALLATION_A, "cap", recentDate);
     await seedRequestWithEnvelope("req-purge-b", FIXTURE_INSTALLATION_B, "cap", recentDate);
 
+    await env.DB.prepare(
+      `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        "rollup-purge-a",
+        JSON.stringify({ period: "2026-08", installation_id: FIXTURE_INSTALLATION_A }),
+        1,
+        10,
+        0.01,
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        "rollup-purge-b",
+        JSON.stringify({ period: "2026-08", installation_id: FIXTURE_INSTALLATION_B }),
+        1,
+        20,
+        0.02,
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(
+        "counter-purge-a",
+        JSON.stringify({
+          installation_id: FIXTURE_INSTALLATION_A,
+          error_code: "quota_exhausted",
+        }),
+        "2026-08-02T12:00:00.000Z",
+        3,
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(
+        "counter-purge-b",
+        JSON.stringify({
+          installation_id: FIXTURE_INSTALLATION_B,
+          error_code: "quota_exhausted",
+        }),
+        "2026-08-02T12:00:00.000Z",
+        5,
+      )
+      .run();
+
     await purgeByInstallationId(FIXTURE_INSTALLATION_A, "operator-001", {
       db: env.DB,
       r2: env.R2,
@@ -424,6 +582,32 @@ describe("retention_purge_by_installation_id", () => {
 
     expect(aCount?.c).toBe(0);
     expect(bCount?.c).toBe(1);
+
+    const rollupA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM usage_rollup WHERE rollup_id = ?",
+    )
+      .bind("rollup-purge-a")
+      .first<{ c: number }>();
+    const rollupB = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM usage_rollup WHERE rollup_id = ?",
+    )
+      .bind("rollup-purge-b")
+      .first<{ c: number }>();
+    const counterA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM platform_counter WHERE counter_id = ?",
+    )
+      .bind("counter-purge-a")
+      .first<{ c: number }>();
+    const counterB = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM platform_counter WHERE counter_id = ?",
+    )
+      .bind("counter-purge-b")
+      .first<{ c: number }>();
+
+    expect(rollupA?.c).toBe(0);
+    expect(rollupB?.c).toBe(1);
+    expect(counterA?.c).toBe(0);
+    expect(counterB?.c).toBe(1);
 
     const audit = await env.DB.prepare(
       "SELECT action FROM control_audit WHERE target = ?",

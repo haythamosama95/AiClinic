@@ -32,12 +32,11 @@ result only).
 | Property | Value |
 | --- | --- |
 | **Format** | `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$` (eight Crockford base32 symbols, two hyphen-separated groups of four), e.g. `7QK4-2B9F` (§8.9; A13) |
-| **Normalisation before lookup** | Case-folded up; `I`/`L` → `1`; `O` → `0` — via existing `normalizeRequestReference` (A2/C3). Do not fork a second normaliser. |
+| **Normalisation before lookup** | Trim whitespace on the control-plane handler, then case-fold up; `I`/`L` → `1`; `O` → `0` — via existing `normalizeRequestReference` (A2/C3). Do not fork a second normaliser. |
 | **Lookup key** | Unique index `idx_ai_request_request_reference` on `ai_request.request_reference` (A5) |
-
-Malformed references after normalisation that still fail the format MAY be rejected as a control-plane
-validation error (not a new §5.4 taxonomy code). Unknown normalised references return not-found
-without inventing a taxonomy code.
+| **Blank / missing** | Missing query param or whitespace-only → control-plane **400** `missing_reference` |
+| **Malformed after normalisation** | Fails the format above → control-plane **400** `invalid_reference` (not a new §5.4 taxonomy code) |
+| **Unknown but format-valid** | Control-plane **404** `not_found` without inventing a taxonomy code |
 
 ---
 

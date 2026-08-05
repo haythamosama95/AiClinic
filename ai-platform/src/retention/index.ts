@@ -1,4 +1,11 @@
+import { load } from "../manifest";
 import type { Envelope } from "../journal";
+/**
+ * Bundled published manifests (eager static imports — Workers runtime has no
+ * `import.meta.glob`). Add each new `manifests/published/*.json` here so
+ * retentionClass stays resolvable without a D1 read.
+ */
+import visitSummaryPublished from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 
 export const DIAGNOSTIC_BASELINE_DAYS = 7;
 export const JOURNAL_HORIZON_DAYS = 90;
@@ -11,8 +18,24 @@ export type RetentionClassResolver = (
   capabilityVersion: string,
 ) => string;
 
+/** Constant fallback for unknown capabilities / optional override injection. */
 export function defaultRetentionClassResolver(): RetentionClassResolver {
   return () => "diagnostic_7d";
+}
+
+const PUBLISHED_MANIFEST_JSON: ReadonlyArray<Record<string, unknown>> = [
+  visitSummaryPublished as Record<string, unknown>,
+];
+
+export function createManifestRetentionClassResolver(): RetentionClassResolver {
+  const byKey = new Map<string, string>();
+  for (const json of PUBLISHED_MANIFEST_JSON) {
+    const manifest = load(json);
+    const key = `${manifest.Identity.capabilityId}@${manifest.Identity.version}`;
+    byKey.set(key, String(manifest.Governance.retentionClass));
+  }
+  return (capabilityId, capabilityVersion) =>
+    byKey.get(`${capabilityId}@${capabilityVersion}`) ?? "diagnostic_7d";
 }
 
 /** Parse manifest `retentionClass` (e.g. `diagnostic_30d`) into horizon days. */
@@ -92,6 +115,9 @@ export async function runRetentionPurge(
   const ledgerCutoff = new Date(
     now.getTime() - LEDGER_HORIZON_DAYS * MS_PER_DAY,
   ).toISOString();
+  const diagnosticBaselineCutoff = new Date(
+    now.getTime() - DIAGNOSTIC_BASELINE_DAYS * MS_PER_DAY,
+  ).toISOString();
 
   let diagnosticDeleted = 0;
 
@@ -100,8 +126,10 @@ export async function runRetentionPurge(
       `SELECT request_id, capability_id, capability_version, created_at,
               completed_at, payload_pointer
        FROM ai_request
-       WHERE payload_pointer IS NOT NULL`,
+       WHERE payload_pointer IS NOT NULL
+         AND COALESCE(completed_at, created_at) < ?`,
     )
+    .bind(diagnosticBaselineCutoff)
     .all<RequestRetentionRow>();
 
   for (const row of requestRows.results ?? []) {
@@ -124,7 +152,17 @@ export async function runRetentionPurge(
     }
   }
 
-  const journalResult = await db
+  await db
+    .prepare(
+      `UPDATE usage_event SET request_id = NULL
+       WHERE request_id IN (
+         SELECT request_id FROM ai_request WHERE created_at < ?
+       )`,
+    )
+    .bind(journalCutoff)
+    .run();
+
+  const journalAttemptResult = await db
     .prepare(
       `DELETE FROM ai_attempt
        WHERE request_id IN (
@@ -135,51 +173,27 @@ export async function runRetentionPurge(
     .run();
 
   const journalRequestResult = await db
-    .prepare(
-      `DELETE FROM ai_request
-       WHERE created_at < ?
-         AND request_id NOT IN (SELECT request_id FROM usage_event)`,
-    )
+    .prepare(`DELETE FROM ai_request WHERE created_at < ?`)
     .bind(journalCutoff)
     .run();
 
   const journalDeleted =
-    (journalResult.meta.changes ?? 0) + (journalRequestResult.meta.changes ?? 0);
+    (journalAttemptResult.meta.changes ?? 0) +
+    (journalRequestResult.meta.changes ?? 0);
 
   const ledgerUsageEvent = await db
     .prepare(`DELETE FROM usage_event WHERE recorded_at < ?`)
     .bind(ledgerCutoff)
     .run();
 
-  const ledgerOrphanRequests = await db
+  const ledgerCutoffPeriod = ledgerCutoff.slice(0, 7);
+  const ledgerRollup = await db
     .prepare(
-      `DELETE FROM ai_request
-       WHERE created_at < ?
-         AND request_id NOT IN (SELECT request_id FROM usage_event)`,
+      `DELETE FROM usage_rollup
+       WHERE json_extract(dimensions, '$.period') < ?`,
     )
-    .bind(journalCutoff)
+    .bind(ledgerCutoffPeriod)
     .run();
-
-  const rollupRows = await db
-    .prepare(`SELECT rollup_id, dimensions FROM usage_rollup`)
-    .all<{ rollup_id: string; dimensions: string }>();
-
-  let rollupDeleted = 0;
-  const ledgerCutoffDate = ledgerCutoff.slice(0, 7);
-  for (const rollup of rollupRows.results ?? []) {
-    try {
-      const dims = JSON.parse(rollup.dimensions) as { period?: string };
-      if (dims.period && dims.period < ledgerCutoffDate) {
-        await db
-          .prepare(`DELETE FROM usage_rollup WHERE rollup_id = ?`)
-          .bind(rollup.rollup_id)
-          .run();
-        rollupDeleted += 1;
-      }
-    } catch {
-      // skip malformed dimensions
-    }
-  }
 
   const ledgerAudit = await db
     .prepare(`DELETE FROM control_audit WHERE recorded_at < ?`)
@@ -192,8 +206,7 @@ export async function runRetentionPurge(
 
   const ledgerDeleted =
     (ledgerUsageEvent.meta.changes ?? 0) +
-    (ledgerOrphanRequests.meta.changes ?? 0) +
-    rollupDeleted +
+    (ledgerRollup.meta.changes ?? 0) +
     (ledgerAudit.meta.changes ?? 0) +
     (ledgerGrant.meta.changes ?? 0);
 
@@ -221,18 +234,32 @@ export async function purgeByInstallationId(
   }
 
   await db.batch([
-    db.prepare(
-      `DELETE FROM ai_attempt
-       WHERE request_id IN (
-         SELECT request_id FROM ai_request WHERE installation_id = ?
-       )`,
-    ).bind(installationId),
-    db.prepare(
-      `DELETE FROM usage_event WHERE installation_id = ?`,
-    ).bind(installationId),
-    db.prepare(
-      `DELETE FROM ai_request WHERE installation_id = ?`,
-    ).bind(installationId),
+    db
+      .prepare(
+        `DELETE FROM ai_attempt
+         WHERE request_id IN (
+           SELECT request_id FROM ai_request WHERE installation_id = ?
+         )`,
+      )
+      .bind(installationId),
+    db.prepare(`DELETE FROM usage_event WHERE installation_id = ?`).bind(
+      installationId,
+    ),
+    db.prepare(`DELETE FROM ai_request WHERE installation_id = ?`).bind(
+      installationId,
+    ),
+    db
+      .prepare(
+        `DELETE FROM usage_rollup
+         WHERE json_extract(dimensions, '$.installation_id') = ?`,
+      )
+      .bind(installationId),
+    db
+      .prepare(
+        `DELETE FROM platform_counter
+         WHERE json_extract(dimension_set, '$.installation_id') = ?`,
+      )
+      .bind(installationId),
   ]);
 
   await writePurgeAudit(db, operatorId, "purge_installation", installationId);

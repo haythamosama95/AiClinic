@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import { MS_PER_DAY } from "../src/retention";
 import { supportLookup } from "../src/support";
 import type { Envelope } from "../src/journal";
 
@@ -266,10 +267,11 @@ describe("support_lookup_expired_envelope_metadata", () => {
       createdAt: "2026-06-01T12:00:00.000Z",
       completedAt: "2026-06-01T12:05:00.000Z",
     });
+    const r2Spy = createR2Spy(env.R2);
 
     const result = await supportLookup(FIXTURE_REFERENCE, {
       db: env.DB,
-      r2: env.R2,
+      r2: r2Spy,
       now: () => FIXTURE_NOW,
       resolveRetentionClass: () => "diagnostic_7d",
     });
@@ -279,6 +281,123 @@ describe("support_lookup_expired_envelope_metadata", () => {
       expect(result.request.requestId).toBe(FIXTURE_REQUEST_ID);
       expect(result.attempts).toHaveLength(1);
       expect(result.envelope).toBeNull();
+    }
+    expect(r2Spy.getCallCount()).toBe(0);
+  });
+});
+
+describe("support_lookup_in_horizon_missing_r2", () => {
+  it("returns found with null envelope and exactly one GetObject when R2 object is absent", async () => {
+    await seedRequest({ withEnvelope: false });
+    const r2Spy = createR2Spy(env.R2);
+
+    const result = await supportLookup(FIXTURE_REFERENCE, {
+      db: env.DB,
+      r2: r2Spy,
+      now: () => FIXTURE_NOW,
+      resolveRetentionClass: () => "diagnostic_30d",
+    });
+
+    expect(result.found).toBe(true);
+    if (result.found) {
+      expect(result.request.requestId).toBe(FIXTURE_REQUEST_ID);
+      expect(result.attempts).toHaveLength(1);
+      expect(result.envelope).toBeNull();
+    }
+    expect(r2Spy.getCallCount()).toBe(1);
+  });
+});
+
+describe("support_lookup_reference_input", () => {
+  it("resolves lowercase input to the stored reference", async () => {
+    await seedRequest();
+    const result = await supportLookup("7qk4-2b9f", {
+      db: env.DB,
+      r2: env.R2,
+      now: () => FIXTURE_NOW,
+      resolveRetentionClass: () => "diagnostic_30d",
+    });
+    expect(result.found).toBe(true);
+    if (result.found) {
+      expect(result.request.requestReference).toBe(FIXTURE_REFERENCE);
+    }
+  });
+
+  it("resolves I/L/O-confused input to the seeded normalised reference", async () => {
+    await seedRequest({ reference: "71K4-209F" });
+    const result = await supportLookup("7IK4-2O9F", {
+      db: env.DB,
+      r2: env.R2,
+      now: () => FIXTURE_NOW,
+      resolveRetentionClass: () => "diagnostic_30d",
+    });
+    expect(result.found).toBe(true);
+    if (result.found) {
+      expect(result.request.requestReference).toBe("71K4-209F");
+    }
+  });
+
+  it("trims surrounding whitespace on the control-plane route", async () => {
+    await seedRequest();
+    const { handleSupportLookup } = await loadControlHandlers();
+    const response = await handleSupportLookup(
+      new Request(
+        `https://gateway.test/control/support/lookup?reference=${encodeURIComponent(" 7QK4-2B9F ")}`,
+        { method: "GET" },
+      ),
+      { DB: env.DB, R2: env.R2 },
+      createFakeOperatorAuth(),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      request: { requestReference: string };
+    };
+    expect(body.request.requestReference).toBe(FIXTURE_REFERENCE);
+  });
+
+  it("rejects malformed-after-normalise references with 400 invalid_reference", async () => {
+    const { handleSupportLookup } = await loadControlHandlers();
+    for (const bad of ["7QK4 2B9F", "SHORT"]) {
+      const response = await handleSupportLookup(
+        new Request(
+          `https://gateway.test/control/support/lookup?reference=${encodeURIComponent(bad)}`,
+          { method: "GET" },
+        ),
+        { DB: env.DB, R2: env.R2 },
+        createFakeOperatorAuth(),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_reference" });
+    }
+  });
+
+  it("returns 404 not_found for unknown but format-valid references", async () => {
+    const { handleSupportLookup } = await loadControlHandlers();
+    const response = await handleSupportLookup(
+      new Request(
+        "https://gateway.test/control/support/lookup?reference=AAAA-BBBB",
+        { method: "GET" },
+      ),
+      { DB: env.DB, R2: env.R2 },
+      createFakeOperatorAuth(),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("returns 400 missing_reference for blank or whitespace-only input", async () => {
+    const { handleSupportLookup } = await loadControlHandlers();
+    for (const query of ["", "reference=", "reference=%20%20"]) {
+      const response = await handleSupportLookup(
+        new Request(
+          `https://gateway.test/control/support/lookup?${query}`,
+          { method: "GET" },
+        ),
+        { DB: env.DB, R2: env.R2 },
+        createFakeOperatorAuth(),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "missing_reference" });
     }
   });
 });
@@ -302,5 +421,45 @@ describe("support_lookup_non_operator_denied", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("support_lookup_manifest_retention_wiring", () => {
+  it("uses published visit_summary 30d horizon via handleSupportLookup factory wiring", async () => {
+    const now = new Date();
+    const day15 = new Date(now.getTime() - 15 * MS_PER_DAY).toISOString();
+    const reference = "7QK4-30DY";
+    const requestId = "01SUPPORTREQ00000000030";
+
+    await seedRequest({
+      reference,
+      requestId,
+      createdAt: day15,
+      completedAt: day15,
+      capabilityId: "clinic.visit_summary",
+    });
+
+    const { handleSupportLookup } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth({ operatorId: "operator-test" });
+
+    const response = await handleSupportLookup(
+      new Request(
+        `https://gateway.test/control/support/lookup?reference=${reference}`,
+        {
+          method: "POST",
+          headers: { authorization: "Bearer operator-test" },
+        },
+      ),
+      { DB: env.DB, R2: env.R2 },
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      envelope: Envelope | null;
+      request: { capabilityId: string };
+    };
+    expect(body.request.capabilityId).toBe("clinic.visit_summary");
+    expect(body.envelope).not.toBeNull();
   });
 });

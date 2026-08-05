@@ -1,4 +1,11 @@
-import { purgeByInstallationId } from "../retention";
+import {
+  isValidRequestReference,
+  normalizeRequestReference,
+} from "../reference";
+import {
+  createManifestRetentionClassResolver,
+  purgeByInstallationId,
+} from "../retention";
 import { supportLookup } from "../support";
 import { ok, reject, requireOperator } from "./http";
 import type { ControlBindings, OperatorAuth } from "./types";
@@ -18,14 +25,20 @@ export async function handleSupportLookup(
   }
 
   const url = new URL(request.url);
-  const reference = url.searchParams.get("reference");
-  if (!reference) {
+  const raw = url.searchParams.get("reference");
+  if (!raw || raw.trim() === "") {
     return reject(400, "missing_reference");
   }
 
-  const result = await supportLookup(reference, {
+  const normalized = normalizeRequestReference(raw.trim());
+  if (!isValidRequestReference(normalized)) {
+    return reject(400, "invalid_reference");
+  }
+
+  const result = await supportLookup(normalized, {
     db: bindings.DB,
     r2: bindings.R2,
+    resolveRetentionClass: createManifestRetentionClassResolver(),
   });
 
   if (!result.found) {

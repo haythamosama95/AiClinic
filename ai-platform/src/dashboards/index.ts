@@ -1,29 +1,39 @@
-export type TtftByProvider = Record<string, number>;
+export type AvgAttemptLatencyByProvider = Record<string, number>;
+/** @deprecated Use AvgAttemptLatencyByProvider — true TTFT is not journaled. */
+export type TtftByProvider = AvgAttemptLatencyByProvider;
 export type RateByDimension = Record<string, number>;
 export type CostByCapabilityInstallation = Array<{
   capabilityId: string;
+  capabilityVersion: string;
   installationId: string;
   cost: number;
 }>;
 
-export async function dashboardTtftByProvider(
+/**
+ * Average first-attempt total latency by provider.
+ * Reports `AVG(latency_ms)` for `attempt_no = 1` — true TTFT is not journaled.
+ */
+export async function dashboardAvgAttemptLatencyByProvider(
   db: D1Database,
-): Promise<TtftByProvider> {
+): Promise<AvgAttemptLatencyByProvider> {
   const result = await db
     .prepare(
-      `SELECT provider, AVG(latency_ms) AS avg_ttft
+      `SELECT provider, AVG(latency_ms) AS avg_attempt_latency
        FROM ai_attempt
        WHERE attempt_no = 1
        GROUP BY provider`,
     )
-    .all<{ provider: string; avg_ttft: number }>();
+    .all<{ provider: string; avg_attempt_latency: number }>();
 
-  const out: TtftByProvider = {};
+  const out: AvgAttemptLatencyByProvider = {};
   for (const row of result.results ?? []) {
-    out[row.provider] = row.avg_ttft;
+    out[row.provider] = row.avg_attempt_latency;
   }
   return out;
 }
+
+/** @deprecated Prefer dashboardAvgAttemptLatencyByProvider — true TTFT is not journaled. */
+export const dashboardTtftByProvider = dashboardAvgAttemptLatencyByProvider;
 
 export async function dashboardValidationFailureByPromptVersion(
   db: D1Database,
@@ -34,7 +44,7 @@ export async function dashboardValidationFailureByPromptVersion(
               CAST(SUM(CASE WHEN terminal_error_code = 'validation_failed' THEN 1 ELSE 0 END) AS REAL)
                 / COUNT(*) AS rate
        FROM ai_request
-       WHERE state IN ('Completed', 'Failed', 'Cancelled', 'AwaitingContext')
+       WHERE state IN ('Completed', 'Failed')
        GROUP BY prompt_artifact_hash`,
     )
     .all<{ prompt_artifact_hash: string; rate: number }>();
@@ -46,37 +56,39 @@ export async function dashboardValidationFailureByPromptVersion(
   return out;
 }
 
+/**
+ * Repair rate by capability.
+ * Unavailable until RepairJournalSink is persisted on the write path —
+ * returns empty `{}` rather than querying a never-written `outcome='repair'`.
+ */
 export async function dashboardRepairRateByCapability(
-  db: D1Database,
+  _db: D1Database,
 ): Promise<RateByDimension> {
-  const result = await db
-    .prepare(
-      `SELECT r.capability_id,
-              CAST(SUM(CASE WHEN a.outcome = 'repair' THEN 1 ELSE 0 END) AS REAL)
-                / COUNT(*) AS rate
-       FROM ai_attempt a
-       JOIN ai_request r ON r.request_id = a.request_id
-       GROUP BY r.capability_id`,
-    )
-    .all<{ capability_id: string; rate: number }>();
-
-  const out: RateByDimension = {};
-  for (const row of result.results ?? []) {
-    out[row.capability_id] = row.rate;
-  }
-  return out;
+  return {};
 }
 
+/**
+ * True provider-fallback rate by the fallback attempt's provider.
+ * `selection_reason` is not in D1 today. Heuristic: an attempt is a fallback
+ * when its provider differs from the previous attempt's provider on the same
+ * request (true provider switch). Same-provider retries do not count.
+ * Rate = fallback attempts for that provider / all attempts for that provider.
+ */
 export async function dashboardFallbackRateByProvider(
   db: D1Database,
 ): Promise<RateByDimension> {
   const result = await db
     .prepare(
-      `SELECT provider,
-              CAST(SUM(CASE WHEN attempt_no > 1 THEN 1 ELSE 0 END) AS REAL)
+      `SELECT a.provider,
+              CAST(SUM(CASE WHEN prev.provider IS NOT NULL
+                                 AND a.provider != prev.provider
+                            THEN 1 ELSE 0 END) AS REAL)
                 / COUNT(*) AS rate
-       FROM ai_attempt
-       GROUP BY provider`,
+       FROM ai_attempt a
+       LEFT JOIN ai_attempt prev
+         ON prev.request_id = a.request_id
+        AND prev.attempt_no = a.attempt_no - 1
+       GROUP BY a.provider`,
     )
     .all<{ provider: string; rate: number }>();
 
@@ -92,29 +104,43 @@ export async function dashboardCostPerCapabilityPerInstallation(
 ): Promise<CostByCapabilityInstallation> {
   const result = await db
     .prepare(
-      `SELECT r.capability_id, r.installation_id, SUM(a.cost) AS cost
+      `SELECT r.capability_id, r.capability_version, r.installation_id, SUM(a.cost) AS cost
        FROM ai_attempt a
        JOIN ai_request r ON r.request_id = a.request_id
-       GROUP BY r.capability_id, r.installation_id`,
+       GROUP BY r.capability_id, r.capability_version, r.installation_id`,
     )
-    .all<{ capability_id: string; installation_id: string; cost: number }>();
+    .all<{
+      capability_id: string;
+      capability_version: string;
+      installation_id: string;
+      cost: number;
+    }>();
 
   return (result.results ?? []).map((row) => ({
     capabilityId: row.capability_id,
+    capabilityVersion: row.capability_version,
     installationId: row.installation_id,
     cost: row.cost,
   }));
 }
 
+/**
+ * Quota rejection approximation: sum of quota_exhausted counter counts
+ * divided by COUNT(*) of journaled ai_request rows.
+ * Returns 0 when there are no journaled requests.
+ */
 export async function dashboardQuotaRejectionRate(
   db: D1Database,
 ): Promise<number> {
   const result = await db
     .prepare(
       `SELECT
-         CAST(SUM(CASE WHEN dimension_set LIKE '%quota_exhausted%' THEN count ELSE 0 END) AS REAL)
-           / NULLIF(SUM(count), 0) AS rate
-       FROM platform_counter`,
+         CAST(
+           (SELECT COALESCE(SUM(count), 0)
+            FROM platform_counter
+            WHERE dimension_set LIKE '%quota_exhausted%') AS REAL
+         )
+         / NULLIF((SELECT COUNT(*) FROM ai_request), 0) AS rate`,
     )
     .first<{ rate: number | null }>();
 
@@ -122,7 +148,9 @@ export async function dashboardQuotaRejectionRate(
 }
 
 export async function runAllDashboardQueries(db: D1Database): Promise<{
-  ttftByProvider: TtftByProvider;
+  avgAttemptLatencyByProvider: AvgAttemptLatencyByProvider;
+  /** @deprecated Alias of avgAttemptLatencyByProvider — true TTFT is not journaled. */
+  ttftByProvider: AvgAttemptLatencyByProvider;
   validationFailureByPromptVersion: RateByDimension;
   repairRateByCapability: RateByDimension;
   fallbackRateByProvider: RateByDimension;
@@ -130,14 +158,14 @@ export async function runAllDashboardQueries(db: D1Database): Promise<{
   quotaRejectionRate: number;
 }> {
   const [
-    ttftByProvider,
+    avgAttemptLatencyByProvider,
     validationFailureByPromptVersion,
     repairRateByCapability,
     fallbackRateByProvider,
     costPerCapabilityPerInstallation,
     quotaRejectionRate,
   ] = await Promise.all([
-    dashboardTtftByProvider(db),
+    dashboardAvgAttemptLatencyByProvider(db),
     dashboardValidationFailureByPromptVersion(db),
     dashboardRepairRateByCapability(db),
     dashboardFallbackRateByProvider(db),
@@ -146,7 +174,8 @@ export async function runAllDashboardQueries(db: D1Database): Promise<{
   ]);
 
   return {
-    ttftByProvider,
+    avgAttemptLatencyByProvider,
+    ttftByProvider: avgAttemptLatencyByProvider,
     validationFailureByPromptVersion,
     repairRateByCapability,
     fallbackRateByProvider,

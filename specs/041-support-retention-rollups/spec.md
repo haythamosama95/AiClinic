@@ -274,11 +274,16 @@ tests (spy)**. Named cases (floor from §3.11.6; coverage rule §3.10 applies):
   `ephemeral` (`jti` replay and idempotency inside the Quota DO — minutes to hours,
   expired in place with no table to prune). `(§7.7; Open Decision 4)`
 - **FR-008**: The diagnostic envelope's retention horizon MUST be per-capability via the
-  manifest retention class. `(§7.7; Open Decision 4; delivery plan §3.7 Done when)`
+  manifest retention class. Production wiring reads published manifests through
+  `createManifestRetentionClassResolver()` on support lookup and the scheduled purge.
+  `(§7.7; Open Decision 4; delivery plan §3.7 Done when)`
 - **FR-009**: Retention purge MUST NOT delete anything still inside its class horizon.
+  Journal-class expiry deletes `ai_request` and `ai_attempt` together at the journal
+  horizon; ledger may retain `usage_event` rows with nulled `request_id`.
   `(§7.7; delivery plan §3.11.6 F3)`
 - **FR-010**: An installation deletion MUST be executable as purge by installation id in
-  both D1 and R2. `(§7.7; delivery plan §3.7 Done when; §3.11.6 F3)`
+  both D1 and R2 (including that installation's `usage_rollup` and `platform_counter`
+  rows). `(§7.7; delivery plan §3.7 Done when; §3.11.6 F3)`
 - **FR-011**: A scheduled job MUST produce `usage_rollup` from `usage_event`; the ledger
   remains the evidence and rollups the convenience. `(§7.6; delivery plan §3.7 Done when)`
 - **FR-012**: Rollup totals MUST equal `usage_event` ledger sums; a re-run of the rollup

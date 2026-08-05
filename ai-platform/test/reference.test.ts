@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   generateRequestReference,
+  isValidRequestReference,
   normalizeRequestReference,
 } from "../src/reference";
 
@@ -34,5 +35,19 @@ describe("request reference normalisation (T28)", () => {
     expect(normalizeRequestReference("7QK4-2B9F")).toBe("7QK4-2B9F");
     expect(normalizeRequestReference("7IK4-2O9F")).toBe("71K4-209F");
     expect(normalizeRequestReference("ilil-oilo")).toBe("1111-0110");
+  });
+});
+
+describe("request reference validation", () => {
+  it("accepts Crockford-base32 eight-symbol hyphenated form", () => {
+    expect(isValidRequestReference("7QK4-2B9F")).toBe(true);
+    expect(isValidRequestReference("71K4-209F")).toBe(true);
+  });
+
+  it("rejects malformed or incomplete references", () => {
+    expect(isValidRequestReference("7QK4 2B9F")).toBe(false);
+    expect(isValidRequestReference("SHORT")).toBe(false);
+    expect(isValidRequestReference("7QK4-2B9")).toBe(false);
+    expect(isValidRequestReference("")).toBe(false);
   });
 });

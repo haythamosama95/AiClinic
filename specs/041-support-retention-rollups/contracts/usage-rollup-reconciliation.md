@@ -30,9 +30,10 @@ Band G commercial usage-summary / invoice surfaces remain out of scope.
 
 | Property | Value |
 | --- | --- |
-| **Input** | `usage_event` rows for the job window |
+| **Input** | `usage_event` ledger (period-aligned close — §7.6 monthly close) |
 | **Output** | `usage_rollup` rows (`rollup_id`, `dimensions`, `request_count`, `tokens`, `cost` — A5 shape) |
-| **Equality** | Rollup totals for a window MUST equal the corresponding `usage_event` ledger sums (FR-012; T10) |
+| **Period alignment** | Default (no explicit window): aggregate **all** `usage_event` rows `GROUP BY installation_id, period` (full period sums; no trailing-clock filter). With an explicit `window`: find distinct periods touched by `recorded_at` in the window, then re-aggregate **all** events for those periods (ignore the window for the `SUM`) so each upserted row equals the full ledger sum for that period. |
+| **Equality** | Each period rollup row MUST equal the corresponding full-period `usage_event` ledger sums (FR-012; T10). A later window that no longer covers earlier `recorded_at` MUST NOT shrink previously written period rows. |
 | **Idempotent re-run** | Re-running the same window MUST NOT duplicate totals; outcome remains equal to ledger sums (FR-012; T13) |
 | **Schedule** | Worker cron (wrangler); off the inference request path |
 
@@ -50,13 +51,15 @@ freeze). Produced by the same scheduled pass (or immediately chained job).
 
 | Condition | Report |
 | --- | --- |
-| `ai_request` has a **terminal** state (`Completed` / `Failed` / `Cancelled` as journaled by C3) **and** zero `ai_attempt` rows for that `request_id` | Include on report (FR-013; T11; R-6 detection) |
+| `ai_request` has a **terminal** state (`Completed` / `Failed` / `Cancelled` / `AwaitingContext` — H-band legs terminal) **and** zero `ai_attempt` rows for that `request_id` | Include on report (FR-013; T11; R-6 detection) |
+
+Detection is set-based (`LEFT JOIN` / `IS NULL`), not per-row N+1 counts. In-flight states (e.g. `Accepted`) and rows outside the report window are not flagged.
 
 ### 3.2 Flag: missing usage credit
 
 | Condition | Report |
 | --- | --- |
-| `ai_request` has a **terminal** state **and** missing post-response usage settlement evidence | Include on report (FR-014; T12) |
+| `ai_request` has a **terminal** state (same set as §3.1, including `AwaitingContext`) **and** missing post-response usage settlement evidence | Include on report (FR-014; T12) |
 
 **“Missing usage credit”** means absence of the durable settlement evidence the architecture
 requires — specifically no settling `usage_event` for that request (C3 stage-16 ledger row),
@@ -75,6 +78,10 @@ type ReconciliationReport = {
 ```
 
 Re-run over the same window remains consistent (same membership for unchanged seed data; T13).
+
+The Worker `0 4 * * *` cron captures `runRollupAndReconciliation` and emits a structured
+`usage_rollup_reconciliation` log (`logReconciliationReport`) including rollup write count and
+missing-row lengths (and the report payload).
 
 ---
 

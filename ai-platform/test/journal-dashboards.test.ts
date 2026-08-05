@@ -2,11 +2,11 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import {
+  dashboardAvgAttemptLatencyByProvider,
   dashboardCostPerCapabilityPerInstallation,
   dashboardFallbackRateByProvider,
   dashboardQuotaRejectionRate,
   dashboardRepairRateByCapability,
-  dashboardTtftByProvider,
   dashboardValidationFailureByPromptVersion,
   runAllDashboardQueries,
 } from "../src/dashboards";
@@ -124,6 +124,34 @@ async function seedDashboardData(): Promise<void> {
     )
     .run();
 
+  // Cancelled must not dilute validation-failure denominator (Completed+Failed only).
+  await env.DB.prepare(
+    `INSERT INTO ai_request (
+      request_id, request_reference, installation_id, actor_id, branch_id,
+      capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+      trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+      payload_pointer, conversation_id, turn_ordinal
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+  )
+    .bind(
+      "req-dash-cancelled",
+      "REF-D003",
+      FIXTURE_INSTALLATION,
+      "actor-001",
+      "branch-001",
+      "clinic.dash-a",
+      "1.0.0",
+      "prompt/v1@v1",
+      "idem-d3",
+      "trace-d3",
+      "Cancelled",
+      completedAt,
+      completedAt,
+      completedAt,
+      "validation_failed",
+    )
+    .run();
+
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ai_attempt (
@@ -143,12 +171,13 @@ async function seedDashboardData(): Promise<void> {
         latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     ).bind("att-d2b", "req-dash-2", 2, "deepseek", "m1", "success", 150, 30, 15, 0.003, "p3"),
+    // Same-provider retry — must NOT count as provider fallback.
     env.DB.prepare(
       `INSERT INTO ai_attempt (
         attempt_id, request_id, attempt_no, provider, model, outcome,
         latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    ).bind("att-d3", "req-dash-2", 3, "deepseek", "m1", "repair", 50, 5, 2, 0.0005, "p4"),
+    ).bind("att-d2c", "req-dash-2", 3, "deepseek", "m1", "success", 50, 5, 2, 0.0005, "p4"),
   ]);
 
   await env.DB.prepare(
@@ -167,26 +196,17 @@ async function seedDashboardData(): Promise<void> {
     )
     .run();
 
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
-       VALUES (?, ?, ?, ?)`,
-    ).bind(
+  await env.DB.prepare(
+    `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+     VALUES (?, ?, ?, ?)`,
+  )
+    .bind(
       "counter-quota-1",
       JSON.stringify({ error_code: "quota_exhausted", installation_id: FIXTURE_INSTALLATION }),
       "2026-08-15T12:00:00",
       3,
-    ),
-    env.DB.prepare(
-      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
-       VALUES (?, ?, ?, ?)`,
-    ).bind(
-      "counter-ok-1",
-      JSON.stringify({ error_code: "ok", installation_id: FIXTURE_INSTALLATION }),
-      "2026-08-15T12:00:00",
-      7,
-    ),
-  ]);
+    )
+    .run();
 }
 
 async function clearTables(): Promise<void> {
@@ -209,52 +229,58 @@ beforeEach(async () => {
   await seedDashboardData();
 });
 
-describe("dashboard_ttft_by_provider", () => {
-  it("returns correct TTFT by provider against seeded journal", async () => {
-    const result = await dashboardTtftByProvider(env.DB);
+describe("dashboard_avg_attempt_latency_by_provider", () => {
+  it("returns first-attempt average latency by provider (not true TTFT)", async () => {
+    const result = await dashboardAvgAttemptLatencyByProvider(env.DB);
     expect(result.deepseek).toBe(100);
     expect(result.gemini).toBe(200);
   });
 });
 
 describe("dashboard_validation_failure_by_prompt_version", () => {
-  it("returns correct validation-failure rate by prompt version", async () => {
+  it("returns correct validation-failure rate over Completed+Failed only", async () => {
     const result = await dashboardValidationFailureByPromptVersion(env.DB);
+    // Failed (validation) + Completed → 0.5; Cancelled with validation_failed excluded
     expect(result["prompt/v1@v1"]).toBe(0.5);
   });
 });
 
 describe("dashboard_repair_rate_by_capability", () => {
-  it("returns correct repair rate by capability", async () => {
+  it("returns empty until RepairJournalSink is persisted", async () => {
     const result = await dashboardRepairRateByCapability(env.DB);
-    expect(result["clinic.dash-a"]).toBeCloseTo(1 / 4, 5);
+    expect(result).toEqual({});
   });
 });
 
 describe("dashboard_fallback_rate_by_provider", () => {
-  it("returns correct fallback rate by provider", async () => {
+  it("counts true provider fallbacks only (not same-provider retries)", async () => {
     const result = await dashboardFallbackRateByProvider(env.DB);
-    expect(result.deepseek).toBeCloseTo(2 / 3, 5);
+    // deepseek: att-d2b is fallback (gemini→deepseek); att-d1 first + att-d2c same-provider are not
+    // 1 fallback / 3 deepseek attempts = 1/3
+    expect(result.deepseek).toBeCloseTo(1 / 3, 5);
     expect(result.gemini).toBe(0);
   });
 });
 
 describe("dashboard_cost_per_capability_per_installation", () => {
-  it("returns correct cost per capability per installation", async () => {
+  it("returns cost grouped by capability id, version, and installation", async () => {
     const result = await dashboardCostPerCapabilityPerInstallation(env.DB);
     const entry = result.find(
       (r) =>
         r.capabilityId === "clinic.dash-a" &&
+        r.capabilityVersion === "1.0.0" &&
         r.installationId === FIXTURE_INSTALLATION,
     );
+    // 0.001 + 0.002 + 0.003 + 0.0005
     expect(entry?.cost).toBeCloseTo(0.0065, 5);
   });
 });
 
 describe("dashboard_quota_rejection_rate", () => {
-  it("returns correct quota rejection rate from platform_counter", async () => {
+  it("approximates quota_exhausted_count / journaled request_count", async () => {
     const result = await dashboardQuotaRejectionRate(env.DB);
-    expect(result).toBeCloseTo(0.3, 5);
+    // 3 quota / 3 requests (Failed+Completed+Cancelled) = 1.0
+    expect(result).toBeCloseTo(1.0, 5);
   });
 });
 

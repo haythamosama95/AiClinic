@@ -22,7 +22,10 @@ type TerminalRequestRow = {
   request_reference: string;
 };
 
-function defaultWindow(): { start: string; end: string } {
+const TERMINAL_STATES = `('Completed', 'Failed', 'Cancelled', 'AwaitingContext')`;
+
+/** Trailing window for reconciliation scan only (not used for rollup aggregation). */
+function defaultReconciliationWindow(): { start: string; end: string } {
   const end = new Date();
   const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
   return { start: start.toISOString(), end: end.toISOString() };
@@ -32,10 +35,39 @@ function dimensionsKey(installationId: string, period: string): string {
   return JSON.stringify({ installation_id: installationId, period });
 }
 
+/**
+ * Period-aligned aggregation (§7.6 monthly close):
+ * - No window: full ledger sums GROUP BY installation_id, period.
+ * - With window: find periods touched in the window, then re-read ALL events
+ *   for those periods so each rollup row equals the full period ledger sum.
+ */
 async function aggregateUsageEvents(
   db: D1Database,
-  window: { start: string; end: string },
+  window?: { start: string; end: string },
 ): Promise<UsageAggregate[]> {
+  if (window) {
+    const result = await db
+      .prepare(
+        `SELECT ue.installation_id, ue.period,
+                COUNT(*) AS request_count,
+                SUM(ue.tokens) AS tokens,
+                SUM(ue.cost) AS cost
+         FROM usage_event ue
+         WHERE EXISTS (
+           SELECT 1 FROM usage_event touched
+           WHERE touched.installation_id = ue.installation_id
+             AND touched.period = ue.period
+             AND touched.recorded_at >= ?
+             AND touched.recorded_at <= ?
+         )
+         GROUP BY ue.installation_id, ue.period`,
+      )
+      .bind(window.start, window.end)
+      .all<UsageAggregate>();
+
+    return result.results ?? [];
+  }
+
   const result = await db
     .prepare(
       `SELECT installation_id, period,
@@ -43,10 +75,8 @@ async function aggregateUsageEvents(
               SUM(tokens) AS tokens,
               SUM(cost) AS cost
        FROM usage_event
-       WHERE recorded_at >= ? AND recorded_at <= ?
        GROUP BY installation_id, period`,
     )
-    .bind(window.start, window.end)
     .all<UsageAggregate>();
 
   return result.results ?? [];
@@ -55,8 +85,7 @@ async function aggregateUsageEvents(
 export async function runRollup(
   bindings: RollupBindings,
 ): Promise<{ rollupsWritten: number }> {
-  const window = bindings.window ?? defaultWindow();
-  const aggregates = await aggregateUsageEvents(bindings.db, window);
+  const aggregates = await aggregateUsageEvents(bindings.db, bindings.window);
 
   let rollupsWritten = 0;
   for (const agg of aggregates) {
@@ -95,52 +124,60 @@ export async function runRollup(
 export async function runReconciliation(
   bindings: RollupBindings,
 ): Promise<ReconciliationReport> {
-  const window = bindings.window ?? defaultWindow();
+  const window = bindings.window ?? defaultReconciliationWindow();
 
-  const terminalRequests = await bindings.db
+  const missingAttempts = await bindings.db
     .prepare(
-      `SELECT request_id, request_reference
-       FROM ai_request
-       WHERE state IN ('Completed', 'Failed', 'Cancelled', 'AwaitingContext')
-         AND completed_at >= ? AND completed_at <= ?`,
+      `SELECT r.request_id, r.request_reference
+       FROM ai_request r
+       LEFT JOIN ai_attempt a ON a.request_id = r.request_id
+       WHERE r.state IN ${TERMINAL_STATES}
+         AND r.completed_at >= ? AND r.completed_at <= ?
+         AND a.attempt_id IS NULL`,
     )
     .bind(window.start, window.end)
     .all<TerminalRequestRow>();
 
-  const missingAttemptRows: ReconciliationReport["missingAttemptRows"] = [];
-  const missingUsageCredit: ReconciliationReport["missingUsageCredit"] = [];
-
-  for (const req of terminalRequests.results ?? []) {
-    const attemptCount = await bindings.db
-      .prepare(`SELECT COUNT(*) AS count FROM ai_attempt WHERE request_id = ?`)
-      .bind(req.request_id)
-      .first<{ count: number }>();
-
-    if ((attemptCount?.count ?? 0) === 0) {
-      missingAttemptRows.push({
-        requestId: req.request_id,
-        requestReference: req.request_reference,
-      });
-    }
-
-    const usageCount = await bindings.db
-      .prepare(`SELECT COUNT(*) AS count FROM usage_event WHERE request_id = ?`)
-      .bind(req.request_id)
-      .first<{ count: number }>();
-
-    if ((usageCount?.count ?? 0) === 0) {
-      missingUsageCredit.push({
-        requestId: req.request_id,
-        requestReference: req.request_reference,
-      });
-    }
-  }
+  const missingUsage = await bindings.db
+    .prepare(
+      `SELECT r.request_id, r.request_reference
+       FROM ai_request r
+       LEFT JOIN usage_event u ON u.request_id = r.request_id
+       WHERE r.state IN ${TERMINAL_STATES}
+         AND r.completed_at >= ? AND r.completed_at <= ?
+         AND u.usage_event_id IS NULL`,
+    )
+    .bind(window.start, window.end)
+    .all<TerminalRequestRow>();
 
   return {
     window,
-    missingAttemptRows,
-    missingUsageCredit,
+    missingAttemptRows: (missingAttempts.results ?? []).map((row) => ({
+      requestId: row.request_id,
+      requestReference: row.request_reference,
+    })),
+    missingUsageCredit: (missingUsage.results ?? []).map((row) => ({
+      requestId: row.request_id,
+      requestReference: row.request_reference,
+    })),
   };
+}
+
+export function logReconciliationReport(
+  result: { rollupsWritten: number; report: ReconciliationReport },
+  log: (line: string) => void = console.log,
+): void {
+  log(
+    JSON.stringify({
+      level: "info",
+      message: "usage_rollup_reconciliation",
+      rollups_written: result.rollupsWritten,
+      missing_attempt_rows: result.report.missingAttemptRows.length,
+      missing_usage_credit: result.report.missingUsageCredit.length,
+      window: result.report.window,
+      report: result.report,
+    }),
+  );
 }
 
 export async function runRollupAndReconciliation(
