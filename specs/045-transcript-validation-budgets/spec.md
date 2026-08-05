@@ -589,8 +589,9 @@ prohibition, every named boundary):
   branch names, so the number was confirmed from `specs/` (same approach as
   H1).
 - Manifest fields this slice enforces (max history turns, max context rounds,
-  permitted key set, transcript size limit via pre-flight) are those H1 froze;
-  H2 does not invent alternate field names or defaults.
+  permitted key set, transcript size limit enforced at the validator) are those H1 froze;
+  H2 does not invent alternate field names or defaults. Per-turn cost remains the existing
+  pre-flight (`serializePreflightInput` includes the transcript).
 - "Declared turn shapes" is not an assumption: it is the closed transcript wire
   contract stated in §6.7.1 (the `turn_ordinal` / `kind` common fields and the
   four `kind` → payload rows), which §4.3.5 names as the shapes it validates

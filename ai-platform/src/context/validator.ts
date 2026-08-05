@@ -11,7 +11,10 @@ import {
 import { buildErrorBody } from "../errors";
 import type { Principal } from "../identity";
 import type { Manifest } from "../manifest";
-import type { ContextRequest } from "./context-request";
+import {
+  validateContextRequest,
+  type ContextRequest,
+} from "./context-request";
 
 export type TranscriptTurn =
   | { turn_ordinal: number; kind: "user"; text: string }
@@ -48,7 +51,8 @@ export type ValidateResult =
   | { ok: false; code: "internal_error" };
 
 export type ConversationalValidateOptions = {
-  transcript: unknown;
+  /** Required on the wire for conversational legs; omission is `context_invalid`. */
+  transcript?: unknown;
   legTurnOrdinal: number;
 };
 
@@ -153,8 +157,12 @@ function parseTranscriptTurn(turn: unknown): TranscriptTurn | null {
         return null;
       }
       return { turn_ordinal: turnOrdinal, kind: "model", text: turn.text };
-    case "context_requested":
+    case "context_requested": {
       if (!("requests" in turn) || !Array.isArray(turn.requests)) {
+        return null;
+      }
+      const requestsValidation = validateContextRequest(turn.requests);
+      if (!requestsValidation.ok) {
         return null;
       }
       return {
@@ -162,6 +170,7 @@ function parseTranscriptTurn(turn: unknown): TranscriptTurn | null {
         kind: "context_requested",
         requests: turn.requests as ContextRequest,
       };
+    }
     case "context_resolved":
       if (!("context" in turn) || !isPlainObject(turn.context)) {
         return null;
@@ -255,6 +264,35 @@ function applyPermittedKeyAllowlist(
   });
 }
 
+/**
+ * Shape + size checks for conversational context values (§4.3.5 / §6.7.1).
+ * Conversational manifests declare an allowlist without per-key maxSize, so
+ * each permitted value is bounded by Interaction.transcriptSizeLimit.
+ */
+function validateConversationalContextValues(
+  context: Record<string, unknown>,
+  maxValueBytes: number,
+): ValidateResult | null {
+  for (const [key, value] of Object.entries(context)) {
+    const payloadResult = validatePayload(key, value);
+    if (!payloadResult.ok) {
+      if (payloadResult.code === "unknown_shape") {
+        // Keys without a published shape pass the shape check (A5 owns publication).
+      } else if (PLATFORM_KEY_FAILURE_CODES.has(payloadResult.code)) {
+        return { ok: false, code: "internal_error" };
+      } else {
+        return { ok: false, code: "context_invalid" };
+      }
+    }
+
+    if (jsonByteLength(value) > maxValueBytes) {
+      return { ok: false, code: "context_invalid" };
+    }
+  }
+
+  return null;
+}
+
 function permittedKeySetFromManifest(
   manifest: Manifest,
 ): readonly string[] | null {
@@ -280,7 +318,12 @@ function validateConversationalContext(
     return { ok: false, code: "context_invalid" };
   }
 
-  const parsedTranscript = parseTranscript(options.transcript ?? []);
+  // Omitted transcript is context_invalid; an explicit empty array is a valid first leg.
+  if (!("transcript" in options) || options.transcript === undefined) {
+    return { ok: false, code: "context_invalid" };
+  }
+
+  const parsedTranscript = parseTranscript(options.transcript);
   if (parsedTranscript === null) {
     return { ok: false, code: "context_invalid" };
   }
@@ -289,22 +332,61 @@ function validateConversationalContext(
     return { ok: false, code: "context_invalid" };
   }
 
-  const maxHistoryTurns = Number(manifest.Interaction.maxHistoryTurns);
-  if (parsedTranscript.length > maxHistoryTurns) {
+  const maxHistoryTurns = manifest.Interaction.maxHistoryTurns;
+  const maxContextRounds = manifest.Interaction.maxContextRoundsPerTurn;
+  const transcriptSizeLimit = manifest.Interaction.transcriptSizeLimit;
+
+  // Fail closed: non-numeric budget / size fields disable predicates under
+  // Number() coercion — reject rather than wave the request through.
+  if (
+    !isFiniteNumber(maxHistoryTurns) ||
+    !isFiniteNumber(maxContextRounds) ||
+    !isFiniteNumber(transcriptSizeLimit)
+  ) {
     return { ok: false, code: "conversation_budget_exhausted" };
   }
 
-  const maxContextRounds = Number(manifest.Interaction.maxContextRoundsPerTurn);
-  if (countTailContextRounds(parsedTranscript) > maxContextRounds) {
-    return { ok: false, code: "conversation_budget_exhausted" };
-  }
-
+  // Allowlist drop, then published-shape / size checks — still shape-level
+  // failures (`context_invalid`) before any budget code is emitted.
   const permitted = new Set(permittedKeySet);
   const filteredContext = filterToPermittedKeys(suppliedContext, permitted);
   const validatedTranscript = applyPermittedKeyAllowlist(
     parsedTranscript,
     permittedKeySet,
   );
+
+  const suppliedShapeFailure = validateConversationalContextValues(
+    filteredContext,
+    transcriptSizeLimit,
+  );
+  if (suppliedShapeFailure !== null) {
+    return suppliedShapeFailure;
+  }
+
+  for (const turn of validatedTranscript) {
+    if (turn.kind !== "context_resolved") {
+      continue;
+    }
+    const resolvedShapeFailure = validateConversationalContextValues(
+      turn.context,
+      transcriptSizeLimit,
+    );
+    if (resolvedShapeFailure !== null) {
+      return resolvedShapeFailure;
+    }
+  }
+
+  if (validatedTranscript.length > maxHistoryTurns) {
+    return { ok: false, code: "conversation_budget_exhausted" };
+  }
+
+  if (countTailContextRounds(validatedTranscript) > maxContextRounds) {
+    return { ok: false, code: "conversation_budget_exhausted" };
+  }
+
+  if (jsonByteLength(validatedTranscript) > transcriptSizeLimit) {
+    return { ok: false, code: "conversation_budget_exhausted" };
+  }
 
   return {
     ok: true,

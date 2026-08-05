@@ -43,8 +43,9 @@ MUST invent no tag of its own (FR-016):
 
 | Transcript `kind` | Role tag | Payload rendering |
 | --- | --- | --- |
-| `user` | `user` | Turn `text` as a user part — delimited/typed so instruction-like content cannot act as an instruction (R-10). |
-| `model` | `assistant` | Turn `text` as an assistant part (prior validated prose). |
+| `user` | `user` | Turn `text` wrapped as `<turn kind="user">…</turn>` with `</` neutralization (R-10). Role tag remains `user` per §4.3.6 / §5.3; delimiting is a property of the payload shape. |
+| `model` | `assistant` | Turn `text` wrapped as `<turn kind="model">…</turn>` with the same neutralization. |
+| `context_requested` | `assistant` | Structured `requests` payload as neutralized JSON (`</` → `\u003c/`). |
 | `context_resolved` | `data` | Turn `context` object rendered as delimited typed data, same footing as ordinary filtered context. |
 | Ordinary filtered context | `data` | Unchanged D1 delimited typed rendering. |
 
@@ -61,8 +62,11 @@ payload — no invented tag. Budget counting of those turns remains a validator 
   delimited, typed data on the same footing as ordinary context (FR-015).
 - The composer MUST draw **no distinction** between free text from a clinical note and free text
   typed into a chat box.
-- Escaping / block opacity (D1's delimited renderer) stops embedded instruction-like text from
-  acting as an instruction; this is a property of shape, not of prompt wording (R-10).
+- Escaping / block opacity (D1's delimited renderer and the conversational `<turn>` wrapper) stops
+  embedded instruction-like text from acting as an instruction; this is a property of shape, not of
+  prompt wording (R-10).
+- Delimiter-like text inside `context_resolved` / filtered-context values MUST be neutralized
+  (`</` → `\u003c/`) so a value cannot close its own block or open another.
 
 ---
 
@@ -79,10 +83,16 @@ For conversational legs, two terminal output shapes are permitted:
 | --- | --- |
 | Offer | The composer offers the shared context-request schema as a second permitted output shape alongside prose (FR-014). |
 | Accept either | The response validator MUST accept either shape (FR-017). |
-| Reject neither | Output that is neither valid prose nor a valid context request MUST fail (FR-017) under D6's `validation_failed` path — H2 invents no new taxonomy code. |
+| Reject neither | Output that is neither valid prose nor a valid context request MUST fail (FR-017) under D6's `validation_failed` path — H2 invents no new taxonomy code. Empty-array `[]` is not a valid context request for dual acceptance. |
 | Platform-owned | The context-request schema remains the one H1 froze — not a per-capability schema (FR-018). |
+| Structured-output config | Conversational dual offer is realized as prose in the derived format instruction and as dual acceptance in the response validator. `formatDirective` remains `{ mode: "prose", outputSchemaRef: null }` because provider structured-output / JSON-mode configuration cannot express a choice of two shapes; §4.3.6's "single source of truth for … the provider's structured-output/JSON-mode configuration" applies to structured-mode capabilities, not to this dual-shape prose offer. |
 
 Phase order, bounded repair, and structured / `structured_atomic` emission are **not** redefined.
+"Neither" rejections on the conversational dual-acceptance path are labeled `transport_parse`.
+
+Conversational composition does **not** resolve `contextRenderingTemplateRef` — rendering uses
+`permittedKeySet` delimited blocks. A missing or mis-pinned template MUST NOT fail a conversational
+leg.
 
 ---
 

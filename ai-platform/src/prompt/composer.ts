@@ -39,6 +39,14 @@ function neutralizeJson(value: unknown): string {
   return JSON.stringify(value).replaceAll("</", "\\u003c/");
 }
 
+function neutralizeText(text: string): string {
+  return text.replaceAll("</", "\\u003c/");
+}
+
+function renderDelimitedTurn(kind: "user" | "model", text: string): string {
+  return `<turn kind="${kind}">\n${neutralizeText(text)}\n</turn>`;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -139,15 +147,21 @@ function renderTranscriptPriorTurns(
   for (const turn of transcript) {
     switch (turn.kind) {
       case "user":
-        parts.push({ role: "user", content: turn.text });
+        parts.push({
+          role: "user",
+          content: renderDelimitedTurn("user", turn.text),
+        });
         break;
       case "model":
-        parts.push({ role: "assistant", content: turn.text });
+        parts.push({
+          role: "assistant",
+          content: renderDelimitedTurn("model", turn.text),
+        });
         break;
       case "context_requested":
         parts.push({
           role: "assistant",
-          content: JSON.stringify(turn.requests),
+          content: neutralizeJson(turn.requests),
         });
         break;
       case "context_resolved":
@@ -227,28 +241,41 @@ export function composeRequest(
       businessRuleFragments.push(fragment);
     }
 
-    const contextTemplate = resolveArtifact(
-      String(promptBinding.contextRenderingTemplateRef),
-      manifest,
-    );
-    if (contextTemplate === undefined) {
-      return { ok: false, code: "internal_error" };
-    }
-
     const outputFormatInstruction = deriveOutputFormatInstruction(manifest);
     if (outputFormatInstruction === undefined) {
       return { ok: false, code: "internal_error" };
     }
 
+    const isConversational = manifest.interactionMode === "conversational";
+
+    // Conversational composition renders from permittedKeySet; the D1
+    // context-rendering template is unused. Skip resolving it so a missing
+    // or mis-pinned template does not fail a conversational leg.
+    let contextPart = "";
+    if (isConversational) {
+      contextPart = renderConversationalFilteredContext(
+        manifest,
+        filteredContext,
+      );
+    } else {
+      const contextTemplate = resolveArtifact(
+        String(promptBinding.contextRenderingTemplateRef),
+        manifest,
+      );
+      if (contextTemplate === undefined) {
+        return { ok: false, code: "internal_error" };
+      }
+      contextPart = renderThroughTemplate(
+        contextTemplate,
+        manifest,
+        filteredContext,
+      );
+    }
+
     const transcriptParts =
-      manifest.interactionMode === "conversational" && input.transcript
+      isConversational && input.transcript
         ? renderTranscriptPriorTurns(input.transcript)
         : [];
-
-    const contextPart =
-      manifest.interactionMode === "conversational"
-        ? renderConversationalFilteredContext(manifest, filteredContext)
-        : renderThroughTemplate(contextTemplate, manifest, filteredContext);
 
     const messageParts: CanonicalMessagePart[] = [
       { role: "system", content: systemInstruction },

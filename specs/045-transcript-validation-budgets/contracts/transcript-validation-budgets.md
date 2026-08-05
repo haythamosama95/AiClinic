@@ -36,15 +36,19 @@ whole request — including the transcript — with no new cost mechanism.
 
 | Step | Check | Failure |
 | --- | --- | --- |
-| 1 | Transcript shape and `turn_ordinal` ordering (whole array) | `context_invalid` — stop; do not count budgets |
-| 2 | Max history turns (count of turns in the supplied transcript) | `conversation_budget_exhausted` |
-| 3 | Max context rounds per turn (consecutive `context_requested` turns at the transcript tail) | `conversation_budget_exhausted` |
-| 4 | Permitted-key allowlist (ordinary context + keys inside each `context_resolved.context`) | Drop unknown keys; do **not** reject |
-| 5 | Existing stage-7 cost pre-flight over the serialized whole request (transcript included) | `request_too_large` |
+| 1 | Transcript shape and `turn_ordinal` ordering (whole array); `context_requested.requests` elements via H1 `validateContextRequest` | `context_invalid` — stop; do not count budgets |
+| 2 | Permitted-key allowlist (ordinary context + keys inside each `context_resolved.context`) | Drop unknown keys; do **not** reject |
+| 3 | Published-shape (`validatePayload`) and per-value size (bounded by `Interaction.transcriptSizeLimit`) for permitted ordinary context and `context_resolved` values | `context_invalid` |
+| 4 | Max history turns (count of turns in the supplied transcript) | `conversation_budget_exhausted` |
+| 5 | Max context rounds per turn (consecutive `context_requested` turns at the transcript tail) | `conversation_budget_exhausted` |
+| 6 | `Interaction.transcriptSizeLimit` over the serialized validated transcript | `conversation_budget_exhausted` |
+| 7 | Existing stage-7 cost pre-flight over the serialized whole request (transcript included via `serializePreflightInput`) | `request_too_large` |
 
 A malformed or out-of-order transcript MUST fail with `context_invalid` and MUST NOT emit a budget
 code (FR-007). A well-formed transcript that is merely too long is never `context_invalid`
-(FR-008).
+(FR-008). An omitted `transcript` field on a conversational leg is `context_invalid`; an explicit
+empty array is a valid first leg. Non-numeric Interaction budget / size fields fail closed as
+`conversation_budget_exhausted`.
 
 ---
 
@@ -70,7 +74,8 @@ Stage 6 for conversational legs returns a discriminated union that **extends** C
 | --- | --- | --- | --- |
 | Max history turns | `Interaction.maxHistoryTurns` | Number of turns in the supplied `transcript` array | `conversation_budget_exhausted` |
 | Max context rounds per turn | `Interaction.maxContextRoundsPerTurn` | Consecutive `context_requested` turns at the **tail** of the supplied transcript | `conversation_budget_exhausted` |
-| Per-turn cost ceiling | Economics / existing pre-flight | Existing `runCostPreflight(manifest, serializedInput)` where `serializedInput` includes the transcript | `request_too_large` |
+| Transcript size limit | `Interaction.transcriptSizeLimit` | UTF-8 byte length of the JSON-serialized validated transcript | `conversation_budget_exhausted` |
+| Per-turn cost ceiling | Economics / existing pre-flight | Existing `runCostPreflight(manifest, serializePreflightInput({…, transcript}))` where `serializedInput` includes the transcript | `request_too_large` |
 
 No platform-held conversation counter is consulted. No running conversation total. No §9.14
 pre-flight reservation (FR-012; delivery plan §6.4).
@@ -86,6 +91,10 @@ For conversational capabilities, the manifest's `permittedKeySet` is an allowlis
 - Unknown keys are **dropped**, not forwarded and not a rejection — including keys inside a
   `context_resolved` turn's `context` object (FR-011).
 - This drop rule MUST NOT be used to silently discard a malformed turn (see `transcript-wire.md` §6).
+- After the allowlist drop, remaining permitted values (ordinary supplied context and
+  `context_resolved` payloads) MUST pass A5 `validatePayload` shape checks and a per-value byte
+  size bound of `Interaction.transcriptSizeLimit` (§6.7.1 "shaped exactly as an ordinary context
+  payload"; §4.3.5 sizes within bounds).
 
 ---
 
@@ -94,6 +103,11 @@ For conversational capabilities, the manifest's `permittedKeySet` is an allowlis
 A client-trimmed transcript with `turn_ordinal` gaps that resets the round counter is **accepted**
 for budget counting rather than rejected as integrity failure. Containment remains per-leg
 authentication, rate limiting, cost check, and admission (FR-013; §6.7.3).
+
+**Tenant check (C2 divergence):** The conversational path does **not** apply C2's
+`suppliedContext.org` / `suppliedContext.branch` principal match. §4.3.5 does not name that check
+for conversational capabilities; containment remains per-leg authn/admission and client-side RLS on
+resolution. Documented here so the divergence from C2's frozen single-shot behaviour is explicit.
 
 ---
 
@@ -110,3 +124,7 @@ authentication, rate limiting, cost check, and admission (FR-013; §6.7.3).
 
 - Composer prior-turn rendering and dual output shapes — see `conversational-composition.md`.
 - Writing `conversation_id` / `turn_ordinal` to the journal; client transcript ownership — H3.
+- Stage-integration proofs that the request handler includes the transcript in pre-flight
+  serialization and that `request_too_large` / `conversation_budget_exhausted` abort before egress —
+  deferred until conversational pipeline wiring lands (H3 / request handler). H2 freezes
+  `serializePreflightInput` as the seam those tests will call.
