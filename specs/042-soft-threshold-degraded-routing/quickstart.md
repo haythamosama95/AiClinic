@@ -23,16 +23,16 @@ receives `accepted { degraded_notice }`. Hard budget exhaustion returns `quota_e
 
 ## 2. What was implemented
 
-- Quota DO soft-threshold branch on the existing admission RPC (`degraded: true` when crossed with
-  budget remaining; `period_end` on hard exhaustion).
-- Stage-8 admission mapping (`degraded` on allow; `periodReset` on `quota_exhausted`).
-- `src/soft-threshold/` — pure helpers deriving `routing_tier` and `degraded_notice` from
-  admission (client tier injection ignored).
-- C3 journal writer extension — `RequestRowInput.routingTier` → `ai_request.routing_tier`.
-- A6 adapter extension — optional `degraded_notice` on `accepted` SSE data via
-  `buildAcceptedSseEvent`.
-- Frozen contracts under `contracts/soft-threshold-admission.md` and
-  `contracts/degraded-routing-signal.md`.
+- Quota DO soft-threshold branch (`degraded: true` when crossed; `period_end` on hard exhaustion);
+  `soft_threshold` in `[0, 1]` with `0` = disabled; out-of-range coerced via `coerceSoftThreshold`;
+  `isSoftThresholdCrossed` early-returns when `!(threshold > 0) || threshold > 1`.
+- Stage-8 admission mapping (`degraded` on allow; `periodReset` on hard + concurrency→quota;
+  empty `period_reset` omitted on the wire).
+- `src/soft-threshold/` — `resolveRoutingTier(admission)` only; wire-boundary
+  `CLIENT_ROUTING_INJECTION_KEYS` / empty `ADAPTER_ROUTING_BODY_FIELDS`.
+- C3 journal `routingTier` + A6 optional `degraded_notice` on `accepted`.
+- Frozen contracts under `contracts/*`. Harness composes the F4 path until a POST orchestrator
+  exists; in-flight does not count toward soft threshold (§4.3.3).
 
 ## 3. Files to review
 
@@ -56,7 +56,7 @@ cd ai-platform
 npx vitest run --config vitest.workers.config.ts test/soft-threshold-routing.test.ts
 ```
 
-Expected: **7 passing tests** in `test/soft-threshold-routing.test.ts` (T1–T7).
+Expected: **12 passing describes** in `test/soft-threshold-routing.test.ts` (T1–T7 plus zero / zero-budget / token / cost / just-below boundary cases). T2 is gateway refuse + `period_reset` + no journal only (non-AI UX is E4).
 
 ## 5. Inspect the changes
 

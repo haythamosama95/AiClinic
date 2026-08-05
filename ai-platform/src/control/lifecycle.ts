@@ -184,6 +184,9 @@ export async function handleEnroll(
       body.algorithm,
       enrolledAt,
     ),
+    // soft_threshold = 0 is the enroll sentinel (never degrades; F4 contract §2 /
+    // isSoftThresholdFraction allows 0). Future entitlement writes must keep
+    // soft_threshold in [0, 1] via coerceSoftThreshold / isSoftThresholdFraction.
     DB.prepare(
       `INSERT INTO entitlement
          (entitlement_id, installation_id, plan, period_start, period_end,

@@ -186,6 +186,15 @@ describe("taxonomy 429 payload distinction (T26)", () => {
     expect(fields).toHaveProperty("period_reset", periodReset);
     expect(fields).not.toHaveProperty("retry_after");
   });
+
+  it("quota_exhausted omits period_reset when no actionable value is supplied", () => {
+    expect(supplementaryFieldsForCode("quota_exhausted", {})).not.toHaveProperty(
+      "period_reset",
+    );
+    expect(
+      supplementaryFieldsForCode("quota_exhausted", { periodReset: "" }),
+    ).not.toHaveProperty("period_reset");
+  });
 });
 
 describe("taxonomy retry_safe mapping (T29)", () => {

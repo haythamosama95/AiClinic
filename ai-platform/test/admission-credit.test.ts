@@ -725,7 +725,11 @@ describe("admission_rejection_counted_not_journaled", () => {
       { DB: env.DB, DO: env.DO },
       { now: FIXTURE_NOW_MS },
     );
-    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+    expect(rejected).toEqual({
+      ok: false,
+      code: "quota_exhausted",
+      periodReset: "2026-09-01T00:00:00.000Z",
+    });
 
     await admission.flushRejectionCounters({ DB: env.DB });
     const matching = (await readPlatformCounterRows()).filter((row) => {

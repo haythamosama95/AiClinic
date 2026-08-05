@@ -209,6 +209,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Body fields the adapter consults for routing / tier selection.
+ * Empty by design — `routing_tier` is gateway-set from admission (§4.3.7 / §8.8).
+ */
+export const ADAPTER_ROUTING_BODY_FIELDS: readonly string[] = [];
+
+/** Parse ingress JSON; returns null when the body is not a plain object. */
+export function parseAdapterRequestBody(
+  bodyText: string,
+): Record<string, unknown> | null {
+  return parseRequestBody(bodyText);
+}
+
 function parseRequestBody(bodyText: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {

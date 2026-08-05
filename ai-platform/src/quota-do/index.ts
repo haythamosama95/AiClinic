@@ -236,11 +236,31 @@ function isQuotaExhausted(
   );
 }
 
-function isSoftThresholdCrossed(
+/**
+ * Soft threshold is a fraction of period budget (§4.3.3 / F4 contract §2).
+ * `0` disables soft degradation (enroll's zero-threshold case); `(0, 1]` is active.
+ * Values outside `[0, 1]` are rejected by {@link isSoftThresholdFraction}.
+ */
+export function isSoftThresholdFraction(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+/** Coerce an out-of-range soft_threshold to `0` (never degrade). */
+export function coerceSoftThreshold(value: number): number {
+  return isSoftThresholdFraction(value) ? value : 0;
+}
+
+/** Soft-threshold predicate (exported for F4 boundary tests). Hard exhaustion is separate. */
+export function isSoftThresholdCrossed(
   counters: PeriodCounters,
   entitlement: EntitlementSnapshot,
 ): boolean {
   const threshold = entitlement.soft_threshold;
+  // Zero (or non-positive) threshold never degrades — enroll and "disabled" sentinel.
+  // Thresholds > 1 never fire before hard exhaustion; treat as inactive.
+  if (!(threshold > 0) || threshold > 1) {
+    return false;
+  }
 
   if (entitlement.request_quota > 0) {
     const ratio = counters.requestsUsed / entitlement.request_quota;

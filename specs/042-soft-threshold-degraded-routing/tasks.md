@@ -112,3 +112,13 @@
 - Consumed modules (`src/router/`, `src/errors.ts`) are imported/bound, not modified (delivery plan §2.3 — extend, never rewrite). No `frontend/` or `backend/` file is touched. No migration.
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).
 - Preserve §6.4: no §9.14 mechanism; no second Quota DO round trip; no second R2 object per request; no D1-per-chunk; no per-request server-side state; no Flutter prompt/provider/model strings; client cannot inject `routing_tier`.
+
+## Review resolution addenda (F4 Session 2026-08-05)
+
+Additive notes (do not rewrite completed task checkboxes):
+
+- **Zero / coerce**: `soft_threshold = 0` never degrades; out-of-range → `0` via `coerceSoftThreshold`; `isSoftThresholdCrossed` early-returns when `!(threshold > 0) || threshold > 1`.
+- **Boundary tests**: `soft_threshold_zero_never_degrades`; `soft_threshold_zero_budget_dimension_never_contributes`; `soft_threshold_token_dimension_selects_degraded`; `soft_threshold_cost_dimension_selects_degraded`; `soft_threshold_just_below_boundary_unaffected`; B4 `quota-do` zero-sentinel case.
+- **T4 wire boundary**: `ADAPTER_ROUTING_BODY_FIELDS = []`; `CLIENT_ROUTING_INJECTION_KEYS`; dead `ClientRoutingInjection` param removed from `resolveRoutingTier`.
+- **Concurrency `period_reset`**: concurrency→`quota_exhausted` carries entitlement `period_end`; `supplementaryFieldsForCode` omits empty `period_reset`.
+- **Conscious acceptances**: (a) in-flight does not count toward soft threshold (§4.3.3); (b) full POST composition deferred — harness-only until orchestrator; (c) T2 = refuse + `period_reset` + no journal (E4 owns non-AI UX).

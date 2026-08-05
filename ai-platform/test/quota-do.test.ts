@@ -854,9 +854,19 @@ describe("ephemeral_entries_expire_in_place", () => {
 describe("admission_soft_threshold_sets_degraded", () => {
   it("sets degraded on admitted when soft_threshold is already crossed", async () => {
     const installationId = freshInstallationId();
-    const { body } = await callAdmissionRPC(installationId, {
-      entitlement: buildEntitlementSnapshot({ soft_threshold: 0 }),
+    const entitlement = buildEntitlementSnapshot({
+      soft_threshold: 0.5,
+      request_quota: 2,
     });
+
+    const first = await admitFresh(installationId, { entitlement });
+    await callCreditRPC(installationId, {
+      requestId: first.requestId,
+      usage: { tokens: 1, cost: 0.001 },
+    });
+
+    // requestsUsed=1 / request_quota=2 = 0.5 >= soft_threshold 0.5
+    const { body } = await callAdmissionRPC(installationId, { entitlement });
 
     expect(body).toMatchObject({
       kind: "admission",
@@ -864,5 +874,19 @@ describe("admission_soft_threshold_sets_degraded", () => {
       degraded: true,
       requestId: expect.any(String),
     });
+  });
+
+  it("never degrades when soft_threshold is zero (enroll sentinel)", async () => {
+    const installationId = freshInstallationId();
+    const { body } = await callAdmissionRPC(installationId, {
+      entitlement: buildEntitlementSnapshot({ soft_threshold: 0 }),
+    });
+
+    expect(body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+      requestId: expect.any(String),
+    });
+    expect(body).not.toHaveProperty("degraded");
   });
 });

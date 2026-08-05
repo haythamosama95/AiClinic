@@ -26,10 +26,16 @@ not rewritten); `ai-platform/src/journal/index.ts` (persist `routing_tier` only)
 | otherwise (below soft / grace allow without soft signal) | `"standard"` |
 
 - The tier is **never** accepted from the client — no request header, body field, or query
-  parameter may set it (§4.3.7; FR-008).
+  parameter may set it (§4.3.7; FR-008). Proven at the adapter wire boundary:
+  `ADAPTER_ROUTING_BODY_FIELDS` is empty; prohibited keys are listed in
+  `CLIENT_ROUTING_INJECTION_KEYS`. `resolveRoutingTier(admission)` takes no client-injection
+  parameter (Session 2026-08-05).
 - The tier is what is persisted as `ai_request.routing_tier` (A5 column; FR-006).
 - F4 writes **only** `routing_tier`. Persisting `routing_decision` remains out of F4 scope
   (escalation resolution; D2 / later journal wiring).
+- **Conscious acceptance:** full POST composition of `resolveRoutingTier` /
+  `degradedNoticeFromAdmission` is deferred until an orchestrator exists — proven in the
+  integration harness only (plan; Session 2026-08-05).
 
 ---
 
@@ -85,5 +91,5 @@ post-response detail, get-request, or R2 envelope (C3 Freezes).
 | --- | --- |
 | `soft_threshold_selects_degraded_target` | `routing_tier = degraded` → degraded chain; `accepted { degraded_notice }` |
 | `below_threshold_traffic_unaffected` | `routing_tier = standard`; no `degraded_notice` |
-| `soft_threshold_tier_not_accepted_from_client` | Client-supplied tier / trigger ignored |
+| `soft_threshold_tier_not_accepted_from_client` | Wire boundary: empty `ADAPTER_ROUTING_BODY_FIELDS`; injection keys never surface |
 | `soft_threshold_persists_routing_tier` | `ai_request.routing_tier` = gateway-set value |

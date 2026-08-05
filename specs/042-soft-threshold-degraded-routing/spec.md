@@ -98,6 +98,14 @@ accepted-event / error wire surface that carries `degraded_notice` and the
 
 - Q: How should integration tests fixture “soft threshold crossed, budget remaining” (and the below-threshold / hard-exhaustion counterparts)? → A: Seed Quota DO counters / entitlement snapshot into the target region (below soft, at/above soft with budget left, hard-exhausted) before the request under test `[implementation choice — no §citation]`
 
+### Session 2026-08-05 (F4 review resolution)
+
+- Q: What is the valid range of `soft_threshold`, and what does `0` mean? → A: Range `[0, 1]`; `0` disables soft degradation (enroll sentinel — never degrades). Out-of-range values are coerced to `0` via `coerceSoftThreshold` at entitlement map time; `isSoftThresholdCrossed` early-returns when `!(threshold > 0) || threshold > 1` `[implementation choice — no §citation]`
+- Q: How is T4 proven without a fake helper parameter? → A: Wire-boundary assertion — `ADAPTER_ROUTING_BODY_FIELDS` is empty; `CLIENT_ROUTING_INJECTION_KEYS` lists prohibited keys; `resolveRoutingTier` takes admission only `[implementation choice — no §citation]`
+- Q: What does T2 prove at the gateway layer? → A: Refuse with `quota_exhausted` + populated `period_reset` and no `ai_request` journal row; non-AI UX remains E4 `[implementation choice — no §citation]`
+- Q: Do in-flight admissions count toward soft threshold? → A: No — counters increment only on credit; §4.3.3 rejects pre-flight reservations (conscious acceptance) `[implementation choice — no §citation]`
+- Q: Where is `resolveRoutingTier` / `degradedNoticeFromAdmission` composed end-to-end? → A: Test harness only until a POST orchestrator exists (plan-sanctioned) `[implementation choice — no §citation]`
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Soft-threshold degraded routing (Priority: P1)
@@ -132,9 +140,10 @@ and says so, and never hard-locks anything (delivery plan §3.7 Done when).
    chain, and the client receives `accepted { degraded_notice }` (boolean true) — the
    request is not refused. *(soft_threshold_selects_degraded_target)*
 2. **Given** an installation whose period budget is exhausted, **When** a request is
-   admitted, **Then** the gateway returns `quota_exhausted` with `{ reset_at }`, the
-   additive AI feature is disabled with a clear reason and the admin path is available,
-   and no clinical or non-AI workflow is hard-locked or blocked. *(hard_exhaustion_quota_exhausted_admin_path_no_lock)*
+   admitted, **Then** the gateway returns `quota_exhausted` with `period_reset`, refuses
+   the additive AI path with that admin-addressable reason, and journals no `ai_request`
+   row — non-AI UX remains E4 (Clarification Session 2026-08-05).
+   *(hard_exhaustion_quota_exhausted_admin_path_no_lock)*
 3. **Given** an installation whose period usage is below the soft threshold and whose
    budget remains, **When** a request is admitted and routed, **Then** admission allows
    without `degraded`, `routing_tier` is `standard`, the router selects the standard-tier
@@ -149,12 +158,17 @@ Layer from delivery plan §3.11.6 Band F row F4: **Integration**. Named cases (f
 | # | Test name | Layer | Asserts |
 | --- | --- | --- | --- |
 | 1 | `soft_threshold_selects_degraded_target` | Integration | Soft threshold crossed → `{ degraded: true }` → `routing_tier = degraded` → degraded target chain; `accepted { degraded_notice }`; not refused (§3.11.6 F4; §8.8; §4.3.7) |
-| 2 | `hard_exhaustion_quota_exhausted_admin_path_no_lock` | Integration | Budget exhausted → `quota_exhausted` with `{ reset_at }`; additive feature disabled with clear reason / admin path; nothing hard-locked (§3.11.6 F4; §8.8; §4.3.3) |
+| 2 | `hard_exhaustion_quota_exhausted_admin_path_no_lock` | Integration | Budget exhausted → `quota_exhausted` + `period_reset`; no journal row; gateway proof only — non-AI UX is E4 (Session 2026-08-05; §3.11.6 F4; §8.8) |
 | 3 | `below_threshold_traffic_unaffected` | Integration | Below soft threshold → standard tier / no degraded_notice; routing unchanged (§3.11.6 F4; §8.8) |
-| 4 | `soft_threshold_tier_not_accepted_from_client` | Integration | Client-supplied tier / degraded trigger is ignored; only gateway-set `routing_tier` applies (§4.3.7; §8.8; §3.10 prohibition / branch) |
+| 4 | `soft_threshold_tier_not_accepted_from_client` | Integration | Adapter wire boundary: `ADAPTER_ROUTING_BODY_FIELDS` empty; injection keys never surface; tier from admission only (Session 2026-08-05; §4.3.7; §3.10) |
 | 5 | `soft_threshold_persists_routing_tier` | Integration | Soft-threshold path persists `ai_request.routing_tier = degraded` (and standard otherwise) (§4.3.7; §3.10 happy path) |
 | 6 | `soft_threshold_no_second_quota_do_round_trip` | Integration (spy) | Soft-threshold admission still uses exactly one Quota DO round trip — no second trip for the degraded decision (§8.8; delivery plan §6.4; §3.10 inherited prohibition) |
 | 7 | `quota_exhausted_only_error_code_on_hard_exhaustion` | Integration | Hard exhaustion emits `quota_exhausted` and no other taxonomy code from this slice's soft/hard branches (§8.8; §3.10 every error code) |
+| 8 | `soft_threshold_zero_never_degrades` | Integration | `soft_threshold = 0` → never `degraded`; standard path (Session 2026-08-05; contract §2; §3.10 boundary) |
+| 9 | `soft_threshold_zero_budget_dimension_never_contributes` | Integration | Zero-budget dimension ignored by soft predicate (Session 2026-08-05; contract §2) |
+| 10 | `soft_threshold_token_dimension_selects_degraded` | Integration | Cross via `tokensUsed / token_budget` → degraded chain (§3.10 every branch) |
+| 11 | `soft_threshold_cost_dimension_selects_degraded` | Integration | Cross via `costUsed / cost_budget` → degraded chain (§3.10 every branch) |
+| 12 | `soft_threshold_just_below_boundary_unaffected` | Integration | Just below `>=` boundary (e.g. 79/100 at 0.8) stays standard (§3.10 boundary) |
 
 ---
 
@@ -171,10 +185,19 @@ Layer from delivery plan §3.11.6 Band F row F4: **Integration**. Named cases (f
   disabled with clear reason; all non-AI workflows remain fully usable — never a product
   hard-lock (§8.8; §4.3.3; A11 / constitution principle V).
 - **Below soft threshold.** Normal allow path; `routing_tier = standard`; no
-  `degraded_notice` (§8.8).
+  `degraded_notice` (§8.8). Just-below `>=` boundary stays standard (T12).
+- **Zero / out-of-range soft threshold.** `soft_threshold = 0` never degrades; values
+  outside `[0, 1]` coerce to `0` via `coerceSoftThreshold`; predicate early-returns when
+  `!(threshold > 0) || threshold > 1` (Session 2026-08-05; contract §2).
+- **Concurrency-mapped exhaustion.** `concurrency_exhausted` → `quota_exhausted` carries
+  `periodReset` from entitlement `period_end`; `supplementaryFieldsForCode` omits empty
+  `period_reset` (Session 2026-08-05; FR-003).
+- **In-flight vs soft threshold (conscious).** In-flight admissions do not count toward
+  soft threshold — counters increment on credit only; §4.3.3 rejects pre-flight
+  reservations (Session 2026-08-05).
 - **Client cannot trigger degradation.** `routing_tier` / soft-threshold is
-  gateway-internal; the client may only *receive* `degraded_notice` and cannot send a
-  tier (§4.3.7; §8.8).
+  gateway-internal; proven at the adapter wire boundary (`ADAPTER_ROUTING_BODY_FIELDS`
+  empty; Session 2026-08-05; §4.3.7; §8.8).
 - **No second Quota DO round trip.** Soft-threshold evaluation rides the existing
   stage-8 admission call; F4 must not add a second Durable Object round trip (delivery
   plan §6.4; B4 Freezes).
@@ -216,7 +239,8 @@ Layer from delivery plan §3.11.6 Band F row F4: **Integration**. Named cases (f
   round trip; F4 MUST NOT add a second Quota DO round trip per request (delivery plan
   §6.4; §8.8; B4 Freezes).
 - **FR-010**: Below-threshold traffic MUST remain on the standard allow / standard-tier
-  path and MUST NOT receive soft-threshold degradation (delivery plan §3.11.6 F4; §8.8).
+  path and MUST NOT receive soft-threshold degradation; `soft_threshold = 0` MUST never
+  degrade (range `[0, 1]`; Session 2026-08-05; delivery plan §3.11.6 F4; §8.8).
 
 ### Key Entities
 
@@ -310,3 +334,7 @@ only writes the tier through C3's existing journal writer.
 - The platform does not ship until the whole product does (DP-1); "independently
   testable" means provable by an automated integration suite, not demonstrable to a
   user (DP-3).
+- Soft threshold is a fraction in `[0, 1]` with `0` = disabled; out-of-range values
+  coerce to `0` (Session 2026-08-05). Full POST composition of
+  `resolveRoutingTier` / `degradedNoticeFromAdmission` is deferred until an orchestrator
+  exists — proven in the test harness only (plan; Session 2026-08-05).
