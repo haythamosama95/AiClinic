@@ -8,8 +8,9 @@ call this exact RPC, and must not rewrite the RPC signature, registry shape, `ai
 columns, audit action, or invent a second acceptance path (delivery plan §2.3; Open Decision 14).
 
 **Source of truth in code (this slice):**
-`backend/supabase/migrations/` acceptance recording migration(s) and the Flutter clinical accept
-path under `frontend/lib/features/ai/acceptance/`.
+`backend/supabase/migrations/` acceptance recording migration(s) (including review-resolution) and
+the Flutter clinical accept library under `frontend/lib/features/ai/acceptance/` (harness/tests;
+not a production Feature Surface until `human_accept_required`).
 
 **Traces to:** spec **Freezes**; FR-001–FR-019; T1–T10.
 
@@ -75,8 +76,13 @@ are preserved alongside the four acceptance keys) (§4.2.2; FR-005).
 - **Unregistered `p_target_key`:** reject **before** any write using an existing clinic
   `public.rpc_error` code (no new acceptance-specific code; no platform taxonomy entry)
   (§4.2.2; FR-004; T5).
-- **Malformed `p_request_reference`:** reject before any write when the value fails the
-  §4.2.2 / §8.9 CHECK shape (same clinic reject posture; no new vocabulary).
+- **Malformed `p_request_reference`:** reject before any write with `INVALID_INPUT` when the
+  value fails the §4.2.2 / §8.9 CHECK shape (no new vocabulary).
+- **Duplicate acceptance:** reject with `INVALID_INPUT` **before** any write when
+  `(table_name, record_id, ai_request_reference)` would violate uniqueness.
+- **Post-write failures:** after the delegated domain write succeeds, subsequent failures
+  (acceptance row, audit, or other) **propagate** and abort the transaction — they are not
+  converted into a soft `RETURN` / `FORBIDDEN` that leaves a partial commit.
 
 ### 2.4 Forbidden
 
@@ -95,11 +101,16 @@ are preserved alongside the four acceptance keys) (§4.2.2; FR-005).
 | `domain_function` | `text` NOT NULL | Existing `public` domain RPC name (e.g. `save_visit_documentation`) |
 | `table_name` | `text` NOT NULL | Domain table written — same vocabulary as `audit_log.table_name` |
 
-- The only source of which domain RPC acceptance may invoke (§4.2.2; FR-003).
+- The **only source** of which domain RPC acceptance may invoke (§4.2.2; FR-003) — reinforced,
+  not narrowed: dispatch resolves the registry's `domain_function` via catalog lookup
+  (`pg_proc`) of the registered `public` RPC and invokes it with named arguments from
+  `p_target_args`. Enabling a target that points at an existing `public` function returning
+  `rpc_result` is a **registry row** (plus that domain RPC existing) — never a second
+  acceptance RPC (FR-019).
 - Registering a target is a **migration**; it is never a runtime client action.
 - An unregistered `p_target_key` is rejected before anything is written (FR-004).
 - Schema lives under restricted `ai_internal` (existing B1 schema); not granted for direct
-  `authenticated` mutation.
+  `authenticated` mutation; no `service_role` registry grant.
 
 ---
 
@@ -182,7 +193,10 @@ tested as the demonstration target (spec Out of Scope).
 
 ## 7. Client clinical accept path (behavioural bind)
 
-AI Feature Surfaces expose explicit accept/discard for the clinical accept path (§4.1; FR-013):
+F2 ships a **tested library** under `frontend/lib/features/ai/acceptance/` (port / client /
+controller), exercised by harness and automated tests — not a production Feature Surface.
+Production UI integration awaits the first capability declaring `human_accept_required`
+(Open Decision 1). Surfaces that declare clinical accept MUST use this library (§4.1; FR-013):
 
 - **Accept** (clinical-content / demonstration harness path) invokes
   `public.record_ai_acceptance` with the terminal request reference, a registered `p_target_key`,
@@ -191,13 +205,14 @@ AI Feature Surfaces expose explicit accept/discard for the clinical accept path 
   (FR-013; T3).
 - Unaccepted / provisional content is never persisted as a clinical write (FR-014; T4).
 - No auto-commit of AI output (A5; FR-012; T7).
-- First-capability `advisory_display` accept from E4 remains non-writing (FR-018; T8).
+- First-capability `advisory_display` accept from E4 remains non-writing and does not wire this
+  library (FR-018; T8).
 - Flutter clinical accept path embeds no prompt text, model names, provider names, or AI business
   rules (§4.1; FR-017).
 
 Wire shapes above are the frozen clinic contracts; the Flutter modules under
-`frontend/lib/features/ai/` are the behavioural bind points (same posture as E4 Feature Surfaces
-Freezes).
+`frontend/lib/features/ai/acceptance/` are the behavioural bind points (same posture as E4 Feature
+Surfaces Freezes).
 
 ---
 

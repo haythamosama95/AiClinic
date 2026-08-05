@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/ai/acceptance/clinical_accept_controller.dart';
 import 'package:ai_clinic/features/ai/acceptance/clinical_acceptance_port.dart';
@@ -59,6 +61,7 @@ class _ClinicalAcceptHarnessSurface extends StatefulWidget {
     required this.terminalText,
     required this.expectedUpdatedAt,
     this.autoAccept = false,
+    this.stageOnInit = false,
   });
 
   final ClinicalAcceptController controller;
@@ -66,6 +69,7 @@ class _ClinicalAcceptHarnessSurface extends StatefulWidget {
   final String terminalText;
   final DateTime expectedUpdatedAt;
   final bool autoAccept;
+  final bool stageOnInit;
 
   @override
   State<_ClinicalAcceptHarnessSurface> createState() =>
@@ -78,6 +82,12 @@ class _ClinicalAcceptHarnessSurfaceState extends State<_ClinicalAcceptHarnessSur
   @override
   void initState() {
     super.initState();
+    if (widget.stageOnInit) {
+      widget.controller.stageDraft(
+        requestReference: widget.requestReference,
+        complaint: widget.terminalText,
+      );
+    }
     if (widget.autoAccept) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _accept());
     }
@@ -151,7 +161,6 @@ void main() {
     });
 
     testWidgets('advisory_display_accept_unchanged', (tester) async {
-      final spy = SpyClinicalAcceptancePort();
       final harness = AiSurfaceHarness(
         submitScript: [
           SubmitOpenStreamStep(
@@ -171,8 +180,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(kAiAcknowledgedKey), findsOneWidget);
-      expect(spy.calls, isEmpty);
       expect(harness.persistenceProbe.writes, isEmpty);
+
+      final surfaceSource = File(
+        'lib/features/ai/surface/first_ai_feature_surface.dart',
+      ).readAsStringSync();
+      expect(surfaceSource.contains('ClinicalAcceptance'), isFalse);
+      expect(surfaceSource.contains('clinical_accept'), isFalse);
+      expect(surfaceSource.contains('record_ai_acceptance'), isFalse);
     });
 
     testWidgets('acceptance_writes_domain_change_and_request_reference_together', (tester) async {
@@ -213,13 +228,19 @@ void main() {
           requestReference: 'C3D4-E5F6',
           terminalText: 'Discard this draft',
           expectedUpdatedAt: DateTime.utc(2026, 8, 1, 12),
+          stageOnInit: true,
         ),
       );
       await tester.pumpAndSettle();
 
+      expect(controller.hasStagedDraft, isTrue);
+
       await tester.tap(find.byKey(kClinicalDiscardKey));
       await tester.pumpAndSettle();
 
+      expect(controller.hasStagedDraft, isFalse);
+      expect(controller.stagedRequestReference, isNull);
+      expect(controller.stagedComplaint, isNull);
       expect(spy.calls, isEmpty);
       expect(find.text('Discard this draft'), findsNothing);
     });

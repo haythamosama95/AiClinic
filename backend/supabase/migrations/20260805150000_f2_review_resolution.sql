@@ -1,65 +1,12 @@
 -- =============================================================================
--- F2 slice: AI acceptance recording RPC, registry, and ai_accepted_output.
+-- F2 review resolution: hardened acceptance recording for DBs that already
+-- ran 20260802150000. Idempotent with the updated original (CREATE OR REPLACE /
+-- REVOKE / GRANT patterns).
 -- =============================================================================
 
-CREATE TABLE ai_internal.acceptance_targets (
-  target_key text PRIMARY KEY,
-  domain_function text NOT NULL,
-  table_name text NOT NULL
-);
-
--- Registry is read only by SECURITY DEFINER RPCs (owner). No service_role surface.
+-- Drop incorrect service_role surface on the registry (DEFINER reads as owner).
 REVOKE ALL ON TABLE ai_internal.acceptance_targets FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON TABLE ai_internal.acceptance_targets TO postgres;
-
-INSERT INTO ai_internal.acceptance_targets (target_key, domain_function, table_name)
-VALUES ('visit_clinical_notes', 'save_visit_documentation', 'visit_clinical_notes')
-ON CONFLICT (target_key) DO NOTHING;
-
--- -----------------------------------------------------------------------------
--- public.ai_accepted_output
--- -----------------------------------------------------------------------------
-
-CREATE TABLE public.ai_accepted_output (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id uuid NOT NULL REFERENCES public.organizations (id),
-  branch_id uuid REFERENCES public.branches (id),
-  table_name text NOT NULL,
-  record_id uuid NOT NULL,
-  ai_request_reference text NOT NULL,
-  accepted_by uuid NOT NULL REFERENCES auth.users (id),
-  accepted_at timestamptz NOT NULL DEFAULT now(),
-  audit_log_id uuid NOT NULL REFERENCES public.audit_log (id),
-  CONSTRAINT ai_accepted_output_request_reference_format CHECK (
-    ai_request_reference ~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'
-  ),
-  CONSTRAINT ai_accepted_output_unique_domain_reference
-    UNIQUE (table_name, record_id, ai_request_reference)
-);
-
-CREATE INDEX ai_accepted_output_request_reference_idx
-  ON public.ai_accepted_output (ai_request_reference);
-
-CREATE INDEX ai_accepted_output_table_record_idx
-  ON public.ai_accepted_output (table_name, record_id);
-
-ALTER TABLE public.ai_accepted_output ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY ai_accepted_output_select ON public.ai_accepted_output
-  FOR SELECT TO authenticated
-  USING (
-    organization_id = public.jwt_organization_id()
-    AND (
-      branch_id IS NULL
-      OR branch_id = ANY (public.jwt_branch_ids())
-    )
-  );
-
-GRANT SELECT ON TABLE public.ai_accepted_output TO authenticated;
-
--- -----------------------------------------------------------------------------
--- auth_internal.invoke_acceptance_domain_rpc — registry-driven dynamic dispatch
--- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION auth_internal.invoke_acceptance_domain_rpc(
   p_domain_function text,
@@ -87,7 +34,6 @@ BEGIN
     RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
   END IF;
 
-  -- Registry is the only source of which public domain RPC may be invoked.
   IF NOT EXISTS (
     SELECT 1
     FROM ai_internal.acceptance_targets t
@@ -137,10 +83,6 @@ BEGIN
 END;
 $$;
 
--- -----------------------------------------------------------------------------
--- auth_internal.record_ai_acceptance
--- -----------------------------------------------------------------------------
-
 CREATE OR REPLACE FUNCTION auth_internal.record_ai_acceptance(
   p_request_reference text,
   p_target_key text,
@@ -175,8 +117,6 @@ BEGIN
     RETURN public.rpc_error('INVALID_INPUT', 'Acceptance target is not registered.');
   END IF;
 
-  -- Foreseeable duplicate: reject before the delegated write so the client gets a
-  -- clean rpc_result and no domain change is attempted.
   IF EXISTS (
     SELECT 1
     FROM public.ai_accepted_output a
@@ -189,8 +129,6 @@ BEGIN
     );
   END IF;
 
-  -- Organization context is required before any write so a missing claim cannot
-  -- leave a delegated domain change committed without provenance.
   v_org_id := public.jwt_organization_id();
   IF v_org_id IS NULL THEN
     RETURN public.rpc_error('FORBIDDEN', 'Organization context is required.');
@@ -205,14 +143,12 @@ BEGIN
     RETURN v_domain_result;
   END IF;
 
-  -- Provenance records the domain row that was written, not the request payload.
   v_record_id := coalesce(
     (v_domain_result.data ->> 'record_id')::uuid,
     (v_domain_result.data ->> 'visit_id')::uuid,
     (v_domain_result.data ->> 'id')::uuid
   );
   IF v_record_id IS NULL THEN
-    -- Propagate so the delegated write rolls back with this transaction.
     RAISE EXCEPTION 'Domain write did not return a record id.';
   END IF;
 
@@ -224,8 +160,6 @@ BEGIN
 
   v_acceptance_id := gen_random_uuid();
 
-  -- Post-write exceptions must propagate so the PostgREST transaction aborts and
-  -- rolls back the delegated domain write. Do not convert them into RETURN rpc_error.
   INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
@@ -290,9 +224,9 @@ AS $$
   );
 $$;
 
--- Wrapper-gate: only the public INVOKER wrapper is executable by authenticated.
 REVOKE ALL ON FUNCTION auth_internal.invoke_acceptance_domain_rpc(text, jsonb)
   FROM PUBLIC, authenticated, anon;
 REVOKE ALL ON FUNCTION auth_internal.record_ai_acceptance(text, text, jsonb)
   FROM PUBLIC, authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.record_ai_acceptance(text, text, jsonb) TO authenticated;
+GRANT SELECT ON TABLE public.ai_accepted_output TO authenticated;
