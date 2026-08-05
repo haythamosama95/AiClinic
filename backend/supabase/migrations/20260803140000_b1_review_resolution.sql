@@ -6,7 +6,7 @@
 
 REVOKE ALL ON SCHEMA ai_internal FROM PUBLIC, anon, authenticated, service_role;
 GRANT USAGE ON SCHEMA ai_internal TO postgres;
--- Later F2 registry reads (acceptance_targets) re-grant service_role USAGE.
+-- F2 registry is DEFINER-owned; do not re-grant service_role USAGE for it.
 
 -- Enrollment SECURITY DEFINER owner must hold keymaker (§4.2.1).
 GRANT pgsodium_keymaker TO postgres;
