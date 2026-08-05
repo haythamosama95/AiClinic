@@ -35,6 +35,29 @@ export type PreflightResult =
   | { ok: true }
   | { ok: false; code: "request_too_large" };
 
+/**
+ * Serialize the stage-7 pre-flight input. Conversational legs MUST include the
+ * validated transcript so growth is priced by the existing estimator (H2).
+ */
+export function serializePreflightInput(input: {
+  filteredContext: Record<string, unknown>;
+  userIntent: string;
+  transcript?: unknown;
+}): string {
+  if (input.transcript === undefined) {
+    return JSON.stringify({
+      filteredContext: input.filteredContext,
+      userIntent: input.userIntent,
+    });
+  }
+
+  return JSON.stringify({
+    filteredContext: input.filteredContext,
+    userIntent: input.userIntent,
+    transcript: input.transcript,
+  });
+}
+
 export function runCostPreflight(
   manifest: Manifest,
   serializedInput: string,

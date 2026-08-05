@@ -7,6 +7,7 @@ import {
   type ValidateResult,
 } from "../src/context/validator";
 import * as preflightModule from "../src/context/preflight";
+import { composeRequest } from "../src/prompt/composer";
 
 type ManifestWire = Record<string, unknown>;
 
@@ -470,38 +471,10 @@ describe("context_rounds_at_tail_breached_conversation_budget_exhausted", () => 
   });
 });
 
-describe("key_outside_permitted_set_dropped", () => {
-  it("drops a key inside context_resolved that is outside the permitted set", () => {
-    const manifest = loadedConversationalManifest();
-    const transcript = [
-      {
-        turn_ordinal: 1,
-        kind: "context_resolved",
-        context: {
-          [PERMITTED_KEY_COMPLAINT]: { complaint: "Headache" },
-          [UNPERMITTED_KEY]: { drug: "Aspirin" },
-        },
-      },
-    ];
 
-    const result = validateConversational(manifest, transcript);
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const resolvedTurn = result.validatedTranscript?.[0];
-      expect(resolvedTurn?.kind).toBe("context_resolved");
-      if (resolvedTurn?.kind === "context_resolved") {
-        expect(resolvedTurn.context).toEqual({
-          [PERMITTED_KEY_COMPLAINT]: { complaint: "Headache" },
-        });
-        expect(resolvedTurn.context).not.toHaveProperty(UNPERMITTED_KEY);
-      }
-    }
-  });
-});
 
 describe("oversized_transcript_request_too_large", () => {
-  it("fails the existing cost pre-flight with request_too_large for an oversized transcript", () => {
+  it("fails existing pre-flight when serialized input includes an oversized transcript", () => {
     const manifest = loadedConversationalManifest({
       Economics: {
         maxInputTokens: 10,
@@ -511,26 +484,44 @@ describe("oversized_transcript_request_too_large", () => {
       },
     });
     const transcript = validTranscript();
-    const serializedInput = JSON.stringify({ transcript, userIntent: "x".repeat(10_000) });
+    const serializedInput = preflightModule.serializePreflightInput({
+      filteredContext: {},
+      userIntent: "x".repeat(10_000),
+      transcript,
+    });
 
-    const preflightSpy = vi.spyOn(preflightModule, "runCostPreflight");
+    expect(serializedInput).toContain('"transcript"');
+    expect(serializedInput).toContain("What is the chief complaint?");
+
     const result = preflightModule.runCostPreflight(manifest, serializedInput);
-
-    expect(preflightSpy).toHaveBeenCalledWith(manifest, serializedInput);
     expect(result).toEqual({ ok: false, code: "request_too_large" });
   });
 });
 
 describe("per_turn_cost_ceiling_uses_existing_preflight_no_new_mechanism", () => {
-  it("prices transcript growth only through the existing runCostPreflight export", async () => {
+  it("prices transcript growth only through serializePreflightInput + runCostPreflight", async () => {
     const validatorModule = await import("../src/context/validator");
     const preflightExports = Object.keys(preflightModule);
     const validatorExports = Object.keys(validatorModule);
 
     expect(preflightExports).toContain("runCostPreflight");
     expect(preflightExports).toContain("estimateInputTokens");
+    expect(preflightExports).toContain("serializePreflightInput");
     expect(validatorExports).not.toContain("runConversationCostTotal");
     expect(validatorExports).not.toContain("reservePreflightBudget");
+
+    const withTranscript = preflightModule.serializePreflightInput({
+      filteredContext: { a: 1 },
+      userIntent: "hi",
+      transcript: validTranscript(),
+    });
+    const withoutTranscript = preflightModule.serializePreflightInput({
+      filteredContext: { a: 1 },
+      userIntent: "hi",
+    });
+    expect(withTranscript.length).toBeGreaterThan(withoutTranscript.length);
+    expect(withTranscript).toContain('"transcript"');
+    expect(withoutTranscript).not.toContain('"transcript"');
 
     for (const exportName of validatorExports) {
       const lowered = exportName.toLowerCase();
@@ -575,6 +566,347 @@ describe("no_per_request_server_state_from_h2", () => {
       expect(lowered).not.toMatch(/durableobject/);
       expect(lowered).not.toMatch(/requeststate/);
     }
+  });
+});
+
+describe("context_requested_requests_elements_validated", () => {
+  it("rejects context_requested turns whose requests elements fail validateContextRequest", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_requested",
+        requests: ["garbage", 42],
+      },
+    ];
+
+    expect(validateConversational(manifest, transcript)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+});
+
+describe("conversational_context_shape_and_size_validated", () => {
+  it("rejects mistyped context_resolved values with context_invalid", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_resolved",
+        context: {
+          [PERMITTED_KEY_COMPLAINT]: { complaint: "missing visit_id" },
+        },
+      },
+    ];
+
+    expect(validateConversational(manifest, transcript)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+
+  it("rejects oversized permitted context values with context_invalid", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 10,
+        maxContextRoundsPerTurn: 3,
+        transcriptSizeLimit: 64,
+      },
+    });
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_resolved",
+        context: {
+          [PERMITTED_KEY_COMPLAINT]: {
+            visit_id: "550e8400-e29b-41d4-a716-446655440000",
+            complaint: "x".repeat(200),
+          },
+        },
+      },
+    ];
+
+    expect(validateConversational(manifest, transcript)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+
+  it("rejects mistyped ordinary supplied context with context_invalid", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateConversational(manifest, [], {
+      [PERMITTED_KEY_COMPLAINT]: { complaint: "missing visit_id" },
+    });
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+});
+
+describe("missing_transcript_field_rejected_context_invalid", () => {
+  it("rejects conversational validation when transcript is omitted", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateContext(manifest, {}, buildPrincipal(), {
+      legTurnOrdinal: 1,
+    });
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+
+  it("accepts an explicit empty transcript as a first leg", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateConversational(manifest, []);
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("transcript_size_limit_enforced", () => {
+  it("yields conversation_budget_exhausted when serialized transcript exceeds transcriptSizeLimit", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 10,
+        maxContextRoundsPerTurn: 3,
+        transcriptSizeLimit: 40,
+      },
+    });
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "user",
+        text: "This user turn is long enough to exceed the declared transcript size limit.",
+      },
+    ];
+
+    expect(validateConversational(manifest, transcript)).toEqual({
+      ok: false,
+      code: "conversation_budget_exhausted",
+    });
+  });
+});
+
+describe("context_rounds_mid_transcript_not_counted_against_tail_budget", () => {
+  it("passes when prior context_requested rounds are not at the transcript tail", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 10,
+        maxContextRoundsPerTurn: 1,
+        transcriptSizeLimit: 50_000,
+      },
+    });
+    const transcript = [
+      { turn_ordinal: 1, kind: "user", text: "Start" },
+      {
+        turn_ordinal: 2,
+        kind: "context_requested",
+        requests: [{ key: PERMITTED_KEY_COMPLAINT, arguments: {} }],
+      },
+      {
+        turn_ordinal: 3,
+        kind: "context_resolved",
+        context: {
+          [PERMITTED_KEY_COMPLAINT]: {
+            visit_id: "550e8400-e29b-41d4-a716-446655440000",
+            complaint: "Headache",
+          },
+        },
+      },
+      {
+        turn_ordinal: 4,
+        kind: "context_requested",
+        requests: [{ key: PERMITTED_KEY_DEMOGRAPHICS, arguments: {} }],
+      },
+      {
+        turn_ordinal: 5,
+        kind: "context_resolved",
+        context: {
+          [PERMITTED_KEY_DEMOGRAPHICS]: { display_name: "Pat" },
+        },
+      },
+      { turn_ordinal: 6, kind: "user", text: "Continue" },
+    ];
+
+    const result = validateConversational(manifest, transcript, {}, 7);
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("key_outside_permitted_set_dropped", () => {
+  it("drops a key inside context_resolved that is outside the permitted set even when requested by the model", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_requested",
+        requests: [{ key: UNPERMITTED_KEY, arguments: {} }],
+      },
+      {
+        turn_ordinal: 2,
+        kind: "context_resolved",
+        context: {
+          [PERMITTED_KEY_COMPLAINT]: {
+            visit_id: "550e8400-e29b-41d4-a716-446655440000",
+            complaint: "Headache",
+          },
+          [UNPERMITTED_KEY]: { drug: "Aspirin" },
+        },
+      },
+    ];
+
+    const result = validateConversational(manifest, transcript, {}, 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const resolvedTurn = result.validatedTranscript?.[1];
+    expect(resolvedTurn?.kind).toBe("context_resolved");
+    if (resolvedTurn?.kind === "context_resolved") {
+      expect(resolvedTurn.context).not.toHaveProperty(UNPERMITTED_KEY);
+      expect(resolvedTurn.context).toHaveProperty(PERMITTED_KEY_COMPLAINT);
+    }
+
+    // Spec SC-006: unpermitted key must be absent from composer *data* input
+    // even when a prior model turn requested it (requests payload may still
+    // name the key — allowlist drops at resolution, not at request).
+    const composed = composeRequest({
+      manifest,
+      filteredContext: result.filteredContext,
+      transcript: result.validatedTranscript,
+      userIntent: "Continue",
+      principal: buildPrincipal(),
+      requestReference: "H2QK-ALLOW",
+    });
+    expect(composed.ok).toBe(true);
+    if (!composed.ok) {
+      return;
+    }
+    const dataContents = composed.request.parts
+      .filter((part) => part.role === "data")
+      .map((part) => part.content)
+      .join("\n");
+    expect(dataContents).not.toContain(UNPERMITTED_KEY);
+    expect(dataContents).toContain(PERMITTED_KEY_COMPLAINT);
+  });
+
+  it("drops unpermitted keys from ordinary supplied context before composer input", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateConversational(
+      manifest,
+      [],
+      {
+        [PERMITTED_KEY_DEMOGRAPHICS]: { display_name: "Pat" },
+        [UNPERMITTED_KEY]: { drug: "Aspirin" },
+      },
+      1,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.filteredContext).not.toHaveProperty(UNPERMITTED_KEY);
+    expect(result.filteredContext).toHaveProperty(PERMITTED_KEY_DEMOGRAPHICS);
+
+    const composed = composeRequest({
+      manifest,
+      filteredContext: result.filteredContext,
+      transcript: result.validatedTranscript,
+      userIntent: "Continue",
+      principal: buildPrincipal(),
+      requestReference: "H2QK-ALLOW2",
+    });
+    expect(composed.ok).toBe(true);
+    if (!composed.ok) {
+      return;
+    }
+    expect(JSON.stringify(composed.request)).not.toContain(UNPERMITTED_KEY);
+  });
+});
+
+describe("budget_boundaries_exactly_at_limit_pass", () => {
+  it("accepts a transcript whose length equals maxHistoryTurns", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 2,
+        maxContextRoundsPerTurn: 3,
+        transcriptSizeLimit: 50_000,
+      },
+    });
+    const transcript = [
+      { turn_ordinal: 1, kind: "user", text: "One" },
+      { turn_ordinal: 2, kind: "model", text: "Two" },
+    ];
+
+    expect(validateConversational(manifest, transcript, {}, 3).ok).toBe(true);
+  });
+
+  it("accepts tail context rounds exactly equal to maxContextRoundsPerTurn", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 10,
+        maxContextRoundsPerTurn: 2,
+        transcriptSizeLimit: 50_000,
+      },
+    });
+    const transcript = [
+      { turn_ordinal: 1, kind: "user", text: "Start" },
+      {
+        turn_ordinal: 2,
+        kind: "context_requested",
+        requests: [{ key: PERMITTED_KEY_COMPLAINT, arguments: {} }],
+      },
+      {
+        turn_ordinal: 3,
+        kind: "context_requested",
+        requests: [{ key: PERMITTED_KEY_DEMOGRAPHICS, arguments: {} }],
+      },
+    ];
+
+    expect(validateConversational(manifest, transcript, {}, 4).ok).toBe(true);
+  });
+
+  it("rejects turn_ordinal strictly greater than the leg's own", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [{ turn_ordinal: 6, kind: "user", text: "Hello" }];
+
+    expect(validateConversational(manifest, transcript, {}, 5)).toEqual({
+      ok: false,
+      code: "context_invalid",
+    });
+  });
+});
+
+describe("shape_checked_before_rounds_budget", () => {
+  it("fails with context_invalid when shape is bad and rounds budget would also breach", () => {
+    const manifest = loadedConversationalManifest({
+      Interaction: {
+        interactionMode: "conversational",
+        maxHistoryTurns: 10,
+        maxContextRoundsPerTurn: 1,
+        transcriptSizeLimit: 50_000,
+      },
+    });
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_requested",
+        requests: [{ key: PERMITTED_KEY_COMPLAINT, arguments: {} }],
+      },
+      {
+        turn_ordinal: 2,
+        kind: "context_requested",
+        requests: ["garbage"],
+      },
+    ];
+
+    const result = validateConversational(manifest, transcript, {}, 3);
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
   });
 });
 

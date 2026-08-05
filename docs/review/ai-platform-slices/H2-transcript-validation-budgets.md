@@ -216,3 +216,42 @@ Required case list is from delivery plan §3.11.7 row H2 and §3.10.
    transcript, that `request_too_large` aborts before egress, and that
    `conversation_budget_exhausted` maps to the correct taxonomy wire response
    (`ai-platform/src/errors.ts:77-79`).
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **H2-R1 — `context_requested.requests` element validation** | Bugs #1; Recommended Improvements #3 | `ai-platform/src/context/validator.ts` (`validateContextRequest` in `parseTranscriptTurn`); tests in `transcript-validation.test.ts` |
+| **H2-R2 — Shape/size, `transcriptSizeLimit`, fail-closed budgets, missing transcript** | Bugs #2–#4; Architectural Deviations #2; Recommended Improvements #4–#6 (budget/missing-transcript parts) | `validator.ts` (shape/size before budgets; `transcriptSizeLimit`; fail-closed numerics; omit → `context_invalid`); Spec Kit budgets/wire contracts + `spec.md` Assumptions |
+| **H2-R3 — Dual-acceptance heuristics + phase label** | Bugs #5–#6; Missing/Weak Tests #8; Recommended Improvements #6 (phase) | `ai-platform/src/validate/phases.ts`; `conversational-response-validator.test.ts` |
+| **H2-R4 — R-10 delimited rendering + template skip + neutralize** | Architectural Deviations #1, #4; Missing/Weak Tests #1, #6; Recommended Improvements #1, #2, #7 | `ai-platform/src/prompt/composer.ts`; `conversational-composer.test.ts`; `contracts/conversational-composition.md` |
+| **H2-R5 — Allowlist / boundary / preflight serialize tests** | Missing/Weak Tests #2–#7; Recommended Improvements #8 (H2-layer strengthen + defer pipeline) | `preflight.ts` (`serializePreflightInput`); `transcript-validation.test.ts`; contract out-of-scope note for H3/handler integration |
+| **H2-R6 — Spec Kit clarifications (tenant + dual-shape offer)** | Architectural Deviations #3, #5 | Spec Kit only: tenant-check divergence + structured-output dual-offer clarification in contracts; no `17-ai-platform.md` edit |
+
+Every numbered review item appears in exactly one stage. No escalations — Arch #1 resolved by delimited `<turn>` payloads with closed role tags; Arch #2 by enforcing `transcriptSizeLimit`; Arch #5 clarified in Spec Kit contract only.
+
+### 1.2 Test cases created first
+
+- **H2-R1:** `context_requested_requests_elements_validated` — rejects `requests: ["garbage", 42]` with `context_invalid`.
+- **H2-R2:** mistyped/oversized conversational context cases; `missing_transcript_field_rejected_context_invalid`; `transcript_size_limit_enforced`; empty-transcript first-leg acceptance.
+- **H2-R3:** prose opening with `[Note]`; empty-array `[]` rejected as neither; truncated conversational output; `transport_parse` phase on neither failures.
+- **H2-R4:** `r10_delimiter_neutralization_in_context_values`; `context_requested_turn_rendered_as_assistant`; `conversational_composition_skips_unused_context_template`; golden/role-tag/R-10 assertions updated for `<turn>` wrapping.
+- **H2-R5:** rewritten `oversized_transcript_request_too_large` via `serializePreflightInput`; mid-transcript rounds-pass; ordinary supplied-context allowlist drop with composer data-part spy; budget equality boundaries; shape-before-rounds-budget; `key_outside_…` with model-requested unpermitted key.
+- **H2-R6:** documentation-only (no new production test).
+
+### 1.3 Fix implemented
+
+- **Validator:** element-level `validateContextRequest`; omit-transcript → `context_invalid`; fail-closed non-numeric Interaction bounds; allowlist then published-shape/`transcriptSizeLimit` per-value size before budget counters; enforce serialized-transcript `transcriptSizeLimit` as `conversation_budget_exhausted`.
+- **Preflight:** exported `serializePreflightInput` so conversational legs include `transcript` in the stage-7 serialization seam (pipeline egress integration deferred to H3/handler per Rec #8).
+- **Phases:** empty `[]` not dual-accepted; prose that opens with `[`/`{` but is not JSON accepted; neither failures labeled `transport_parse`.
+- **Composer:** user/model text rendered as neutralized `<turn kind="…">` blocks under closed role tags; `context_requested` payload neutralized; conversational path skips `contextRenderingTemplateRef` resolution.
+- **Spec Kit:** `transcript-validation-budgets.md`, `transcript-wire.md`, `conversational-composition.md`, `spec.md` Assumptions updated to match.
+- Architecture (`17-ai-platform.md`) and delivery plan untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` `npm test`: verify-manifests **2 files / 4 tests**; node Vitest **41 files / 634 tests**; workers Vitest **19 files / 268 tests** — all passed. Modified: `src/context/{validator,preflight}.ts`, `src/prompt/composer.ts`, `src/validate/phases.ts`, H2 tests (`transcript-validation`, `conversational-composer`, `conversational-response-validator`), Spec Kit under `specs/045-transcript-validation-budgets/`, this resolution appendix.

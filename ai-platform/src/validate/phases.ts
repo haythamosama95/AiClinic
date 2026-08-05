@@ -64,6 +64,12 @@ function tryParseContextRequest(
     return null;
   }
 
+  // Empty list is not a meaningful context request for dual acceptance —
+  // a leg that asks for zero keys is neither prose nor a resolvable request.
+  if (Array.isArray(parsed) && parsed.length === 0) {
+    return null;
+  }
+
   const validation = validateContextRequest(parsed);
   if (!validation.ok) {
     return null;
@@ -118,15 +124,29 @@ function parseOutput(
     if (output.raw.trim() === "") {
       return {
         ok: false,
-        failure: { phase: "schema", message: "neither prose nor context request" },
+        failure: {
+          phase: "transport_parse",
+          message: "neither prose nor context request",
+        },
       };
     }
 
     const trimmed = output.raw.trimStart();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      // Reject only when the text is parseable JSON that failed as a context
+      // request. Prose that happens to open with `[` / `{` (e.g. "[Note] …")
+      // is accepted as prose.
+      try {
+        JSON.parse(output.raw);
+      } catch {
+        return { ok: true, parsed: output.raw };
+      }
       return {
         ok: false,
-        failure: { phase: "schema", message: "neither prose nor context request" },
+        failure: {
+          phase: "transport_parse",
+          message: "neither prose nor context request",
+        },
       };
     }
 

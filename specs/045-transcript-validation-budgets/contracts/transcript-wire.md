@@ -31,7 +31,7 @@ forgets it — no conversation store (FR-002; §6.7.1).
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `transcript` | JSON array of turn objects | Required for conversational legs that supply prior turns; validated whole. Untrusted in the same sense as any context payload. |
+| `transcript` | JSON array of turn objects | Required on conversational legs. Omission is `context_invalid`. An explicit empty array is a valid first leg. Validated whole. Untrusted in the same sense as any context payload. |
 
 The leg also carries its own `turn_ordinal` (client-incremented per leg). Every transcript
 `turn_ordinal` MUST be strictly less than the leg's own value (FR-004; §6.7.1).
@@ -55,7 +55,7 @@ Every turn declares exactly these two common fields, plus the one payload field 
 | --- | --- | --- | --- |
 | `user` | `text` | `string` | What the clinician typed. |
 | `model` | `text` | `string` | A prior validated prose answer. |
-| `context_requested` | `requests` | `array` | The platform-owned `{key, arguments}` list emitted on that turn, verbatim. |
+| `context_requested` | `requests` | `array` | The platform-owned `{key, arguments}` list emitted on that turn, verbatim. Each element MUST pass H1 `validateContextRequest`. |
 | `context_resolved` | `context` | `object` | Keys the client resolved, keyed and shaped as an ordinary context payload. |
 
 A turn MUST carry exactly the payload field its `kind` defines — no missing field, no wrong field,

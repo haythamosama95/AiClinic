@@ -116,6 +116,9 @@ describe("output_neither_prose_nor_context_request_fails", () => {
     );
 
     expect(phaseResult.ok).toBe(false);
+    if (!phaseResult.ok) {
+      expect(phaseResult.failure.phase).toBe("transport_parse");
+    }
 
     const repairResult = await validateAndRepair({
       ...conversationalPhaseInput(neitherOutput),
@@ -126,6 +129,57 @@ describe("output_neither_prose_nor_context_request_fails", () => {
     if (!repairResult.ok) {
       expect(repairResult.code).toBe("validation_failed");
       expect(isTaxonomyCode(repairResult.code)).toBe(true);
+    }
+  });
+
+  it("accepts prose that opens with a bracket without being JSON", () => {
+    const proseOutput: AssembledOutput = {
+      raw: "[Note] Follow up in two weeks with the patient.",
+      transportValid: true,
+    };
+
+    const phaseResult = runValidationPhases(
+      conversationalPhaseInput(proseOutput),
+    );
+
+    expect(phaseResult.ok).toBe(true);
+    if (phaseResult.ok) {
+      expect(phaseResult.validated).toBe(proseOutput.raw);
+    }
+  });
+
+  it("rejects an empty-array context request as neither shape", () => {
+    const emptyRequest: AssembledOutput = {
+      raw: "[]",
+      transportValid: true,
+    };
+
+    const phaseResult = runValidationPhases(
+      conversationalPhaseInput(emptyRequest),
+    );
+
+    expect(phaseResult.ok).toBe(false);
+    if (!phaseResult.ok) {
+      expect(phaseResult.failure.phase).toBe("transport_parse");
+      expect(phaseResult.failure.message).toContain("neither");
+    }
+  });
+
+  it("fails truncated conversational output under the safety phase", () => {
+    const truncated: AssembledOutput = {
+      raw: "Partial answer that was cut off",
+      transportValid: true,
+      truncated: true,
+    };
+
+    const phaseResult = runValidationPhases(
+      conversationalPhaseInput(truncated),
+    );
+
+    expect(phaseResult.ok).toBe(false);
+    if (!phaseResult.ok) {
+      expect(phaseResult.failure.phase).toBe("safety");
+      expect(phaseResult.failure.message).toContain("truncated");
     }
   });
 });
