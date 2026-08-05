@@ -100,7 +100,7 @@ Every **Consumes** entry binds to an existing implementation. None requires modi
 
 ## Components Touched
 
-F5 modifies **no** §4 runtime component of `17-ai-platform.md`. Implements cites **§13.5** and **§13.6** (testing strategy / cost model) — operational concerns, not a Worker pipeline stage. The suite lives under `ai-platform/test/load/` only with no `src/load/` module. §4.3.3 (quota / admission), §4.3.8 (adapters), and §4.3.11 (journal) are **exercised or consumed**, not modified.
+F5 modifies **no** §4 runtime component of `17-ai-platform.md`. Implements cites **§13.5** and **§13.6** (testing strategy / cost model) — operational concerns, not a new Worker pipeline stage. Review resolution adds a thin production composer at `ai-platform/src/pipeline/` (`runGuard` / `settleHappyPath`) so the load harness and a future Worker orchestrator share one composition; there is still no `src/load/` module. §4.3.3 (quota / admission), §4.3.8 (adapters), and §4.3.11 (journal) are **exercised or consumed**, not modified.
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |
@@ -117,7 +117,9 @@ This matches the F1 / E1 precedent (CI / test-layer slices outside §4). Stop co
 | --- | --- |
 | `ai-platform/test/load/binding-spies.ts` | FR-004, FR-005, FR-006, FR-008 (counting spies on R2 Class A, DO fetch, D1 hot-path writes; Clarification Q1) |
 | `ai-platform/test/load/measurement-report.ts` | FR-001, FR-006, FR-007, FR-009 (structured in-test measurement report — finite values, no D1/DO ceilings; Clarification Q4) |
-| `ai-platform/test/load/happy-path.ts` | FR-001, FR-003, FR-008 (full happy path under load: admission + credit + one R2 envelope with fake provider; Clarification Q2) |
+| `ai-platform/src/pipeline/index.ts` | FR-001, FR-003, FR-008 (production guard+settle composition used by the load harness; review resolution) |
+| `ai-platform/test/load/happy-path.ts` | FR-001, FR-003, FR-008 (full happy path under load via pipeline + bounded pool; Clarification Q2 / 2026-08-05) |
+| `.github/workflows/ci.yml` | FR-002 (`ai-platform-tests` job runs `test:load`; review resolution) |
 | `ai-platform/test/load/load-and-cost.test.ts` | T1–T9 (FR-001–FR-010; suite fixtures Clarification Q3) |
 | `ai-platform/package.json` | FR-002, FR-009 (`test:load` workers-pool script as checkpoint gate; Clarification Q4) |
 | `ai-platform/vitest.workers.config.ts` | FR-001, FR-002 (include load suite in workers-pool; permanent join §3.10) |
