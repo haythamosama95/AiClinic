@@ -17,7 +17,8 @@ import type {
 export const DEEPSEEK_API_KEY_BINDING = "DEEPSEEK_API_KEY";
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
-const DEEPSEEK_MODEL = "deepseek-chat";
+/** Default pin — must match platform-default routing policy `model_id` for deepseek. */
+export const DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
 const PROVIDER_ID = "deepseek";
 
 export type DeepSeekTransportResponse = {
@@ -49,6 +50,8 @@ export type DeepSeekAdapterOptions = {
   transport: DeepSeekTransport;
   secretStore: SecretStorePort;
   timeoutMs?: number;
+  /** Pinned model id sent on the wire; defaults to {@link DEEPSEEK_DEFAULT_MODEL}. */
+  modelId?: string;
 };
 
 type DeepSeekWireRequest = {
@@ -129,13 +132,16 @@ function resolveTimeoutMs(
   return options.timeoutMs ?? deadline ?? 30_000;
 }
 
-function mapCanonicalToWire(request: CanonicalRequest): DeepSeekWireRequest {
+function mapCanonicalToWire(
+  request: CanonicalRequest,
+  modelId: string,
+): DeepSeekWireRequest {
   const sampling = request.samplingConstraints;
   const outputFormat = request.formatDirective;
   const stopConditions = request.stopConditions;
 
   const wire: DeepSeekWireRequest = {
-    model: DEEPSEEK_MODEL,
+    model: modelId,
     messages: request.parts.map((part) => ({
       role: part.role,
       content: part.content,
@@ -194,13 +200,14 @@ function buildResult(
   content: string,
   finishReason: string | null | undefined,
   providerMs: number,
+  modelId: string,
 ): CanonicalResult {
   return {
     finalContent: { type: "text", text: content },
     usage: mapUsage(response.usage),
     providerModel: {
       provider: PROVIDER_ID,
-      model: DEEPSEEK_MODEL,
+      model: modelId,
     },
     finishReason: mapFinishReason(finishReason),
     providerRequestId: response.id ?? "deepseek-unknown",
@@ -479,11 +486,13 @@ export class DeepSeekAdapter implements ProviderPort {
   private readonly transport: DeepSeekTransport;
   private readonly secretStore: SecretStorePort;
   private readonly defaultTimeoutMs?: number;
+  private readonly modelId: string;
 
   constructor(options: DeepSeekAdapterOptions) {
     this.transport = options.transport;
     this.secretStore = options.secretStore;
     this.defaultTimeoutMs = options.timeoutMs;
+    this.modelId = options.modelId ?? DEEPSEEK_DEFAULT_MODEL;
   }
 
   async invoke(
@@ -509,7 +518,7 @@ export class DeepSeekAdapter implements ProviderPort {
       };
     }
 
-    const wireBody = mapCanonicalToWire(request);
+    const wireBody = mapCanonicalToWire(request, this.modelId);
     const guard = createAbortGuard(timeoutMs, options?.signal);
     const fetchInit: DeepSeekTransportRequest = {
       url: DEEPSEEK_API_URL,
@@ -625,7 +634,13 @@ export class DeepSeekAdapter implements ProviderPort {
     }
 
     const usageAbsent = parsed.usage === undefined;
-    const result = buildResult(parsed, content, finishReason, providerMs);
+    const result = buildResult(
+      parsed,
+      content,
+      finishReason,
+      providerMs,
+      this.modelId,
+    );
     const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "length") {
@@ -709,6 +724,7 @@ export class DeepSeekAdapter implements ProviderPort {
       assembled,
       effectiveFinish,
       providerMs,
+      this.modelId,
     );
 
     if (!sawDone && !hadFinishReason) {

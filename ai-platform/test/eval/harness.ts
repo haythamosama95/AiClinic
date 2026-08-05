@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { vi } from "vitest";
 import {
   CANONICAL_FIELD_MANIFEST,
   type CanonicalRequest,
@@ -17,6 +16,15 @@ import {
   type DeepSeekTransportResponse,
   type SecretStorePort,
 } from "../../src/provider/deepseek";
+import {
+  GEMINI_API_KEY_BINDING,
+  GeminiAdapter,
+  type GeminiTransport,
+} from "../../src/provider/gemini";
+import {
+  createProviderAdapter,
+  type WiredProviderId,
+} from "../../src/provider/wiring";
 import type { ProviderInvokeResult } from "../../src/provider/port";
 import {
   deriveOverall,
@@ -37,11 +45,27 @@ const ROUTING_POLICY_PATH = path.join(
 );
 
 const FIRST_CAPABILITY_ID = "clinic.visit_summary";
-export { FIRST_CAPABILITY_ID };
+export { FIRST_CAPABILITY_ID, D5_FIXTURES_ROOT };
 const KNOWN_FIXTURE_SECRET = "deepseek-eval-fixture-secret";
+
+/** Known floating aliases that MUST NOT appear as routing-policy pins. */
+export const FLOATING_MODEL_ALIASES = Object.freeze([
+  "latest",
+  "auto",
+  "default",
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+]);
 
 export type PromptBuild = "current" | "deliberately_regressed";
 export type RunKind = "golden" | "live_smoke";
+
+export type LiveSmokeTarget = {
+  provider_id: WiredProviderId;
+  model_id: string;
+};
 
 type CaseDefinition = {
   case_id: string;
@@ -55,12 +79,14 @@ type FixtureBinding = {
   provider_response_file: string;
 };
 
-type ExpectationDefinition = {
+export type ExpectationDefinition = {
   case_id: string;
   system_instruction_must_contain?: string[];
   output_must_contain?: string[];
   output_min_length?: number;
   output_mode?: "prose" | "structured";
+  /** Optional path relative to the case capability root for composed-system golden. */
+  request_system_golden_file?: string;
 };
 
 export type GoldenRunOptions = {
@@ -79,19 +105,43 @@ export type GoldenRunResult = {
   usedLiveEgress: boolean;
 };
 
+export type LiveSmokeRunOptions = {
+  capabilityId?: string;
+  reportsDir?: string;
+  /** Injected for tests; defaults to env-backed store. */
+  secretStore?: SecretStorePort;
+  /** Injected for tests; defaults to real HTTP transport. */
+  transport?: SharedHttpTransport;
+  /** When true (default), skip providers whose API key is missing. */
+  skipMissingCredentials?: boolean;
+};
+
+export type LiveSmokeRunResult =
+  | (GoldenRunResult & { skipped: false })
+  | {
+      skipped: true;
+      reason: string;
+      targets: LiveSmokeTarget[];
+    };
+
+type SharedHttpTransport = DeepSeekTransport & GeminiTransport;
+
 type HarnessRuntime = {
   fixturePathsUsed: string[];
   usedLiveEgress: boolean;
+  fixtureTransportUsed: boolean;
 };
 
 const harnessRuntime: HarnessRuntime = {
   fixturePathsUsed: [],
   usedLiveEgress: false,
+  fixtureTransportUsed: false,
 };
 
 function resetHarnessRuntime(): void {
   harnessRuntime.fixturePathsUsed = [];
   harnessRuntime.usedLiveEgress = false;
+  harnessRuntime.fixtureTransportUsed = false;
 }
 
 function readJson<T>(filePath: string): T {
@@ -169,6 +219,15 @@ function visitSummaryManifest(): Manifest {
   return load(wire);
 }
 
+function manifestForCapability(capabilityId: string): Manifest {
+  if (capabilityId === FIRST_CAPABILITY_ID) {
+    return visitSummaryManifest();
+  }
+  throw new Error(
+    `No golden-suite manifest registered for capability "${capabilityId}"`,
+  );
+}
+
 function fixturePrincipal(): Principal {
   return Object.freeze({
     installationId: "inst-f1-eval-harness",
@@ -190,9 +249,13 @@ function capabilityRoot(capabilityId: string): string {
 
 export function listCapabilityCases(capabilityId: string): string[] {
   const casesDir = path.join(capabilityRoot(capabilityId), "cases");
+  if (!existsSync(casesDir)) {
+    return [];
+  }
   return readdirSync(casesDir)
     .filter((name) => name.endsWith(".json"))
-    .map((name) => name.replace(/\.json$/, ""));
+    .map((name) => name.replace(/\.json$/, ""))
+    .sort();
 }
 
 export function listEvalCapabilities(): string[] {
@@ -207,7 +270,8 @@ export function listEvalCapabilities(): string[] {
         // by the golden runner and stay outside golden gating.
         existsSync(path.join(EVAL_ROOT, entry.name, "expectations")),
     )
-    .map((entry) => entry.name);
+    .map((entry) => entry.name)
+    .sort();
 }
 
 function loadCase(capabilityId: string, caseId: string): CaseDefinition {
@@ -238,20 +302,29 @@ function loadExpectation(
   );
 }
 
-function resolveProviderResponsePath(binding: FixtureBinding): string {
-  const capabilityScoped = path.join(
-    capabilityRoot(FIRST_CAPABILITY_ID),
-    "fixtures",
+function resolveProviderResponsePath(
+  capabilityId: string,
+  binding: FixtureBinding,
+): string {
+  const d5Path = path.join(
+    D5_FIXTURES_ROOT,
+    binding.d5_fixture_subdir,
     binding.provider_response_file,
   );
-  harnessRuntime.fixturePathsUsed.push(capabilityScoped);
-  return capabilityScoped;
+  if (!existsSync(d5Path)) {
+    throw new Error(
+      `D5 fixture missing for ${capabilityId}/${binding.case_id}: ${d5Path}`,
+    );
+  }
+  harnessRuntime.fixturePathsUsed.push(d5Path);
+  return d5Path;
 }
 
 function createFixtureTransport(providerResponsePath: string): DeepSeekTransport {
   const body = readFileSync(providerResponsePath, "utf8");
   return {
     fetch(): DeepSeekTransportResponse {
+      harnessRuntime.fixtureTransportUsed = true;
       return {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -269,6 +342,42 @@ function createFixtureSecretStore(): SecretStorePort {
   };
 }
 
+export function createEnvSecretStore(): SecretStorePort {
+  return {
+    getSecret(name: string): string | undefined {
+      const value = process.env[name];
+      return value && value.length > 0 ? value : undefined;
+    },
+  };
+}
+
+export function createHttpTransport(): SharedHttpTransport {
+  return {
+    async fetch(url, init): Promise<DeepSeekTransportResponse> {
+      harnessRuntime.usedLiveEgress = true;
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(init.headers ?? {})) {
+        headers.set(key, value);
+      }
+      const response = await globalThis.fetch(url, {
+        method: init.method,
+        headers,
+        body: init.body,
+        signal: init.signal,
+      });
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      return {
+        status: response.status,
+        headers: responseHeaders,
+        body: await response.text(),
+      };
+    },
+  };
+}
+
 async function composeWithPromptBuild(
   manifest: Manifest,
   caseDef: CaseDefinition,
@@ -276,72 +385,9 @@ async function composeWithPromptBuild(
 ): Promise<CanonicalRequest> {
   const principal = fixturePrincipal();
 
-  if (promptBuild === "deliberately_regressed") {
-    const worseRoot = path.join(
-      EVAL_ROOT,
-      "prompts",
-      "clinic.visit_summary.worse",
-    );
-    const worseSystem = readFileSync(
-      path.join(worseRoot, "system.md"),
-      "utf8",
-    );
-    const productionRules = readFileSync(
-      path.join(
-        AI_PLATFORM_ROOT,
-        "prompts",
-        "clinic.visit_summary",
-        "rules-visit-summary.md",
-      ),
-      "utf8",
-    );
-    const productionTemplate = readFileSync(
-      path.join(
-        AI_PLATFORM_ROOT,
-        "prompts",
-        "clinic.visit_summary",
-        "template-visit-summary.md",
-      ),
-      "utf8",
-    );
-
-    vi.resetModules();
-    vi.doMock("../../src/prompt/registry", () => ({
-      resolveArtifact(ref: string): string | undefined {
-        if (ref === "clinic.visit_summary/system@v1") {
-          return worseSystem;
-        }
-        if (ref === "clinic.visit_summary/rules-visit-summary@v1") {
-          return productionRules;
-        }
-        if (ref === "clinic.visit_summary/template-visit-summary@v1") {
-          return productionTemplate;
-        }
-        return undefined;
-      },
-      resolvePromptVersion(): string {
-        return "clinic.visit_summary/system@v1";
-      },
-      verifyBuildPins(): void {},
-    }));
-
-    const { composeRequest } = await import("../../src/prompt/composer");
-    const composed = composeRequest({
-      manifest,
-      filteredContext: caseDef.context,
-      userIntent: caseDef.user_intent,
-      principal,
-      requestReference: "EVAL-REQ-01",
-      streamFlag: false,
-    });
-    if (!composed.ok) {
-      throw new Error("Failed to compose request with worse prompt build");
-    }
-    return composed.request;
-  }
-
-  vi.resetModules();
-  vi.unmock("../../src/prompt/registry");
+  // Always compose against the real production registry — never module-mock it.
+  // A deliberately-regressed build swaps only the system-instruction artifact
+  // text after composition so later "current" runs cannot leak a mock.
   const { composeRequest } = await import("../../src/prompt/composer");
   const composed = composeRequest({
     manifest,
@@ -352,9 +398,37 @@ async function composeWithPromptBuild(
     streamFlag: false,
   });
   if (!composed.ok) {
-    throw new Error("Failed to compose request with current prompt build");
+    throw new Error(
+      `Failed to compose request with ${promptBuild} prompt build`,
+    );
   }
-  return composed.request;
+
+  if (promptBuild === "current") {
+    return composed.request;
+  }
+
+  const worseSystem = readFileSync(
+    path.join(
+      EVAL_ROOT,
+      "prompts",
+      "clinic.visit_summary.worse",
+      "system.md",
+    ),
+    "utf8",
+  );
+
+  const parts = composed.request.parts.map((part, index) => {
+    // First system part is the system-instruction artifact (composer order).
+    if (index === 0 && part.role === "system") {
+      return { ...part, content: worseSystem };
+    }
+    return part;
+  });
+
+  return {
+    ...composed.request,
+    parts,
+  };
 }
 
 function extractFinalContent(outcome: ProviderInvokeResult): string {
@@ -380,18 +454,34 @@ function assertCanonicalResultShape(result: CanonicalResult): boolean {
   return true;
 }
 
-function scoreQuality(
-  composedRequest: CanonicalRequest,
-  finalContent: string,
-  expectation: ExpectationDefinition,
-): "pass" | "fail" {
-  const systemParts = composedRequest.parts
+function systemPartsText(composedRequest: CanonicalRequest): string {
+  return composedRequest.parts
     .filter((part) => part.role === "system")
     .map((part) => part.content)
     .join("\n");
+}
+
+export function scoreQuality(
+  composedRequest: CanonicalRequest,
+  finalContent: string,
+  expectation: ExpectationDefinition,
+  capabilityId?: string,
+): "pass" | "fail" {
+  const systemParts = systemPartsText(composedRequest);
 
   for (const needle of expectation.system_instruction_must_contain ?? []) {
     if (!systemParts.toLowerCase().includes(needle.toLowerCase())) {
+      return "fail";
+    }
+  }
+
+  if (expectation.request_system_golden_file && capabilityId) {
+    const goldenPath = path.join(
+      capabilityRoot(capabilityId),
+      expectation.request_system_golden_file,
+    );
+    const golden = readFileSync(goldenPath, "utf8").trim();
+    if (systemParts.trim() !== golden) {
       return "fail";
     }
   }
@@ -413,7 +503,7 @@ function scoreQuality(
   return "pass";
 }
 
-function scoreSchema(
+export function scoreSchema(
   outcome: ProviderInvokeResult,
   expectation: ExpectationDefinition,
 ): "pass" | "fail" {
@@ -444,12 +534,12 @@ function runCase(
   caseId: string,
   promptBuild: PromptBuild,
 ): Promise<CaseScore> {
-  const manifest = visitSummaryManifest();
+  const manifest = manifestForCapability(capabilityId);
   const caseDef = loadCase(capabilityId, caseId);
   const binding = loadFixtureBinding(capabilityId, caseId);
   const expectation = loadExpectation(capabilityId, caseId);
 
-  const providerResponsePath = resolveProviderResponsePath(binding);
+  const providerResponsePath = resolveProviderResponsePath(capabilityId, binding);
   harnessRuntime.fixturePathsUsed.push(
     path.join(
       capabilityRoot(capabilityId),
@@ -468,7 +558,12 @@ function runCase(
     async (request) => {
       const outcome = await adapter.invoke(request);
       const finalContent = extractFinalContent(outcome);
-      const quality = scoreQuality(request, finalContent, expectation);
+      const quality = scoreQuality(
+        request,
+        finalContent,
+        expectation,
+        capabilityId,
+      );
       const schema = scoreSchema(outcome, expectation);
       return {
         case_id: caseId,
@@ -513,23 +608,183 @@ export async function runGoldenSuite(
     reportPath,
     report,
     fixturePathsUsed: [...harnessRuntime.fixturePathsUsed],
-    capabilityIds: listEvalCapabilities(),
+    capabilityIds: [capabilityId],
     usedLiveEgress: harnessRuntime.usedLiveEgress,
   };
 }
 
-export function getPinnedModelIdsFromRoutingPolicy(): string[] {
+function secretBindingForProvider(providerId: WiredProviderId): string {
+  return providerId === "deepseek"
+    ? DEEPSEEK_API_KEY_BINDING
+    : GEMINI_API_KEY_BINDING;
+}
+
+function smokeExpectation(): ExpectationDefinition {
+  return {
+    case_id: "live_smoke",
+    output_min_length: 1,
+    output_mode: "prose",
+  };
+}
+
+async function runLiveSmokeCase(
+  target: LiveSmokeTarget,
+  capabilityId: string,
+  secretStore: SecretStorePort,
+  transport: SharedHttpTransport,
+): Promise<CaseScore> {
+  const caseIds = listCapabilityCases(capabilityId);
+  if (caseIds.length === 0) {
+    throw new Error(`Live smoke requires at least one case under ${capabilityId}`);
+  }
+  const caseId = caseIds[0]!;
+  const manifest = manifestForCapability(capabilityId);
+  const caseDef = loadCase(capabilityId, caseId);
+  const request = await composeWithPromptBuild(manifest, caseDef, "current");
+
+  const adapter = createProviderAdapter(target.provider_id, {
+    transport,
+    secretStore,
+    modelId: target.model_id,
+  } as ConstructorParameters<typeof DeepSeekAdapter>[0] &
+    ConstructorParameters<typeof GeminiAdapter>[0]);
+
+  const outcome = await adapter.invoke(request);
+  if (
+    outcome.kind === "success" &&
+    outcome.result.providerModel.model !== target.model_id
+  ) {
+    return {
+      case_id: `live_smoke.${target.provider_id}.${target.model_id}`,
+      quality: "fail",
+      schema: "fail",
+    };
+  }
+
+  const finalContent = extractFinalContent(outcome);
+  const expectation = smokeExpectation();
+  return {
+    case_id: `live_smoke.${target.provider_id}.${target.model_id}`,
+    quality: scoreQuality(request, finalContent, expectation, capabilityId),
+    schema: scoreSchema(outcome, expectation),
+  };
+}
+
+export async function runLiveSmokeSuite(
+  options: LiveSmokeRunOptions = {},
+): Promise<LiveSmokeRunResult> {
+  resetHarnessRuntime();
+
+  const capabilityId = options.capabilityId ?? FIRST_CAPABILITY_ID;
+  const reportsDir =
+    options.reportsDir ?? path.join(EVAL_ROOT, "reports");
+  const secretStore = options.secretStore ?? createEnvSecretStore();
+  const transport = options.transport ?? createHttpTransport();
+  const skipMissing = options.skipMissingCredentials ?? true;
+  const targets = getLiveSmokeTargets();
+
+  const runnable = targets.filter((target) => {
+    const binding = secretBindingForProvider(target.provider_id);
+    return Boolean(secretStore.getSecret(binding));
+  });
+
+  if (runnable.length === 0) {
+    return {
+      skipped: true,
+      reason:
+        "No provider API keys available for live smoke (DEEPSEEK_API_KEY / GEMINI_API_KEY)",
+      targets,
+    };
+  }
+
+  if (!skipMissing && runnable.length !== targets.length) {
+    const missing = targets
+      .filter((t) => !runnable.includes(t))
+      .map((t) => t.provider_id);
+    return {
+      skipped: true,
+      reason: `Missing credentials for providers: ${missing.join(", ")}`,
+      targets,
+    };
+  }
+
+  // Live-smoke is definitionally an egress path (real HTTP or injected test double).
+  harnessRuntime.usedLiveEgress = true;
+
+  const caseScores: CaseScore[] = [];
+  for (const target of runnable) {
+    caseScores.push(
+      await runLiveSmokeCase(target, capabilityId, secretStore, transport),
+    );
+  }
+
+  const report: ScoreReport = {
+    capability_id: capabilityId,
+    run_kind: "live_smoke",
+    prompt_build: "current",
+    recorded_at: new Date().toISOString(),
+    cases: caseScores,
+    overall: deriveOverall(caseScores),
+  };
+  const reportPath = writeScoreReport(reportsDir, report);
+
+  return {
+    skipped: false,
+    passed: report.overall === "pass",
+    reportPath,
+    report,
+    fixturePathsUsed: [...harnessRuntime.fixturePathsUsed],
+    capabilityIds: [capabilityId],
+    usedLiveEgress: harnessRuntime.usedLiveEgress,
+  };
+}
+
+export function isPinnedModelId(modelId: string): boolean {
+  const normalized = modelId.trim().toLowerCase();
+  if (!normalized || normalized.includes(":")) {
+    return false;
+  }
+  if (FLOATING_MODEL_ALIASES.some((alias) => alias.toLowerCase() === normalized)) {
+    return false;
+  }
+  return true;
+}
+
+export function getLiveSmokeTargets(): LiveSmokeTarget[] {
   const policy = readJson<{
-    rules: Array<{ targets: Array<{ model_id: string }> }>;
+    rules: Array<{
+      targets: Array<{ provider_id: string; model_id: string }>;
+    }>;
   }>(ROUTING_POLICY_PATH);
 
-  const modelIds = new Set<string>();
+  const seen = new Set<string>();
+  const targets: LiveSmokeTarget[] = [];
   for (const rule of policy.rules) {
     for (const target of rule.targets) {
-      modelIds.add(target.model_id);
+      const key = `${target.provider_id}:${target.model_id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      if (target.provider_id !== "deepseek" && target.provider_id !== "gemini") {
+        continue;
+      }
+      targets.push({
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+      });
     }
   }
-  return [...modelIds].sort();
+  return targets.sort((a, b) =>
+    `${a.provider_id}/${a.model_id}`.localeCompare(
+      `${b.provider_id}/${b.model_id}`,
+    ),
+  );
+}
+
+/** @deprecated Prefer {@link getLiveSmokeTargets}; kept for callers that only need model ids. */
+export function getPinnedModelIdsFromRoutingPolicy(): string[] {
+  return [...new Set(getLiveSmokeTargets().map((t) => t.model_id))].sort();
 }
 
 export function getLiveSmokeModelTargets(): string[] {

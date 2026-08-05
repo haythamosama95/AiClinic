@@ -18,7 +18,7 @@
       "targets": [
         {
           "provider_id": "deepseek",
-          "model_id": "deepseek-chat",
+          "model_id": "deepseek-v4-flash",
           "features": {
             "structured_output": true,
             "min_context_window": 128000,
@@ -31,7 +31,7 @@
         },
         {
           "provider_id": "gemini",
-          "model_id": "gemini-1.5-flash",
+          "model_id": "gemini-3.5-flash",
           "features": {
             "structured_output": true,
             "min_context_window": 128000,
