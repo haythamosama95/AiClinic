@@ -8,7 +8,10 @@ Static implementation reviews of the AI Platform delivery slices merged into `ai
 | Architecture source of truth | [`docs/architecture/17-ai-platform.md`](../../architecture/17-ai-platform.md) |
 | Delivery plan | [`docs/architecture/17b-ai-platform-delivery-plan.md`](../../architecture/17b-ai-platform-delivery-plan.md) |
 | Review type | Static (no build, run, or code changes) |
-| Status | In progress |
+| Status | Slice reviews complete; final cross-slice review delivered |
+
+> **Final whole-directory review** (after all slice comments were addressed and merged):
+> [`../ai-platform-final-review.md`](../ai-platform-final-review.md)
 
 ## Slice reports
 
@@ -33,4 +36,4 @@ Static implementation reviews of the AI Platform delivery slices merged into `ai
 | D4 — Stream broker & cancellation | [D4-stream-broker.md](D4-stream-broker.md) |
 | D5 — First real provider adapter | [D5-first-real-provider-adapter.md](D5-first-real-provider-adapter.md) |
 
-Cross-slice review and slices D6–J3 are pending.
+All slices A1–J4 reviewed; cross-slice final review at [`../ai-platform-final-review.md`](../ai-platform-final-review.md).
