@@ -12,6 +12,8 @@ import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
 import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
 import 'package:ai_clinic/features/ai/surface/first_ai_feature_surface.dart';
+import 'package:ai_clinic/features/ai/surface/provisional_prose_view.dart';
+import 'package:ai_clinic/features/ai/surface/request_reference_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,9 +23,10 @@ const testVisitId = '550e8400-e29b-41d4-a716-446655440000';
 const testPlatformBaseUrl = 'https://ai.example.workers.dev';
 
 class FakeAiAvailabilityReader implements AiAvailabilityReader {
-  FakeAiAvailabilityReader(this._availability);
+  FakeAiAvailabilityReader(this._availability, {this.throwOnRead});
 
   AiAvailability _availability;
+  final Object? throwOnRead;
   int readCallCount = 0;
 
   void setAvailability(AiAvailability availability) => _availability = availability;
@@ -31,6 +34,10 @@ class FakeAiAvailabilityReader implements AiAvailabilityReader {
   @override
   Future<AiAvailability> read() async {
     readCallCount++;
+    final error = throwOnRead;
+    if (error != null) {
+      throw error;
+    }
     return _availability;
   }
 }
@@ -63,10 +70,11 @@ class AiSurfaceHarness {
     AiAvailability? availability,
     bool reachable = true,
     List<SubmitScriptStep>? submitScript,
-    this.terminalFailureCode,
     this.skipReachabilityProbe = false,
+    Object? availabilityThrowOnRead,
   }) : availabilityReader = FakeAiAvailabilityReader(
          availability ?? const AiAvailability(enrolled: true, platformBaseUrl: testPlatformBaseUrl),
+         throwOnRead: availabilityThrowOnRead,
        ),
        reachabilityPort = FakePlatformReachabilityPort(reachable: reachable),
        networkSpy = InMemoryPlatformNetworkSpy(),
@@ -87,10 +95,21 @@ class AiSurfaceHarness {
   late final FakeSubmitPort submitPort;
   late AiClientSdk sdk;
   late final HarnessContextProviderPort contextProvider;
-  final TaxonomyCode? terminalFailureCode;
   final bool skipReachabilityProbe;
+  final List<ContextResolver> _resolvers = [];
 
-  ContextResolver createResolver() => ContextResolver(providerPort: contextProvider);
+  ContextResolver createResolver() {
+    final resolver = ContextResolver(providerPort: contextProvider);
+    _resolvers.add(resolver);
+    return resolver;
+  }
+
+  void disposeResolvers() {
+    for (final resolver in _resolvers) {
+      resolver.dispose();
+    }
+    _resolvers.clear();
+  }
 
   AiFeatureHostDependencies hostDependencies({bool skipReachabilityProbe = false}) {
     return AiFeatureHostDependencies(
@@ -102,8 +121,7 @@ class AiSurfaceHarness {
       networkSpy: networkSpy,
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
-      terminalFailureCode: terminalFailureCode,
-      skipReachabilityProbe: skipReachabilityProbe,
+      skipReachabilityProbe: skipReachabilityProbe || this.skipReachabilityProbe,
     );
   }
 
@@ -132,12 +150,35 @@ class AiSurfaceHarness {
     await tester.pump();
   }
 
-  Future<void> pumpDegraded(WidgetTester tester, AiDegradedMode mode) async {
+  /// Advances until the surface has attached its session event listener.
+  Future<void> pumpUntilSurfaceReady(WidgetTester tester, {int maxPumps = 40}) async {
+    for (var i = 0; i < maxPumps; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+      if (find.byKey(kAiSurfaceSessionActiveKey).evaluate().isNotEmpty ||
+          find.byKey(kAiProvisionalProseKey).evaluate().isNotEmpty ||
+          find.byKey(kAiTerminalProseKey).evaluate().isNotEmpty ||
+          find.byKey(kAiRequestReferenceKey).evaluate().isNotEmpty ||
+          find.byKey(kAiLocalFailureKey).evaluate().isNotEmpty) {
+        return;
+      }
+    }
+    fail(
+      'Surface session did not become ready '
+      '(loading=${find.byKey(kAiSurfaceLoadingKey).evaluate().length}, '
+      'texts=${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList()})',
+    );
+  }
+
+  Future<void> pumpDegraded(WidgetTester tester, AiDegradedMode mode, {VoidCallback? onRetry}) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
-          body: AiDegradedView(mode: mode, child: const Text('Clinical workflows remain available.')),
+          body: AiDegradedView(
+            mode: mode,
+            onRetry: onRetry,
+            child: const Text('Clinical workflows remain available.'),
+          ),
         ),
       ),
     );
@@ -158,11 +199,26 @@ List<SseEvent> streamingThenCompleted({
   CompletedEvent(result: terminalProseResult(terminalText)),
 ];
 
+List<SseEvent> multiDeltaThenCompleted({
+  required List<String> provisionalChunks,
+  required String terminalText,
+  String requestReference = 'req-multi',
+}) => [
+  AcceptedEvent(requestReference: requestReference),
+  for (final chunk in provisionalChunks)
+    ContentChunkEvent(kind: 'text_delta', payload: {'text': chunk, 'provisional': true}),
+  CompletedEvent(result: terminalProseResult(terminalText)),
+];
+
 Future<void> runArchitectureGuardOnFeaturesAi() async {
   final frontendRoot = Directory(File('pubspec.yaml').existsSync() ? '.' : 'frontend').absolute.path;
   final result = await Process.run(
     'dart',
-    ['run', 'tool/architecture_guard/architecture_guard.dart'],
+    [
+      'run',
+      'tool/architecture_guard/architecture_guard.dart',
+      'lib/features/ai',
+    ],
     workingDirectory: frontendRoot,
     runInShell: true,
   );

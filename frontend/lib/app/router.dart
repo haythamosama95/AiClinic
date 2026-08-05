@@ -39,6 +39,7 @@ import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.d
 import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 import 'package:ai_clinic/features/settings/presentation/models/settings_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -97,11 +98,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.aiFeatureHost,
-            builder: (context, state) => const Scaffold(
-              body: Center(
-                child: Text('AI feature host route is registered for CP3 composition.'),
-              ),
-            ),
+            builder: (context, state) {
+              // CP3 / tests compose by passing [AiFeatureHostDependencies] via
+              // GoRouter extra (Clarification Q2). Production mint/submit adapters
+              // are supplied by the composer — E4 does not embed clinical screens.
+              final deps = state.extra;
+              if (deps is AiFeatureHostDependencies) {
+                return AiFeatureHostPage(dependencies: deps);
+              }
+              return const Scaffold(
+                body: Center(
+                  child: Text(
+                    'AI feature host requires AiFeatureHostDependencies via route extra.',
+                  ),
+                ),
+              );
+            },
           ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),

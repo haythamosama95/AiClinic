@@ -190,7 +190,7 @@ Stop condition 5 (multi-component without reason) is not triggered — reason re
 | `frontend/lib/features/ai/surface/first_ai_feature_surface.dart` | FR-001–FR-007, FR-013–FR-016; T1–T7, T15–T17, T20 | NEW — first capability surface (`clinic.visit_summary`, `prose`, `advisory_display`): resolve context via E3, invoke via E2, render provisional, enable accept/discard only after `completed`, use terminal payload (not chunk assembly), never persist/export provisional, apply taxonomy client behaviours. |
 | `frontend/lib/features/ai/host/ai_feature_host_page.dart` | FR-001, FR-009, FR-012; Clarification Q2 | NEW — standalone host composing availability gate + surface for widget tests and CP3 entry. |
 | `frontend/lib/app/app_routes.dart` | FR-001; Clarification Q2 | MODIFIED — add standalone AI host route constant. |
-| `frontend/lib/app/router.dart` | FR-001; Clarification Q2 | MODIFIED — register host route (not embedded in a clinical screen). |
+| `frontend/lib/app/router.dart` | FR-001; Clarification Q2 | MODIFIED — register host route that builds `AiFeatureHostPage` from GoRouter `extra` dependencies (CP3 composition; not embedded in a clinical screen). |
 | `frontend/test/widget/ai/ai_surface_test_harness.dart` | FR-001–FR-016 (test support) | NEW — spies/fakes for SDK streams, Resolver, availability flag, reachability/network, persistence/export probes. |
 | `frontend/test/widget/ai/first_ai_feature_surface_test.dart` | FR-001–FR-007, FR-014–FR-016; T1–T7, T13–T17, T20 | NEW — surface widget suite. |
 | `frontend/test/widget/ai/ai_degraded_mode_test.dart` | FR-008–FR-013; T8–T12, T18–T19, T21 | NEW — degraded-mode + availability-flag widget suite. |

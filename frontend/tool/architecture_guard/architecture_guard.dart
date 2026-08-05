@@ -127,7 +127,7 @@ final _modelPatterns = [
 void main(List<String> args) {
   final frontendRoot = _resolveFrontendRoot();
   final scanRoots = _resolveScanRoots(args, frontendRoot);
-  final assertCoverage = _shouldAssertCoverage(args, scanRoots, frontendRoot);
+  final assertCoverage = _shouldAssertCoverage(args);
 
   final missingRoots = <String>[];
   for (final root in scanRoots) {
@@ -196,30 +196,15 @@ List<String> _resolveScanRoots(List<String> args, Directory frontendRoot) {
   }).toList();
 }
 
-bool _shouldAssertCoverage(
-  List<String> args,
-  List<String> scanRoots,
-  Directory frontendRoot,
-) {
+bool _shouldAssertCoverage(List<String> args) {
   if (args.contains('--assert-coverage')) {
     return true;
   }
 
-  if (args.isEmpty) {
-    return true;
-  }
-
-  final fixtureMarker = frontendRoot.uri
-      .resolve('tool/architecture_guard/fixtures/')
-      .toFilePath();
-
-  final scanningFixturesOnly = scanRoots.every(
-    (root) => root.replaceAll('\\', '/').contains(
-          fixtureMarker.replaceAll('\\', '/'),
-        ),
-  );
-
-  return !scanningFixturesOnly;
+  // Empty args → default roots + full-tree coverage (CI clean run).
+  // Explicit path args (fixtures or scoped roots like lib/features/ai) are
+  // targeted scans; coverage only when --assert-coverage is requested.
+  return args.isEmpty;
 }
 
 List<String> _scanDirectory(Directory dir) {

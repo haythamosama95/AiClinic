@@ -8,6 +8,8 @@ enum AiDegradedMode {
   unreachable,
   quotaExhausted,
   aiUnavailable,
+  appUpdate,
+  providerUnavailable,
   installationSuspended,
   forbiddenCapability,
   ready,
@@ -31,10 +33,14 @@ AiDegradedMode resolveDegradedMode({
   if (terminalFailureCode == TaxonomyCode.quotaExhausted) {
     return AiDegradedMode.quotaExhausted;
   }
-  if (terminalFailureCode == TaxonomyCode.providerUnavailable ||
-      terminalFailureCode == TaxonomyCode.capabilityDisabled ||
-      terminalFailureCode == TaxonomyCode.capabilityRetired ||
-      terminalFailureCode == TaxonomyCode.capabilityUnknown) {
+  if (terminalFailureCode == TaxonomyCode.capabilityUnknown ||
+      terminalFailureCode == TaxonomyCode.capabilityRetired) {
+    return AiDegradedMode.appUpdate;
+  }
+  if (terminalFailureCode == TaxonomyCode.providerUnavailable) {
+    return AiDegradedMode.providerUnavailable;
+  }
+  if (terminalFailureCode == TaxonomyCode.capabilityDisabled) {
     return AiDegradedMode.aiUnavailable;
   }
 
