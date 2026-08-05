@@ -239,7 +239,6 @@ BEGIN
   v_scopes := v_payload -> 'scopes';
 
   v_passed := v_payload ->> 'ver' = v_setting_ver
-    AND v_payload ->> 'ver' = '2'
     AND v_scopes @> '["ai.access"]'::jsonb
     AND NOT (v_scopes @> '["ai.forge"]'::jsonb);
 
@@ -262,6 +261,7 @@ DECLARE
   v_installation_id uuid;
   v_key_count_before int;
   v_key_count_after int;
+  v_setting_ver text;
   v_token text;
   v_payload jsonb;
   v_passed boolean;
@@ -278,6 +278,10 @@ BEGIN
   WHERE installation_id = v_installation_id
     AND is_deleted = false;
 
+  SELECT value_json #>> '{}' INTO v_setting_ver
+  FROM ai_internal.app_settings
+  WHERE key = 'ai.aat.ver';
+
   PERFORM pg_temp.set_authenticated_session(v_doctor_user);
   v_token := public.issue_ai_token();
   v_payload := pg_temp.decode_jws_payload(v_token);
@@ -291,7 +295,7 @@ BEGIN
   v_passed := v_key_count_before = v_key_count_after
     AND v_key_count_after >= 1
     AND v_payload ->> 'iss' = v_installation_id::text
-    AND v_payload ->> 'ver' = '2';
+    AND v_payload ->> 'ver' = v_setting_ver;
 
   INSERT INTO ai_token_contract_rotation_results VALUES (
     'T-J4-10 rotation_requires_no_re_enrollment',

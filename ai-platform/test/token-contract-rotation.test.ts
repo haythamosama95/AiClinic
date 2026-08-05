@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
@@ -357,6 +359,39 @@ describe("T-J4-07 request_path_never_writes_token_contract", () => {
     expect(readKeys).toContain("token_contracts:1");
     expect("write" in reader).toBe(false);
     expect("run" in reader).toBe(false);
+  });
+
+  it("asserts no src/ file outside control/ writes token_contract", () => {
+    const srcRoot = resolve(__dirname, "../src");
+    const writePattern =
+      /\b(?:INSERT|UPDATE|DELETE)\b[\s\S]{0,120}\btoken_contract\b/i;
+
+    function collectTsFiles(dir: string): string[] {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          out.push(...collectTsFiles(full));
+        } else if (entry.name.endsWith(".ts")) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+
+    const offenders: string[] = [];
+    for (const file of collectTsFiles(srcRoot)) {
+      const rel = relative(srcRoot, file).split(sep).join("/");
+      if (rel === "control/token-contract.ts" || rel.startsWith("control/")) {
+        continue;
+      }
+      const source = readFileSync(file, "utf8");
+      if (writePattern.test(source)) {
+        offenders.push(rel);
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });
 
