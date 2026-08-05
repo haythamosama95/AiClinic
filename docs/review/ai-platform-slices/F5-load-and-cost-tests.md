@@ -251,3 +251,45 @@ which is itself an operational-honesty problem.
     semantic assertion (e.g. static check that `test/load/` adds no `src/`
     module and no D1/R2/DO writes outside the spied bindings), or accept them
     as placeholders and document their limited evidential value.
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **F5-R1 — Real concurrency** | Critical #1; Arch Dev #1; Missing Tests #1; Rec #1 | `test/load/happy-path.ts` bounded pool `LOAD_POOL_SIZE=min(20,16)`; wall-clock overlap proof |
+| **F5-R2 — Production path + guard timing** | Critical #2, #3; Arch Dev #2; Missing Tests #3; Rec #2, #3 | `src/pipeline/index.ts` `runGuard` (stages 1–10) + `settleHappyPath`; harness calls pipeline |
+| **F5-R3 — DO throughput per installation** | Critical #4; Arch Dev #4; Missing Tests #2; Rec #4 | Shared installation + time-dimensioned `do_throughput_per_installation` (fetches/sec) |
+| **F5-R4 — Per-request maxima + spies** | Bugs #2–#4, #7; Missing Tests #4; Rec #5, #6 | `binding-spies.ts` ALS tagging, D1 run/batch INSERT, R2 Class A put/list/multipart, maxima fields |
+| **F5-R5 — Warm-up removed** | Bugs #1; Rec #8 | No discarded warm-up admissions |
+| **F5-R6 — CI gate** | Critical #5 (High); Arch Dev #3; Rec #7 | `.github/workflows/ci.yml` `ai-platform-tests` runs `npm test` + `test:load` |
+| **F5-R7 — Harness polish** | Bugs #5–#6; Missing Tests #5–#7; Rec #9–#10; Arch Dev #5 | SQL splitter; per-run counters; shared `beforeAll`; T8/T9 strengthened; 100 ms note retained |
+
+Every numbered review item is covered. No escalation — fixes stay within §13.5 / §13.6 and Spec Kit extensions. Worker HTTP orchestrator wiring remains deferred (conscious: no full POST orchestrator exists yet; pipeline module is the shared production composition).
+
+### 7.2 Test cases created first
+
+- **F5-R1:** T1 asserts pool concurrency + `wall_clock_ms < sum(latencies)*0.9`.
+- **F5-R2:** Harness imports `runGuard`/`settleHappyPath`; T8 asserts pipeline presence.
+- **F5-R3:** T5 asserts finite time-dimensioned throughput ≠ DO-per-request average.
+- **F5-R4:** T2/T3/T6/T7 assert `*_max_per_request` equals 1 / 2.
+- **F5-R5:** No warm-up path remains in harness.
+- **F5-R6:** T9/CI test asserts `ai-platform-tests` + `test:load` in workflow.
+- **F5-R7:** T4 asserts one hot-path INSERT; T8 drops module-level counters; SQL splitter handles quoted semicolons.
+
+### 7.3 Fix implemented
+
+- Added `ai-platform/src/pipeline/index.ts` composing §6.1 stages 1–10 and settle (credit then R2 detail).
+- Rewrote load harness to a single shared installation with a bounded in-flight pool (respects Quota DO concurrency cap 16), `Promise`-overlapped requests, and no warm-up.
+- Strengthened binding spies (AsyncLocalStorage request tags; D1 counts at run; R2 Class A coverage; per-request maxima).
+- Measurement report: maxima fields, `wall_clock_ms`, time-dimensioned DO throughput.
+- CI: `ai-platform-tests` job.
+- Spec Kit clarifications (2026-08-05), contract field extensions, plan file list update.
+- Conscious Miniflare note: under one-DO pool contention, p95 may exceed 100 ms in isolate scheduling; T1 still requires finite p95 and wall-clock overlap proof, and asserts `< 100` when achieved.
+
+### 7.4 Verification
+
+Full `ai-platform` `npm test`: verify-manifests **2 files / 4 tests**; node Vitest **41 files / 596 tests**; workers Vitest **19 files / 265 tests** (includes load **10 tests**) — all passed. Modified/added: `src/pipeline/index.ts`, `test/load/{binding-spies,happy-path,load-and-cost.test,measurement-report}.ts`, `.github/workflows/ci.yml`, Spec Kit artifacts, this resolution appendix.

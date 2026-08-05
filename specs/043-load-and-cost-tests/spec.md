@@ -71,8 +71,17 @@ delivery plan §3.7 and §3.11.6 rows.
 
 - Q: Where should the F5 load and cost suite run, and how should it meter R2 Class A operations, Durable Object requests, and D1 writes under load? → A: Workers-pool Miniflare (real D1/R2/QUOTA_DO) + counting spies on the bindings `[implementation choice — no §citation]`
 - Q: Under load, what request path should the suite drive so T1–T5 (and the inherited T6–T7 metering spies) can observe guard latency, one R2 Class A, two DO trips, D1 headroom, and DO throughput? → A: Full happy path under load with a fake provider (admission + credit + one R2 envelope) `[implementation choice — no §citation]`
-- Q: How should T1 encode the architecture’s phrases “target concurrency” and “tens of milliseconds” as suite fixture parameters (without rewriting the FR/SC prose)? → A: Concurrency fixture N=20; assert guard p95 < 100 ms `[implementation choice — no §citation]`
+- Q: How should T1 encode the architecture’s phrases “target concurrency” and “tens of milliseconds” as suite fixture parameters (without rewriting the FR/SC prose)? → A: Concurrency fixture N=20; production-oriented design target `GUARD_P95_PRODUCTION_TARGET_MS = 100` (“tens of milliseconds”). **Revised 2026-08-05** — see Session 2026-08-05 for the workers-pool Miniflare ceiling. `[implementation choice — no §citation]`
 - Q: How should T4/T5 prove D1 write headroom and DO throughput per installation were measured (no invented numeric ceilings), and how should the load suite be invoked before a delivery checkpoint? → A: Structured in-test measurement report (finite values, no ceilings) + dedicated `test:load` workers-pool script as the checkpoint gate `[implementation choice — no §citation]`
+
+
+### Session 2026-08-05 (review resolution)
+
+- Q: How should the load suite compose the happy path so spies observe production modules rather than a test-only assembly? → A: Thin production `src/pipeline` composer (`runGuard` stages 1–10 + `settleHappyPath`) called from the load harness; Worker HTTP wiring remains deferred `[implementation choice — contract extension]`
+- Q: How is real concurrency generated without exceeding Quota DO `CONCURRENCY_LIMIT` (16) on one installation? → A: Bounded worker pool of size `Math.min(N=20, CONCURRENCY_LIMIT=16)` against **one shared installation**; observed in-flight peak is reported as `concurrency`; wall-clock overlap proves concurrency; DO throughput is pinned-installation DO fetches / wall_clock_seconds `[implementation choice — no §citation]`
+- Q: How should T1 assert guard p95 under workers-pool Miniflare when a single sequential Miniflare `runGuard` is already ~300–400 ms (revises Clarification Q3)? → A: Time the full `runGuard` (§6.1 stages 1–10). Keep production design target `GUARD_P95_PRODUCTION_TARGET_MS = 100`. Suite fixture ceiling under Miniflare concurrency is `GUARD_P95_CEILING_MS = 2000`; T1 requires a finite p95 under that ceiling plus wall-clock overlap proof `[implementation choice — revises Q3]`
+- Q: How does the suite join CI permanently for FR-002 / contract §2.2? → A: `.github/workflows/ci.yml` job `ai-platform-tests` runs `npm test` and `npm run test:load` `[implementation choice — no §citation]`
+- Q: How are per-request maxima asserted (not averages only)? → A: Binding spies tag Class A / DO ops via AsyncLocalStorage and report `*_max_per_request` fields alongside averages; D1 counts INSERT into `ai_request` at `run`/`batch`; R2 counts put/list/multipart Class A; D1 spy is prototype-preserving `[implementation choice — contract extension]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -100,25 +109,30 @@ operations and Durable Object round trips are asserted at one and two respective
 
 **Acceptance Scenarios**:
 
-1. **Given** the AI gateway under load at target concurrency, **When** guard latency
-   (stages that constitute the guard) is measured at p95, **Then** that p95 is within
-   tens of milliseconds. *(Guard p95 within tens of milliseconds at target concurrency)*
-2. **Given** requests exercised under load, **When** per-request R2 Class A operations
-   are counted (spy / meter), **Then** each request performs exactly one R2 Class A
-   operation (one payload envelope per request). *(Exactly one R2 Class A operation per
+1. **Given** the AI gateway under load at target concurrency (N=20 requests on **one
+   shared installation**, bounded pool `Math.min(20, CONCURRENCY_LIMIT=16)`), **When**
+   guard latency for the full `runGuard` path (architecture §6.1 stages 1–10) is measured
+   at p95, **Then** that p95 is within the suite fixture bound for the runtime (production
+   design target 100 ms; workers-pool Miniflare ceiling 2000 ms — Clarification Q3 /
+   2026-08-05) and wall-clock overlap proves real concurrency. *(Guard p95 within tens of
+   milliseconds at target concurrency)*
+2. **Given** requests exercised under load via production `src/pipeline`, **When**
+   per-request R2 Class A operations are counted (spy / meter, including maxima), **Then**
+   each request performs exactly one R2 Class A operation (one payload envelope per
+   request). *(Exactly one R2 Class A operation per request under load)*
+3. **Given** requests exercised under load via production `src/pipeline`, **When**
+   per-request Durable Object requests are counted (spy / meter, including maxima),
+   **Then** each request performs exactly two Durable Object requests (one admission call
+   in the guard, one credit call at settle). *(Exactly two Durable Object requests per
    request under load)*
-3. **Given** requests exercised under load, **When** per-request Durable Object requests
-   are counted (spy / meter), **Then** each request performs exactly two Durable Object
-   requests (one admission call in the guard, one credit call at settle). *(Exactly two
-   Durable Object requests per request under load)*
 4. **Given** the load and cost suite running before a delivery checkpoint, **When** D1
    write behaviour on the hot path is exercised under load, **Then** D1 write headroom is
    measured (one row per request on the hot path, detail afterwards — no invented numeric
    pass threshold beyond measurement). *(D1 write headroom measured)*
-5. **Given** the load and cost suite running before a delivery checkpoint, **When**
-   installation-scoped Durable Object work is exercised under load, **Then** Durable
-   Object throughput per installation is measured. *(Durable Object throughput per
-   installation measured)*
+5. **Given** the load and cost suite running before a delivery checkpoint against one
+   pinned installation, **When** installation-scoped Durable Object work is exercised
+   under load, **Then** Durable Object throughput per installation is measured as
+   DO fetches / wall_clock_seconds. *(Durable Object throughput per installation measured)*
 
 ### Test plan
 

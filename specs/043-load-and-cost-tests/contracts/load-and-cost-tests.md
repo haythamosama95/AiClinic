@@ -10,9 +10,11 @@ the load layer measures, when it runs relative to checkpoints, or the
 one-R2 / two-DO under-load proof.
 
 **Source of truth in code (this slice):**
+`ai-platform/src/pipeline/index.ts` (production `runGuard` / `settleHappyPath`),
 `ai-platform/test/load/` (binding spies, measurement report, happy-path driver,
 Vitest entry), proven by `load-and-cost.test.ts`, invoked before each delivery
-checkpoint via the dedicated workers-pool `test:load` script.
+checkpoint via the dedicated workers-pool `test:load` script and the
+`ai-platform-tests` CI job.
 
 **Traces to:** spec Freezes (load and cost test layer; under-load
 metered-footprint assertion; measurement gate for CP5); FR-001–FR-010;
@@ -51,7 +53,7 @@ outcomes **is** what satisfies CP5 (FR-009).
 | Runtime module | **None** — no `ai-platform/src/load/` |
 | Runtime | Workers-pool Miniflare with real D1, R2, and Quota DO bindings (`vitest.workers.config.ts` / Wrangler development env) |
 | Metering | Counting spies on the D1 / R2 / `DO` (Quota DO) bindings — not invented secondary meters |
-| Request path | Full happy path under load with a **fake** provider: admission + credit + one R2 envelope (no live provider egress) |
+| Request path | Full happy path under load with a **fake** provider via production `src/pipeline` (`runGuard` + `settleHappyPath`): admission + credit + one R2 envelope (no live provider egress) |
 | Consumes | D7 second-provider adapter / fixture suite / policy registration — unchanged; F5 measures the post-D7 platform and does not rewrite those contracts |
 
 ### 2.2 When the layer runs
@@ -61,7 +63,7 @@ outcomes **is** what satisfies CP5 (FR-009).
 | Timing | The load and cost suite **MUST** run **before each delivery checkpoint** (§13.5 How) |
 | Checkpoint gate | Completing this suite's measured and asserted outcomes satisfies **CP5** (delivery plan §5 CP5; §3.7). The suite does **not** redefine other checkpoints' gates |
 | Invocation | Dedicated npm script `test:load` under `ai-platform/` runs the workers-pool Vitest entry for this suite — that script is the checkpoint gate |
-| Permanent join | The suite joins CI permanently (delivery plan §3.10) via the workers-pool config include |
+| Permanent join | The suite joins CI permanently (delivery plan §3.10) via the workers-pool config include **and** the `ai-platform-tests` CI job running `npm run test:load` |
 
 ### 2.3 What the layer measures and asserts
 
@@ -116,8 +118,12 @@ quantities.
 | Field | Meaning | Pass rule |
 | --- | --- | --- |
 | `guard_p95_ms` | Guard latency p95 (ms) under the concurrency fixture | Must be within tens of milliseconds (suite fixture bound in §4.2) |
-| `r2_class_a_ops_per_request` | Class A ops counted per request under load | Must equal `1` |
-| `durable_object_requests_per_request` | DO requests counted per request under load | Must equal `2` |
+| `r2_class_a_ops_per_request` | Class A ops counted per request under load (average) | Must equal `1` |
+| `r2_class_a_ops_max_per_request` | Max Class A ops on any single request | Must equal `1` |
+| `durable_object_requests_per_request` | DO requests counted per request under load (average) | Must equal `2` |
+| `durable_object_requests_max_per_request` | Max DO fetches on any single request | Must equal `2` |
+| `wall_clock_ms` | Wall-clock duration of the concurrent measured window | Finite; used with latency sum to prove overlap |
+| `do_throughput_per_installation` | DO fetches/sec against the pinned installation (time-dimensioned) | Finite; **no** ceiling |
 | `d1_hot_path_writes_per_request` | Hot-path D1 writes observed per request (headroom evidence) | Must be a finite number; **no** ceiling asserted here |
 | `do_throughput_per_installation` | Installation-scoped DO work / throughput evidence under load | Must be a finite number; **no** ceiling asserted here |
 | `concurrency` | Concurrency fixture used for the run | Suite fixture (§4.2) |

@@ -133,6 +133,33 @@ jobs:
           path: frontend/build/windows/x64/runner/Release/
           retention-days: 7
 
+  ai-platform-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ai-platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit and workers-pool tests
+        run: npm test
+
+      - name: Run load and cost suite
+        run: npm run test:load
+
   ai-platform-eval-golden:
     runs-on: ubuntu-latest
     timeout-minutes: 30
