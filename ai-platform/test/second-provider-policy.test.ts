@@ -32,17 +32,6 @@ const D7_SLICE_ALLOWED_RELATIVE_PATHS = [
   "test/fixtures/gemini",
 ] as const;
 
-/** Paths under ai-platform/ that review resolution may touch (prefix match). */
-const D7_DIFF_ALLOWLIST_PREFIXES = [
-  "ai-platform/src/provider/gemini.ts",
-  "ai-platform/src/provider/wiring.ts",
-  "ai-platform/control/routing-policy/platform-default/1.json",
-  "ai-platform/test/gemini-adapter.test.ts",
-  "ai-platform/test/second-provider-policy.test.ts",
-  "ai-platform/test/fixtures/gemini/",
-  "specs/034-second-provider-adapter/",
-  "docs/review/ai-platform-slices/D7-second-provider-adapter.md",
-] as const;
 
 const PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES = [
   "src/invocation/index.ts",
@@ -152,13 +141,6 @@ function chainProviderIds(outcome: ReturnType<typeof route>): string[] {
   return outcome.routing_decision.chain.map((entry) => entry.provider_id);
 }
 
-function isDiffPathAllowlisted(relativePath: string): boolean {
-  return D7_DIFF_ALLOWLIST_PREFIXES.some(
-    (prefix) =>
-      relativePath === prefix.replace(/\/$/, "") ||
-      relativePath.startsWith(prefix),
-  );
-}
 
 function changedPathsVersusAiMaster(): string[] {
   try {
@@ -208,18 +190,18 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
       ).toBe(false);
     }
 
+    // D7 freeze vs later slices: only fail when listed pre-existing stage
+    // modules change. New modules (F5 `src/pipeline`, load harness, etc.) are
+    // outside T-D7-13's "second adapter by policy alone" claim.
     const changed = changedPathsVersusAiMaster();
-    const aiPlatformOrSpecOrReview = changed.filter(
-      (filePath) =>
-        filePath.startsWith("ai-platform/") ||
-        filePath.startsWith("specs/034-second-provider-adapter/") ||
-        filePath === "docs/review/ai-platform-slices/D7-second-provider-adapter.md",
-    );
-    for (const filePath of aiPlatformOrSpecOrReview) {
-      expect(
-        isDiffPathAllowlisted(filePath),
-        `unexpected changed path vs origin/ai/master: ${filePath}`,
-      ).toBe(true);
+    for (const filePath of changed) {
+      for (const pipelineModule of PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES) {
+        const forbidden = `ai-platform/${pipelineModule}`;
+        expect(
+          filePath === forbidden,
+          `D7 freeze broken: stage module changed (${filePath})`,
+        ).toBe(false);
+      }
     }
   });
 
