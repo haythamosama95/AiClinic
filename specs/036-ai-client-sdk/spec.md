@@ -38,8 +38,10 @@ Contracts this slice establishes for the first time:
 - The **client-side SSE consumption rules** for the surfaces the SDK owns: open on
   `accepted` (request reference), consume typed content/heartbeat events, end on exactly
   one terminal event (`completed`, `failed`, or `cancelled` for the capabilities this
-  slice can invoke), with cancel performed by closing the stream and no separate cancel
-  endpoint (§5.5 rules 1–5; §4.1).
+  slice can invoke), with cancel performed by closing the stream and synthesizing
+  `CancelledTerminal` locally (no separate cancel endpoint; wire never sends
+  `CancelledEvent` on a live socket) (§5.5 rules 1–5; §4.1; Clarification Session
+  2026-08-05).
 - The **no-auto-retry-after-terminal-platform-error** rule on the client: the SDK retries
   on transport errors only; after a terminal platform error (a §5.4 taxonomy outcome that
   ends the request) it does not auto-retry, except the single `unauthenticated` re-mint
@@ -88,6 +90,18 @@ rule are fully specified by §4.1, §5.5, §5.4, and delivery plan §3.6 / §3.1
 
 - Q: Where should the AI Client SDK module live under the Flutter client? → A: `frontend/lib/core/ai/` — SDK beside other core transport/orchestration code `[implementation choice — no §citation]`
 - Q: How should Flutter unit/integration tests (T1–T28) drive AAT mint, HTTPS submit, and SSE streams without a live Worker? → A: Injectable ports (mint, HTTPS submit, SSE) backed by in-memory fakes/spies that emit canned A6 sequences and §5.4 codes — no network `[implementation choice — no §citation]`
+
+### Session 2026-08-05 (E2 review resolution)
+
+- Q: How does cancel surface a terminal outcome when the live socket never emits `CancelledEvent` (§5.4 / §5.5 rule 5)? → A: Cancel closes the stream and the SDK synthesizes `CancelledTerminal` locally; the wire never sends `CancelledEvent` on a live socket `[implementation choice — no §citation]`
+- Q: What is the transport-retry ceiling, backoff, exhaustion signal, and submit-phase escape? → A: `maxTransportAttempts=3` with exponential backoff `100ms * 2^(n-1)` capped at 800ms ±25% jitter; exhaustion throws `TransportRetryExhausted` carrying the idempotency key; `cancelSignal` aborts submit-phase retries `[implementation choice — no §citation]`
+- Q: How can callers listen to stream events when `SseConnection.events` may be single-subscription? → A: `AiInvokeSession` rebroadcasts `SseConnection.events` internally so the terminal consumer and caller listeners do not conflict `[implementation choice — no §citation]`
+- Q: What terminal outcome applies when the stream ends or errors without a terminal event and without a local cancel? → A: `StreamDroppedTerminal(requestReference, cause?)` with `retrySafe=true` — never infer completion from silence, never a bare `StateError` `[implementation choice — no §citation]`
+- Q: How is concurrent AAT mint / remint deduplicated? → A: Single-flight AAT mint via a shared in-flight `Future` `[implementation choice — no §citation]`
+- Q: How are default idempotency keys and client trace ids generated? → A: `Random.secure()` with ≥128-bit (32 hex) values for both `[implementation choice — no §citation]`
+- Q: Where is unknown-taxonomy classification enforced for `failed` stream events? → A: `FailedEvent.fromWire` applies `classifyTaxonomyCode` at the wire boundary `[implementation choice — no §citation]`
+- Q: Can the caller override the idempotency key (or cancel submit) per invoke without rebuilding the SDK? → A: `invoke({idempotencyKey?, cancelSignal?})` — per-call key override; key remains stable across transport retries of that call `[implementation choice — no §citation]`
+- Q: Why do E2 sources carry H-band conversational members (`ContextRequested*`, `conversationId` / `turnOrdinal` / `transcript`)? → A: Those members postdate E2 per delivery plan §2.3 extend-don't-rewrite; E2's frozen surface remains single-shot only `[implementation choice — no §citation]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -138,12 +152,15 @@ names.
    request; delivery plan §3.11.5 E2 "idempotency key is stable across transport retries").
 5. **Given** an open SSE stream that emits `accepted`, optional heartbeats/content, and
    exactly one terminal event, **When** the SDK consumes the stream, **Then** it surfaces
-   that terminal state to the caller and does not infer completion from silence (§5.5
-   rules 1–4; §4.1; delivery plan §3.11.5 E2 "stream consumed to its terminal event").
+   that terminal state to the caller and does not infer completion from silence — a
+   stream that ends or errors without a terminal and without local cancel surfaces
+   `StreamDroppedTerminal` (Clarification Session 2026-08-05; §5.5 rules 1–4; §4.1;
+   delivery plan §3.11.5 E2 "stream consumed to its terminal event").
 6. **Given** an in-flight streamed request, **When** the caller invokes cancel, **Then**
    the SDK closes the stream (connection-scoped cancel; no separate cancel endpoint) and
-   the request ends as cancelled (§5.5 Cancel row and rule 5; §4.1 expose cancel; delivery
-   plan §3.11.5 E2 "cancel closes the stream").
+   synthesizes `CancelledTerminal` locally — the live wire never delivers `CancelledEvent`
+   (Clarification Session 2026-08-05; §5.5 Cancel row and rule 5; §4.1 expose cancel;
+   delivery plan §3.11.5 E2 "cancel closes the stream").
 7. **Given** a terminal `failed` (or equivalent terminal platform outcome) carrying any
    §5.4 taxonomy code whose client behaviour is not the `unauthenticated` re-mint path,
    **When** the SDK has surfaced that terminal state, **Then** it does not auto-retry the
@@ -169,8 +186,8 @@ Flutter unit + integration layer.
 | T2 | `sdk_unauthenticated_remints_once_then_succeeds` | Flutter unit + integration | One re-mint on `unauthenticated` then success; spy shows exactly one re-mint and one retry (§5.4; §3.11.5 E2) |
 | T3 | `sdk_unauthenticated_no_remint_loop` | Flutter unit + integration | After one re-mint, a second `unauthenticated` is surfaced with no further mint (§5.4; §3.11.5 E2) |
 | T4 | `sdk_idempotency_key_stable_across_transport_retries` | Flutter unit + integration | The idempotency key is identical across transport retries of the same action (§4.1; §5.5; §3.11.5 E2) |
-| T5 | `sdk_stream_consumed_to_terminal_event` | Flutter unit + integration | Stream consumed through `accepted` to exactly one terminal event; terminal state surfaced; completion not inferred from silence (§5.5 rules 1–4; §3.11.5 E2) |
-| T6 | `sdk_cancel_closes_stream` | Flutter unit + integration | Cancel closes the stream; no separate cancel endpoint is called (§5.5; §4.1; §3.11.5 E2) |
+| T5 | `sdk_stream_consumed_to_terminal_event` | Flutter unit + integration | Stream consumed through `accepted` to exactly one terminal event; terminal state surfaced; completion not inferred from silence — drop/error without terminal → `StreamDroppedTerminal` (Clarification Session 2026-08-05; §5.5 rules 1–4; §3.11.5 E2) |
+| T6 | `sdk_cancel_closes_stream` | Flutter unit + integration | Cancel closes the stream and synthesizes `CancelledTerminal` locally (no wire `CancelledEvent`; no separate cancel endpoint) (Clarification Session 2026-08-05; §5.5; §4.1; §3.11.5 E2) |
 | T7 | `sdk_no_retry_after_installation_suspended` | Flutter unit + integration | Terminal `installation_suspended` → no auto-retry (§5.4; §4.1; §3.11.5 E2) |
 | T8 | `sdk_no_retry_after_forbidden_capability` | Flutter unit + integration | Terminal `forbidden_capability` → no auto-retry (§5.4; §4.1; §3.11.5 E2) |
 | T9 | `sdk_no_retry_after_rate_limited` | Flutter unit + integration | Terminal `rate_limited` → SDK does not auto-retry (caller may later honour `retry_after`; SDK does not invent a loop) (§5.4; §4.1; §3.11.5 E2) |
@@ -190,18 +207,20 @@ Flutter unit + integration layer.
 | T23 | `sdk_no_retry_after_internal_error` | Flutter unit + integration | Terminal `internal_error` → no auto-retry by the SDK (§5.4; §4.1; §3.11.5 E2) |
 | T24 | `sdk_last_request_reference_retained` | Flutter unit + integration | Last request reference retained for support after a request that carried one (§4.1; §3.11.5 E2 "last-N references retained") |
 | T25 | `sdk_unknown_error_code_treated_as_internal_error` | Flutter unit + integration | An unknown error code is treated as `internal_error` (§3.11.5 E2; Consumes A2 via A6) |
-| T26 | `sdk_transport_retry_allowed` | Flutter unit + integration | A transport failure before a terminal platform event is retried by the SDK with the same idempotency key (§4.1 "retry on transport errors"; T4 companion) |
-| T27 | `sdk_does_not_interpret_model_output` | Flutter unit + integration | Spy/contract: the SDK surfaces stream events and terminal payload as received; it does not transform model output into a different shape (§4.1 Must not) |
+| T26 | `sdk_transport_retry_allowed` | Flutter unit + integration | Transport failure before a terminal is retried with the same idempotency key within `maxTransportAttempts=3` + backoff; exhaustion → `TransportRetryExhausted` carrying the key (Clarification Session 2026-08-05; §4.1; T4 companion) |
+| T27 | `sdk_does_not_interpret_model_output` | Flutter unit + integration | Spy/contract: listens to rebroadcast `session.events` and asserts stream events + terminal payload as received; no reshape (§4.1 Must not; Clarification Session 2026-08-05) |
 | T28 | `sdk_contains_no_prompt_provider_or_model_identifiers` | Flutter unit + integration | The SDK sources under `frontend/` pass the E1 architecture guard (R-12; delivery plan §6.4; §4.1 Must not) |
 
 Coverage (delivery plan §3.10): happy path of every requirement (T1, T4–T6, T24, T26);
 every §5.4 code this slice can surface as a terminal outcome with a no-auto-retry proof
 (T7–T23) plus the `unauthenticated` re-mint branches (T2–T3) and unknown→`internal_error`
 (T25); every branch of the stated rules (cache hit, remint once, remint loop stop,
-transport retry, cancel, stream-to-terminal); inherited prohibitions from delivery plan
-§6.4 / R-12 (T28) and no client-side assembly of a final result from chunks (T27; Out of
-Scope); named boundaries — one remint ceiling (T2–T3), stable idempotency across transport
-retries (T4), connection-scoped cancel only (T6), last request-reference retention (T24).
+bounded transport retry / exhaustion, local cancel, stream-to-terminal / drop);
+inherited prohibitions from delivery plan §6.4 / R-12 (T28) and no client-side assembly of
+a final result from chunks with T27 listening to rebroadcast events (T27; Out of Scope);
+named boundaries — one remint ceiling (T2–T3), stable idempotency across transport retries
+(T4), connection-scoped cancel + local `CancelledTerminal` only (T6), last request-reference
+retention (T24), transport-retry ceiling (Clarification Session 2026-08-05; T26).
 
 ### Edge Cases
 
@@ -216,20 +235,29 @@ retries (T4), connection-scoped cancel only (T6), last request-reference retenti
   surface concern (E4), not E2.
 - **`context_required`**: §5.4 allows retry after resolving keys; automatic refresh and
   single resubmit are J2. E2 surfaces the terminal code and does not auto-resubmit (T12).
-- **Cancel versus network drop**: closing the stream cancels; the platform does not
-  distinguish user cancel from drop (§5.5 rule 5). The SDK exposes cancel as stream close
-  (T6).
-- **Unknown taxonomy code**: mapped to `internal_error` (T25); never surfaced raw
-  (Consumes A2).
+- **Cancel versus network drop**: cancel closes the stream and synthesizes
+  `CancelledTerminal` locally (wire never sends `CancelledEvent`; T6). Stream end/error
+  without a terminal and without local cancel → `StreamDroppedTerminal` (retrySafe;
+  Clarification Session 2026-08-05; §5.5 rule 5) — the platform does not distinguish user
+  cancel from drop on the wire.
+- **Transport-retry exhaustion**: after `maxTransportAttempts=3` with backoff/jitter,
+  the SDK throws `TransportRetryExhausted` carrying the idempotency key; `cancelSignal`
+  aborts submit-phase retries (Clarification Session 2026-08-05; T26).
+- **Unknown taxonomy code**: mapped to `internal_error` via `FailedEvent.fromWire` /
+  `classifyTaxonomyCode` (T25); never surfaced raw (Consumes A2; Clarification Session
+  2026-08-05).
 - **Missing or invalid AAT before first mint**: acquisition path must mint before submit
-  (§4.1); failure to mint surfaces without inventing a taxonomy code beyond what the mint
-  path and §5.4 already name.
-- **Provisional / content events**: the SDK relays typed stream events and must not
-  assemble a final result from chunks or treat provisional content as committable
-  (§4.1 Must not interpret/transform; delivery plan §6.4; T27).
-- **Conversational fourth terminal kind**: `context_requested` is H1. E2's single-shot
-  clients never receive it (§5.5 rule 4); conversational submit/transcript handling is Out
-  of Scope (H3).
+  (§4.1); concurrent mints share one in-flight `Future` (Clarification Session 2026-08-05);
+  failure to mint surfaces without inventing a taxonomy code beyond what the mint path and
+  §5.4 already name.
+- **Provisional / content events**: the SDK rebroadcasts and relays typed stream events
+  (T27 must listen) and must not assemble a final result from chunks or treat provisional
+  content as committable (§4.1 Must not interpret/transform; delivery plan §6.4; Clarification
+  Session 2026-08-05).
+- **Conversational fourth terminal kind**: `context_requested` is H1. E2's frozen
+  single-shot surface never requires it (§5.5 rule 4); H-band members on disk postdate E2
+  per §2.3 (Clarification Session 2026-08-05); conversational submit/transcript handling is
+  Out of Scope (H3).
 
 ## Requirements *(mandatory)*
 
@@ -238,7 +266,8 @@ retries (T4), connection-scoped cancel only (T6), last request-reference retenti
 - **FR-001**: The Flutter application MUST include an **AI Client SDK** that is a
   transport concern only: acquire an AAT, submit a capability request with an idempotency
   key, consume the event stream, surface terminal state, expose cancel, retry on transport
-  errors, and hold the last request reference for support. `(§4.1)`
+  errors within the clarified ceiling (Clarification Session 2026-08-05), and hold the last
+  request reference for support. `(§4.1)`
 - **FR-002**: The SDK MUST NOT interpret or transform model output; MUST NOT decide which
   model or provider to use; MUST NOT embed prompt fragments; and MUST NOT retry after a
   *terminal* platform error. `(§4.1)`
@@ -248,22 +277,28 @@ retries (T4), connection-scoped cancel only (T6), last request-reference retenti
 - **FR-004**: On `unauthenticated`, the SDK MUST silently re-mint an AAT and retry once,
   and MUST NOT re-mint in a loop. `(§5.4; delivery plan §3.6 Done when; §3.11.5 E2)`
 - **FR-005**: Every submission MUST carry a client-generated idempotency key that remains
-  stable across transport retries of the same user action. `(§4.1; §5.5 Submit request;
-  delivery plan §3.6 Done when; §3.11.5 E2)`
+  stable across transport retries of the same user action; callers MAY override the key per
+  `invoke` (`idempotencyKey?`) without rebuilding the SDK. `(§4.1; §5.5 Submit request;
+  delivery plan §3.6 Done when; §3.11.5 E2; Clarification Session 2026-08-05)`
 - **FR-006**: Submit MUST create an AI request for a capability with intent, context
   payload, idempotency key, and version pin as required by the §5.5 Submit surface, and
   MUST consume the SSE stream per §5.5 rules 1–4 (`accepted` with request reference;
   typed content; heartbeats; exactly one terminal event). `(§5.5; §4.1)`
 - **FR-007**: The SDK MUST surface the terminal state of the stream to the caller
   (`completed` with the validated result, `failed` with a §5.4 taxonomy code, or
-  `cancelled`) and MUST NOT infer a terminal outcome from silence. `(§5.5 rule 4; §4.1)`
-- **FR-008**: Cancel MUST be exposed by closing the in-flight stream; there MUST NOT be a
-  separate cancel endpoint or cross-invocation cancel state. `(§5.5 Cancel row and rule 5;
-  §4.1)`
+  `cancelled`) and MUST NOT infer a terminal outcome from silence — stream end/error
+  without a terminal and without local cancel MUST surface `StreamDroppedTerminal`.
+  `(§5.5 rule 4; §4.1; Clarification Session 2026-08-05)`
+- **FR-008**: Cancel MUST be exposed by closing the in-flight stream and synthesizing
+  `CancelledTerminal` locally (the live wire never delivers `CancelledEvent`); there MUST
+  NOT be a separate cancel endpoint or cross-invocation cancel state. `(§5.5 Cancel row and
+  rule 5; §4.1; Clarification Session 2026-08-05)`
 - **FR-009**: After a request that carried a request reference, the SDK MUST retain the
   last request reference for support. `(§4.1; delivery plan §3.6 Done when; §3.11.5 E2)`
 - **FR-010**: Clients MUST branch on §5.4 taxonomy codes (never on raw provider errors);
-  an unknown code MUST be treated as `internal_error`. `(§5.4; delivery plan §3.11.5 E2)`
+  an unknown code MUST be treated as `internal_error` (`FailedEvent.fromWire` applies
+  `classifyTaxonomyCode`). `(§5.4; delivery plan §3.11.5 E2; Clarification Session
+  2026-08-05)`
 - **FR-011**: For every §5.4 taxonomy code that can terminate a request other than the
   `unauthenticated` re-mint path, the SDK MUST prove it does not auto-retry after that
   terminal outcome. `(§4.1; §5.4; delivery plan §3.11.5 E2)`
@@ -301,9 +336,12 @@ or new clinic tables.)
   audit conventions are unchanged — this slice writes no clinic tables.
 
 - **Failure Handling**: Transport failures may be retried with a stable idempotency key
-  (§4.1). `unauthenticated` triggers exactly one silent re-mint (§5.4). All other terminal
-  taxonomy outcomes are surfaced without auto-retry (§4.1; §5.4). Cancel is stream close
-  (§5.5). Platform unreachability and non-enrollment UX are E4, not E2; the SDK surfaces
+  within `maxTransportAttempts=3` + backoff; exhaustion → `TransportRetryExhausted`
+  (§4.1; Clarification Session 2026-08-05). `unauthenticated` triggers exactly one silent
+  re-mint (§5.4). All other terminal taxonomy outcomes are surfaced without auto-retry
+  (§4.1; §5.4). Cancel is stream close plus local `CancelledTerminal`; drop without
+  terminal → `StreamDroppedTerminal` (§5.5; Clarification Session 2026-08-05). Platform
+  unreachability and non-enrollment UX are E4, not E2; the SDK surfaces
   transport/terminal failures to the caller so those surfaces can degrade without inventing
   a second transport stack.
 
@@ -347,14 +385,17 @@ Prohibitions from delivery plan §6.4 (inherited; must never be done here):
 - **SC-002**: The idempotency key is identical across transport retries of the same action
   (T4, T26).
 - **SC-003**: A streamed request is consumed to exactly one terminal event and that state
-  is surfaced; cancel closes the stream (T5–T6).
+  is surfaced; cancel closes the stream and synthesizes `CancelledTerminal`; silence/drop
+  without terminal surfaces `StreamDroppedTerminal` (T5–T6; Clarification Session
+  2026-08-05).
 - **SC-004**: One automated case per §5.4 terminal taxonomy code proves the SDK does not
   auto-retry after that outcome (T7–T23), and an unknown code is treated as
   `internal_error` (T25).
 - **SC-005**: The last request reference from a completed or failed request remains
   available from the SDK for support (T24; §4.1).
 - **SC-006**: The SDK sources pass the E1 architecture guard and do not interpret or
-  assemble model output from chunks (T27–T28).
+  assemble model output from chunks; T27 listens to rebroadcast events (T27–T28;
+  Clarification Session 2026-08-05).
 
 ## Assumptions
 
@@ -368,6 +409,8 @@ Prohibitions from delivery plan §6.4 (inherited; must never be done here):
 - E2 targets `single_shot` capability traffic only; conversational surfaces are H-band.
 - Primary operators of the client remain clinic staff on Windows desktop; AI remains
   optional and additive relative to clinical workflows.
-- Numeric cache TTL, transport-retry ceilings, and a retention window larger than "the last
-  request reference" named in §4.1 are not invented here; behaviour follows the cited
-  sections and the `unauthenticated` re-mint path for expiry.
+- Numeric cache TTL and a retention window larger than "the last request reference" named
+  in §4.1 are not invented here; behaviour follows the cited sections and the
+  `unauthenticated` re-mint path for expiry. Transport-retry ceiling, backoff/jitter,
+  exhaustion signal, and submit-phase `cancelSignal` are recorded in Clarification Session
+  2026-08-05 (not left unbounded).

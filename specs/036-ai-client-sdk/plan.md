@@ -8,7 +8,7 @@
 
 ## Summary
 
-E2 lands the Flutter **AI Client SDK** as the transport-only §4.1 client component: acquire and cache an AAT, re-mint once on `unauthenticated`, submit with a stable idempotency key, consume the A6 SSE stream to exactly one terminal event, surface terminal state, cancel by closing the stream, retain the last request reference, retry only on transport errors, map unknown taxonomy codes to `internal_error`, and never auto-retry after a terminal platform error — with no prompts, providers, or models in the client (R-12; E1). It sits in Band E after E1 / A6 / C1 (`Needs: E1, A6, C1`) and freezes the shared transport E3 and E4 will call.
+E2 lands the Flutter **AI Client SDK** as the transport-only §4.1 client component: acquire and cache an AAT (single-flight), re-mint once on `unauthenticated`, submit with a stable idempotency key (per-invoke override), consume the A6 SSE stream via internal rebroadcast to exactly one terminal (or typed `StreamDroppedTerminal`), surface terminal state, cancel by closing the stream with local `CancelledTerminal`, retain the last request reference, retry transport errors within a bounded ceiling, map unknown taxonomy codes to `internal_error` via `fromWire`, and never auto-retry after a terminal platform error — with no prompts, providers, or models in the client (R-12; E1). It sits in Band E after E1 / A6 / C1 (`Needs: E1, A6, C1`) and freezes the shared transport E3 and E4 will call.
 
 ## Technical Context
 
@@ -24,9 +24,9 @@ E2 lands the Flutter **AI Client SDK** as the transport-only §4.1 client compon
 
 **Project Type**: Client-side Flutter transport module under `frontend/lib/core/ai/` (Clarification Q1) — not a gateway Worker slice, not a Supabase/RPC slice.
 
-**Performance Goals**: None beyond ordinary client transport. E2 adds no Quota DO round trip, no D1 insert, and no R2 object; platform I/O budgets (§6.1, §7.5, §13.6) remain untouched on the Worker side. Numeric cache TTL and transport-retry ceilings are not invented here (spec Assumptions).
+**Performance Goals**: None beyond ordinary client transport. E2 adds no Quota DO round trip, no D1 insert, and no R2 object; platform I/O budgets (§6.1, §7.5, §13.6) remain untouched on the Worker side. Numeric cache TTL is not invented here; transport-retry ceiling/backoff/exhaustion are Clarification Session 2026-08-05 (spec Assumptions).
 
-**Constraints**: Transport-only (§4.1 Must not: interpret/transform model output; decide model/provider; embed prompt fragments; retry after a *terminal* platform error). One silent re-mint on `unauthenticated`, no remint loop (FR-004; §5.4). Stable client-generated idempotency key across transport retries (FR-005). SSE rules 1–5 for the surfaces E2 owns — open on `accepted`, typed content/heartbeats, exactly one terminal among `completed` / `failed` / `cancelled`, cancel = stream close (FR-006–FR-008; single-shot only — `context_requested` is H1). Unknown taxonomy code → `internal_error` (FR-010). Must pass E1 guard and must not weaken it (FR-012; Consumes E1). No discovery UX, Context Resolver, feature surface, or conversational path (Out of Scope E3/E4/H).
+**Constraints**: Transport-only (§4.1 Must not: interpret/transform model output; decide model/provider; embed prompt fragments; retry after a *terminal* platform error). One silent re-mint on `unauthenticated`, no remint loop; single-flight mint (FR-004; §5.4; Clarification Session 2026-08-05). Stable client-generated idempotency key across transport retries; per-invoke `idempotencyKey?` / `cancelSignal?` (FR-005). SSE rules 1–5 for the surfaces E2 owns — open on `accepted`, typed content/heartbeats, exactly one wire terminal among `completed` / `failed` / `cancelled`; cancel = stream close + local `CancelledTerminal`; drop without terminal → `StreamDroppedTerminal`; session rebroadcasts events (FR-006–FR-008; Clarification Session 2026-08-05; single-shot freeze — H-band members postdate E2 per §2.3). Unknown taxonomy code → `internal_error` via `FailedEvent.fromWire` (FR-010). Must pass E1 guard and must not weaken it (FR-012; Consumes E1). No discovery UX, Context Resolver, feature surface, or conversational path as E2 scope (Out of Scope E3/E4/H).
 
 **Scale/Scope**: One §4.1 component (AI Client SDK); ~four Dart library files under `frontend/lib/core/ai/` plus Flutter unit/integration tests for T1–T28 (T7–T23 share one parameterized no-auto-retry suite). Twelve FRs. Well under the ~25-task ceiling when terminal no-retry cases are one task family (delivery plan §6.3 stop condition 5 / skill stop condition 5). Touches exactly one §4 component (see Components Touched).
 
@@ -76,7 +76,7 @@ specs/036-ai-client-sdk/
 `quickstart.md` (written during the implement-phase Documentation task, per `.specify/templates/ai-platform-quickstart-template.md`) will contain:
 
 - **§1 Architecture context** — E2 row of the delivery plan (§3.6) and §4.1 / §5.5 / §5.4; what the spec delivered; what the plan scoped.
-- **§2 What was implemented** — the AI Client SDK (AAT cache/remint, idempotent submit, SSE consume-to-terminal, cancel-by-close, last request-reference retention, taxonomy mapping, transport-only retry).
+- **§2 What was implemented** — the AI Client SDK (AAT cache/remint/single-flight, idempotent submit with retry ceiling, SSE consume-to-terminal / drop / local cancel, event rebroadcast, last request-reference retention, taxonomy mapping via `fromWire`).
 - **§3 Files to review** — this slice's `frontend/lib/core/ai/` and `frontend/test/unit/core/ai/` files only.
 - **§5 Run the automated suite** — slice-only `flutter test` commands against this slice's test files; no full-suite `npm test`, no combined prior-slice counts.
 - **§6 Inspect the changes** — open the SDK module, taxonomy mapping, and a focused test file; confirm E1 guard still covers `frontend/lib/core/ai/`.
@@ -90,12 +90,13 @@ frontend/
 │   └── core/
 │       └── ai/                                    # NEW — AI Client SDK root (Clarification Q1)
 │           ├── ai_client_sdk.dart                 # NEW — transport SDK: submit, cache, remint,
-│           │                                      #   retry, cancel, last request reference
+│           │                                      #   bounded retry, cancel, rebroadcast session,
+│           │                                      #   last request reference
 │           ├── ports.dart                         # NEW — injectable mint / HTTPS submit / SSE
-│           │                                      #   ports (Clarification Q2)
+│           │                                      #   ports (Clarification Q2); may be single-sub
 │           ├── taxonomy.dart                      # NEW — §5.4 closed set + unknown→internal_error
 │           └── sse_events.dart                    # NEW — client-side A6 event kinds / terminal
-│                                                  #   state as received (no model-output reshape)
+│                                                  #   state as received; fromWire; drop terminal
 ├── test/
 │   └── unit/
 │       └── core/
@@ -141,10 +142,10 @@ Exactly one §4 component — stop condition 5 (multi-component without reason) 
 
 | File | FR(s) | Status |
 | --- | --- | --- |
-| `frontend/lib/core/ai/ports.dart` | FR-001, FR-003, FR-006 | NEW — injectable ports for AAT mint, HTTPS submit, and SSE stream open/close (Clarification Q2). Production callers supply real mint/submit/SSE implementations; tests supply in-memory fakes. No second cancel endpoint. |
-| `frontend/lib/core/ai/taxonomy.dart` | FR-010, FR-011 | NEW — Dart mirror of the §5.4 closed code set; map any code outside the set to `internal_error`; used for branching and for proving no auto-retry after each terminal code (except the `unauthenticated` remint path). |
-| `frontend/lib/core/ai/sse_events.dart` | FR-006, FR-007 | NEW — client-side representations of A6 event kinds and terminal outcomes (`completed` / `failed` / `cancelled`) as received; no reshape of model output into a different result type (FR-002; T27). |
-| `frontend/lib/core/ai/ai_client_sdk.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-011, FR-012 | NEW — AI Client SDK: acquire/cache AAT; on `unauthenticated` remint once and retry once (no loop); generate and reuse a stable idempotency key across transport retries of one user action; submit capability + intent + context + version pin via ports; consume SSE through `accepted` to exactly one terminal event; surface terminal state (never infer from silence); cancel by closing the stream; retain last request reference; retry transport failures only; never auto-retry after terminal taxonomy outcomes other than the single remint path. |
+| `frontend/lib/core/ai/ports.dart` | FR-001, FR-003, FR-006 | NEW — injectable ports for AAT mint, HTTPS submit, and SSE stream open/close (Clarification Q2). Events may be single-subscription; SDK rebroadcasts. `TransportRetryExhausted` / submit-phase cancel types live here. No second cancel endpoint. |
+| `frontend/lib/core/ai/taxonomy.dart` | FR-010, FR-011 | NEW — Dart mirror of the §5.4 closed code set; `classifyTaxonomyCode` maps any code outside the set to `internal_error`; used for branching and for proving no auto-retry after each terminal code (except the `unauthenticated` remint path). |
+| `frontend/lib/core/ai/sse_events.dart` | FR-006, FR-007 | NEW — client-side A6 event kinds and terminal outcomes as received (`completed` / `failed` / local `CancelledTerminal` / `StreamDroppedTerminal`); `FailedEvent.fromWire` applies `classifyTaxonomyCode`; no reshape of model output (FR-002; T27). H-band `ContextRequested*` members postdate E2 (§2.3). |
+| `frontend/lib/core/ai/ai_client_sdk.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-011, FR-012 | NEW — AI Client SDK: single-flight acquire/cache AAT; remint once on `unauthenticated` (no loop); `Random.secure()` ≥128-bit keys/trace ids; `invoke({idempotencyKey?, cancelSignal?})`; transport retry ≤3 with backoff/jitter → `TransportRetryExhausted`; consume SSE via internal rebroadcast to exactly one terminal (or `StreamDroppedTerminal` on silence/drop); cancel closes stream + synthesizes `CancelledTerminal`; retain last request reference; never auto-retry after terminal taxonomy outcomes other than the single remint path. |
 | `frontend/test/unit/core/ai/fakes.dart` | FR-001–FR-011 (test support) | NEW — in-memory mint / HTTPS submit / SSE fakes and spies emitting canned A6 sequences and §5.4 codes (Clarification Q2). |
 | `frontend/test/unit/core/ai/ai_client_sdk_test.dart` | FR-001–FR-012; T1–T28 | NEW — Flutter unit + integration suite for all named tests; T7–T23 as one parameterized family. Joins CI permanently (delivery plan §3.10). |
 | `specs/036-ai-client-sdk/quickstart.md` | — | NEW — written during the implement-phase Documentation task (sections named in Project Structure → Documentation). |
@@ -161,13 +162,13 @@ The spec's Test plan names twenty-eight tests at layer **Flutter unit + integrat
 | `sdk_unauthenticated_remints_once_then_succeeds` | Flutter unit + integration | `ai_client_sdk_test.dart` | One remint + one retry on `unauthenticated`, then success; spy counts (T2) |
 | `sdk_unauthenticated_no_remint_loop` | Flutter unit + integration | `ai_client_sdk_test.dart` | Second `unauthenticated` after remint is surfaced; no further mint (T3) |
 | `sdk_idempotency_key_stable_across_transport_retries` | Flutter unit + integration | `ai_client_sdk_test.dart` | Same idempotency key on every transport retry of one action (T4) |
-| `sdk_stream_consumed_to_terminal_event` | Flutter unit + integration | `ai_client_sdk_test.dart` | `accepted` → exactly one terminal; terminal surfaced; not inferred from silence (T5) |
-| `sdk_cancel_closes_stream` | Flutter unit + integration | `ai_client_sdk_test.dart` | Cancel closes stream; no separate cancel endpoint call (T6) |
+| `sdk_stream_consumed_to_terminal_event` | Flutter unit + integration | `ai_client_sdk_test.dart` | `accepted` → exactly one terminal; silence/drop → `StreamDroppedTerminal` (T5) |
+| `sdk_cancel_closes_stream` | Flutter unit + integration | `ai_client_sdk_test.dart` | Cancel closes stream + local `CancelledTerminal`; no separate cancel endpoint (T6) |
 | `sdk_no_retry_after_installation_suspended` … `sdk_no_retry_after_internal_error` | Flutter unit + integration | `ai_client_sdk_test.dart` (parameterized T7–T23) | One case per terminal §5.4 code (other than remint path): no auto-retry |
 | `sdk_last_request_reference_retained` | Flutter unit + integration | `ai_client_sdk_test.dart` | Last request reference retained for support (T24) |
 | `sdk_unknown_error_code_treated_as_internal_error` | Flutter unit + integration | `ai_client_sdk_test.dart` | Unknown code → `internal_error` (T25) |
-| `sdk_transport_retry_allowed` | Flutter unit + integration | `ai_client_sdk_test.dart` | Transport failure before terminal is retried with same idempotency key (T26) |
-| `sdk_does_not_interpret_model_output` | Flutter unit + integration | `ai_client_sdk_test.dart` | Events/terminal payload surfaced as received; no reshape (T27) |
+| `sdk_transport_retry_allowed` | Flutter unit + integration | `ai_client_sdk_test.dart` | Transport retry within ceiling + same key; exhaustion → `TransportRetryExhausted` (T26) |
+| `sdk_does_not_interpret_model_output` | Flutter unit + integration | `ai_client_sdk_test.dart` | Listens to rebroadcast events; terminal payload as received; no reshape (T27) |
 | `sdk_contains_no_prompt_provider_or_model_identifiers` | Flutter unit + integration | `ai_client_sdk_test.dart` (+ E1 guard on SDK paths) | SDK sources pass E1 architecture guard (T28) |
 
 Every named test places in the Flutter unit + integration layer — stop condition 3 not triggered. Coverage matches delivery plan §3.10 / spec Coverage paragraph (happy paths, every terminal taxonomy code this slice can surface, remint branches, unknown mapping, cancel, transport retry, R-12 / no client-side assembly).
@@ -176,14 +177,14 @@ Every named test places in the Flutter unit + integration layer — stop conditi
 
 Tests land first or alongside their implementation, never after (delivery plan §2.2). Within this slice:
 
-1. **Ports + fakes (Clarification Q2; FR-001 foundation)** — land `ports.dart` and `fakes.dart` so subsequent cases can drive mint/submit/SSE without a network.
-2. **Taxonomy mirror (FR-010; T25)** — land `taxonomy.dart` with the closed set and unknown→`internal_error`; prove T25 alongside.
-3. **SSE event types (FR-006, FR-007; T5, T27)** — land `sse_events.dart`; prove stream-to-terminal and no-reshape spies can assert on typed events as received.
-4. **AAT acquire/cache + remint (FR-003, FR-004; T1–T3)** — implement cache and one-shot remint in `ai_client_sdk.dart`; land T1–T3 alongside.
-5. **Submit + stable idempotency + transport retry (FR-005, FR-006, FR-001; T4, T26)** — wire submit through ports with a stable per-action idempotency key; land T4 and T26.
-6. **Stream consume, terminal surface, cancel, last reference (FR-007, FR-008, FR-009; T5, T6, T24)** — complete stream lifecycle; land T5, T6, T24.
+1. **Ports + fakes (Clarification Q2; FR-001 foundation)** — land `ports.dart` and `fakes.dart` so subsequent cases can drive mint/submit/SSE without a network (single-subscription ports OK; SDK rebroadcasts).
+2. **Taxonomy mirror (FR-010; T25)** — land `taxonomy.dart` with the closed set and `classifyTaxonomyCode`; prove T25 alongside.
+3. **SSE event types (FR-006, FR-007; T5, T27)** — land `sse_events.dart` including `FailedEvent.fromWire`, `CancelledTerminal`, `StreamDroppedTerminal`; prove stream-to-terminal / drop / listen-on-rebroadcast.
+4. **AAT acquire/cache + remint (FR-003, FR-004; T1–T3)** — implement single-flight cache and one-shot remint in `ai_client_sdk.dart`; land T1–T3 alongside.
+5. **Submit + stable idempotency + bounded transport retry (FR-005, FR-006, FR-001; T4, T26)** — wire submit with per-invoke key override, `maxTransportAttempts=3` + backoff, `TransportRetryExhausted`, `cancelSignal`; land T4 and T26.
+6. **Stream consume, terminal surface, local cancel, last reference (FR-007, FR-008, FR-009; T5, T6, T24)** — rebroadcast session lifecycle; synthesize `CancelledTerminal` on cancel; land T5, T6, T24.
 7. **No auto-retry after terminal taxonomy outcomes (FR-002, FR-011; T7–T23)** — parameterized suite, one case per code other than the remint path.
-8. **R-12 / Must-not interpret (FR-002, FR-012; T27–T28)** — prove no model-output reshape and that SDK sources pass the E1 guard.
+8. **R-12 / Must-not interpret (FR-002, FR-012; T27–T28)** — T27 listens to rebroadcast events; prove no reshape and E1 guard pass.
 9. **Documentation** — fill `quickstart.md` after implementation and verification (sections named above).
 
 ## Complexity Tracking

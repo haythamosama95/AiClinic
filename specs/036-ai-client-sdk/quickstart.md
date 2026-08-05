@@ -2,9 +2,9 @@
 
 E2 adds the Flutter **AI Client SDK** — a transport-only client under `frontend/lib/core/ai/` that
 acquires and caches an AAT, submits capability requests with a stable idempotency key, consumes the
-A6 SSE stream to a single terminal event, surfaces terminal state, cancels by closing the stream,
-retains the last request reference, retries transport failures only, and maps unknown taxonomy codes
-to `internal_error`.
+A6 SSE stream to a single terminal event (or typed drop), surfaces terminal state, cancels by
+closing the stream with a local cancelled terminal, retains the last request reference, retries
+transport failures within a bounded ceiling, and maps unknown taxonomy codes to `internal_error`.
 
 ## 1. Architecture context
 
@@ -19,14 +19,17 @@ to `internal_error`.
 
 ## 2. What was implemented
 
-- **AI Client SDK** (`ai_client_sdk.dart`) — acquire/cache AAT; one silent re-mint on
-  `unauthenticated`; stable idempotency key across transport retries; submit via injectable ports;
-  consume SSE through `accepted` to exactly one terminal event; cancel by stream close; retain last
-  request reference; never auto-retry after terminal taxonomy outcomes except the single remint path.
-- **Injectable ports** (`ports.dart`) — AAT mint, HTTPS submit, SSE connection close.
-- **Taxonomy mirror** (`taxonomy.dart`) — §5.4 closed set; unknown wire codes → `internal_error`.
-- **SSE event types** (`sse_events.dart`) — client-side A6 event kinds and terminal state as
-  received (no model-output reshape).
+- **AI Client SDK** (`ai_client_sdk.dart`) — single-flight AAT cache/remint; stable
+  idempotency key (per-invoke override); bounded transport retry → `TransportRetryExhausted`;
+  rebroadcast SSE consume-to-terminal; local `CancelledTerminal` on cancel; `StreamDroppedTerminal`
+  on silence/drop; last request reference; no auto-retry after terminal taxonomy outcomes except
+  the single remint path.
+- **Injectable ports** (`ports.dart`) — AAT mint, HTTPS submit, SSE connection close
+  (single-subscription OK).
+- **Taxonomy mirror** (`taxonomy.dart`) — §5.4 closed set; `classifyTaxonomyCode` →
+  `internal_error`.
+- **SSE event types** (`sse_events.dart`) — A6 kinds + terminals as received;
+  `FailedEvent.fromWire`; no model-output reshape.
 - **Test suite** — `ai_client_sdk_test.dart` (T1–T28) and `fakes.dart` in-memory spies.
 
 See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file-level traceability.

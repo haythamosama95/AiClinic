@@ -191,6 +191,11 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
         });
       case FailedTerminal(:final code, :final requestReference):
         _setFailed(code: code, requestReference: requestReference);
+      case StreamDroppedTerminal(:final requestReference):
+        _setFailed(
+          code: TaxonomyCode.internalError,
+          requestReference: requestReference,
+        );
       case CancelledTerminal():
         break;
       case ContextRequestedTerminal():
