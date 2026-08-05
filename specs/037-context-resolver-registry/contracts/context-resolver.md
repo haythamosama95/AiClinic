@@ -52,18 +52,24 @@ per-key payloads conforming to each key’s A5-published shape.
 Field names, types, cardinality, and units for each value are owned by A5
 (`specs/019-ai-context-keys-d1-config/contracts/context-key-schema.md`). E3 does not redefine them.
 
-### 2.3 Failure output — typed unknown-key failure
+### 2.3 Failure output — typed failures (closed set)
 
-When any requested key has no registered resolver, the Resolver MUST surface a **typed failure** and
-MUST NOT return a partial payload as success. Inventing data for an unknown key is forbidden
-(§4.1 Must not: send unrequested data).
+The Resolver MUST surface a **typed failure** and MUST NOT return a partial payload as success.
+Inventing data for an unknown key is forbidden (§4.1 Must not: send unrequested data).
+
+| `code` | When | Fields |
+| --- | --- | --- |
+| `unknown_context_key` | Any requested key has no registered resolver (checked before any resolution). | `unknownKey` set to the offending key; `failedKey` null. |
+| `resolution_failed` | A registered key’s resolver/port throws (RPC failure, network, malformed payload). | `failedKey` set to the key that failed; `unknownKey` null. |
 
 | Outcome | Meaning |
 | --- | --- |
-| Typed failure | At least one key is unregistered / unresolvable. |
+| Typed failure | One of the closed codes above. |
 | Partial success | **Forbidden.** |
+| Raw exception escape | **Forbidden** for registered-key resolution errors — normalize to `resolution_failed`. |
 
-This slice emits **no** §5.4 taxonomy codes for Resolver failures (spec Edge Cases).
+This slice emits **no** §5.4 taxonomy codes for Resolver failures (spec Edge Cases). Adding
+`resolution_failed` is a **contract extension** of the unknown-key rule, not a rewrite of it.
 
 ---
 
@@ -73,6 +79,14 @@ Context key → resolver function bindings live in **one closed static map** in 
 module (`context_registration.dart`). E3 registers the first published key
 `visit.chief_complaint@v1`. Later slices may add entries to the map; they must not change the
 key-list API.
+
+### 3.1 Per-visit ContextProviderPort construction
+
+`ContextProviderPort.fetchVisitChiefComplaint()` takes **no arguments**. The clinic visit id is
+**constructor-injected** on the production port (`SupabaseContextProviderPort(client:, visitId:)`).
+Hosts build one port instance per screen/visit and pass it into `ContextResolver` /
+`AiFeatureHostDependencies`. This keeps the frozen key-list API argument-free while still
+supplying `p_visit_id` to `public.get_visit_chief_complaint`.
 
 ---
 
@@ -102,6 +116,13 @@ key-list API.
 ## 6. Client contract suite binding
 
 The Flutter client contract suite (§13.5) consumes this API: for every active capability manifest
-fetched in C1 discovery shape (`specs/025-capability-resolver-discovery/contracts/capability-registry.md`),
-every declared context key MUST be present in the registration map. A manifest requiring an
-unregistered key MUST fail the suite.
+in C1 discovery shape (`specs/025-capability-resolver-discovery/contracts/capability-registry.md`),
+every declared context key MUST be present in the registration map and resolve to a success whose
+per-key value is a `Map` conforming to the key’s A5 shape (no undeclared fields). A manifest
+requiring an unregistered key MUST fail the suite.
+
+**Hermetic narrowing (documented):** the suite loads fixtures **derived from**
+`ai-platform/manifests/published/*.json` (checked in under
+`frontend/test/fixtures/ai/published_manifests_discovery.json`) and asserts those fixtures agree
+with the published files (drift gate). It does **not** perform a live Worker discovery fetch in CI,
+while still satisfying the drift-catching purpose of §13.5.

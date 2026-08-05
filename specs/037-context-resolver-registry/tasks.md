@@ -35,7 +35,7 @@
 - [X] T003 [US1] Add named test `resolver_api_exposes_no_capability_id` (E3-T03) to `frontend/test/unit/core/ai/context_resolver_test.dart`: the Resolver public API accepts no capability-id parameter and performs no capability-id branching — only a key list in, payload or typed failure out (§4.1; delivery plan §3.6 Done when; §3.11.5 E3). **Satisfies**: FR-003 / SC-002. **Proves**: E3-T03.
 - [X] T004 [US1] Add named test `resolver_cache_screen_scoped_discarded_on_dispose` (E3-T04) to `frontend/test/unit/core/ai/context_resolver_test.dart`: cache is instance/screen-scoped; disposing the Resolver instance discards cached results so they do not outlive the screen (Clarification Q1; §4.1; §3.11.5 E3). **Satisfies**: FR-005 / SC-003. **Proves**: E3-T04.
 - [X] T005 [P] [US1] Add named test `context_rpc_returns_declared_shape` (E3-T05) in `backend/tests/context_provider_rpc.sql`: create the SQL/RLS suite file; assert the first context provider RPC returns the `visit.chief_complaint@v1` declared shape (`visit_id`, `complaint`, optional `recorded_at`) for an authenticated caller with in-scope access (§4.2; §5.2; §3.11.5 E3). Fails red until the migration RPC exists. **Satisfies**: FR-008, FR-009 / SC-004. **Proves**: E3-T05.
-- [X] T006 [US1] Add named test `context_rpc_rls_denies_out_of_scope` (E3-T06) to `backend/tests/context_provider_rpc.sql`: an authenticated caller without access to out-of-scope rows is RLS-denied — resolution stays under the caller's own permissions; no privileged bypass (§4.2; §5.2 Authorization; §3.11.5 E3). **Satisfies**: FR-008 / SC-004. **Proves**: E3-T06.
+- [X] T006 [US1] Add named test `context_rpc_scope_denies_out_of_scope` (E3-T06) to `backend/tests/context_provider_rpc.sql`: an authenticated caller without access to out-of-scope rows is denied by branch-scope / clinical-access checks — resolution stays under the caller's own permissions; no privileged bypass (§4.2; §5.2 Authorization; §3.11.5 E3). **Satisfies**: FR-008 / SC-004. **Proves**: E3-T06.
 - [X] T007 [US1] Add named test `context_rpc_no_ai_specific_parameter` (E3-T07) to `backend/tests/context_provider_rpc.sql`: RPC signature/body has no AI-specific parameter and encodes no prompts, providers, quotas, or AI request state (§4.2 Boundary note; §3.11.5 E3). **Satisfies**: FR-010 / SC-004. **Proves**: E3-T07.
 - [X] T008 [US1] Add named test `context_rpc_shape_matches_a5_published_key` (E3-T08) to `backend/tests/context_provider_rpc.sql`: returned shape matches A5 `VISIT_CHIEF_COMPLAINT_V1_SHAPE` (Consumes A5; §5.2; §3.11.5 E3). **Satisfies**: FR-009 / SC-004. **Proves**: E3-T08.
 - [X] T009 [P] [US1] Add named test `contract_every_active_manifest_key_resolvable` (E3-T09) in `frontend/test/unit/core/ai/context_contract_test.dart`: create the client contract suite; feed C1-shaped active manifests through the injectable manifest source from T001's fakes; assert every declared context key of every active capability is resolvable by the Context Resolver (§13.5; §5.2 Discovery; §3.11.5 E3). Depends on T001 fakes substrate. Fails red until registration + Resolver cover declared keys. **Satisfies**: FR-011 / SC-005. **Proves**: E3-T09.
@@ -105,3 +105,14 @@
 - Consumed modules are imported/bound, not modified (delivery plan §2.3 — extend, never rewrite). No `ai-platform/` file is touched.
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).
 - Preserve R-12 / §6.4: no prompt text, provider name, or model identifier in the Flutter client; no privileged RLS bypass; no AI knowledge on the ordinary context RPC.
+
+## Review resolution addenda (E3-R3–E3-R7)
+
+Additive notes for review stages (do not rewrite completed task checkboxes):
+
+- **E3-R3**: Contract suite uses derived published-manifest fixtures + Dart drift gate; shape checks on resolved Maps (`visit.chief_complaint@v1` A5 fields, no undeclared keys). Spec/plan flag hermetic narrowing of “fetched manifests.”
+- **E3-R4**: Production `SupabaseContextProviderPort` with constructor-injected `visitId`; contract §3.1 documents per-visit port construction.
+- **E3-R5**: `ContextResolveFailure` codes `unknown_context_key` | `resolution_failed`; port throws → typed failure (test: `resolver_port_throw_resolution_failed`).
+- **E3-R6**: T04 asserts post-`dispose` `StateError`, idempotent dispose, and independent instance caches; host `_AiFeatureHostPageState.dispose` calls `_resolver?.dispose()`.
+- **E3-R7**: T03 strengthened with `ResolverSpy` key-list invariance (no capability id threaded).
+- **E3-R8**: CI already triggers on `ai/**` push and `ai/master` PR — no further trigger widening.

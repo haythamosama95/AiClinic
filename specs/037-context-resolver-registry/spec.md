@@ -40,9 +40,12 @@ Contracts this slice establishes for the first time:
   AI-specific knowledge and no AI-specific parameter (§4.2 Context provider RPCs;
   §5.2 Authorization; delivery plan §3.6 Done when; §3.11.5 E3).
 - The **client contract test** as an architectural CI/suite component: the Flutter test
-  suite fetches live manifests and fails if the Resolver cannot satisfy every declared
-  key of every active capability (§13.5 Client contract tests; delivery plan §3.6 Done
-  when; §3.11.5 E3).
+  suite fails if the Resolver cannot satisfy every declared key of every active
+  capability (§13.5 Client contract tests; delivery plan §3.6 Done when;
+  §3.11.5 E3). **Hermetic narrowing (flagged):** CI loads fixtures **derived from**
+  platform published manifests (`ai-platform/manifests/published/*.json`) with a
+  drift gate asserting fixture ↔ published agreement — not a live Worker discovery
+  fetch — while still catching key drift before release.
 
 Later slices may extend these and may not rewrite them (delivery plan §2.3).
 
@@ -58,8 +61,9 @@ definition:
 - **C1 — Capability registry, resolver stage, and discovery endpoint** (§4.3.4, §5.1,
   §5.5 discovery, §5.2 Discovery): discovery returns the active manifests for an
   installation and plan, cacheable and revalidated by version or etag. E3's client
-  contract test fetches those live manifests and asserts Resolver coverage of every
-  declared key; it does not redefine discovery, capability resolution, or manifest
+  contract test asserts Resolver coverage of every declared key against manifests
+  **derived from** the platform published set (hermetic drift gate; see Freezes and
+  FR-011); it does not redefine discovery, capability resolution, or manifest
   schema.
 - **A5 via §5.2 / C1 — Context key vocabulary and first key shape** (§5.2; delivery plan
   §3.2 A5 Done when; §3.11.5 E3): the `domain.concept@vN` format, platform-published
@@ -70,7 +74,9 @@ definition:
 ### Open decisions relied on
 
 None. E3 does not depend on any §15 decision. The Context Resolver registry, ordinary
-context provider RPC under caller RLS, and client contract test against fetched manifests
+context provider RPC under caller RLS, and client contract test against published
+manifests (hermetic fixtures derived from the platform published set with a drift
+gate — flagged narrowing of “fetched manifests”)
 are fully specified by §4.1, §5.2, §4.2, §13.5, and delivery plan §3.6 / §3.11.5.
 
 ## Clarifications
@@ -89,8 +95,9 @@ are fully specified by §4.1, §5.2, §4.2, §13.5, and delivery plan §3.6 / §
 As the Flutter AI client and the clinic backend, I want a generic context-key → resolver
 registry that assembles a payload from a key list without ever seeing a capability id, an
 ordinary first-key read RPC that returns the declared shape under the caller's own RLS
-with no AI knowledge, and a Flutter contract suite that fetches live manifests and fails
-when any active capability declares a key the Resolver cannot satisfy — so that a new
+with no AI knowledge, and a Flutter contract suite that fails when any active
+capability declares a key the Resolver cannot satisfy (using fixtures derived from
+platform published manifests with a drift gate) — so that a new
 capability needing an existing key ships with zero client changes (§4.1) and the Context
 Contract stays a verified interface (§13.5).
 
@@ -104,8 +111,9 @@ know).
 **Independent Test**: A generic context key → resolver registry assembles a payload from
 a key list, never receives or branches on a capability id, and caches only within a
 screen; an ordinary read RPC returns the first key's declared shape under the caller's
-own RLS with no AI-specific knowledge; the Flutter test suite fetches live manifests and
-fails if the Resolver cannot satisfy every declared key of every active capability
+own RLS with no AI-specific knowledge; the Flutter test suite fails if the Resolver
+cannot satisfy every declared key of every active capability (hermetic published-manifest
+fixtures + drift gate)
 (delivery plan §3.6 Done when).
 
 **Acceptance Scenarios**:
@@ -131,18 +139,23 @@ fails if the Resolver cannot satisfy every declared key of every active capabili
    published under A5 / §5.2 (§4.2 Context provider RPCs; §5.2 Shape; delivery plan
    §3.11.5 E3 RPC cases 1 and 4).
 6. **Given** an authenticated caller without access to out-of-scope rows, **When** the
-   first context provider RPC would otherwise return those rows, **Then** RLS denies
-   them — resolution stays under the caller's own permissions (§4.2; §5.2 Authorization;
-   delivery plan §3.11.5 E3 RPC case 2).
+   first context provider RPC would otherwise return those rows, **Then** branch-scope /
+   clinical-access checks (imperative SECURITY DEFINER predicates) deny them — resolution
+   stays under the caller's own permissions (§4.2; §5.2 Authorization; delivery plan
+   §3.11.5 E3 RPC case 2).
 7. **Given** the first context provider RPC's signature and body, **When** they are
    inspected for AI-specific parameters or AI platform knowledge (prompts, providers,
    quotas, AI request state), **Then** none are present — it is an ordinary read RPC
    (§4.2 Context provider RPCs and Boundary note; delivery plan §3.6 Done when;
    §3.11.5 E3 RPC case 3).
-8. **Given** live active capability manifests fetched via discovery, **When** the Flutter
+8. **Given** active capability manifests derived from the platform published set
+   (hermetic fixture + drift gate against `ai-platform/manifests/published/`), **When** the Flutter
    client contract suite runs, **Then** every declared context key of every active
-   capability is resolvable by the Context Resolver (§13.5 Client contract tests;
-   §5.2 Discovery; delivery plan §3.6 Done when; §3.11.5 E3 Contract case 1).
+   capability is resolvable by the Context Resolver — and each resolved value is a Map
+   conforming to the key’s A5 field types with no undeclared keys (§13.5 Client contract tests;
+   §5.2 Discovery; delivery plan §3.6 Done when; §3.11.5 E3 Contract case 1). **Deviation flag:** live Worker discovery fetch is
+   narrowed to derived fixtures for CI hermeticity while preserving the drift-catching
+   purpose of §13.5.
 9. **Given** a manifest (fixture or live) that requires a context key the Resolver cannot
    satisfy, **When** the Flutter client contract suite runs, **Then** the suite fails
    (§13.5; delivery plan §3.11.5 E3 Contract case 2).
@@ -159,14 +172,14 @@ RLS + contract*). Tests join CI permanently (delivery plan §3.10). Named tests:
 | E3-T03 | Flutter unit | `resolver_api_exposes_no_capability_id` | The Resolver API exposes no capability id and does not branch on one (§4.1; §3.11.5 E3) |
 | E3-T04 | Flutter unit | `resolver_cache_screen_scoped_discarded_on_dispose` | Cache is screen-scoped and discarded on dispose (§4.1; §3.11.5 E3) |
 | E3-T05 | SQL / RLS | `context_rpc_returns_declared_shape` | RPC returns the first key's declared shape (§4.2; §5.2; §3.11.5 E3) |
-| E3-T06 | SQL / RLS | `context_rpc_rls_denies_out_of_scope` | RLS denies out-of-scope rows (§4.2; §5.2 Authorization; §3.11.5 E3) |
+| E3-T06 | SQL / RLS | `context_rpc_scope_denies_out_of_scope` | Branch-scope / clinical-access checks deny out-of-scope rows (§4.2; §5.2 Authorization; §3.11.5 E3) |
 | E3-T07 | SQL / RLS | `context_rpc_no_ai_specific_parameter` | RPC takes no AI-specific parameter (§4.2; §3.11.5 E3) |
 | E3-T08 | SQL / RLS | `context_rpc_shape_matches_a5_published_key` | Returned shape matches the key shape published in A5 (§5.2; §3.11.5 E3) |
 | E3-T09 | Contract | `contract_every_active_manifest_key_resolvable` | Every declared key of every active manifest is resolvable (§13.5; §3.11.5 E3) |
 | E3-T10 | Contract | `contract_manifest_unknown_key_fails_suite` | A manifest requiring an unknown key fails the suite (§13.5; §3.11.5 E3) |
 
 Coverage rule (delivery plan §3.10): happy path of every requirement; every error / failure
-branch this slice can produce (typed failure for unknown key; RLS denial); every inherited
+branch this slice can produce (typed failure for unknown key; branch-scope / clinical-access denial); every inherited
 prohibition in Out of Scope; every named boundary (screen-scoped cache; no capability id;
 ordinary RPC with no AI knowledge).
 
@@ -179,9 +192,10 @@ ordinary RPC with no AI knowledge).
   capability-id input and does not branch on capability id (§4.1; Done when).
 - **Cache after screen dispose**: discarded; no cross-screen or process-lifetime cache of
   resolved context from this component (§4.1; §3.11.5 E3).
-- **RLS out-of-scope rows on the first context RPC**: denied under the caller's own
-  permissions; the RPC does not bypass RLS via a privileged path (§4.2 Must not / Notes;
-  §5.2 Authorization; §4.1 Must not: bypass RLS by using a privileged path).
+- **Out-of-scope rows on the first context RPC**: denied by branch-scope / clinical-access
+  checks under the caller's own permissions; the RPC does not bypass those predicates via
+  a privileged path (§4.2 Must not / Notes; §5.2 Authorization; §4.1 Must not: bypass RLS
+  by using a privileged path).
 - **AI-specific parameter or AI knowledge on the context RPC**: absent; an RPC returning
   the first key's domain payload is not "an AI RPC" (§4.2 Context provider RPCs; Boundary
   note).
@@ -223,9 +237,12 @@ ordinary RPC with no AI knowledge).
 - **FR-010**: The first context provider RPC MUST take no AI-specific parameter and MUST
   NOT encode prompts, providers, quotas, or AI request state (§4.2 Boundary note;
   §3.11.5 E3).
-- **FR-011**: The Flutter test suite MUST include a client contract test that fetches live
-  manifests and fails if the Context Resolver cannot satisfy every declared key of every
-  active capability (§13.5 Client contract tests; delivery plan §3.6 Done when).
+- **FR-011**: The Flutter test suite MUST include a client contract test that fails if the
+  Context Resolver cannot satisfy every declared key of every active capability. **Hermetic
+  narrowing (flagged):** the suite uses fixtures **generated/derived from**
+  `ai-platform/manifests/published/*.json` plus a drift gate asserting fixture ↔ published
+  agreement — not a live Worker discovery fetch — while still satisfying the drift-catching
+  purpose of §13.5 Client contract tests (delivery plan §3.6 Done when).
 - **FR-012**: A manifest requiring a context key the Resolver cannot produce MUST fail
   the client contract suite (§13.5; delivery plan §3.11.5 E3).
 - **FR-013**: The Context Resolver, first context RPC, and client contract test MUST NOT
@@ -256,8 +273,9 @@ under §5.2 (frozen by A5) and registers client-side resolvers against those key
   privileged path (§4.1 Must not; §4.2; §5.2 Authorization; constitution III, IV). The
   clinic database gains no prompts, providers, quotas, or AI request state from this slice
   (§4.2 Boundary note).
-- **Failure Handling**: An unknown key yields a typed Resolver failure; out-of-scope rows
-  are RLS-denied; a manifest/key coverage gap fails the Flutter contract suite before
+- **Failure Handling**: An unknown key yields a typed Resolver failure (`unknown_context_key`);
+  a registered-key port/RPC throw yields typed `resolution_failed` (no raw exception escape);
+  out-of-scope rows are RLS-denied; a manifest/key coverage gap fails the Flutter contract suite before
   release (§3.11.5 E3; §13.5). This slice does not define degraded AI UI (E4) or platform
   `context_required` self-healing (J2).
 
@@ -307,9 +325,10 @@ Prohibitions copied from delivery plan §6.4:
 - **SC-004**: The first context provider RPC returns the A5-published first key shape
   under caller RLS, takes no AI-specific parameter, and has automated SQL/RLS proof
   including out-of-scope denial (Done when; E3-T05–E3-T08).
-- **SC-005**: The Flutter client contract suite fetches live manifests and fails when any
-  active capability declares a key the Resolver cannot satisfy, with automated proof
-  including an unknown-key failure case (Done when; E3-T09–E3-T10; §13.5).
+- **SC-005**: The Flutter client contract suite loads manifests derived from the platform
+  published set (with a drift gate) and fails when any active capability declares a key the
+  Resolver cannot satisfy, with automated proof including an unknown-key failure case and
+  A5 shape checks on resolved payloads (Done when; E3-T09–E3-T10; §13.5).
 
 ## Assumptions
 
@@ -318,8 +337,9 @@ Prohibitions copied from delivery plan §6.4:
 - A5 has already published the first context key's shape under §5.2; E3 returns and
   validates against that shape without renaming or reshaping it (delivery plan §3.2 A5;
   §7 dependency on clinic schema for the first key).
-- Active capability manifests returned by C1 discovery are the live manifests the client
-  contract test fetches (§5.2 Discovery; §13.5).
+- Active capability manifests in `ai-platform/manifests/published/` are the published set the
+  client contract suite derives hermetic fixtures from (§5.2 Discovery; §13.5; FR-011
+  hermetic narrowing).
 - Clinic staff operate the Flutter desktop client under existing branch-scoped auth; the
   context RPC reuses that session and RLS model (§4.2; §5.2 Authorization).
 - No §15 open-decision default is required to specify this slice.
