@@ -37,11 +37,12 @@ dependency; no schema-validation or HTTP-framework library (R-20).
 `control/routing-policy/{policy_id}/{version}.json` per §4.3.7). No new D1 **entity**. Cohort
 activation for capability builds / prompt-backed versions uses existing installation-scoped
 `capability_grant` rows. Routing-policy publish writes a new `routing_policy` row + R2 object;
-canary / promote / roll back select which version is active per installation. One **forward-only
-additive migration** may add a nullable `canary_installation_ids` TEXT column on `routing_policy`
-(JSON array of installation ids for an in-canary version; `NULL` = not canary-scoped / promoted
-global active) so cold-isolate config reads reconstruct the split without inventing a cohort table —
-same “extend existing entity, no new entity” pattern as J1’s overlay columns. Prompts, manifests,
+canary / promote / roll back select which version is active per installation. Forward-only
+additive migrations extend `routing_policy` with nullable `canary_installation_ids` and a
+`status` column (`published` | `canary` | `active` | `superseded`) so publish is non-serving,
+canary is cohort-scoped, promote is global active, and rollback restores the prior active version —
+cold-isolate config reads reconstruct the split via production `createD1ConfigReader` without a
+cohort table (same “extend existing entity, no new entity” pattern as J1’s overlay columns). Prompts, manifests,
 and schemas remain deployed Worker artifacts (FR-008; §13.4; no runtime prompt activation pointer —
 §9.5 / §9.14 / R-20). No Quota DO or Supabase write.
 
@@ -73,8 +74,8 @@ serving-version columns are those C3/D1/D2 already write (`prompt_artifact_hash`
   payload); not a new cohort entity (spec Key Entities).
 - Prompt / capability-build rollback is **by deploy** of the previous build — no runtime prompt
   activation pointer (FR-003; §12.4; §9.5 deferred; R-20).
-- Routing-policy publish / canary / roll back are control-plane mutations with `control_audit`
-  (FR-004, FR-005; §4.5).
+- Routing-policy publish / canary / promote / roll back are control-plane mutations with
+  `control_audit` (FR-004, FR-005; §4.5). Publish does not activate; promote ends the canary split.
 - F1 CI golden gate must pass before a regressing prompt is staged (FR-009); J3 does not redefine
   goldens, scores, or live smoke (F1 Freezes).
 - Chain selection rules, fake adapter, prompt composition, and B2 enroll/suspend/resume/rotate/
@@ -267,10 +268,14 @@ records versions; Quota DO / Flutter / providers unchanged).
 | File | Created / Modified | Traces to |
 | --- | --- | --- |
 | `ai-platform/migrations/20260803100000_routing_policy_canary.sql` | Created (if additive column required) | FR-004, FR-008 — `ALTER TABLE routing_policy ADD` nullable `canary_installation_ids` for cohort-scoped activation of a policy version. |
+| `ai-platform/migrations/20260805190000_routing_policy_status.sql` | Created (review resolution) | FR-004, FR-002 — additive `status` (`published`/`canary`/`active`/`superseded`) so publish is non-serving; unique live installation/plan grant indexes. |
 | `ai-platform/schema.snap.sql` | Modified | FR-004, FR-008 — snapshot matches post-migration `routing_policy` shape when the additive column lands. |
-| `ai-platform/src/control/index.ts` | Modified | FR-001, FR-002, FR-003, FR-004, FR-005, FR-007, FR-010, FR-011 — handlers for routing-policy publish / canary / roll back and cohort activate / promote; installation-scoped `capability_grant` writes; R2 policy object write on publish; `control_audit` actions; `dispatchControlRequest` / `isControlRoute` extensions. |
+| `ai-platform/src/control/routing-policy.ts` | Created / extended | FR-004, FR-005, FR-011 — publish / canary / promote / rollback status machine with audit pointers. |
+| `ai-platform/src/control/cohort.ts` | Created / extended | FR-001, FR-002, FR-003, FR-005, FR-007, FR-010 — activate / promote with plan+installation grant completeness. |
+| `ai-platform/src/config-cache/index.ts` | Modified | FR-004, FR-006 — production `createD1ConfigReader` reconstructs canary split and grants. |
+| `ai-platform/src/control/index.ts` | Modified | FR-001, FR-002, FR-003, FR-004, FR-005, FR-007, FR-010, FR-011 — handlers for routing-policy publish / canary / promote / roll back and cohort activate / promote; installation-scoped `capability_grant` writes; R2 policy object write on publish; `control_audit` actions; `dispatchControlRequest` / `isControlRoute` extensions. |
 | `ai-platform/src/router/index.ts` | Modified | FR-001, FR-004, FR-006, FR-011 — cohort-aware resolution of which `active_routing_policy` document applies to `RouterContext.installationId`; `selectCandidateChain` / filtering / selection-reason shape unchanged. |
-| `ai-platform/src/capability/index.ts` | Modified | FR-001, FR-002, FR-006, FR-007, FR-010 — cohort-aware granted build for the installation (grants under split); resolve/discover continue to return the granted active build; no new taxonomy codes. |
+| `ai-platform/src/capability/index.ts` | Modified | FR-001, FR-002, FR-006, FR-007, FR-010 — cohort-aware granted build for the installation (grants under split + plan fallback); canary-aware kill-switch provider resolve; no new taxonomy codes. |
 | `ai-platform/src/worker.ts` | Modified | FR-004, FR-005 — dispatch new `/control/...` paths to control handlers (same `/control` boundary B2 froze). |
 | `ai-platform/test/cohort-activate-promote.test.ts` | Created | SC-001, SC-002, SC-003, SC-005 — named tests for prompt/capability-build cohort activate / promote / rollback-by-deploy and journal serving version (Clarification Q3). |
 | `ai-platform/test/routing-policy-canary.test.ts` | Created | SC-001, SC-002, SC-003, SC-004 — named tests for routing-policy publish / canary / roll back and `control_audit` identity (Clarification Q3). |

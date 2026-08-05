@@ -11,6 +11,7 @@ export { handleDeprecate, handleRetire } from "./capability-lifecycle";
 export { handleCohortActivate, handleCohortPromote } from "./cohort";
 export {
   handleRoutingPolicyCanary,
+  handleRoutingPolicyPromote,
   handleRoutingPolicyPublish,
   handleRoutingPolicyRollback,
 } from "./routing-policy";
@@ -43,6 +44,7 @@ import {
 } from "./lifecycle";
 import {
   handleRoutingPolicyCanary,
+  handleRoutingPolicyPromote,
   handleRoutingPolicyPublish,
   handleRoutingPolicyRollback,
   parseRoutingPolicyRoute,
@@ -69,7 +71,7 @@ const TOKEN_CONTRACT_PATTERN =
 const SUPPORT_LOOKUP_PATTERN = /^\/control\/support\/lookup$/;
 
 const ROUTING_POLICY_PATTERN =
-  /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(publish|canary|rollback)$/;
+  /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(publish|canary|promote|rollback)$/;
 
 const COHORT_CAPABILITY_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(activate|promote)$/;
@@ -128,6 +130,9 @@ export async function dispatchControlRequest(
     }
     if (route.action === "canary") {
       return handleRoutingPolicyCanary(request, bindings, operatorAuth);
+    }
+    if (route.action === "promote") {
+      return handleRoutingPolicyPromote(request, bindings, operatorAuth);
     }
     return handleRoutingPolicyRollback(request, bindings, operatorAuth);
   }

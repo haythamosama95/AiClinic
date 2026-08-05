@@ -34,18 +34,22 @@ routing policy and audit), and **§13.4** (promotion / configuration).
 ## 2. What was implemented
 
 - **Control-plane cohort and routing mutations** — `POST /control/capabilities/.../activate` and
-  `/promote`; `POST /control/routing-policies/.../publish`, `/canary`, and `/rollback`; each writes
-  `control_audit` with operator identity (`cohort_activate`, `cohort_promote`, `routing_policy_publish`,
-  `routing_policy_canary`, `routing_policy_rollback`).
-- **Installation-scoped capability grants** — cohort activate updates `capability_grant` rows per
-  installation; promote expands all installation grants to the activated version.
+  `/promote`; `POST /control/routing-policies/.../publish`, `/canary`, `/promote`, and `/rollback`;
+  each writes `control_audit` with operator identity (`cohort_activate`, `cohort_promote`,
+  `routing_policy_publish`, `routing_policy_canary`, `routing_policy_promote`,
+  `routing_policy_rollback`).
+- **Installation- and plan-scoped capability grants** — cohort activate updates installation
+  `capability_grant` rows; promote raises installation + plan grants and materializes entitled
+  installs so the split ends (FR-002).
 - **Cohort-aware capability reads** — `discover` and `getGrantedCapabilityVersion` honour
-  installation-scoped grant versions under a split.
-- **Cohort-aware routing reads** — `preloadRoutingPolicyForInstallation` + installation-keyed
-  `active_routing_policy` cache consult; `selectCandidateChain` unchanged after policy resolution.
-- **Additive migration** — nullable `canary_installation_ids` on `routing_policy`.
+  installation grants with plan-grant fallback under a split.
+- **Cohort-aware routing reads** — production `createD1ConfigReader` reconstructs the canary
+  split; `preloadRoutingPolicyForInstallation` + installation-keyed `active_routing_policy` cache
+  consult; `selectCandidateChain` unchanged after policy resolution.
+- **Additive migrations** — `canary_installation_ids` + `status` on `routing_policy` (publish is
+  non-serving until canary/promote).
 - **Rollback-by-deploy** — prompt / capability rollback re-activates the previous build via grant
-  writes (no runtime prompt activation pointer; R-20).
+  writes (no runtime prompt activation pointer; R-20; structural schema/migration assert in tests).
 - **Frozen contract** — [`contracts/staged-rollout-canary.md`](./contracts/staged-rollout-canary.md).
 
 See [`spec.md`](./spec.md) for full requirements and [`plan.md`](./plan.md) for file-level
@@ -56,14 +60,18 @@ traceability.
 | Path | Role |
 | --- | --- |
 | `ai-platform/migrations/20260803100000_routing_policy_canary.sql` | Additive `canary_installation_ids` column |
-| `ai-platform/src/control/index.ts` | Cohort activate/promote and routing-policy publish/canary/rollback handlers |
+| `ai-platform/migrations/20260805190000_routing_policy_status.sql` | Additive `status` + live grant unique indexes |
+| `ai-platform/src/control/routing-policy.ts` | Publish / canary / promote / rollback status machine |
+| `ai-platform/src/control/cohort.ts` | Cohort activate / promote (plan + installation grants) |
+| `ai-platform/src/control/index.ts` | Dispatch for cohort and routing-policy routes |
+| `ai-platform/src/config-cache/index.ts` | Production `createD1ConfigReader` canary-split + grants reads |
 | `ai-platform/src/router/index.ts` | Installation-aware active policy preload and cache consult |
-| `ai-platform/src/capability/index.ts` | Grant-version filtering in discover; `getGrantedCapabilityVersion` |
+| `ai-platform/src/capability/index.ts` | Plan-grant fallback; canary-aware kill-switch provider resolve |
 | `ai-platform/src/worker.ts` | `/control` boundary dispatches J3 routes via `isControlRoute` |
-| `ai-platform/test/cohort-activate-promote.test.ts` | Named tests `T-J3-01` … `T-J3-03`, `T-J3-05` |
-| `ai-platform/test/routing-policy-canary.test.ts` | Named test `T-J3-04` plus routing canary split cases |
+| `ai-platform/test/cohort-activate-promote.test.ts` | Named tests `T-J3-01` … `T-J3-03`, `T-J3-05` + plan-promote cases |
+| `ai-platform/test/routing-policy-canary.test.ts` | Named test `T-J3-04` plus publish/promote/rollback serving cases |
 | `ai-platform/test/helpers/control-audit-assert.ts` | Shared `control_audit` operator-identity helper |
-| `specs/050-staged-rollout-canary/contracts/staged-rollout-canary.md` | Frozen routes, audit actions, rollback rule |
+| `specs/050-staged-rollout-canary/contracts/staged-rollout-canary.md` | Frozen routes, audit actions, status semantics |
 
 ## 4. Prerequisites
 

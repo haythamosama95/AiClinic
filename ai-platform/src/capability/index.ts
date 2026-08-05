@@ -280,6 +280,7 @@ async function resolveProviderId(
   manifest: Manifest,
   cache: ConfigCache,
   reader: D1Reader,
+  installationId: string,
 ): Promise<string | undefined> {
   const policyRef = manifest.Routing.routingPolicyRef;
   if (typeof policyRef !== "string") {
@@ -287,12 +288,26 @@ async function resolveProviderId(
   }
 
   try {
-    const policy = await loadConfig(
-      cache,
-      reader,
-      "active_routing_policy",
-      policyRef,
-    );
+    let policy: Record<string, unknown>;
+    try {
+      policy = await loadConfig(
+        cache,
+        reader,
+        "active_routing_policy",
+        `${policyRef}/${installationId}`,
+      );
+    } catch (error) {
+      if (error instanceof ConfigCacheMissError) {
+        policy = await loadConfig(
+          cache,
+          reader,
+          "active_routing_policy",
+          policyRef,
+        );
+      } else {
+        throw error;
+      }
+    }
     const providerId = policy.provider_id ?? policy.providerId;
     return typeof providerId === "string" ? providerId : undefined;
   } catch (error) {
@@ -317,7 +332,12 @@ async function isCapabilityDisabled(
     `installation:${installationId}`,
   ];
 
-  const providerId = await resolveProviderId(manifest, cache, reader);
+  const providerId = await resolveProviderId(
+    manifest,
+    cache,
+    reader,
+    installationId,
+  );
   if (providerId !== undefined) {
     killSwitchKeys.push(`provider:${providerId}`);
   }
@@ -565,7 +585,13 @@ export async function discover(
             return "ok";
           } catch (error) {
             if (error instanceof ConfigCacheMissError) {
-              return "skip";
+              const planGrant = await loadMatchingGrant(
+                cache,
+                reader,
+                `plan:${plan}/${capabilityId}`,
+                version,
+              );
+              return planGrant === "granted" ? "ok" : "skip";
             }
             throw error;
           }
@@ -616,6 +642,35 @@ export async function getGrantedCapabilityVersion(
     }
     return typeof grant.capability_version === "string"
       ? grant.capability_version
+      : null;
+  } catch (error) {
+    if (!(error instanceof ConfigCacheMissError)) {
+      throw error;
+    }
+  }
+
+  try {
+    const entitlement = await loadConfig(
+      cache,
+      reader,
+      "entitlements",
+      installationId,
+    );
+    const plan = entitlement.plan;
+    if (typeof plan !== "string") {
+      return null;
+    }
+    const planGrant = await loadConfig(
+      cache,
+      reader,
+      "grants",
+      `plan:${plan}/${capabilityId}`,
+    );
+    if (planGrant.revoked_at != null) {
+      return null;
+    }
+    return typeof planGrant.capability_version === "string"
+      ? planGrant.capability_version
       : null;
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {

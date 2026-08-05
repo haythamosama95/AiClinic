@@ -104,12 +104,47 @@ export class ConfigCache {
   }
 }
 
+function parseCanaryIds(raw: unknown): string[] {
+  if (typeof raw !== "string" || raw.length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || !parsed.every((e) => typeof e === "string")) {
+      return [];
+    }
+    return parsed as string[];
+  } catch {
+    return [];
+  }
+}
+
+async function loadRoutingPolicyDocument(
+  row: D1Row,
+  r2: R2Bucket | undefined,
+): Promise<D1Row | "miss"> {
+  if (!r2) {
+    return row;
+  }
+  const pointer = row.content_pointer;
+  if (typeof pointer !== "string") {
+    return "miss";
+  }
+  const object = await r2.get(pointer);
+  if (!object) {
+    return "miss";
+  }
+  const document = JSON.parse(await object.text()) as unknown;
+  return { ...row, document };
+}
+
 /**
  * Production D1Reader for enrolled-key verification and related config loads.
- * Covers the kinds EnrolledKeyVerifier consults: installations, keys, token_contracts.
+ * Covers installations, keys, entitlements, grants, kill_switches,
+ * active_routing_policy (with optional R2 document load), and token_contracts.
  * Reader keys are `${kind}:${key}` (see loadConfig).
  */
-export function createD1ConfigReader(db: D1Database): D1Reader {
+export function createD1ConfigReader(db: D1Database, r2?: R2Bucket): D1Reader {
   return {
     async read(prefixedKey: string): Promise<D1Row | "miss"> {
       const separator = prefixedKey.indexOf(":");
@@ -141,6 +176,108 @@ export function createD1ConfigReader(db: D1Database): D1Reader {
             .bind(key)
             .first<D1Row>();
           return row ?? "miss";
+        }
+        case "entitlements": {
+          const row = await db
+            .prepare("SELECT * FROM entitlement WHERE installation_id = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "kill_switches": {
+          // No durable kill_switch table in A5 schema; miss ⇒ inactive at callers.
+          return "miss";
+        }
+        case "grants": {
+          if (key.startsWith("global/")) {
+            const parts = key.slice("global/".length).split("/");
+            const capabilityId = parts[0];
+            const version = parts[1];
+            if (!capabilityId || !version) {
+              return "miss";
+            }
+            const row = await db
+              .prepare(
+                `SELECT * FROM capability_grant
+                 WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
+                 ORDER BY changed_at DESC LIMIT 1`,
+              )
+              .bind(capabilityId, version)
+              .first<D1Row>();
+            return row ?? "miss";
+          }
+
+          if (key.startsWith("plan:")) {
+            const slash = key.lastIndexOf("/");
+            if (slash === -1) {
+              return "miss";
+            }
+            const scope = key.slice(0, slash);
+            const capabilityId = key.slice(slash + 1);
+            const row = await db
+              .prepare(
+                `SELECT * FROM capability_grant
+                 WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
+                 ORDER BY changed_at DESC LIMIT 1`,
+              )
+              .bind(scope, capabilityId)
+              .first<D1Row>();
+            return row ?? "miss";
+          }
+
+          const [installationId, capabilityId] = key.split("/", 2);
+          if (!installationId || !capabilityId) {
+            return "miss";
+          }
+          const row = await db
+            .prepare(
+              `SELECT * FROM capability_grant
+               WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
+               ORDER BY changed_at DESC LIMIT 1`,
+            )
+            .bind(`installation:${installationId}`, capabilityId)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "active_routing_policy": {
+          const withInstall = key.match(/^(.+@v\d+)\/(.+)$/);
+          const policyRef = withInstall ? withInstall[1] : key;
+          const installationId = withInstall ? withInstall[2] : undefined;
+          const policyId = policyRef
+            .replace(/^routing\//, "")
+            .replace(/@v\d+$/, "");
+
+          if (installationId) {
+            const canaryRows = await db
+              .prepare(
+                `SELECT * FROM routing_policy
+                 WHERE policy_id = ? AND status = 'canary'
+                 ORDER BY active_from DESC, version DESC`,
+              )
+              .bind(policyId)
+              .all<D1Row>();
+
+            for (const row of canaryRows.results ?? []) {
+              const ids = parseCanaryIds(row.canary_installation_ids);
+              if (ids.includes(installationId)) {
+                return loadRoutingPolicyDocument(row, r2);
+              }
+            }
+          }
+
+          const activeRow = await db
+            .prepare(
+              `SELECT * FROM routing_policy
+               WHERE policy_id = ? AND status = 'active'
+               ORDER BY active_from DESC, version DESC LIMIT 1`,
+            )
+            .bind(policyId)
+            .first<D1Row>();
+
+          if (!activeRow) {
+            return "miss";
+          }
+          return loadRoutingPolicyDocument(activeRow, r2);
         }
         default:
           return "miss";

@@ -107,3 +107,11 @@
 - No Polish phase and no Foundational phase — prerequisites are the already-merged slices in the plan's Consumes Binding (B2, D1, D2, F1).
 - Tests land before or alongside their implementation, never after (delivery plan §2.2).
 - Preserve §6.4: no §9.14 mechanism (including a runtime prompt activation pointer); no prompt text / provider name / model identifier in the Flutter client (R-12 — J3 does not touch Flutter); no second Quota DO / R2 object per request; no per-request server-side canary session; prompts remain deployed artifacts (FR-008).
+
+### Review resolution (J3-staged-rollout-canary.md)
+
+- Routing-policy `status` machine + promote route + corrected rollback; production
+  `createD1ConfigReader` canary-split reads; cohort promote plan-scope completeness;
+  audit pointers; target validation; unique live grant indexes; canary-aware kill-switch
+  provider resolve. See `docs/review/ai-platform-slices/J3-staged-rollout-canary.md`
+  Review Resolution section.

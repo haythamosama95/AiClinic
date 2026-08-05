@@ -3,11 +3,11 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
+import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import schemaSnapSql from "../schema.snap.sql?raw";
 import {
   ConfigCache,
-  loadConfig,
-  type ConfigEntityKind,
-  type D1Reader,
+  createD1ConfigReader,
 } from "../src/config-cache";
 import {
   createCapabilityRegistry,
@@ -19,6 +19,9 @@ import {
 import type { Principal } from "../src/identity";
 import { createRequestRow } from "../src/journal";
 import { load } from "../src/manifest";
+import {
+  assertControlAudit,
+} from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -27,19 +30,26 @@ declare module "cloudflare:test" {
 }
 
 type ManifestWire = Record<string, unknown>;
-type D1Row = Record<string, unknown>;
 
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
 const COHORT_INSTALLATION_ID = "inst-j3-cohort";
 const OTHER_INSTALLATION_ID = "inst-j3-other";
+const POST_ENROLL_INSTALLATION_ID = "inst-j3-post-enroll";
 const FIXTURE_ORG_ID = "org-j3-001";
 const FIXTURE_CAPABILITY_ID = "clinic.j3";
 const FIXTURE_VERSION_V1 = "1.0.0";
 const FIXTURE_VERSION_V2 = "2.0.0";
 const FIXTURE_PROMPT_V1 = "prompt/j3-system@v1";
 const FIXTURE_PROMPT_V2 = "prompt/j3-system@v2";
+const FIXTURE_PLAN = "professional";
 const FIXTURE_NOW = "2026-08-03T12:00:00.000Z";
 const FAKE_OPERATOR_ID = "operator-j3-test";
+
+const migrationSqlModules = import.meta.glob("../migrations/*.sql", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
 
 export type OperatorPrincipal = { operatorId: string };
 export type OperatorAuth = {
@@ -207,6 +217,7 @@ async function seedInstallation(
 async function seedEntitlement(
   db: D1Database,
   installationId: string,
+  plan: string = FIXTURE_PLAN,
 ): Promise<void> {
   await db
     .prepare(
@@ -219,7 +230,7 @@ async function seedEntitlement(
     .bind(
       `ent-${installationId}`,
       installationId,
-      "professional",
+      plan,
       FIXTURE_NOW,
       FIXTURE_NOW,
       1_000,
@@ -256,65 +267,28 @@ async function seedInstallationGrant(
     .run();
 }
 
-function makePlatformD1Reader(db: D1Database): D1Reader {
-  return {
-    async read(prefixedKey: string): Promise<D1Row | "miss"> {
-      const separator = prefixedKey.indexOf(":");
-      if (separator === -1) {
-        return "miss";
-      }
-      const kind = prefixedKey.slice(0, separator) as ConfigEntityKind;
-      const key = prefixedKey.slice(separator + 1);
-
-      switch (kind) {
-        case "entitlements": {
-          const row = await db
-            .prepare(
-              `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                      request_quota, token_budget, cost_budget, allowed_capabilities,
-                      soft_threshold, status
-               FROM entitlement WHERE installation_id = ?`,
-            )
-            .bind(key)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
-        case "grants": {
-          if (key.startsWith("global/")) {
-            const parts = key.slice("global/".length).split("/");
-            const row = await db
-              .prepare(
-                `SELECT grant_id, scope, capability_id, capability_version,
-                        granted_at, revoked_at, changed_at, changed_by,
-                        lifecycle_state, successor_id, deprecated_at, retire_after
-                 FROM capability_grant
-                 WHERE scope = 'global' AND capability_id = ? AND capability_version = ?
-                 ORDER BY changed_at DESC LIMIT 1`,
-              )
-              .bind(parts[0], parts[1])
-              .first<D1Row>();
-            return row ?? "miss";
-          }
-          const [installationId, capabilityId] = key.split("/", 2);
-          const row = await db
-            .prepare(
-              `SELECT grant_id, scope, capability_id, capability_version,
-                      granted_at, revoked_at, changed_at, changed_by
-               FROM capability_grant
-               WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
-               ORDER BY changed_at DESC LIMIT 1`,
-            )
-            .bind(`installation:${installationId}`, capabilityId)
-            .first<D1Row>();
-          return row ?? "miss";
-        }
-        case "kill_switches":
-          return { active: false, scope: "global", target: "global" };
-        default:
-          return "miss";
-      }
-    },
-  };
+async function seedPlanGrant(
+  db: D1Database,
+  plan: string,
+  capabilityVersion: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO capability_grant (
+        grant_id, scope, capability_id, capability_version,
+        granted_at, revoked_at, changed_at, changed_by
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+    )
+    .bind(
+      `grant-plan-${plan}-${capabilityVersion}`,
+      `plan:${plan}`,
+      FIXTURE_CAPABILITY_ID,
+      capabilityVersion,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+      FAKE_OPERATOR_ID,
+    )
+    .run();
 }
 
 function buildActivateRequest(
@@ -357,7 +331,7 @@ async function discoverGrantedVersion(
 ): Promise<string | undefined> {
   const principal = buildPrincipal(installationId);
   const cache = new ConfigCache();
-  const reader = makePlatformD1Reader(env.DB);
+  const reader = createD1ConfigReader(env.DB);
   const result = await discover(principal, cache, reader);
   const manifest = result.manifests.find(
     (m) => m.Identity.capabilityId === FIXTURE_CAPABILITY_ID,
@@ -365,6 +339,43 @@ async function discoverGrantedVersion(
   return typeof manifest?.Identity.version === "string"
     ? manifest.Identity.version
     : undefined;
+}
+
+async function grantedVersion(
+  installationId: string,
+): Promise<string | null> {
+  const cache = new ConfigCache();
+  const reader = createD1ConfigReader(env.DB);
+  return getGrantedCapabilityVersion(
+    installationId,
+    FIXTURE_CAPABILITY_ID,
+    cache,
+    reader,
+  );
+}
+
+async function assertAuditPointersNonNull(
+  db: D1Database,
+  action: string,
+  options: { requireBefore?: boolean; requireAfter?: boolean } = {},
+): Promise<void> {
+  const requireBefore = options.requireBefore ?? true;
+  const requireAfter = options.requireAfter ?? true;
+  const row = await db
+    .prepare(
+      `SELECT before_pointer, after_pointer FROM control_audit
+       WHERE action = ? ORDER BY recorded_at DESC LIMIT 1`,
+    )
+    .bind(action)
+    .first<{ before_pointer: string | null; after_pointer: string | null }>();
+
+  expect(row).toBeTruthy();
+  if (requireBefore) {
+    expect(row!.before_pointer).not.toBeNull();
+  }
+  if (requireAfter) {
+    expect(row!.after_pointer).not.toBeNull();
+  }
 }
 
 function assertNoPromptActivationPointerModule(): void {
@@ -376,10 +387,19 @@ function assertNoPromptActivationPointerModule(): void {
   }
 }
 
+function assertNoPromptActivationPointerInSqlArtifacts(): void {
+  const sqlBlobs = [schemaSnapSql, ...Object.values(migrationSqlModules)];
+  for (const sql of sqlBlobs) {
+    expect(sql).not.toMatch(/prompt.?text/i);
+    expect(sql).not.toMatch(/activation.?pointer/i);
+  }
+}
+
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, lifecycleMigrationSql);
   await applyPlatformSchema(env.DB, canaryMigrationSql);
+  await applyPlatformSchema(env.DB, statusMigrationSql);
 });
 
 beforeEach(async () => {
@@ -405,6 +425,11 @@ describe("T-J3-01 cohort_receives_new_build_others_previous", () => {
       operatorAuth,
     );
     expect(response.ok).toBe(true);
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR_ID,
+      action: "cohort_activate",
+    });
+    await assertAuditPointersNonNull(env.DB, "cohort_activate");
 
     expect(await discoverGrantedVersion(COHORT_INSTALLATION_ID)).toBe(
       FIXTURE_VERSION_V2,
@@ -441,6 +466,11 @@ describe("T-J3-02 promotion_moves_all_cohorts", () => {
       operatorAuth,
     );
     expect(promoteResponse.ok).toBe(true);
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR_ID,
+      action: "cohort_promote",
+    });
+    await assertAuditPointersNonNull(env.DB, "cohort_promote");
 
     expect(await discoverGrantedVersion(COHORT_INSTALLATION_ID)).toBe(
       FIXTURE_VERSION_V2,
@@ -451,8 +481,104 @@ describe("T-J3-02 promotion_moves_all_cohorts", () => {
   });
 });
 
-describe("T-J3-03 rollback_by_deploy_restores_previous_build", () => {
-  it("deploying the previous build restores prior serving for affected cohorts", async () => {
+describe("T-J3-02b promotion_moves_plan_scoped_installations", () => {
+  it("plan-scoped installs stay on plan grant until promote moves them", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
+    await seedEntitlement(env.DB, COHORT_INSTALLATION_ID);
+    await seedEntitlement(env.DB, OTHER_INSTALLATION_ID);
+    await seedPlanGrant(env.DB, FIXTURE_PLAN, FIXTURE_VERSION_V1);
+    await seedInstallationGrant(env.DB, COHORT_INSTALLATION_ID, FIXTURE_VERSION_V1);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const { handleCohortActivate, handleCohortPromote } =
+      await loadCohortControlHandlers();
+
+    const activateResponse = await handleCohortActivate(
+      buildActivateRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+      { DB: env.DB },
+      operatorAuth,
+    );
+    expect(activateResponse.ok).toBe(true);
+
+    expect(await discoverGrantedVersion(COHORT_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V2,
+    );
+    expect(await grantedVersion(COHORT_INSTALLATION_ID)).toBe(FIXTURE_VERSION_V2);
+    expect(await discoverGrantedVersion(OTHER_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V1,
+    );
+    expect(await grantedVersion(OTHER_INSTALLATION_ID)).toBe(FIXTURE_VERSION_V1);
+
+    const promoteResponse = await handleCohortPromote(
+      buildPromoteRequest(FIXTURE_VERSION_V2),
+      { DB: env.DB },
+      operatorAuth,
+    );
+    expect(promoteResponse.ok).toBe(true);
+    await assertAuditPointersNonNull(env.DB, "cohort_promote");
+
+    expect(await discoverGrantedVersion(COHORT_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V2,
+    );
+    expect(await discoverGrantedVersion(OTHER_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V2,
+    );
+
+    const planGrant = await env.DB.prepare(
+      `SELECT capability_version FROM capability_grant
+       WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
+       ORDER BY changed_at DESC LIMIT 1`,
+    )
+      .bind(`plan:${FIXTURE_PLAN}`, FIXTURE_CAPABILITY_ID)
+      .first<{ capability_version: string }>();
+    expect(planGrant?.capability_version).toBe(FIXTURE_VERSION_V2);
+  });
+});
+
+describe("T-J3-02c promotion_covers_post_enroll_installation", () => {
+  it("new entitled installation without install grant resolves via plan fallback", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
+    await seedEntitlement(env.DB, COHORT_INSTALLATION_ID);
+    await seedEntitlement(env.DB, OTHER_INSTALLATION_ID);
+    await seedPlanGrant(env.DB, FIXTURE_PLAN, FIXTURE_VERSION_V1);
+    await seedInstallationGrant(env.DB, COHORT_INSTALLATION_ID, FIXTURE_VERSION_V1);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const { handleCohortActivate, handleCohortPromote } =
+      await loadCohortControlHandlers();
+
+    expect(
+      (
+        await handleCohortActivate(
+          buildActivateRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+          { DB: env.DB },
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await handleCohortPromote(
+          buildPromoteRequest(FIXTURE_VERSION_V2),
+          { DB: env.DB },
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    await seedInstallation(env.DB, POST_ENROLL_INSTALLATION_ID);
+    await seedEntitlement(env.DB, POST_ENROLL_INSTALLATION_ID);
+
+    expect(await grantedVersion(POST_ENROLL_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V2,
+    );
+  });
+});
+
+describe("T-J3-03 prior_build_restored_without_runtime_prompt_pointer", () => {
+  it("re-activating prior build restores serving without prompt activation pointer", async () => {
     await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
     await seedEntitlement(env.DB, COHORT_INSTALLATION_ID);
     await seedInstallationGrant(env.DB, COHORT_INSTALLATION_ID, FIXTURE_VERSION_V1);
@@ -481,6 +607,7 @@ describe("T-J3-03 rollback_by_deploy_restores_previous_build", () => {
     );
 
     assertNoPromptActivationPointerModule();
+    assertNoPromptActivationPointerInSqlArtifacts();
   });
 });
 
@@ -503,24 +630,24 @@ describe("T-J3-05 journal_records_serving_version_under_cohort_split", () => {
     expect(activateResponse.ok).toBe(true);
 
     const cache = new ConfigCache();
-    const reader = makePlatformD1Reader(env.DB);
+    const reader = createD1ConfigReader(env.DB);
 
     for (const [installationId, expectedVersion, expectedPrompt] of [
       [COHORT_INSTALLATION_ID, FIXTURE_VERSION_V2, FIXTURE_PROMPT_V2],
       [OTHER_INSTALLATION_ID, FIXTURE_VERSION_V1, FIXTURE_PROMPT_V1],
     ] as const) {
-      const grantedVersion = await getGrantedCapabilityVersion(
+      const version = await getGrantedCapabilityVersion(
         installationId,
         FIXTURE_CAPABILITY_ID,
         cache,
         reader,
       );
-      expect(grantedVersion).toBe(expectedVersion);
+      expect(version).toBe(expectedVersion);
 
       const resolveResult = await resolve(
         buildPrincipal(installationId),
         FIXTURE_CAPABILITY_ID,
-        grantedVersion!,
+        version!,
         cache,
         reader,
       );
@@ -553,5 +680,76 @@ describe("T-J3-05 journal_records_serving_version_under_cohort_split", () => {
       expect(row?.capability_version).toBe(expectedVersion);
       expect(row?.prompt_artifact_hash).toBe(expectedPrompt);
     }
+  });
+});
+
+describe("cohort_control_rejection_branches", () => {
+  it("rejects non-operator credentials on activate and promote", async () => {
+    const { handleCohortActivate, handleCohortPromote } =
+      await loadCohortControlHandlers();
+    const unauth = createFakeOperatorAuth(null);
+
+    const activate = await handleCohortActivate(
+      buildActivateRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+      { DB: env.DB },
+      unauth,
+    );
+    expect(activate.status).toBe(401);
+
+    const promote = await handleCohortPromote(
+      buildPromoteRequest(FIXTURE_VERSION_V2),
+      { DB: env.DB },
+      unauth,
+    );
+    expect(promote.status).toBe(401);
+
+    const auditCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM control_audit",
+    ).first<{ count: number }>();
+    expect(auditCount?.count ?? 0).toBe(0);
+  });
+
+  it("rejects empty installation_ids on activate with 400", async () => {
+    const { handleCohortActivate } = await loadCohortControlHandlers();
+    const response = await handleCohortActivate(
+      buildActivateRequest(FIXTURE_VERSION_V2, []),
+      { DB: env.DB },
+      createFakeOperatorAuth(),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "missing_installation_ids" });
+  });
+
+  it("rejects unknown capability version with 404", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    const { handleCohortActivate, handleCohortPromote } =
+      await loadCohortControlHandlers();
+
+    const activate = await handleCohortActivate(
+      buildActivateRequest("9.9.9", [COHORT_INSTALLATION_ID]),
+      { DB: env.DB },
+      createFakeOperatorAuth(),
+    );
+    expect(activate.status).toBe(404);
+    expect(await activate.json()).toEqual({ error: "capability_not_found" });
+
+    const promote = await handleCohortPromote(
+      buildPromoteRequest("9.9.9"),
+      { DB: env.DB },
+      createFakeOperatorAuth(),
+    );
+    expect(promote.status).toBe(404);
+    expect(await promote.json()).toEqual({ error: "capability_not_found" });
+  });
+
+  it("rejects unknown installation on activate with 404", async () => {
+    const { handleCohortActivate } = await loadCohortControlHandlers();
+    const response = await handleCohortActivate(
+      buildActivateRequest(FIXTURE_VERSION_V2, ["inst-does-not-exist"]),
+      { DB: env.DB },
+      createFakeOperatorAuth(),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "installation_not_found" });
   });
 });
