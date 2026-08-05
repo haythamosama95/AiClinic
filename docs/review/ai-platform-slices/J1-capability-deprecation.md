@@ -52,3 +52,48 @@ Missing against the every-branch coverage rule:
 5. **[Low] Write overlay rows without grant semantics** — e.g. `granted_at = NULL` (or reuse `changed_at` only) so the append-only history does not read as a live grant.
 6. **[Low] Record the successor in the deprecate audit trail** (e.g. in `target` as `{id}@{version}->{successor}`, or via `after_pointer`) so `control_audit` alone answers "deprecated in favour of what".
 7. **[Low] Document the production-reader dependency**: note in `contracts/capability-deprecation.md` or the quickstart that FR-010's config-cache read path requires a production `D1Reader` handling `grants` (including the `global/` key form) before the request pipeline is wired, so the enforcing slice cannot silently ship the miss-everything reader.
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **J1-R1 — Deprecate state guard** | Bugs #1; Missing/Weak Tests #8; Recommended Improvements #1 | `ai-platform/src/control/capability-lifecycle.ts`; `ai-platform/test/capability-deprecation.test.ts` (T-J1-06..08) |
+| **J1-R2 — Registry + successor validation** | Bugs #2; Missing/Weak Tests #4; Recommended Improvements #2 | `capability-lifecycle.ts`; `ai-platform/src/capability/index.ts` (`isCapabilityVersionRegistered`, `isSuccessorRegistered`); tests T-J1-09..11 |
+| **J1-R3 — Overlay hygiene + epoch window compare** | Bugs #3, #4; Recommended Improvements #4, #5 | `capability-lifecycle.ts` (`revoked_at = changed_at`; `Date.parse` window gate); tests T-J1-12..13 |
+| **J1-R4 — Audit successor in after_pointer** | Architectural Deviations #2; Recommended Improvements #6 | `capability-lifecycle.ts` deprecate/retire audit `after_pointer`; test T-J1-14; contract §4.4 extension |
+| **J1-R5 — Branch / coverage backfill** | Missing/Weak Tests #1–3, #5–7, #9; Recommended Improvements #3 | `capability-deprecation.test.ts` T-J1-15..20 (401, retire gates, discovery-excludes-retired, etag, post-window serve, published-without-overlay) |
+| **J1-R6 — Production-reader handoff docs** | Architectural Deviations #1; Recommended Improvements #7 | `specs/048-capability-deprecation/contracts/capability-deprecation.md` §2.4; `quickstart.md`; `plan.md` Constraints |
+
+Every numbered review item appears in exactly one stage. No escalations — all fixes stayed within J1 scope and allowed contract extensions (rejection vocabulary, `after_pointer` successor, documentation handoff). Architecture docs untouched.
+
+### 7.2 Test cases created first
+
+- **J1-R1:** T-J1-06 `deprecate_rejects_after_retire` (409 `already_retired`, no resurrect); T-J1-07 `duplicate_deprecate_same_successor_is_idempotent` (200, no window reset); T-J1-08 `duplicate_deprecate_different_successor_rejected` (409 `already_deprecated`).
+- **J1-R2:** T-J1-09 `unknown_capability_version_rejected` (404 before D1 write); T-J1-10 `unknown_successor_rejected`; T-J1-11 `missing_successor_id_rejected`.
+- **J1-R3:** T-J1-12 `overlay_rows_are_not_live_grants` (`revoked_at = changed_at`); T-J1-13 `retire_window_uses_epoch_ms` (non-canonical `+00:00` `retire_after`).
+- **J1-R4:** T-J1-14 `deprecate_audit_records_successor` (`after_pointer` = successor id).
+- **J1-R5:** T-J1-15 unauthenticated 401; T-J1-16 retire gates; T-J1-17 discovery excludes retired; T-J1-18 etag invalidation; T-J1-19 deprecated serves after `retire_after` before operator retire; T-J1-20 published Identity without overlay.
+- **J1-R6:** documentation-only (no new production test).
+
+### 7.3 Fix implemented
+
+- **J1-R1:** `handleDeprecate` loads the latest global overlay; rejects `retired` / conflicting duplicate deprecate; same-successor duplicate returns idempotent `200` without a new overlay row.
+- **J1-R2:** Both handlers require a registered target version; deprecate requires a registered successor identity (`capabilityId` or `capabilityId@version`).
+- **J1-R3:** Overlay inserts set `revoked_at = changed_at` (A5 `granted_at` remains `NOT NULL`, mirrored to `changed_at`); retire compares window via `Date.parse` epoch ms.
+- **J1-R4:** Deprecate and retire `control_audit` rows record the successor in `after_pointer`; `target` stays `{id}@{version}`.
+- **J1-R5:** Fifteen review-branch cases added; existing fixtures use `buildJ1Registry()` so successor validation stays green.
+- **J1-R6:** Contract §2.4 documents that production `createD1ConfigReader` must gain `grants` / `global/…` before the request pipeline enforces overlays — documented handoff, not a silent production reader rewrite in J1.
+- Spec Kit aligned: `spec.md` edge cases + test-plan rows; `plan.md` Constraints/files; `quickstart.md`; `contracts/capability-deprecation.md` state guard, validation, overlay hygiene, audit extension, reader handoff.
+
+### 7.4 Verification
+
+Full `ai-platform` suite (`npm test`):
+
+- Node pool: **41** files, **639** tests passed
+- Workers pool: **19** files, **285** tests passed (includes `capability-deprecation.test.ts` **20** cases T-J1-01..20)
+
+Modified/added tests: `ai-platform/test/capability-deprecation.test.ts`. Production: `ai-platform/src/control/capability-lifecycle.ts`, `ai-platform/src/capability/index.ts`.

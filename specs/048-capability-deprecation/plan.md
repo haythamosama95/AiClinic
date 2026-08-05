@@ -67,8 +67,14 @@ produces no `ai_request` row (C1 / C3 invariant; consumed, not re-built).
   constant, not a configuration surface (FR-007; R-20).
 - Retirement is an operator mutation after announcement and after `retire_after`; the request path
   does not auto-trip retirement on a clock (§7.3).
-- No rewrite of C1 registry lookup, the three resolver codes, or B2 enroll / rotate / suspend /
-  resume / delete / `control_audit` shape (delivery plan §2.3).
+- Deprecate is one-directional: reject after retire; idempotent same-successor duplicate; never
+  silently restart `deprecated_at` / `retire_after`. Target version and successor must exist in the
+  registry before any overlay write.
+- Production request-path enforcement of overlays requires a `D1Reader` that handles `grants`
+  including `global/{id}/{version}` (contract §2.4 handoff) — not introduced by rewriting
+  `createD1ConfigReader` in this slice.
+- No rewrite of C1 registry lookup semantics, the three resolver codes, or B2 enroll / rotate /
+  suspend / resume / delete / `control_audit` shape (delivery plan §2.3).
 - No mechanism from §9.14; no Flutter update UX beyond returning `capability_retired` (spec Out of
   Scope).
 
@@ -179,7 +185,7 @@ ai-platform/
 │   ├── manifest/                                   # UNCHANGED — content immutability
 │   └── worker.ts                                   # MODIFIED — /control capability routes
 ├── test/
-│   └── capability-deprecation.test.ts              # NEW — T-J1-01 .. T-J1-05 (Pipeline)
+│   └── capability-deprecation.test.ts              # T-J1-01 .. T-J1-20 (Pipeline + review branches)
 ├── vitest.workers.config.ts                        # MODIFIED — include the new test file
 └── vitest.config.ts                                # MODIFIED — exclude the new test file from
                                                     #   the default Node pool (paired with the
@@ -226,10 +232,11 @@ No other §4 component is touched (journal / Quota DO / R2 / Flutter / providers
 | --- | --- | --- |
 | `ai-platform/migrations/20260802100000_capability_grant_lifecycle.sql` | Created | FR-009 — `ALTER TABLE capability_grant ADD` nullable `lifecycle_state`, `successor_id`, `deprecated_at`, `retire_after`. |
 | `ai-platform/schema.snap.sql` | Modified | FR-009 — snapshot matches post-migration `capability_grant` shape. |
-| `ai-platform/src/capability/index.ts` | Modified | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-010 — `effectiveLifecycle(manifest, overlay)`; resolve rejects only effective `retired`; serves effective `deprecated`; discovery includes granted effective-`active` **and** effective-`deprecated` (with successor) and excludes effective `retired`; overlay loaded through `loadConfig("grants", "global/{id}/{version}")`; registry / published manifest bytes untouched. |
+| `ai-platform/src/capability/index.ts` | Modified | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-010 — `effectiveLifecycle(manifest, overlay)`; resolve rejects only effective `retired`; serves effective `deprecated`; discovery includes granted effective-`active` **and** effective-`deprecated` (with successor) and excludes effective `retired`; overlay loaded through `loadConfig("grants", "global/{id}/{version}")`; registry / published manifest bytes untouched; registry lookup helpers for control validation. |
+| `ai-platform/src/control/capability-lifecycle.ts` | Modified | FR-008, FR-009 — deprecate state guard; registry/successor validation; epoch-ms window compare; overlay `revoked_at`; audit `after_pointer` successor. |
 | `ai-platform/src/control/index.ts` | Modified | FR-008, FR-009 — `handleDeprecate` / `handleRetire`; append-only global-scope `capability_grant` overlay row; `control_audit` actions `deprecate` / `retire`; refuse retire without prior announced deprecation (successor set) or before `retire_after` (FR-002, FR-005, FR-007); `dispatchControlRequest` routes. |
 | `ai-platform/src/worker.ts` | Modified | FR-008 — dispatch new `/control/capabilities/...` paths to control handlers (same `/control` boundary B2 froze). |
-| `ai-platform/test/capability-deprecation.test.ts` | Created | SC-001..SC-005 — named tests T-J1-01 .. T-J1-05 from the spec Test plan. |
+| `ai-platform/test/capability-deprecation.test.ts` | Created | SC-001..SC-005 — named tests T-J1-01 .. T-J1-05 plus review-resolution branches T-J1-06 .. T-J1-20. |
 | `ai-platform/vitest.workers.config.ts` | Modified | — `include` adds `test/capability-deprecation.test.ts`. |
 | `ai-platform/vitest.config.ts` | Modified | — `exclude` adds `test/capability-deprecation.test.ts` so the default Node pool does not load a Miniflare-D1 test picked up by `include: ["test/**/*.test.ts"]`; required for §3.10 `npx vitest run` to stay green. Every prior D1 workers-pool slice (C1, C3, B2, H3) pairs the workers-config `include` with this `exclude`. |
 | `specs/048-capability-deprecation/contracts/capability-deprecation.md` | Created | Freezes overlay column shape, effective-lifecycle rule, deprecate/retire HTTP + audit vocabulary, discovery announcement, OD-9 overlap constant (FR-001..FR-010 Freezes). |
