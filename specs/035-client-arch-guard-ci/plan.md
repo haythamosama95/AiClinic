@@ -105,7 +105,7 @@ frontend/
     └── ci.yml                                 # MODIFIED — dedicated architecture-guard CI step(s)
 ```
 
-**Structure Decision**: The guard lives under `frontend/tool/architecture_guard/` as a standalone Dart script (Clarification Q1), sibling to existing `frontend/tool/` helpers, not under `frontend/lib/` (so the tool and its fixtures are outside the clean client scan roots — Clarification Q2). Clean scan roots are the Flutter application sources under `frontend/` that ship in or build the desktop client (spec Assumptions — primarily `frontend/lib/`); exact include/exclude globs are an implementation choice so long as T5 still proves every client source path is covered and T4 still passes. Fixtures are invoked only in controlled expect-fail runs; they never remain in the clean-tree gate (FR-005). No `ai-platform/` or `backend/` path is touched.
+**Structure Decision**: The guard lives under `frontend/tool/architecture_guard/` as a standalone Dart script (Clarification Q1), sibling to existing `frontend/tool/` helpers, not under `frontend/lib/` (so the tool and its fixtures are outside the clean client scan roots — Clarification Q2). Clean scan roots are `lib/`, `test/`, `windows/`, `linux/`, and `web/` — the Flutter application sources under `frontend/` that ship in or build the desktop client (spec Assumptions). Coverage discovery walks the whole `frontend/` tree and requires every non-excluded, scannable file to lie under a configured scan root (explicit exclusion list for `build/`, `.dart_tool/`, `tool/`, ephemeral generated trees, assets, and root metadata). Fixtures are invoked only in controlled expect-fail runs; they never remain in the clean-tree gate (FR-005). No `ai-platform/` or `backend/` path is touched.
 
 ## Consumes Binding
 
@@ -133,12 +133,13 @@ E1 modifies **no** §4 component of `17-ai-platform.md`. §4.1 enumerates the AI
 
 | File | FR(s) | Status |
 | --- | --- | --- |
-| `frontend/tool/architecture_guard/architecture_guard.dart` | FR-001, FR-002, FR-003, FR-004, FR-006 | NEW — standalone Dart script: scans configured client source roots for prompt-like strings, provider names, and model identifiers; exits non-zero on any match; asserts configured scan roots cover every client source path (T5); default mode is the clean-tree gate. Representative detection patterns for the three forbidden categories are chosen in implementation (spec Assumptions / Out of Scope — not an exhaustive catalogue). |
-| `frontend/tool/architecture_guard/fixtures/prompt_like_string/forbidden.dart` | FR-005 | NEW — deliberately failing fixture containing a prompt-like string (T1 / SC-001). Outside clean scan roots. |
-| `frontend/tool/architecture_guard/fixtures/provider_name/forbidden.dart` | FR-005 | NEW — deliberately failing fixture containing a provider name (T2 / SC-002). Outside clean scan roots. |
-| `frontend/tool/architecture_guard/fixtures/model_identifier/forbidden.dart` | FR-005 | NEW — deliberately failing fixture containing a model identifier (T3 / SC-003). Outside clean scan roots. |
-| `.github/workflows/ci.yml` | FR-005, FR-006 | MODIFIED — add a dedicated architecture-guard CI step (Clarification Q1) that (1) runs the script against each fixture expecting failure (T1–T3), and (2) runs the script against the clean client scan roots expecting success including full path coverage (T4–T5). Joins CI permanently (delivery plan §3.10). |
-| `specs/035-client-arch-guard-ci/quickstart.md` | — | NEW — written during the implement-phase Documentation task (sections named in Project Structure → Documentation). |
+| `frontend/tool/architecture_guard/architecture_guard.dart` | FR-001, FR-002, FR-003, FR-004, FR-006 | Standalone Dart script: scans configured client source roots (Dart + native/web text) for prompt-like strings, provider names, and model identifiers via whole-file matching; exits 1 on violations/coverage gaps and 2 on missing scan roots; asserts tree-wide client-source coverage (T5). Representative detection patterns include the platform-integrated provider and current vendor model naming. |
+| `frontend/tool/architecture_guard/fixtures/prompt_like_string/forbidden.dart` | FR-005 | Deliberately failing multi-line prompt fixture (T1 / SC-001). Outside clean scan roots. |
+| `frontend/tool/architecture_guard/fixtures/provider_name/forbidden.dart` | FR-005 | Deliberately failing provider fixture using the platform-integrated provider id (T2 / SC-002). Outside clean scan roots. |
+| `frontend/tool/architecture_guard/fixtures/model_identifier/forbidden.dart` | FR-005 | Deliberately failing model fixture using current vendor + platform model ids (T3 / SC-003). Outside clean scan roots. |
+| `frontend/tool/architecture_guard/fixtures/multi_root/` | FR-004 | Two-root probe proving a violation under the second configured root is detected. |
+| `.github/workflows/ci.yml` | FR-005, FR-006 | Dedicated architecture-guard CI step with exit-code-1 + category assertions, omission/multi-root/missing-root proofs, clean-tree gate; workflow triggers include `ai/**` pushes and PRs to `ai/master`. |
+| `specs/035-client-arch-guard-ci/quickstart.md` | — | Written during the implement-phase Documentation task (sections named in Project Structure → Documentation). |
 
 Every file traces to an `FR-###` (or the deferred Documentation task). No file is created for an unstated requirement. No `frontend/lib/` application source is added (DP-6: no client AI code). No `ai-platform/` or `backend/` file is touched.
 
@@ -148,11 +149,11 @@ The spec's Test plan names five tests at layer **CI lint** (delivery plan §3.11
 
 | Test name | Spec layer | Where it lives | How it runs |
 | --- | --- | --- | --- |
-| `guard_prompt_like_string_fails_build` | CI lint | Fixture `fixtures/prompt_like_string/` + expect-fail CI step invoking `architecture_guard.dart` | Script exits non-zero when scanning the fixture; CI fails the job if the script exits zero |
-| `guard_provider_name_fails_build` | CI lint | Fixture `fixtures/provider_name/` + expect-fail CI step | Same pattern for a provider name |
-| `guard_model_identifier_fails_build` | CI lint | Fixture `fixtures/model_identifier/` + expect-fail CI step | Same pattern for a model identifier |
-| `guard_clean_tree_passes` | CI lint | Clean scan of client sources (e.g. `frontend/lib/`) via CI step | Script exits zero on the real client tree with none of the three forbidden categories |
-| `guard_covers_every_client_source_path` | CI lint | Assertion inside `architecture_guard.dart` during the clean-tree run | Omitting a client source path from configured scan roots fails the assertion (non-zero exit) |
+| `guard_prompt_like_string_fails_build` | CI lint | Fixture `fixtures/prompt_like_string/` (multi-line prompt) + expect-fail CI step | Script exits **exactly 1**; stderr names `prompt-like string`; CI fails on any other exit |
+| `guard_provider_name_fails_build` | CI lint | Fixture `fixtures/provider_name/` (platform-integrated provider id) + expect-fail CI step | Exit exactly 1; stderr names `provider name` |
+| `guard_model_identifier_fails_build` | CI lint | Fixture `fixtures/model_identifier/` (current vendor + platform model ids) + expect-fail CI step | Exit exactly 1; stderr names `model identifier` |
+| `guard_clean_tree_passes` | CI lint | Clean scan of `lib/`, `test/`, `windows/`, `linux/`, `web/` via CI step | Script exits zero on the real client tree with none of the three forbidden categories |
+| `guard_covers_every_client_source_path` | CI lint | Tree-wide discovery in `architecture_guard.dart` during the clean-tree run; omission case is `dart … lib --assert-coverage` | Omitting a client source path from configured scan roots fails (non-zero); multi-root and `test/` probe prove each configured root is live |
 
 Every named test places in the §13.5 **Architecture guard (R-12)** / CI lint layer — stop condition 3 not triggered. E1 emits no §5.4 platform error codes; failures are CI build failures only.
 
