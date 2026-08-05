@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildErrorBody,
+  classifyErrorCode,
   isTaxonomyCode,
 } from "../src/errors";
 import {
@@ -10,9 +11,9 @@ import {
   TERMINAL_EVENT_KINDS,
   type AdapterEventSink,
   type AdapterStreamContext,
-  type TerminalEventKind,
 } from "../src/adapter";
 import { createModeGatedStubEventSource } from "./helpers/adapter-stub";
+import * as adapterModule from "../src/adapter";
 
 const VALID_BODY = {
   installation: "installation:test-h1-001",
@@ -83,22 +84,26 @@ function countTerminalEvents(
 }
 
 describe("context_requested_absent_from_error_taxonomy", () => {
-  it("is absent from the §5.4 taxonomy and is not buildable as an error-body code", () => {
+  it("is absent from the §5.4 taxonomy and is not surfaced as an error-body code", () => {
     expect(isTaxonomyCode("context_requested")).toBe(false);
     expect(TERMINAL_EVENT_KINDS).toContain("context_requested");
 
-    expect(() =>
-      buildErrorBody({
-        code: "context_requested" as never,
-        requestReference: "ABCD-EFGH",
-        traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-      }),
-    ).toThrow();
+    // A2 resilience: unknown / non-taxonomy strings classify to internal_error
+    // without throwing from the error-body builder.
+    expect(classifyErrorCode("context_requested")).toBe("internal_error");
+    const body = buildErrorBody({
+      code: "context_requested",
+      requestReference: "ABCD-EFGH",
+      traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    });
+    expect(body.code).toBe("internal_error");
   });
 });
 
 describe("single_shot_never_emits_context_requested", () => {
-  it("ends with completed, failed, or cancelled and never context_requested", async () => {
+  it("ends with a permitted terminal and never context_requested; deny is via pushTerminalEvent", async () => {
+    const pushSpy = vi.spyOn(adapterModule, "pushTerminalEvent");
+
     const stub = createModeGatedStubEventSource(
       "single_shot",
       "context_requested",
@@ -119,6 +124,16 @@ describe("single_shot_never_emits_context_requested", () => {
     expect(
       ["completed", "failed", "cancelled"].includes(terminalEvents[0]?.type ?? ""),
     ).toBe(true);
+
+    // Production gate was invoked for context_requested and threw; stub then
+    // ended with a permitted terminal (failed).
+    const contextRequestedCalls = pushSpy.mock.calls.filter(
+      (call) => call[2] === "context_requested",
+    );
+    expect(contextRequestedCalls.length).toBeGreaterThanOrEqual(1);
+    expect(contextRequestedCalls[0]?.[3]).toBe("single_shot");
+
+    pushSpy.mockRestore();
   });
 
   it("rejects pushTerminalEvent for context_requested on single_shot", () => {
@@ -141,7 +156,56 @@ describe("single_shot_never_emits_context_requested", () => {
         "single_shot",
         { context_request: [] },
       ),
-    ).toThrow();
+    ).toThrow(/conversational-only/i);
+  });
+});
+
+describe("context_requested_payload_must_conform", () => {
+  const sink: AdapterEventSink = { push: () => undefined };
+  const context: AdapterStreamContext = {
+    traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    requestReference: "ABCD-EFGH",
+    headers: {
+      idempotencyKey: "idem",
+      traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      capabilityVersion: "1.0.0",
+    },
+  };
+
+  it("rejects missing context_request payload", () => {
+    expect(() =>
+      pushTerminalEvent(sink, context, "context_requested", "conversational"),
+    ).toThrow(/requires a context_request payload/i);
+  });
+
+  it("rejects a malformed context_request payload", () => {
+    expect(() =>
+      pushTerminalEvent(sink, context, "context_requested", "conversational", {
+        context_request: { key: "visit.chief_complaint@v1" },
+      }),
+    ).toThrow(/not a conforming context request/i);
+  });
+
+  it("accepts a conforming context_request payload", () => {
+    const events: Array<{ type: string }> = [];
+    const capturingSink: AdapterEventSink = {
+      push(event) {
+        events.push(event);
+      },
+    };
+    pushTerminalEvent(
+      capturingSink,
+      context,
+      "context_requested",
+      "conversational",
+      {
+        context_request: [
+          { key: "visit.chief_complaint@v1", arguments: {} },
+        ],
+      },
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("context_requested");
   });
 });
 

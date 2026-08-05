@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CONTEXT_REQUEST_SCHEMA_ID,
@@ -69,32 +71,42 @@ describe("context_request_schema_is_platform_owned_not_per_capability", () => {
 });
 
 describe("no_new_pipeline_stage_from_conversational_mode", () => {
-  it("does not introduce a new §6.1 pipeline stage export surface", async () => {
-    const contextRequestModule = await import("../src/context/context-request");
-    const exportNames = Object.keys(contextRequestModule);
-
-    for (const name of exportNames) {
-      const lowered = name.toLowerCase();
-      expect(lowered).not.toMatch(/pipeline/);
-      expect(lowered).not.toMatch(/stage/);
-      expect(lowered).not.toMatch(/handler/);
+  it("does not add a conversational pipeline stage module under src/", () => {
+    const srcRoot = join(__dirname, "../src");
+    const forbiddenPaths = [
+      "pipeline/conversational.ts",
+      "pipeline/context-request-stage.ts",
+      "stages/conversational.ts",
+      "conversation/stage.ts",
+    ];
+    for (const rel of forbiddenPaths) {
+      expect(() => readFileSync(join(srcRoot, rel), "utf8")).toThrow();
     }
 
-    expect(exportNames).not.toContain("createPipelineStage");
-    expect(exportNames).not.toContain("registerStage");
+    // H1's context-request module is a schema helper, not a §6.1 stage.
+    const contextRequestSource = readFileSync(
+      join(srcRoot, "context/context-request.ts"),
+      "utf8",
+    );
+    expect(contextRequestSource).not.toMatch(/runStage|pipelineStage|stage\s*\d+/i);
   });
 });
 
 describe("no_per_request_server_state_from_h1", () => {
-  it("introduces no conversation table or per-request durable/session store exports", async () => {
-    const contextRequestModule = await import("../src/context/context-request");
-
-    for (const exportName of Object.keys(contextRequestModule)) {
-      const lowered = exportName.toLowerCase();
-      expect(lowered).not.toMatch(/conversationtable/);
-      expect(lowered).not.toMatch(/sessionstore/);
-      expect(lowered).not.toMatch(/durableobject/);
-      expect(lowered).not.toMatch(/requeststate/);
+  it("introduces no conversation table migration or extra Durable Object binding", () => {
+    const migrationsDir = join(__dirname, "../migrations");
+    for (const name of readdirSync(migrationsDir)) {
+      if (!name.endsWith(".sql")) continue;
+      const sql = readFileSync(join(migrationsDir, name), "utf8").toLowerCase();
+      expect(sql).not.toMatch(/create\s+table\s+[`"]?ai_conversation\b/);
+      expect(sql).not.toMatch(/create\s+table\s+[`"]?conversation_session\b/);
+      expect(sql).not.toMatch(/create\s+table\s+[`"]?conversation_store\b/);
     }
+
+    const wrangler = readFileSync(join(__dirname, "../wrangler.toml"), "utf8");
+    expect(wrangler).toMatch(/class_name\s*=\s*"GatewayObject"/);
+    expect(wrangler).not.toMatch(
+      /class_name\s*=\s*"(ConversationObject|SessionObject|ChatObject)"/,
+    );
   });
 });

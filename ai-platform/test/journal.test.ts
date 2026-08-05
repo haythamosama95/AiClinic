@@ -640,7 +640,16 @@ describe("T-C3-06 every_state_transition_timestamped", () => {
 
       if (TERMINAL_STATES.has(state)) {
         const errorCode = state === "Failed" ? "provider_unavailable" : undefined;
-        await recordTerminalState(input.requestId, state, errorCode, transitionAt, env.DB);
+        const mode =
+          state === "AwaitingContext" ? "conversational" : "single_shot";
+        await recordTerminalState(
+          input.requestId,
+          state,
+          errorCode,
+          transitionAt,
+          env.DB,
+          mode,
+        );
       } else {
         await journalTransition(input.requestId, state, transitionAt, env.DB);
       }
@@ -1020,7 +1029,15 @@ describe("journal_transition_terminal_branch_stamps_completed_at", () => {
       const input = await seedRequestRow();
       const transitionAt = "2026-07-31T12:10:00.000Z";
 
-      await journalTransition(input.requestId, state, transitionAt, env.DB);
+      const mode =
+        state === "AwaitingContext" ? "conversational" : "single_shot";
+      await journalTransition(
+        input.requestId,
+        state,
+        transitionAt,
+        env.DB,
+        mode,
+      );
 
       const row = await readAiRequestRow(input.requestId);
       expect(row?.state).toBe(state);
@@ -1080,7 +1097,13 @@ describe("get_request_awaiting_context", () => {
     const db = createD1Spy(env.DB);
     const r2 = createR2Spy(env.R2);
     const input = await seedRequestRow(db);
-    await journalTransition(input.requestId, "AwaitingContext", FIXTURE_NOW, db);
+    await journalTransition(
+      input.requestId,
+      "AwaitingContext",
+      FIXTURE_NOW,
+      db,
+      "conversational",
+    );
     db.resetCounts();
     r2.resetCounts();
 
@@ -1329,5 +1352,68 @@ describe("get_request_auth_requires_bearer", () => {
       { DB: env.DB },
     );
     expect(result).toEqual({ ok: false, code: "unauthenticated" });
+  });
+});
+
+describe("awaiting_context_write_path_conversational_only", () => {
+  it("refuses journalTransition into AwaitingContext for single_shot", async () => {
+    const input = await seedRequestRow();
+    await expect(
+      journalTransition(
+        input.requestId,
+        "AwaitingContext",
+        FIXTURE_NOW,
+        env.DB,
+        "single_shot",
+      ),
+    ).rejects.toThrow(/conversational-only/i);
+  });
+
+  it("refuses recordTerminalState into AwaitingContext for single_shot", async () => {
+    const input = await seedRequestRow();
+    await expect(
+      recordTerminalState(
+        input.requestId,
+        "AwaitingContext",
+        undefined,
+        FIXTURE_NOW,
+        env.DB,
+        "single_shot",
+      ),
+    ).rejects.toThrow(/conversational-only/i);
+  });
+
+  it("SQL TERMINAL_IMMUTABLE_WHERE blocks writes after AwaitingContext", async () => {
+    const input = await seedRequestRow();
+    await journalTransition(
+      input.requestId,
+      "AwaitingContext",
+      FIXTURE_NOW,
+      env.DB,
+      "conversational",
+    );
+    const before = await readAiRequestRow(input.requestId);
+    expect(before?.state).toBe("AwaitingContext");
+
+    await journalTransition(
+      input.requestId,
+      "Invoking",
+      "2026-07-31T13:00:00.000Z",
+      env.DB,
+      "conversational",
+    );
+    await recordTerminalState(
+      input.requestId,
+      "Completed",
+      undefined,
+      "2026-07-31T13:05:00.000Z",
+      env.DB,
+      "conversational",
+    );
+
+    const after = await readAiRequestRow(input.requestId);
+    expect(after?.state).toBe("AwaitingContext");
+    expect(after?.completed_at).toBe(before?.completed_at);
+    expect(after?.updated_at).toBe(before?.updated_at);
   });
 });

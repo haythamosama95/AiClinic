@@ -10,11 +10,14 @@ the §5.4 taxonomy (delivery plan §2.3).
 **Source of truth in code:**
 
 - `ai-platform/src/adapter.ts` — `context_requested` in the terminal event kind set; emission gated
-  on `interactionMode === "conversational"`.
+  on `interactionMode === "conversational"`; `pushTerminalEvent` validates `context_request` via
+  `validateContextRequest` (missing/malformed throws; no silent `[]` default).
 - `ai-platform/src/journal/index.ts` — `AwaitingContext` as a terminal immutable §6.3 state;
-  conversational-only reachability.
-- `ai-platform/src/errors.ts` (A2, consumed unchanged) — `context_requested` is not a
-  `TaxonomyCode`.
+  `canReachAwaitingContext` wired into `isJournalTransitionAllowed`, `journalTransition`, and
+  `recordTerminalState` (optional `interactionMode`, default `single_shot`).
+- `ai-platform/src/errors.ts` (A2, **CONSUMED unchanged**) — `context_requested` is not a
+  `TaxonomyCode`. Unknown / non-taxonomy strings classify to `internal_error`; the error-body
+  builder does **not** throw.
 
 **Traces to:** spec **Freezes** (fourth terminal kind; not a taxonomy code; `AwaitingContext`
 terminal immutable); FR-008, FR-009, FR-010, FR-011.
@@ -33,7 +36,8 @@ one-terminal-event invariant remain unchanged.
 | Role | Terminal SSE event — ends the stream |
 | Mode | `conversational` capabilities only |
 | Payload | Carries the keys (and arguments) the assistant needs — a conforming context request per `context-request-schema.md` |
-| Not an error | Must **not** appear in the §5.4 error taxonomy; must **not** be buildable as an A2 error body |
+| Emission validation | `pushTerminalEvent` requires `payload.context_request` and runs `validateContextRequest`; missing or malformed payloads throw — no silent `[]` default |
+| Not an error | Must **not** appear in the §5.4 error taxonomy. A2 `errors.ts` is **unchanged**: forced string input of this literal classifies to `internal_error` (never throw from the error-body builder) |
 
 A `single_shot` capability (including omitted/`default` mode) MUST never emit this kind. Clients that
 only invoke `single_shot` capabilities therefore never observe it.
@@ -58,13 +62,14 @@ Duplicate terminal emission remains forbidden under every path (A6 invariant ext
 | --- | --- |
 | State name | `AwaitingContext` |
 | Graph | §6.3 — reachable from `Validating` when output is a valid context request |
-| Reachability | `conversational` only |
+| Reachability | `conversational` only — enforced by `canReachAwaitingContext` on allow-check and write path |
 | Terminal | Yes — same class as `Completed`, `Failed`, `Cancelled`, `Rejected` |
-| Immutable | No further state transition from `AwaitingContext` is allowed |
+| Immutable | No further state transition from `AwaitingContext` is allowed (SQL + helper) |
 | Meaning | **That request is over.** Continuing the conversation is a **new** request with a **new** idempotency key, linked by `conversation_id` (H3 journaling). |
 
 Naming it terminal (not a pause) is what keeps the platform free of in-flight conversation state
-(§6.3; §6.7.4).
+(§6.3; §6.7.4). `journalTransition` / `recordTerminalState` take optional `interactionMode`
+(default `single_shot`) and refuse AwaitingContext writes for non-conversational mode.
 
 ---
 

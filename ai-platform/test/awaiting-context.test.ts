@@ -40,9 +40,20 @@ describe("awaiting_context_is_terminal_and_immutable", () => {
     expect(canReachAwaitingContext("single_shot")).toBe(false);
   });
 
-  it("allows non-terminal states to transition including into AwaitingContext for conversational", () => {
+  it("allows Validating → AwaitingContext only when interactionMode is conversational", () => {
+    expect(
+      isJournalTransitionAllowed(
+        "Validating",
+        "AwaitingContext",
+        "conversational",
+      ),
+    ).toBe(true);
+    expect(
+      isJournalTransitionAllowed("Validating", "AwaitingContext", "single_shot"),
+    ).toBe(false);
+    // Default mode is single_shot — mode-blind AwaitingContext is refused.
     expect(isJournalTransitionAllowed("Validating", "AwaitingContext")).toBe(
-      true,
+      false,
     );
     expect(isJournalTransitionAllowed("Validating", "Completed")).toBe(true);
   });

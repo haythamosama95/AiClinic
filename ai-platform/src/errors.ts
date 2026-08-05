@@ -204,10 +204,9 @@ export interface ErrorBody {
 }
 
 export function buildErrorBody(input: ErrorBodyInput): ErrorBody {
-  if (input.code === "context_requested") {
-    throw new Error("context_requested is not a taxonomy error code");
-  }
-
+  // `context_requested` is a terminal SSE kind (§5.5), not a §5.4 taxonomy code.
+  // Unknown / non-taxonomy strings (including that literal) classify to
+  // `internal_error` — never throw from the error-body builder (A2 resilience).
   const classified = classifyErrorCode(input.code);
   const entry = getTaxonomyEntry(classified);
 

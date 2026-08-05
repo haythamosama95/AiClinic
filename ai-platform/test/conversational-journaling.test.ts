@@ -492,6 +492,7 @@ async function runConversationalLeg(
     undefined,
     FIXTURE_NOW,
     spies.db,
+    terminalState === "AwaitingContext" ? "conversational" : "single_shot",
   );
 
   const ctx = createFakeCtx();

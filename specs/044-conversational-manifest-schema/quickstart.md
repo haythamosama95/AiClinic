@@ -23,19 +23,26 @@ this slice's test files, and only commands that run this slice's tests.
 ## 2. What was implemented
 
 - **Conversational manifest load rules** — `ai-platform/src/manifest/index.ts` requires max history
-  turns, max context rounds per turn, transcript size limit, and permitted key set when
-  `interactionMode` is `conversational`; rejects conversational-only fields on `single_shot`;
-  validates permitted keys via A5 `validateKey`.
+  turns, max context rounds per turn, and transcript size limit as finite positive integers when
+  `interactionMode` is `conversational`; requires permitted key set (empty legal; duplicates
+  rejected); rejects conversational-only fields on `single_shot`; validates permitted keys via A5
+  `validateKey`.
 - **Platform-owned context-request schema** — `ai-platform/src/context/context-request.ts` exports
   `validateContextRequest()` and `CONTEXT_REQUEST_SCHEMA_ID` for the shared list-of-`{key, arguments}`
   shape.
 - **Fourth terminal kind** — `ai-platform/src/adapter.ts` adds `context_requested` to
-  `TERMINAL_EVENT_KINDS`, gates emission on `interactionMode`, and exports mode-gated stub helpers
-  for integration tests.
-- **`AwaitingContext` terminal helpers** — `ai-platform/src/journal/index.ts` exports
-  `isJournalTerminalState`, `isJournalTransitionAllowed`, and `canReachAwaitingContext`.
-- **Contract + build + integration tests** — four test files covering manifest load/omit/reject,
-  shared schema accept/reject, taxonomy absence, terminal immutability, and one-terminal invariant.
+  `TERMINAL_EVENT_KINDS`, gates emission on `interactionMode`, validates `context_request` via
+  `validateContextRequest` at emit (no silent `[]`), and exports mode-gated stub helpers for
+  integration tests.
+- **`AwaitingContext` write-path wiring** — `ai-platform/src/journal/index.ts` exports
+  `isJournalTerminalState`, `isJournalTransitionAllowed`, and `canReachAwaitingContext`; the helper
+  is wired into transition allow-check, `journalTransition`, and `recordTerminalState` (optional
+  `interactionMode`, default `single_shot`).
+- **A2 taxonomy consumed unchanged** — `errors.ts` is not modified; `context_requested` is absent
+  from the taxonomy and forced string input classifies to `internal_error` (no throw).
+- **Contract + build + integration tests** — four H1 test files covering manifest load/omit/reject,
+  malformed numerics, permitted-key edges, shared schema accept/reject, taxonomy classify-not-throw,
+  terminal immutability + write-path refuse, emission payload validation, and one-terminal invariant.
 - **Frozen contracts** — `contracts/conversational-manifest.md`, `contracts/context-request-schema.md`,
   `contracts/context-requested-terminal.md`.
 
@@ -45,10 +52,10 @@ Link: [`spec.md`](./spec.md), [`plan.md`](./plan.md).
 
 | Path | Role |
 | --- | --- |
-| `ai-platform/src/manifest/index.ts` | Conversational Interaction + permitted key set load rules |
+| `ai-platform/src/manifest/index.ts` | Conversational Interaction (numeric range) + permitted key set load rules |
 | `ai-platform/src/context/context-request.ts` | Shared `{key, arguments}` schema |
-| `ai-platform/src/adapter.ts` | Fourth terminal kind + mode gate |
-| `ai-platform/src/journal/index.ts` | `AwaitingContext` terminal / immutable helpers |
+| `ai-platform/src/adapter.ts` | Fourth terminal kind + mode gate + emit-time payload validation |
+| `ai-platform/src/journal/index.ts` | `AwaitingContext` terminal / immutable + write-path mode gate |
 | `ai-platform/test/conversational-manifest.test.ts` | Manifest contract/build tests |
 | `ai-platform/test/context-request.test.ts` | Shared schema + coverage tests |
 | `ai-platform/test/awaiting-context.test.ts` | `AwaitingContext` terminal/immutable |
@@ -68,7 +75,7 @@ npx vitest run \
   test/context-requested-terminal.test.ts
 ```
 
-Expected: **28 passing tests** across the four H1 test files.
+Expected: **47 passing tests** across the four H1 test files.
 
 ## 5. Inspect the changes
 

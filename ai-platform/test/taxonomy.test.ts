@@ -4,6 +4,7 @@ import {
   classifyErrorCode,
   getTaxonomyEntry,
   isRetrySafe,
+  isTaxonomyCode,
   liveHttpStatusForCode,
   supplementaryFieldsForCode,
 } from "../src/errors";
@@ -152,14 +153,14 @@ describe("taxonomy unrecognised code (T19)", () => {
 });
 
 describe("taxonomy context_requested (T24)", () => {
-  it("refuses to build an error body for context_requested", () => {
-    expect(() =>
-      buildErrorBody({
-        code: "context_requested",
-        requestReference: "7QK4-2B9F",
-        traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-      }),
-    ).toThrow();
+  it("refuses to surface context_requested as an error-body code (classifies to internal_error)", () => {
+    expect(isTaxonomyCode("context_requested")).toBe(false);
+    const body = buildErrorBody({
+      code: "context_requested",
+      requestReference: "7QK4-2B9F",
+      traceId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    });
+    expect(body.code).toBe("internal_error");
   });
 });
 

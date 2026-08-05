@@ -47,3 +47,42 @@ Required-case coverage is otherwise complete: all eight manifest cases, the shar
 5. **[Low] Strengthen the stream-level single_shot test** so the deny decision is made by production code (e.g. an adapter/broker path that attempts emission and surfaces the throw as a failed leg), not by the stub's internal downgrade.
 6. **[Low] Replace the export-name-regex prohibition tests** with structural assertions that would actually fail on regression (e.g. scanning `src/` for new D1 migrations or Durable Object bindings, or asserting the §6.1 stage list is unchanged).
 7. **[Low] Decide and test edge policies for the permitted key set**: reject duplicate entries, and state explicitly whether an empty `permittedKeySet` is legal for a `conversational` capability (currently accepted silently).
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **H1-R1 — Numeric Interaction type/range** | Bugs #1; Missing Tests #1; Rec #1 | `src/manifest/index.ts` `assertConversationalInteractionFields` (finite positive integers); `test/conversational-manifest.test.ts` |
+| **H1-R2 — AwaitingContext write-path reachability** | Arch Dev #1, #3; Missing Tests #5; Rec #2 | `src/journal/index.ts` wire `canReachAwaitingContext` into `isJournalTransitionAllowed` / `journalTransition` / `recordTerminalState`; `test/awaiting-context.test.ts`; `test/journal.test.ts` SQL immutability |
+| **H1-R3 — Reconcile errors.ts** | Bugs #3; Arch Dev #2; Rec #3 | Revert throw in `src/errors.ts`; unknown/`context_requested` → `internal_error`; Spec Kit plan CONSUMED unchanged; `taxonomy.test.ts` T24; `context-requested-terminal.test.ts` |
+| **H1-R4 — Validate context_requested payload** | Bugs #2; Rec #4 | `src/adapter.ts` `pushTerminalEvent` calls `validateContextRequest`; fail on missing/malformed (no `[]` default) |
+| **H1-R5 — Production-gated single_shot stream** | Missing Tests #2; Rec #5 | `test/helpers/adapter-stub.ts` always calls `pushTerminalEvent`; stream test spies production gate |
+| **H1-R6 — Prohibition / edge / omitted-mode / hash** | Missing Tests #3, #4, #6; Rec #6, #7 | Structural prohibition tests; omitted-`interactionMode` rejection; empty/duplicate `permittedKeySet`; mode-only hash flip |
+
+Every numbered review item is covered. No escalation — fixes stay within §5.1 / §5.4 / §5.5 / §5.7 / §6.3 / §6.7.2 / §6.7.4 / A14 and Spec Kit contract extensions.
+
+### 7.2 Test cases created first
+
+- **H1-R1:** `conversational_numeric_fields_reject_malformed_values` — wrong type, negative, zero, non-integer per field.
+- **H1-R2:** Mode-gated `isJournalTransitionAllowed`; write-path refuse for `single_shot`; SQL `TERMINAL_IMMUTABLE_WHERE` after `AwaitingContext`.
+- **H1-R3:** T24 / taxonomy-absence assert classify-to-`internal_error` (no throw).
+- **H1-R4:** `context_requested_payload_must_conform` — missing and malformed rejected; conforming accepted.
+- **H1-R5:** Stream case spies `pushTerminalEvent(..., "context_requested", "single_shot")` then ends with a permitted terminal.
+- **H1-R6:** Omitted-mode rejection; empty/duplicate permitted keys; structural no-stage / no-conversation-table / no-extra-DO; mode-only hash change.
+
+### 7.3 Fix implemented
+
+- Manifest loader type/range-checks conversational numeric limits; rejects duplicate permitted keys; documents empty allowlist as legal.
+- Journal write APIs take `interactionMode` and refuse `AwaitingContext` for `single_shot`.
+- Removed the `buildErrorBody` throw; restored A2 classify-unknown behaviour; Spec Kit records `errors.ts` CONSUMED unchanged.
+- Emission path validates context-request payload against the shared schema.
+- Stub no longer silently downgrades; production gate owns the deny.
+- Spec Kit `spec.md` / `plan.md` / `tasks.md` / `quickstart.md` / contracts updated.
+
+### 7.4 Verification
+
+Full `ai-platform` `npm test`: verify-manifests **2 files / 4 tests**; node Vitest **41 files / 615 tests**; workers Vitest **19 files / 268 tests** (includes load **10 tests**) — all passed. Modified: `src/{manifest,journal,errors,adapter}.ts`, H1 tests + `journal.test.ts` / `taxonomy.test.ts` / `conversational-journaling.test.ts`, Spec Kit under `specs/044-conversational-manifest-schema/`, this resolution appendix.

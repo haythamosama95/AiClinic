@@ -32,14 +32,18 @@ manifests that carry the four conversational extras. Those extras are unreachabl
 Present on the **Interaction** group when `interactionMode` is `conversational`. All three are
 required; omitting any fails `load()` naming the omission. There is no silent default.
 
-| Field key (wire, camelCase) | Contents |
-| --- | --- |
-| `maxHistoryTurns` | Maximum transcript history turns for this capability version. |
-| `maxContextRoundsPerTurn` | Maximum consecutive context-negotiation rounds per turn. |
-| `transcriptSizeLimit` | Maximum transcript size bound for this capability version. |
+| Field key (wire, camelCase) | Type / range | Contents |
+| --- | --- | --- |
+| `maxHistoryTurns` | Finite positive integer (`number`, `Number.isInteger`, `> 0`) | Maximum transcript history turns for this capability version. |
+| `maxContextRoundsPerTurn` | Finite positive integer (`number`, `Number.isInteger`, `> 0`) | Maximum consecutive context-negotiation rounds per turn. |
+| `transcriptSizeLimit` | Finite positive integer (`number`, `Number.isInteger`, `> 0`) | Maximum transcript size bound for this capability version. |
 
-Concrete numeric product values are Open Decisions 12/13 at capability authoring time — H1 freezes
-that the fields exist and validate, not their product defaults.
+Wrong type, non-finite, non-integer, negative, or zero values fail `load()` as malformed
+conversational Interaction fields.
+
+Concrete numeric product ceilings are Open Decisions 12/13 at capability authoring time — H1
+freezes that the fields exist and validate as finite positive integers, not their product
+defaults.
 
 **Consumed by:** Protocol adapter, context validator, prompt composer (later H2/H3).
 
@@ -59,7 +63,7 @@ key set form:
 
 | Field key | Type | Rules |
 | --- | --- | --- |
-| `permittedKeySet` | `string[]` | Required when mode is `conversational`. Each element MUST be a key known to the platform's published context-key vocabulary (A5 `validateKey`). An unknown key fails `load()`. |
+| `permittedKeySet` | `string[]` | Required when mode is `conversational`. Each element MUST be a key known to the platform's published context-key vocabulary (A5 `validateKey`). An unknown key fails `load()`. **Empty array is legal** (allowlist of zero — the capability may never request context keys). **Duplicate keys are rejected.** |
 
 Omitting `permittedKeySet` on a conversational manifest fails the build naming that omission.
 
