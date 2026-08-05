@@ -314,6 +314,7 @@ function validateConversationalContextRequirements(
     throw new Error(`Malformed manifest group: ${groupName}`);
   }
 
+  const seen = new Set<string>();
   for (const key of value.permittedKeySet) {
     if (typeof key !== "string") {
       throw new Error(`Malformed manifest group: ${groupName}`);
@@ -326,11 +327,22 @@ function validateConversationalContextRequirements(
     if (!keyResult.ok) {
       throw new Error(`Permitted key set unknown key: ${key}`);
     }
+
+    if (seen.has(key)) {
+      throw new Error(`Permitted key set duplicate key: ${key}`);
+    }
+    seen.add(key);
   }
 
+  // Empty permittedKeySet is legal: the capability may never request context
+  // keys (allowlist of zero). H2 still enforces the allowlist at validation.
   return {
     permittedKeySet: value.permittedKeySet as readonly string[],
   };
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return isFiniteNumber(value) && Number.isInteger(value) && value > 0;
 }
 
 function assertConversationalInteractionFields(
@@ -339,6 +351,11 @@ function assertConversationalInteractionFields(
   for (const field of CONVERSATIONAL_ONLY_INTERACTION_FIELDS) {
     if (!(field in interaction)) {
       throw new Error(`Conversational manifest omits required field: ${field}`);
+    }
+    if (!isPositiveInteger(interaction[field])) {
+      throw new Error(
+        `Malformed conversational Interaction field: ${field}`,
+      );
     }
   }
 }

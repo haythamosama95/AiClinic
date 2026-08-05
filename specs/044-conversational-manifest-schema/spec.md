@@ -26,13 +26,13 @@ Contracts this slice establishes for the first time:
 
 - The **conversational Interaction fields** on a capability manifest: when
   `interaction_mode` is `conversational`, the manifest MUST declare max history
-  turns, max context rounds per turn, and transcript size limit; those three
-  fields are for `conversational` only and are rejected on a `single_shot`
-  manifest (§5.1 Interaction row; A14).
+  turns, max context rounds per turn, and transcript size limit as finite
+  positive integers; those three fields are for `conversational` only and are
+  rejected on a `single_shot` manifest (§5.1 Interaction row; A14).
 - The **permitted key set** as the Context-requirements form for a
   `conversational` capability: the assistant may request keys only from that
-  set during a turn; a permitted key set naming an unknown key fails (§5.1
-  Context requirements row; A14).
+  set during a turn; an empty set is legal; duplicate keys fail; a permitted
+  key set naming an unknown key fails (§5.1 Context requirements row; A14).
 - The rule that **interaction mode is fixed for the life of a capability
   version**: changing a capability between `single_shot` and `conversational`
   is a new capability version, never an in-place edit (§5.7 Interaction mode
@@ -42,15 +42,18 @@ Contracts this slice establishes for the first time:
   set — not a per-capability schema (§6.7.2).
 - The rule that **`context_requested` is a terminal event kind and not a
   taxonomy code**: it does not appear in the §5.4 error table; it is a terminal
-  event kind alongside `completed`, for `conversational` capabilities only
+  event kind alongside `completed`, for `conversational` capabilities only;
+  A2's error-body builder is unchanged (unknown strings classify, never throw)
   (§5.4; §5.5 rule 4; §6.7.2).
 - **`AwaitingContext` as a terminal, immutable request state**, reachable only
-  for `conversational` capabilities: that request is over; the conversation
-  continues as a new request with a new idempotency key (§6.3; §6.7.2).
+  for `conversational` capabilities (enforced on the journal write path): that
+  request is over; the conversation continues as a new request with a new
+  idempotency key (§6.3; §6.7.2).
 - The **fourth terminal event kind** on the streaming protocol for
-  `conversational` capabilities only: `context_requested` carrying the keys
-  the assistant needs; a `single_shot` client can never receive that kind; the
-  one-terminal-event invariant still holds (§5.5 rule 4; §6.7.4).
+  `conversational` capabilities only: `context_requested` carrying a conforming
+  context-request payload (validated at emission); a `single_shot` client can
+  never receive that kind; the one-terminal-event invariant still holds (§5.5
+  rule 4; §6.7.4).
 
 Later slices may extend these and may not rewrite them (delivery plan §2.3).
 
@@ -60,24 +63,26 @@ Contracts frozen by the slices in `Needs` (A2, A4, A6). Changing any is out of
 scope by definition:
 
 - **From A2 (diagnostic envelope)**: the closed §5.4 error taxonomy, error-body
-  contract, request-reference format, and trace-id propagation. H1 asserts that
-  `context_requested` is **absent** from that taxonomy and is not added as a
-  code; it does not rewrite any existing code's HTTP mapping, retryability, or
-  quota-consumption flag (§5.4; A2 Freezes).
+  contract, request-reference format, and trace-id propagation. H1 consumes A2
+  **unchanged**: `context_requested` is **absent** from that taxonomy (not a
+  `TaxonomyCode`); forced / unknown string input classifies to `internal_error`
+  without throwing from the error-body builder. H1 does not rewrite any existing
+  code's HTTP mapping, retryability, or quota-consumption flag (§5.4; A2 Freezes).
 - **From A4 (capability manifest schema and loader)**: the ten field groups, the
   loader contract (valid load / malformed fails build / in-place edit of a
   published version fails build), the `interaction_mode` default of
   `single_shot` when omitted, and the rule that conversational-only fields are
   rejected on a `single_shot` manifest. H1 extends the Interaction and
-  Context-requirements groups with conversational field contents and the
-  permitted key set; it does not rewrite the ten-group schema, the default, or
+  Context-requirements groups with conversational field contents (finite
+  positive integers) and the permitted key set (empty legal; duplicates
+  rejected); it does not rewrite the ten-group schema, the default, or
   the presence/absence rejection rule A4 already froze (§5.1; §5.7; A4 Freezes).
 - **From A6 (protocol adapter and SSE framing)**: the SSE framing with
   `accepted`, heartbeats, terminal kinds `completed` / `failed` / `cancelled`,
   and the one-terminal-event invariant. A6 explicitly reserved the fourth kind
   `context_requested` for H1 to extend; H1 adds that kind for `conversational`
-  only and does not rewrite the three existing kinds or the invariant (§5.5;
-  A6 Freezes).
+  only, validates the context-request payload at emission, and does not rewrite
+  the three existing kinds or the invariant (§5.5; A6 Freezes).
 
 ### Open decisions relied on
 
@@ -132,8 +137,9 @@ when; §3.11.7 row H1).
 
 1. **Given** a manifest declaring `interaction_mode: conversational` with max
    history turns, max context rounds per turn, transcript size limit, and a
-   permitted key set all present and well-formed, **When** the loader/build
-   runs, **Then** the conversational manifest loads. *(Manifest: a
+   permitted key set all present and well-formed (the three numeric fields are
+   finite positive integers; the permitted key set may be empty), **When** the
+   loader/build runs, **Then** the conversational manifest loads. *(Manifest: a
    conversational manifest loads with all four extra fields)*
 2. **Given** a `conversational` manifest that omits max history turns, **When**
    the build runs, **Then** the build fails naming that omission. *(One failure
@@ -184,6 +190,16 @@ when; §3.11.7 row H1).
     the stream is observed through completion, **Then** exactly one terminal
     event is emitted for that leg (still the one-terminal-event invariant).
     *(Still exactly one terminal event per leg)*
+15. **Given** a `conversational` manifest whose numeric Interaction field is
+    malformed (wrong type, negative, zero, or non-integer), **When** the build
+    runs, **Then** the build fails naming that field. *(Well-formed numerics)*
+16. **Given** a `conversational` manifest whose permitted key set contains a
+    duplicate key, **When** the build runs, **Then** the build fails. *(Duplicate
+    permitted keys rejected)*
+17. **Given** a `conversational` emission of `context_requested` with a missing
+    or malformed `context_request` payload, **When** the adapter pushes the
+    terminal, **Then** emission fails rather than streaming a silent default.
+    *(Emission-time payload validation)*
 
 ### Test plan
 
@@ -208,6 +224,11 @@ Named tests:
 - `conversational_fields_rejected_on_single_shot` — contract/build —
   conversational-only fields on a `single_shot` manifest fail the build (§5.1;
   A14).
+- `conversational_numeric_fields_reject_malformed_values` — contract/build —
+  wrong type, negative, zero, or non-integer values for the three numeric
+  Interaction fields fail the build (§5.1).
+- `permitted_key_set_edge_policies` — contract/build — empty `permittedKeySet`
+  is legal; duplicate keys are rejected (§5.1).
 - `interaction_mode_in_place_change_fails_build` — build — changing
   `interaction_mode` in place on a published version fails the build (§5.7).
 - `permitted_key_set_unknown_key_fails` — contract/build — a permitted key set
@@ -222,13 +243,18 @@ Named tests:
   rejection case per malformed form (not a list; missing `key`; missing
   `arguments`; element not a `{key, arguments}` object) (§6.7.2).
 - `context_requested_absent_from_error_taxonomy` — contract —
-  `context_requested` is not a §5.4 taxonomy code (§5.4).
+  `context_requested` is not a §5.4 taxonomy code; forced string input
+  classifies to `internal_error` without throwing from the error-body builder
+  (§5.4; A2 resilience).
 - `awaiting_context_is_terminal_and_immutable` — contract/integration —
-  `AwaitingContext` is terminal; no transition out of it is permitted (§6.3;
-  §6.7.2).
+  `AwaitingContext` is terminal; no transition out of it is permitted; write
+  path refuses `single_shot` (and omitted-mode default) (§6.3; §6.7.2).
 - `single_shot_never_emits_context_requested` — integration — a `single_shot`
-  capability's stream never ends with `context_requested` (§5.5 rule 4;
-  §6.7.4).
+  capability's stream never ends with `context_requested`; deny is via
+  production `pushTerminalEvent` (§5.5 rule 4; §6.7.4).
+- `context_requested_payload_must_conform` — contract/integration —
+  `pushTerminalEvent` rejects missing/malformed `context_request` payloads
+  (§6.7.2; §5.5 rule 4).
 - `conversational_leg_still_one_terminal_event` — integration — a
   `conversational` leg ending in `context_requested` still emits exactly one
   terminal event (§5.5 rule 4; A6 one-terminal-event invariant).
@@ -253,24 +279,35 @@ prohibition, every named boundary):
 ### Edge Cases
 
 - H1 emits no new §5.4 taxonomy codes. `context_requested` is deliberately
-  **not** an error code (§5.4). Runtime budget breaches
+  **not** an error code (§5.4). A2's error-body builder is **unchanged**: forced
+  string input of that literal classifies to `internal_error` and does not
+  throw (A2 resilience). Runtime budget breaches
   (`conversation_budget_exhausted`) belong to H2, not H1.
 - Build-time failure: any of the four conversational extras omitted on a
   `conversational` manifest. Rejected; there is no silent default for those
   fields (§5.1; delivery plan §3.11.7).
-- Build-time failure: conversational-only fields on a `single_shot` manifest.
-  Rejected; there is no silent-stripping path (§5.1; A14).
+- Build-time failure: conversational numeric fields present but malformed
+  (non-finite, non-integer, ≤ 0, or wrong type). Rejected (§5.1).
+- Build-time failure: conversational-only fields on a `single_shot` manifest
+  (including when `interaction_mode` is omitted and defaults). Rejected; there
+  is no silent-stripping path (§5.1; A14).
 - Build-time failure: in-place change of `interaction_mode` on a published
   version. Rejected; a new capability version is required (§5.7).
 - Build-time failure: permitted key set names an unknown key. Rejected against
   the published context-key vocabulary (§5.1).
+- Build-time policy: empty `permittedKeySet` is **legal** (allowlist of zero);
+  duplicate keys in the set are **rejected** (§5.1).
 - Schema failure: each malformed context-request form is rejected by the shared
   schema; there is no per-capability override (§6.7.2).
+- Emission failure: `context_requested` with a missing or non-conforming
+  `context_request` payload is refused at push time — no silent `[]` default
+  (§6.7.2; §5.5 rule 4).
 - Boundary: a `single_shot` capability can never emit `context_requested`; the
   fourth kind is unreachable unless the manifest opts into `conversational`
   (§5.5 rule 4; §5.1; A14).
 - Boundary: `AwaitingContext` is terminal — that request is over; continuing
-  the conversation is a new request with a new idempotency key (§6.3; §6.7.2).
+  the conversation is a new request with a new idempotency key. Journal write
+  paths refuse entering `AwaitingContext` for `single_shot` (§6.3; §6.7.2).
 - Boundary: exactly one terminal event per leg remains mandatory when the
   terminal kind is `context_requested` (§5.5 rule 4).
 - No retry, caching, abstraction, or configurability beyond what the cited
@@ -283,11 +320,13 @@ prohibition, every named boundary):
 - **FR-001**: A capability manifest MAY declare `interaction_mode:
   conversational`; when it does, it MUST declare max history turns, max context
   rounds per turn, and transcript size limit as Interaction fields for
-  `conversational` only (§5.1 Interaction row; A14).
+  `conversational` only — each a finite positive integer (§5.1 Interaction row;
+  A14).
 - **FR-002**: A `conversational` capability MUST declare a **permitted key set**
   as its Context-requirements form — the keys the assistant may request during
   a turn — instead of the ordered required/optional key list used by
-  `single_shot` (§5.1 Context requirements row; A14).
+  `single_shot`. An empty set is legal; duplicate keys are rejected (§5.1
+  Context requirements row; A14).
 - **FR-003**: Conversational-only fields (max history turns, max context rounds
   per turn, transcript size limit, and permitted key set) MUST be rejected on a
   `single_shot` manifest (§5.1; A14; delivery plan §3.8 Done when).
@@ -308,18 +347,21 @@ prohibition, every named boundary):
   per-capability schema (§6.7.2).
 - **FR-008**: `context_requested` MUST be a terminal event kind alongside
   `completed`, and MUST NOT appear as a §5.4 taxonomy code; it is not an error
-  — the turn ran, the provider was called, and the platform is asking for data
-  (§5.4; §5.5 rule 4; §6.7.2).
+  — the turn ran, the provider was called, and the platform is asking for data.
+  A2's error-body path remains unchanged: unknown / non-taxonomy strings
+  classify to `internal_error` without throwing (§5.4; §5.5 rule 4; §6.7.2).
 - **FR-009**: Exactly one terminal event MUST end every stream: `completed`,
   `failed`, `cancelled`, or — for `conversational` capabilities only —
-  `context_requested` carrying the keys the assistant needs; a client that does
-  not implement conversational capabilities MUST never receive the fourth kind
-  (§5.5 rule 4).
+  `context_requested` carrying a conforming context-request payload; missing
+  or malformed payloads MUST fail at emission. A client that does not implement
+  conversational capabilities MUST never receive the fourth kind (§5.5 rule 4;
+  §6.7.2).
 - **FR-010**: `AwaitingContext` MUST be reachable only for `conversational`
   capabilities and MUST be terminal and immutable in the same sense as
   `Completed`, `Failed`, `Cancelled`, and `Rejected`: that request is over; the
-  conversation continues as a new request with a new idempotency key (§6.3;
-  §6.7.2).
+  conversation continues as a new request with a new idempotency key. Journal
+  transition / terminal-write APIs MUST refuse `AwaitingContext` for
+  `single_shot` (§6.3; §6.7.2).
 - **FR-011**: Conversational mode MUST NOT add a new pipeline stage, a new
   store, a new stateful component, a change to cancellation, a change to
   idempotency, a change to the advisory rule, or general tool use — stage 13
@@ -335,19 +377,20 @@ prohibition, every named boundary):
 
 - **Conversational Interaction fields**: Manifest Interaction contents for
   `interaction_mode: conversational` — max history turns, max context rounds
-  per turn, transcript size limit (§5.1).
+  per turn, transcript size limit — each a finite positive integer (§5.1).
 - **Permitted key set**: The allowlist of context keys a conversational
   capability may request during a turn; declared on the manifest in place of
-  the `single_shot` ordered required/optional key list (§5.1; A14).
+  the `single_shot` ordered required/optional key list; empty legal; duplicates
+  rejected (§5.1; A14).
 - **Context-request schema**: Platform-owned shared schema — a list of
   `{key, arguments}` — validating the structured output that ends a leg in
-  `context_requested` / `AwaitingContext` (§6.7.2).
+  `context_requested` / `AwaitingContext`; also enforced at emission (§6.7.2).
 - **Terminal event kind `context_requested`**: Fourth terminal SSE event kind,
-  conversational only; carries the keys the assistant needs; not a taxonomy
-  code (§5.5; §5.4; §6.7.2).
+  conversational only; carries a conforming context-request payload; not a
+  taxonomy code (§5.5; §5.4; §6.7.2).
 - **Request state `AwaitingContext`**: Terminal immutable journal state for a
   leg that ended in a valid context request; reachable only for
-  `conversational` capabilities (§6.3; §6.7.2).
+  `conversational` capabilities (write-path enforced) (§6.3; §6.7.2).
 
 ## Constitution Alignment *(mandatory)*
 

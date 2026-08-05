@@ -3,6 +3,7 @@ import {
   liveHttpStatusForCode,
   type TaxonomyCode,
 } from "./errors";
+import { validateContextRequest } from "./context/context-request";
 import type { InteractionMode } from "./manifest";
 import { generateRequestReference } from "./reference";
 import { resolveTraceId } from "./trace";
@@ -128,10 +129,21 @@ export function pushTerminalEvent(
     return;
   }
 
+  const contextRequest = payload?.context_request;
+  if (contextRequest === undefined) {
+    throw new Error("context_requested requires a context_request payload");
+  }
+  const validation = validateContextRequest(contextRequest);
+  if (!validation.ok) {
+    throw new Error(
+      `context_requested payload is not a conforming context request: ${validation.reason}`,
+    );
+  }
+
   sink.push({
     type: "context_requested",
     data: {
-      context_request: payload?.context_request ?? [],
+      context_request: contextRequest,
       trace_id: context.traceId,
     },
     trace_id: context.traceId,

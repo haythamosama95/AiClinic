@@ -97,21 +97,28 @@ against this slice's test files only); Inspect the changes. Omit Prerequisites a
 ai-platform/
 ├── src/
 │   ├── manifest/
-│   │   └── index.ts              # MODIFIED — conversational Interaction required fields;
-│   │                             #   permitted key set as Context-requirements form;
-│   │                             #   unknown-key rejection via A5 validateKey; extend
-│   │                             #   single_shot rejection to include permitted key set
+│   │   └── index.ts              # MODIFIED — conversational Interaction required fields
+│   │                             #   (finite positive integers); permitted key set form
+│   │                             #   (empty legal; duplicates rejected); unknown-key
+│   │                             #   rejection via A5 validateKey; extend single_shot
+│   │                             #   rejection to include permitted key set
 │   ├── context/
 │   │   ├── index.ts              # CONSUMED (A5) — validateKey / published vocabulary; unchanged
 │   │   ├── validator.ts          # untouched (H2)
 │   │   ├── preflight.ts          # untouched
 │   │   └── context-request.ts    # NEW — platform-owned {key, arguments} list schema + validate()
 │   ├── adapter.ts                # MODIFIED — add context_requested to terminal kinds; gate
-│   │                             #   emission on interactionMode via stub/terminal helpers
+│   │                             #   emission on interactionMode; validate context_request
+│   │                             #   payload via validateContextRequest (no silent [])
 │   ├── journal/
-│   │   └── index.ts              # MODIFIED — export / enforce AwaitingContext as terminal
-│   │                             #   immutable; conversational-only reachability helper
-│   └── errors.ts                 # CONSUMED (A2) — unchanged; assert context_requested absent
+│   │   └── index.ts              # MODIFIED — AwaitingContext terminal immutable;
+│   │                             #   canReachAwaitingContext wired into
+│   │                             #   isJournalTransitionAllowed / journalTransition /
+│   │                             #   recordTerminalState (optional interactionMode,
+│   │                             #   default single_shot)
+│   └── errors.ts                 # CONSUMED (A2) — unchanged; taxonomy absence proved
+│                                 #   by tests (not a TaxonomyCode; forced string
+│                                 #   classifies to internal_error — no throw)
 └── test/
     ├── conversational-manifest.test.ts      # NEW — manifest contract/build named tests
     ├── context-request.test.ts              # NEW — shared schema + platform-owned + coverage
@@ -122,7 +129,7 @@ ai-platform/
 **Structure Decision**: Per Clarification Session 2026-08-02 Q1, conversational load rules extend
 `src/manifest/`, the shared context-request schema lives in `src/context/context-request.ts`
 (colocated with A5's vocabulary, not a new pipeline stage), and the fourth terminal kind extends
-`src/adapter.ts`. Journal gains the AwaitingContext immutability/reachability helpers required by
+`src/adapter.ts`. Journal wires `canReachAwaitingContext` into the write path required by
 FR-010 / §6.3 without a new store. Integration tests drive A6 stub helpers gated on
 `interactionMode` (Clarification Q2) — no full conversational pipeline. No `frontend/` or
 `backend/` path is touched.
@@ -131,9 +138,9 @@ FR-010 / §6.3 without a new store. Integration tests drive A6 stub helpers gate
 
 | **Consumes** entry | Existing module / file bound to | How H1 binds to it |
 | --- | --- | --- |
-| A2 — closed §5.4 error taxonomy, error-body contract, request-reference format, trace-id propagation | `ai-platform/src/errors.ts` (`TaxonomyCode`, `TAXONOMY` / `isTaxonomyCode`, `buildErrorBody`); `reference.ts`; `trace.ts` | H1 **asserts** `context_requested` is absent from the taxonomy and is refused as an error-body code. It does **not** add a code, change HTTP mapping, retryability, or quota-consumption flags (FR-008; delivery plan §2.3). |
-| A4 — ten field groups, loader contract, `interaction_mode` default `single_shot`, conversational-only rejection on `single_shot` | `ai-platform/src/manifest/index.ts` (`MANIFEST_FIELD_MANIFEST`, `load`, `hashManifest`, `verifyPublishedRegistry`, `Manifest`) | H1 **extends** Interaction content validation (require the three conversational numeric/size fields when mode is `conversational`) and Context-requirements form (permitted key set for `conversational`). It does **not** rewrite the ten-group set, the omitted-mode default, or A4's presence/absence rejection rule — it widens that rejection to include the permitted key set (FR-001–FR-005). |
-| A6 — SSE framing (`accepted`, heartbeats, terminals `completed` / `failed` / `cancelled`), one-terminal-event invariant; fourth kind reserved for H1 | `ai-platform/src/adapter.ts` (`TERMINAL_EVENT_KINDS`, `StubEventSourceController`, `handleAdapterRequest`) | H1 **extends** the terminal kind set with `context_requested` for `conversational` only, gating stub/terminal helpers on `interactionMode`. It does **not** rewrite the three existing kinds or the one-terminal-event invariant (FR-009). |
+| A2 — closed §5.4 error taxonomy, error-body contract, request-reference format, trace-id propagation | `ai-platform/src/errors.ts` (`TaxonomyCode`, `TAXONOMY` / `isTaxonomyCode`, `buildErrorBody`); `reference.ts`; `trace.ts` | H1 **consumes** A2 unchanged. `context_requested` is **not** a `TaxonomyCode` (proved by contract test). Forced / unknown string input to `buildErrorBody` / `classifyErrorCode` classifies to `internal_error` — A2 resilience, **no throw** in the error-body builder (FR-008; delivery plan §2.3). |
+| A4 — ten field groups, loader contract, `interaction_mode` default `single_shot`, conversational-only rejection on `single_shot` | `ai-platform/src/manifest/index.ts` (`MANIFEST_FIELD_MANIFEST`, `load`, `hashManifest`, `verifyPublishedRegistry`, `Manifest`) | H1 **extends** Interaction content validation (require the three conversational numeric fields as finite positive integers when mode is `conversational`) and Context-requirements form (permitted key set for `conversational`; empty array legal; duplicates rejected). It does **not** rewrite the ten-group set, the omitted-mode default, or A4's presence/absence rejection rule — it widens that rejection to include the permitted key set (FR-001–FR-006). |
+| A6 — SSE framing (`accepted`, heartbeats, terminals `completed` / `failed` / `cancelled`), one-terminal-event invariant; fourth kind reserved for H1 | `ai-platform/src/adapter.ts` (`TERMINAL_EVENT_KINDS`, `StubEventSourceController`, `handleAdapterRequest`) | H1 **extends** the terminal kind set with `context_requested` for `conversational` only, gating stub/terminal helpers on `interactionMode`, and validating `context_request` via `validateContextRequest` at emit (missing/malformed throws; no silent `[]` default). It does **not** rewrite the three existing kinds or the one-terminal-event invariant (FR-009). |
 
 **Assumptions dependency (not a Consumes rewrite):** Permitted-key unknown-key rejection (FR-006) calls A5's `validateKey` in `ai-platform/src/context/index.ts` against the published vocabulary. H1 does not redefine key shapes and does not list A5 in Needs (spec Assumptions).
 
@@ -143,9 +150,9 @@ No Consumes entry lacks an implementation; satisfying H1 does not require changi
 
 | §4 component | What H1 changes | Behaviour added? |
 | --- | --- | --- |
-| **§4.3.4 Capability resolver** | **Contract surface only** — conversational Interaction required fields and permitted-key-set Context-requirements form on the A4 loader | Build-time load/reject rules only. Resolver runtime behaviour remains C1. |
-| **§4.3.1 Protocol adapter** | Fourth terminal event kind `context_requested`, gated on `interactionMode` | Terminal emission allow/deny for conversational vs `single_shot`; one-terminal invariant preserved. |
-| **§4.3.11 Journal writer** | `AwaitingContext` terminal immutability and conversational-only reachability helpers on the §6.3 state machine C3 already typed | Contract/integration enforcement that `AwaitingContext` cannot transition and is unreachable for `single_shot`. No new table. |
+| **§4.3.4 Capability resolver** | **Contract surface only** — conversational Interaction required fields (finite positive integers) and permitted-key-set Context-requirements form (empty legal; duplicates rejected) on the A4 loader | Build-time load/reject rules only. Resolver runtime behaviour remains C1. |
+| **§4.3.1 Protocol adapter** | Fourth terminal event kind `context_requested`, gated on `interactionMode`; emit-time `validateContextRequest` | Terminal emission allow/deny for conversational vs `single_shot`; conforming payload required; one-terminal invariant preserved. |
+| **§4.3.11 Journal writer** | `AwaitingContext` terminal immutability; `canReachAwaitingContext` wired into `isJournalTransitionAllowed`, `journalTransition`, and `recordTerminalState` (optional `interactionMode`, default `single_shot`) | Write-path enforcement that `AwaitingContext` cannot transition and AwaitingContext writes refuse for `single_shot`. No new table. |
 
 **Reason for touching more than one:** Delivery plan §3.8 row H1 Freezes the complete A14 contract set in one slice — conversational manifest fields (§5.1 / §5.7), the shared context-request schema and `AwaitingContext` (§6.7.2 / §6.3), and the fourth SSE terminal kind (§5.5). Done when and §3.11.7 require all three surfaces together; A14's load-bearing property is that every conversational mechanism is gated by one mode switch. Splitting them would leave H2/H3 binding to an incomplete Freezes set. These surfaces cannot be tested apart for H1's acceptance scenarios 1–14.
 
@@ -155,20 +162,21 @@ No Consumes entry lacks an implementation; satisfying H1 does not require changi
 
 | Path | Created / Modified | Traces to |
 | --- | --- | --- |
-| `ai-platform/src/manifest/index.ts` | Modified — require conversational Interaction fields; permitted key set form; unknown-key fail; extend `single_shot` rejection | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006 |
+| `ai-platform/src/manifest/index.ts` | Modified — require conversational Interaction fields as finite positive integers; permitted key set form (empty legal, duplicates rejected); unknown-key fail; extend `single_shot` rejection | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006 |
 | `ai-platform/src/context/context-request.ts` | Created — shared `{key, arguments}` list schema + validator | FR-007, FR-011 |
-| `ai-platform/src/adapter.ts` | Modified — `context_requested` terminal kind; gate stub helpers on `interactionMode` | FR-008, FR-009 |
-| `ai-platform/src/journal/index.ts` | Modified — terminal immutability / conversational-only `AwaitingContext` helpers | FR-010 |
-| `ai-platform/test/conversational-manifest.test.ts` | Created | SC-001–SC-005; manifest named tests + coverage |
+| `ai-platform/src/adapter.ts` | Modified — `context_requested` terminal kind; gate stub helpers on `interactionMode`; `pushTerminalEvent` validates `context_request` via `validateContextRequest` | FR-008, FR-009 |
+| `ai-platform/src/journal/index.ts` | Modified — terminal immutability; wire `canReachAwaitingContext` into transition allow-check and write path (`journalTransition` / `recordTerminalState`) | FR-010 |
+| `ai-platform/src/errors.ts` | **CONSUMED unchanged** (A2) — not modified by H1 | FR-008 |
+| `ai-platform/test/conversational-manifest.test.ts` | Created | SC-001–SC-005; manifest named tests + coverage (malformed numerics; permitted-key edges) |
 | `ai-platform/test/context-request.test.ts` | Created | SC-006; context-request named tests + coverage |
 | `ai-platform/test/awaiting-context.test.ts` | Created | SC-008; FR-010 |
-| `ai-platform/test/context-requested-terminal.test.ts` | Created | SC-007, SC-009; FR-008, FR-009 |
+| `ai-platform/test/context-requested-terminal.test.ts` | Created | SC-007, SC-009; FR-008, FR-009 (taxonomy classifies not throws; emission payload validation; production-gated single_shot stream) |
 | `specs/044-conversational-manifest-schema/contracts/conversational-manifest.md` | Created | Freezes (conversational Interaction fields, permitted key set, mode fixed for version life) |
 | `specs/044-conversational-manifest-schema/contracts/context-request-schema.md` | Created | Freezes (platform-owned `{key, arguments}` schema) |
 | `specs/044-conversational-manifest-schema/contracts/context-requested-terminal.md` | Created | Freezes (fourth terminal kind; not taxonomy; `AwaitingContext` terminal) |
 | `specs/044-conversational-manifest-schema/quickstart.md` | Created during Documentation task after verification | Documentation mandate |
 
-No Consumes module is rewritten. `errors.ts` is not modified. No D1 migration, no `wrangler.toml` change, no Flutter/Supabase files.
+No Consumes module is rewritten. `errors.ts` is CONSUMED / unchanged. No D1 migration, no `wrangler.toml` change, no Flutter/Supabase files.
 
 ## Test Layout
 
@@ -186,9 +194,9 @@ Layer: **Contract + build + integration** (delivery plan §3.11.7 row H1). Mappe
 | `permitted_key_set_unknown_key_fails` | Contract / build | `conversational-manifest.test.ts` | FR-006 / SC-005 |
 | `shared_context_request_schema_accepts_conforming` | Contract | `context-request.test.ts` | FR-007 / SC-006 |
 | `shared_context_request_schema_rejects_malformed_<form>` (not a list; missing `key`; missing `arguments`; element not `{key, arguments}`) | Contract | `context-request.test.ts` | FR-007 / SC-006 |
-| `context_requested_absent_from_error_taxonomy` | Contract | `context-requested-terminal.test.ts` | FR-008 / SC-007 |
-| `awaiting_context_is_terminal_and_immutable` | Contract / integration | `awaiting-context.test.ts` | FR-010 / SC-008 |
-| `single_shot_never_emits_context_requested` | Pipeline (integration) | `context-requested-terminal.test.ts` | FR-009 / SC-009 |
+| `context_requested_absent_from_error_taxonomy` | Contract | `context-requested-terminal.test.ts` | FR-008 / SC-007 — absent from taxonomy; forced string classifies to `internal_error` (no throw) |
+| `awaiting_context_is_terminal_and_immutable` | Contract / integration | `awaiting-context.test.ts` | FR-010 / SC-008 — terminal; mode-gated reachability; omitted mode defaults refuse |
+| `single_shot_never_emits_context_requested` | Pipeline (integration) | `context-requested-terminal.test.ts` | FR-009 / SC-009 — production `pushTerminalEvent` deny on stream path |
 | `conversational_leg_still_one_terminal_event` | Pipeline (integration) | `context-requested-terminal.test.ts` | FR-009 / SC-009 |
 
 **Coverage additions (§3.10):**
@@ -196,22 +204,25 @@ Layer: **Contract + build + integration** (delivery plan §3.11.7 row H1). Mappe
 | Named test | Layer | File | Asserts |
 | --- | --- | --- | --- |
 | `interaction_mode_fixed_for_life_of_version` | Contract | `conversational-manifest.test.ts` | FR-004 / §5.7 |
+| `conversational_numeric_fields_reject_malformed_values` | Contract / build | `conversational-manifest.test.ts` | FR-001 — wrong type / negative / zero / non-integer |
+| `permitted_key_set_edge_policies` | Contract / build | `conversational-manifest.test.ts` | FR-002 — empty legal; duplicates rejected |
+| `context_requested_payload_must_conform` | Contract / integration | `context-requested-terminal.test.ts` | FR-007, FR-009 — emission validates payload |
 | `context_request_schema_is_platform_owned_not_per_capability` | Contract | `context-request.test.ts` | FR-007 / §6.7.2 |
 | `no_new_pipeline_stage_from_conversational_mode` | Contract | `context-request.test.ts` | FR-011 / §6.7.4 |
 | `no_per_request_server_state_from_h1` | Contract | `context-request.test.ts` | FR-011 / §6.7.4; delivery plan §6.4 |
 
-H1 emits no new §5.4 taxonomy codes — the taxonomy case is absence, not a new code path (spec Edge Cases).
+H1 emits no new §5.4 taxonomy codes — the taxonomy case is absence (and classify-unknown resilience), not a new code path (spec Edge Cases). Write-path SQL immutability for `AwaitingContext` is covered in `journal.test.ts` (C3 suite) alongside the pure-helper cases in `awaiting-context.test.ts`.
 
 ## Sequencing
 
 1. **`ai-platform/src/context/context-request.ts`** — define the platform-owned list-of-`{key, arguments}` schema and `validateContextRequest()` (FR-007).
 2. **`ai-platform/test/context-request.test.ts`** — conforming accept, four malformed rejects, platform-owned (no per-capability alternate), no-new-stage / no-per-request-state coverage cases — alongside or before step 1's branches.
-3. **`ai-platform/src/manifest/index.ts`** — extend load validation for conversational Interaction fields, permitted key set form, unknown-key check via A5 `validateKey`, and `single_shot` rejection of the permitted key set (FR-001–FR-006); keep omitted-mode default and ten-group schema intact.
-4. **`ai-platform/test/conversational-manifest.test.ts`** — all eight manifest named tests plus `interaction_mode_fixed_for_life_of_version` — alongside / before matching loader branches.
-5. **`ai-platform/src/journal/index.ts`** — export terminal-state helpers; enforce no transition out of `AwaitingContext` (and peer terminals); conversational-only reachability for entering `AwaitingContext` (FR-010).
-6. **`ai-platform/test/awaiting-context.test.ts`** — terminal + immutable + conversational-only reachability.
-7. **`ai-platform/src/adapter.ts`** — add `context_requested` to terminal kinds; extend stub/terminal helpers to accept `interactionMode` and allow/deny emission (FR-008, FR-009; Clarification Q2).
-8. **`ai-platform/test/context-requested-terminal.test.ts`** — taxonomy absence; `single_shot` never emits; conversational leg still exactly one terminal event.
+3. **`ai-platform/src/manifest/index.ts`** — extend load validation for conversational Interaction fields (finite positive integers), permitted key set form (empty legal; duplicates rejected), unknown-key check via A5 `validateKey`, and `single_shot` rejection of the permitted key set (FR-001–FR-006); keep omitted-mode default and ten-group schema intact.
+4. **`ai-platform/test/conversational-manifest.test.ts`** — all eight manifest named tests plus `interaction_mode_fixed_for_life_of_version`, malformed-numeric cases, and permitted-key edge policies — alongside / before matching loader branches.
+5. **`ai-platform/src/journal/index.ts`** — export terminal-state helpers; enforce no transition out of `AwaitingContext` (and peer terminals); wire `canReachAwaitingContext` into `isJournalTransitionAllowed`, `journalTransition`, and `recordTerminalState` (FR-010).
+6. **`ai-platform/test/awaiting-context.test.ts`** — terminal + immutable + conversational-only reachability (including omitted-mode default refuse); SQL immutability covered in `journal.test.ts`.
+7. **`ai-platform/src/adapter.ts`** — add `context_requested` to terminal kinds; extend stub/terminal helpers to accept `interactionMode` and allow/deny emission; validate payload via `validateContextRequest` on emit (FR-008, FR-009; Clarification Q2).
+8. **`ai-platform/test/context-requested-terminal.test.ts`** — taxonomy absence (classifies to `internal_error`, no throw); production-gated `single_shot` stream deny; emission payload validation; conversational leg still exactly one terminal event.
 9. **Run** `npx vitest run` on the four H1 test files — all green; prior suites remain green (delivery plan §3.10 checkpoint rule).
 10. **Contracts** — write the three `contracts/*.md` artifacts so H2/H3 **Consumes** bind to frozen shapes, not prose.
 11. **`quickstart.md`** — fill from the AI platform quickstart template (slice-only files and commands).

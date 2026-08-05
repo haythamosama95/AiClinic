@@ -142,8 +142,12 @@ export function isJournalTerminalState(state: TransitionState): boolean {
 export function isJournalTransitionAllowed(
   from: TransitionState,
   to: TransitionState,
+  interactionMode: InteractionMode = "single_shot",
 ): boolean {
   if (TERMINAL_TRANSITION_STATES.has(from)) {
+    return false;
+  }
+  if (to === "AwaitingContext" && !canReachAwaitingContext(interactionMode)) {
     return false;
   }
   return true;
@@ -153,6 +157,15 @@ export function canReachAwaitingContext(
   interactionMode: InteractionMode,
 ): boolean {
   return interactionMode === "conversational";
+}
+
+function assertAwaitingContextReachable(
+  state: TransitionState,
+  interactionMode: InteractionMode,
+): void {
+  if (state === "AwaitingContext" && !canReachAwaitingContext(interactionMode)) {
+    throw new Error("AwaitingContext is conversational-only");
+  }
 }
 
 function envelopeKey(requestId: string): string {
@@ -235,7 +248,10 @@ export async function journalTransition(
   state: TransitionState,
   now: string,
   db: D1Database,
+  interactionMode: InteractionMode = "single_shot",
 ): Promise<void> {
+  assertAwaitingContextReachable(state, interactionMode);
+
   if (TERMINAL_TRANSITION_STATES.has(state)) {
     await db
       .prepare(
@@ -263,7 +279,10 @@ export async function recordTerminalState(
   terminalErrorCode: TaxonomyCode | undefined,
   now: string,
   db: D1Database,
+  interactionMode: InteractionMode = "single_shot",
 ): Promise<void> {
+  assertAwaitingContextReachable(state, interactionMode);
+
   if (state === "Failed") {
     if (terminalErrorCode === undefined) {
       throw new Error("Failed terminal state requires terminalErrorCode");

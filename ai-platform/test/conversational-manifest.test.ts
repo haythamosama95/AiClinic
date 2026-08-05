@@ -204,6 +204,71 @@ describe("conversational_fields_rejected_on_single_shot", () => {
   }
 });
 
+describe("conversational_fields_rejected_when_interaction_mode_omitted", () => {
+  it("defaults omitted interactionMode to single_shot and rejects conversational fields", () => {
+    const manifest = baseManifestWire();
+    const interaction = {
+      ...(manifest.Interaction as Record<string, unknown>),
+    };
+    delete interaction.interactionMode;
+    manifest.Interaction = interaction;
+
+    expect(() => load(manifest)).toThrow(
+      /Conversational-only field rejected on single_shot/i,
+    );
+  });
+});
+
+describe("conversational_numeric_fields_reject_malformed_values", () => {
+  const fields = [
+    "maxHistoryTurns",
+    "maxContextRoundsPerTurn",
+    "transcriptSizeLimit",
+  ] as const;
+
+  for (const field of fields) {
+    it.each([
+      { label: "wrong_type_string", value: "ten" },
+      { label: "negative", value: -3 },
+      { label: "zero", value: 0 },
+      { label: "non_integer", value: 1.5 },
+    ] as const)(
+      `rejects $label for ${field}`,
+      ({ value }) => {
+        const manifest = validConversationalManifest();
+        const interaction = {
+          ...(manifest.Interaction as Record<string, unknown>),
+          [field]: value,
+        };
+        manifest.Interaction = interaction;
+        expect(() => load(manifest)).toThrow(
+          new RegExp(`Malformed conversational Interaction field: ${field}`),
+        );
+      },
+    );
+  }
+});
+
+describe("permitted_key_set_edge_policies", () => {
+  it("accepts an empty permittedKeySet (allowlist of zero)", () => {
+    const manifest = validConversationalManifest();
+    manifest["Context requirements"] = { permittedKeySet: [] };
+    const loaded = load(manifest);
+    expect(loaded["Context requirements"]).toEqual({ permittedKeySet: [] });
+  });
+
+  it("rejects duplicate keys in permittedKeySet", () => {
+    const manifest = validConversationalManifest();
+    manifest["Context requirements"] = {
+      permittedKeySet: [
+        "visit.chief_complaint@v1",
+        "visit.chief_complaint@v1",
+      ],
+    };
+    expect(() => load(manifest)).toThrow(/duplicate/i);
+  });
+});
+
 describe("interaction_mode_in_place_change_fails_build", () => {
   it("fails verifyPublishedRegistry when interactionMode changes in place", async () => {
     const singleShot = singleShotManifestWire();
@@ -221,6 +286,19 @@ describe("interaction_mode_in_place_change_fails_build", () => {
         { [registryKey]: singleShotHash },
       ),
     ).toThrow();
+  });
+
+  it("hashManifest changes when only interactionMode flips", async () => {
+    // Prove interactionMode itself participates in the content hash (not only
+    // sibling conversational fields). Use otherwise-identical Interaction wires.
+    const base = singleShotManifestWire();
+    const flipped = structuredClone(base) as ManifestWire;
+    (flipped.Interaction as Record<string, unknown>).interactionMode =
+      "conversational";
+
+    const hashA = await hashManifest(base);
+    const hashB = await hashManifest(flipped);
+    expect(hashA).not.toBe(hashB);
   });
 });
 

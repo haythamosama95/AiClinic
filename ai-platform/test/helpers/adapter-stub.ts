@@ -23,6 +23,10 @@ export type StubEventSourceFactory = AdapterEventSourceFactory;
 /**
  * Mode-gated canned stub for H1 / conversational terminal tests.
  * Lives in the test harness only — not exported from src/adapter.ts.
+ *
+ * Emission of `context_requested` always goes through production
+ * `pushTerminalEvent` so the conversational-only gate is exercised there
+ * (not by a silent stub-side downgrade).
  */
 export function createModeGatedStubEventSource(
   interactionMode: InteractionMode,
@@ -65,10 +69,6 @@ export function createModeGatedStubEventSource(
         controller.abort();
       },
       requestContext(request) {
-        if (interactionMode !== "conversational") {
-          controller.complete();
-          return;
-        }
         pushTerminalEvent(sink, context, "context_requested", interactionMode, {
           context_request: request,
         });
@@ -76,10 +76,15 @@ export function createModeGatedStubEventSource(
     };
 
     if (terminalKind === "context_requested") {
-      if (interactionMode === "conversational") {
+      try {
         controller.requestContext(contextRequest);
-      } else {
-        controller.complete();
+      } catch (error) {
+        // Production `pushTerminalEvent` refused (single_shot). End the stream
+        // with a permitted terminal kind so the adapter still completes.
+        if (interactionMode === "conversational") {
+          throw error;
+        }
+        controller.fail("internal_error");
       }
     } else if (terminalKind === "completed") {
       controller.complete();
