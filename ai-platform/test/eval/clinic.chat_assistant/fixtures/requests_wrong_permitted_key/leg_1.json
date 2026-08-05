@@ -1,0 +1,12 @@
+{
+  "leg_id": "leg_1",
+  "assistant_turn": {
+    "kind": "context_requested",
+    "requests": [
+      {
+        "key": "patient.demographics@v1",
+        "arguments": {}
+      }
+    ]
+  }
+}

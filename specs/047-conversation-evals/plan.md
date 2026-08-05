@@ -76,7 +76,7 @@ specs/047-conversation-evals/
 ai-platform/
 └── test/
     └── eval/                                              # EXISTING — F1 harness root (Consumes; not rewritten)
-        ├── harness.ts                                     # CONSUMED (F1) — capability golden runner unchanged
+        ├── harness.ts                                     # CONSUMED (F1) — golden runner; H4 added one-predicate `expectations/` discriminator in `listEvalCapabilities()` so sibling conversation dirs without `expectations/` stay outside golden gating (tasks.md T018; behaviour-preserving for goldens)
         ├── score-report.ts                                # CONSUMED (F1) — capability quality/schema report unchanged
         ├── golden.test.ts                                 # CONSUMED (F1) — capability goldens unchanged
         ├── live-smoke.test.ts                             # CONSUMED (F1) — live smoke unchanged
@@ -84,20 +84,25 @@ ai-platform/
         ├── conversation-harness.ts                        # NEW — active multi-leg loop: per-leg fixtures, append scripted turns, score whole conversation at end (Clarification Q1; FR-001, FR-002, FR-010)
         ├── conversation-score-report.ts                   # NEW — per-conversation JSON scores for the three criteria (FR-003–FR-006; Freezes)
         ├── clinic.chat_assistant/                         # NEW — one fixture conversational capability (Clarification Q2)
-        │   ├── cases/                                     # NEW — three scripted multi-leg cases (FR-007–FR-009)
+        │   ├── cases/                                     # NEW — required positives + negative-control cases (FR-007–FR-009)
         │   │   ├── converges_within_round_budget.json
         │   │   ├── assistant_must_request_correct_key.json
-        │   │   └── cannot_obtain_key_outside_permitted_set.json
-        │   ├── fixtures/                                  # NEW — per-leg recorded provider/assistant fixtures (FR-002; A9)
+        │   │   ├── cannot_obtain_key_outside_permitted_set.json
+        │   │   ├── fails_to_converge_within_budget.json
+        │   │   ├── exceeds_round_budget.json
+        │   │   ├── requests_wrong_permitted_key.json
+        │   │   ├── requests_key_outside_permitted_set.json
+        │   │   └── criterion_fails_mid_conversation.json
+        │   ├── fixtures/                                  # NEW — per-leg recorded assistant-turn fixtures (FR-002; A9; Clarification Q1 — no composer/adapter path)
         │   └── capability.json                            # NEW — fixture manifest declaring round budget + permitted key set (Consumes H2/H1 fields; does not invent defaults)
-        └── conversation.test.ts                           # NEW — T1–T7 (conversation eval suite)
+        └── conversation.test.ts                           # NEW — T1–T7 + negative-control coverage (conversation eval suite)
 
 .github/
 └── workflows/
     └── ci.yml                                             # MODIFIED — include conversation.test.ts in the existing ai-platform-eval-golden job (same CI gate; Clarification Q3; FR-001, FR-010)
 ```
 
-No `frontend/` or `backend/` tree is shown — H4 touches neither. No `ai-platform/src/` module is added. F1 capability-eval modules and H2 runtime modules are **consumed unchanged** (except `prohibitions.test.ts` / `ci.yml` as listed) and are not rewritten.
+No `frontend/` or `backend/` tree is shown — H4 touches neither. No `ai-platform/src/` module is added. F1 capability-eval modules and H2 runtime modules are **consumed**; `harness.ts` receives only the `expectations/`-directory discriminator noted above (not a rewrite of golden/smoke gating). `prohibitions.test.ts` / `ci.yml` are modified as listed.
 
 **Structure Decision**: H4 places conversation cases and scoring as a sibling under the existing `ai-platform/test/eval/` tree and joins the same CI golden-eval gate (Clarification Q3; delivery plan §7.1). The Spec Kit template's `frontend/`/`backend/` conventions are deleted as unused, per the skill's repository-layout rule.
 
@@ -105,7 +110,7 @@ No `frontend/` or `backend/` tree is shown — H4 touches neither. No `ai-platfo
 
 | Consumes entry (from spec) | Bound to (existing module / file / type) |
 | --- | --- |
-| From F1 — capability eval harness (A9): golden cases per capability against recorded provider fixtures in CI, smaller live smoke on schedule against pinned models, per-run score recording, CI regression gate for prompt changes | `ai-platform/test/eval/harness.ts` (`runGoldenSuite` / golden runner); `ai-platform/test/eval/score-report.ts` (`ScoreReport`, `CaseScore`, `writeScoreReport`); `ai-platform/test/eval/golden.test.ts`; `ai-platform/test/eval/live-smoke.test.ts`; CI job `.github/workflows/ci.yml` → `ai-platform-eval-golden`; scheduled smoke `.github/workflows/ai-platform-eval-live-smoke.yml`; frozen in `specs/039-eval-suite-harness/contracts/capability-eval-harness.md`. H4 **extends** with a sibling conversation module and the same CI gate; it does **not** redefine how capability goldens gate CI, how live smoke is scheduled, or how capability quality/schema scores are recorded, and does not invent a second eval product |
+| From F1 — capability eval harness (A9): golden cases per capability against recorded provider fixtures in CI, smaller live smoke on schedule against pinned models, per-run score recording, CI regression gate for prompt changes | `ai-platform/test/eval/harness.ts` (`runGoldenSuite` / golden runner; **H4 one-predicate extension:** `listEvalCapabilities()` requires an `expectations/` directory so conversation fixture dirs without one are excluded from golden gating); `ai-platform/test/eval/score-report.ts` (`ScoreReport`, `CaseScore`, `writeScoreReport`); `ai-platform/test/eval/golden.test.ts`; `ai-platform/test/eval/live-smoke.test.ts`; CI job `.github/workflows/ci.yml` → `ai-platform-eval-golden`; scheduled smoke `.github/workflows/ai-platform-eval-live-smoke.yml`; frozen in `specs/039-eval-suite-harness/contracts/capability-eval-harness.md`. H4 **extends** with a sibling conversation module and the same CI gate; it does **not** redefine how capability goldens gate CI, how live smoke is scheduled, or how capability quality/schema scores are recorded, and does not invent a second eval product |
 | From H2 — permitted-key allowlist enforcement at the validator; conversation budget counting from the submitted transcript alone (`conversation_budget_exhausted` on breach); context-request as a second permitted output shape alongside prose; closed transcript wire / validation rules | `ai-platform/src/context/validator.ts` (`validateContext` conversational path, allowlist drop via `permittedKeySet`, budget breach → `conversation_budget_exhausted`); `ai-platform/src/manifest/index.ts` (`Interaction.maxHistoryTurns`, `maxContextRoundsPerTurn`, `permittedKeySet`); `ai-platform/src/context/context-request.ts` (`validateContextRequest`); `ai-platform/src/validate/phases.ts` / `index.ts` (dual prose \| context-request acceptance); frozen in `specs/045-transcript-validation-budgets/contracts/transcript-validation-budgets.md`, `transcript-wire.md`, and `conversational-composition.md`. H4 **scores** scripted conversations against those contracts; it does **not** rewrite allowlist semantics, budget codes, transcript shape, or dual-output acceptance |
 
 Every **Consumes** entry binds to an existing implementation. None requires modification of a frozen contract (stop condition 2 not triggered). The fixture capability id `clinic.chat_assistant` is the same fixture id already used by H1/H2/H3 unit tests — H4 does not invent a second conversational capability vocabulary.
@@ -127,20 +132,22 @@ Stop condition 5 (multi-component without reason) is not triggered.
 
 | File | FRs traced |
 | --- | --- |
+| `ai-platform/test/eval/harness.ts` | FR-010 (CONSUMED F1 — one-predicate `expectations/` discriminator in `listEvalCapabilities()`; golden/smoke gating otherwise unchanged) |
 | `ai-platform/test/eval/conversation-harness.ts` | FR-001, FR-002, FR-010 (active multi-leg loop against fixtures; extends F1 harness without a second product; Clarification Q1) |
 | `ai-platform/test/eval/conversation-score-report.ts` | FR-003, FR-004, FR-005, FR-006 (per-conversation scores for right keys, permitted set, round-budget convergence; Freezes) |
 | `ai-platform/test/eval/clinic.chat_assistant/capability.json` | FR-005, FR-007 (fixture capability declares round budget + permitted set; Clarification Q2; Consumes H2/H1 fields) |
 | `ai-platform/test/eval/clinic.chat_assistant/cases/converges_within_round_budget.json` | FR-007 (T1 case) |
 | `ai-platform/test/eval/clinic.chat_assistant/cases/assistant_must_request_correct_key.json` | FR-008 (T2 case — *correct* key, not merely any permitted key) |
 | `ai-platform/test/eval/clinic.chat_assistant/cases/cannot_obtain_key_outside_permitted_set.json` | FR-009 (T3 case) |
-| `ai-platform/test/eval/clinic.chat_assistant/fixtures/**` | FR-002 (per-leg recorded fixtures; A9 fixture discipline via Consumes F1) |
-| `ai-platform/test/eval/conversation.test.ts` | T1–T7 (FR-001–FR-010) |
+| `ai-platform/test/eval/clinic.chat_assistant/cases/*.json` | Negative-control + mid-conversation fail cases (falsifiable gate; T4 e2e) |
+| `ai-platform/test/eval/clinic.chat_assistant/fixtures/**` | FR-002 (per-leg recorded fixtures; A9 fixture discipline via Consumes F1; Clarification Q1 — no composer/adapter) |
+| `ai-platform/test/eval/conversation.test.ts` | T1–T7 + negative-control coverage (FR-001–FR-010) |
 | `ai-platform/test/eval/prohibitions.test.ts` | T8, T9 (delivery plan §6.4 / R-12; §4.4, §9.7) — extend existing F1 prohibitions entry to cover conversation module files without inventing a second gate |
 | `.github/workflows/ci.yml` | FR-001, FR-010 (include conversation suite in existing `ai-platform-eval-golden` job; Clarification Q3) |
 | `specs/047-conversation-evals/contracts/conversation-evals.md` | Freezes → conversation evals as CI-gated A9 extension; per-conversation scoring; three criteria |
 | `specs/047-conversation-evals/quickstart.md` | Documentation task (written after implementation/verification) |
 
-Every file traces to an FR or a Freezes entry. No untraced file is introduced. Consumed F1 capability-eval and H2 runtime modules are not rewritten.
+Every file traces to an FR or a Freezes entry. No untraced file is introduced. Consumed F1 capability-eval and H2 runtime modules are not rewritten beyond the documented `harness.ts` discriminator.
 
 ## Test Layout
 

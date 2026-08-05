@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   deriveConversationOverall,
+  matchesExpectedOutcome,
   type ConversationScore,
 } from "./conversation-score-report";
 import {
@@ -17,6 +18,7 @@ import {
   getConversationHarnessRuntimeSnapshot,
   listConversationCases,
   listConversationEvalCapabilities,
+  loadCase,
   loadConversationCapability,
   runConversationSuite,
 } from "./conversation-harness";
@@ -32,9 +34,29 @@ const CI_WORKFLOW_PATH = path.join(
 
 const CONVERSATION_CAPABILITY = "clinic.chat_assistant";
 
+const FIXTURES_SEGMENT = path.join(
+  "test",
+  "eval",
+  "clinic.chat_assistant",
+  "fixtures",
+);
+const REPORTS_SEGMENT = path.join("test", "eval", "reports");
+
+function assertPathContainsSegments(
+  absolutePath: string,
+  segments: string,
+): void {
+  const normalized = path.normalize(absolutePath);
+  expect(normalized.includes(path.normalize(segments))).toBe(true);
+}
+
 describe("scripted_conversation_converges_within_round_budget", () => {
   it("scores convergence within the fixture capability declared round budget", async () => {
     const capability = loadConversationCapability(CONVERSATION_CAPABILITY);
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "converges_within_round_budget",
+    );
     const roundBudget =
       capability.manifest.Interaction.maxContextRoundsPerTurn;
 
@@ -51,14 +73,24 @@ describe("scripted_conversation_converges_within_round_budget", () => {
       (entry) => entry.case_id === "converges_within_round_budget",
     );
     expect(caseScore).toBeDefined();
+    expect(
+      matchesExpectedOutcome(caseScore!, caseDef.expected_outcome),
+    ).toBe(true);
     expect(caseScore!.round_budget).toBe("pass");
     expect(caseScore!.overall).toBe("pass");
+    expect(caseDef.scoring.expect_convergence).toBe(true);
     expect(roundBudget).toBeGreaterThan(0);
   });
 });
 
 describe("assistant_must_request_correct_key", () => {
-  it("requires the correct permitted key, not merely any permitted key", async () => {
+  it("requires the correct permitted key across a multi-leg negotiation", async () => {
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "assistant_must_request_correct_key",
+    );
+    expect(caseDef.legs.length).toBeGreaterThanOrEqual(2);
+
     const result = await runConversationSuite({
       capabilityId: CONVERSATION_CAPABILITY,
       caseId: "assistant_must_request_correct_key",
@@ -68,6 +100,9 @@ describe("assistant_must_request_correct_key", () => {
       (entry) => entry.case_id === "assistant_must_request_correct_key",
     );
     expect(caseScore).toBeDefined();
+    expect(
+      matchesExpectedOutcome(caseScore!, caseDef.expected_outcome),
+    ).toBe(true);
     expect(caseScore!.right_keys).toBe("pass");
     expect(caseScore!.overall).toBe("pass");
     expect(result.passed).toBe(true);
@@ -75,13 +110,20 @@ describe("assistant_must_request_correct_key", () => {
 });
 
 describe("cannot_obtain_key_outside_permitted_set", () => {
-  it("fails the permitted-set criterion when a forbidden key is obtained", async () => {
+  it("fails permitted_set only when a forbidden key is obtained; out-of-set inject is dropped", async () => {
     const capability = loadConversationCapability(CONVERSATION_CAPABILITY);
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "cannot_obtain_key_outside_permitted_set",
+    );
     const permittedKeys =
       capability.manifest["Context requirements"].permittedKeySet;
 
     expect(permittedKeys).toContain("visit.chief_complaint@v1");
     expect(permittedKeys).not.toContain("medication.active_list@v1");
+    expect(caseDef.scoring.forbidden_resolved_keys).toContain(
+      "medication.active_list@v1",
+    );
 
     const result = await runConversationSuite({
       capabilityId: CONVERSATION_CAPABILITY,
@@ -92,6 +134,9 @@ describe("cannot_obtain_key_outside_permitted_set", () => {
       (entry) => entry.case_id === "cannot_obtain_key_outside_permitted_set",
     );
     expect(caseScore).toBeDefined();
+    expect(
+      matchesExpectedOutcome(caseScore!, caseDef.expected_outcome),
+    ).toBe(true);
     expect(caseScore!.permitted_set).toBe("pass");
     expect(caseScore!.overall).toBe("pass");
     expect(result.passed).toBe(true);
@@ -99,7 +144,7 @@ describe("cannot_obtain_key_outside_permitted_set", () => {
 });
 
 describe("scoring_is_per_conversation_not_per_turn", () => {
-  it("fails the whole conversation when a criterion fails on one leg", async () => {
+  it("fails the whole conversation when a criterion fails on a later leg", async () => {
     const failingLegScore: ConversationScore = {
       case_id: "synthetic_per_conversation_gate",
       right_keys: "pass",
@@ -111,31 +156,45 @@ describe("scoring_is_per_conversation_not_per_turn", () => {
     expect(deriveConversationOverall(failingLegScore)).toBe("fail");
     expect(failingLegScore.overall).toBe("fail");
 
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "criterion_fails_mid_conversation",
+    );
     const result = await runConversationSuite({
       capabilityId: CONVERSATION_CAPABILITY,
-      caseId: "cannot_obtain_key_outside_permitted_set",
+      caseId: "criterion_fails_mid_conversation",
     });
 
-    for (const entry of result.report.conversations) {
-      expect(entry).toHaveProperty("right_keys");
-      expect(entry).toHaveProperty("permitted_set");
-      expect(entry).toHaveProperty("round_budget");
-      expect(entry).toHaveProperty("overall");
-      expect(entry).not.toHaveProperty("legs");
-      expect(entry).not.toHaveProperty("turns");
-      expect(deriveConversationOverall(entry)).toBe(entry.overall);
-    }
+    const caseScore = result.report.conversations.find(
+      (entry) => entry.case_id === "criterion_fails_mid_conversation",
+    );
+    expect(caseScore).toBeDefined();
+    expect(caseDef.legs.length).toBeGreaterThanOrEqual(2);
+    expect(
+      matchesExpectedOutcome(caseScore!, caseDef.expected_outcome),
+    ).toBe(true);
+    expect(caseScore!.permitted_set).toBe("fail");
+    expect(caseScore!.overall).toBe("fail");
+    expect(caseScore).not.toHaveProperty("legs");
+    expect(caseScore).not.toHaveProperty("turns");
+    expect(deriveConversationOverall(caseScore!)).toBe(caseScore!.overall);
+    expect(result.passed).toBe(true);
   });
 });
 
 describe("scripted_multi_leg_against_fixtures", () => {
-  it("advances scripted legs against recorded fixtures without live egress", async () => {
+  it("advances scripted legs against recorded fixtures without a provider path", async () => {
     const caseIds = listConversationCases(CONVERSATION_CAPABILITY);
     expect(caseIds).toEqual(
       expect.arrayContaining([
         "converges_within_round_budget",
         "assistant_must_request_correct_key",
         "cannot_obtain_key_outside_permitted_set",
+        "fails_to_converge_within_budget",
+        "exceeds_round_budget",
+        "requests_wrong_permitted_key",
+        "requests_key_outside_permitted_set",
+        "criterion_fails_mid_conversation",
       ]),
     );
 
@@ -143,17 +202,24 @@ describe("scripted_multi_leg_against_fixtures", () => {
       capabilityId: CONVERSATION_CAPABILITY,
     });
 
-    expect(result.usedLiveEgress).toBe(false);
+    expect(result.passed).toBe(true);
     expect(result.fixturePathsUsed.length).toBeGreaterThan(0);
     for (const fixturePath of result.fixturePathsUsed) {
-      expect(fixturePath).toContain(
-        "/test/eval/clinic.chat_assistant/fixtures/",
-      );
+      assertPathContainsSegments(fixturePath, FIXTURES_SEGMENT);
     }
 
     const runtime = getConversationHarnessRuntimeSnapshot();
-    expect(runtime.usedLiveEgress).toBe(false);
     expect(runtime.fixturePathsUsed.length).toBeGreaterThan(0);
+
+    const harnessSource = readFileSync(
+      path.join(EVAL_ROOT, "conversation-harness.ts"),
+      "utf8",
+    );
+    // Structural no-provider guard: conversation harness must not import adapters
+    // or open HTTP. Avoid spelling provider product names (R-12 scan targets).
+    expect(harnessSource).not.toMatch(/from ["'].*provider\//);
+    expect(harnessSource).not.toMatch(/\bAdapter\b/);
+    expect(harnessSource).not.toMatch(/\bfetch\s*\(/);
   });
 });
 
@@ -188,18 +254,13 @@ describe("extends_f1_harness_without_redefining_capability_evals", () => {
       CONVERSATION_CAPABILITY_ID,
     );
 
-    expect(existsSync(path.join(EVAL_ROOT, "conversation-harness.ts"))).toBe(
-      true,
-    );
-    expect(existsSync(path.join(EVAL_ROOT, "conversation.test.ts"))).toBe(
-      true,
-    );
-    expect(existsSync(path.join(EVAL_ROOT, "harness.ts"))).toBe(true);
-
     const ciWorkflow = readFileSync(CI_WORKFLOW_PATH, "utf8");
-    expect(ciWorkflow).toContain("ai-platform-eval-golden");
-    expect(ciWorkflow).toContain("test/eval/conversation.test.ts");
-    expect(ciWorkflow).toContain("test/eval/golden.test.ts");
+    expect(ciWorkflow).toMatch(/ai-platform-eval-golden/);
+    const goldenJobMatch = ciWorkflow.match(
+      /ai-platform-eval-golden:[\s\S]*?(?=\n  [a-z]|\n\S|$)/,
+    );
+    expect(goldenJobMatch?.[0]).toContain("test/eval/conversation.test.ts");
+    expect(goldenJobMatch?.[0]).toContain("test/eval/golden.test.ts");
   });
 });
 
@@ -209,14 +270,15 @@ describe("conversation_eval_scores_recorded_per_conversation", () => {
       capabilityId: CONVERSATION_CAPABILITY,
     });
 
-    expect(result.reportPath).toContain("/test/eval/reports/");
+    assertPathContainsSegments(result.reportPath, REPORTS_SEGMENT);
     const persisted = JSON.parse(readFileSync(result.reportPath, "utf8"));
 
     expect(persisted.capability_id).toBe(CONVERSATION_CAPABILITY);
     expect(persisted.run_kind).toBe("conversation");
     expect(persisted.recorded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(Array.isArray(persisted.conversations)).toBe(true);
-    expect(persisted.conversations.length).toBeGreaterThanOrEqual(3);
+    expect(persisted.conversations.length).toBeGreaterThanOrEqual(8);
+    expect(persisted.overall).toBe("pass");
 
     for (const entry of persisted.conversations) {
       expect(entry.case_id).toEqual(expect.any(String));
@@ -228,8 +290,104 @@ describe("conversation_eval_scores_recorded_per_conversation", () => {
       expect(entry).not.toHaveProperty("schema");
     }
 
-    expect(persisted.overall).toMatch(/^(pass|fail)$/);
     expect(persisted).not.toHaveProperty("cases");
     expect(persisted).not.toHaveProperty("prompt_build");
+  });
+});
+
+describe("negative_control_right_keys", () => {
+  it("fails right_keys when the assistant requests the wrong permitted key", async () => {
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "requests_wrong_permitted_key",
+    );
+    const result = await runConversationSuite({
+      capabilityId: CONVERSATION_CAPABILITY,
+      caseId: "requests_wrong_permitted_key",
+    });
+    const caseScore = result.report.conversations[0]!;
+    expect(matchesExpectedOutcome(caseScore, caseDef.expected_outcome)).toBe(
+      true,
+    );
+    expect(caseScore.right_keys).toBe("fail");
+    expect(caseScore.overall).toBe("fail");
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe("negative_control_permitted_set", () => {
+  it("fails permitted_set when the assistant requests a key outside the set", async () => {
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "requests_key_outside_permitted_set",
+    );
+    const result = await runConversationSuite({
+      capabilityId: CONVERSATION_CAPABILITY,
+      caseId: "requests_key_outside_permitted_set",
+    });
+    const caseScore = result.report.conversations[0]!;
+    expect(matchesExpectedOutcome(caseScore, caseDef.expected_outcome)).toBe(
+      true,
+    );
+    expect(caseScore.permitted_set).toBe("fail");
+    expect(caseScore.round_budget).toBe("pass");
+    expect(caseScore.overall).toBe("fail");
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe("negative_control_round_budget_non_convergence", () => {
+  it("fails round_budget when expect_convergence and the last assistant turn is not model", async () => {
+    const caseDef = loadCase(
+      CONVERSATION_CAPABILITY,
+      "fails_to_converge_within_budget",
+    );
+    const result = await runConversationSuite({
+      capabilityId: CONVERSATION_CAPABILITY,
+      caseId: "fails_to_converge_within_budget",
+    });
+    const caseScore = result.report.conversations[0]!;
+    expect(matchesExpectedOutcome(caseScore, caseDef.expected_outcome)).toBe(
+      true,
+    );
+    expect(caseScore.round_budget).toBe("fail");
+    expect(caseScore.permitted_set).toBe("pass");
+    expect(caseScore.overall).toBe("fail");
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe("negative_control_round_budget_exceeded", () => {
+  it("fails round_budget when consecutive context rounds exceed the declared budget", async () => {
+    const caseDef = loadCase(CONVERSATION_CAPABILITY, "exceeds_round_budget");
+    const capability = loadConversationCapability(CONVERSATION_CAPABILITY);
+    expect(capability.manifest.Interaction.maxContextRoundsPerTurn).toBe(3);
+    expect(caseDef.legs.length).toBe(4);
+
+    const result = await runConversationSuite({
+      capabilityId: CONVERSATION_CAPABILITY,
+      caseId: "exceeds_round_budget",
+    });
+    const caseScore = result.report.conversations[0]!;
+    expect(matchesExpectedOutcome(caseScore, caseDef.expected_outcome)).toBe(
+      true,
+    );
+    expect(caseScore.round_budget).toBe("fail");
+    expect(caseScore.permitted_set).toBe("pass");
+    expect(caseScore.overall).toBe("fail");
+    expect(result.passed).toBe(true);
+  });
+});
+
+describe("criteria_are_independent_on_budget_breach", () => {
+  it("does not mark permitted_set fail merely because round budget was exhausted", async () => {
+    const result = await runConversationSuite({
+      capabilityId: CONVERSATION_CAPABILITY,
+      caseId: "exceeds_round_budget",
+    });
+    const caseScore = result.report.conversations[0]!;
+    expect(caseScore.round_budget).toBe("fail");
+    expect(caseScore.permitted_set).toBe("pass");
+    expect(caseScore.right_keys).toBe("pass");
   });
 });

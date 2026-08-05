@@ -18,6 +18,10 @@
           "context": {
             "medication.active_list@v1": {
               "medications": [{ "name": "Aspirin", "dose": "81mg" }]
+            },
+            "visit.chief_complaint@v1": {
+              "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+              "complaint": "Persistent headache for three days."
             }
           }
         }
@@ -25,7 +29,7 @@
     }
   ],
   "scoring": {
-    "required_key_requests": [],
+    "required_key_requests": ["visit.chief_complaint@v1"],
     "forbidden_resolved_keys": ["medication.active_list@v1"],
     "expect_convergence": true
   },

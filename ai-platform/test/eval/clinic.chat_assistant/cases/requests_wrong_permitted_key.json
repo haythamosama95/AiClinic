@@ -1,24 +1,23 @@
 {
-  "case_id": "assistant_must_request_correct_key",
+  "case_id": "requests_wrong_permitted_key",
   "legs": [
     {
-      "fixture": "assistant_must_request_correct_key/leg_1.json",
+      "fixture": "requests_wrong_permitted_key/leg_1.json",
       "append_before_fixture": [
         {
           "kind": "user",
-          "text": "I need the chief complaint before demographics."
+          "text": "I need the chief complaint, not demographics."
         }
       ]
     },
     {
-      "fixture": "assistant_must_request_correct_key/leg_2.json",
+      "fixture": "requests_wrong_permitted_key/leg_2.json",
       "append_before_fixture": [
         {
           "kind": "context_resolved",
           "context": {
-            "visit.chief_complaint@v1": {
-              "visit_id": "550e8400-e29b-41d4-a716-446655440000",
-              "complaint": "Persistent headache for three days."
+            "patient.demographics@v1": {
+              "display_name": "Pat"
             }
           }
         }
@@ -31,7 +30,7 @@
     "expect_convergence": true
   },
   "expected_outcome": {
-    "right_keys": "pass",
+    "right_keys": "fail",
     "permitted_set": "pass",
     "round_budget": "pass"
   }

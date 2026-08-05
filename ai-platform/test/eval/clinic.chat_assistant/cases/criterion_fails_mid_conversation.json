@@ -1,17 +1,17 @@
 {
-  "case_id": "assistant_must_request_correct_key",
+  "case_id": "criterion_fails_mid_conversation",
   "legs": [
     {
-      "fixture": "assistant_must_request_correct_key/leg_1.json",
+      "fixture": "criterion_fails_mid_conversation/leg_1.json",
       "append_before_fixture": [
         {
           "kind": "user",
-          "text": "I need the chief complaint before demographics."
+          "text": "Start with the chief complaint."
         }
       ]
     },
     {
-      "fixture": "assistant_must_request_correct_key/leg_2.json",
+      "fixture": "criterion_fails_mid_conversation/leg_2.json",
       "append_before_fixture": [
         {
           "kind": "context_resolved",
@@ -21,8 +21,16 @@
               "complaint": "Persistent headache for three days."
             }
           }
+        },
+        {
+          "kind": "user",
+          "text": "Now also pull medications."
         }
       ]
+    },
+    {
+      "fixture": "criterion_fails_mid_conversation/leg_3.json",
+      "append_before_fixture": []
     }
   ],
   "scoring": {
@@ -32,7 +40,7 @@
   },
   "expected_outcome": {
     "right_keys": "pass",
-    "permitted_set": "pass",
+    "permitted_set": "fail",
     "round_budget": "pass"
   }
 }

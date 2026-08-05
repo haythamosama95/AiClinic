@@ -1,0 +1,24 @@
+{
+  "case_id": "fails_to_converge_within_budget",
+  "legs": [
+    {
+      "fixture": "fails_to_converge_within_budget/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "What is the patient's chief complaint?"
+        }
+      ]
+    }
+  ],
+  "scoring": {
+    "required_key_requests": ["visit.chief_complaint@v1"],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": true
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "pass",
+    "round_budget": "fail"
+  }
+}

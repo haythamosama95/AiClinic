@@ -143,7 +143,10 @@ describe("harness_holds_no_per_request_server_state", () => {
     expect(harnessSource).not.toMatch(/\bDurableObject\b/);
     expect(harnessSource).not.toMatch(/\bKVNamespace\b/);
     expect(harnessSource).not.toContain("src/eval");
-    expect(harnessSource.startsWith(EVAL_ROOT)).toBe(false);
-    expect(conversationHarnessPath).toContain("/test/eval/");
+    expect(
+      path
+        .normalize(conversationHarnessPath)
+        .includes(path.normalize(path.join("test", "eval"))),
+    ).toBe(true);
   });
 });

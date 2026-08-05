@@ -6,12 +6,15 @@ import { load, type Manifest } from "../../src/manifest";
 import {
   validateContext,
   type TranscriptTurn,
+  type ValidateResult,
 } from "../../src/context/validator";
 import {
   deriveConversationOverall,
-  deriveRunOverall,
+  deriveRunOverallFromExpectations,
+  matchesExpectedOutcome,
   writeConversationScoreReport,
   type ConversationCriterion,
+  type ConversationExpectedOutcome,
   type ConversationScore,
   type ConversationScoreReport,
 } from "./conversation-score-report";
@@ -44,6 +47,7 @@ type CaseDefinition = {
     forbidden_resolved_keys: string[];
     expect_convergence: boolean;
   };
+  expected_outcome: ConversationExpectedOutcome;
 };
 
 type FixtureLeg = {
@@ -71,23 +75,19 @@ export type ConversationRunResult = {
   passed: boolean;
   report: ConversationScoreReport;
   reportPath: string;
-  usedLiveEgress: boolean;
   fixturePathsUsed: string[];
 };
 
 type HarnessRuntime = {
   fixturePathsUsed: string[];
-  usedLiveEgress: boolean;
 };
 
 const harnessRuntime: HarnessRuntime = {
   fixturePathsUsed: [],
-  usedLiveEgress: false,
 };
 
 function resetHarnessRuntime(): void {
   harnessRuntime.fixturePathsUsed = [];
-  harnessRuntime.usedLiveEgress = false;
 }
 
 function readJson<T>(filePath: string): T {
@@ -145,7 +145,10 @@ export function listConversationCases(capabilityId: string): string[] {
     .sort();
 }
 
-function loadCase(capabilityId: string, caseId: string): CaseDefinition {
+export function loadCase(
+  capabilityId: string,
+  caseId: string,
+): CaseDefinition {
   return readJson<CaseDefinition>(
     path.join(capabilityRoot(capabilityId), "cases", `${caseId}.json`),
   );
@@ -219,6 +222,18 @@ function collectRequestedKeys(transcript: TranscriptTurn[]): Set<string> {
   return requested;
 }
 
+function lastAssistantTurn(
+  transcript: TranscriptTurn[],
+): TranscriptTurn | undefined {
+  for (let index = transcript.length - 1; index >= 0; index -= 1) {
+    const turn = transcript[index];
+    if (turn?.kind === "model" || turn?.kind === "context_requested") {
+      return turn;
+    }
+  }
+  return undefined;
+}
+
 function scoreRightKeys(
   transcript: TranscriptTurn[],
   requiredKeyRequests: readonly string[],
@@ -232,29 +247,54 @@ function scoreRightKeys(
   return "pass";
 }
 
+/**
+ * permitted_set (§13.5 stay inside the permitted set):
+ * fail when a context_requested key is outside permittedKeySet, or when a
+ * forbidden key remains obtainable after H2's allowlist drop.
+ * Independent of validation ok/fail (no criterion conflation).
+ */
 function scorePermittedSet(
   manifest: Manifest,
   transcript: TranscriptTurn[],
   forbiddenResolvedKeys: readonly string[],
-  suppliedContext: Record<string, unknown>,
+  validation: ValidateResult,
 ): ConversationCriterion {
-  const legTurnOrdinal = transcript.length + 1;
-  const validation = validateContext(
-    manifest,
-    suppliedContext,
-    fixturePrincipal(),
-    { transcript, legTurnOrdinal },
+  const permittedKeySet = new Set(
+    manifest["Context requirements"].permittedKeySet,
   );
 
-  if (!validation.ok) {
-    return "fail";
+  for (const turn of transcript) {
+    if (turn.kind !== "context_requested") {
+      continue;
+    }
+    for (const request of turn.requests) {
+      if (!permittedKeySet.has(request.key)) {
+        return "fail";
+      }
+    }
   }
 
-  const obtainedKeys = new Set(Object.keys(validation.filteredContext));
-  for (const turn of validation.validatedTranscript ?? []) {
-    if (turn.kind === "context_resolved") {
+  const obtainedKeys = new Set<string>();
+  if (validation.ok) {
+    for (const turn of validation.validatedTranscript ?? []) {
+      if (turn.kind === "context_resolved") {
+        for (const key of Object.keys(turn.context)) {
+          obtainedKeys.add(key);
+        }
+      }
+    }
+  } else {
+    // Validation failed (e.g. budget): still inspect the raw transcript's
+    // resolved keys that would survive the allowlist filter, without treating
+    // the validation failure itself as a permitted_set fail.
+    for (const turn of transcript) {
+      if (turn.kind !== "context_resolved") {
+        continue;
+      }
       for (const key of Object.keys(turn.context)) {
-        obtainedKeys.add(key);
+        if (permittedKeySet.has(key)) {
+          obtainedKeys.add(key);
+        }
       }
     }
   }
@@ -268,21 +308,27 @@ function scorePermittedSet(
   return "pass";
 }
 
+/**
+ * round_budget: H2 conversation_budget_exhausted fails the criterion; when
+ * expect_convergence is true, the last assistant turn must be kind "model".
+ */
 function scoreRoundBudget(
-  manifest: Manifest,
   transcript: TranscriptTurn[],
-  suppliedContext: Record<string, unknown>,
+  validation: ValidateResult,
+  expectConvergence: boolean,
 ): ConversationCriterion {
-  const legTurnOrdinal = transcript.length + 1;
-  const validation = validateContext(
-    manifest,
-    suppliedContext,
-    fixturePrincipal(),
-    { transcript, legTurnOrdinal },
-  );
-
-  if (!validation.ok) {
+  if (
+    !validation.ok &&
+    validation.code === "conversation_budget_exhausted"
+  ) {
     return "fail";
+  }
+
+  if (expectConvergence) {
+    const last = lastAssistantTurn(transcript);
+    if (last?.kind !== "model") {
+      return "fail";
+    }
   }
 
   return "pass";
@@ -292,10 +338,9 @@ function runCase(
   capabilityId: string,
   caseId: string,
   manifest: Manifest,
-): ConversationScore {
+): { score: ConversationScore; expected: ConversationExpectedOutcome } {
   const caseDef = loadCase(capabilityId, caseId);
   const transcript: TranscriptTurn[] = [];
-  let suppliedContext: Record<string, unknown> = {};
 
   for (const leg of caseDef.legs) {
     for (const appendTurn of leg.append_before_fixture) {
@@ -309,14 +354,10 @@ function runCase(
   const legTurnOrdinal = transcript.length + 1;
   const validation = validateContext(
     manifest,
-    suppliedContext,
+    {},
     fixturePrincipal(),
     { transcript, legTurnOrdinal },
   );
-
-  if (validation.ok) {
-    suppliedContext = validation.filteredContext;
-  }
 
   const rightKeys = scoreRightKeys(
     transcript,
@@ -326,9 +367,13 @@ function runCase(
     manifest,
     transcript,
     caseDef.scoring.forbidden_resolved_keys,
-    suppliedContext,
+    validation,
   );
-  const roundBudget = scoreRoundBudget(manifest, transcript, suppliedContext);
+  const roundBudget = scoreRoundBudget(
+    transcript,
+    validation,
+    caseDef.scoring.expect_convergence,
+  );
 
   const score: ConversationScore = {
     case_id: caseId,
@@ -338,7 +383,7 @@ function runCase(
     overall: "fail",
   };
   score.overall = deriveConversationOverall(score);
-  return score;
+  return { score, expected: caseDef.expected_outcome };
 }
 
 export async function runConversationSuite(
@@ -355,17 +400,21 @@ export async function runConversationSuite(
     ? [options.caseId]
     : listConversationCases(capabilityId);
 
-  const conversations: ConversationScore[] = [];
+  const results: Array<{
+    score: ConversationScore;
+    expected: ConversationExpectedOutcome;
+  }> = [];
   for (const caseId of caseIds) {
-    conversations.push(runCase(capabilityId, caseId, manifest));
+    results.push(runCase(capabilityId, caseId, manifest));
   }
 
+  const conversations = results.map((entry) => entry.score);
   const report: ConversationScoreReport = {
     capability_id: capabilityId,
     run_kind: "conversation",
     recorded_at: new Date().toISOString(),
     conversations,
-    overall: deriveRunOverall(conversations),
+    overall: deriveRunOverallFromExpectations(results),
   };
 
   const reportPath = writeConversationScoreReport(reportsDir, report);
@@ -375,10 +424,14 @@ export async function runConversationSuite(
     reportPath,
     report,
     fixturePathsUsed: [...harnessRuntime.fixturePathsUsed],
-    usedLiveEgress: harnessRuntime.usedLiveEgress,
   };
 }
 
 export function getConversationHarnessRuntimeSnapshot(): HarnessRuntime {
   return { ...harnessRuntime };
 }
+
+export {
+  matchesExpectedOutcome,
+  deriveRunOverallFromExpectations,
+};

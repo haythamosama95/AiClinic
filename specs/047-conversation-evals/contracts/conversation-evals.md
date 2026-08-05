@@ -52,7 +52,7 @@ Worker pipeline stage, emits **no** §5.4 taxonomy codes, and adds **no**
 | Root | Sibling module under `ai-platform/test/eval/` beside F1 capability evals |
 | Runtime module | **None** — no `ai-platform/src/eval/` |
 | Fixture capability | One fixture conversational capability (`clinic.chat_assistant`) declaring its own round budget and permitted key set |
-| Cases | Three scripted multi-leg cases against that capability |
+| Cases | Scripted multi-leg cases against that capability (required positives + negative controls) |
 | CI gate | Same permanent CI job as F1 goldens (`ai-platform-eval-golden`) — not a second product |
 | Fixtures | Each leg runs against **recorded fixtures** (A9 / Consumes F1); not an unbounded live chat matrix (OD-5) |
 
@@ -63,6 +63,7 @@ Worker pipeline stage, emits **no** §5.4 taxonomy codes, and adds **no**
 | Advancement | Each leg runs against recorded fixtures; the harness appends scripted user/context turns |
 | Scoring moment | The whole conversation is scored **at the end**, not turn-by-turn as the acceptance unit |
 | Client surface | H3's client chat surface is **not** required; the harness owns the multi-leg loop |
+| Fixture-only legs (Clarification Q1) | Conversation-eval legs append **pre-baked assistant turns** from recorded fixtures. The harness does **not** render prompts, invoke the composer, or call a provider adapter. Prompt-regression coverage for capability outputs remains F1 goldens; H4 gates H2 validator behaviour plus fixture content for the three conversation criteria. A future composer-path conversation case is out of H4 scope. |
 
 ### 2.3 What later work must not redefine
 
@@ -99,12 +100,20 @@ criteria (§13.5 Conversation evals; delivery plan §3.8 Done when):
 | Criterion id | Meaning | Pass when |
 | --- | --- | --- |
 | `right_keys` | Assistant requests the *correct* key(s) the script requires | The required key request(s) occur; "any permitted key" is insufficient |
-| `permitted_set` | Assistant stays inside the capability's permitted key set | A key outside the fixture capability's `permittedKeySet` is **not** obtained |
-| `round_budget` | Conversation converges within the declared round budget | Convergence completes within the fixture capability's declared max context rounds / round budget |
+| `permitted_set` | Assistant stays inside the capability's permitted key set (§13.5) | No `context_requested` key is outside the fixture capability's `permittedKeySet`, **and** no forbidden / out-of-set key is **obtained** after H2 allowlist drop |
+| `round_budget` | Conversation converges within the declared round budget | No `conversation_budget_exhausted` from H2 validation, **and** when the case declares `expect_convergence: true` the transcript's last assistant turn is `kind: "model"` |
 
 Round budget and permitted set are taken from the fixture capability's declared
 manifest fields (Consumes H2 / H1). H4 invents **no** numeric default and **no**
 parallel key vocabulary.
+
+Criteria are **independent**: a budget breach fails `round_budget` only; it does
+**not** force `permitted_set` to fail. `validateContext` runs **once** per case;
+scorers consume that result.
+
+Each case declares `expected_outcome` for the three criteria. Suite `overall` /
+`passed` is **pass** when every case's recorded scores **match** its
+`expected_outcome` (positive and negative-control cases alike).
 
 Outcome is **pass/fail only** — no numeric score cutoff beyond conversation
 pass/fail on these three criteria (OD-10; A9; §13.5).
@@ -116,6 +125,9 @@ The suite **MUST** include at least:
 1. A scripted conversation that converges within the round budget
 2. One case where the assistant must request the correct key
 3. One case proving a key outside the permitted set cannot be obtained
+4. Negative-control cases that drive each criterion to `fail` end-to-end through
+   `runCase` (wrong permitted key; out-of-set request; non-convergence and/or
+   budget breach) so the gate is falsifiable
 
 ---
 
@@ -142,7 +154,7 @@ least:
 | `conversations[].permitted_set` | `"pass"` \| `"fail"` | Criterion 2 |
 | `conversations[].round_budget` | `"pass"` \| `"fail"` | Criterion 3 |
 | `conversations[].overall` | `"pass"` \| `"fail"` | Conversation overall — fail if any of the three criteria fails |
-| `overall` | `"pass"` \| `"fail"` | Run overall — fail if any required conversation fails |
+| `overall` | `"pass"` \| `"fail"` | Run overall — fail if any conversation's scores do not match its declared `expected_outcome` |
 
 ### 5.2 Recording rules
 

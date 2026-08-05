@@ -2,6 +2,6 @@
   "leg_id": "leg_2",
   "assistant_turn": {
     "kind": "model",
-    "text": "I cannot access the medication list with the permitted context keys for this capability."
+    "text": "I only have the chief complaint in permitted context; the medication list was not obtainable for this capability."
   }
 }
