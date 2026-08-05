@@ -8,10 +8,10 @@ unbounded repair or return invalid content, or weaken structured-mode emission i
 (provisional vs committed; self-contained terminal payload).
 
 **Source of truth in code (this slice):** `ai-platform/src/validate/` (phases + repair),
-extended `ai-platform/src/stream/index.ts` (structured emission).
+`ai-platform/src/stream/structured.ts` (structured / `structured_atomic` emission; D4 prose broker remains `stream/index.ts`).
 
 **Traces to:** spec Freezes (phase order; bounded repair; structured / structured_atomic modes);
-FR-001–FR-014; architecture §4.3.9, §6.4, §5.1.
+FR-001–FR-016; architecture §4.3.9, §6.4, §5.1.
 
 ---
 
@@ -35,6 +35,9 @@ cancel. D6 owns post-assembly validation, repair, and the two structured §6.4 r
 
 **Module:** `ai-platform/src/validate/phases.ts` (phases); orchestration in `validate/index.ts`.
 
+Transport/parse may include conversational context-request parsing for H2 consumers; D6 owns the
+phase file and order; H2 owns conversational product semantics beyond that parse.
+
 Phases run **strictly in this order**. An earlier-phase failure is the reported first failure; later
 phases are not reordered ahead of it (FR-001; T10).
 
@@ -50,7 +53,8 @@ phases are not reordered ahead of it (FR-001; T10).
 | Valid path | Output that passes all four phases may be carried on the terminal `completed` event (T1) |
 | Invalid never returned | On any validation failure path, invalid content is never emitted as the accepted or terminal success payload (FR-007; T11) |
 | Manifest-sourced | Output mode, schema ref, business rule refs, and repair policy are read from the capability manifest Output group; the validator does not hard-code provider or model identity (FR-012; §5.1) |
-| Schema / rule resolution (this slice) | Tests register schema and rule runners in **in-memory registries** keyed by manifest refs; this slice does not introduce an on-disk schema/rule store (Clarification Q3) |
+| Schema / rule resolution (this slice) | Tests register schema and rule runners in **in-memory registries** keyed by manifest refs; a declared ref with no runner is a schema/business failure (fail closed), not a pass; this slice does not introduce an on-disk schema/rule store (Clarification Q3; FR-015) |
+| Refusal matching | Refusal prefixes match at the start of trimmed assembled raw text, not as arbitrary mid-string substrings (FR-001 safety; T6) |
 
 Later slices may extend which rules a capability may declare; they must not reorder or skip these
 phases (Freezes).
@@ -65,12 +69,13 @@ phases (Freezes).
 | --- | --- |
 | Policy gate | Whether repair is allowed is a per-capability manifest decision (`Output.repairPolicy.allowed`), not a global one (FR-004; §4.3.9; §5.1) |
 | Re-ask shape | When allowed, the validator may attempt a **single budgeted re-ask** with the validation errors appended (FR-003; T12) |
-| Invocation port | Repair is invoked through an injected `reask(errors) => Promise<assembled output>` port so D6 owns the attempt without rewriting D3's invocation/retry/fallback loop (Clarification Q2; Out of Scope D3) |
+| Invocation port | Repair is invoked through an injected `reask(errors) => Promise<{ output; usage }>` port so D6 owns the attempt without rewriting D3's invocation/retry/fallback loop (Clarification Q2; Out of Scope D3). A throwing reask fails terminally with `validation_failed` |
 | Cap | Attempts are capped by `Output.repairPolicy.maxAttempts`; this slice does not invent a numeric default (FR-003; T15; Assumptions) |
 | Count + journal | Each repair attempt is counted and journaled (FR-003; T15). Production journaling remains C3; this slice feeds injectable attempt/journal sinks |
-| Cost | Repair generation cost is counted against the request (FR-006; T16) |
+| Cost | Repair generation cost is counted from usage returned by `reask` (tokens/cost of that generation), not a caller-supplied constant (FR-006; T16) |
 | Disallowed | Immediate terminal failure with `validation_failed`; no re-ask (FR-005; T13) |
 | Exhausted / still invalid | Terminal failure with `validation_failed`; invalid content is not returned (FR-005; T14; Done when) |
+| Failure detail | Terminal `validation_failed` results carry failing `phase` and human-readable `message` for journaling/support (FR-016) |
 | Error code | Uses existing A2 taxonomy code `validation_failed`; this slice does not add or rename taxonomy codes (Edge Cases; Assumptions) |
 
 Later slices must not introduce unbounded repair or return invalid content (Freezes).
@@ -79,17 +84,24 @@ Later slices must not introduce unbounded repair or return invalid content (Free
 
 | Dependency | Role |
 | --- | --- |
-| `reask(errors)` port | Returns a new assembled output for re-validation; tests script invalid-then-valid or always-invalid (Clarification Q2) |
+| `reask(errors)` port | Returns `{ output: AssembledOutput; usage: { tokens; cost } }` for re-validation and cost counting; tests script invalid-then-valid or always-invalid (Clarification Q2; FR-006) |
 | Schema registry | Map `outputSchemaRef` → conformance runner (in-memory in this slice; Clarification Q3) |
 | Business-rule registry | Map each `businessValidationRuleRefs` entry → rule runner (in-memory; Clarification Q3) |
 | Repair-attempt / journal sink | Records capped attempts for later C3 persistence (unchanged C3 contract) |
-| Repair-cost / usage sink | Counts repair cost against the request (FR-006) |
+| Repair-cost / usage sink | Receives usage returned by each `reask` call (FR-006) |
 
 ---
 
 ## 4. Structured and structured_atomic streaming modes
 
-**Module:** extended `ai-platform/src/stream/index.ts` (D4 broker duties preserved).
+**Module:** `ai-platform/src/stream/structured.ts` (structured broker; D4 prose relay/heartbeat/cancel remain in `stream/index.ts` and are not rewritten).
+
+**Commit-time repair seam:** Structured completion validates via `validateAndRepair` (not phases-only).
+`StructuredValidationConfig` / broker options carry `repairPolicy`, optional `reask`, and repair
+journal/cost sinks. When repair is disallowed or `reask` is absent, behavior matches FR-005
+(immediate `validation_failed`). When allowed, bounded re-ask follows §3. Truncation is propagated
+from `ChunkSource.wasTruncated()` into `AssembledOutput.truncated` so the safety truncated guard is
+reachable on the broker path.
 
 | Mode | During stream | At completion |
 | --- | --- | --- |
@@ -128,7 +140,7 @@ freezes the two structured rows and the shared §6.4 invariants as they apply to
 
 | Slice | Binding |
 | --- | --- |
-| **H2** | Conversational composer/validator and context-request as a second permitted output shape — must honour phase order and repair discipline |
+| **H2** | Consumes D6 phase order and repair discipline; may call conversational parse helpers living in `validate/phases.ts`. Does not own or fork the phase module. Context-request product rules / budgets remain H1/H2. |
 | **E4** | Client provisional-draft UX and commit affordances — must treat provisional structured events as non-authoritative; terminal payload is the answer |
 
 ---

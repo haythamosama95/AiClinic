@@ -8,10 +8,13 @@ import {
   type HeartbeatTicker,
   type JournalTerminalSink,
   type StreamBrokerEventSink,
+  type StreamChunk,
   type StructuredStreamBrokerOptions,
 } from "../src/stream/structured";
 import type {
   BusinessRuleRegistry,
+  RepairPolicy,
+  ReaskPort,
   SafetyMarkers,
   SchemaRegistry,
 } from "../src/validate";
@@ -32,6 +35,8 @@ const VALID_DOCUMENT = {
   sections: { assessment: "Stable", plan: "Rest and fluids" },
 };
 
+const DEFAULT_REPAIR_POLICY: RepairPolicy = { allowed: false, maxAttempts: 0 };
+
 function createSchemaRegistry(): SchemaRegistry {
   const registry: SchemaRegistry = new Map();
   registry.set(SCHEMA_REF, (parsed: unknown) => {
@@ -49,12 +54,6 @@ function createSchemaRegistry(): SchemaRegistry {
 
 const FIXTURE_TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const FIXTURE_REQUEST_ID = "req-d6-structured-001";
-
-const GUARD_THRESHOLDS = {
-  maxLength: 500,
-  stopSequences: ["<|end|>"],
-  systemPromptLeakNeedle: "SYSTEM_PROMPT_LEAK_TEST_NEEDLE",
-};
 
 const TERMINAL_EVENT_KINDS = ["completed", "failed", "cancelled"] as const;
 
@@ -116,8 +115,14 @@ function createNoopJournalSink(): JournalTerminalSink {
   return () => {};
 }
 
-function createScriptedChunkSource(chunks: string[]): ChunkSource {
+function createScriptedChunkSource(
+  chunks: Array<string | StreamChunk>,
+  options: { truncated?: boolean } = {},
+): ChunkSource {
   return {
+    wasTruncated() {
+      return options.truncated === true;
+    },
     async *stream({ signal }: { signal: AbortSignal }) {
       for (const chunk of chunks) {
         if (signal.aborted) return;
@@ -135,36 +140,54 @@ function structuredChunksFor(document: typeof VALID_DOCUMENT): string[] {
 
 type StructuredBrokerHarnessOptions = {
   mode: "structured" | "structured_atomic";
-  chunks: string[];
+  chunks: Array<string | StreamChunk>;
   schemaRegistry?: SchemaRegistry;
   ruleRegistry?: BusinessRuleRegistry;
+  repairPolicy?: RepairPolicy;
+  reask?: ReaskPort;
+  truncated?: boolean;
+  outputSchemaRef?: string | null;
+  businessValidationRuleRefs?: readonly string[];
+  safetyMarkers?: SafetyMarkers;
 };
+
+function buildBrokerOptions(
+  options: StructuredBrokerHarnessOptions,
+  collector: EventSinkCollector,
+  heartbeatTicker: HeartbeatTicker = createControllableHeartbeatTicker(),
+): StructuredStreamBrokerOptions {
+  return {
+    traceId: FIXTURE_TRACE_ID,
+    requestId: FIXTURE_REQUEST_ID,
+    eventSink: collector.sink,
+    chunkSource: createScriptedChunkSource(options.chunks, {
+      truncated: options.truncated,
+    }),
+    heartbeatTicker,
+    creditSink: createNoopCreditSink(),
+    journalTerminalSink: createNoopJournalSink(),
+    outputMode: options.mode,
+    structuredValidation: {
+      outputSchemaRef:
+        options.outputSchemaRef === undefined ? SCHEMA_REF : options.outputSchemaRef,
+      businessValidationRuleRefs: options.businessValidationRuleRefs ?? [],
+      schemaRegistry: options.schemaRegistry ?? createSchemaRegistry(),
+      ruleRegistry: options.ruleRegistry ?? new Map(),
+      repairPolicy: options.repairPolicy ?? DEFAULT_REPAIR_POLICY,
+      context: { patientId: "patient-001" },
+      safetyMarkers: options.safetyMarkers ?? SAFETY_MARKERS,
+    },
+    ...(options.reask ? { reask: options.reask } : {}),
+  };
+}
 
 async function runStructuredBrokerHarness(
   options: StructuredBrokerHarnessOptions,
 ): Promise<{ events: AdapterSseEvent[] }> {
   const collector = createEventSinkCollector();
-  const brokerOptions: StructuredStreamBrokerOptions = {
-    traceId: FIXTURE_TRACE_ID,
-    requestId: FIXTURE_REQUEST_ID,
-    eventSink: collector.sink,
-    chunkSource: createScriptedChunkSource(options.chunks),
-    heartbeatTicker: createControllableHeartbeatTicker(),
-    creditSink: createNoopCreditSink(),
-    journalTerminalSink: createNoopJournalSink(),
-    guardThresholds: GUARD_THRESHOLDS,
-    outputMode: options.mode,
-    structuredValidation: {
-      outputSchemaRef: SCHEMA_REF,
-      businessValidationRuleRefs: [],
-      schemaRegistry: options.schemaRegistry ?? createSchemaRegistry(),
-      ruleRegistry: options.ruleRegistry ?? new Map(),
-      context: { patientId: "patient-001" },
-      safetyMarkers: SAFETY_MARKERS,
-    },
-  };
-
-  const controller = createStructuredStreamBroker(brokerOptions);
+  const controller = createStructuredStreamBroker(
+    buildBrokerOptions(options, collector),
+  );
   await controller.run();
   return { events: collector.events };
 }
@@ -218,25 +241,16 @@ describe("T-D6-19 structured_atomic_progress_only", () => {
     const heartbeatTicker = createControllableHeartbeatTicker();
     const collector = createEventSinkCollector();
 
-    const controller = createStructuredStreamBroker({
-      traceId: FIXTURE_TRACE_ID,
-      requestId: FIXTURE_REQUEST_ID,
-      eventSink: collector.sink,
-      chunkSource: createScriptedChunkSource(structuredChunksFor(VALID_DOCUMENT)),
-      heartbeatTicker,
-      creditSink: createNoopCreditSink(),
-      journalTerminalSink: createNoopJournalSink(),
-      guardThresholds: GUARD_THRESHOLDS,
-      outputMode: "structured_atomic",
-      structuredValidation: {
-        outputSchemaRef: SCHEMA_REF,
-        businessValidationRuleRefs: [],
-        schemaRegistry: createSchemaRegistry(),
-        ruleRegistry: new Map(),
-        context: { patientId: "patient-001" },
-        safetyMarkers: SAFETY_MARKERS,
-      },
-    });
+    const controller = createStructuredStreamBroker(
+      buildBrokerOptions(
+        {
+          mode: "structured_atomic",
+          chunks: structuredChunksFor(VALID_DOCUMENT),
+        },
+        collector,
+        heartbeatTicker,
+      ),
+    );
 
     const runPromise = controller.run();
     heartbeatTicker.triggerSilentGap();
@@ -249,7 +263,7 @@ describe("T-D6-19 structured_atomic_progress_only", () => {
     expect(
       eventsOfType(preTerminal, "heartbeat").length +
         eventsOfType(preTerminal, "progress").length,
-    ).toBeGreaterThanOrEqual(0);
+    ).toBeGreaterThan(0);
 
     const completed = eventsOfType(collector.events, "completed");
     expect(completed).toHaveLength(1);
@@ -274,48 +288,66 @@ describe("T-D6-20 client_ignoring_chunks_still_correct", () => {
 
 describe("T-D6-21 terminal_payload_not_assembled_from_chunks", () => {
   it("carries a self-contained terminal payload not assembled from stream chunks", async () => {
+    const garbageDoc = { summary: "GARBAGE_PROVISIONAL_CONTENT", severity: "mild" };
+    const regeneratingChunks: StreamChunk[] = [
+      ...structuredChunksFor(garbageDoc as typeof VALID_DOCUMENT),
+      { kind: "regenerating" },
+      ...structuredChunksFor(VALID_DOCUMENT),
+    ];
+
     const { events } = await runStructuredBrokerHarness({
       mode: "structured",
-      chunks: structuredChunksFor(VALID_DOCUMENT),
+      chunks: regeneratingChunks,
     });
 
     const partials = eventsOfType(events, "partial_structured");
+    const regenerating = eventsOfType(events, "regenerating");
     const payload = terminalPayload(events);
     const finalContent = payload?.finalContent as Record<string, unknown>;
 
+    expect(regenerating.length).toBeGreaterThan(0);
     expect(finalContent?._assembledFromChunks).toBe(false);
     expect(finalContent?.document).toEqual(VALID_DOCUMENT);
+    expect(finalContent?.document).not.toEqual(garbageDoc);
 
-    for (const partial of partials) {
-      expect(partial.data).not.toBe(finalContent?.document);
-    }
+    const provisionalDocs = partials.map((event) => event.data.document);
+    expect(
+      provisionalDocs.some(
+        (doc) =>
+          typeof doc === "object" &&
+          doc !== null &&
+          (doc as Record<string, unknown>).summary === "GARBAGE_PROVISIONAL_CONTENT",
+      ),
+    ).toBe(true);
   });
 });
 
 describe("T-D6-22 no_per_request_state_for_repair_or_structured", () => {
-  it("does not introduce per-request server-side state in validate or structured paths", async () => {
-    const validateExports = await import("../src/validate");
-    const streamExports = await import("../src/stream");
-    const structuredExports = await import("../src/stream/structured");
+  it("keeps concurrent structured brokers observationally independent", async () => {
+    const docA = { ...VALID_DOCUMENT, summary: "Broker A only" };
+    const docB = { ...VALID_DOCUMENT, summary: "Broker B only" };
 
-    for (const exportName of [
-      ...Object.keys(validateExports),
-      ...Object.keys(streamExports),
-      ...Object.keys(structuredExports),
-    ]) {
-      const lowered = exportName.toLowerCase();
-      expect(lowered).not.toMatch(/requestregistry/);
-      expect(lowered).not.toMatch(/requeststate/);
-      expect(lowered).not.toMatch(/sessiondo/);
-      expect(lowered).not.toMatch(/durableobject/);
-    }
+    const [resultA, resultB] = await Promise.all([
+      runStructuredBrokerHarness({
+        mode: "structured",
+        chunks: structuredChunksFor(docA),
+      }),
+      runStructuredBrokerHarness({
+        mode: "structured",
+        chunks: structuredChunksFor(docB),
+      }),
+    ]);
 
-    const { events } = await runStructuredBrokerHarness({
-      mode: "structured",
-      chunks: structuredChunksFor(VALID_DOCUMENT),
-    });
+    const finalA = (
+      terminalPayload(resultA.events)?.finalContent as Record<string, unknown>
+    )?.document;
+    const finalB = (
+      terminalPayload(resultB.events)?.finalContent as Record<string, unknown>
+    )?.document;
 
-    expect(eventsOfType(events, "completed")).toHaveLength(1);
+    expect(finalA).toEqual(docA);
+    expect(finalB).toEqual(docB);
+    expect(finalA).not.toEqual(finalB);
   });
 });
 
@@ -353,5 +385,64 @@ describe("T-D6-24 prose_path_unchanged_by_this_slice", () => {
     expect(eventsOfType(events, "partial_structured").length).toBeGreaterThan(0);
     expect(eventsOfType(events, "text_delta")).toHaveLength(0);
     expect(eventsOfType(events, "completed")).toHaveLength(1);
+  });
+});
+
+describe("T-D6-28 broker_validation_failure_terminal", () => {
+  it("emits a single failed/validation_failed terminal for complete-but-invalid output", async () => {
+    const invalidDoc = { severity: "mild" };
+    const { events } = await runStructuredBrokerHarness({
+      mode: "structured",
+      chunks: [JSON.stringify(invalidDoc)],
+    });
+
+    expect(eventsOfType(events, "completed")).toHaveLength(0);
+    const failed = eventsOfType(events, "failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.data.code).toBe("validation_failed");
+  });
+});
+
+describe("T-D6-29 broker_bounded_repair_seam", () => {
+  it("attempts one budgeted re-ask when the manifest repairPolicy allows it", async () => {
+    const invalidDoc = { severity: "mild" };
+    const reask = vi.fn<ReaskPort>(async () => ({
+      output: {
+        raw: JSON.stringify(VALID_DOCUMENT),
+        transportValid: true,
+      },
+      usage: { tokens: 55, cost: 0.0015 },
+    }));
+
+    const { events } = await runStructuredBrokerHarness({
+      mode: "structured",
+      chunks: [JSON.stringify(invalidDoc)],
+      repairPolicy: { allowed: true, maxAttempts: 1 },
+      reask,
+    });
+
+    expect(reask).toHaveBeenCalledOnce();
+    expect(eventsOfType(events, "failed")).toHaveLength(0);
+    const completed = eventsOfType(events, "completed");
+    expect(completed).toHaveLength(1);
+    const finalContent = (
+      terminalPayload(events)?.finalContent as Record<string, unknown>
+    )?.document;
+    expect(finalContent).toEqual(VALID_DOCUMENT);
+  });
+});
+
+describe("T-D6-30 broker_truncated_guard_reachable", () => {
+  it("fails validation_failed when the chunk source reports truncation", async () => {
+    const { events } = await runStructuredBrokerHarness({
+      mode: "structured",
+      chunks: structuredChunksFor(VALID_DOCUMENT),
+      truncated: true,
+    });
+
+    expect(eventsOfType(events, "completed")).toHaveLength(0);
+    const failed = eventsOfType(events, "failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.data.code).toBe("validation_failed");
   });
 });
