@@ -34,7 +34,7 @@ No named tests dropped; every combined task still names every covered case.
 
 - **Flutter desktop app**: `frontend/lib/`, `frontend/test/`
 - **Supabase backend**: `backend/migrations/`, `backend/functions/`, `backend/tests/` — not touched by this slice
-- **AI platform Worker**: `ai-platform/src/`, `ai-platform/migrations/`, `ai-platform/test/` — journaling + workers-pool tests live here (no `migrations/` edits — H3 adds no D1 schema)
+- **AI platform Worker**: `ai-platform/src/`, `ai-platform/migrations/`, `ai-platform/test/` — journaling + workers-pool tests live here (H3 adds no entity/column DDL; A5 follow-up index migration `20260805180000_h3_conversation_index.sql` only)
 - **Spec artifacts**: `specs/046-conversational-journaling/`
 
 ---

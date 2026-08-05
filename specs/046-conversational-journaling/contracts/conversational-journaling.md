@@ -34,14 +34,21 @@ per-request server-side state object.
 
 | Field | Supplied by | Written when | Nullable otherwise |
 | --- | --- | --- | --- |
-| `conversation_id` | Client, once per chat | Every conversational leg of that chat | Yes — `NULL` for `interaction_mode: single_shot` and when absent |
+| `conversation_id` | Client, once per chat | Every conversational leg of that chat | Yes — `NULL` for `interaction_mode: single_shot` only |
 | `turn_ordinal` | Client, incremented per leg | Every conversational leg | Yes — same |
 
 Rules:
 
-- Both fields are written on the ordinary stage-9 `ai_request` row (C3 `createRequestRow`).
-- This slice does **not** add a schema migration for the columns (reserved in A5).
-- `single_shot` legs MUST continue to write `NULL` for both columns (C3 behaviour preserved).
+- Both fields are written on the ordinary stage-9 `ai_request` row (C3 `createRequestRow`),
+  wired through pipeline `runGuard` from the submit body (`conversation_id` / `turn_ordinal`).
+- Conversational legs **MUST** supply both fields. If either is missing/`null`/`undefined`,
+  `createRequestRow` rejects with `context_invalid` and writes **no** row — it does not
+  silently default to `NULL`.
+- `single_shot` legs MUST continue to write `NULL` for both columns (C3 behaviour preserved),
+  even if the caller passes values.
+- A5 follow-up index (H3-R4): `idx_ai_request_conversation` on
+  `(conversation_id, turn_ordinal)` — one-statement migration
+  `ai-platform/migrations/20260805180000_h3_conversation_index.sql`.
 
 ---
 
@@ -52,19 +59,20 @@ Support and evals read a conversation as a unit with **one** D1 query:
 ```sql
 SELECT …
 FROM ai_request
-WHERE conversation_id = ?
+WHERE conversation_id = ? AND installation_id = ?
 ORDER BY turn_ordinal;
 ```
 
 | Property | Rule |
 | --- | --- |
-| Grouping | All legs sharing the supplied `conversation_id` |
+| Grouping | All legs sharing the supplied `conversation_id` **and** `installation_id` |
 | Order | Ascending `turn_ordinal` |
 | Entity | Ordinary `ai_request` rows only — no join to a conversation table |
-| Helper | `listConversationLegs(conversationId)` (or equivalent) in `src/journal/` exposes this query |
+| Index | `idx_ai_request_conversation (conversation_id, turn_ordinal)` |
+| Helper | `listConversationLegs(conversationId, installationId, db)` in `src/journal/` exposes this query |
 
 A5 documents this query pattern; H3 freezes the behavioural contract that the journal returns the
-whole conversation ordered through that single query.
+whole conversation ordered through that single tenant-scoped query.
 
 ---
 

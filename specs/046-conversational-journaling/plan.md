@@ -195,12 +195,15 @@ frontend/
 ```
 
 **Structure Decision**: Journaling stays in C3's `src/journal/` — populate reserved columns and add
-the A5-documented ordered conversation query helper; no migration and no new store. Conversation
+the A5-documented ordered conversation query helper; A5 follow-up index migration for
+`idx_ai_request_conversation`; no conversation table or store. Conversation
 store and negotiation loop live under `frontend/lib/core/ai/` beside E2/E3 (Clarification Q1).
 Conversational submit fields are optional on existing `CapabilityInvokeInput` (Clarification Q2).
-Full-pipeline journaling tests compose admission → `createRequestRow` (with conversation fields) →
+Pipeline `runGuard` (stage 6 conversational validate + stage 9 journal) parses
+`conversation_id` / `turn_ordinal` / `transcript` from the submit body and passes them through
+(H3-R5). Full-pipeline journaling tests also compose admission → `createRequestRow` →
 fake provider → credit / R2 spies under the workers pool (Clarification Q3), matching the load
-happy-path fixture style rather than inventing a new orchestrator module. No `backend/` path is
+happy-path fixture style. No `backend/` path is
 touched.
 
 ## Consumes Binding
@@ -209,7 +212,7 @@ touched.
 | --- | --- | --- |
 | **C3** — journal writer, post-response detail, get-request: `ai_request` row before work; §6.3 transitions; guard rejection → no row; one R2 envelope; `ai_attempt` / `usage_event` after response; get-request by reference | `ai-platform/src/journal/index.ts` (`createRequestRow`, `RequestRowInput.conversationId` / `turnOrdinal`, `journalTransition`, `recordTerminalState`, `writePostResponseDetail`, `getRequest`); frozen `specs/027-journal-writer-get-request/contracts/journal.md`; A5 columns in `ai-platform/migrations/20260731120000_platform_schema.sql` | H3 **populates** reserved nullable `conversation_id` / `turn_ordinal` on conversational legs (inputs already on `RequestRowInput`) and **adds** `listConversationLegs` as the one ordered query. It does **not** rewrite stage-9/15/16 lifecycle, one-envelope rule, get-request, or add a conversation table (FR-002–FR-007, FR-015). |
 | **E2** — AI Client SDK: AAT acquire/cache, submit with idempotency key, SSE to terminal, cancel, no retry after terminal platform error, last request reference | `frontend/lib/core/ai/ai_client_sdk.dart`, `ports.dart` (`CapabilityInvokeInput`, `HttpsSubmitPort`), `sse_events.dart`, `taxonomy.dart`; plan `specs/036-ai-client-sdk/plan.md` | H3 **extends** `CapabilityInvokeInput` with optional `conversationId` / `turnOrdinal` / `transcript` (Clarification Q2) and surfaces H1's `context_requested` as a client terminal. Each leg calls `invoke()` so the SDK issues a **new** idempotency key. It does **not** rewrite transport, remint, or terminal-retry rules (FR-011, FR-014). |
-| **E3** — Context Resolver registry: key list → payload; never receives/branches on capability id; screen-scoped cache | `frontend/lib/core/ai/context_resolver.dart` (`resolve(List<String> keys)`); `context_registration.dart`; `context_provider_port.dart`; frozen `specs/037-context-resolver-registry/contracts/context-resolver.md` | H3 **routes** `context_requested` keys through the same `resolve(keys)` path (keys extracted from the H1 `{key, arguments}` list); appends request + resolved payload to the transcript. It does **not** pass a capability id, add per-capability glue, or a second resolution path (FR-009, FR-010, FR-017). |
+| **E3** — Context Resolver registry: key list → payload; never receives/branches on capability id; screen-scoped cache | `frontend/lib/core/ai/context_resolver.dart` (`resolve` + H3 `resolveRequests`); `context_registration.dart`; `context_provider_port.dart`; frozen `specs/037-context-resolver-registry/contracts/context-resolver.md` (§2.4 arguments extension) | H3 **routes** full `{key, arguments}` entries through `resolveRequests` (key-list `resolve` remains); appends request + resolved payload to the transcript. It does **not** pass a capability id, add per-capability glue, or a second resolution path (FR-009, FR-010, FR-017). |
 | **H1** — `interaction_mode: conversational` fields; `context_requested` terminal kind; `AwaitingContext` terminal/immutable; platform-owned `{key, arguments}` schema | `ai-platform/src/manifest/index.ts`; `ai-platform/src/adapter.ts` (`context_requested`); `ai-platform/src/journal/index.ts` (`AwaitingContext`); `ai-platform/src/context/context-request.ts`; frozen `specs/044-conversational-manifest-schema/contracts/*` | H3 **journals** legs that reach `AwaitingContext` and **drives** the client loop for `context_requested` / `completed`. It does **not** redefine manifest fields, the shared schema, or the fourth terminal kind (FR-007–FR-009). |
 
 No Consumes entry lacks an implementation; satisfying H3 does not require rewriting C3/E2/E3/H1 frozen invariants beyond the reserved conversational extensions (stop condition 2 not triggered).
@@ -230,8 +233,10 @@ No Consumes entry lacks an implementation; satisfying H3 does not require rewrit
 
 | Path | Created / Modified | Traces to |
 | --- | --- | --- |
-| `ai-platform/src/journal/index.ts` | Modified — conversational column write path verification; `listConversationLegs(conversationId)` one-query helper `WHERE conversation_id = ? ORDER BY turn_ordinal` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-015 |
-| `ai-platform/test/conversational-journaling.test.ts` | Created — full pipeline integration (spy) journaling + coverage tests (Clarification Q3) | SC-001–SC-004, SC-007; journaling named tests + §3.10 coverage |
+| `ai-platform/src/journal/index.ts` | Modified — conversational column write (reject missing grouping); tenant-scoped `listConversationLegs(conversationId, installationId, db)`; `WHERE conversation_id = ? AND installation_id = ? ORDER BY turn_ordinal` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-015 |
+| `ai-platform/src/pipeline/index.ts` | Modified — `runGuard` parses conversational wire fields and passes them to `validateContext` (stage 6) + `createRequestRow` (stage 9) | FR-001, FR-002, SC-001 |
+| `ai-platform/migrations/20260805180000_h3_conversation_index.sql` | Created — A5 follow-up `idx_ai_request_conversation` | SC-002 |
+| `ai-platform/test/conversational-journaling.test.ts` | Created — full pipeline integration (spy) journaling + coverage tests (Clarification Q3); `runGuard` wiring case | SC-001–SC-004, SC-007; journaling named tests + §3.10 coverage |
 | `ai-platform/vitest.workers.config.ts` | Modified — include this slice's journaling test file | SC-001–SC-004 |
 | `ai-platform/vitest.config.ts` | Modified — exclude workers-pool file from unit pool | SC-001–SC-004 |
 | `frontend/lib/core/ai/ports.dart` | Modified — optional `conversationId`, `turnOrdinal`, `transcript` on `CapabilityInvokeInput` | FR-001, FR-005, FR-011, FR-012, FR-018 |
@@ -245,7 +250,10 @@ No Consumes entry lacks an implementation; satisfying H3 does not require rewrit
 | `specs/046-conversational-journaling/contracts/conversational-journaling.md` | Created | Freezes (column write, ordered query, independent admit/credit, no conversation entity/state) |
 | `specs/046-conversational-journaling/quickstart.md` | Created during Documentation task after verification | Documentation mandate |
 
-No Consumes module is rewritten beyond the reserved extensions. No D1 migration, no `wrangler.toml` binding change, no `backend/` files. Conversation store Freezes are client behavioural (E2 pattern) — later slices bind to `frontend/lib/core/ai/conversation_*.dart`, not to a separate store wire contract.
+No Consumes module is rewritten beyond the reserved extensions. Conversational grouping index is an
+A5 follow-up one-statement migration (H3-R4). No `wrangler.toml` binding change, no `backend/` files.
+Conversation store Freezes are client behavioural (E2 pattern) — later slices bind to
+`frontend/lib/core/ai/conversation_*.dart`, not to a separate store wire contract.
 
 ## Test Layout
 

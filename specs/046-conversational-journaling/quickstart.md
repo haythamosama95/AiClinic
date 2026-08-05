@@ -19,19 +19,31 @@ slice; full-suite regression is the Verification task (T023), not repeated here.
 - **Spec delivered:** FR-001–FR-018 — journal column population, ordered conversation query,
   independent admit/credit per leg, client transcript hold/resupply/discard, Resolver-driven
   `context_requested` loop, new idempotency key per leg, connection-scoped cancel.
-- **Plan scoped:** `listConversationLegs` in `journal/index.ts`; workers-pool integration tests;
+- **Plan scoped:** `listConversationLegs` in `journal/index.ts`; `runGuard` wire-through;
+  workers-pool integration tests;
   optional `CapabilityInvokeInput` fields and `context_requested` client terminal; `conversation_store.dart`
   and `conversation_loop.dart`; frozen `contracts/conversational-journaling.md`.
 
 ## 2. What was implemented
 
 - Journal writer populates client-supplied `conversation_id` / `turn_ordinal` on conversational legs
-  and adds `listConversationLegs(conversationId)` (`WHERE conversation_id = ? ORDER BY turn_ordinal`).
+  (rejects missing grouping with `context_invalid`) and adds
+  `listConversationLegs(conversationId, installationId)`
+  (`WHERE conversation_id = ? AND installation_id = ? ORDER BY turn_ordinal`).
+- Pipeline `runGuard` stage 6/9 wires `conversation_id` / `turn_ordinal` / `transcript` from the
+  submit body into `validateContext` and `createRequestRow` (not test-only composition).
+- A5 follow-up index `idx_ai_request_conversation` on `(conversation_id, turn_ordinal)`.
 - Workers-pool integration tests prove independent admit/credit, `AwaitingContext` credit, no
-  conversation table, I/O budget invariants, and `single_shot` null columns.
+  conversation table, I/O budget upper bounds, `runGuard` column write, and `single_shot` null columns.
 - Flutter Conversation store (local transcript hold / resupply / discard; no interpretation).
-- Flutter negotiation loop (Resolver `resolve(keys)` with no capability id; append on
-  `context_requested` / `completed`; new idempotency key per leg; cancel one leg only).
+  Leg 1 submits `intent = typed message` with an empty transcript; transcript turn ordinals are
+  strictly less than the leg's `turn_ordinal` (§6.7.1). User turns are committed only on success
+  (no dangling unanswered user turn on cancel/fail).
+- Flutter negotiation loop: on `context_requested`, resolve full `{key, arguments}` via
+  `resolveRequests`, append request + resolved payload, and **automatically submit the
+  continuation leg** (new idempotency key, resupplied transcript, no fabricated user turn) until
+  `completed` or a failure/cancel terminal. `ContextResolveFailure` fails the leg visibly (no empty
+  `context_resolved`); RLS-empty is success with an empty payload and may continue.
 - E2 SDK optional invoke fields (`conversationId`, `turnOrdinal`, `transcript`) and
   `ContextRequestedEvent` / `ContextRequestedTerminal`.
 - Frozen contract: [`contracts/conversational-journaling.md`](./contracts/conversational-journaling.md).
@@ -43,6 +55,8 @@ See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file-
 | Path | Role |
 | --- | --- |
 | `ai-platform/src/journal/index.ts` | `listConversationLegs`; conversational column write via `createRequestRow` |
+| `ai-platform/src/pipeline/index.ts` | `runGuard` stage 6/9 conversational wire fields |
+| `ai-platform/migrations/20260805180000_h3_conversation_index.sql` | Conversation index |
 | `ai-platform/test/conversational-journaling.test.ts` | Pipeline integration (spy) named tests |
 | `ai-platform/vitest.workers.config.ts` | Workers-pool include for journaling file |
 | `ai-platform/vitest.config.ts` | Unit-pool exclude for workers-pool file |
@@ -70,15 +84,16 @@ cd frontend
 flutter test test/unit/core/ai/conversation_store_test.dart test/unit/core/ai/conversation_loop_test.dart
 ```
 
-Expected: **8 passing** Vitest cases (journaling file) and **12 passing** Flutter cases (5 store + 7 loop).
+Expected: Vitest journaling cases green (including `runGuard` wiring and index assertion) and Flutter store/loop cases green.
 
 ## 5. Inspect the changes
 
 1. Read the frozen contract: `specs/046-conversational-journaling/contracts/conversational-journaling.md`.
 2. Open `ai-platform/src/journal/index.ts` — locate `listConversationLegs` and conversational
-   `createRequestRow` column binding.
-3. Open `frontend/lib/core/ai/conversation_store.dart` and `conversation_loop.dart` — transcript
+   `createRequestRow` column binding (reject-missing + tenant scope).
+3. Open `ai-platform/src/pipeline/index.ts` — `runGuard` extracts wire fields for stages 6 and 9.
+4. Open `frontend/lib/core/ai/conversation_store.dart` and `conversation_loop.dart` — transcript
    lifecycle and Resolver wiring.
-4. Open `frontend/lib/core/ai/ports.dart` / `sse_events.dart` — optional invoke fields and fourth
+5. Open `frontend/lib/core/ai/ports.dart` / `sse_events.dart` — optional invoke fields and fourth
    terminal kind.
-5. Re-run the focused test commands in §4 to confirm green.
+6. Re-run the focused test commands in §4 to confirm green.

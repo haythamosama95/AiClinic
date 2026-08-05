@@ -10,8 +10,7 @@ class ConversationStore {
 
   final List<Map<String, Object?>> _transcript = <Map<String, Object?>>[];
   var _open = true;
-  var _nextLegOrdinal = 1;
-  var _nextTranscriptOrdinal = 1;
+  String? _pendingUserText;
 
   bool get isOpen => _open;
 
@@ -19,68 +18,99 @@ class ConversationStore {
   List<Map<String, Object?>> get transcript =>
       List<Map<String, Object?>>.unmodifiable(_transcript);
 
-  /// Next leg ordinal for submit (1-based, incremented per leg).
-  int get nextLegOrdinal => _nextLegOrdinal;
+  /// Next leg ordinal derived so every transcript turn ordinal is strictly less (§6.7.1).
+  int get nextLegOrdinal => _lastTranscriptOrdinal + 1;
 
-  /// Records the user message for the current leg and returns submit fields.
+  int get _lastTranscriptOrdinal {
+    if (_transcript.isEmpty) {
+      return 0;
+    }
+    return _transcript.last['turn_ordinal']! as int;
+  }
+
+  /// Records the pending user message for this leg and returns submit fields.
   ///
-  /// Free text is forwarded without interpretation or key selection (FR-013).
+  /// Does **not** append the user turn yet — that happens only on a successful
+  /// terminal (`completed` / successful `context_requested` path). Free text is
+  /// forwarded without interpretation or key selection (FR-013).
   LegSubmitContext prepareLegSubmit(String userText) {
     _assertOpen();
-    final turnOrdinal = _nextTranscriptOrdinal;
-    _transcript.add(<String, Object?>{
-      'turn_ordinal': turnOrdinal,
-      'kind': 'user',
-      'text': userText,
-    });
-    _nextTranscriptOrdinal += 1;
-    final legOrdinal = _nextLegOrdinal;
-    _nextLegOrdinal += 1;
+    _pendingUserText = userText;
     return LegSubmitContext(
-      turnOrdinal: legOrdinal,
+      turnOrdinal: nextLegOrdinal,
       transcript: _snapshotTranscript(),
+      intent: userText,
     );
+  }
+
+  /// Continuation after successful context resolution — no new user turn.
+  LegSubmitContext prepareContinuationSubmit({required String intent}) {
+    _assertOpen();
+    return LegSubmitContext(
+      turnOrdinal: nextLegOrdinal,
+      transcript: _snapshotTranscript(),
+      intent: intent,
+    );
+  }
+
+  /// Commits the pending user message into the transcript (success path only).
+  void commitPendingUserTurn() {
+    _assertOpen();
+    final text = _pendingUserText;
+    if (text == null) {
+      return;
+    }
+    _pendingUserText = null;
+    _appendTurn(<String, Object?>{
+      'turn_ordinal': _nextTranscriptOrdinal(),
+      'kind': 'user',
+      'text': text,
+    });
+  }
+
+  /// Drops the pending user message without mutating the transcript (fail/cancel).
+  void discardPendingUserTurn() {
+    _pendingUserText = null;
   }
 
   void appendModelAnswer(String text) {
     _assertOpen();
-    final turnOrdinal = _nextTranscriptOrdinal;
-    _transcript.add(<String, Object?>{
-      'turn_ordinal': turnOrdinal,
+    _appendTurn(<String, Object?>{
+      'turn_ordinal': _nextTranscriptOrdinal(),
       'kind': 'model',
       'text': text,
     });
-    _nextTranscriptOrdinal += 1;
   }
 
   void appendContextRequested(List<Map<String, Object?>> requests) {
     _assertOpen();
-    final turnOrdinal = _nextTranscriptOrdinal;
-    _transcript.add(<String, Object?>{
-      'turn_ordinal': turnOrdinal,
+    _appendTurn(<String, Object?>{
+      'turn_ordinal': _nextTranscriptOrdinal(),
       'kind': 'context_requested',
       'requests': requests,
     });
-    _nextTranscriptOrdinal += 1;
   }
 
   void appendContextResolved(Map<String, Object?> context) {
     _assertOpen();
-    final turnOrdinal = _nextTranscriptOrdinal;
-    _transcript.add(<String, Object?>{
-      'turn_ordinal': turnOrdinal,
+    _appendTurn(<String, Object?>{
+      'turn_ordinal': _nextTranscriptOrdinal(),
       'kind': 'context_resolved',
       'context': context,
     });
-    _nextTranscriptOrdinal += 1;
   }
 
   /// Discards the transcript when the conversation closes (FR-012).
   void close() {
     _transcript.clear();
+    _pendingUserText = null;
     _open = false;
-    _nextLegOrdinal = 1;
-    _nextTranscriptOrdinal = 1;
+  }
+
+  int _nextTranscriptOrdinal() => _lastTranscriptOrdinal + 1;
+
+  void _appendTurn(Map<String, Object?> turn) {
+    _transcript.add(turn);
   }
 
   List<Map<String, Object?>> _snapshotTranscript() {
@@ -104,8 +134,12 @@ class LegSubmitContext {
   const LegSubmitContext({
     required this.turnOrdinal,
     required this.transcript,
+    required this.intent,
   });
 
   final int turnOrdinal;
   final List<Map<String, Object?>> transcript;
+
+  /// Literal typed message for this leg (§8.10 / A14).
+  final String intent;
 }

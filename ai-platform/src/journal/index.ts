@@ -84,7 +84,7 @@ type CreateRequestRowResult =
   | { ok: true }
   | {
       ok: false;
-      code: "internal_error";
+      code: "internal_error" | "context_invalid";
       request_reference: string;
       trace_id: string;
     };
@@ -193,10 +193,37 @@ export async function createRequestRow(
   const now = new Date().toISOString();
   const isSingleShot =
     input.manifest.Interaction.interactionMode === "single_shot";
-  const conversationId = isSingleShot
-    ? null
-    : (input.conversationId ?? null);
-  const turnOrdinal = isSingleShot ? null : (input.turnOrdinal ?? null);
+
+  // single_shot always forces NULL grouping columns (C3 / H3).
+  // Conversational legs must supply both fields — never silently write NULL.
+  let conversationId: string | null;
+  let turnOrdinal: number | null;
+  if (isSingleShot) {
+    conversationId = null;
+    turnOrdinal = null;
+  } else {
+    const suppliedId = input.conversationId;
+    const suppliedOrdinal = input.turnOrdinal;
+    if (
+      suppliedId == null ||
+      suppliedId === "" ||
+      suppliedOrdinal == null
+    ) {
+      const body = buildErrorBody({
+        code: "context_invalid",
+        requestReference: input.requestReference,
+        traceId: input.traceId,
+      });
+      return {
+        ok: false,
+        code: "context_invalid",
+        request_reference: body.request_reference,
+        trace_id: body.trace_id,
+      };
+    }
+    conversationId = suppliedId;
+    turnOrdinal = suppliedOrdinal;
+  }
 
   try {
     await db
@@ -524,16 +551,17 @@ export type ConversationLegRow = {
 
 export async function listConversationLegs(
   conversationId: string,
+  installationId: string,
   db: D1Database,
 ): Promise<ConversationLegRow[]> {
   const result = await db
     .prepare(
       `SELECT request_id, conversation_id, turn_ordinal, state
        FROM ai_request
-       WHERE conversation_id = ?
+       WHERE conversation_id = ? AND installation_id = ?
        ORDER BY turn_ordinal`,
     )
-    .bind(conversationId)
+    .bind(conversationId, installationId)
     .all<ConversationLegRow>();
 
   return result.results ?? [];

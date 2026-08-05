@@ -449,25 +449,37 @@ SubmitHttpErrorStep contextRequiredErrorStep({
       manifestCapabilityId: manifestCapabilityId,
     );
 
-/// Resolver spy that records keys without capability id.
+/// Resolver spy that records keys / requests without capability id.
 class ResolverSpy extends ContextResolver {
   ResolverSpy({required super.providerPort});
 
   final List<List<String>> resolveCalls = [];
+  final List<List<Map<String, Object?>>> resolveRequestsCalls = [];
 
   @override
-  Future<ContextResolveResult> resolve(List<String> keys) async {
-    resolveCalls.add(List<String>.from(keys));
-    return super.resolve(keys);
+  Future<ContextResolveResult> resolveRequests(
+    List<Map<String, Object?>> requests,
+  ) async {
+    resolveRequestsCalls.add(
+      requests
+          .map((entry) => Map<String, Object?>.from(entry))
+          .toList(growable: false),
+    );
+    resolveCalls.add(
+      requests.map((entry) => entry['key'] as String).toList(growable: false),
+    );
+    return super.resolveRequests(requests);
   }
 }
 
-/// Resolver that yields an empty payload (RLS deny simulation).
+/// Resolver that yields an empty payload (RLS deny simulation — success, not failure).
 class DenyingResolver extends ContextResolver {
   DenyingResolver() : super(providerPort: DenyingContextProviderPort());
 
   @override
-  Future<ContextResolveResult> resolve(List<String> keys) async {
+  Future<ContextResolveResult> resolveRequests(
+    List<Map<String, Object?>> requests,
+  ) async {
     return const ContextResolveSuccess(<String, Object?>{});
   }
 }

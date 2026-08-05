@@ -137,6 +137,60 @@ function fail(
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Wire-shape helpers: prefer body fields when present (Flutter / adapter snake_case). */
+function extractUserIntent(
+  body: Record<string, unknown>,
+  fallback: string,
+): string {
+  if (typeof body.user_intent === "string") {
+    return body.user_intent;
+  }
+  if (typeof body.intent === "string") {
+    return body.intent;
+  }
+  return fallback;
+}
+
+function extractSuppliedContext(
+  body: Record<string, unknown>,
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  if (isPlainObject(body.context)) {
+    return body.context;
+  }
+  return fallback;
+}
+
+function extractConversationId(body: Record<string, unknown>): string | undefined {
+  if (typeof body.conversation_id === "string") {
+    return body.conversation_id;
+  }
+  if (typeof body.conversationId === "string") {
+    return body.conversationId;
+  }
+  return undefined;
+}
+
+function extractTurnOrdinal(body: Record<string, unknown>): number | undefined {
+  const raw =
+    body.turn_ordinal !== undefined ? body.turn_ordinal : body.turnOrdinal;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  return undefined;
+}
+
+function extractTranscript(body: Record<string, unknown>): unknown {
+  if ("transcript" in body) {
+    return body.transcript;
+  }
+  return undefined;
+}
+
 /**
  * §6.1 stages 1–10 (the guard). Timed end-to-end for load p95 measurement.
  */
@@ -155,6 +209,13 @@ export async function runGuard(
   if (body === null) {
     return fail(1, "internal_error", started);
   }
+
+  // Prefer wire body intent/context when present (Flutter CapabilityInvokeInput shape).
+  const userIntent = extractUserIntent(body, input.userIntent);
+  const suppliedContext = extractSuppliedContext(body, input.suppliedContext);
+  const conversationId = extractConversationId(body);
+  const turnOrdinal = extractTurnOrdinal(body);
+  const transcript = extractTranscript(body);
 
   // Stage 2 — identity (token verify) or harness-supplied principal
   let principal: Principal;
@@ -215,11 +276,16 @@ export async function runGuard(
   }
   const manifest = resolved.manifest;
 
-  // Stage 6 — context validate
+  // Stage 6 — context validate (H2 conversational options when interactionMode is conversational)
+  const conversationalOptions =
+    manifest.interactionMode === "conversational" && turnOrdinal !== undefined
+      ? { transcript, legTurnOrdinal: turnOrdinal }
+      : undefined;
   const contextResult = validateContext(
     manifest,
-    input.suppliedContext,
+    suppliedContext,
     principal,
+    conversationalOptions,
   );
   if (!contextResult.ok) {
     return fail(6, contextResult.code, started);
@@ -229,7 +295,7 @@ export async function runGuard(
   // Stage 7 — cost pre-flight
   const serializedInput = JSON.stringify({
     filteredContext,
-    userIntent: input.userIntent,
+    userIntent,
   });
   const preflight = runCostPreflight(
     manifest,
@@ -260,7 +326,7 @@ export async function runGuard(
   }
   const { requestId } = admission;
 
-  // Stage 9 — journal request row (one D1 insert)
+  // Stage 9 — journal request row (one D1 insert); conversational grouping from wire body
   const journalled = await createRequestRow(
     {
       requestId,
@@ -269,6 +335,8 @@ export async function runGuard(
       manifest,
       idempotencyKey: input.idempotencyKey,
       traceId: input.traceId,
+      conversationId: conversationId ?? null,
+      turnOrdinal: turnOrdinal ?? null,
     },
     bindings.DB,
   );
@@ -280,7 +348,7 @@ export async function runGuard(
   const composed = input.composeRequest({
     manifest,
     filteredContext,
-    userIntent: input.userIntent,
+    userIntent,
     principal,
     requestReference: input.requestReference,
   });

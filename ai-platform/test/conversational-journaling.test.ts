@@ -1,13 +1,21 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import conversationIndexSql from "../migrations/20260805180000_h3_conversation_index.sql?raw";
+import wranglerToml from "../wrangler.toml?raw";
+import journalSource from "../src/journal/index.ts?raw";
+import pipelineSource from "../src/pipeline/index.ts?raw";
+import {
+  createCapabilityRegistry,
+  setCapabilityRegistry,
+} from "../src/capability";
 import {
   ConfigCache,
   loadConfig,
   type ConfigEntityKind,
   type D1Reader,
 } from "../src/config-cache";
-import type { CanonicalResult } from "../src/contracts/canonical";
+import type { CanonicalRequest, CanonicalResult } from "../src/contracts/canonical";
 import type { Principal } from "../src/identity";
 import {
   createRequestRow,
@@ -19,11 +27,12 @@ import {
   type TransitionState,
 } from "../src/journal";
 import { load, type Manifest } from "../src/manifest";
+import { runGuard } from "../src/pipeline";
 import { FakeAdapter } from "../src/provider/fake";
+import type { RateLimitBindings } from "../src/rate-limit";
 import {
   createBindingSpies,
   type BindingSpies,
-  type DoSpy,
 } from "./load/binding-spies";
 
 declare module "cloudflare:test" {
@@ -33,6 +42,9 @@ declare module "cloudflare:test" {
     DO: DurableObjectNamespace;
   }
 }
+
+/** Per-leg Quota DO budget: one admission fetch + one credit fetch. */
+const DO_FETCHES_PER_LEG = 2;
 
 const FIXTURE_ORG_ID = "org-h3-journal-001";
 const FIXTURE_NOW_MS = Date.parse("2026-07-31T12:00:00.000Z");
@@ -277,6 +289,29 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         return row ?? "miss";
       }
 
+      if (kind === "grants") {
+        const [installationId, capabilityId] = key.split("/", 2);
+        if (!installationId || !capabilityId) {
+          return "miss";
+        }
+        const row = await db
+          .prepare(
+            `SELECT grant_id, scope, capability_id, capability_version,
+                    granted_at, revoked_at, changed_at, changed_by
+             FROM capability_grant
+             WHERE scope = ? AND capability_id = ?
+             ORDER BY CASE WHEN revoked_at IS NULL THEN 0 ELSE 1 END, granted_at DESC
+             LIMIT 1`,
+          )
+          .bind(`installation:${installationId}`, capabilityId)
+          .first<D1Row>();
+        return row ?? "miss";
+      }
+
+      if (kind === "kill_switches") {
+        return "miss";
+      }
+
       return "miss";
     },
   };
@@ -299,6 +334,7 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM usage_event"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
+    env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
@@ -338,11 +374,78 @@ async function seedEntitlement(installationId: string): Promise<void> {
       10_000,
       10_000_000,
       1_000,
-      JSON.stringify(["ai.chat_assistant"]),
+      JSON.stringify([FIXTURE_CAPABILITY_ID]),
       0.8,
       "active",
     )
     .run();
+}
+
+async function seedGrant(installationId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO capability_grant (
+      grant_id, scope, capability_id, capability_version,
+      granted_at, revoked_at, changed_at, changed_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      `grant-${installationId}-${FIXTURE_CAPABILITY_ID}`,
+      `installation:${installationId}`,
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CAPABILITY_VERSION,
+      FIXTURE_NOW,
+      null,
+      FIXTURE_NOW,
+      "operator-h3",
+    )
+    .run();
+}
+
+function createAlwaysAllowRateLimitBindings(db: D1Database): RateLimitBindings {
+  const allow = {
+    async limit(_options: { key: string }): Promise<{ success: boolean }> {
+      return { success: true };
+    },
+  };
+  return {
+    DB: db,
+    RATE_LIMITER_INSTALLATION: allow,
+    RATE_LIMITER_INSTALLATION_ACTOR: allow,
+    RATE_LIMITER_INSTALLATION_CAPABILITY: allow,
+  };
+}
+
+function stubComposeRequest(): {
+  ok: true;
+  request: CanonicalRequest;
+  promptVersion: string;
+} {
+  return {
+    ok: true,
+    request: {
+      parts: [{ role: "user", content: "Hello." }],
+      formatDirective: { type: "text" },
+      samplingConstraints: { temperature: 0.2 },
+      maxOutputTokens: 256,
+      stopConditions: [],
+      toolDeclarations: [],
+      stream: false,
+      deadline: null,
+      correlationIds: {
+        request_reference: "AI-H3-STUB",
+        trace_id: FIXTURE_TRACE_ID,
+      },
+    },
+    promptVersion: "prompt/chat-assistant-system@v1",
+  };
+}
+
+async function listConversationIndexes(): Promise<string[]> {
+  const result = await env.DB.prepare(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'index' AND name = 'idx_ai_request_conversation'`,
+  ).all<{ name: string }>();
+  return (result.results ?? []).map((row) => row.name);
 }
 
 async function prepareInstallation(
@@ -545,6 +648,7 @@ async function listSchemaTables(): Promise<string[]> {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, conversationIndexSql);
 });
 
 beforeEach(async () => {
@@ -607,6 +711,10 @@ describe("one_indexed_query_returns_whole_conversation_ordered", () => {
     const manifest = conversationalManifest();
     const conversationId = "conv-h3-ordered";
 
+    expect(await listConversationIndexes()).toEqual([
+      "idx_ai_request_conversation",
+    ]);
+
     await runConversationalLeg({
       installationId,
       cache,
@@ -641,7 +749,11 @@ describe("one_indexed_query_returns_whole_conversation_ordered", () => {
       turnOrdinal: 2,
     });
 
-    const legs = await listConversationLegs(conversationId, env.DB);
+    const legs = await listConversationLegs(
+      conversationId,
+      installationId,
+      env.DB,
+    );
     expect(legs.map((leg) => leg.turn_ordinal)).toEqual([1, 2, 3]);
     expect(legs.every((leg) => leg.conversation_id === conversationId)).toBe(true);
   });
@@ -701,7 +813,7 @@ describe("each_leg_admitted_and_credited_independently", () => {
 
     expect(requestCount?.count).toBe(3);
     expect(await readUsageEventCount()).toBe(3);
-    expect(spies.do.fetchCount()).toBeGreaterThanOrEqual(3);
+    expect(spies.do.fetchCount()).toBe(3 * DO_FETCHES_PER_LEG);
   });
 });
 
@@ -793,7 +905,11 @@ describe("platform_held_no_state_between_legs", () => {
       turnOrdinal: 1,
     });
 
-    const betweenLegs = await listConversationLegs(conversationId, env.DB);
+    const betweenLegs = await listConversationLegs(
+      conversationId,
+      installationId,
+      env.DB,
+    );
     expect(betweenLegs).toHaveLength(1);
     expect(betweenLegs[0]?.state).toBe("Completed");
 
@@ -809,9 +925,24 @@ describe("platform_held_no_state_between_legs", () => {
       turnOrdinal: 2,
     });
 
-    const afterLeg2 = await listConversationLegs(conversationId, env.DB);
+    const afterLeg2 = await listConversationLegs(
+      conversationId,
+      installationId,
+      env.DB,
+    );
     expect(afterLeg2).toHaveLength(2);
     expect(afterLeg2[1]?.turn_ordinal).toBe(2);
+
+    // No conversation-state DO / module — Quota GatewayObject remains the sole DO binding.
+    const doClassNames = [
+      ...wranglerToml.matchAll(/class_name\s*=\s*"([^"]+)"/g),
+    ].map((match) => match[1]);
+    expect(doClassNames.length).toBeGreaterThan(0);
+    expect(new Set(doClassNames)).toEqual(new Set(["GatewayObject"]));
+
+    const forbidden = /ConversationSession|ConversationStateStore|perRequestConversation/;
+    expect(journalSource).not.toMatch(forbidden);
+    expect(pipelineSource).not.toMatch(forbidden);
   });
 });
 
@@ -840,7 +971,7 @@ describe("no_second_r2_object_and_no_second_quota_do_round_trip_from_h3", () => 
     });
 
     expect(spies.r2.putCallCount()).toBe(1);
-    expect(spies.do.fetchCount()).toBeGreaterThanOrEqual(1);
+    expect(spies.do.fetchCount()).toBe(DO_FETCHES_PER_LEG);
     const doFetchesAfterLeg1 = spies.do.fetchCount();
 
     await runConversationalLeg({
@@ -856,7 +987,7 @@ describe("no_second_r2_object_and_no_second_quota_do_round_trip_from_h3", () => 
     });
 
     expect(spies.r2.putCallCount()).toBe(2);
-    expect(spies.do.fetchCount() - doFetchesAfterLeg1).toBeGreaterThanOrEqual(1);
+    expect(spies.do.fetchCount() - doFetchesAfterLeg1).toBe(DO_FETCHES_PER_LEG);
   });
 });
 
@@ -884,5 +1015,134 @@ describe("single_shot_unaffected_by_h3", () => {
     const row = await readAiRequestRow(outcome.requestId);
     expect(row?.conversation_id).toBeNull();
     expect(row?.turn_ordinal).toBeNull();
+  });
+});
+
+describe("conversational_create_request_row_requires_grouping_fields", () => {
+  it("rejects conversational createRequestRow without conversation_id or turn_ordinal", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    await prepareInstallation(installationId);
+    const manifest = conversationalManifest();
+    const principal = makePrincipal(installationId);
+
+    const missingBoth = await createRequestRow(
+      {
+        requestId: "req-h3-missing-both",
+        requestReference: uniqueRequestReference(),
+        principal,
+        manifest,
+        idempotencyKey: uniqueIdempotencyKey(),
+        traceId: FIXTURE_TRACE_ID,
+      },
+      env.DB,
+    );
+    expect(missingBoth).toMatchObject({ ok: false, code: "context_invalid" });
+
+    const missingOrdinal = await createRequestRow(
+      {
+        requestId: "req-h3-missing-ordinal",
+        requestReference: uniqueRequestReference(),
+        principal,
+        manifest,
+        idempotencyKey: uniqueIdempotencyKey(),
+        traceId: FIXTURE_TRACE_ID,
+        conversationId: "conv-h3-partial",
+      },
+      env.DB,
+    );
+    expect(missingOrdinal).toMatchObject({ ok: false, code: "context_invalid" });
+
+    const missingId = await createRequestRow(
+      {
+        requestId: "req-h3-missing-id",
+        requestReference: uniqueRequestReference(),
+        principal,
+        manifest,
+        idempotencyKey: uniqueIdempotencyKey(),
+        traceId: FIXTURE_TRACE_ID,
+        turnOrdinal: 1,
+      },
+      env.DB,
+    );
+    expect(missingId).toMatchObject({ ok: false, code: "context_invalid" });
+
+    const rowCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM ai_request",
+    ).first<{ count: number }>();
+    expect(rowCount?.count).toBe(0);
+  });
+});
+
+describe("run_guard_writes_conversational_grouping_from_body", () => {
+  it("writes conversation_id and turn_ordinal when runGuard receives a conversational body", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId);
+    await seedGrant(installationId);
+    await loadConfig(
+      cache,
+      reader,
+      "grants",
+      `${installationId}/${FIXTURE_CAPABILITY_ID}`,
+    );
+
+    setCapabilityRegistry(createCapabilityRegistry([conversationalManifest()]), {
+      replace: true,
+    });
+
+    const conversationId = "conv-h3-runguard-001";
+    const turnOrdinal = 1;
+    const suppliedContext: Record<string, unknown> = {};
+    const userIntent = "What is the chief complaint?";
+    const bodyText = JSON.stringify({
+      capability_id: FIXTURE_CAPABILITY_ID,
+      capability_version: FIXTURE_CAPABILITY_VERSION,
+      user_intent: userIntent,
+      context: suppliedContext,
+      conversation_id: conversationId,
+      turn_ordinal: turnOrdinal,
+      transcript: [],
+    });
+
+    const principal = makePrincipal(installationId);
+    const requestReference = uniqueRequestReference();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const rateLimit = createAlwaysAllowRateLimitBindings(env.DB);
+
+    const guard = await runGuard(
+      {
+        bodyText,
+        principal,
+        capabilityId: FIXTURE_CAPABILITY_ID,
+        capabilityVersion: FIXTURE_CAPABILITY_VERSION,
+        entitlement: {
+          capabilityId: FIXTURE_CAPABILITY_ID,
+          capabilityVersion: FIXTURE_CAPABILITY_VERSION,
+          minimumPlanTier: "standard",
+          providerId: "fake",
+        },
+        suppliedContext,
+        userIntent,
+        idempotencyKey,
+        requestReference,
+        traceId: FIXTURE_TRACE_ID,
+        cache,
+        reader,
+        now: FIXTURE_NOW_MS,
+        composeRequest: () => stubComposeRequest(),
+      },
+      {
+        DB: env.DB,
+        DO: env.DO,
+        rateLimit,
+      },
+    );
+
+    if (!guard.ok) {
+      expect.fail(`runGuard failed at stage ${guard.stage}: ${guard.code}`);
+    }
+
+    const row = await readAiRequestRow(guard.requestId);
+    expect(row?.conversation_id).toBe(conversationId);
+    expect(row?.turn_ordinal).toBe(turnOrdinal);
   });
 });

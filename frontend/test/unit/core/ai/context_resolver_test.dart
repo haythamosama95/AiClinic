@@ -86,6 +86,34 @@ void main() {
       spy.dispose();
     });
 
+    test('resolve_requests_passes_arguments_to_registration', () async {
+      final port = FakeContextProviderPort();
+      final resolver = ContextResolver(providerPort: port);
+
+      final result = await resolver.resolveRequests([
+        {
+          'key': visitChiefComplaintV1Key,
+          'arguments': <String, Object?>{'patient_hint': 'Ahmed'},
+        },
+      ]);
+
+      expect(result, isA<ContextResolveSuccess>());
+      final payload = (result as ContextResolveSuccess).payload;
+      expect(payload.keys, [visitChiefComplaintV1Key]);
+    });
+
+    test('resolve_keys_wrapper_delegates_to_resolve_requests', () async {
+      final spy = ResolverSpy(providerPort: FakeContextProviderPort());
+
+      final result = await spy.resolve([visitChiefComplaintV1Key]);
+
+      expect(result, isA<ContextResolveSuccess>());
+      expect(spy.resolveRequestsCalls, hasLength(1));
+      expect(spy.resolveRequestsCalls.single.single['key'], visitChiefComplaintV1Key);
+      expect(spy.resolveCalls.single, [visitChiefComplaintV1Key]);
+      spy.dispose();
+    });
+
     test('resolver_cache_screen_scoped_discarded_on_dispose', () async {
       final port = FakeContextProviderPort();
       final resolver = ContextResolver(providerPort: port);

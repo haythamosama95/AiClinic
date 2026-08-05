@@ -35,16 +35,32 @@ class ConversationLoop {
   AiInvokeSession? _currentSession;
 
   /// Submits one leg with the user message; handles context_requested and completed.
+  ///
+  /// After a successful context resolution the loop automatically submits the
+  /// continuation leg (new idempotency key, resupplied transcript, no fabricated
+  /// user turn) until `completed` or a failure/cancel terminal (§8.10).
   Future<TerminalState> submitLeg(
     String userMessage, {
     void Function(AiInvokeSession session)? onSession,
   }) async {
     final leg = _store.prepareLegSubmit(userMessage);
+    return _runLeg(leg, onSession: onSession);
+  }
+
+  /// Cancels only the in-flight leg's stream (§6.7.4).
+  void cancelCurrentLeg() {
+    _currentSession?.cancel();
+  }
+
+  Future<TerminalState> _runLeg(
+    LegSubmitContext leg, {
+    void Function(AiInvokeSession session)? onSession,
+  }) async {
     final session = await _sdk.invoke(
       CapabilityInvokeInput(
         capabilityId: _baseInput.capabilityId,
         capabilityVersion: _baseInput.capabilityVersion,
-        intent: _baseInput.intent,
+        intent: leg.intent,
         context: _baseInput.context,
         conversationId: _store.conversationId,
         turnOrdinal: leg.turnOrdinal,
@@ -55,38 +71,43 @@ class ConversationLoop {
     _currentSession = session;
     onSession?.call(session);
     final terminal = await session.terminal;
-    await _handleTerminal(terminal);
+    final handled = await _handleTerminal(terminal, legIntent: leg.intent);
     _currentSession = null;
-    return terminal;
+    return handled;
   }
 
-  /// Cancels only the in-flight leg's stream (§6.7.4).
-  void cancelCurrentLeg() {
-    _currentSession?.cancel();
-  }
-
-  Future<void> _handleTerminal(TerminalState terminal) async {
+  Future<TerminalState> _handleTerminal(
+    TerminalState terminal, {
+    required String legIntent,
+  }) async {
     switch (terminal) {
       case CompletedTerminal(:final result):
+        _store.commitPendingUserTurn();
         final text = _extractProse(result);
         if (text != null) {
           _store.appendModelAnswer(text);
         }
+        return terminal;
       case ContextRequestedTerminal(:final contextRequest):
-        _store.appendContextRequested(contextRequest);
-        final keys = contextRequest
-            .map((entry) => entry['key'] as String)
-            .toList(growable: false);
-        final resolved = await _resolver.resolve(keys);
-        if (resolved is ContextResolveSuccess) {
-          _store.appendContextResolved(resolved.payload);
-        } else if (resolved is ContextResolveFailure) {
-          _store.appendContextResolved(<String, Object?>{});
+        final resolved = await _resolver.resolveRequests(contextRequest);
+        if (resolved is ContextResolveFailure) {
+          _store.discardPendingUserTurn();
+          return FailedTerminal(
+            code: TaxonomyCode.internalError,
+            requestReference: _sdk.lastRequestReference,
+          );
         }
+        final payload = (resolved as ContextResolveSuccess).payload;
+        _store.commitPendingUserTurn();
+        _store.appendContextRequested(contextRequest);
+        _store.appendContextResolved(payload);
+        final continuation = _store.prepareContinuationSubmit(intent: legIntent);
+        return _runLeg(continuation);
       case FailedTerminal():
       case CancelledTerminal():
       case StreamDroppedTerminal():
-        break;
+        _store.discardPendingUserTurn();
+        return terminal;
     }
   }
 
