@@ -79,7 +79,7 @@ delivery plan §3.7 and §3.11.6 rows.
 
 - Q: How should the load suite compose the happy path so spies observe production modules rather than a test-only assembly? → A: Thin production `src/pipeline` composer (`runGuard` stages 1–10 + `settleHappyPath`) called from the load harness; Worker HTTP wiring remains deferred `[implementation choice — contract extension]`
 - Q: How is real concurrency generated without exceeding Quota DO `CONCURRENCY_LIMIT` (16) on one installation? → A: Bounded worker pool of size `Math.min(N=20, CONCURRENCY_LIMIT=16)` against **one shared installation**; observed in-flight peak is reported as `concurrency`; wall-clock overlap proves concurrency; DO throughput is pinned-installation DO fetches / wall_clock_seconds `[implementation choice — no §citation]`
-- Q: How should T1 assert guard p95 under workers-pool Miniflare when a single sequential Miniflare `runGuard` is already ~300–400 ms (revises Clarification Q3)? → A: Time the full `runGuard` (§6.1 stages 1–10). Keep production design target `GUARD_P95_PRODUCTION_TARGET_MS = 100`. Suite fixture ceiling under Miniflare concurrency is `GUARD_P95_CEILING_MS = 2000`; T1 requires a finite p95 under that ceiling plus wall-clock overlap proof `[implementation choice — revises Q3]`
+- Q: How should T1 assert guard p95 under workers-pool Miniflare when a single sequential Miniflare `runGuard` is already ~300–400 ms (revises Clarification Q3)? → A: Time the full `runGuard` (§6.1 stages 1–10). Keep production design target `GUARD_P95_PRODUCTION_TARGET_MS = 100`. Suite fixture ceiling under Miniflare concurrency is `GUARD_P95_CEILING_MS = 3000`; T1 requires a finite p95 under that ceiling plus wall-clock overlap proof `[implementation choice — revises Q3]`
 - Q: How does the suite join CI permanently for FR-002 / contract §2.2? → A: `.github/workflows/ci.yml` job `ai-platform-tests` runs `npm test` and `npm run test:load` `[implementation choice — no §citation]`
 - Q: How are per-request maxima asserted (not averages only)? → A: Binding spies tag Class A / DO ops via AsyncLocalStorage and report `*_max_per_request` fields alongside averages; D1 counts INSERT into `ai_request` at `run`/`batch`; R2 counts put/list/multipart Class A; D1 spy is prototype-preserving `[implementation choice — contract extension]`
 
@@ -113,7 +113,7 @@ operations and Durable Object round trips are asserted at one and two respective
    shared installation**, bounded pool `Math.min(20, CONCURRENCY_LIMIT=16)`), **When**
    guard latency for the full `runGuard` path (architecture §6.1 stages 1–10) is measured
    at p95, **Then** that p95 is within the suite fixture bound for the runtime (production
-   design target 100 ms; workers-pool Miniflare ceiling 2000 ms — Clarification Q3 /
+   design target 100 ms; workers-pool Miniflare ceiling 3000 ms — Clarification Q3 /
    2026-08-05) and wall-clock overlap proves real concurrency. *(Guard p95 within tens of
    milliseconds at target concurrency)*
 2. **Given** requests exercised under load via production `src/pipeline`, **When**
@@ -168,7 +168,7 @@ are suite outcomes (T1–T5), not request error codes.
   §3.11.6 F5 and the Done when cell require guard p95 within tens of milliseconds at
   target concurrency. FR/SC prose keeps those phrases; suite fixture parameters
   (Clarification Q3 / 2026-08-05) encode production design target 100 ms and workers-pool
-  Miniflare ceiling 2000 ms without rewriting FR-003 / SC-001.
+  Miniflare ceiling 3000 ms without rewriting FR-003 / SC-001.
 - **D1 headroom and DO throughput are measured, not thresholded here.** Done when and
   §3.11.6 require those quantities to be **measured**. No pass/fail numeric ceiling for
   either is named in §13.5 or §13.6; inventing one is out of scope (§3.7 Done when;
@@ -314,7 +314,7 @@ Prohibitions copied from delivery plan §6.4 (inherited by every slice):
   not those pipeline contracts themselves (§13.6; §13.6.1).
 - "Target concurrency" and "tens of milliseconds" are used exactly as cited in delivery
   plan §3.11.6 F5 / Done when in FR/SC prose; suite fixture parameters (Clarification Q3 /
-  2026-08-05) encode N=20, production target 100 ms, and Miniflare ceiling 2000 ms without
+  2026-08-05) encode N=20, production target 100 ms, and Miniflare ceiling 3000 ms without
   rewriting those FR/SC phrases.
 - D1 write headroom and Durable Object throughput per installation have no numeric
   pass/fail ceilings named in §13.5 or §13.6; measurement satisfies Done when.

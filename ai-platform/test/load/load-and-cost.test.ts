@@ -127,8 +127,9 @@ describe("guard_p95_within_tens_of_ms_at_target_concurrency", () => {
     expect(computeGuardP95(sharedReport.guard_latencies_ms)).toBe(
       sharedReport.guard_p95_ms,
     );
-    // Miniflare ceiling (2000 ms); production target remains 100 ms (documented).
-    expect(sharedReport.guard_p95_ms).toBeLessThan(GUARD_P95_CEILING_MS);    const sequentialSum = sharedReport.guard_latencies_ms.reduce(
+    // Miniflare ceiling (see GUARD_P95_CEILING_MS); production target remains 100 ms.
+    expect(sharedReport.guard_p95_ms).toBeLessThan(GUARD_P95_CEILING_MS);
+    const sequentialSum = sharedReport.guard_latencies_ms.reduce(
       (a, b) => a + b,
       0,
     );

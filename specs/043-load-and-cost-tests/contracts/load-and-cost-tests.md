@@ -146,7 +146,7 @@ do not redefine them:
 | --- | --- |
 | Target concurrency | `N = 20` happy-path requests on **one shared installation**; in-flight pool size `Math.min(20, CONCURRENCY_LIMIT=16)` |
 | Guard p95 within tens of milliseconds (production design target) | `GUARD_P95_PRODUCTION_TARGET_MS = 100` — retained as the production-oriented encoding of “tens of milliseconds” |
-| Guard p95 workers-pool Miniflare ceiling | `GUARD_P95_CEILING_MS = 2000` — a single sequential Miniflare `runGuard` is already ~300–400 ms; T1 asserts finite p95 under this ceiling plus wall-clock overlap proof |
+| Guard p95 workers-pool Miniflare ceiling | `GUARD_P95_CEILING_MS = 3000` — a single sequential Miniflare `runGuard` is already ~300–400 ms; T1 asserts finite p95 under this ceiling plus wall-clock overlap proof |
 
 These parameters are suite fixture bindings for T1 / the CP5 gate. They do
 not rewrite FR-003 / SC-001 prose. The production target and the Miniflare

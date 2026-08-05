@@ -4,9 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
-import 'package:ai_clinic/core/ai/context_registration.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
-import 'package:ai_clinic/core/ai/taxonomy.dart';
 
 import '../availability/ai_availability.dart';
 import '../degraded/ai_degraded_mode.dart';
@@ -122,10 +120,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         reachable = await widget.dependencies.reachabilityPort.isReachable(baseUrl);
       }
 
-      final mode = resolveDegradedMode(
-        availability: availability,
-        platformReachable: reachable,
-      );
+      final mode = resolveDegradedMode(availability: availability, platformReachable: reachable);
 
       if (!mounted) {
         return;

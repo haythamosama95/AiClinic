@@ -91,16 +91,7 @@ class InMemoryAiExportProbe implements AiExportProbe {
   List<Object?> get exports => List.unmodifiable(_exports);
 }
 
-enum _SurfacePhase {
-  idle,
-  loading,
-  streaming,
-  completed,
-  failed,
-  localFailed,
-  acknowledged,
-  discarded,
-}
+enum _SurfacePhase { idle, loading, streaming, completed, failed, localFailed, acknowledged, discarded }
 
 class FirstAiFeatureSurface extends StatefulWidget {
   const FirstAiFeatureSurface({
@@ -141,7 +132,6 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
   String? _provisionalText;
   String? _terminalText;
   String? _requestReference;
-  TaxonomyCode? _failureCode;
   StreamSubscription<SseEvent>? _eventSubscription;
   AiInvokeSession? _session;
   var _sessionListening = false;
@@ -168,7 +158,6 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       _provisionalText = null;
       _terminalText = null;
       _requestReference = null;
-      _failureCode = null;
       _sessionListening = false;
     });
 
@@ -230,12 +219,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             settle(CompletedTerminal(result: result));
           case FailedEvent(:final code, :final requestReference, :final traceId, :final retrySafe):
             settle(
-              FailedTerminal(
-                code: code,
-                requestReference: requestReference,
-                traceId: traceId,
-                retrySafe: retrySafe,
-              ),
+              FailedTerminal(code: code, requestReference: requestReference, traceId: traceId, retrySafe: retrySafe),
             );
           case CancelledEvent():
             settle(const CancelledTerminal());
@@ -259,7 +243,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       settle(terminal);
     } on PlatformHttpException catch (error) {
       widget.onTerminalFailure?.call(error.code);
-      _setFailed(code: error.code, requestReference: error.requestReference);
+      _setFailed(requestReference: error.requestReference);
     } on InvokeCancelledException {
       _returnToIdle();
     } catch (e, st) {
@@ -282,12 +266,10 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
         });
       case FailedTerminal(:final code, :final requestReference):
         widget.onTerminalFailure?.call(code);
-        _setFailed(code: code, requestReference: requestReference);
+        _setFailed(requestReference: requestReference);
       case StreamDroppedTerminal(:final requestReference):
-        _setFailed(
-          code: TaxonomyCode.internalError,
-          requestReference: requestReference ?? widget.sdk.lastRequestReference,
-        );
+        widget.onTerminalFailure?.call(TaxonomyCode.internalError);
+        _setFailed(requestReference: requestReference ?? widget.sdk.lastRequestReference);
       case CancelledTerminal():
         _returnToIdle();
       case ContextRequestedTerminal():
@@ -297,10 +279,9 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
     }
   }
 
-  void _setFailed({required TaxonomyCode code, String? requestReference}) {
+  void _setFailed({String? requestReference}) {
     setState(() {
       _phase = _SurfacePhase.failed;
-      _failureCode = code;
       _requestReference = requestReference ?? widget.sdk.lastRequestReference;
       _provisionalText = null;
     });
@@ -309,7 +290,6 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
   void _setLocalFailure() {
     setState(() {
       _phase = _SurfacePhase.localFailed;
-      _failureCode = null;
       // Only a real SDK-recorded reference — never fabricate support handles.
       _requestReference = widget.sdk.lastRequestReference;
       _provisionalText = null;
@@ -321,7 +301,6 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       _phase = _SurfacePhase.idle;
       _provisionalText = null;
       _terminalText = null;
-      _failureCode = null;
       // Keep last known reference for support if one was accepted.
     });
   }
@@ -351,8 +330,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             key: _sessionListening ? kAiSurfaceSessionActiveKey : kAiSurfaceLoadingKey,
             _sessionListening ? 'Waiting for AI…' : 'Loading…',
           ),
-        if (_phase == _SurfacePhase.idle)
-          const SizedBox.shrink(key: kAiIdleKey),
+        if (_phase == _SurfacePhase.idle) const SizedBox.shrink(key: kAiIdleKey),
         if (_provisionalText != null &&
             _phase != _SurfacePhase.completed &&
             _phase != _SurfacePhase.acknowledged &&

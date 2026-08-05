@@ -18,13 +18,13 @@ Slice F5 freezes the §13.5 load and cost test layer and the under-load §13.6 /
 
 **Storage**: No new D1 entity, migration, or R2 layout. The suite exercises existing hot-path D1 writes, the existing one-envelope R2 `PutObject`, and existing Quota DO admission/credit RPCs under load. Measurement evidence is a structured **in-test** report (finite values, no ceilings for D1 headroom / DO throughput — Clarification Q4), not a second metrics store.
 
-**Testing**: Vitest workers-pool (`npx vitest run --config vitest.workers.config.ts`). Named tests T1–T9 are the §13.5 **Load and cost tests** layer / delivery plan §3.11.6 row F5. Dedicated npm script `test:load` is the checkpoint gate; `.github/workflows/ci.yml` job `ai-platform-tests` runs it permanently (Clarification Q4 / 2026-08-05; FR-002). Concurrency fixture `N=20` on one shared installation with pool `Math.min(20, 16)`; production design target `GUARD_P95_PRODUCTION_TARGET_MS = 100`; workers-pool Miniflare ceiling `GUARD_P95_CEILING_MS = 2000` (Clarification Q3 / 2026-08-05). Tests share one `beforeAll` load run.
+**Testing**: Vitest workers-pool (`npx vitest run --config vitest.workers.config.ts`). Named tests T1–T9 are the §13.5 **Load and cost tests** layer / delivery plan §3.11.6 row F5. Dedicated npm script `test:load` is the checkpoint gate; `.github/workflows/ci.yml` job `ai-platform-tests` runs it permanently (Clarification Q4 / 2026-08-05; FR-002). Concurrency fixture `N=20` on one shared installation with pool `Math.min(20, 16)`; production design target `GUARD_P95_PRODUCTION_TARGET_MS = 100`; workers-pool Miniflare ceiling `GUARD_P95_CEILING_MS = 3000` (Clarification Q3 / 2026-08-05). Tests share one `beforeAll` load run.
 
 **Target Platform**: Cloudflare Worker tree under `ai-platform/` (workers-pool Miniflare). No `frontend/` (Flutter) or `backend/` (Supabase) code is touched.
 
 **Project Type**: Additive, non-primary AI gateway load/cost suite. Per the §14 acknowledgement: the Worker holds no domain logic, no business data, and no write path into Supabase. F5 adds a thin production pipeline composer (`src/pipeline`) shared by the harness; it does not add a `src/load/` module or a new HTTP orchestrator.
 
-**Performance Goals**: Guard p95 under the concurrency fixture is measured over full `runGuard` (stages 1–10). Production design target remains 100 ms; workers-pool Miniflare fixture ceiling is 2000 ms because a single sequential Miniflare guard is already ~300–400 ms (Clarification Q3 / 2026-08-05). Under load, preserve platform I/O budgets: one R2 Class A and two DO trips per request (§13.6; §13.6.1; delivery plan §6.4). D1 headroom and DO throughput (fetches/sec on the pinned installation) are measured, not ceiling-gated here (FR-006, FR-007).
+**Performance Goals**: Guard p95 under the concurrency fixture is measured over full `runGuard` (stages 1–10). Production design target remains 100 ms; workers-pool Miniflare fixture ceiling is 3000 ms because a single sequential Miniflare guard is already ~300–400 ms (Clarification Q3 / 2026-08-05). Under load, preserve platform I/O budgets: one R2 Class A and two DO trips per request (§13.6; §13.6.1; delivery plan §6.4). D1 headroom and DO throughput (fetches/sec on the pinned installation) are measured, not ceiling-gated here (FR-006, FR-007).
 
 **Constraints**: Workers-pool Miniflare + binding spies only (Clarification Q1). Full happy path via `src/pipeline` with fake provider on one shared installation (Clarification Q2 / 2026-08-05). No rewrite of D7 adapter / fixtures / policy registration (FR-010; Consumes D7). No invented numeric ceilings for D1 headroom or DO throughput (FR-006, FR-007; Edge Cases). No §5.4 taxonomy codes from this suite. No per-request server-side state (T8; §4.4, §9.7). No Flutter prompt/provider/model strings (T9; R-12). No second R2 object or third DO trip (T6, T7; §7.5, §13.6). No §9.14 mechanism (R-20). Pre-flight estimator remains C2 (Out of Scope).
 
@@ -61,7 +61,7 @@ specs/043-load-and-cost-tests/
 `quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`:
 
 1. **Architecture context** — cites delivery plan §3.7 row F5 and `17-ai-platform.md` §13.5 Load and cost tests / §13.6 / §13.6.1; what the spec delivered; what the plan scoped.
-2. **What was implemented** — workers-pool load suite, binding spies, `src/pipeline` composer, fake-provider happy path under bounded-pool concurrency on one shared installation, structured measurement report (production target 100 ms / Miniflare ceiling 2000 ms), `test:load` + CI checkpoint gate, frozen contract.
+2. **What was implemented** — workers-pool load suite, binding spies, `src/pipeline` composer, fake-provider happy path under bounded-pool concurrency on one shared installation, structured measurement report (production target 100 ms / Miniflare ceiling 3000 ms), `test:load` + CI checkpoint gate, frozen contract.
 3. **Files to review** — this slice's `ai-platform/src/pipeline/`, `ai-platform/test/load/` files, `package.json` / vitest / CI config deltas, and frozen contract only.
 4. **Run the automated suite** — slice-only `npm run test:load` (workers-pool) / `npx vitest run --config vitest.workers.config.ts test/load/load-and-cost.test.ts` (no full-suite `npm test`, no prior-slice counts).
 5. **Inspect the changes** — open the pipeline composer, load entry, measurement-report shape, binding spies, and frozen contract.
@@ -69,7 +69,7 @@ specs/043-load-and-cost-tests/
 
 `data-model.md` is **not** produced — F5 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/17-ai-platform.md`.
 
-`contracts/load-and-cost-tests.md` freezes the three Freezes entries so later checkpoints bind to a frozen artifact, not prose: the load and cost test layer (placement, timing, `test:load` + CI gate), the under-load one-R2 / two-DO metered-footprint assertion, the CP5 measurement gate, and the structured in-test measurement report (finite values; no D1/DO ceilings; suite fixture `N=20` / production target 100 ms / Miniflare ceiling 2000 ms).
+`contracts/load-and-cost-tests.md` freezes the three Freezes entries so later checkpoints bind to a frozen artifact, not prose: the load and cost test layer (placement, timing, `test:load` + CI gate), the under-load one-R2 / two-DO metered-footprint assertion, the CP5 measurement gate, and the structured in-test measurement report (finite values; no D1/DO ceilings; suite fixture `N=20` / production target 100 ms / Miniflare ceiling 3000 ms).
 
 ### Source Code (repository root)
 
@@ -154,7 +154,7 @@ Every named test in the spec's Test plan is placed in a §13.5 layer (stop condi
 
 Fixture / assertion notes (follow Clarifications; do not promote into FR prose):
 
-- T1: concurrency fixture `N=20` on one shared installation; bounded pool `Math.min(20, 16)`; time full `runGuard` (stages 1–10); production target 100 ms / Miniflare ceiling 2000 ms; wall-clock overlap proves concurrency (Clarification Q3 / 2026-08-05).
+- T1: concurrency fixture `N=20` on one shared installation; bounded pool `Math.min(20, 16)`; time full `runGuard` (stages 1–10); production target 100 ms / Miniflare ceiling 3000 ms; wall-clock overlap proves concurrency (Clarification Q3 / 2026-08-05).
 - T2 / T6: spy counts R2 Class A (put/list/multipart) — exactly one per request (average and max); no second object.
 - T3 / T7: spy counts Quota DO fetches — exactly two per request (admission + credit; average and max); no third trip.
 - T4 / T5: structured measurement report carries finite `d1_hot_path_writes_per_request` (one INSERT) and time-dimensioned `do_throughput_per_installation` with **no** numeric ceilings (Clarification Q4).

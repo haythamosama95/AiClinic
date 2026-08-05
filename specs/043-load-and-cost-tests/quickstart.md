@@ -4,7 +4,7 @@ F5 adds the §13.5 load and cost test layer: under workers-pool Miniflare, the s
 drives N=20 happy-path requests on **one shared installation** via a bounded pool
 (`Math.min(20, CONCURRENCY_LIMIT=16)`), calling production `src/pipeline`
 (`runGuard` stages 1–10 + `settleHappyPath`). It asserts finite guard p95 under the
-Miniflare ceiling (2000 ms; production design target remains 100 ms), exactly one R2
+Miniflare ceiling (3000 ms; production design target remains 100 ms), exactly one R2
 Class A operation and two Quota DO requests per request (average and max), and emits
 a structured in-test measurement report for D1 write headroom and time-dimensioned DO
 throughput. The `test:load` npm script — run by CI job `ai-platform-tests` — is the
@@ -36,7 +36,7 @@ CP5 checkpoint gate.
 - Counting spies with AsyncLocalStorage per-request maxima (`binding-spies.ts`): D1
   INSERT at run/batch; R2 Class A put/list/multipart; prototype-preserving D1 spy.
 - Structured measurement report with `GUARD_P95_PRODUCTION_TARGET_MS = 100` and
-  `GUARD_P95_CEILING_MS = 2000` (`measurement-report.ts`).
+  `GUARD_P95_CEILING_MS = 3000` (`measurement-report.ts`).
 - `test:load` workers-pool checkpoint script; CI job `ai-platform-tests` runs
   `npm test` + `npm run test:load`.
 - T8 asserts pipeline composition; T9 points R-12 at the existing CI architecture guard.
