@@ -15,20 +15,26 @@ request reference; conversational capabilities never enter this path.
   manifest payload.
 - **Plan** (`plan.md`) scoped a sibling orchestration module under `frontend/lib/core/ai/` composing
   E2 SDK transport, E3 Context Resolver, and an injectable `ManifestRefreshPort` — plus optional C2
-  fields on `PlatformHttpException` and a four-case Flutter integration suite.
+  fields on `PlatformHttpException` and a Flutter integration suite.
 
 ## 2. What was implemented
 
-- **`ContextRequiredSelfHeal`** (`context_required_self_heal.dart`) — `single_shot`-only heal helper:
-  on first `context_required`, refresh once → resolve `missing_keys` → resubmit once with the same
-  idempotency key; on second `context_required`, stop and surface the request reference (no third
-  attempt); conversational `interaction_mode` bypasses the heal path entirely.
-- **`ManifestRefreshPort`** — injectable manifest-cache refresh seam (production wires to C1
-  discovery revalidation; tests spy the single call).
+- **`ContextRequiredSelfHeal`** (`context_required_self_heal.dart`) — heal helper gated by the
+  manifest-declared `interactionMode` (`ManifestRefreshPort.interactionModeFor`): on first
+  `context_required`, refresh once → resolve `missingKeys` → resubmit once with the **same**
+  idempotency key pinned via `AiClientSdk.invoke`'s per-invoke override; on second
+  `context_required`, stop and surface the request reference (no third attempt). Conversational
+  mode bypasses the heal path. `ContextResolveFailure` and payload-less/empty `missingKeys`
+  short-circuit without a doomed resubmit. Resubmit keeps the original `capabilityVersion`.
+- **`ManifestRefreshPort`** — injectable manifest-cache refresh + interaction-mode lookup. Tests spy
+  the refresh call and supply modes. **Production wiring to C1 discovery revalidation (and any
+  app-host construction of `ContextRequiredSelfHeal`) is deferred** to a later integration slice —
+  this slice's Done-when is proven against fakes only.
 - **`PlatformHttpException` C2 fields** (`ports.dart`) — optional `missingKeys`, `shapes`,
   `manifestVersion`, and `manifestCapabilityId` when `code` is `context_required`.
-- **Test suite** — `context_required_self_heal_test.dart` (tests 1–4) with extended `fakes.dart`
-  substrate for C2 error steps and refresh spy.
+- **Test suite** — `context_required_self_heal_test.dart` (required cases 1–4 plus resolve-failure,
+  payload-less, passthrough, version-semantics, and manifest-mode gate cases) with extended
+  `fakes.dart` substrate.
 
 See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file-level traceability.
 
@@ -36,10 +42,10 @@ See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file-
 
 | Path | Role |
 | --- | --- |
-| `frontend/lib/core/ai/context_required_self_heal.dart` | §8.4 self-heal orchestration sibling; `ManifestRefreshPort`; `InteractionMode` gate |
+| `frontend/lib/core/ai/context_required_self_heal.dart` | §8.4 self-heal orchestration sibling; `ManifestRefreshPort`; same-key pin; resolve/payload fail-fast |
 | `frontend/lib/core/ai/ports.dart` | Extended `PlatformHttpException` with optional C2 missing-key manifest fields |
-| `frontend/test/unit/core/ai/context_required_self_heal_test.dart` | Named tests 1–4 (happy path, second rejection, no third attempt, conversational exclusion) |
-| `frontend/test/unit/core/ai/fakes.dart` | C2 `SubmitHttpErrorStep` fields; `FakeManifestRefreshPort` spy; `contextRequiredErrorStep` helper |
+| `frontend/test/unit/core/ai/context_required_self_heal_test.dart` | Named heal suite (required cases + review-resolution branches) |
+| `frontend/test/unit/core/ai/fakes.dart` | C2 `SubmitHttpErrorStep` fields; `FakeManifestRefreshPort` spy + modes; `contextRequiredErrorStep` helper |
 
 ## 4. Prerequisites
 
@@ -55,7 +61,7 @@ cd frontend
 flutter test test/unit/core/ai/context_required_self_heal_test.dart
 ```
 
-Expected: **4 passing tests** (tests 1–4 from the spec Test plan).
+Expected: all cases in that file pass (required tests 1–4 plus the review-resolution branches).
 
 ## 6. Inspect the changes
 
@@ -66,7 +72,7 @@ ls frontend/test/unit/core/ai/context_required_self_heal_test.dart
 
 Open `context_required_self_heal.dart` for the refresh → resolve → same-key resubmit loop and
 second-rejection bound. Open `ports.dart` for the optional C2 fields on `PlatformHttpException`.
-Skim `context_required_self_heal_test.dart` for the four named cases. Confirm
+Skim `context_required_self_heal_test.dart` for the named cases. Confirm
 `frontend/lib/core/ai/` remains covered by the E1 architecture guard:
 
 ```bash

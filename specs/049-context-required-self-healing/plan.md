@@ -51,14 +51,22 @@ SDK + Resolver + refresh (Clarification Q1) — not a gateway Worker slice, not 
 DO round trip, no D1 insert, and no R2 object; platform I/O budgets (§6.1, §7.5, §13.6) remain
 untouched on the Worker side. Recovery is entirely client-driven from the typed rejection (§8.4).
 
-**Constraints**: `single_shot` only (FR-001, FR-008). One automatic resubmission; second
-`context_required` surfaces request reference; no third attempt (FR-005–FR-007). Same idempotency
-key on resubmit (FR-005; E2 Freezes). Resolve named keys through existing E3 Resolver with no
-capability branching (FR-004). Extend `PlatformHttpException` with optional C2 fields when
-`code` is `context_required` (Clarification Q2) — extend, never rewrite C2 payload or E2 transport /
-remint / general no-auto-retry. Injectable `ManifestRefreshPort` called once on heal (Clarification
-Q3). No prompt/provider/model identifiers in Flutter (R-12; delivery plan §6.4). No per-request
-server-side healing state (§4.4, §9.7).
+**Constraints**: `single_shot` only (FR-001, FR-008) — gated by the manifest-declared
+`interactionMode` via `ManifestRefreshPort.interactionModeFor`, not a free-standing constructor
+enum. One automatic resubmission; second `context_required` surfaces request reference; no third
+attempt (FR-005–FR-007). Same idempotency key on resubmit (FR-005; E2 Freezes) — the heal mints or
+accepts a stable key once and passes it to `AiClientSdk.invoke(..., idempotencyKey:)` on both
+submits. Resolve named keys through existing E3 Resolver with no capability branching (FR-004);
+`ContextResolveFailure` short-circuits without a doomed resubmit. Payload-less / empty
+`missingKeys` rethrows without burning the heal attempt. Resubmit keeps the original
+`capabilityVersion` (J1 overlap); C2 `manifestVersion` / `manifestCapabilityId` are diagnostic only.
+Extend `PlatformHttpException` with optional C2 fields when `code` is `context_required`
+(Clarification Q2) — extend, never rewrite C2 payload or E2 transport / remint / general
+no-auto-retry. Injectable `ManifestRefreshPort` called once on heal (Clarification Q3). **Production
+construction of `ContextRequiredSelfHeal` + C1-backed `ManifestRefreshPort` is deferred** to a later
+app-host / feature-surface integration slice — Done-when is proven against fakes in this slice. No
+prompt/provider/model identifiers in Flutter (R-12; delivery plan §6.4). No per-request server-side
+healing state (§4.4, §9.7).
 
 **Scale/Scope**: One §4 component (§4.1 AI Client SDK — self-healing orchestration sibling;
 `AiClientSdk` class remains transport-only). ~two Dart library touch points (`ports.dart` extend +
@@ -173,11 +181,13 @@ frontend/
 remains transport-only (Clarification Q1). `PlatformHttpException` gains optional C2 payload fields
 so the heal path can read `missing_keys` / `shapes` / `manifest_version` /
 `manifest_capability_id` after HTTP 422 (Clarification Q2) — an extension of the E2 error surface,
-not a rewrite of C2’s wire payload. `ManifestRefreshPort` is injectable; production wires to C1
-discovery revalidation, tests spy the single call (Clarification Q3). Same-action idempotency reuse
-follows the ConversationLoop pattern: the heal helper owns a stable key factory for the action and
-drives `AiClientSdk.invoke` without changing SDK remint / transport-retry / general no-auto-retry
-rules. No `ai-platform/` or `backend/` path is modified.
+not a rewrite of C2’s wire payload. `ManifestRefreshPort` is injectable and also exposes
+`interactionModeFor(capabilityId)` so FR-008 is enforced from the A14/H1 declaration (tests spy
+refresh; production C1 wiring deferred — see Constraints). Same-action idempotency reuse follows the
+ConversationLoop pattern: the heal helper owns a stable key for the action and passes it via
+`AiClientSdk.invoke`'s per-invoke `idempotencyKey` override on both submits, without changing SDK
+remint / transport-retry / general no-auto-retry rules. No `ai-platform/` or `backend/` path is
+modified.
 
 ## Consumes Binding
 
@@ -213,7 +223,7 @@ Exactly one §4 component — stop condition 5 (multi-component without reason) 
 | File | FR(s) | Status |
 | --- | --- | --- |
 | `frontend/lib/core/ai/ports.dart` | FR-002 | EXTEND — optional C2 fields on `PlatformHttpException` (`missingKeys` / `shapes` / `manifestVersion` / `manifestCapabilityId`, mirroring wire `missing_keys`, `shapes`, `manifest_version`, `manifest_capability_id`) when `code` is `context_required` (Clarification Q2). Existing callers omit the fields. |
-| `frontend/lib/core/ai/context_required_self_heal.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008 | NEW — injectable `ManifestRefreshPort` (Clarification Q3) + `single_shot`-only heal helper: on first `context_required`, refresh once → resolve `missing_keys` via E3 → resubmit once with the **same** idempotency key; on second `context_required`, stop and surface request reference (no third attempt); refuse conversational `interaction_mode` (Clarification Q1). |
+| `frontend/lib/core/ai/context_required_self_heal.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008 | NEW — injectable `ManifestRefreshPort` (refresh + `interactionModeFor`; Clarification Q3) + heal helper: pins idempotency key via `AiClientSdk.invoke` override; on first `context_required`, refresh → resolve → same-key resubmit; short-circuits on `ContextResolveFailure` / empty `missingKeys`; second `context_required` surfaces request reference; FR-008 from manifest mode (Clarification Q1). |
 | `frontend/test/unit/core/ai/fakes.dart` | FR-002–FR-007 (test support) | EXTEND — `SubmitHttpErrorStep` / `PlatformHttpException` can carry C2 missing-key fields; `ManifestRefreshPort` spy recording call count. |
 | `frontend/test/unit/core/ai/context_required_self_heal_test.dart` | FR-001–FR-008; tests 1–4 | NEW — Flutter integration suite for all named tests (delivery plan §3.11.8 J2). Joins CI permanently (delivery plan §3.10). |
 | `specs/049-context-required-self-healing/quickstart.md` | — | NEW — written during the implement-phase Documentation task (sections named in Project Structure → Documentation). |
