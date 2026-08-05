@@ -180,7 +180,12 @@ export function supplementaryFieldsForCode(
     return { retry_after: input.retryAfter ?? 0 };
   }
   if (code === "quota_exhausted") {
-    return { period_reset: input.periodReset ?? "" };
+    // Omit empty admin-path values — concurrency-mapped refusals must populate
+    // periodReset from the entitlement snapshot (F4), never emit "".
+    if (input.periodReset === undefined || input.periodReset === "") {
+      return {};
+    }
+    return { period_reset: input.periodReset };
   }
   return {};
 }

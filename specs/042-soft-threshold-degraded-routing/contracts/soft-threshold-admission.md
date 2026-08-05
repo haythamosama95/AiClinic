@@ -32,8 +32,10 @@ budget (B4 Freezes; delivery plan §6.4).
 
 Evaluated **after** hard budget exhaustion is ruled out and **before** a plain `admitted` return
 (still inside the single atomic admission read-modify-write). Soft threshold is the entitlement
-snapshot field B4 already carries unchanged (`EntitlementSnapshot.soft_threshold` — a fraction of
-period budget; §8.1 enroll note: soft threshold is a fraction of the budget).
+snapshot field B4 already carries (`EntitlementSnapshot.soft_threshold` — fraction of period
+budget in `[0, 1]`; `0` = disabled / enroll sentinel — never degrades). Out-of-range values are
+coerced to `0` via `coerceSoftThreshold` at entitlement map time. `isSoftThresholdCrossed`
+early-returns when `!(threshold > 0) || threshold > 1` (F4 Session 2026-08-05).
 
 Under Open Decision 2's recommended default (cost-based budget with a request-count guard), soft
 threshold is crossed when any **positive** period budget dimension has
@@ -45,11 +47,14 @@ threshold is crossed when any **positive** period budget dimension has
 | Tokens | `periodCounters.tokensUsed` | `entitlement.token_cost_budget.token_budget` |
 | Cost | `periodCounters.costUsed` | `entitlement.token_cost_budget.cost_budget` |
 
-A dimension with budget `0` never contributes a soft-threshold crossing (enroll's zero-budget /
-zero-threshold case never degrades). Hard exhaustion continues to use B4's existing
+A dimension with budget `0` never contributes a soft-threshold crossing. `soft_threshold = 0`
+never degrades (enroll sentinel). Hard exhaustion continues to use B4's existing
 `isQuotaExhausted` predicate unchanged.
 
 Soft-threshold evaluation **must not** add a second Quota DO round trip (FR-009).
+
+**Conscious acceptance (§4.3.3):** in-flight admissions do not count toward soft threshold —
+counters increment only on credit; no pre-flight reservations.
 
 ---
 
@@ -101,6 +106,7 @@ require only the period-reset carrier. F4 does not add further supplementary fie
 | `admitted` (`degraded` absent/false) | allow, `routing_tier = standard` | stream may open `accepted` without `degraded_notice` |
 | `admitted` (`degraded: true`) | allow, `routing_tier = degraded` | `accepted { degraded_notice: true }` |
 | `quota_exhausted` + `period_end` | refuse | `quota_exhausted` + `period_reset` = `period_end` |
+| `concurrency_exhausted` (B4 map) | refuse | `quota_exhausted` + `period_reset` from entitlement `period_end` |
 
 Hard exhaustion disables the additive AI feature path (refusal with clear taxonomy reason) and never
 hard-locks clinical or non-AI workflows (FR-001, FR-004; constitution V). Rate-limit denial remains
@@ -119,3 +125,8 @@ Enforced by F4 integration suite (`ai-platform/test/soft-threshold-routing.test.
 | `below_threshold_traffic_unaffected` | Below soft → no `degraded` |
 | `soft_threshold_no_second_quota_do_round_trip` | Exactly one Quota DO fetch for soft-threshold admission |
 | `quota_exhausted_only_error_code_on_hard_exhaustion` | Hard branch emits only `quota_exhausted` |
+| `soft_threshold_zero_never_degrades` | `soft_threshold = 0` never sets `degraded` |
+| `soft_threshold_zero_budget_dimension_never_contributes` | Zero-budget dimension ignored |
+| `soft_threshold_token_dimension_selects_degraded` | Token-dimension crossing → degraded |
+| `soft_threshold_cost_dimension_selects_degraded` | Cost-dimension crossing → degraded |
+| `soft_threshold_just_below_boundary_unaffected` | Just below `>=` boundary stays standard |

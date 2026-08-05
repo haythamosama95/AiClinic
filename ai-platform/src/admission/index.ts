@@ -9,9 +9,10 @@ import {
   loadConfig,
 } from "../config-cache";
 import type { Principal } from "../identity";
-import type {
-  AdmissionResponse,
-  EntitlementSnapshot,
+import {
+  coerceSoftThreshold,
+  type AdmissionResponse,
+  type EntitlementSnapshot,
 } from "../quota-do/index";
 import {
   flushRejectionCounters,
@@ -124,7 +125,8 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
       cost_budget: row.cost_budget as number,
     },
     allowed_capabilities: parseAllowedCapabilities(row),
-    soft_threshold: row.soft_threshold as number,
+    // Out-of-range values coerce to 0 (never degrade); write path must keep [0, 1].
+    soft_threshold: coerceSoftThreshold(row.soft_threshold as number),
     status: row.status as string,
   };
 }
@@ -211,6 +213,7 @@ async function callAdmissionDo(
 function mapDoOutcome(
   body: AdmissionResponse,
   installationId: string,
+  entitlementPeriodEnd: string,
 ): AdmissionResult {
   switch (body.outcome) {
     case "admitted":
@@ -240,11 +243,17 @@ function mapDoOutcome(
       };
     case "concurrency_exhausted":
       // §6.1 stage 8 / Edge Cases: map onto `quota_exhausted` (closed §5.4 taxonomy).
+      // Populate period_reset from the entitlement snapshot already loaded for this
+      // admission (DO concurrency reply has no period_end carrier).
       recordGuardRejection({
         error_code: "quota_exhausted",
         installation_id: installationId,
       });
-      return { ok: false, code: "quota_exhausted" };
+      return {
+        ok: false,
+        code: "quota_exhausted",
+        periodReset: entitlementPeriodEnd,
+      };
     default:
       return { ok: false, code: "internal_error" };
   }
@@ -358,7 +367,11 @@ export async function runAdmission(
   }
 
   resetGraceCounterOnDoSuccess(principal.installationId);
-  return mapDoOutcome(transport.body, principal.installationId);
+  return mapDoOutcome(
+    transport.body,
+    principal.installationId,
+    entitlement.period_bounds.period_end,
+  );
 }
 
 /** Re-export B3 shared flush — admission no longer keeps a private tally. */

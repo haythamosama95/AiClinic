@@ -140,3 +140,38 @@ test harness, which the plan sanctions but which leaves "Done when" unproven end
 - **Low** — Avoid emitting `period_reset: ""` on the concurrency-mapped `quota_exhausted`
   branch (`ai-platform/src/errors.ts:183`); either populate it from the entitlement snapshot
   (available in `runAdmission`) or omit the field when there is no value.
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **F4-R1 — Zero/invalid soft_threshold guard** | Critical #1; Bugs #1; Missing/Weak Tests #1; Recommended Improvements High (guard + range) | `ai-platform/src/quota-do/index.ts` (`isSoftThresholdCrossed`, `coerceSoftThreshold`); `ai-platform/src/admission/index.ts` (`mapEntitlementSnapshot`); `ai-platform/src/control/lifecycle.ts` (enroll sentinel note); `ai-platform/test/quota-do.test.ts`; Spec Kit contracts/spec |
+| **F4-R2 — Dimension and boundary coverage** | Missing/Weak Tests #2, #4; Recommended Improvements High (token/cost/zero-budget tests), Low (79/100) | `ai-platform/test/soft-threshold-routing.test.ts` (T8–T12); exported `isSoftThresholdCrossed` for zero-budget unit proof |
+| **F4-R3 — Wire-boundary T4 / dead injection param** | Missing/Weak Tests #3; Recommended Improvements Medium (remove `_clientInjection`) | `ai-platform/src/soft-threshold/index.ts`; `ai-platform/src/adapter.ts` (`ADAPTER_ROUTING_BODY_FIELDS`, `parseAdapterRequestBody`); T4 rewrite |
+| **F4-R4 — Concurrency `period_reset`** | Bugs #2; Recommended Improvements Low (omit empty `period_reset`) | `ai-platform/src/admission/index.ts` (`mapDoOutcome`); `ai-platform/src/errors.ts`; `admission-credit.test.ts`; `taxonomy.test.ts` |
+| **F4-R5 — Conscious acceptances + Spec Kit** | Architectural Deviations #1; Bugs #3; Missing/Weak Tests #5; Recommended Improvements Medium (orchestrator wiring) | Spec Kit `spec.md` / `plan.md` / `tasks.md` / `contracts/*` / `quickstart.md`; T2 title clarified |
+
+Every numbered review item is covered. No escalation — all fixes stay within §4.3.3 / §8.8 / §4.3.7 and Spec Kit extensions.
+
+### 7.2 Test cases created first
+
+- **F4-R1:** `admission_soft_threshold_sets_degraded` rewritten to cross a real threshold; new `never degrades when soft_threshold is zero`; `soft_threshold_zero_never_degrades` integration case.
+- **F4-R2:** `soft_threshold_zero_budget_dimension_never_contributes`; `soft_threshold_token_dimension_selects_degraded`; `soft_threshold_cost_dimension_selects_degraded`; `soft_threshold_just_below_boundary_unaffected` (79/100).
+- **F4-R3:** T4 rewritten to assert empty `ADAPTER_ROUTING_BODY_FIELDS` and `CLIENT_ROUTING_INJECTION_KEYS` before removing the dead helper parameter.
+- **F4-R4:** `admission-credit` concurrency mapping expects `periodReset`; taxonomy asserts empty `period_reset` is omitted.
+
+### 7.3 Fix implemented
+
+- **F4-R1:** Early-return in `isSoftThresholdCrossed` when `!(threshold > 0) || threshold > 1`; `coerceSoftThreshold` on entitlement map; enroll keeps `0` as disabled sentinel.
+- **F4-R2:** Token/cost/just-below/zero-budget coverage added; zero-budget soft skip asserted via exported predicate (hard exhaustion still treats budget `0` as exhausted per B4).
+- **F4-R3:** Removed `ClientRoutingInjection` from `resolveRoutingTier`; T4 is an adapter wire-boundary assertion.
+- **F4-R4:** Concurrency→`quota_exhausted` carries entitlement `period_end`; `supplementaryFieldsForCode` omits empty `period_reset`.
+- **F4-R5:** Documented conscious acceptances (in-flight not counted; harness-only composition until orchestrator; T2 gateway-only proof). No production orchestrator wiring — none exists yet and the plan defers it.
+
+### 7.4 Verification
+
+Full `ai-platform` `npm test`: verify-manifests **2 files / 4 tests**; node Vitest **41 files / 596 tests**; workers Vitest **19 files / 264 tests** — all passed. Modified/added tests: `soft-threshold-routing.test.ts`, `quota-do.test.ts`, `admission-credit.test.ts`, `taxonomy.test.ts`.

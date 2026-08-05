@@ -2,7 +2,9 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import {
+  ADAPTER_ROUTING_BODY_FIELDS,
   buildAcceptedSseEvent,
+  parseAdapterRequestBody,
   type AdapterSseEvent,
 } from "../src/adapter";
 import {
@@ -19,6 +21,8 @@ import { createRequestRow } from "../src/journal";
 import { load, type Manifest } from "../src/manifest";
 import { selectCandidateChain } from "../src/router";
 import {
+  bodyHasClientRoutingInjection,
+  CLIENT_ROUTING_INJECTION_KEYS,
   degradedNoticeFromAdmission,
   resolveRoutingTier,
   type AdmissionAllowResult,
@@ -44,7 +48,10 @@ const FIXTURE_PERIOD_END = "2026-09-01T00:00:00.000Z";
 const REQUEST_QUOTA = 100;
 const SOFT_THRESHOLD = 0.8;
 const SOFT_CROSS_REQUESTS_USED = 80;
+const JUST_BELOW_SOFT_REQUESTS_USED = 79;
 const BELOW_SOFT_REQUESTS_USED = 10;
+const TOKEN_BUDGET = 1_000_000;
+const COST_BUDGET = 100;
 
 type D1Row = Record<string, unknown>;
 
@@ -137,12 +144,6 @@ type RoutingPolicyDocument = {
     }>;
   }>;
   overrides: unknown[];
-};
-
-type ClientRoutingInjection = {
-  routing_tier?: string;
-  degraded?: boolean;
-  degraded_notice?: boolean;
 };
 
 let jtiCounter = 0;
@@ -253,7 +254,22 @@ async function seedInstallation(installationId: string): Promise<void> {
     .run();
 }
 
-async function seedEntitlement(installationId: string): Promise<void> {
+async function seedEntitlement(
+  installationId: string,
+  options: {
+    requestQuota?: number;
+    tokenBudget?: number;
+    costBudget?: number;
+    softThreshold?: number;
+  } = {},
+): Promise<void> {
+  const {
+    requestQuota = REQUEST_QUOTA,
+    tokenBudget = TOKEN_BUDGET,
+    costBudget = COST_BUDGET,
+    softThreshold = SOFT_THRESHOLD,
+  } = options;
+
   await env.DB.prepare(
     `INSERT INTO entitlement (
       entitlement_id, installation_id, plan, period_start, period_end,
@@ -267,11 +283,11 @@ async function seedEntitlement(installationId: string): Promise<void> {
       "professional",
       "2026-08-01T00:00:00.000Z",
       FIXTURE_PERIOD_END,
-      REQUEST_QUOTA,
-      1_000_000,
-      100,
+      requestQuota,
+      tokenBudget,
+      costBudget,
       JSON.stringify([FIXTURE_CAPABILITY_ID]),
-      SOFT_THRESHOLD,
+      softThreshold,
       "active",
     )
     .run();
@@ -318,9 +334,10 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
 
 async function seedInstallationAndEntitlement(
   installationId: string,
+  entitlementOptions: Parameters<typeof seedEntitlement>[1] = {},
 ): Promise<{ cache: ConfigCache; reader: D1Reader }> {
   await seedInstallation(installationId);
-  await seedEntitlement(installationId);
+  await seedEntitlement(installationId, entitlementOptions);
   return {
     cache: new ConfigCache(),
     reader: makePlatformD1Reader(env.DB),
@@ -533,6 +550,7 @@ async function seedRequestsUsed(
   cache: ConfigCache,
   reader: D1Reader,
   requestsUsed: number,
+  usage: { tokens: number; cost: number } = { tokens: 1, cost: 0.001 },
 ): Promise<void> {
   const admission = await loadAdmissionModule();
   const credit = await loadCreditModule();
@@ -549,7 +567,7 @@ async function seedRequestsUsed(
         installationId,
         requestId: admitted.requestId,
         requestReference: uniqueRequestReference(),
-        usage: { tokens: 1, cost: 0.001 },
+        usage,
         partial: false,
       },
       { DO: env.DO },
@@ -578,7 +596,7 @@ async function runSoftThresholdPipeline(options: {
   cache: ConfigCache;
   reader: D1Reader;
   requestsUsed: number;
-  clientInjection?: ClientRoutingInjection;
+  creditUsage?: { tokens: number; cost: number };
   doNamespace?: DurableObjectNamespace;
   persistRow?: boolean;
 }): Promise<PipelineOutcome> {
@@ -587,12 +605,18 @@ async function runSoftThresholdPipeline(options: {
     cache,
     reader,
     requestsUsed,
-    clientInjection = {},
+    creditUsage = { tokens: 1, cost: 0.001 },
     doNamespace = env.DO,
     persistRow = false,
   } = options;
 
-  await seedRequestsUsed(installationId, cache, reader, requestsUsed);
+  await seedRequestsUsed(
+    installationId,
+    cache,
+    reader,
+    requestsUsed,
+    creditUsage,
+  );
 
   const admission = await loadAdmissionModule();
   const policyCache = preloadPolicyCache(buildStandardDegradedPolicy());
@@ -628,7 +652,7 @@ async function runSoftThresholdPipeline(options: {
   }
 
   const allow = toAdmissionAllow(admissionResult);
-  const routingTier = resolveRoutingTier(allow, clientInjection);
+  const routingTier = resolveRoutingTier(allow);
   const routerOutcome = selectCandidateChain({
     cache: policyCache,
     policyCacheKey: FIXTURE_POLICY_KEY,
@@ -736,7 +760,8 @@ describe("soft_threshold_selects_degraded_target", () => {
 });
 
 describe("hard_exhaustion_quota_exhausted_admin_path_no_lock", () => {
-  it("returns quota_exhausted with period_reset and does not journal or lock", async () => {
+  // Gateway-layer proof only: refuse + period_reset + no journal. Non-AI UX is E4.
+  it("returns quota_exhausted with period_reset and does not journal an AI request", async () => {
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
     const aiRequestsBefore = await readAiRequestCount();
@@ -789,30 +814,32 @@ describe("below_threshold_traffic_unaffected", () => {
 });
 
 describe("soft_threshold_tier_not_accepted_from_client", () => {
-  it("ignores client-supplied tier and uses gateway admission signal", async () => {
-    const installationId = freshInstallationId();
-    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+  it("adapter ingress never surfaces client routing injection keys", () => {
+    expect(ADAPTER_ROUTING_BODY_FIELDS).toEqual([]);
 
-    const outcome = await runSoftThresholdPipeline({
-      installationId,
-      cache,
-      reader,
-      requestsUsed: BELOW_SOFT_REQUESTS_USED,
-      clientInjection: {
-        routing_tier: "degraded",
-        degraded: true,
-        degraded_notice: true,
-      },
-    });
-
-    expect(outcome.kind).toBe("accepted");
-    if (outcome.kind !== "accepted") {
+    const injectedBody = {
+      installation: "ignored",
+      capability: FIXTURE_CAPABILITY_ID,
+      routing_tier: "degraded",
+      degraded: true,
+      degraded_notice: true,
+    };
+    const parsed = parseAdapterRequestBody(JSON.stringify(injectedBody));
+    expect(parsed).not.toBeNull();
+    if (parsed === null) {
       return;
     }
+    expect(bodyHasClientRoutingInjection(parsed)).toBe(true);
+    for (const key of CLIENT_ROUTING_INJECTION_KEYS) {
+      expect(ADAPTER_ROUTING_BODY_FIELDS).not.toContain(key);
+    }
 
-    expect(outcome.routingTier).toBe("standard");
-    expect(outcome.ruleId).toBe("standard-tier");
-    expect(outcome.providerId).toBe("openai");
+    // Below-threshold admission still routes standard — tier is admission-only.
+    const allow: AdmissionAllowResult = {
+      outcome: "admitted",
+      requestId: "req-wire-boundary",
+    };
+    expect(resolveRoutingTier(allow)).toBe("standard");
   });
 });
 
@@ -902,5 +929,135 @@ describe("quota_exhausted_only_error_code_on_hard_exhaustion", () => {
     expect(Object.keys(hard.errorBody).sort()).toEqual(
       ["code", "period_reset", "request_reference", "retry_safe", "trace_id"].sort(),
     );
+  });
+});
+
+describe("soft_threshold_zero_never_degrades", () => {
+  it("keeps standard routing when soft_threshold is 0 with positive budgets", async () => {
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      softThreshold: 0,
+    });
+
+    const outcome = await runSoftThresholdPipeline({
+      installationId,
+      cache,
+      reader,
+      requestsUsed: BELOW_SOFT_REQUESTS_USED,
+    });
+
+    expect(outcome.kind).toBe("accepted");
+    if (outcome.kind !== "accepted") {
+      return;
+    }
+    expect(outcome.admission.degraded).toBeUndefined();
+    expect(outcome.routingTier).toBe("standard");
+    expect(outcome.acceptedEvent.data.degraded_notice).toBeUndefined();
+  });
+});
+
+describe("soft_threshold_zero_budget_dimension_never_contributes", () => {
+  it("ignores a zero token_budget dimension even when tokensUsed is large", async () => {
+    // Hard exhaustion treats budget 0 as exhausted (B4), so soft evaluation for a
+    // zero-budget dimension is asserted on the exported predicate directly.
+    const { isSoftThresholdCrossed } = await import("../src/quota-do/index");
+    const crossed = isSoftThresholdCrossed(
+      {
+        requestsUsed: BELOW_SOFT_REQUESTS_USED,
+        tokensUsed: 999_999,
+        costUsed: 0.001,
+        inFlight: 0,
+      },
+      {
+        plan: "professional",
+        period_bounds: {
+          period_start: "2026-08-01T00:00:00.000Z",
+          period_end: FIXTURE_PERIOD_END,
+        },
+        request_quota: REQUEST_QUOTA,
+        token_cost_budget: { token_budget: 0, cost_budget: COST_BUDGET },
+        allowed_capabilities: [FIXTURE_CAPABILITY_ID],
+        soft_threshold: SOFT_THRESHOLD,
+        status: "active",
+      },
+    );
+    expect(crossed).toBe(false);
+  });
+});
+
+describe("soft_threshold_token_dimension_selects_degraded", () => {
+  it("crosses soft threshold on tokensUsed / token_budget and routes degraded", async () => {
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      requestQuota: 1_000_000,
+      tokenBudget: 1_000,
+      softThreshold: SOFT_THRESHOLD,
+    });
+
+    // One credit: tokens 800/1000 = 0.8; requests 1/1e6 far below soft
+    const outcome = await runSoftThresholdPipeline({
+      installationId,
+      cache,
+      reader,
+      requestsUsed: 1,
+      creditUsage: { tokens: 800, cost: 0.001 },
+    });
+
+    expect(outcome.kind).toBe("accepted");
+    if (outcome.kind !== "accepted") {
+      return;
+    }
+    expect(outcome.admission.degraded).toBe(true);
+    expect(outcome.routingTier).toBe("degraded");
+    expect(outcome.providerId).toBe("deepseek");
+  });
+});
+
+describe("soft_threshold_cost_dimension_selects_degraded", () => {
+  it("crosses soft threshold on costUsed / cost_budget and routes degraded", async () => {
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      requestQuota: 1_000_000,
+      costBudget: 100,
+      softThreshold: SOFT_THRESHOLD,
+    });
+
+    const outcome = await runSoftThresholdPipeline({
+      installationId,
+      cache,
+      reader,
+      requestsUsed: 1,
+      creditUsage: { tokens: 1, cost: 80 },
+    });
+
+    expect(outcome.kind).toBe("accepted");
+    if (outcome.kind !== "accepted") {
+      return;
+    }
+    expect(outcome.admission.degraded).toBe(true);
+    expect(outcome.routingTier).toBe("degraded");
+    expect(outcome.providerId).toBe("deepseek");
+  });
+});
+
+describe("soft_threshold_just_below_boundary_unaffected", () => {
+  it("keeps standard tier at 79/100 just below the >= soft boundary", async () => {
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+
+    const outcome = await runSoftThresholdPipeline({
+      installationId,
+      cache,
+      reader,
+      requestsUsed: JUST_BELOW_SOFT_REQUESTS_USED,
+    });
+
+    expect(outcome.kind).toBe("accepted");
+    if (outcome.kind !== "accepted") {
+      return;
+    }
+    expect(outcome.admission.degraded).toBeUndefined();
+    expect(outcome.routingTier).toBe("standard");
+    expect(outcome.acceptedEvent.data.degraded_notice).toBeUndefined();
   });
 });

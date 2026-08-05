@@ -172,7 +172,8 @@ are extended only to carry Freezes fields. The Spec Kit template's `frontend/` /
 are unused; the Worker source tree in `ai-platform/` is the relevant one (delivery plan §7.1).
 Tests compose admission → soft-threshold signal → router → journal persist → accepted/error wire
 with seeded DO counters (Clarification), mirroring C3/B4's stage-function integration style without
-requiring a full POST orchestrator.
+requiring a full POST orchestrator — conscious acceptance until an orchestrator exists
+(Session 2026-08-05). `resolveRoutingTier` takes admission only (no `ClientRoutingInjection`).
 
 ## Consumes Binding
 
@@ -217,9 +218,10 @@ Consumes. F4 does not take ownership of journaling or SSE framing.
 
 | File | Created / Modified | Traces to |
 | --- | --- | --- |
-| `ai-platform/src/quota-do/index.ts` | Modified — after hard-exhaustion check fails open, evaluate soft threshold; set `degraded: true` on `admitted`; on `quota_exhausted` include `period_end` from `entitlement.period_bounds.period_end` | FR-003, FR-005, FR-009, FR-010 |
-| `ai-platform/src/admission/index.ts` | Modified — map DO `degraded` onto allow result; map `period_end` → failure carrying `periodReset` for A2 supplementary fields; still exactly one DO fetch | FR-001, FR-003, FR-004, FR-005, FR-009 |
-| `ai-platform/src/soft-threshold/index.ts` | New — pure helpers: admission allow → `routing_tier`; soft allow → `degraded_notice`; ignore any client-supplied tier fields | FR-002, FR-006, FR-007, FR-008, FR-010 |
+| `ai-platform/src/quota-do/index.ts` | Modified — soft threshold via `coerceSoftThreshold` / `isSoftThresholdCrossed` (`0` never degrades; early-return when `!(threshold > 0) || threshold > 1`); `degraded: true` on admit; `period_end` on exhaustion | FR-003, FR-005, FR-009, FR-010 |
+| `ai-platform/src/admission/index.ts` | Modified — map `degraded`; coerce soft_threshold; map `period_end` → `periodReset`; concurrency→quota carries entitlement `period_end`; one DO fetch | FR-001, FR-003, FR-004, FR-005, FR-009 |
+| `ai-platform/src/soft-threshold/index.ts` | New — `resolveRoutingTier(admission)` only; `CLIENT_ROUTING_INJECTION_KEYS`; no `ClientRoutingInjection` param | FR-002, FR-006, FR-007, FR-008, FR-010 |
+| `ai-platform/src/errors.ts` | Modified (extension) — `supplementaryFieldsForCode` omits empty `period_reset` | FR-003, FR-004 |
 | `ai-platform/src/journal/index.ts` | Modified (extension) — `RequestRowInput.routingTier`; INSERT/bind `routing_tier` | FR-006 |
 | `ai-platform/src/adapter.ts` | Modified (extension) — accepted-event builder accepts optional `degraded_notice` | FR-008 |
 | `ai-platform/test/soft-threshold-routing.test.ts` | New — T1–T7 integration cases | Test Layout / SC-001..SC-004 |
@@ -229,8 +231,8 @@ Consumes. F4 does not take ownership of journaling or SSE framing.
 | `specs/042-soft-threshold-degraded-routing/quickstart.md` | New during Documentation task after verification | Project Structure → Documentation |
 
 Every file traces to an `FR-###` or Freezes / Documentation mandate. No untraced file.
-`ai-platform/src/router/index.ts` and `ai-platform/src/errors.ts` are consumed unchanged (no plan
-row as modified).
+`ai-platform/src/router/index.ts` is consumed unchanged. `errors.ts` is extended only to omit
+empty `period_reset` (Session 2026-08-05).
 
 ## Test Layout
 
@@ -250,13 +252,13 @@ Quota DO counters / entitlement snapshot into the target region before the reque
 | 6 | `soft_threshold_no_second_quota_do_round_trip` | Pipeline tests (Integration — spy) | `ai-platform/test/soft-threshold-routing.test.ts` |
 | 7 | `quota_exhausted_only_error_code_on_hard_exhaustion` | Pipeline tests (Integration) | `ai-platform/test/soft-threshold-routing.test.ts` |
 
-**Coverage notes (§3.10):** Happy path of soft-threshold degrade (T1) and below-threshold (T3);
-every error code this slice's soft/hard branches can emit — only `quota_exhausted` (T2, T7);
-soft vs hard vs below branches (T1–T3); inherited prohibition of a second Quota DO round trip (T6
-spy); client-injection prohibition (T4); persist path (T5). "Admin path" / no-lock (T2) asserts
-gateway refusal carries populated `period_reset` (operator-addressable period end) and that
-admission refusal performs no inference / no product-wide lock signal — E4 owns UI chrome (Out of
-Scope).
+**Coverage notes (§3.10):** Happy path (T1) and below-threshold (T3); just-below boundary (T12);
+zero-threshold / zero-budget dimensions (T8–T9); token and cost dimension crossings (T10–T11);
+every soft/hard error code — only `quota_exhausted` (T2, T7); one-DO-trip spy (T6); adapter
+wire-boundary injection prohibition (T4; `ADAPTER_ROUTING_BODY_FIELDS` empty); persist (T5).
+T2 asserts gateway refuse + `period_reset` + no journal only — non-AI UX is E4
+(Session 2026-08-05). B4 `quota-do` suite also covers zero soft_threshold sentinel.
+In-flight counters do not affect soft threshold (§4.3.3; conscious acceptance).
 
 Every named test places in a §13.5 layer — stop condition 3 not triggered.
 
