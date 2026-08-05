@@ -32,11 +32,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <DirectionProvider>
           <AiModeProvider>
             <CommandBarProvider>
-              <ToastProvider>
-                <TooltipProvider>
+              <TooltipProvider>
+                <ToastProvider>
                   <ReducedMotionSync>{children}</ReducedMotionSync>
-                </TooltipProvider>
-              </ToastProvider>
+                </ToastProvider>
+              </TooltipProvider>
             </CommandBarProvider>
           </AiModeProvider>
         </DirectionProvider>

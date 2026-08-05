@@ -7,6 +7,7 @@ import { AppointmentsPage } from '@/features/appointments/AppointmentsPage'
 import { QueuePage } from '@/features/queue/QueuePage'
 import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagementPage'
 import { VisitPage } from '@/features/visits/VisitPage'
+import { ShiftsPage } from '@/features/shifts/ShiftsPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
 import { InvoiceDetailPage } from '@/pages/app/invoices/InvoiceDetailPage'
@@ -130,7 +131,8 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
         id !== 'clinic-management' &&
         id !== 'appointments' &&
         id !== 'queue' &&
-        id !== 'encounters',
+        id !== 'encounters' &&
+        id !== 'shifts',
     ).map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
@@ -158,6 +160,10 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
     title: 'Clinic Management',
     description: ROUTE_DESCRIPTIONS['clinic-management'],
     render: () => <ClinicManagementPage />,
+  },
+  shifts: {
+    ...metaForNavId('shifts'),
+    render: () => <ShiftsPage />,
   },
 }
 

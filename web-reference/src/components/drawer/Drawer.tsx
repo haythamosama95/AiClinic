@@ -75,14 +75,13 @@ export function Drawer({
         ? 'calc(-1 * var(--motion-drawer-offset, 100%))'
         : '100%'
 
-  if (!open) return null
-
   return createPortal(
     <AnimatePresence>
       {open ? (
         <>
           {modal ? (
             <motion.button
+              key="drawer-backdrop"
               type="button"
               aria-label="Close drawer"
               initial={{ opacity: 0 }}
@@ -96,6 +95,7 @@ export function Drawer({
             />
           ) : null}
           <motion.div
+            key="drawer-panel"
             ref={panelRef}
             role="dialog"
             aria-modal={modal}

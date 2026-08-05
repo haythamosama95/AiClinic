@@ -1,0 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+.shifts-page {
+  font-family: 'Source Sans 3', var(--font-sans), system-ui, sans-serif;
+  color: var(--text-primary);
+}
+
+.shifts-page h1,
+.shifts-page h2,
+.shifts-page h3,
+.shifts-page .shift-heading {
+  font-family: 'DM Sans', var(--font-display), system-ui, sans-serif;
+}
+
+.shifts-page .shift-mono {
+  font-family: 'IBM Plex Mono', var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Role accent tokens — derived from design system palette */
+.shift-accent-doctor {
+  --shift-accent: var(--color-teal-600);
+  --shift-accent-bg: var(--color-teal-50);
+}
+
+.shift-accent-nurse {
+  --shift-accent: var(--status-info-fg);
+  --shift-accent-bg: var(--status-info-surface);
+}
+
+.shift-accent-reception {
+  --shift-accent: var(--status-warning-fg);
+  --shift-accent-bg: var(--status-warning-surface);
+}
+
+.shift-accent-lab {
+  --shift-accent: var(--color-violet-600);
+  --shift-accent-bg: var(--color-violet-50);
+}
+
+/* Shift band fills */
+.shift-band-doctor {
+  --shift-band: var(--color-teal-500);
+  --shift-band-bg: color-mix(in srgb, var(--color-teal-500) 12%, transparent);
+  --shift-band-border: color-mix(in srgb, var(--color-teal-500) 30%, transparent);
+}
+
+.shift-band-nurse {
+  --shift-band: var(--status-info-fg);
+  --shift-band-bg: var(--status-info-surface);
+  --shift-band-border: var(--status-info-border);
+}
+
+.shift-band-reception {
+  --shift-band: var(--status-warning-fg);
+  --shift-band-bg: var(--status-warning-surface);
+  --shift-band-border: var(--status-warning-border);
+}
+
+.shift-band-lab {
+  --shift-band: var(--color-violet-500);
+  --shift-band-bg: color-mix(in srgb, var(--color-violet-500) 12%, transparent);
+  --shift-band-border: color-mix(in srgb, var(--color-violet-500) 30%, transparent);
+}
+
+.shift-time-band {
+  position: relative;
+  border: 1px solid var(--shift-band-border, var(--border-default));
+  border-radius: 0.5rem;
+  background: var(--shift-band-bg, var(--surface-sunken));
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.shift-time-band:hover {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--shift-band) 20%, transparent);
+  transform: translateY(-1px);
+}
+
+.shift-time-band:focus-visible {
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}
+
+.shift-fill-bar {
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: 0;
+  background: var(--shift-band);
+  opacity: 0.18;
+  transition: height 300ms ease;
+}
+
+.shift-time-band--understaffed {
+  border-color: var(--status-warning-border);
+}
+
+.shift-time-band--full {
+  border-color: var(--status-success-border);
+}
+
+.shift-time-band--overstaffed {
+  border-color: var(--status-danger-border);
+}
+
+.shift-role-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.shift-role-tab:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.shift-role-tab--active {
+  color: var(--text-primary);
+  background: var(--surface-selected);
+}
+
+.shift-role-tab--active::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  inset-inline-end: 0.75rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--shift-accent, var(--action-primary));
+}
+
+.shift-roster-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  background: var(--surface-default);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.shift-roster-card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.shift-roster-card--draggable {
+  cursor: grab;
+}
+
+.shift-roster-card--draggable:active {
+  cursor: grabbing;
+}
+
+.shift-drop-target {
+  border: 2px dashed transparent;
+  border-radius: 0.5rem;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.shift-drop-target--active {
+  border-color: var(--action-primary);
+  background: color-mix(in srgb, var(--action-primary) 6%, transparent);
+}
+
+.shift-coverage-ring {
+  --ring-size: 40px;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  border-radius: 50%;
+  background: conic-gradient(var(--shift-accent, var(--action-primary)) calc(var(--fill, 0) * 1%),
+      var(--surface-sunken) 0);
+  display: grid;
+  place-items: center;
+}
+
+.shift-coverage-ring::after {
+  content: '';
+  width: calc(var(--ring-size) - 8px);
+  height: calc(var(--ring-size) - 8px);
+  border-radius: 50%;
+  background: var(--surface-default);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .shifts-page *,
+  .shifts-page *::before,
+  .shifts-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .shifts-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .shifts-roster-panel {
+    order: 2;
+  }
+}
