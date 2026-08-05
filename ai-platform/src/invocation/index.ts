@@ -46,6 +46,17 @@ export interface InvocationSink {
   emitStreamText(text: string): void;
 }
 
+/** Live partial-usage snapshot for ChunkSource.getPartialUsage honesty. */
+export type PartialUsageSnapshot = { tokens: number; cost: number };
+
+/**
+ * Optional out-handle filled by {@link runInvocation}. Callers pass an empty
+ * object; after start, `getPartialUsage` reflects accrued usage for cancel credit.
+ */
+export type PartialUsageAccessor = {
+  getPartialUsage?: () => PartialUsageSnapshot | undefined;
+};
+
 export type InvocationInput = {
   request: CanonicalRequest;
   routingDecision: RoutingDecision;
@@ -56,6 +67,10 @@ export type InvocationInput = {
   sleeper: (ms: number) => Promise<void>;
   /** Injectable RNG for jitter proofs; defaults to `Math.random`. */
   random?: () => number;
+  /** Caller abort (broker disconnect); chained into each attempt's fetch. */
+  signal?: AbortSignal;
+  /** Out-param for live partial usage (ChunkSource.getPartialUsage). */
+  partialUsage?: PartialUsageAccessor;
 };
 
 export type InvocationResult =
@@ -83,6 +98,19 @@ function createTimeoutError(): CanonicalError {
     providerNative: {
       code: "ATTEMPT_TIMEOUT",
       message: "Provider invoke exceeded chain-entry timeout_ms",
+    },
+    consumedBudget: consumesQuota !== "No",
+  });
+}
+
+function createCancelledError(): CanonicalError {
+  const { consumesQuota } = getTaxonomyEntry("cancelled");
+  return setRetryabilityFromClassification({
+    taxonomyCode: "cancelled",
+    retryability: false,
+    providerNative: {
+      code: "CALLER_ABORTED",
+      message: "Invocation aborted by caller signal",
     },
     consumedBudget: consumesQuota !== "No",
   });
@@ -119,6 +147,21 @@ export function computeJitteredBackoff(
 export function pureExponentialBackoffMs(retryIndex: number): number {
   const baseMs = 100;
   return Math.min(baseMs * 2 ** retryIndex, BACKOFF_CAP_MS);
+}
+
+/**
+ * Defensive read of provider-supplied Retry-After (ms). Field may be added on
+ * CanonicalError by adapters without this module importing a typed extension.
+ */
+function retryAfterMsFromError(error: CanonicalError | undefined): number | undefined {
+  if (!error) {
+    return undefined;
+  }
+  const value = (error as { retryAfterMs?: unknown }).retryAfterMs;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return value;
 }
 
 type ProcessedInvoke = {
@@ -271,9 +314,16 @@ async function invokeWithTimeout(
   port: ProviderPort,
   request: CanonicalRequest,
   timeoutMs: number,
+  callerSignal?: AbortSignal,
 ): Promise<ProviderInvokeResult> {
+  if (callerSignal?.aborted) {
+    return { kind: "error", error: createCancelledError() };
+  }
+
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let callerAbortHandler: (() => void) | undefined;
+
   const timeoutPromise = new Promise<ProviderInvokeResult>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
@@ -281,9 +331,25 @@ async function invokeWithTimeout(
     }, timeoutMs);
   });
 
+  const callerAbortPromise =
+    callerSignal !== undefined
+      ? new Promise<ProviderInvokeResult>((resolve) => {
+          callerAbortHandler = () => {
+            controller.abort();
+            resolve({ kind: "error", error: createCancelledError() });
+          };
+          callerSignal.addEventListener("abort", callerAbortHandler, {
+            once: true,
+          });
+        })
+      : undefined;
+
   try {
-    return await Promise.race([
+    const raced: Promise<ProviderInvokeResult>[] = [
       port.invoke(request, { signal: controller.signal }).catch((cause: unknown) => {
+        if (callerSignal?.aborted) {
+          return { kind: "error" as const, error: createCancelledError() };
+        }
         const message =
           cause instanceof Error ? cause.message : "Provider invoke rejected";
         return {
@@ -292,10 +358,17 @@ async function invokeWithTimeout(
         };
       }),
       timeoutPromise,
-    ]);
+    ];
+    if (callerAbortPromise) {
+      raced.push(callerAbortPromise);
+    }
+    return await Promise.race(raced);
   } finally {
     if (timer !== undefined) {
       clearTimeout(timer);
+    }
+    if (callerSignal && callerAbortHandler) {
+      callerSignal.removeEventListener("abort", callerAbortHandler);
     }
   }
 }
@@ -341,6 +414,8 @@ export async function runInvocation(
     sink,
     sleeper,
     random = Math.random,
+    signal: callerSignal,
+    partialUsage,
   } = input;
 
   const chain = routingDecision.chain;
@@ -354,8 +429,37 @@ export async function runInvocation(
   let prevExhaustedViaTimeout = false;
   let prevTargetHadPartialStream = false;
 
+  // Accrued usage for ChunkSource.getPartialUsage during/after cancel.
+  let accruedTokens = 0;
+  let accruedCost = 0;
+  let hasAccruedUsage = false;
+  let streamedChars = 0;
+
+  const readPartialUsage = (): PartialUsageSnapshot | undefined => {
+    if (hasAccruedUsage) {
+      return { tokens: accruedTokens, cost: accruedCost };
+    }
+    if (streamedChars > 0) {
+      // Best-effort live estimate when the provider has not yet returned usage.
+      return { tokens: streamedChars, cost: streamedChars * 0.001 };
+    }
+    return undefined;
+  };
+
+  if (partialUsage) {
+    partialUsage.getPartialUsage = readPartialUsage;
+  }
+
+  const noteUsageFromResult = (result: CanonicalResult): void => {
+    hasAccruedUsage = true;
+    accruedTokens += result.usage.input + result.usage.output;
+    accruedCost += 0;
+  };
+
   // Run-scoped observing sink — never mutate the caller-owned sink object.
   let currentTargetHadPartialStream = false;
+  /** True after this target streamed text and a same-target retry still needs regenerating. */
+  let pendingSameTargetRegenerating = false;
   const observingSink: InvocationSink = {
     recordAttempt(record) {
       sink.recordAttempt(record);
@@ -365,13 +469,29 @@ export async function runInvocation(
     },
     emitStreamText(text) {
       currentTargetHadPartialStream = true;
+      streamedChars += text.length;
       sink.emitStreamText(text);
     },
   };
 
   for (let chainIndex = 0; chainIndex < chain.length; chainIndex++) {
+    if (callerSignal?.aborted) {
+      return { ok: false, error: createCancelledError() };
+    }
+
+    const remainingAtTarget = remainingDeadlineMs(
+      request.deadline,
+      startedAtMs,
+      Date.now(),
+    );
+    if (remainingAtTarget !== null && remainingAtTarget <= 0) {
+      // Deadline exhausted — skip remaining targets.
+      break;
+    }
+
     if (chainIndex > 0 && prevTargetHadPartialStream) {
       observingSink.emitRegenerating();
+      pendingSameTargetRegenerating = false;
     }
 
     const entry = chain[chainIndex];
@@ -383,19 +503,54 @@ export async function runInvocation(
           : "fallback_after_retryable_error";
 
     currentTargetHadPartialStream = false;
+    pendingSameTargetRegenerating = false;
     let lastFailureWasTimeout = false;
+    let targetInvoked = false;
 
     for (
       let attemptOnTarget = 0;
       attemptOnTarget < entry.max_attempts;
       attemptOnTarget++
     ) {
+      if (callerSignal?.aborted) {
+        return { ok: false, error: createCancelledError() };
+      }
+
+      const remaining = remainingDeadlineMs(
+        request.deadline,
+        startedAtMs,
+        Date.now(),
+      );
+      if (remaining !== null && remaining <= 0) {
+        break;
+      }
+
+      const attemptTimeoutMs =
+        remaining === null
+          ? entry.timeout_ms
+          : Math.min(entry.timeout_ms, remaining);
+
+      // Propagate remaining-ms (not the stale original) into the attempt request.
+      const requestForAttempt: CanonicalRequest =
+        remaining === null
+          ? request
+          : { ...request, deadline: remaining };
+
+      // Emit regenerating before the first emission of a same-target retry after
+      // a prior partial stream on this target (§3.2.1).
+      if (attemptOnTarget > 0 && pendingSameTargetRegenerating) {
+        observingSink.emitRegenerating();
+        pendingSameTargetRegenerating = false;
+      }
+
       attemptNo++;
+      targetInvoked = true;
       const port = portResolver(entry.provider_id);
       const invokeResult = await invokeWithTimeout(
         port,
-        request,
-        entry.timeout_ms,
+        requestForAttempt,
+        attemptTimeoutMs,
+        callerSignal,
       );
 
       relayTextDeltas(chunksFromResult(invokeResult), observingSink);
@@ -408,6 +563,10 @@ export async function runInvocation(
         requestId,
         idempotencyKey,
       );
+
+      if (processed.success) {
+        noteUsageFromResult(processed.success);
+      }
 
       observingSink.recordAttempt(processed.record);
 
@@ -422,18 +581,44 @@ export async function runInvocation(
       lastFailureWasTimeout = processed.record.outcome === "timeout";
 
       if (attemptOnTarget < entry.max_attempts - 1) {
-        const delay = computeJitteredBackoff(attemptOnTarget, random);
+        if (currentTargetHadPartialStream) {
+          pendingSameTargetRegenerating = true;
+        }
+
+        const jittered = computeJitteredBackoff(attemptOnTarget, random);
+        const retryAfterMs =
+          invokeResult.kind === "error" || invokeResult.kind === "malformed"
+            ? retryAfterMsFromError(invokeResult.error)
+            : undefined;
+        const delay =
+          retryAfterMs !== undefined
+            ? Math.max(jittered, retryAfterMs)
+            : jittered;
+
         await sleepWithinDeadline(
           sleeper,
           delay,
           request.deadline,
           startedAtMs,
         );
+
+        if (callerSignal?.aborted) {
+          return { ok: false, error: createCancelledError() };
+        }
       }
+    }
+
+    if (!targetInvoked) {
+      // Budget exhausted before any attempt on this (and later) targets.
+      break;
     }
 
     prevExhaustedViaTimeout = lastFailureWasTimeout;
     prevTargetHadPartialStream = currentTargetHadPartialStream;
+  }
+
+  if (callerSignal?.aborted) {
+    return { ok: false, error: createCancelledError() };
   }
 
   return { ok: false, error: createProviderUnavailableError() };

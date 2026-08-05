@@ -276,15 +276,53 @@ async function assertPlanAllowance(
   return { ok: true };
 }
 
-async function resolveProviderId(
+/**
+ * Providers live only in `RoutingPolicyDocument.rules[].targets[]` — never as a
+ * top-level `provider_id` on the active_routing_policy row (§3.1.1).
+ */
+function providerIdsFromPolicyRow(policy: Record<string, unknown>): string[] {
+  const document =
+    policy.document !== null &&
+    typeof policy.document === "object" &&
+    !Array.isArray(policy.document)
+      ? (policy.document as Record<string, unknown>)
+      : policy;
+  const rules = document.rules;
+  if (!Array.isArray(rules)) {
+    return [];
+  }
+
+  const ids = new Set<string>();
+  for (const rule of rules) {
+    if (rule === null || typeof rule !== "object" || Array.isArray(rule)) {
+      continue;
+    }
+    const targets = (rule as Record<string, unknown>).targets;
+    if (!Array.isArray(targets)) {
+      continue;
+    }
+    for (const target of targets) {
+      if (target === null || typeof target !== "object" || Array.isArray(target)) {
+        continue;
+      }
+      const providerId = (target as Record<string, unknown>).provider_id;
+      if (typeof providerId === "string") {
+        ids.add(providerId);
+      }
+    }
+  }
+  return [...ids];
+}
+
+async function resolveProviderIds(
   manifest: Manifest,
   cache: ConfigCache,
   reader: D1Reader,
   installationId: string,
-): Promise<string | undefined> {
+): Promise<string[]> {
   const policyRef = manifest.Routing.routingPolicyRef;
   if (typeof policyRef !== "string") {
-    return undefined;
+    return [];
   }
 
   try {
@@ -308,11 +346,10 @@ async function resolveProviderId(
         throw error;
       }
     }
-    const providerId = policy.provider_id ?? policy.providerId;
-    return typeof providerId === "string" ? providerId : undefined;
+    return providerIdsFromPolicyRow(policy);
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
-      return undefined;
+      return [];
     }
     throw error;
   }
@@ -332,13 +369,13 @@ async function isCapabilityDisabled(
     `installation:${installationId}`,
   ];
 
-  const providerId = await resolveProviderId(
+  const providerIds = await resolveProviderIds(
     manifest,
     cache,
     reader,
     installationId,
   );
-  if (providerId !== undefined) {
+  for (const providerId of providerIds) {
     killSwitchKeys.push(`provider:${providerId}`);
   }
 

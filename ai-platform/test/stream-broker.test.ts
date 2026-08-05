@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdapterSseEvent } from "../src/adapter";
-import { isTaxonomyCode, type TaxonomyCode } from "../src/errors";
+import {
+  buildErrorBody,
+  isTaxonomyCode,
+  type TaxonomyCode,
+} from "../src/errors";
 import * as journalModule from "../src/journal/index";
 import {
   createChunkSourceFromInvocationEvents,
@@ -22,6 +26,7 @@ const TERMINAL_EVENT_KINDS = ["completed", "failed", "cancelled"] as const;
 
 const FIXTURE_TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const FIXTURE_REQUEST_ID = "req-d4-001";
+const FIXTURE_REQUEST_REFERENCE = "7QK4-2B9F";
 
 /** Injectable guard thresholds — test parameters, not broker constants. */
 const GUARD_THRESHOLDS: ProseGuardThresholds = {
@@ -33,6 +38,7 @@ const GUARD_THRESHOLDS: ProseGuardThresholds = {
 const STREAM_BROKER_OPTION_KEYS = [
   "traceId",
   "requestId",
+  "requestReference",
   "eventSink",
   "chunkSource",
   "heartbeatTicker",
@@ -164,6 +170,7 @@ function createScriptedChunkSource(
   chunks: string[],
   options: {
     delayMs?: number;
+    truncated?: boolean;
   } = {},
 ): ChunkSource {
   const delayMs = options.delayMs ?? 0;
@@ -175,6 +182,9 @@ function createScriptedChunkSource(
         return undefined;
       }
       return usageFromTokens(yieldedTokens);
+    },
+    wasTruncated() {
+      return options.truncated === true;
     },
     async *stream({ signal }: { signal: AbortSignal }) {
       for (const chunk of chunks) {
@@ -286,10 +296,26 @@ function createSignalIgnoringChunkSource(): ChunkSource {
   };
 }
 
+/** Never resolves next() — proves abortableAsyncIterate finally does not hang. */
+function createHungNextChunkSource(): ChunkSource {
+  return {
+    getPartialUsage() {
+      return undefined;
+    },
+    async *stream() {
+      await new Promise<never>(() => {
+        /* never settles */
+      });
+      yield "unreachable";
+    },
+  };
+}
+
 type RunBrokerHarnessOptions = {
   chunkSource?: ChunkSource;
   chunks?: string[];
   chunkDelayMs?: number;
+  truncated?: boolean;
   guardThresholds?: ProseGuardThresholds;
   heartbeatTicker?: ControllableHeartbeatTicker;
   creditSink?: CreditSink;
@@ -323,11 +349,13 @@ async function runBrokerHarness(
     options.chunkSource ??
     createScriptedChunkSource(options.chunks ?? ["Hello", " world"], {
       delayMs: options.chunkDelayMs ?? 0,
+      truncated: options.truncated,
     });
 
   const brokerOptions: StreamBrokerOptions = {
     traceId: FIXTURE_TRACE_ID,
     requestId: FIXTURE_REQUEST_ID,
+    requestReference: FIXTURE_REQUEST_REFERENCE,
     eventSink: collector.sink,
     chunkSource,
     heartbeatTicker,
@@ -544,6 +572,7 @@ describe("T-D4-02 heartbeat_during_provider_silence", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createSilentChunkSource(),
       heartbeatTicker,
@@ -574,6 +603,7 @@ describe("T-D4-02 heartbeat_during_provider_silence", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createScriptedChunkSource(["content"], { delayMs: 5 }),
       heartbeatTicker,
@@ -778,6 +808,7 @@ describe("T-D4-11 journal_row_complete_on_cancel", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createScriptedChunkSource(["token"], { delayMs: 40 }),
       heartbeatTicker: createControllableHeartbeatTicker(),
@@ -980,6 +1011,7 @@ describe("T-D4-23 disconnect_after_completion_noop", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createScriptedChunkSource(["done"]),
       heartbeatTicker: createControllableHeartbeatTicker(),
@@ -1042,6 +1074,7 @@ describe("T-D4-25 sink_throw_does_not_suppress_terminal", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       // Multiple delayed chunks keep the stream open until disconnect.
       chunkSource: createScriptedChunkSource(["x", "y", "z"], { delayMs: 40 }),
@@ -1072,6 +1105,7 @@ describe("T-D4-25 sink_throw_does_not_suppress_terminal", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createScriptedChunkSource(["ok"]),
       heartbeatTicker: createControllableHeartbeatTicker(),
@@ -1098,6 +1132,7 @@ describe("T-D4-26 signal_ignoring_source_disconnect_emits_cancelled", () => {
     const controller = createStreamBroker({
       traceId: FIXTURE_TRACE_ID,
       requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
       eventSink: collector.sink,
       chunkSource: createSignalIgnoringChunkSource(),
       heartbeatTicker: createControllableHeartbeatTicker(),
@@ -1128,6 +1163,77 @@ describe("T-D4-26 signal_ignoring_source_disconnect_emits_cancelled", () => {
         state: "cancelled",
       },
     ]);
+  });
+
+  it("resolves run() when next() never settles (hung source finally)", async () => {
+    const collector = createEventSinkCollector();
+    const heartbeatTicker = createControllableHeartbeatTicker();
+    const controller = createStreamBroker({
+      traceId: FIXTURE_TRACE_ID,
+      requestId: FIXTURE_REQUEST_ID,
+      requestReference: FIXTURE_REQUEST_REFERENCE,
+      eventSink: collector.sink,
+      chunkSource: createHungNextChunkSource(),
+      heartbeatTicker,
+      creditSink: createCreditSinkSpy().sink,
+      journalTerminalSink: createJournalTerminalSinkSpy().sink,
+      guardThresholds: GUARD_THRESHOLDS,
+    });
+
+    const runPromise = controller.run();
+    await delay(10);
+    heartbeatTicker.triggerSilentGap();
+    controller.disconnect("client_close");
+
+    expect(eventsOfType(collector.events, "cancelled")).toHaveLength(1);
+
+    await Promise.race([
+      runPromise,
+      delay(200).then(() => {
+        throw new Error("run() hung awaiting iterator.return on hung next()");
+      }),
+    ]);
+
+    // Heartbeat must be cancelled on the terminal path — further silent gaps
+    // must not emit after disconnect.
+    const heartbeatsAfterCancel = eventsOfType(collector.events, "heartbeat").length;
+    heartbeatTicker.triggerSilentGap();
+    expect(eventsOfType(collector.events, "heartbeat").length).toBe(
+      heartbeatsAfterCancel,
+    );
+  });
+});
+
+describe("T-D4-28 prose_truncation_fails_validation", () => {
+  it("fails validation_failed when the chunk source reports truncation", async () => {
+    const { events } = await runBrokerHarness({
+      chunks: ["Visit", " note"],
+      truncated: true,
+    });
+
+    expect(eventsOfType(events, "completed")).toHaveLength(0);
+    const failed = eventsOfType(events, "failed");
+    expect(failed).toHaveLength(1);
+    expect(countTerminalEvents(events)).toBe(1);
+    expect(failed[0]?.data.code).toBe("validation_failed");
+  });
+});
+
+describe("T-D4-29 failed_event_carries_full_error_body", () => {
+  it("includes code, request_reference, trace_id, and retry_safe on failed", async () => {
+    const { events } = await runBrokerHarness({
+      chunks: [GUARD_THRESHOLDS.systemPromptLeakNeedle],
+    });
+
+    const failed = eventsOfType(events, "failed");
+    expect(failed).toHaveLength(1);
+    const expected = buildErrorBody({
+      code: "validation_failed",
+      requestReference: FIXTURE_REQUEST_REFERENCE,
+      traceId: FIXTURE_TRACE_ID,
+    });
+    expect(failed[0]?.data).toEqual(expected);
+    expect(failed[0]?.trace_id).toBe(FIXTURE_TRACE_ID);
   });
 });
 

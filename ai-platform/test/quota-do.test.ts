@@ -118,6 +118,27 @@ type CreditUnknownRequest = {
 
 type CreditResponse = CreditAcknowledged | CreditUnknownRequest;
 
+type ReleaseRequest = {
+  kind: "release";
+  installationId: string;
+  requestId: string;
+  idempotencyKey: string;
+  jti: string;
+};
+
+type ReleaseAcknowledged = {
+  kind: "release";
+  ok: true;
+};
+
+type ReleaseUnknownRequest = {
+  kind: "release";
+  ok: false;
+  code: "unknown_request";
+};
+
+type ReleaseResponse = ReleaseAcknowledged | ReleaseUnknownRequest;
+
 let jtiCounter = 0;
 let idempotencyKeyCounter = 0;
 let requestReferenceCounter = 0;
@@ -182,7 +203,7 @@ function quotaStub(installationId: string) {
 
 async function fetchRpc(
   installationId: string,
-  body: AdmissionRequest | CreditRequest,
+  body: AdmissionRequest | CreditRequest | ReleaseRequest,
 ): Promise<Response> {
   try {
     return await quotaStub(installationId).fetch(RPC_URL, {
@@ -239,6 +260,27 @@ async function callCreditRPC(
   return {
     response,
     body: (await response.json()) as CreditResponse,
+  };
+}
+
+async function callReleaseRPC(
+  installationId: string,
+  overrides: Partial<ReleaseRequest> &
+    Pick<ReleaseRequest, "requestId" | "idempotencyKey" | "jti">,
+): Promise<{ response: Response; body: ReleaseResponse }> {
+  const body: ReleaseRequest = {
+    kind: "release",
+    installationId,
+    requestId: overrides.requestId,
+    idempotencyKey: overrides.idempotencyKey,
+    jti: overrides.jti,
+  };
+
+  const response = await fetchRpc(installationId, body);
+
+  return {
+    response,
+    body: (await response.json()) as ReleaseResponse,
   };
 }
 
@@ -888,5 +930,91 @@ describe("admission_soft_threshold_sets_degraded", () => {
       requestId: expect.any(String),
     });
     expect(body).not.toHaveProperty("degraded");
+  });
+});
+
+describe("release_rolls_back_admission_reservation", () => {
+  it("frees jti, idempotency key, and in-flight slot after release", async () => {
+    const installationId = freshInstallationId();
+    const jti = uniqueJti();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admitFresh(installationId, {
+      jti,
+      idempotencyKey,
+      requestReference,
+    });
+
+    const released = await callReleaseRPC(installationId, {
+      requestId: admitted.requestId,
+      idempotencyKey,
+      jti,
+    });
+    expect(released.response.ok).toBe(true);
+    expect(released.body).toEqual({ kind: "release", ok: true });
+
+    // Same jti may admit again (replay entry cleared).
+    const jtiReuse = await callAdmissionRPC(installationId, {
+      jti,
+      idempotencyKey: uniqueIdempotencyKey(),
+    });
+    expect(jtiReuse.body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+    });
+
+    // Same idempotency key may admit again (not stuck on idempotent).
+    const keyReuse = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+      requestReference,
+    });
+    expect(keyReuse.body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+    });
+  });
+
+  it("returns unknown_request for a requestId that was never admitted", async () => {
+    const installationId = freshInstallationId();
+    await admitFresh(installationId);
+
+    const released = await callReleaseRPC(installationId, {
+      requestId: crypto.randomUUID(),
+      idempotencyKey: uniqueIdempotencyKey(),
+      jti: uniqueJti(),
+    });
+
+    expect(released.response.ok).toBe(true);
+    expect(released.body).toEqual({
+      kind: "release",
+      ok: false,
+      code: "unknown_request",
+    });
+  });
+
+  it("returns unknown_request after the admission was already credited", async () => {
+    const installationId = freshInstallationId();
+    const jti = uniqueJti();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const admitted = await admitFresh(installationId, { jti, idempotencyKey });
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 1, cost: 0.001 },
+    });
+
+    const released = await callReleaseRPC(installationId, {
+      requestId: admitted.requestId,
+      idempotencyKey,
+      jti,
+    });
+
+    expect(released.body).toEqual({
+      kind: "release",
+      ok: false,
+      code: "unknown_request",
+    });
   });
 });

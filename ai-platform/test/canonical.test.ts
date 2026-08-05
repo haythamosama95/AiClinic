@@ -400,4 +400,17 @@ describe("T-A3-04 round-trip canonical error", () => {
     );
     expect(() => canonical.decodeCanonicalError!(wire)).toThrow();
   });
+
+  it("optional retryAfterMs is a runtime CanonicalError field (not wire-manifest)", () => {
+    const withRetry: canonical.CanonicalError = {
+      ...errorFixture,
+      retryAfterMs: 5_000,
+    };
+    expect(withRetry.retryAfterMs).toBe(5_000);
+    // Wire codec still encodes only §5.3 manifest keys — omit retryAfterMs first.
+    const { retryAfterMs: _omit, ...wireShape } = withRetry;
+    const wire = canonical.encodeCanonicalError!(wireShape);
+    assertWireKeysMatchManifest(wire, CANONICAL_FIELD_MANIFEST.error);
+    expect(JSON.parse(wire)).not.toHaveProperty("retryAfterMs");
+  });
 });

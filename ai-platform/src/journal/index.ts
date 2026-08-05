@@ -279,6 +279,13 @@ export async function journalTransition(
 ): Promise<void> {
   assertAwaitingContextReachable(state, interactionMode);
 
+  // C3-R3: Failed requires terminal_error_code — only recordTerminalState may write it.
+  if (state === "Failed") {
+    throw new Error(
+      "Failed terminal state requires recordTerminalState with terminalErrorCode",
+    );
+  }
+
   if (TERMINAL_TRANSITION_STATES.has(state)) {
     await db
       .prepare(

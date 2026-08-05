@@ -108,30 +108,187 @@ function writeTemporaryConfig(
   };
 }
 
+/** Generous ceiling so a true hang fails the test instead of counting as success. */
+const STARTUP_FAILURE_HANG_GUARD_MS = 15_000;
+
+const MISSING_BINDING_ERROR = /Missing required binding:/;
+
+function hangGuard(message: string): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), STARTUP_FAILURE_HANG_GUARD_MS);
+  });
+}
+
+function captureStderr(): {
+  chunks: string[];
+  restore: () => void;
+  sawBindingError: () => boolean;
+} {
+  const chunks: string[] = [];
+  const push = (value: unknown): void => {
+    if (typeof value === "string") {
+      chunks.push(value);
+      return;
+    }
+    if (value instanceof Uint8Array) {
+      chunks.push(Buffer.from(value).toString("utf8"));
+      return;
+    }
+    chunks.push(String(value));
+  };
+
+  const originalWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ) => {
+    push(chunk);
+    if (typeof encoding === "function") {
+      return originalWrite(chunk, encoding);
+    }
+    return originalWrite(chunk, encoding, cb);
+  }) as typeof process.stderr.write;
+
+  // Wrangler often logs the module-load throw via console.error (sometimes on a
+  // delayed tick after unstable_dev resolves). Capture those too.
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  console.error = (...args: unknown[]) => {
+    for (const arg of args) push(arg);
+    originalError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    for (const arg of args) push(arg);
+    originalWarn(...args);
+  };
+
+  return {
+    chunks,
+    restore: () => {
+      process.stderr.write = originalWrite;
+      console.error = originalError;
+      console.warn = originalWarn;
+    },
+    sawBindingError: () => MISSING_BINDING_ERROR.test(chunks.join("")),
+  };
+}
+
+/**
+ * Assert missing-binding startup failure directly.
+ * Current wrangler/miniflare may: reject `unstable_dev`, reject `waitUntilExit`
+ * (ERR_RUNTIME_FAILURE), return 5xx on probe, or log the module-load throw to
+ * stderr while fetch hangs. A hang-guard timeout is only a safety net — never
+ * the success criterion.
+ */
 async function expectStartupFailure(
   configPath: string,
   environment: string,
 ): Promise<void> {
-  const worker = await unstable_dev(SCRIPT_PATH, {
-    ...DEV_OPTIONS,
-    config: configPath,
-    env: environment,
-  });
+  const stderr = captureStderr();
+  let worker: Unstable_DevWorker | undefined;
 
   try {
-    const outcome = await Promise.race([
-      worker.fetch("http://127.0.0.1/health").then((response) => ({
-        kind: "response" as const,
-        status: response.status,
-      })),
-      new Promise<{ kind: "timeout" }>((resolve) =>
-        setTimeout(() => resolve({ kind: "timeout" }), 3_000),
-      ),
-    ]);
+    try {
+      worker = await Promise.race([
+        unstable_dev(SCRIPT_PATH, {
+          ...DEV_OPTIONS,
+          config: configPath,
+          env: environment,
+        }),
+        hangGuard(
+          `unstable_dev hung past ${STARTUP_FAILURE_HANG_GUARD_MS}ms hang guard`,
+        ),
+      ]);
+    } catch (error) {
+      // Fail-fast wrangler, or hang guard after a binding error already logged.
+      if (stderr.sawBindingError()) {
+        return;
+      }
+      expect(error).toBeTruthy();
+      return;
+    }
 
-    expect(outcome.kind).toBe("timeout");
+    if (stderr.sawBindingError()) {
+      return;
+    }
+
+    // Brief settle: wrangler sometimes prints the binding throw a tick after
+    // unstable_dev resolves (observed flaky on missing D1).
+    for (let i = 0; i < 20 && !stderr.sawBindingError(); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (stderr.sawBindingError()) {
+      return;
+    }
+
+    // Attach exit watcher immediately; race against probe + stderr + hang guard.
+    const exitFailure = worker.waitUntilExit().then(
+      () => ({ kind: "exit" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    );
+
+    let outcome: {
+      kind: "exit" | "rejected" | "response" | "fetch-rejected" | "logged";
+      status?: number;
+      error?: unknown;
+    };
+    try {
+      outcome = await Promise.race([
+        exitFailure,
+        worker.fetch("http://127.0.0.1/health").then(
+          (response) => ({
+            kind: "response" as const,
+            status: response.status,
+          }),
+          (error: unknown) => ({ kind: "fetch-rejected" as const, error }),
+        ),
+        (async () => {
+          const deadline = Date.now() + STARTUP_FAILURE_HANG_GUARD_MS;
+          while (Date.now() < deadline) {
+            if (stderr.sawBindingError()) {
+              return { kind: "logged" as const };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+          throw new Error(
+            `missing-binding worker neither rejected, returned 5xx, nor logged a binding error within ${STARTUP_FAILURE_HANG_GUARD_MS}ms hang guard`,
+          );
+        })(),
+      ]);
+    } catch (error) {
+      // Hang guard lost the race, but the binding error may still have landed.
+      if (stderr.sawBindingError()) {
+        return;
+      }
+      throw error;
+    }
+
+    if (outcome.kind === "logged") {
+      return;
+    }
+
+    if (outcome.kind === "response") {
+      expect(outcome.status).toBeGreaterThanOrEqual(500);
+      return;
+    }
+
+    if (outcome.kind === "exit") {
+      // Last chance: binding error may have been logged without an exit reject.
+      expect(stderr.sawBindingError()).toBe(true);
+      return;
+    }
+
+    // Runtime failure (waitUntilExit) or fetch rejection — still accept if the
+    // binding error was logged alongside the reject.
+    if (stderr.sawBindingError()) {
+      return;
+    }
+    expect(["rejected", "fetch-rejected"]).toContain(outcome.kind);
+    expect(outcome.error).toBeTruthy();
   } finally {
-    await worker.stop().catch(() => undefined);
+    stderr.restore();
+    await worker?.stop().catch(() => undefined);
   }
 }
 

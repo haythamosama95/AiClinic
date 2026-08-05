@@ -10,6 +10,7 @@ import {
   dashboardValidationFailureByPromptVersion,
   runAllDashboardQueries,
 } from "../src/dashboards";
+import { JOURNAL_HORIZON_DAYS, MS_PER_DAY } from "../src/retention";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -19,6 +20,8 @@ declare module "cloudflare:test" {
 
 const FIXTURE_INSTALLATION = "inst-dash-001";
 const FIXTURE_ORG = "org-dash-001";
+/** Fixed clock so quota window math does not depend on wall time. */
+const FIXTURE_DASHBOARD_NOW = new Date("2026-08-20T00:00:00.000Z");
 
 type D1WriteSpy = D1Database & {
   insertCount: () => number;
@@ -278,8 +281,70 @@ describe("dashboard_cost_per_capability_per_installation", () => {
 
 describe("dashboard_quota_rejection_rate", () => {
   it("approximates quota_exhausted_count / journaled request_count", async () => {
-    const result = await dashboardQuotaRejectionRate(env.DB);
+    const result = await dashboardQuotaRejectionRate(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
     // 3 quota / 3 requests (Failed+Completed+Cancelled) = 1.0
+    expect(result).toBeCloseTo(1.0, 5);
+  });
+
+  it("bounds numerator and denominator to the journal retention window", async () => {
+    const oldBucket = new Date(
+      FIXTURE_DASHBOARD_NOW.getTime() -
+        (JOURNAL_HORIZON_DAYS + 5) * MS_PER_DAY,
+    ).toISOString().slice(0, 19);
+    const oldRequestAt = new Date(
+      FIXTURE_DASHBOARD_NOW.getTime() -
+        (JOURNAL_HORIZON_DAYS + 5) * MS_PER_DAY,
+    ).toISOString();
+
+    await env.DB.prepare(
+      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(
+        "counter-quota-old",
+        JSON.stringify({
+          error_code: "quota_exhausted",
+          installation_id: FIXTURE_INSTALLATION,
+        }),
+        oldBucket,
+        100,
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+        payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)`,
+    )
+      .bind(
+        "req-dash-old",
+        "REF-DOLD",
+        FIXTURE_INSTALLATION,
+        "actor-001",
+        "branch-001",
+        "clinic.dash-a",
+        "1.0.0",
+        "prompt/v1@v1",
+        "idem-old",
+        "trace-old",
+        "Completed",
+        oldRequestAt,
+        oldRequestAt,
+        oldRequestAt,
+      )
+      .run();
+
+    const result = await dashboardQuotaRejectionRate(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
+    // Out-of-window 100 quota + 1 request must not change in-window 3/3 = 1.0
     expect(result).toBeCloseTo(1.0, 5);
   });
 });

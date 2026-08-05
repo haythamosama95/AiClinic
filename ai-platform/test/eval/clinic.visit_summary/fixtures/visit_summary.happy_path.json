@@ -1,5 +1,6 @@
 {
   "case_id": "visit_summary.happy_path",
   "d5_fixture_subdir": "visit-summary",
-  "provider_response_file": "provider-response.json"
+  "provider_response_file": "provider-response.json",
+  "deliberately_regressed_response_file": "responses/visit_summary.happy_path.regressed.json"
 }

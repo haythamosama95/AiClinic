@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdapterSseEvent } from "../src/adapter";
+import { buildErrorBody } from "../src/errors";
 import * as proseGuards from "../src/stream/prose-guards";
 import {
   createStructuredStreamBroker,
@@ -54,6 +55,7 @@ function createSchemaRegistry(): SchemaRegistry {
 
 const FIXTURE_TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const FIXTURE_REQUEST_ID = "req-d6-structured-001";
+const FIXTURE_REQUEST_REFERENCE = "7QK4-2B9F";
 
 const TERMINAL_EVENT_KINDS = ["completed", "failed", "cancelled"] as const;
 
@@ -159,6 +161,7 @@ function buildBrokerOptions(
   return {
     traceId: FIXTURE_TRACE_ID,
     requestId: FIXTURE_REQUEST_ID,
+    requestReference: FIXTURE_REQUEST_REFERENCE,
     eventSink: collector.sink,
     chunkSource: createScriptedChunkSource(options.chunks, {
       truncated: options.truncated,
@@ -444,5 +447,75 @@ describe("T-D6-30 broker_truncated_guard_reachable", () => {
     const failed = eventsOfType(events, "failed");
     expect(failed).toHaveLength(1);
     expect(failed[0]?.data.code).toBe("validation_failed");
+  });
+});
+
+describe("T-D6-31 failed_event_carries_full_error_body", () => {
+  it("includes code, request_reference, trace_id, and retry_safe on failed", async () => {
+    const { events } = await runStructuredBrokerHarness({
+      mode: "structured",
+      chunks: structuredChunksFor(VALID_DOCUMENT),
+      truncated: true,
+    });
+
+    const failed = eventsOfType(events, "failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.data).toEqual(
+      buildErrorBody({
+        code: "validation_failed",
+        requestReference: FIXTURE_REQUEST_REFERENCE,
+        traceId: FIXTURE_TRACE_ID,
+      }),
+    );
+    expect(failed[0]?.trace_id).toBe(FIXTURE_TRACE_ID);
+  });
+});
+
+describe("T-D6-32 hung_source_disconnect_does_not_hang_run", () => {
+  it("resolves run() when next() never settles", async () => {
+    const collector = createEventSinkCollector();
+    const heartbeatTicker = createControllableHeartbeatTicker();
+    const hungSource: ChunkSource = {
+      async *stream() {
+        await new Promise<never>(() => {
+          /* never settles */
+        });
+        yield "unreachable";
+      },
+    };
+
+    const controller = createStructuredStreamBroker({
+      ...buildBrokerOptions(
+        {
+          mode: "structured",
+          chunks: [],
+        },
+        collector,
+        heartbeatTicker,
+      ),
+      chunkSource: hungSource,
+    });
+
+    const runPromise = controller.run();
+    await new Promise((r) => setTimeout(r, 10));
+    controller.disconnect("client_close");
+
+    expect(eventsOfType(collector.events, "cancelled")).toHaveLength(1);
+
+    await Promise.race([
+      runPromise,
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("run() hung awaiting iterator.return")),
+          200,
+        ),
+      ),
+    ]);
+
+    const heartbeatsAfterCancel = eventsOfType(collector.events, "heartbeat").length;
+    heartbeatTicker.triggerSilentGap();
+    expect(eventsOfType(collector.events, "heartbeat").length).toBe(
+      heartbeatsAfterCancel,
+    );
   });
 });

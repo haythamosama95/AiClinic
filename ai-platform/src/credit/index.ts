@@ -10,6 +10,12 @@ import type {
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
+/** Max reconcile presentations before a grace entry is dropped. */
+export const GRACE_RECONCILE_MAX_ATTEMPTS = 5;
+
+/** Wall-clock TTL for a grace entry from first reconcile sighting. */
+export const GRACE_RECONCILE_TTL_MS = 7_200_000;
+
 export type CreditInput = {
   installationId: string;
   requestId: string;
@@ -30,6 +36,26 @@ export type ReconcileGraceResult = {
   reconciled: number;
 };
 
+export type ReconcileGraceContext = {
+  now?: number;
+};
+
+export type GraceDropReason =
+  | "settled_by_another_path_idempotent"
+  | "settled_by_another_path_replay"
+  | "settled_by_another_path_unknown_request"
+  | "expired"
+  | "max_attempts";
+
+export type DroppedGraceJournalEntry = {
+  reason: GraceDropReason;
+  installationId: string;
+  requestReference: string;
+  graceRequestId: string;
+  idempotencyKey: string;
+  atMs: number;
+};
+
 type CreditWireResponse =
   | { kind: "credit"; ok: true; periodCounters: PeriodCounters }
   | { kind: "credit"; ok: false; code: "unknown_request" };
@@ -41,6 +67,52 @@ type CreditRpcOutcome =
 type AdmissionRpcOutcome =
   | { ok: true; body: AdmissionResponse }
   | { ok: false; reason: "unavailable" | "client_error" };
+
+/** Credit-owned reconcile bookkeeping stamped onto queue entries on requeue. */
+type TrackedGraceAdmission = PendingGraceAdmission & {
+  reconcileAttempts?: number;
+  reconcileQueuedAtMs?: number;
+};
+
+const droppedGraceJournal: DroppedGraceJournalEntry[] = [];
+
+/** Drains journaled grace drops (tests / diagnostics). */
+export function drainDroppedGraceJournal(): DroppedGraceJournalEntry[] {
+  return droppedGraceJournal.splice(0);
+}
+
+/** Non-destructive view of journaled grace drops (tests / diagnostics). */
+export function peekDroppedGraceJournal(): readonly DroppedGraceJournalEntry[] {
+  return droppedGraceJournal.slice();
+}
+
+function journalGraceDrop(
+  entry: TrackedGraceAdmission,
+  reason: GraceDropReason,
+  atMs: number,
+): void {
+  const record: DroppedGraceJournalEntry = {
+    reason,
+    installationId: entry.installationId,
+    requestReference: entry.requestReference,
+    graceRequestId: entry.graceRequestId,
+    idempotencyKey: entry.idempotencyKey,
+    atMs,
+  };
+  droppedGraceJournal.push(record);
+  console.warn("grace_reconcile_dropped", record);
+}
+
+function stampForRequeue(
+  entry: TrackedGraceAdmission,
+  nowMs: number,
+): TrackedGraceAdmission {
+  return {
+    ...entry,
+    reconcileAttempts: (entry.reconcileAttempts ?? 0) + 1,
+    reconcileQueuedAtMs: entry.reconcileQueuedAtMs ?? nowMs,
+  };
+}
 
 async function invokeAdmissionRpc(
   entry: PendingGraceAdmission,
@@ -75,19 +147,6 @@ async function invokeAdmissionRpc(
   }
 
   return { ok: true, body: (await response.json()) as AdmissionResponse };
-}
-
-function doIssuedRequestId(body: AdmissionResponse): string | null {
-  if (body.kind !== "admission") {
-    return null;
-  }
-  if (body.outcome === "admitted") {
-    return body.requestId;
-  }
-  if (body.outcome === "idempotent") {
-    return body.priorState.requestId;
-  }
-  return null;
 }
 
 async function invokeCreditRpc(
@@ -164,26 +223,64 @@ export async function creditUsage(
  * Reconciles grace admissions queued by `src/admission/` when the Quota DO was
  * unavailable (FR-013). Re-presents each pending admission so the DO issues a
  * real requestId, then credits that id with attached (or zero) usage.
+ *
+ * Only a fresh `admitted` outcome may be credited. `idempotent` / `replay`
+ * outcomes and `unknown_request` credits mean another path already settled the
+ * key — the entry is dropped (journaled). Entries also drop on TTL / max
+ * attempts so the queue cannot wedge forever.
  */
 export async function reconcileGraceUsage(
   bindings: CreditBindings,
+  ctx?: ReconcileGraceContext,
 ): Promise<ReconcileGraceResult> {
+  const nowMs = ctx?.now ?? Date.now();
   const pending = drainPendingGraceAdmissions();
   let reconciled = 0;
 
-  for (const entry of pending) {
+  for (const raw of pending) {
+    const prior = raw as TrackedGraceAdmission;
+    const entry: TrackedGraceAdmission = {
+      ...prior,
+      reconcileQueuedAtMs: prior.reconcileQueuedAtMs ?? nowMs,
+      reconcileAttempts: prior.reconcileAttempts ?? 0,
+    };
+
+    if (nowMs - entry.reconcileQueuedAtMs! > GRACE_RECONCILE_TTL_MS) {
+      journalGraceDrop(entry, "expired", nowMs);
+      continue;
+    }
+    if (entry.reconcileAttempts! >= GRACE_RECONCILE_MAX_ATTEMPTS) {
+      journalGraceDrop(entry, "max_attempts", nowMs);
+      continue;
+    }
+
     const admission = await invokeAdmissionRpc(entry, bindings);
     if (!admission.ok) {
-      requeueGraceAdmission(entry);
+      requeueGraceAdmission(stampForRequeue(entry, nowMs));
       continue;
     }
 
-    const requestId = doIssuedRequestId(admission.body);
-    if (requestId === null) {
-      requeueGraceAdmission(entry);
+    const body = admission.body;
+    if (body.kind !== "admission") {
+      requeueGraceAdmission(stampForRequeue(entry, nowMs));
       continue;
     }
 
+    if (body.outcome === "idempotent") {
+      journalGraceDrop(entry, "settled_by_another_path_idempotent", nowMs);
+      continue;
+    }
+    if (body.outcome === "replay") {
+      journalGraceDrop(entry, "settled_by_another_path_replay", nowMs);
+      continue;
+    }
+    if (body.outcome !== "admitted") {
+      requeueGraceAdmission(stampForRequeue(entry, nowMs));
+      continue;
+    }
+
+    // Credit only a requestId issued by this entry's fresh `admitted` outcome.
+    const requestId = body.requestId;
     const credit = await invokeCreditRpc(
       entry.installationId,
       requestId,
@@ -194,7 +291,11 @@ export async function reconcileGraceUsage(
     );
 
     if (!credit.ok) {
-      requeueGraceAdmission(entry);
+      if (credit.reason === "unknown_request") {
+        journalGraceDrop(entry, "settled_by_another_path_unknown_request", nowMs);
+        continue;
+      }
+      requeueGraceAdmission(stampForRequeue(entry, nowMs));
       continue;
     }
 

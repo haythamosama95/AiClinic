@@ -1,0 +1,11 @@
+{
+  "case_id": "visit_summary.insufficient_context",
+  "user_intent": "Draft a concise visit summary emphasising the chief complaint and timeline.",
+  "context": {
+    "visit.chief_complaint@v1": {
+      "visit_id": "550e8400-e29b-41d4-a716-446655440001",
+      "complaint": "See chart.",
+      "recorded_at": "2026-07-31T12:00:00Z"
+    }
+  }
+}

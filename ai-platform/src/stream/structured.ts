@@ -1,5 +1,5 @@
 import type { AdapterSseEvent } from "../adapter";
-import type { TaxonomyCode } from "../errors";
+import { buildErrorBody, type TaxonomyCode } from "../errors";
 import {
   validateAndRepair,
   type BusinessRuleRegistry,
@@ -69,6 +69,8 @@ export interface StructuredValidationConfig {
 export interface StructuredStreamBrokerOptions {
   traceId: string;
   requestId: string;
+  /** Client-facing request reference carried on terminal `failed` error bodies (§5.4). */
+  requestReference: string;
   eventSink: StreamBrokerEventSink;
   chunkSource: ChunkSource;
   heartbeatTicker: HeartbeatTicker;
@@ -145,8 +147,10 @@ async function* abortableAsyncIterate<T>(
       yield result.value;
     }
   } finally {
+    // Do not await: return() queues behind a pending next() on hung /
+    // signal-ignoring sources and never settles (§3.2.6).
     if (typeof iterator.return === "function") {
-      await iterator.return(undefined);
+      void Promise.resolve(iterator.return(undefined)).catch(() => undefined);
     }
   }
 }
@@ -238,9 +242,16 @@ export function createStructuredStreamBroker(
       return;
     }
 
+    // Mirror adapter pushTerminalEvent("failed") — full §5.4 error body.
+    const errorBody = buildErrorBody({
+      code,
+      requestReference: options.requestReference,
+      traceId: options.traceId,
+    });
+
     emitTerminalOnce({
       type: "failed",
-      data: { code },
+      data: { ...errorBody },
       trace_id: options.traceId,
     });
     journalTerminal("failed", code);

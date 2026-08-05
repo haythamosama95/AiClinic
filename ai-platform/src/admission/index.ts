@@ -300,7 +300,8 @@ export async function runAdmission(
   bindings: AdmissionBindings,
   ctx?: AdmissionContext,
 ): Promise<AdmissionResult> {
-  const now = ctx?.now ?? Date.now();
+  // Principal.exp is a JWT NumericDate (seconds). Default must match.
+  const now = ctx?.now ?? Math.floor(Date.now() / 1000);
   const { principal, idempotencyKey, requestReference, cache, reader } = input;
 
   // Defensive recheck for §6.2 harness / mis-ordered pipeline: align with B3 skew.

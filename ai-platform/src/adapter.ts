@@ -26,6 +26,8 @@ export interface AdapterSseEvent {
   trace_id: string;
 }
 
+export type AdapterDisconnectReason = "client_close" | "network_drop";
+
 export interface AdapterStreamContext {
   traceId: string;
   requestReference: string;
@@ -34,6 +36,8 @@ export interface AdapterStreamContext {
     traceId: string;
     capabilityVersion: string;
   };
+  /** Connection-scoped abort; fires on client disconnect / request signal abort. */
+  signal: AbortSignal;
 }
 
 export interface AdapterEventSink {
@@ -41,13 +45,22 @@ export interface AdapterEventSink {
 }
 
 /**
+ * Optional handle returned by the event source so the adapter can notify
+ * disconnect (D4 broker `disconnect(reason)`).
+ */
+export type AdapterEventSourceHandle = {
+  disconnect?(reason: AdapterDisconnectReason): void;
+};
+
+/**
  * Injected event source (broker in production; test harness stubs in tests).
  * Required — without one the adapter fails fast with 503.
+ * Return may expose `disconnect` so client abort reaches the broker.
  */
 export type AdapterEventSourceFactory = (
   sink: AdapterEventSink,
   context: AdapterStreamContext,
-) => unknown;
+) => AdapterEventSourceHandle | void;
 
 export interface HandleAdapterRequestOptions {
   eventSource?: AdapterEventSourceFactory;
@@ -346,6 +359,7 @@ export async function handleAdapterRequest(
   }
 
   const requestReference = generateRequestReference();
+  const disconnectController = new AbortController();
   const context: AdapterStreamContext = {
     traceId: parsedHeaders.traceId,
     requestReference,
@@ -354,16 +368,30 @@ export async function handleAdapterRequest(
       traceId: parsedHeaders.traceId,
       capabilityVersion: parsedHeaders.capabilityVersion,
     },
+    signal: disconnectController.signal,
   };
 
   // Connection-scoped only — no per-request server state object (§4.4 / §9.7).
   let terminalEmitted = false;
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
     null;
+  let eventSourceHandle: AdapterEventSourceHandle | undefined;
+  let disconnectNotified = false;
   const abortedAtEntry = request.signal.aborted;
 
   const markCancelledWithoutEnqueue = (): void => {
     terminalEmitted = true;
+  };
+
+  const notifyDisconnect = (reason: AdapterDisconnectReason): void => {
+    if (disconnectNotified) {
+      return;
+    }
+    disconnectNotified = true;
+    if (!disconnectController.signal.aborted) {
+      disconnectController.abort();
+    }
+    eventSourceHandle?.disconnect?.(reason);
   };
 
   const sink: AdapterEventSink = {
@@ -396,15 +424,21 @@ export async function handleAdapterRequest(
 
       if (abortedAtEntry || request.signal.aborted) {
         markCancelledWithoutEnqueue();
+        notifyDisconnect("client_close");
         safeCloseController(controller);
         return;
       }
 
-      eventSource(sink, context);
+      const handle = eventSource(sink, context);
+      if (handle && typeof handle === "object") {
+        eventSourceHandle = handle;
+      }
     },
     cancel() {
       // Client disconnected — nobody left to receive `cancelled` on the wire (contract §4).
+      // Notify the event source so the broker can abort the in-flight provider fetch.
       markCancelledWithoutEnqueue();
+      notifyDisconnect("client_close");
     },
   });
 
@@ -416,6 +450,7 @@ export async function handleAdapterRequest(
           markCancelledWithoutEnqueue();
           safeCloseController(streamController);
         }
+        notifyDisconnect("client_close");
       },
       { once: true },
     );

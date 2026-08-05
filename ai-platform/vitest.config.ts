@@ -13,6 +13,8 @@ export default defineConfig({
       "test/capability.test.ts",
       "test/journal.test.ts",
       "test/support-lookup.test.ts",
+      "test/support-purge.test.ts",
+      "test/pipeline.test.ts",
       "test/retention.test.ts",
       "test/rollup-reconciliation.test.ts",
       "test/journal-dashboards.test.ts",

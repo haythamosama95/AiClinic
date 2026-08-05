@@ -23,6 +23,7 @@ import {
 import {
   GeminiAdapter,
   GEMINI_API_KEY_BINDING,
+  PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
   type GeminiAdapterOptions,
   type GeminiTransport,
   type GeminiTransportResponse,
@@ -1170,5 +1171,173 @@ describe("wire_mapping_top_k_and_schema", () => {
     expect(body.generationConfig?.topK).toBe(3);
     expect(body.generationConfig?.responseMimeType).toBe("application/json");
     expect(body.generationConfig?.responseSchema).toEqual({ type: "object" });
+  });
+});
+
+describe("stream_error_frame_classification_structured", () => {
+  it("does not rate_limit on message substring 'accurate' / 'generate'", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: [
+        'data: {"error":{"code":400,"message":"Response is not accurate","status":"INVALID_ARGUMENT"}}',
+        "",
+      ].join("\n"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    assertClassifiedError(outcome, "provider_rejected");
+  });
+
+  it("INTERNAL with 'generate' in message classifies as internal_error not rate_limited", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: [
+        'data: {"error":{"code":500,"message":"failed to generate content","status":"INTERNAL"}}',
+        "",
+      ].join("\n"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    assertClassifiedError(outcome, "internal_error");
+  });
+
+  it("RESOURCE_EXHAUSTED structured status still rate_limited", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: [
+        'data: {"error":{"code":429,"message":"quota","status":"RESOURCE_EXHAUSTED"}}',
+        "",
+      ].join("\n"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, streamRequest);
+    assertClassifiedError(outcome, "rate_limited");
+  });
+});
+
+describe("retry_after_header", () => {
+  it("attaches retryAfterMs from Retry-After delta-seconds on 429", async () => {
+    const fixture = loadFixture<{
+      status: number;
+      body: unknown;
+    }>("errors", "rate_limited.json");
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: fixture.status,
+      headers: {
+        "content-type": "application/json",
+        "Retry-After": "5",
+      },
+      body: JSON.stringify(fixture.body),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "rate_limited");
+    expect(error.retryAfterMs).toBe(5_000);
+  });
+
+  it("attaches retryAfterMs from Retry-After HTTP-date on 429", async () => {
+    const fixture = loadFixture<{
+      status: number;
+      body: unknown;
+    }>("errors", "rate_limited.json");
+    const httpDate = new Date(Date.now() + 30_000).toUTCString();
+    const targetMs = Date.parse(httpDate);
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: fixture.status,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": httpDate,
+      },
+      body: JSON.stringify(fixture.body),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const before = Date.now();
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const after = Date.now();
+    const error = assertClassifiedError(outcome, "rate_limited");
+    expect(error.retryAfterMs).toBeDefined();
+    // Adapter computed max(0, target - now) with now ∈ [before, after].
+    expect(error.retryAfterMs!).toBeGreaterThanOrEqual(targetMs - after);
+    expect(error.retryAfterMs!).toBeLessThanOrEqual(targetMs - before);
+  });
+});
+
+describe("provider_response_body_size_limit", () => {
+  it("rejects oversized provider body as classified internal_error", async () => {
+    const secretStore = createRecordingSecretStore();
+    const oversized = "x".repeat(PROVIDER_RESPONSE_BODY_SIZE_LIMIT + 1);
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: oversized,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "internal_error");
+    expect(error.providerNative.code).toBe("response_too_large");
+  });
+
+  it("rejects when Content-Length declares over the limit", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(PROVIDER_RESPONSE_BODY_SIZE_LIMIT + 1),
+      },
+      body: successJsonBody("ok"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "internal_error");
+    expect(error.providerNative.code).toBe("response_too_large");
   });
 });

@@ -153,6 +153,11 @@ export type CanonicalError = {
   retryability: boolean;
   providerNative: ProviderNativeDiagnostic;
   consumedBudget: boolean;
+  /**
+   * Optional provider Retry-After hint in milliseconds (runtime handoff to
+   * invocation). Not a §5.3 wire-manifest field — omit before encode.
+   */
+  retryAfterMs?: number;
 };
 
 export function assertNoProviderShapedFieldNames(

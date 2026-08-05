@@ -30,7 +30,13 @@ describe("T1 golden_set_passes_on_current_prompt", () => {
     expect(result.report.overall).toBe("pass");
     expect(result.report.capability_id).toBe(FIRST_CAPABILITY);
     expect(result.report.prompt_build).toBe("current");
-    expect(result.report.cases.length).toBeGreaterThan(0);
+    expect(result.report.cases.length).toBeGreaterThanOrEqual(2);
+    expect(
+      result.report.cases.map((entry) => entry.case_id).sort(),
+    ).toEqual([
+      "visit_summary.happy_path",
+      "visit_summary.insufficient_context",
+    ]);
     for (const entry of result.report.cases) {
       expect(entry.quality).toBe("pass");
       expect(entry.schema).toBe("pass");
@@ -55,6 +61,42 @@ describe("T2 deliberately_regressed_prompt_fails", () => {
     expect(happyPath).toBeDefined();
     expect(happyPath?.quality).toBe("fail");
     expect(happyPath?.schema).toBe("pass");
+
+    const insufficient = result.report.cases.find(
+      (entry) => entry.case_id === "visit_summary.insufficient_context",
+    );
+    expect(insufficient).toBeDefined();
+    expect(insufficient?.quality).toBe("fail");
+  });
+});
+
+describe("output_must_contain_participates_in_golden_failure", () => {
+  it("deliberately-regressed fixture response fails quality via output_must_contain", async () => {
+    const result = await runGoldenSuite({
+      capabilityId: FIRST_CAPABILITY,
+      promptBuild: "current",
+      fixtureBuild: "deliberately_regressed",
+      caseIds: ["visit_summary.happy_path"],
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.report.overall).toBe("fail");
+    expect(result.report.cases).toHaveLength(1);
+
+    const happyPath = result.report.cases[0];
+    expect(happyPath?.case_id).toBe("visit_summary.happy_path");
+    // Schema still passes: body is valid non-empty prose — only output needles fail.
+    expect(happyPath?.schema).toBe("pass");
+    expect(happyPath?.quality).toBe("fail");
+    expect(
+      result.fixturePathsUsed.some((fixturePath) =>
+        pathContainsParts(
+          fixturePath,
+          "responses",
+          "visit_summary.happy_path.regressed.json",
+        ),
+      ),
+    ).toBe(true);
   });
 });
 

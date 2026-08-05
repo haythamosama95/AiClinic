@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Master orchestration: run ALL backend verification suites.
 # This script consolidates auth, org/branch, patient, appointment, visit,
-# billing, and shift management tests.
+# billing, shift management, and AI platform trust tests.
 # Run: ./backend/tests/run_all_backend_tests.sh
 set -euo pipefail
 
@@ -107,6 +107,10 @@ run_shell_test "Service Catalog suite" "run_service_catalog_tests.sh"
 # --- Shift Management ---
 printf '\n--- Shift Management ---\n'
 run_shell_test "Shift management suite" "run_shift_management_tests.sh"
+
+# --- AI Platform Trust ---
+printf '\n--- AI Platform Trust ---\n'
+run_shell_test "AI platform trust suite" "run_ai_platform_trust_tests.sh"
 
 # --- Safety ---
 printf '\n--- Safety ---\n'

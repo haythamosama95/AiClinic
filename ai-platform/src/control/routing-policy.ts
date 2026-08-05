@@ -155,6 +155,10 @@ export async function handleRoutingPolicyCanary(
     return reject(404, "policy_version_not_found");
   }
 
+  if (existing.status !== "published" && existing.status !== "canary") {
+    return reject(409, "illegal_policy_transition");
+  }
+
   const missingInstallations = await assertInstallationsExist(
     DB,
     body.installation_ids,
@@ -335,6 +339,10 @@ export async function handleRoutingPolicyRollback(
       .bind(route.policyId)
       .first<{ version: string }>();
 
+    if (!prior) {
+      return reject(409, "illegal_policy_transition");
+    }
+
     statements.push(
       DB.prepare(
         `UPDATE routing_policy
@@ -342,19 +350,14 @@ export async function handleRoutingPolicyRollback(
          WHERE policy_id = ? AND version = ?`,
       ).bind(route.policyId, route.version),
     );
-
-    if (prior) {
-      statements.push(
-        DB.prepare(
-          `UPDATE routing_policy
-           SET status = 'active', canary_installation_ids = NULL
-           WHERE policy_id = ? AND version = ?`,
-        ).bind(route.policyId, prior.version),
-      );
-      afterPointer = `${route.policyId}@${prior.version}`;
-    } else {
-      afterPointer = null;
-    }
+    statements.push(
+      DB.prepare(
+        `UPDATE routing_policy
+         SET status = 'active', canary_installation_ids = NULL
+         WHERE policy_id = ? AND version = ?`,
+      ).bind(route.policyId, prior.version),
+    );
+    afterPointer = `${route.policyId}@${prior.version}`;
   } else {
     // published (or other): succeed, clear any canary split on this policy
     beforePointer = existing.canary_installation_ids

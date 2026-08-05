@@ -124,12 +124,35 @@ type AdmissionModule = {
   ) => boolean;
 };
 
+type GraceDropReason =
+  | "settled_by_another_path_idempotent"
+  | "settled_by_another_path_replay"
+  | "settled_by_another_path_unknown_request"
+  | "expired"
+  | "max_attempts";
+
+type DroppedGraceJournalEntry = {
+  reason: GraceDropReason;
+  installationId: string;
+  requestReference: string;
+  graceRequestId: string;
+  idempotencyKey: string;
+  atMs: number;
+};
+
 type CreditModule = {
   creditUsage: (
     input: CreditInput,
     bindings: CreditBindings,
   ) => Promise<CreditResult>;
-  reconcileGraceUsage: (bindings: CreditBindings) => Promise<ReconcileGraceResult>;
+  reconcileGraceUsage: (
+    bindings: CreditBindings,
+    ctx?: { now?: number },
+  ) => Promise<ReconcileGraceResult>;
+  drainDroppedGraceJournal: () => DroppedGraceJournalEntry[];
+  peekDroppedGraceJournal: () => readonly DroppedGraceJournalEntry[];
+  GRACE_RECONCILE_MAX_ATTEMPTS: number;
+  GRACE_RECONCILE_TTL_MS: number;
 };
 
 type PlatformCounterRow = {
@@ -413,6 +436,8 @@ beforeEach(async () => {
   await clearAdmissionTables();
   const admission = await loadAdmissionModule();
   admission.drainPendingGraceAdmissions();
+  const credit = await loadCreditModule();
+  credit.drainDroppedGraceJournal();
 });
 
 describe("admission_exactly_one_do_fetch_per_request", () => {
@@ -604,6 +629,256 @@ describe("grace_usage_reconciled_afterwards", () => {
     if (probeCredit.ok) {
       expect(probeCredit.periodCounters.requestsUsed).toBeGreaterThanOrEqual(2);
     }
+  });
+});
+
+describe("grace_reconcile_settled_by_another_path", () => {
+  it("drops on idempotent when a client retry already admitted and credited the key", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+    const jti = uniqueJti();
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestReference,
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+    if (graceResult.ok) {
+      expect(graceResult.outcome).toBe("grace_admitted");
+    }
+
+    expect(
+      admission.attachGraceUsage(requestReference, { tokens: 99, cost: 9.9 }, false),
+    ).toBe(true);
+
+    // Client retry after DO recovery — same idempotency key, fresh jti so the
+    // DO records the key without consuming the grace entry's jti (replay would
+    // otherwise win on reconcile). Then stage-15 credit.
+    const retry = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestReference,
+        principal: { jti: uniqueJti() },
+      }),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(retry);
+
+    const retryCredit = await credit.creditUsage(
+      {
+        installationId,
+        requestId: retry.requestId,
+        requestReference,
+        usage: { tokens: 5, cost: 0.05 },
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(retryCredit.ok).toBe(true);
+    if (!retryCredit.ok) {
+      return;
+    }
+    const requestsAfterRetry = retryCredit.periodCounters.requestsUsed;
+    const tokensAfterRetry = retryCredit.periodCounters.tokensUsed;
+
+    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO });
+    expect(reconcile.reconciled).toBe(0);
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+
+    const drops = credit.peekDroppedGraceJournal();
+    expect(drops).toHaveLength(1);
+    expect(drops[0]?.reason).toBe("settled_by_another_path_idempotent");
+    expect(drops[0]?.requestReference).toBe(requestReference);
+
+    // Stale grace usage must not settle the retry's requestId again.
+    const probe = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(probe);
+    const probeCredit = await credit.creditUsage(
+      {
+        installationId,
+        requestId: probe.requestId,
+        requestReference: uniqueRequestReference(),
+        usage: { tokens: 1, cost: 0 },
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(probeCredit.ok).toBe(true);
+    if (probeCredit.ok) {
+      expect(probeCredit.periodCounters.tokensUsed).toBe(tokensAfterRetry + 1);
+      expect(probeCredit.periodCounters.requestsUsed).toBe(requestsAfterRetry + 1);
+    }
+  });
+
+  it("drops on replay when the grace jti was already consumed by a retry", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const jti = uniqueJti();
+    const requestReference = uniqueRequestReference();
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        requestReference,
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+
+    // Retry with the same jti (different idempotency key) after DO recovery.
+    const retry = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        principal: { jti },
+      }),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(retry);
+
+    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO });
+    expect(reconcile.reconciled).toBe(0);
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
+      "settled_by_another_path_replay",
+    ]);
+  });
+
+  it("drops on unknown_request when the admitted id was already credited", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const requestReference = uniqueRequestReference();
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, { requestReference }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+    expect(
+      admission.attachGraceUsage(requestReference, { tokens: 10, cost: 0.01 }, false),
+    ).toBe(true);
+
+    let fetchIndex = 0;
+    const alreadySettledRequestId = crypto.randomUUID();
+    const scriptedDo: DurableObjectNamespace = {
+      idFromString: env.DO.idFromString.bind(env.DO),
+      idFromName: env.DO.idFromName?.bind(env.DO),
+      newUniqueId: env.DO.newUniqueId?.bind(env.DO),
+      get: () => ({
+        fetch: async () => {
+          fetchIndex += 1;
+          if (fetchIndex === 1) {
+            return new Response(
+              JSON.stringify({
+                kind: "admission",
+                outcome: "admitted",
+                requestId: alreadySettledRequestId,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              kind: "credit",
+              ok: false,
+              code: "unknown_request",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        },
+      }),
+    } as DurableObjectNamespace;
+
+    const reconcile = await credit.reconcileGraceUsage({ DO: scriptedDo });
+    expect(reconcile.reconciled).toBe(0);
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
+      "settled_by_another_path_unknown_request",
+    ]);
+    expect(fetchIndex).toBe(2);
+  });
+
+  it("drops after max reconcile attempts when the DO stays unavailable", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+
+    for (let i = 0; i < credit.GRACE_RECONCILE_MAX_ATTEMPTS; i += 1) {
+      const result = await credit.reconcileGraceUsage({ DO: brokenDo });
+      expect(result.reconciled).toBe(0);
+      expect(admission.peekPendingGraceAdmissions()).toHaveLength(1);
+      expect(credit.peekDroppedGraceJournal()).toHaveLength(0);
+    }
+
+    const final = await credit.reconcileGraceUsage({ DO: brokenDo });
+    expect(final.reconciled).toBe(0);
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
+      "max_attempts",
+    ]);
+  });
+
+  it("drops expired grace entries without crediting", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+
+    // First sighting stamps queuedAt; next pass past TTL drops.
+    await credit.reconcileGraceUsage(
+      { DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(1);
+
+    const expired = await credit.reconcileGraceUsage(
+      { DO: env.DO },
+      { now: FIXTURE_NOW_MS + credit.GRACE_RECONCILE_TTL_MS + 1 },
+    );
+    expect(expired.reconciled).toBe(0);
+    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
+      "expired",
+    ]);
   });
 });
 

@@ -22,6 +22,13 @@ const GEMINI_API_BASE =
 export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
 const PROVIDER_ID = "gemini";
 
+/**
+ * Provider response body size limit (bytes). Mirrors ingress
+ * `INGRESS_BODY_SIZE_LIMIT` (1 MiB) so a hostile/malfunctioning endpoint
+ * cannot exhaust isolate memory via an unbounded buffered body.
+ */
+export const PROVIDER_RESPONSE_BODY_SIZE_LIMIT = 1_048_576;
+
 export type GeminiTransportResponse = {
   status: number;
   headers: Record<string, string>;
@@ -117,6 +124,7 @@ function createCanonicalError(
   nativeCode: string,
   nativeMessage: string,
   consumedBudgetOverride?: boolean,
+  retryAfterMs?: number,
 ): CanonicalError {
   return setRetryabilityFromClassification({
     taxonomyCode: code,
@@ -129,7 +137,67 @@ function createCanonicalError(
       consumedBudgetOverride !== undefined
         ? consumedBudgetOverride
         : consumesBudget(code),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
   });
+}
+
+function headerValue(
+  headers: Record<string, string>,
+  name: string,
+): string | undefined {
+  const want = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === want) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Parse HTTP `Retry-After` as either delta-seconds or HTTP-date.
+ * Returns milliseconds remaining, or undefined when absent/unparseable.
+ */
+function parseRetryAfterMs(
+  headers: Record<string, string>,
+): number | undefined {
+  const raw = headerValue(headers, "retry-after");
+  if (raw === undefined) {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000;
+  }
+  const whenMs = Date.parse(trimmed);
+  if (Number.isNaN(whenMs)) {
+    return undefined;
+  }
+  return Math.max(0, whenMs - Date.now());
+}
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+function isProviderBodyOverLimit(
+  body: string,
+  headers: Record<string, string>,
+): boolean {
+  const contentLength = headerValue(headers, "content-length");
+  if (contentLength !== undefined) {
+    const declared = Number(contentLength);
+    if (
+      Number.isFinite(declared) &&
+      declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
+    ) {
+      return true;
+    }
+  }
+  return utf8ByteLength(body) > PROVIDER_RESPONSE_BODY_SIZE_LIMIT;
 }
 
 function resolveTimeoutMs(
@@ -343,25 +411,26 @@ function classifyProviderErrorFrame(body: GeminiResponse): TaxonomyCode {
     return "provider_rejected";
   }
   const status = (body.error?.status ?? "").toUpperCase();
-  const message = (body.error?.message ?? "").toLowerCase();
-  if (
-    status === "RESOURCE_EXHAUSTED" ||
-    status.includes("RATE") ||
-    message.includes("rate") ||
-    message.includes("quota")
-  ) {
-    return "rate_limited";
-  }
+  const numericCode =
+    typeof body.error?.code === "number" ? body.error.code : undefined;
+
+  // Server-side first — structured status / numeric code only (no message substrings).
   if (
     status === "INTERNAL" ||
     status === "UNAVAILABLE" ||
     status === "DEADLINE_EXCEEDED" ||
     status.includes("SERVER") ||
-    (typeof body.error?.code === "number" && body.error.code >= 500)
+    (numericCode !== undefined && numericCode >= 500)
   ) {
     return "internal_error";
   }
-  if (status.includes("SAFETY") || message.includes("safety")) {
+
+  // Rate limit — structured signals only (no bare "rate"/"quota" message match).
+  if (status === "RESOURCE_EXHAUSTED" || numericCode === 429) {
+    return "rate_limited";
+  }
+
+  if (status.includes("SAFETY")) {
     return "provider_rejected";
   }
   return "provider_rejected";
@@ -669,6 +738,17 @@ export class GeminiAdapter implements ProviderPort {
     isStream: boolean,
     providerMs: number,
   ): ProviderInvokeResult {
+    if (isProviderBodyOverLimit(response.body, response.headers)) {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      };
+    }
+
     const contentType =
       response.headers["content-type"] ??
       response.headers["Content-Type"] ??
@@ -682,12 +762,15 @@ export class GeminiAdapter implements ProviderPort {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
+      const retryAfterMs = parseRetryAfterMs(response.headers);
       return {
         kind: "error",
         error: createCanonicalError(
           taxonomy,
           String(parsed.error?.status ?? parsed.error?.code ?? response.status),
           parsed.error?.message ?? `HTTP ${response.status}`,
+          undefined,
+          retryAfterMs,
         ),
       };
     }

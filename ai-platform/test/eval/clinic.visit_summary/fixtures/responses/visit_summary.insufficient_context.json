@@ -1,0 +1,20 @@
+{
+  "id": "ds-visit-summary-insufficient-001",
+  "object": "chat.completion",
+  "model": "deepseek-v4-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The supplied context is insufficient for a meaningful outpatient visit summary. What is missing: a concrete chief complaint description beyond a chart pointer, a symptom timeline, and any relevant history. No speculative summary was generated."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 72,
+    "completion_tokens": 48,
+    "total_tokens": 120
+  }
+}

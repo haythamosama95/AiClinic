@@ -21,6 +21,13 @@ const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 export const DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
 const PROVIDER_ID = "deepseek";
 
+/**
+ * Provider response body size limit (bytes). Mirrors ingress
+ * `INGRESS_BODY_SIZE_LIMIT` (1 MiB) so a hostile/malfunctioning endpoint
+ * cannot exhaust isolate memory via an unbounded buffered body.
+ */
+export const PROVIDER_RESPONSE_BODY_SIZE_LIMIT = 1_048_576;
+
 export type DeepSeekTransportResponse = {
   status: number;
   headers: Record<string, string>;
@@ -105,6 +112,7 @@ function createCanonicalError(
   nativeCode: string,
   nativeMessage: string,
   consumedBudgetOverride?: boolean,
+  retryAfterMs?: number,
 ): CanonicalError {
   return setRetryabilityFromClassification({
     taxonomyCode: code,
@@ -117,7 +125,67 @@ function createCanonicalError(
       consumedBudgetOverride !== undefined
         ? consumedBudgetOverride
         : consumesBudget(code),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
   });
+}
+
+function headerValue(
+  headers: Record<string, string>,
+  name: string,
+): string | undefined {
+  const want = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === want) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Parse HTTP `Retry-After` as either delta-seconds or HTTP-date.
+ * Returns milliseconds remaining, or undefined when absent/unparseable.
+ */
+function parseRetryAfterMs(
+  headers: Record<string, string>,
+): number | undefined {
+  const raw = headerValue(headers, "retry-after");
+  if (raw === undefined) {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000;
+  }
+  const whenMs = Date.parse(trimmed);
+  if (Number.isNaN(whenMs)) {
+    return undefined;
+  }
+  return Math.max(0, whenMs - Date.now());
+}
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+function isProviderBodyOverLimit(
+  body: string,
+  headers: Record<string, string>,
+): boolean {
+  const contentLength = headerValue(headers, "content-length");
+  if (contentLength !== undefined) {
+    const declared = Number(contentLength);
+    if (
+      Number.isFinite(declared) &&
+      declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
+    ) {
+      return true;
+    }
+  }
+  return utf8ByteLength(body) > PROVIDER_RESPONSE_BODY_SIZE_LIMIT;
 }
 
 function resolveTimeoutMs(
@@ -252,9 +320,7 @@ function classifyProviderErrorFrame(body: DeepSeekResponse): TaxonomyCode {
   }
   const type = (body.error?.type ?? "").toLowerCase();
   const code = (body.error?.code ?? "").toLowerCase();
-  if (type.includes("rate_limit") || code.includes("rate_limit")) {
-    return "rate_limited";
-  }
+  // Server-side first — structured type/code tokens only.
   if (
     type.includes("server") ||
     code.includes("server") ||
@@ -262,6 +328,9 @@ function classifyProviderErrorFrame(body: DeepSeekResponse): TaxonomyCode {
     code.includes("insufficient_system_resource")
   ) {
     return "internal_error";
+  }
+  if (type.includes("rate_limit") || code.includes("rate_limit")) {
+    return "rate_limited";
   }
   return "provider_rejected";
 }
@@ -572,6 +641,17 @@ export class DeepSeekAdapter implements ProviderPort {
     isStream: boolean | undefined,
     providerMs: number,
   ): ProviderInvokeResult {
+    if (isProviderBodyOverLimit(response.body, response.headers)) {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      };
+    }
+
     const contentType =
       response.headers["content-type"] ??
       response.headers["Content-Type"] ??
@@ -585,12 +665,15 @@ export class DeepSeekAdapter implements ProviderPort {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
+      const retryAfterMs = parseRetryAfterMs(response.headers);
       return {
         kind: "error",
         error: createCanonicalError(
           taxonomy,
           String(parsed.error?.code ?? response.status),
           parsed.error?.message ?? `HTTP ${response.status}`,
+          undefined,
+          retryAfterMs,
         ),
       };
     }

@@ -39,6 +39,9 @@ export interface TokenVerifier {
   verify(token: string, ctx: VerifyContext): Promise<VerifyResult>;
 }
 
+/** Guard-metric bucket for failures before signature verification (§4.7). */
+const UNVERIFIED_INSTALLATION_BUCKET = "unverified";
+
 type AatPayload = {
   iss: string;
   aud: string;
@@ -56,7 +59,7 @@ type AatPayload = {
 function rejectUnauthenticated(installationId?: string): VerifyResult {
   recordGuardRejection({
     error_code: "unauthenticated",
-    installation_id: installationId ?? "_",
+    installation_id: installationId ?? UNVERIFIED_INSTALLATION_BUCKET,
   });
   return { ok: false, code: "unauthenticated" };
 }
@@ -202,6 +205,30 @@ async function importEd25519PublicKey(
   }
 }
 
+/** Enforce `valid_from <= now < COALESCE(valid_until, +inf)` (§4.5). */
+function isKeyWithinValidityWindow(
+  keyRow: Record<string, unknown>,
+  nowSeconds: number,
+): boolean {
+  const nowMs = nowSeconds * 1000;
+
+  if (isString(keyRow.valid_from)) {
+    const validFromMs = Date.parse(keyRow.valid_from);
+    if (!Number.isNaN(validFromMs) && nowMs < validFromMs) {
+      return false;
+    }
+  }
+
+  if (isString(keyRow.valid_until)) {
+    const validUntilMs = Date.parse(keyRow.valid_until);
+    if (!Number.isNaN(validUntilMs) && nowMs >= validUntilMs) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export class EnrolledKeyVerifier implements TokenVerifier {
   async verify(token: string, ctx: VerifyContext): Promise<VerifyResult> {
     const segments = token.split(".");
@@ -248,15 +275,16 @@ export class EnrolledKeyVerifier implements TokenVerifier {
     }
 
     // Cheap claim checks before any config-cache / D1 load (§4.3.2).
+    // Pre-verification: never attribute forged payload.iss (§4.7).
     if (payload.aud !== ctx.audience) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
     }
 
     if (
       payload.iat - ctx.clockSkewSeconds > ctx.now ||
       ctx.now > payload.exp + ctx.clockSkewSeconds
     ) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
     }
 
     let installation: Record<string, unknown>;
@@ -264,17 +292,9 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       installation = await loadConfig(ctx.cache, ctx.reader, "installations", payload.iss);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated(payload.iss);
+        return rejectUnauthenticated();
       }
       throw error;
-    }
-
-    // Fail closed on lifecycle: only `active` authenticates (§4.3.2 / B2 delete).
-    if (installation.status === "suspended") {
-      return rejectSuspended(payload.iss);
-    }
-    if (installation.status !== "active") {
-      return rejectUnauthenticated(payload.iss);
     }
 
     let keyRow: Record<string, unknown>;
@@ -282,28 +302,32 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       keyRow = await loadConfig(ctx.cache, ctx.reader, "keys", header.kid);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated(payload.iss);
+        return rejectUnauthenticated();
       }
       throw error;
     }
 
     if (keyRow.revoked_at != null) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
+    }
+
+    if (!isKeyWithinValidityWindow(keyRow, ctx.now)) {
+      return rejectUnauthenticated();
     }
 
     // Key selected by iss AND kid (§4.3.2) — bind ownership before verify.
     if (keyRow.installation_id !== payload.iss) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
     }
 
     const signatureBytes = base64urlDecode(signatureB64);
     if (!signatureBytes) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
     }
 
     const publicKey = await importEd25519PublicKey(keyRow);
     if (!publicKey) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
     }
 
     const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
@@ -315,7 +339,18 @@ export class EnrolledKeyVerifier implements TokenVerifier {
     );
 
     if (!valid) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated();
+    }
+
+    // Signature verified — installation_id attribution is safe from here (§4.7).
+    const installationId = payload.iss;
+
+    // Fail closed on lifecycle: only `active` authenticates (§4.3.2 / B2 delete).
+    if (installation.status === "suspended") {
+      return rejectSuspended(installationId);
+    }
+    if (installation.status !== "active") {
+      return rejectUnauthenticated(installationId);
     }
 
     let contractRow: Record<string, unknown>;
@@ -323,13 +358,13 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       contractRow = await loadConfig(ctx.cache, ctx.reader, "token_contracts", payload.ver);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
-        return rejectUnauthenticated(payload.iss);
+        return rejectUnauthenticated(installationId);
       }
       throw error;
     }
 
     if (contractRow.retired_at != null) {
-      return rejectUnauthenticated(payload.iss);
+      return rejectUnauthenticated(installationId);
     }
 
     return { ok: true, principal: buildPrincipal(payload) };

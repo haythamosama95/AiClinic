@@ -8,8 +8,13 @@ import type { Envelope } from "../journal";
 import visitSummaryPublished from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 
 export const DIAGNOSTIC_BASELINE_DAYS = 7;
+/** Enforced diagnostic-horizon band (§7.7 days-to-weeks; ≤ journal horizon). */
+export const DIAGNOSTIC_HORIZON_MIN_DAYS = 1;
+export const DIAGNOSTIC_HORIZON_MAX_DAYS = 90;
 export const JOURNAL_HORIZON_DAYS = 90;
 export const LEDGER_HORIZON_DAYS = 2555;
+/** Months-class horizon for `platform_counter` (§7.7) — aligned with journal. */
+export const COUNTER_HORIZON_DAYS = JOURNAL_HORIZON_DAYS;
 
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -26,6 +31,32 @@ export function defaultRetentionClassResolver(): RetentionClassResolver {
 const PUBLISHED_MANIFEST_JSON: ReadonlyArray<Record<string, unknown>> = [
   visitSummaryPublished as Record<string, unknown>,
 ];
+
+function envelopeObjectKey(requestId: string): string {
+  return `request/${requestId}/envelope`;
+}
+
+/**
+ * Diagnostic R2-scan prefilter days = min(published horizons, baseline, band min).
+ * The band minimum (1d) keeps short legal classes eligible for the per-row check.
+ */
+export function minPublishedDiagnosticHorizonDays(): number {
+  let minDays = DIAGNOSTIC_BASELINE_DAYS;
+  for (const json of PUBLISHED_MANIFEST_JSON) {
+    const governance = json.Governance;
+    if (
+      typeof governance === "object" &&
+      governance !== null &&
+      "retentionClass" in governance
+    ) {
+      const days = parseDiagnosticHorizonDays(
+        String((governance as { retentionClass: unknown }).retentionClass),
+      );
+      minDays = Math.min(minDays, days);
+    }
+  }
+  return Math.min(minDays, DIAGNOSTIC_HORIZON_MIN_DAYS);
+}
 
 export function createManifestRetentionClassResolver(): RetentionClassResolver {
   const byKey = new Map<string, string>();
@@ -103,6 +134,7 @@ export async function runRetentionPurge(
   diagnosticDeleted: number;
   journalDeleted: number;
   ledgerDeleted: number;
+  counterDeleted: number;
 }> {
   const now = bindings.now ?? new Date();
   const resolveRetentionClass =
@@ -115,8 +147,13 @@ export async function runRetentionPurge(
   const ledgerCutoff = new Date(
     now.getTime() - LEDGER_HORIZON_DAYS * MS_PER_DAY,
   ).toISOString();
-  const diagnosticBaselineCutoff = new Date(
-    now.getTime() - DIAGNOSTIC_BASELINE_DAYS * MS_PER_DAY,
+  const counterCutoff = new Date(
+    now.getTime() - COUNTER_HORIZON_DAYS * MS_PER_DAY,
+  ).toISOString();
+  // Prefilter at min(diagnostic horizons): published min ∩ baseline, floored
+  // by the 1d band min so short classes are never skipped by a 7d gate.
+  const diagnosticScanCutoff = new Date(
+    now.getTime() - minPublishedDiagnosticHorizonDays() * MS_PER_DAY,
   ).toISOString();
 
   let diagnosticDeleted = 0;
@@ -129,7 +166,7 @@ export async function runRetentionPurge(
        WHERE payload_pointer IS NOT NULL
          AND COALESCE(completed_at, created_at) < ?`,
     )
-    .bind(diagnosticBaselineCutoff)
+    .bind(diagnosticScanCutoff)
     .all<RequestRetentionRow>();
 
   for (const row of requestRows.results ?? []) {
@@ -150,6 +187,21 @@ export async function runRetentionPurge(
         .run();
       diagnosticDeleted += 1;
     }
+  }
+
+  // Journal purge: delete R2 envelopes before dropping rows so long diagnostic
+  // classes cannot orphan PII objects after the 90d journal cutoff.
+  const journalExpired = await db
+    .prepare(
+      `SELECT request_id, payload_pointer FROM ai_request WHERE created_at < ?`,
+    )
+    .bind(journalCutoff)
+    .all<{ request_id: string; payload_pointer: string | null }>();
+
+  for (const row of journalExpired.results ?? []) {
+    await r2.delete(
+      row.payload_pointer ?? envelopeObjectKey(row.request_id),
+    );
   }
 
   await db
@@ -210,7 +262,13 @@ export async function runRetentionPurge(
     (ledgerAudit.meta.changes ?? 0) +
     (ledgerGrant.meta.changes ?? 0);
 
-  return { diagnosticDeleted, journalDeleted, ledgerDeleted };
+  const counterResult = await db
+    .prepare(`DELETE FROM platform_counter WHERE time_bucket < ?`)
+    .bind(counterCutoff)
+    .run();
+  const counterDeleted = counterResult.meta.changes ?? 0;
+
+  return { diagnosticDeleted, journalDeleted, ledgerDeleted, counterDeleted };
 }
 
 export async function purgeByInstallationId(
@@ -227,12 +285,18 @@ export async function purgeByInstallationId(
     .bind(installationId)
     .all<{ request_id: string; payload_pointer: string | null }>();
 
+  // Always delete by the derived C3 key so mid-sequence NULL pointers cannot
+  // leave PII envelopes behind after an installation purge.
   for (const row of requests.results ?? []) {
-    if (row.payload_pointer) {
-      await r2.delete(row.payload_pointer);
-    }
+    await r2.delete(envelopeObjectKey(row.request_id));
   }
 
+  const installationScope = `installation:${installationId}`;
+
+  // Decision: purge-by-installation-id is the store half of installation
+  // deletion recovery (§7.7). It removes identity + commercial footprint
+  // (`installation_key`, `entitlement`, `installation`) in addition to
+  // journal/ledger/counter/grant rows — not deferred to B2 lifecycle alone.
   await db.batch([
     db
       .prepare(
@@ -259,6 +323,18 @@ export async function purgeByInstallationId(
         `DELETE FROM platform_counter
          WHERE json_extract(dimension_set, '$.installation_id') = ?`,
       )
+      .bind(installationId),
+    db
+      .prepare(`DELETE FROM capability_grant WHERE scope = ?`)
+      .bind(installationScope),
+    db
+      .prepare(`DELETE FROM installation_key WHERE installation_id = ?`)
+      .bind(installationId),
+    db
+      .prepare(`DELETE FROM entitlement WHERE installation_id = ?`)
+      .bind(installationId),
+    db
+      .prepare(`DELETE FROM installation WHERE installation_id = ?`)
       .bind(installationId),
   ]);
 

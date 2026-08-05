@@ -9,6 +9,7 @@ import {
   type VerifyContext,
   type VerifyResult,
 } from "../src/identity";
+import * as rateLimit from "../src/rate-limit";
 
 // ---------------------------------------------------------------------------
 // §5.6 claim set (B1 aat-token contract)
@@ -521,6 +522,26 @@ describe("identity token rejection cases", () => {
         }),
     },
     {
+      name: "identity_rejects_key_not_yet_valid",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          key: keyRow(keypair, FIXTURE_ISS, {
+            valid_from: new Date((NOW + 3600) * 1000).toISOString(),
+          }),
+        }),
+    },
+    {
+      name: "identity_rejects_key_past_valid_until",
+      mutate: async (_token, keypair) => mintToken(keypair),
+      reader: (keypair) =>
+        makeIdentityReader(keypair, {
+          key: keyRow(keypair, FIXTURE_ISS, {
+            valid_until: new Date((NOW - 1) * 1000).toISOString(),
+          }),
+        }),
+    },
+    {
       name: "identity_rejects_deleted_installation",
       mutate: async (_token, keypair) => mintToken(keypair),
       reader: (keypair) =>
@@ -581,6 +602,97 @@ describe("identity_rejects_cross_installation_key", () => {
     const result = await verifier.verify(token, buildVerifyContext(reader));
 
     expectRejected(result, "unauthenticated");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-verification guard attribution (§4.7)
+// ---------------------------------------------------------------------------
+
+describe("identity_preverification_tallies_unverified", () => {
+  it("buckets audience/expiry failures under unverified, not forged iss", async () => {
+    const spy = vi.spyOn(rateLimit, "recordGuardRejection");
+    const verifier = new EnrolledKeyVerifier();
+    const forgedIss = "00000000-forged-iss0-0000-000000000099";
+
+    const wrongAudience = await mintToken(fixtureKeypair, {
+      aud: "wrong-audience",
+      iss: forgedIss,
+    });
+    await verifier.verify(
+      wrongAudience,
+      buildVerifyContext(makeIdentityReader(fixtureKeypair)),
+    );
+
+    expect(spy).toHaveBeenCalledWith({
+      error_code: "unauthenticated",
+      installation_id: "unverified",
+    });
+    expect(spy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ installation_id: forgedIss }),
+    );
+
+    spy.mockClear();
+
+    const expired = await mintToken(fixtureKeypair, {
+      iss: forgedIss,
+      iat: NOW - 900,
+      exp: NOW - CLOCK_SKEW_SECONDS - 1,
+    });
+    await verifier.verify(
+      expired,
+      buildVerifyContext(makeIdentityReader(fixtureKeypair)),
+    );
+
+    expect(spy).toHaveBeenCalledWith({
+      error_code: "unauthenticated",
+      installation_id: "unverified",
+    });
+    expect(spy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ installation_id: forgedIss }),
+    );
+
+    spy.mockRestore();
+  });
+
+  it("attributes installation_id only after signature verification", async () => {
+    const spy = vi.spyOn(rateLimit, "recordGuardRejection");
+    const verifier = new EnrolledKeyVerifier();
+
+    const token = await mintToken(fixtureKeypair);
+    const result = await verifier.verify(
+      token,
+      buildVerifyContext(
+        makeIdentityReader(fixtureKeypair, {
+          installation: installationRow("suspended"),
+        }),
+      ),
+    );
+
+    expectRejected(result, "installation_suspended");
+    expect(spy).toHaveBeenCalledWith({
+      error_code: "installation_suspended",
+      installation_id: FIXTURE_ISS,
+    });
+
+    spy.mockRestore();
+  });
+});
+
+describe("identity_accepts_key_within_validity_window", () => {
+  it("accepts when valid_from <= now < valid_until", async () => {
+    const verifier = new EnrolledKeyVerifier();
+    const token = await mintToken(fixtureKeypair);
+    const reader = makeIdentityReader(fixtureKeypair, {
+      key: keyRow(fixtureKeypair, FIXTURE_ISS, {
+        valid_from: new Date((NOW - 60) * 1000).toISOString(),
+        valid_until: new Date((NOW + 3600) * 1000).toISOString(),
+      }),
+    });
+
+    const result = await verifier.verify(token, buildVerifyContext(reader));
+
+    expect(result.ok).toBe(true);
   });
 });
 

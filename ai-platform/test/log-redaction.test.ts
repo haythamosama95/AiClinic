@@ -2,6 +2,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unstable_dev, type Unstable_DevWorker } from "wrangler";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  writePostResponseDetail,
+  type PostResponseInput,
+} from "../src/journal";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG_PATH = path.join(ROOT, "wrangler.toml");
@@ -18,6 +22,90 @@ const DEV_OPTIONS = {
 const SENSITIVE_PROMPT = "SECRET_PROMPT_TEXT_DO_NOT_LOG";
 const SENSITIVE_CONTEXT = "SECRET_CONTEXT_PAYLOAD_DO_NOT_LOG";
 const SENSITIVE_CREDENTIAL = "SECRET_CREDENTIAL_VALUE_DO_NOT_LOG";
+const STAGE16_FAILURE_CANARY = "stage16_post_response_detail_failed";
+
+type ConsoleSpy = ReturnType<typeof vi.spyOn>;
+
+function serializeConsoleCalls(...spies: ConsoleSpy[]): string {
+  return spies
+    .flatMap((spy) => spy.mock.calls)
+    .flat()
+    .map((value) => {
+      if (typeof value === "string") {
+        return value;
+      }
+      if (value instanceof Error) {
+        return `${value.name}: ${value.message}\n${value.stack ?? ""}`;
+      }
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    })
+    .join("\n");
+}
+
+function createFakeCtx(): {
+  waitUntil: (promise: Promise<unknown>) => void;
+  drainWaitUntil: () => Promise<void>;
+} {
+  const pending: Promise<unknown>[] = [];
+  return {
+    waitUntil(promise: Promise<unknown>) {
+      pending.push(promise);
+    },
+    async drainWaitUntil() {
+      await Promise.all(pending);
+      pending.length = 0;
+    },
+  };
+}
+
+function buildSensitivePostResponseInput(): PostResponseInput {
+  return {
+    requestId: "01REDATREQ00000000000001",
+    installationId: "inst-redaction-001",
+    period: "2026-08",
+    quotaWeight: 1,
+    totalTokens: 100,
+    totalCost: 0.01,
+    filteredContext: {
+      note: SENSITIVE_CONTEXT,
+      authorization: `Bearer ${SENSITIVE_CREDENTIAL}`,
+    },
+    composedPrompt: {
+      system: SENSITIVE_PROMPT,
+      messages: [{ role: "user", content: SENSITIVE_PROMPT }],
+    },
+    attempts: [
+      {
+        attemptNo: 1,
+        provider: "deepseek",
+        model: "redaction-fixture",
+        outcome: "success",
+        latencyMs: 10,
+        tokensIn: 50,
+        tokensOut: 50,
+        cost: 0.01,
+        providerRequestId: "prov-1",
+        rawBody: {
+          prompt: SENSITIVE_PROMPT,
+          credential: SENSITIVE_CREDENTIAL,
+        },
+      },
+    ],
+    validatedResult: {
+      finalContent: { text: SENSITIVE_PROMPT },
+      usage: { input: 50, output: 50, cached: 0 },
+      providerModel: { provider: "deepseek", model: "redaction-fixture" },
+      finishReason: "stop",
+      providerRequestId: "prov-1",
+      timing: { queue_ms: 0, provider_ms: 10, total_ms: 10 },
+    },
+    recordedAt: "2026-08-05T00:00:00.000Z",
+  };
+}
 
 describe("adapter malformed body rejection (T25)", () => {
   const workers: Unstable_DevWorker[] = [];
@@ -79,47 +167,55 @@ describe("adapter malformed body rejection (T25)", () => {
 });
 
 describe("structured log redaction (T27)", () => {
-  const workers: Unstable_DevWorker[] = [];
-  const logSpy = vi.spyOn(console, "log");
+  it("never logs prompt text, context payload, or credentials on a forced stage-16 failure path", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-  afterEach(async () => {
-    logSpy.mockRestore();
-    await Promise.all(workers.splice(0).map((worker) => worker.stop()));
+    try {
+      const failingDb = {
+        prepare() {
+          throw new Error("injected stage-16 D1 failure");
+        },
+        async batch() {
+          throw new Error("injected stage-16 D1 failure");
+        },
+      } as unknown as D1Database;
+
+      const failingR2 = {
+        async put() {
+          throw new Error("injected stage-16 R2 failure");
+        },
+      } as unknown as R2Bucket;
+
+      const ctx = createFakeCtx();
+      writePostResponseDetail(buildSensitivePostResponseInput(), {
+        db: failingDb,
+        r2: failingR2,
+        ctx,
+      });
+      await ctx.drainWaitUntil();
+
+      const serializedLogs = serializeConsoleCalls(
+        errorSpy,
+        warnSpy,
+        infoSpy,
+        logSpy,
+      );
+
+      // Canary: a real worker failure-path log site was captured (not wrangler noise).
+      expect(serializedLogs).toContain(STAGE16_FAILURE_CANARY);
+      expect(errorSpy.mock.calls.length).toBeGreaterThan(0);
+
+      expect(serializedLogs).not.toContain(SENSITIVE_PROMPT);
+      expect(serializedLogs).not.toContain(SENSITIVE_CONTEXT);
+      expect(serializedLogs).not.toContain(SENSITIVE_CREDENTIAL);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
-
-  it("never logs prompt text, context payload, or credentials from a request that contained them", async () => {
-    const worker = await unstable_dev(SCRIPT_PATH, {
-      ...DEV_OPTIONS,
-      config: CONFIG_PATH,
-      env: "development",
-    });
-    workers.push(worker);
-
-    await worker.fetch("http://127.0.0.1/v1/requests", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${SENSITIVE_CREDENTIAL}`,
-        "x-trace-id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-      },
-      body: JSON.stringify({
-        prompt: SENSITIVE_PROMPT,
-        context: { note: SENSITIVE_CONTEXT },
-        capability: "demo-capability",
-        installation: "demo-installation",
-      }),
-    });
-
-    const serializedLogs = logSpy.mock.calls
-      .flat()
-      .map((value) =>
-        typeof value === "string" ? value : JSON.stringify(value),
-      )
-      .join("\n");
-
-    expect(logSpy.mock.calls.length).toBeGreaterThan(0);
-    expect(serializedLogs).not.toContain(SENSITIVE_PROMPT);
-    expect(serializedLogs).not.toContain(SENSITIVE_CONTEXT);
-    expect(serializedLogs).not.toContain(SENSITIVE_CREDENTIAL);
-  }, 30_000);
 });

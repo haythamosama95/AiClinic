@@ -8,9 +8,11 @@ import {
   type AdmissionRequest,
 } from "../src/quota-do";
 import {
+  COUNTER_HORIZON_DAYS,
   createManifestRetentionClassResolver,
   JOURNAL_HORIZON_DAYS,
   LEDGER_HORIZON_DAYS,
+  minPublishedDiagnosticHorizonDays,
   MS_PER_DAY,
   parseDiagnosticHorizonDays,
   purgeByInstallationId,
@@ -93,6 +95,8 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
+    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM installation"),
@@ -309,6 +313,138 @@ describe("retention_expiry_journal", () => {
     expect(usageEvent).toBeDefined();
     expect(usageEvent?.request_id).toBeNull();
   });
+
+  it("deletes R2 envelope before dropping a journal-expired request row", async () => {
+    const oldDate = new Date(
+      FIXTURE_NOW.getTime() - (JOURNAL_HORIZON_DAYS + 1) * MS_PER_DAY,
+    ).toISOString();
+    const envelopeKey = "request/req-journal-r2/envelope";
+
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+        payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL)`,
+    )
+      .bind(
+        "req-journal-r2",
+        "REF-JR2",
+        FIXTURE_INSTALLATION_A,
+        "actor",
+        "branch",
+        "cap",
+        "1.0.0",
+        "prompt@v1",
+        "idem-jr2",
+        "trace-jr2",
+        "Completed",
+        oldDate,
+        oldDate,
+        oldDate,
+        envelopeKey,
+      )
+      .run();
+    await env.R2.put(envelopeKey, JSON.stringify({ context: {}, prompt: {} }));
+
+    await runRetentionPurge({ db: env.DB, r2: env.R2, now: FIXTURE_NOW });
+
+    expect(await env.R2.get(envelopeKey)).toBeNull();
+    const row = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM ai_request WHERE request_id = ?",
+    )
+      .bind("req-journal-r2")
+      .first<{ c: number }>();
+    expect(row?.c).toBe(0);
+  });
+});
+
+describe("retention_expiry_platform_counter", () => {
+  it("purges platform_counter rows past the months-class cutoff", async () => {
+    const oldBucket = new Date(
+      FIXTURE_NOW.getTime() - (COUNTER_HORIZON_DAYS + 1) * MS_PER_DAY,
+    )
+      .toISOString()
+      .slice(0, 19);
+    const recentBucket = FIXTURE_NOW.toISOString().slice(0, 19);
+
+    await env.DB.prepare(
+      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(
+        "counter-old",
+        JSON.stringify({ error_code: "quota_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
+        oldBucket,
+        9,
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO platform_counter (counter_id, dimension_set, time_bucket, count)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(
+        "counter-new",
+        JSON.stringify({ error_code: "quota_exhausted", installation_id: FIXTURE_INSTALLATION_A }),
+        recentBucket,
+        2,
+      )
+      .run();
+
+    const result = await runRetentionPurge({
+      db: env.DB,
+      r2: env.R2,
+      now: FIXTURE_NOW,
+    });
+
+    expect(result.counterDeleted).toBe(1);
+    const oldCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM platform_counter WHERE counter_id = ?",
+    )
+      .bind("counter-old")
+      .first<{ c: number }>();
+    const newCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM platform_counter WHERE counter_id = ?",
+    )
+      .bind("counter-new")
+      .first<{ c: number }>();
+    expect(oldCount?.c).toBe(0);
+    expect(newCount?.c).toBe(1);
+  });
+});
+
+describe("retention_diagnostic_prefilter_min_horizon", () => {
+  it("scans shorter-than-baseline horizons via min published prefilter", async () => {
+    expect(minPublishedDiagnosticHorizonDays()).toBe(1);
+
+    const ageDays = 4;
+    const borderlineDate = new Date(
+      FIXTURE_NOW.getTime() - ageDays * MS_PER_DAY,
+    ).toISOString();
+
+    await seedRequestWithEnvelope(
+      "req-3d",
+      FIXTURE_INSTALLATION_A,
+      "cap.short3",
+      borderlineDate,
+    );
+
+    await runRetentionPurge({
+      db: env.DB,
+      r2: env.R2,
+      now: FIXTURE_NOW,
+      resolveRetentionClass: () => "diagnostic_3d",
+    });
+
+    const row = await env.DB.prepare(
+      "SELECT payload_pointer FROM ai_request WHERE request_id = ?",
+    )
+      .bind("req-3d")
+      .first<{ payload_pointer: string | null }>();
+    expect(row?.payload_pointer).toBeNull();
+    expect(await env.R2.get("request/req-3d/envelope")).toBeNull();
+  });
 });
 
 describe("manifest_retention_class_resolver", () => {
@@ -511,6 +647,35 @@ describe("retention_purge_by_installation_id", () => {
     await seedRequestWithEnvelope("req-purge-a", FIXTURE_INSTALLATION_A, "cap", recentDate);
     await seedRequestWithEnvelope("req-purge-b", FIXTURE_INSTALLATION_B, "cap", recentDate);
 
+    // NULL pointer with derived-key object — must still be deleted.
+    const nullPointerKey = "request/req-purge-null/envelope";
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+        payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)`,
+    )
+      .bind(
+        "req-purge-null",
+        "REF-PNUL",
+        FIXTURE_INSTALLATION_A,
+        "actor",
+        "branch",
+        "cap",
+        "1.0.0",
+        "prompt@v1",
+        "idem-null",
+        "trace-null",
+        "Completed",
+        recentDate,
+        recentDate,
+        recentDate,
+      )
+      .run();
+    await env.R2.put(nullPointerKey, JSON.stringify({ orphan: true }));
+
     await env.DB.prepare(
       `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
        VALUES (?, ?, ?, ?, ?)`,
@@ -564,6 +729,65 @@ describe("retention_purge_by_installation_id", () => {
       )
       .run();
 
+    await env.DB.prepare(
+      `INSERT INTO capability_grant (
+        grant_id, scope, capability_id, capability_version, granted_at, revoked_at, changed_at, changed_by
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+    )
+      .bind(
+        "grant-a",
+        `installation:${FIXTURE_INSTALLATION_A}`,
+        "cap",
+        "1.0.0",
+        recentDate,
+        recentDate,
+        "operator-001",
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO capability_grant (
+        grant_id, scope, capability_id, capability_version, granted_at, revoked_at, changed_at, changed_by
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+    )
+      .bind(
+        "grant-b",
+        `installation:${FIXTURE_INSTALLATION_B}`,
+        "cap",
+        "1.0.0",
+        recentDate,
+        recentDate,
+        "operator-001",
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO installation_key (
+        key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
+      ) VALUES (?, ?, ?, ?, ?, NULL, NULL)`,
+    )
+      .bind("key-a", FIXTURE_INSTALLATION_A, "pk-a", "EdDSA", recentDate)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO entitlement (
+        entitlement_id, installation_id, plan, period_start, period_end,
+        request_quota, token_budget, cost_budget, allowed_capabilities, soft_threshold, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        "ent-a",
+        FIXTURE_INSTALLATION_A,
+        "starter",
+        "2026-08-01T00:00:00.000Z",
+        "2026-09-01T00:00:00.000Z",
+        100,
+        10000,
+        10,
+        "[]",
+        0.8,
+        "active",
+      )
+      .run();
+
     await purgeByInstallationId(FIXTURE_INSTALLATION_A, "operator-001", {
       db: env.DB,
       r2: env.R2,
@@ -582,6 +806,11 @@ describe("retention_purge_by_installation_id", () => {
 
     expect(aCount?.c).toBe(0);
     expect(bCount?.c).toBe(1);
+    expect(await env.R2.get(nullPointerKey)).toBeNull();
+    expect(await env.R2.get("request/req-purge-a/envelope")).toBeNull();
+    const surviving = await env.R2.get("request/req-purge-b/envelope");
+    expect(surviving).not.toBeNull();
+    await surviving?.text();
 
     const rollupA = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM usage_rollup WHERE rollup_id = ?",
@@ -608,6 +837,45 @@ describe("retention_purge_by_installation_id", () => {
     expect(rollupB?.c).toBe(1);
     expect(counterA?.c).toBe(0);
     expect(counterB?.c).toBe(1);
+
+    const grantA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM capability_grant WHERE grant_id = ?",
+    )
+      .bind("grant-a")
+      .first<{ c: number }>();
+    const grantB = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM capability_grant WHERE grant_id = ?",
+    )
+      .bind("grant-b")
+      .first<{ c: number }>();
+    expect(grantA?.c).toBe(0);
+    expect(grantB?.c).toBe(1);
+
+    const instA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM installation WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_A)
+      .first<{ c: number }>();
+    const instB = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM installation WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_B)
+      .first<{ c: number }>();
+    const keyA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM installation_key WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_A)
+      .first<{ c: number }>();
+    const entA = await env.DB.prepare(
+      "SELECT COUNT(*) AS c FROM entitlement WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_A)
+      .first<{ c: number }>();
+
+    expect(instA?.c).toBe(0);
+    expect(instB?.c).toBe(1);
+    expect(keyA?.c).toBe(0);
+    expect(entA?.c).toBe(0);
 
     const audit = await env.DB.prepare(
       "SELECT action FROM control_audit WHERE target = ?",

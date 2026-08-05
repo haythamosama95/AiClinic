@@ -135,6 +135,28 @@ export interface CreditUnknownRequest {
 
 export type CreditResponse = CreditAcknowledged | CreditUnknownRequest;
 
+/** Compensating release after stage-8 admission when stage-9 journal insert fails. */
+export interface ReleaseRequest {
+  kind: "release";
+  installationId: string;
+  requestId: string;
+  idempotencyKey: string;
+  jti: string;
+}
+
+export interface ReleaseAcknowledged {
+  kind: "release";
+  ok: true;
+}
+
+export interface ReleaseUnknownRequest {
+  kind: "release";
+  ok: false;
+  code: "unknown_request";
+}
+
+export type ReleaseResponse = ReleaseAcknowledged | ReleaseUnknownRequest;
+
 function initialPeriodCounters(): PeriodCounters {
   return {
     requestsUsed: 0,
@@ -433,5 +455,50 @@ export async function creditRPC(
       ok: true,
       periodCounters: { ...state.periodCounters },
     };
+  });
+}
+
+/**
+ * Roll back a stage-8 admission reservation when stage-9 journal insert fails:
+ * drop jti replay, idempotency key, and in-flight slot for `requestId`.
+ */
+export async function releaseRPC(
+  storage: DurableObjectStorage,
+  blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
+  request: ReleaseRequest,
+  now?: number,
+): Promise<ReleaseResponse> {
+  const timestamp = now ?? Date.now();
+
+  return blockConcurrencyWhile(async () => {
+    const state = await loadState(storage);
+
+    if (
+      state.boundInstallationId !== undefined &&
+      state.boundInstallationId !== request.installationId
+    ) {
+      return { kind: "release", ok: false, code: "unknown_request" };
+    }
+
+    sweepEphemeral(state, timestamp);
+
+    const admitted = state.admittedRequests[request.requestId];
+    if (!admitted) {
+      await storage.put(STATE_KEY, state);
+      return { kind: "release", ok: false, code: "unknown_request" };
+    }
+
+    delete state.admittedRequests[request.requestId];
+    state.periodCounters.inFlight = Math.max(0, state.periodCounters.inFlight - 1);
+
+    const idempotency = state.idempotency[request.idempotencyKey];
+    if (idempotency?.requestId === request.requestId) {
+      delete state.idempotency[request.idempotencyKey];
+    }
+
+    delete state.jtiReplay[request.jti];
+
+    await storage.put(STATE_KEY, state);
+    return { kind: "release", ok: true };
   });
 }

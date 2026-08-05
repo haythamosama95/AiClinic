@@ -406,6 +406,49 @@ function applyInstallationOverride(
   return { targets: remaining, excluded };
 }
 
+function isKillSwitchRowActive(
+  row: Record<string, unknown> | undefined,
+): boolean {
+  return row?.active === true;
+}
+
+/**
+ * Provider ids with an active `kill_switches` cache row (B3 / §3.1.1 producer).
+ * Callers may also pass an explicit `RouterContext.killedProviderIds` list;
+ * `selectCandidateChain` merges both sources before filtering.
+ */
+export function collectKilledProviderIds(
+  cache: ConfigCache,
+  providerIds: readonly string[],
+): string[] {
+  const killed: string[] = [];
+  for (const providerId of providerIds) {
+    const row = cache.consult("kill_switches", `provider:${providerId}`);
+    if (isKillSwitchRowActive(row)) {
+      killed.push(providerId);
+    }
+  }
+  return killed;
+}
+
+function mergeKilledProviderIds(
+  cache: ConfigCache,
+  targets: PolicyTarget[],
+  contextKilled?: readonly string[],
+): readonly string[] {
+  const fromCache = collectKilledProviderIds(
+    cache,
+    targets.map((target) => target.provider_id),
+  );
+  if (!contextKilled || contextKilled.length === 0) {
+    return fromCache;
+  }
+  if (fromCache.length === 0) {
+    return contextKilled;
+  }
+  return [...new Set([...contextKilled, ...fromCache])];
+}
+
 function filterTargets(
   targets: PolicyTarget[],
   requirements: CapabilityRequirements,
@@ -544,11 +587,17 @@ export function selectCandidateChain({
     matchedRule.requires,
   );
 
+  const killedProviderIds = mergeKilledProviderIds(
+    cache,
+    narrowedTargets,
+    context.killedProviderIds,
+  );
+
   const { chain, excluded: filterExcluded } = filterTargets(
     narrowedTargets,
     effectiveRequirements,
     effectiveCostClass,
-    context.killedProviderIds,
+    killedProviderIds,
   );
 
   const rawParallelAttempts =

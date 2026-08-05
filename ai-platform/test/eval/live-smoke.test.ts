@@ -4,13 +4,16 @@ import { describe, expect, it } from "vitest";
 import {
   FIRST_CAPABILITY_ID,
   FLOATING_MODEL_ALIASES,
+  getLiveSmokeExpectation,
   getLiveSmokeModelTargets,
   getLiveSmokeTargets,
   getLiveSmokeWorkflowPath,
   isPinnedModelId,
   readLiveSmokeWorkflowSchedule,
   runLiveSmokeSuite,
+  scoreQuality,
 } from "./harness";
+import type { CanonicalRequest } from "../../src/contracts/canonical";
 import type { DeepSeekTransportResponse } from "../../src/provider/deepseek";
 
 function recordedLiveTransport(): {
@@ -148,6 +151,31 @@ describe("T4 scheduled_live_smoke_against_pinned_models", () => {
     const persisted = JSON.parse(readFileSync(result.reportPath, "utf8"));
     expect(persisted.run_kind).toBe("live_smoke");
     expect(persisted.overall).toBe("pass");
+  });
+
+  it("live smoke quality floor requires advisory + chief-complaint needles beyond min_length 1", () => {
+    const expectation = getLiveSmokeExpectation();
+    expect(expectation.output_min_length).toBeGreaterThan(1);
+    expect(expectation.output_must_contain).toEqual(
+      expect.arrayContaining(["advisory", "headache"]),
+    );
+
+    const request = {
+      requestReference: "EVAL-REQ-SMOKE-FLOOR",
+      parts: [{ role: "system", content: "advisory only" }],
+      stream: false,
+    } as CanonicalRequest;
+
+    expect(
+      scoreQuality(request, "x", expectation),
+    ).toBe("fail");
+    expect(
+      scoreQuality(
+        request,
+        "Live smoke advisory visit summary mentioning headache for clinician review.",
+        expectation,
+      ),
+    ).toBe("pass");
   });
 
   it("skips live egress when provider credentials are absent", async () => {

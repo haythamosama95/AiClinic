@@ -60,6 +60,8 @@ export const FLOATING_MODEL_ALIASES = Object.freeze([
 ]);
 
 export type PromptBuild = "current" | "deliberately_regressed";
+/** Fixture-response build: current recording vs deliberately-regressed body. */
+export type FixtureBuild = "current" | "deliberately_regressed";
 export type RunKind = "golden" | "live_smoke";
 
 export type LiveSmokeTarget = {
@@ -75,8 +77,23 @@ type CaseDefinition = {
 
 type FixtureBinding = {
   case_id: string;
-  d5_fixture_subdir: string;
-  provider_response_file: string;
+  /**
+   * D5 fixture subdirectory under `test/fixtures/deepseek/`.
+   * Required when `eval_provider_response_file` is unset.
+   */
+  d5_fixture_subdir?: string;
+  /** Filename under the D5 subdirectory (when using the D5 tree). */
+  provider_response_file?: string;
+  /**
+   * Eval-owned recorded body relative to the capability `fixtures/` directory.
+   * Used for negative / control cases that must not mutate the D5 tree.
+   */
+  eval_provider_response_file?: string;
+  /**
+   * Eval-owned deliberately-regressed body relative to capability `fixtures/`.
+   * Selected when `fixtureBuild === "deliberately_regressed"`.
+   */
+  deliberately_regressed_response_file?: string;
 };
 
 export type ExpectationDefinition = {
@@ -92,6 +109,10 @@ export type ExpectationDefinition = {
 export type GoldenRunOptions = {
   capabilityId?: string;
   promptBuild?: PromptBuild;
+  /** Defaults to `"current"`. Use `"deliberately_regressed"` for output-containment control. */
+  fixtureBuild?: FixtureBuild;
+  /** Optional case-id filter; defaults to every case under the capability. */
+  caseIds?: string[];
   runKind?: RunKind;
   reportsDir?: string;
 };
@@ -302,10 +323,57 @@ function loadExpectation(
   );
 }
 
+function resolveEvalFixturePath(
+  capabilityId: string,
+  relativePath: string,
+): string {
+  return path.join(capabilityRoot(capabilityId), "fixtures", relativePath);
+}
+
 function resolveProviderResponsePath(
   capabilityId: string,
   binding: FixtureBinding,
+  fixtureBuild: FixtureBuild = "current",
 ): string {
+  if (fixtureBuild === "deliberately_regressed") {
+    if (!binding.deliberately_regressed_response_file) {
+      throw new Error(
+        `No deliberately_regressed_response_file for ${capabilityId}/${binding.case_id}`,
+      );
+    }
+    const regressedPath = resolveEvalFixturePath(
+      capabilityId,
+      binding.deliberately_regressed_response_file,
+    );
+    if (!existsSync(regressedPath)) {
+      throw new Error(
+        `Regressed fixture missing for ${capabilityId}/${binding.case_id}: ${regressedPath}`,
+      );
+    }
+    harnessRuntime.fixturePathsUsed.push(regressedPath);
+    return regressedPath;
+  }
+
+  if (binding.eval_provider_response_file) {
+    const evalPath = resolveEvalFixturePath(
+      capabilityId,
+      binding.eval_provider_response_file,
+    );
+    if (!existsSync(evalPath)) {
+      throw new Error(
+        `Eval fixture missing for ${capabilityId}/${binding.case_id}: ${evalPath}`,
+      );
+    }
+    harnessRuntime.fixturePathsUsed.push(evalPath);
+    return evalPath;
+  }
+
+  if (!binding.d5_fixture_subdir || !binding.provider_response_file) {
+    throw new Error(
+      `Fixture binding for ${capabilityId}/${binding.case_id} needs d5_fixture_subdir + provider_response_file or eval_provider_response_file`,
+    );
+  }
+
   const d5Path = path.join(
     D5_FIXTURES_ROOT,
     binding.d5_fixture_subdir,
@@ -533,13 +601,18 @@ function runCase(
   capabilityId: string,
   caseId: string,
   promptBuild: PromptBuild,
+  fixtureBuild: FixtureBuild = "current",
 ): Promise<CaseScore> {
   const manifest = manifestForCapability(capabilityId);
   const caseDef = loadCase(capabilityId, caseId);
   const binding = loadFixtureBinding(capabilityId, caseId);
   const expectation = loadExpectation(capabilityId, caseId);
 
-  const providerResponsePath = resolveProviderResponsePath(capabilityId, binding);
+  const providerResponsePath = resolveProviderResponsePath(
+    capabilityId,
+    binding,
+    fixtureBuild,
+  );
   harnessRuntime.fixturePathsUsed.push(
     path.join(
       capabilityRoot(capabilityId),
@@ -581,15 +654,32 @@ export async function runGoldenSuite(
 
   const capabilityId = options.capabilityId ?? FIRST_CAPABILITY_ID;
   const promptBuild = options.promptBuild ?? "current";
+  const fixtureBuild = options.fixtureBuild ?? "current";
   const runKind = options.runKind ?? "golden";
   const reportsDir =
     options.reportsDir ?? path.join(EVAL_ROOT, "reports");
 
-  const caseIds = listCapabilityCases(capabilityId);
+  const availableCaseIds = listCapabilityCases(capabilityId);
+  const caseIds = options.caseIds
+    ? options.caseIds.filter((caseId) => availableCaseIds.includes(caseId))
+    : availableCaseIds;
+  if (options.caseIds) {
+    const missing = options.caseIds.filter(
+      (caseId) => !availableCaseIds.includes(caseId),
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Unknown golden case id(s) for ${capabilityId}: ${missing.join(", ")}`,
+      );
+    }
+  }
+
   const caseScores: CaseScore[] = [];
 
   for (const caseId of caseIds) {
-    caseScores.push(await runCase(capabilityId, caseId, promptBuild));
+    caseScores.push(
+      await runCase(capabilityId, caseId, promptBuild, fixtureBuild),
+    );
   }
 
   const report: ScoreReport = {
@@ -619,12 +709,23 @@ function secretBindingForProvider(providerId: WiredProviderId): string {
     : GEMINI_API_KEY_BINDING;
 }
 
+/**
+ * Live-smoke quality floor: substantive prose that still reflects the visit-
+ * summary capability (advisory framing + chief-complaint signal), not a
+ * vacuous `min_length: 1` pass.
+ */
 function smokeExpectation(): ExpectationDefinition {
   return {
     case_id: "live_smoke",
-    output_min_length: 1,
+    output_must_contain: ["advisory", "headache"],
+    output_min_length: 40,
     output_mode: "prose",
   };
+}
+
+/** Exported for live-smoke / scorer tests that assert the smoke quality floor. */
+export function getLiveSmokeExpectation(): ExpectationDefinition {
+  return smokeExpectation();
 }
 
 async function runLiveSmokeCase(

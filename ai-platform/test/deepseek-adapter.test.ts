@@ -23,6 +23,7 @@ import {
 import {
   DeepSeekAdapter,
   DEEPSEEK_API_KEY_BINDING,
+  PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
   type DeepSeekAdapterOptions,
   type DeepSeekTransport,
   type DeepSeekTransportResponse,
@@ -1135,5 +1136,101 @@ describe("stream_wire_requests_include_usage", () => {
       (wire.body as { stream_options?: { include_usage?: boolean } })
         .stream_options?.include_usage,
     ).toBe(true);
+  });
+});
+
+describe("retry_after_header", () => {
+  it("attaches retryAfterMs from Retry-After delta-seconds on 429", async () => {
+    const fixture = loadFixture<{
+      status: number;
+      body: unknown;
+    }>("errors", "rate_limited.json");
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: fixture.status,
+      headers: {
+        "content-type": "application/json",
+        "Retry-After": "5",
+      },
+      body: JSON.stringify(fixture.body),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "rate_limited");
+    expect(error.retryAfterMs).toBe(5_000);
+  });
+
+  it("attaches retryAfterMs from Retry-After HTTP-date on 429", async () => {
+    const fixture = loadFixture<{
+      status: number;
+      body: unknown;
+    }>("errors", "rate_limited.json");
+    const httpDate = new Date(Date.now() + 30_000).toUTCString();
+    const targetMs = Date.parse(httpDate);
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: fixture.status,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": httpDate,
+      },
+      body: JSON.stringify(fixture.body),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const before = Date.now();
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const after = Date.now();
+    const error = assertClassifiedError(outcome, "rate_limited");
+    expect(error.retryAfterMs).toBeDefined();
+    expect(error.retryAfterMs!).toBeGreaterThanOrEqual(targetMs - after);
+    expect(error.retryAfterMs!).toBeLessThanOrEqual(targetMs - before);
+  });
+});
+
+describe("provider_response_body_size_limit", () => {
+  it("rejects oversized provider body as classified internal_error", async () => {
+    const secretStore = createRecordingSecretStore();
+    const oversized = "x".repeat(PROVIDER_RESPONSE_BODY_SIZE_LIMIT + 1);
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: oversized,
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "internal_error");
+    expect(error.providerNative.code).toBe("response_too_large");
+  });
+
+  it("rejects when Content-Length declares over the limit", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(PROVIDER_RESPONSE_BODY_SIZE_LIMIT + 1),
+      },
+      body: successJsonBody("ok"),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    const error = assertClassifiedError(outcome, "internal_error");
+    expect(error.providerNative.code).toBe("response_too_large");
   });
 });

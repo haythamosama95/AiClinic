@@ -219,7 +219,8 @@ function makeInactiveKillSwitchRows(
 /**
  * Seeds reader rows for a successful resolve under the post-C1-fix contract:
  * inactive kill switches, active professional entitlement, matching grant,
- * and (by default) the routing policy that unlocks provider kill-switch evaluation.
+ * and (by default) a real routing-policy document (providers in rules[].targets[])
+ * that unlocks provider kill-switch evaluation.
  */
 function makeResolveFixtures(
   installationId: string,
@@ -265,7 +266,47 @@ function makeResolveFixtures(
 
   if (includeRoutingPolicy) {
     rows[`active_routing_policy:${FIXTURE_ROUTING_POLICY_REF}`] = {
-      provider_id: FIXTURE_PROVIDER_ID,
+      policy_id: "routing-standard",
+      policy_version: 1,
+      content_pointer: "control/routing-policy/routing-standard/1.json",
+      active_from: FIXTURE_NOW,
+      activated_by: "operator-test",
+      document: {
+        schema_version: 1,
+        policy_id: "routing-standard",
+        policy_version: 1,
+        defaults: {
+          cost_class: "standard",
+          max_parallel_attempts: 1,
+        },
+        rules: [
+          {
+            rule_id: "catch-all",
+            match: {},
+            requires: {
+              structured_output: false,
+              min_context_window: 0,
+              languages: [],
+            },
+            targets: [
+              {
+                provider_id: FIXTURE_PROVIDER_ID,
+                model_id: "fixture-model",
+                features: {
+                  structured_output: false,
+                  min_context_window: 32_000,
+                  languages: ["en"],
+                  latency_class: "standard",
+                  cost_class: "standard",
+                },
+                max_attempts: 2,
+                timeout_ms: 30_000,
+              },
+            ],
+          },
+        ],
+        overrides: [],
+      },
     };
   }
 

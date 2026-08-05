@@ -1,3 +1,8 @@
+import {
+  JOURNAL_HORIZON_DAYS,
+  MS_PER_DAY,
+} from "../retention";
+
 export type AvgAttemptLatencyByProvider = Record<string, number>;
 /** @deprecated Use AvgAttemptLatencyByProvider — true TTFT is not journaled. */
 export type TtftByProvider = AvgAttemptLatencyByProvider;
@@ -126,22 +131,33 @@ export async function dashboardCostPerCapabilityPerInstallation(
 
 /**
  * Quota rejection approximation: sum of quota_exhausted counter counts
- * divided by COUNT(*) of journaled ai_request rows.
- * Returns 0 when there are no journaled requests.
+ * divided by COUNT(*) of journaled ai_request rows, both bounded to the
+ * journal retention window so the numerator cannot outlive the denominator.
+ * Returns 0 when there are no journaled requests in-window.
  */
 export async function dashboardQuotaRejectionRate(
   db: D1Database,
+  now: Date = new Date(),
 ): Promise<number> {
+  const windowStart = new Date(
+    now.getTime() - JOURNAL_HORIZON_DAYS * MS_PER_DAY,
+  ).toISOString();
+
   const result = await db
     .prepare(
       `SELECT
          CAST(
            (SELECT COALESCE(SUM(count), 0)
             FROM platform_counter
-            WHERE dimension_set LIKE '%quota_exhausted%') AS REAL
+            WHERE dimension_set LIKE '%quota_exhausted%'
+              AND time_bucket >= ?) AS REAL
          )
-         / NULLIF((SELECT COUNT(*) FROM ai_request), 0) AS rate`,
+         / NULLIF(
+           (SELECT COUNT(*) FROM ai_request WHERE created_at >= ?),
+           0
+         ) AS rate`,
     )
+    .bind(windowStart, windowStart)
     .first<{ rate: number | null }>();
 
   return result?.rate ?? 0;

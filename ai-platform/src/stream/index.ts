@@ -1,5 +1,5 @@
 import type { AdapterSseEvent } from "../adapter";
-import type { TaxonomyCode } from "../errors";
+import { buildErrorBody, type TaxonomyCode } from "../errors";
 import {
   checkIncrementalGuards,
   runFullGuardSet,
@@ -27,6 +27,8 @@ export interface ChunkSource {
    * Absent or undefined → credit sink is not called (FR-011).
    */
   getPartialUsage?(): { tokens: number; cost: number } | undefined;
+  /** True when the provider finished because of an output-length limit. */
+  wasTruncated?(): boolean;
   stream(input: { signal: AbortSignal }): AsyncIterable<StreamChunk>;
 }
 
@@ -93,6 +95,8 @@ export interface JournalTerminalSink {
 export interface StreamBrokerOptions {
   traceId: string;
   requestId: string;
+  /** Client-facing request reference carried on terminal `failed` error bodies (§5.4). */
+  requestReference: string;
   eventSink: StreamBrokerEventSink;
   chunkSource: ChunkSource;
   heartbeatTicker: HeartbeatTicker;
@@ -168,8 +172,10 @@ async function* abortableAsyncIterate<T>(
       yield result.value;
     }
   } finally {
+    // Do not await: return() queues behind a pending next() on hung /
+    // signal-ignoring sources and never settles (§3.2.6).
     if (typeof iterator.return === "function") {
-      await iterator.return(undefined);
+      void Promise.resolve(iterator.return(undefined)).catch(() => undefined);
     }
   }
 }
@@ -249,9 +255,16 @@ export function createStreamBroker(
       return;
     }
 
+    // Mirror adapter pushTerminalEvent("failed") — full §5.4 error body.
+    const errorBody = buildErrorBody({
+      code,
+      requestReference: options.requestReference,
+      traceId: options.traceId,
+    });
+
     emitTerminalOnce({
       type: "failed",
-      data: { code },
+      data: { ...errorBody },
       trace_id: options.traceId,
     });
 
@@ -362,6 +375,12 @@ export function createStreamBroker(
       }
 
       if (terminalEmitted) {
+        return;
+      }
+
+      // Truncated prose must not complete as authoritative (§4.3.9 / §3.2.2).
+      if (chunkSource.wasTruncated?.() === true) {
+        handleFailed("validation_failed");
         return;
       }
 

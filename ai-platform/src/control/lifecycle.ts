@@ -20,9 +20,26 @@ const INSTALLATION_DELETED_STATUS = "deleted";
 
 function parseInstallationId(request: Request): string | null {
   const match = new URL(request.url).pathname.match(
-    /^\/control\/installations\/([^/]+)\/(?:enroll|rotate|suspend|resume|delete)$/,
+    /^\/control\/installations\/([^/]+)\/(?:enroll|rotate|revoke-key|suspend|resume|delete)$/,
   );
   return match?.[1] ?? null;
+}
+
+type RevokeKeyPayload = {
+  kid: string;
+};
+
+function validateRevokeKeyPayload(
+  body: RevokeKeyPayload,
+): RevokeKeyPayload | Response {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return reject(400, "invalid_payload");
+  }
+  const kid = requireNonEmptyString(body.kid);
+  if (!kid) {
+    return reject(400, "invalid_payload");
+  }
+  return { kid };
 }
 
 function validateEnrollPayload(
@@ -276,6 +293,83 @@ export async function handleRotate(
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
        VALUES (?, ?, 'rotate', ?, NULL, NULL, ?)`,
     ).bind(auditId, auth.operatorId, installationId, validFrom),
+  ]);
+  if (batchError) {
+    return batchError;
+  }
+
+  return ok();
+}
+
+export async function handleRevokeKey(
+  request: Request,
+  bindings: ControlBindings,
+  operatorAuth: OperatorAuth,
+): Promise<Response> {
+  const auth = requireOperator(request, operatorAuth);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const installationId = parseInstallationId(request);
+  if (!installationId) {
+    return reject(400, "invalid_route");
+  }
+
+  const rawBody = await parseJsonBody<RevokeKeyPayload>(request);
+  if (rawBody instanceof Response) {
+    return rawBody;
+  }
+
+  const body = validateRevokeKeyPayload(rawBody);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  const { DB } = bindings;
+  const installation = await DB.prepare(
+    "SELECT installation_id, status FROM installation WHERE installation_id = ?",
+  )
+    .bind(installationId)
+    .first<{ installation_id: string; status: string }>();
+
+  if (!installation) {
+    return reject(404, "installation_not_found");
+  }
+
+  if (installation.status === INSTALLATION_DELETED_STATUS) {
+    return reject(409, "illegal_lifecycle_transition");
+  }
+
+  const keyRow = await DB.prepare(
+    `SELECT key_id, revoked_at FROM installation_key
+     WHERE key_id = ? AND installation_id = ?`,
+  )
+    .bind(body.kid, installationId)
+    .first<{ key_id: string; revoked_at: string | null }>();
+
+  if (!keyRow) {
+    return reject(404, "key_not_found");
+  }
+
+  if (keyRow.revoked_at != null) {
+    return reject(409, "key_already_revoked");
+  }
+
+  const revokedAt = nowIso();
+  const auditId = newId();
+
+  const batchError = await runControlBatch(DB, [
+    DB.prepare(
+      `UPDATE installation_key
+          SET revoked_at = ?
+        WHERE key_id = ? AND installation_id = ? AND revoked_at IS NULL`,
+    ).bind(revokedAt, body.kid, installationId),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       VALUES (?, ?, 'revoke-key', ?, NULL, ?, ?)`,
+    ).bind(auditId, auth.operatorId, installationId, body.kid, revokedAt),
   ]);
   if (batchError) {
     return batchError;

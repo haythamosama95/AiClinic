@@ -4,6 +4,7 @@ export {
   handleDelete,
   handleEnroll,
   handleResume,
+  handleRevokeKey,
   handleRotate,
   handleSuspend,
 } from "./lifecycle";
@@ -39,6 +40,7 @@ import {
   handleDelete,
   handleEnroll,
   handleResume,
+  handleRevokeKey,
   handleRotate,
   handleSuspend,
 } from "./lifecycle";
@@ -60,7 +62,7 @@ import {
 import type { ControlBindings, OperatorAuth } from "./types";
 
 const CONTROL_ACTION_PATTERN =
-  /^\/control\/installations\/[^/]+\/(enroll|rotate|suspend|resume|delete|purge)$/;
+  /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge)$/;
 
 const CAPABILITY_LIFECYCLE_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(deprecate|retire)$/;
@@ -155,6 +157,8 @@ export async function dispatchControlRequest(
       return handleEnroll(request, bindings, operatorAuth);
     case "rotate":
       return handleRotate(request, bindings, operatorAuth);
+    case "revoke-key":
+      return handleRevokeKey(request, bindings, operatorAuth);
     case "suspend":
       return handleSuspend(request, bindings, operatorAuth);
     case "resume":

@@ -244,6 +244,8 @@ function buildInvocationInput(options: {
   invokeSpy?: Record<string, number>;
   random?: () => number;
   request?: CanonicalRequest;
+  signal?: AbortSignal;
+  partialUsage?: InvocationInput["partialUsage"];
 }): InvocationInput {
   return {
     request: options.request ?? requestFixture,
@@ -254,6 +256,10 @@ function buildInvocationInput(options: {
     sink: options.sink,
     sleeper: options.sleeper ?? (async () => {}),
     ...(options.random !== undefined ? { random: options.random } : {}),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    ...(options.partialUsage !== undefined
+      ? { partialUsage: options.partialUsage }
+      : {}),
   };
 }
 
@@ -721,7 +727,9 @@ describe("T-D3-04 every_attempt_journaled_separately", () => {
 
 describe("T-D3-06 fallback_after_partial_stream_emits_regenerating", () => {
   it("emits regenerating exactly once before the fallback provider's first output", async () => {
-    const chain = twoEntryChainFixture(2, 2);
+    // max_attempts=1 so only the chain-boundary regenerating fires (same-target
+    // regenerating after partial is covered by T-D3-R-13).
+    const chain = twoEntryChainFixture(1, 2);
     const collector = createAttemptSink();
     const partialText = "Partial streamed text from primary.";
     const adapters: AdapterRegistry = {
@@ -1152,5 +1160,290 @@ describe("T-D3-R-11 backoff_cap_unit", () => {
       BACKOFF_CAP_MS,
     );
     expect(computeJitteredBackoff(20, () => 1)).toBe(BACKOFF_CAP_MS);
+  });
+});
+
+describe("T-D3-R-12 caller_abort_terminal_cancelled (§2.4)", () => {
+  it("classifies already-aborted caller signal as terminal cancelled, not timeout", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1, 30_000)];
+    const collector = createAttemptSink();
+    const controller = new AbortController();
+    controller.abort();
+    let sawSignal = false;
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke(_request, options) {
+          sawSignal = options?.signal !== undefined;
+          return new Promise(() => {});
+        },
+      },
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        signal: controller.signal,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("cancelled");
+    // Already-aborted at entry returns cancelled with no attempts started.
+    expect(collector.attempts).toHaveLength(0);
+    expect(sawSignal).toBe(false);
+  });
+
+  it("aborts an in-flight hung invoke via caller signal as cancelled", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1, 30_000)];
+    const collector = createAttemptSink();
+    const controller = new AbortController();
+    let invokeSignal: AbortSignal | undefined;
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke(_request, options) {
+          invokeSignal = options?.signal;
+          return new Promise(() => {});
+        },
+      },
+    };
+
+    const runPromise = runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        signal: controller.signal,
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 15));
+    controller.abort();
+    const result = await runPromise;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("cancelled");
+    expect(invokeSignal?.aborted).toBe(true);
+    expect(collector.attempts[0]?.error_code).toBe("cancelled");
+  });
+
+  it("exposes a live partialUsage accessor reflecting streamed chars before cancel", async () => {
+    const collector = createAttemptSink();
+    const controller = new AbortController();
+    const partialUsage: InvocationInput["partialUsage"] = {};
+    const partialText = "Partial before cancel";
+    const emitThenHang: ProviderPort = {
+      async invoke() {
+        return {
+          kind: "error",
+          error: createRetryableError("internal_error"),
+          chunks: [
+            {
+              kind: "text_delta",
+              payload: { text: partialText },
+              terminal: false,
+              sequenceNumber: 0,
+            },
+          ],
+        };
+      },
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain: [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 2, 30_000)],
+        adapters: { [PRIMARY_PROVIDER_ID]: emitThenHang },
+        sink: collector.sink,
+        signal: controller.signal,
+        partialUsage,
+        sleeper: async () => {
+          // Abort during inter-retry sleep after partial was relayed.
+          controller.abort();
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("cancelled");
+    expect(partialUsage.getPartialUsage).toBeTypeOf("function");
+    expect(partialUsage.getPartialUsage?.()).toEqual({
+      tokens: partialText.length,
+      cost: partialText.length * 0.001,
+    });
+    expect(
+      collector.events.some(
+        (e) => e.kind === "stream_text" && e.text === partialText,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("T-D3-R-13 same_target_retry_emits_regenerating (§3.2.1)", () => {
+  it("emits regenerating before the same-target retry after a partial stream", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 2)];
+    const collector = createAttemptSink();
+    const partialText = "First attempt partial.";
+    let invokeCount = 0;
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke(): Promise<ProviderInvokeResult> {
+          invokeCount++;
+          if (invokeCount === 1) {
+            return {
+              kind: "error",
+              error: createRetryableError("internal_error"),
+              chunks: [
+                {
+                  kind: "text_delta",
+                  payload: { text: partialText },
+                  terminal: false,
+                  sequenceNumber: 0,
+                },
+              ],
+            };
+          }
+          return scriptedAdapter(["success"]).invoke(requestFixture);
+        },
+      },
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const regeneratingIndexes = collector.events
+      .map((event, index) => (event.kind === "regenerating" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(regeneratingIndexes).toHaveLength(1);
+
+    const partialIndex = collector.events.findIndex(
+      (e) => e.kind === "stream_text" && e.text === partialText,
+    );
+    const regeneratingIndex = regeneratingIndexes[0];
+    const successTextIndex = collector.events.findIndex(
+      (e) => e.kind === "stream_text" && e.text === "Fake adapter summary.",
+    );
+    expect(partialIndex).toBeGreaterThanOrEqual(0);
+    expect(regeneratingIndex).toBeGreaterThan(partialIndex);
+    expect(successTextIndex).toBeGreaterThan(regeneratingIndex);
+  });
+});
+
+describe("T-D3-R-14 deadline_clamps_attempt_timeout (§3.2.5)", () => {
+  it("clamps each attempt timeout to remaining deadline and skips exhausted targets", async () => {
+    const deadlineMs = 50;
+    const chain = [
+      chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1, 30_000),
+      chainEntry(1, FALLBACK_PROVIDER_ID, "fake-v2", 1, 30_000),
+    ];
+    const collector = createAttemptSink();
+    const invokeSpy: Record<string, number> = {};
+    const seenTimeouts: number[] = [];
+    const seenDeadlines: number[] = [];
+
+    const makePort = (providerId: string): ProviderPort => ({
+      async invoke(request, options) {
+        invokeSpy[providerId] = (invokeSpy[providerId] ?? 0) + 1;
+        seenDeadlines.push(request.deadline ?? -1);
+        await new Promise<void>((resolve) => {
+          const signal = options?.signal;
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          const started = Date.now();
+          signal?.addEventListener(
+            "abort",
+            () => {
+              seenTimeouts.push(Date.now() - started);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        return {
+          kind: "error",
+          error: createRetryableError("timeout"),
+        };
+      },
+    });
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters: {
+          [PRIMARY_PROVIDER_ID]: makePort(PRIMARY_PROVIDER_ID),
+          [FALLBACK_PROVIDER_ID]: makePort(FALLBACK_PROVIDER_ID),
+        },
+        sink: collector.sink,
+        request: { ...requestFixture, deadline: deadlineMs },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(invokeSpy[PRIMARY_PROVIDER_ID]).toBe(1);
+    expect(seenDeadlines[0]).toBeLessThanOrEqual(deadlineMs);
+    expect(seenDeadlines[0]).toBeGreaterThan(0);
+    expect(seenTimeouts[0]).toBeLessThan(deadlineMs + 80);
+    expect(invokeSpy[FALLBACK_PROVIDER_ID] ?? 0).toBeLessThanOrEqual(1);
+    if (invokeSpy[FALLBACK_PROVIDER_ID]) {
+      expect(seenDeadlines[1]).toBeLessThanOrEqual(deadlineMs);
+    }
+  });
+});
+
+describe("T-D3-R-15 retry_after_ms_honored (§3.2.4)", () => {
+  it("sleeps max(jitteredBackoff, retryAfterMs) clamped by the deadline", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 2)];
+    const collector = createAttemptSink();
+    const recording = createRecordingSleeper();
+    const fixedRandom = () => 0.5;
+    const retryAfterMs = 2_500;
+    let invokeCount = 0;
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke(): Promise<ProviderInvokeResult> {
+          invokeCount++;
+          if (invokeCount === 1) {
+            const error = {
+              ...createRetryableError("rate_limited"),
+              retryAfterMs,
+            } as CanonicalError & { retryAfterMs: number };
+            return { kind: "error", error };
+          }
+          return scriptedAdapter(["success"]).invoke(requestFixture);
+        },
+      },
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        sleeper: recording.sleeper,
+        random: fixedRandom,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const jittered = computeJitteredBackoff(0, fixedRandom);
+    expect(jittered).toBeLessThan(retryAfterMs);
+    expect(recording.delays).toEqual([retryAfterMs]);
   });
 });

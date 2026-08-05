@@ -417,6 +417,34 @@ function assertNoConversationalFieldsOnSingleShot(
   }
 }
 
+/** §7.7 diagnostic band: days to weeks, capped at the journal horizon. */
+const DIAGNOSTIC_HORIZON_MIN_DAYS = 1;
+const DIAGNOSTIC_HORIZON_MAX_DAYS = 90;
+const DIAGNOSTIC_RETENTION_CLASS =
+  /^diagnostic_(\d+)d$/i;
+
+function assertRetentionClassBand(retentionClass: unknown): void {
+  if (typeof retentionClass !== "string") {
+    throw new Error("Malformed manifest group: Governance");
+  }
+  const match = DIAGNOSTIC_RETENTION_CLASS.exec(retentionClass.trim());
+  if (!match) {
+    throw new Error(
+      "Malformed manifest Governance.retentionClass: expected diagnostic_Nd",
+    );
+  }
+  const days = Number.parseInt(match[1], 10);
+  if (
+    !Number.isFinite(days) ||
+    days < DIAGNOSTIC_HORIZON_MIN_DAYS ||
+    days > DIAGNOSTIC_HORIZON_MAX_DAYS
+  ) {
+    throw new Error(
+      `Malformed manifest Governance.retentionClass: diagnostic horizon must be ${DIAGNOSTIC_HORIZON_MIN_DAYS}–${DIAGNOSTIC_HORIZON_MAX_DAYS} days`,
+    );
+  }
+}
+
 function assertContentEnums(manifest: {
   Identity: Record<string, unknown>;
   Output: Record<string, unknown>;
@@ -431,6 +459,7 @@ function assertContentEnums(manifest: {
   if (!ACCEPTANCE_MODES.has(String(manifest.Governance.acceptanceMode))) {
     throw new Error("Malformed manifest group: Governance");
   }
+  assertRetentionClassBand(manifest.Governance.retentionClass);
 }
 
 function validate(json: Record<string, unknown>): Manifest {

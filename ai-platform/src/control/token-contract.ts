@@ -1,5 +1,5 @@
-import { writeAudit } from "./audit";
 import {
+  newId,
   nowIso,
   ok,
   parseJsonBody,
@@ -35,18 +35,28 @@ export async function handleTokenContractBeginRotation(
 
   const { DB } = bindings;
   const addedAt = nowIso();
-  // Atomic FR-002 guard: count check and insert share one statement so two
-  // concurrent begin-rotation requests cannot both observe count=1 and insert.
-  const insertResult = await DB.prepare(
-    `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
-     SELECT ?, ?, NULL, ?
-     WHERE (SELECT COUNT(*) FROM token_contract WHERE retired_at IS NULL) < 2
-       AND NOT EXISTS (SELECT 1 FROM token_contract WHERE ver = ?)`,
-  )
-    .bind(ver, addedAt, auth.operatorId, ver)
-    .run();
+  const auditId = newId();
+  // Atomic FR-002 guard + audit: count check, insert, and control_audit share
+  // one D1 batch. Audit INSERT is conditioned on the new row fingerprint so a
+  // failed guard (0 changes) does not leave a spurious audit row.
+  const batchResults = await DB.batch([
+    DB.prepare(
+      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+       SELECT ?, ?, NULL, ?
+       WHERE (SELECT COUNT(*) FROM token_contract WHERE retired_at IS NULL) < 2
+         AND NOT EXISTS (SELECT 1 FROM token_contract WHERE ver = ?)`,
+    ).bind(ver, addedAt, auth.operatorId, ver),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       SELECT ?, ?, 'token_contract_begin_rotation', ?, NULL, NULL, ?
+       WHERE EXISTS (
+         SELECT 1 FROM token_contract WHERE ver = ? AND added_at = ?
+       )`,
+    ).bind(auditId, auth.operatorId, ver, addedAt, ver, addedAt),
+  ]);
 
-  if ((insertResult.meta.changes ?? 0) === 0) {
+  if ((batchResults[0]?.meta.changes ?? 0) === 0) {
     const existing = await DB.prepare("SELECT ver FROM token_contract WHERE ver = ?")
       .bind(ver)
       .first<{ ver: string }>();
@@ -55,8 +65,6 @@ export async function handleTokenContractBeginRotation(
     }
     return reject(409, "rotation_already_open");
   }
-
-  await writeAudit(DB, auth.operatorId, "token_contract_begin_rotation", ver);
 
   return ok({ ver });
 }
@@ -83,21 +91,30 @@ export async function handleTokenContractRetire(
 
   const { DB } = bindings;
   const retiredAt = nowIso();
-  // Atomic retire: stamp only when the named ver is still accepted and the
-  // accepted set has at least two members (forbids emptying to zero).
-  const updateResult = await DB.prepare(
-    `UPDATE token_contract
-     SET retired_at = ?, changed_by = ?
-     WHERE ver = ?
-       AND retired_at IS NULL
-       AND (SELECT cnt FROM (
-         SELECT COUNT(*) AS cnt FROM token_contract WHERE retired_at IS NULL
-       )) >= 2`,
-  )
-    .bind(retiredAt, auth.operatorId, ver)
-    .run();
+  const auditId = newId();
+  // Atomic retire + audit: stamp and journal share one D1 batch. Audit is
+  // conditioned on the retired_at fingerprint so failed guards write nothing.
+  const batchResults = await DB.batch([
+    DB.prepare(
+      `UPDATE token_contract
+       SET retired_at = ?, changed_by = ?
+       WHERE ver = ?
+         AND retired_at IS NULL
+         AND (SELECT cnt FROM (
+           SELECT COUNT(*) AS cnt FROM token_contract WHERE retired_at IS NULL
+         )) >= 2`,
+    ).bind(retiredAt, auth.operatorId, ver),
+    DB.prepare(
+      `INSERT INTO control_audit
+         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+       SELECT ?, ?, 'token_contract_retire', ?, NULL, NULL, ?
+       WHERE EXISTS (
+         SELECT 1 FROM token_contract WHERE ver = ? AND retired_at = ?
+       )`,
+    ).bind(auditId, auth.operatorId, ver, retiredAt, ver, retiredAt),
+  ]);
 
-  if ((updateResult.meta.changes ?? 0) === 0) {
+  if ((batchResults[0]?.meta.changes ?? 0) === 0) {
     const row = await DB.prepare(
       "SELECT ver, retired_at FROM token_contract WHERE ver = ?",
     )
@@ -112,8 +129,6 @@ export async function handleTokenContractRetire(
     }
     return reject(409, "no_rotation_open");
   }
-
-  await writeAudit(DB, auth.operatorId, "token_contract_retire", ver);
 
   return ok({ ver, retired_at: retiredAt });
 }

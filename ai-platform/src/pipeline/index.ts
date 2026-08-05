@@ -8,8 +8,11 @@ import { INGRESS_BODY_SIZE_LIMIT, parseAdapterRequestBody } from "../adapter";
 import { resolve } from "../capability";
 import type { ConfigCache, D1Reader } from "../config-cache";
 import type { CanonicalRequest, CanonicalResult } from "../contracts/canonical";
-import { runCostPreflight } from "../context/preflight";
-import { validateContext } from "../context/validator";
+import {
+  runCostPreflight,
+  serializePreflightInput,
+} from "../context/preflight";
+import { validateContext, type Transcript } from "../context/validator";
 import { creditUsage, type CreditBindings } from "../credit";
 import { evaluateEntitlement, type EntitlementContext } from "../entitlement";
 import type { Principal, TokenVerifier, VerifyContext } from "../identity";
@@ -26,6 +29,11 @@ import {
   checkRateLimit,
   type RateLimitBindings,
 } from "../rate-limit";
+import { routingTierFromAdmission } from "../soft-threshold";
+import type {
+  IdempotencyPriorState,
+  ReleaseRequest,
+} from "../quota-do/index";
 
 export type GuardStage = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
@@ -38,6 +46,7 @@ export type ComposeRequestFn = (input: {
   requestReference: string;
   streamFlag?: boolean;
   deadline?: number | null;
+  transcript?: Transcript;
 }) =>
   | { ok: true; request: CanonicalRequest; promptVersion: string }
   | { ok: false; code: "internal_error" };
@@ -76,8 +85,9 @@ export type GuardBindings = {
   rateLimit: RateLimitBindings;
 };
 
-export type GuardSuccess = {
+export type GuardFreshSuccess = {
   ok: true;
+  outcome?: undefined;
   requestId: string;
   principal: Principal;
   manifest: Manifest;
@@ -87,7 +97,21 @@ export type GuardSuccess = {
   guardLatencyMs: number;
   requestReference: string;
   idempotencyKey: string;
+  transcript?: Transcript;
 };
+
+/** Idempotent replay — stages 9–10 skipped; adapter replays from priorState. */
+export type GuardIdempotentSuccess = {
+  ok: true;
+  outcome: "idempotent";
+  priorState: IdempotencyPriorState;
+  requestId: string;
+  guardLatencyMs: number;
+  requestReference: string;
+  idempotencyKey: string;
+};
+
+export type GuardSuccess = GuardFreshSuccess | GuardIdempotentSuccess;
 
 export type GuardFailure = {
   ok: false;
@@ -191,6 +215,30 @@ function extractTranscript(body: Record<string, unknown>): unknown {
   return undefined;
 }
 
+async function releaseAdmissionReservation(
+  bindings: GuardBindings,
+  installationId: string,
+  request: Omit<ReleaseRequest, "kind" | "installationId">,
+): Promise<void> {
+  const id = bindings.DO.idFromName(installationId);
+  const stub = bindings.DO.get(id);
+  try {
+    const response = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "release",
+        installationId,
+        ...request,
+      } satisfies ReleaseRequest),
+    });
+    // Drain the body so Miniflare isolated DO storage can pop cleanly.
+    await response.text();
+  } catch {
+    // Best-effort compensation — stage-9 failure still returns to the caller.
+  }
+}
+
 /**
  * §6.1 stages 1–10 (the guard). Timed end-to-end for load p95 measurement.
  */
@@ -199,6 +247,8 @@ export async function runGuard(
   bindings: GuardBindings,
 ): Promise<GuardResult> {
   const started = performance.now();
+  // Stage 8 / identity clock: seconds (JWT NumericDate), never Date.now() ms.
+  const nowSeconds = input.now ?? Math.floor(Date.now() / 1000);
 
   // Stage 1 — ingress size + JSON shape
   const bodyBytes = new TextEncoder().encode(input.bodyText).byteLength;
@@ -228,7 +278,7 @@ export async function runGuard(
     const verifyCtx: VerifyContext = {
       audience: input.verifyContext?.audience ?? "ai-platform",
       clockSkewSeconds: input.verifyContext?.clockSkewSeconds ?? 60,
-      now: input.verifyContext?.now ?? input.now ?? Math.floor(Date.now() / 1000),
+      now: input.verifyContext?.now ?? nowSeconds,
       cache: input.verifyContext?.cache ?? input.cache,
       reader: input.verifyContext?.reader ?? input.reader,
     };
@@ -291,11 +341,13 @@ export async function runGuard(
     return fail(6, contextResult.code, started);
   }
   const filteredContext = contextResult.filteredContext as Record<string, unknown>;
+  const validatedTranscript = contextResult.validatedTranscript;
 
-  // Stage 7 — cost pre-flight
-  const serializedInput = JSON.stringify({
+  // Stage 7 — cost pre-flight (include validated transcript so conversational growth is priced)
+  const serializedInput = serializePreflightInput({
     filteredContext,
     userIntent,
+    transcript: validatedTranscript,
   });
   const preflight = runCostPreflight(
     manifest,
@@ -316,15 +368,34 @@ export async function runGuard(
       reader: input.reader,
     },
     { DB: bindings.DB, DO: bindings.DO } satisfies AdmissionBindings,
-    { now: input.now },
+    { now: nowSeconds },
   );
   if (!admission.ok) {
     return fail(8, admission.code, started);
   }
+
+  // Idempotent replay — short-circuit stages 9–10; adapter replays from priorState.
+  if (admission.outcome === "idempotent") {
+    return {
+      ok: true,
+      outcome: "idempotent",
+      priorState: admission.priorState,
+      requestId: admission.priorState.requestId,
+      guardLatencyMs: performance.now() - started,
+      requestReference: input.requestReference,
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+
   if (admission.outcome !== "admitted" && admission.outcome !== "grace_admitted") {
     return fail(8, "internal_error", started);
   }
   const { requestId } = admission;
+
+  const routingTier =
+    admission.outcome === "grace_admitted"
+      ? "degraded"
+      : routingTierFromAdmission(admission);
 
   // Stage 9 — journal request row (one D1 insert); conversational grouping from wire body
   const journalled = await createRequestRow(
@@ -337,10 +408,16 @@ export async function runGuard(
       traceId: input.traceId,
       conversationId: conversationId ?? null,
       turnOrdinal: turnOrdinal ?? null,
+      routingTier,
     },
     bindings.DB,
   );
   if (!journalled.ok) {
+    await releaseAdmissionReservation(bindings, principal.installationId, {
+      requestId,
+      idempotencyKey: input.idempotencyKey,
+      jti: principal.jti,
+    });
     return fail(9, journalled.code, started);
   }
 
@@ -351,8 +428,17 @@ export async function runGuard(
     userIntent,
     principal,
     requestReference: input.requestReference,
+    transcript: validatedTranscript,
   });
   if (!composed.ok) {
+    await recordTerminalState(
+      requestId,
+      "Failed",
+      composed.code,
+      new Date().toISOString(),
+      bindings.DB,
+      manifest.interactionMode,
+    );
     return fail(10, composed.code, started);
   }
 
@@ -367,6 +453,9 @@ export async function runGuard(
     guardLatencyMs: performance.now() - started,
     requestReference: input.requestReference,
     idempotencyKey: input.idempotencyKey,
+    ...(validatedTranscript !== undefined
+      ? { transcript: validatedTranscript }
+      : {}),
   };
 }
 

@@ -1092,6 +1092,23 @@ describe("record_terminal_failed_requires_taxonomy_code", () => {
   });
 });
 
+describe("journal_transition_rejects_failed", () => {
+  it("throws when Failed is written via journalTransition (must use recordTerminalState)", async () => {
+    const input = await seedRequestRow();
+
+    await expect(
+      journalTransition(input.requestId, "Failed", FIXTURE_NOW, env.DB),
+    ).rejects.toThrow(
+      "Failed terminal state requires recordTerminalState with terminalErrorCode",
+    );
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Accepted");
+    expect(row?.completed_at).toBeNull();
+    expect(row?.terminal_error_code).toBeNull();
+  });
+});
+
 describe("get_request_awaiting_context", () => {
   it("returns AwaitingContext without reading R2", async () => {
     const db = createD1Spy(env.DB);

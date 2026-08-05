@@ -7,6 +7,7 @@ import {
   purgeByInstallationId,
 } from "../retention";
 import { supportLookup } from "../support";
+import { writeAudit } from "./audit";
 import { ok, reject, requireOperator } from "./http";
 import type { ControlBindings, OperatorAuth } from "./types";
 
@@ -73,6 +74,16 @@ export async function handleInstallationPurge(
   if (!targetId) {
     return reject(400, "invalid_route");
   }
+
+  // Intent-to-purge audit before retention deletes: retention/index.ts still
+  // journals completion after its D1 batch (owned elsewhere). Writing first
+  // ensures an operator-identity row exists even if the completion audit fails.
+  await writeAudit(
+    bindings.DB,
+    auth.operatorId,
+    "purge_installation",
+    targetId,
+  );
 
   await purgeByInstallationId(targetId, auth.operatorId, {
     db: bindings.DB,

@@ -24,8 +24,10 @@ import {
 import {
   admissionRPC,
   creditRPC,
+  releaseRPC,
   type AdmissionRequest,
   type CreditRequest,
+  type ReleaseRequest,
 } from "./quota-do/index";
 
 interface Env {
@@ -55,6 +57,95 @@ function assertRequiredBindings(runtimeEnv: Env): void {
 
 assertRequiredBindings(env as Env);
 
+/** Known caller/arg failures — must stay 400 so admission maps them to client_error, not grace. */
+export class ArgValidationError extends Error {
+  override readonly name = "ArgValidationError";
+  constructor(message = "bad_request") {
+    super(message);
+  }
+}
+
+function isArgValidationError(error: unknown): boolean {
+  if (error instanceof ArgValidationError) {
+    return true;
+  }
+  if (
+    error instanceof Error &&
+    (error.name === "ArgValidationError" ||
+      error.message === "installation_id_mismatch")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function assertAdmissionArgs(body: unknown): asserts body is AdmissionRequest {
+  const candidate = body as Partial<AdmissionRequest>;
+  if (
+    typeof candidate.jti !== "string" ||
+    typeof candidate.installationId !== "string" ||
+    typeof candidate.idempotencyKey !== "string" ||
+    typeof candidate.requestReference !== "string" ||
+    candidate.entitlement === null ||
+    typeof candidate.entitlement !== "object"
+  ) {
+    throw new ArgValidationError("invalid_admission_args");
+  }
+}
+
+function assertCreditArgs(body: unknown): asserts body is CreditRequest {
+  const candidate = body as Partial<CreditRequest>;
+  if (
+    typeof candidate.installationId !== "string" ||
+    typeof candidate.requestId !== "string" ||
+    typeof candidate.requestReference !== "string" ||
+    candidate.usage === null ||
+    typeof candidate.usage !== "object" ||
+    typeof candidate.partial !== "boolean"
+  ) {
+    throw new ArgValidationError("invalid_credit_args");
+  }
+}
+
+function assertReleaseArgs(body: unknown): asserts body is ReleaseRequest {
+  const candidate = body as Partial<ReleaseRequest>;
+  if (
+    typeof candidate.installationId !== "string" ||
+    typeof candidate.requestId !== "string" ||
+    typeof candidate.idempotencyKey !== "string" ||
+    typeof candidate.jti !== "string"
+  ) {
+    throw new ArgValidationError("invalid_release_args");
+  }
+}
+
+function logGatewayRpcFailure(
+  kind: string | undefined,
+  body: unknown,
+  error: unknown,
+): void {
+  const rpcBody = body as {
+    installationId?: unknown;
+    requestReference?: unknown;
+    jti?: unknown;
+  };
+  console.error(
+    JSON.stringify({
+      level: "error",
+      message: "gateway_object_rpc_failed",
+      kind: kind ?? "unknown",
+      error: error instanceof Error ? error.message : String(error),
+      installation:
+        typeof rpcBody.installationId === "string" ? rpcBody.installationId : "",
+      request_reference:
+        typeof rpcBody.requestReference === "string"
+          ? rpcBody.requestReference
+          : "",
+      jti: typeof rpcBody.jti === "string" ? rpcBody.jti : "",
+    }),
+  );
+}
+
 export class GatewayObject extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
@@ -74,25 +165,41 @@ export class GatewayObject extends DurableObject {
         : undefined;
     try {
       if (kind === "admission") {
+        assertAdmissionArgs(body);
         const result = await admissionRPC(
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as AdmissionRequest,
+          body,
           now,
         );
         return Response.json(result);
       }
       if (kind === "credit") {
+        assertCreditArgs(body);
         const result = await creditRPC(
           this.ctx.storage,
           (fn) => this.ctx.blockConcurrencyWhile(fn),
-          body as CreditRequest,
+          body,
           now,
         );
         return Response.json(result);
       }
-    } catch {
-      return Response.json({ error: "bad_request" }, { status: 400 });
+      if (kind === "release") {
+        assertReleaseArgs(body);
+        const result = await releaseRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body,
+          now,
+        );
+        return Response.json(result);
+      }
+    } catch (error) {
+      if (isArgValidationError(error)) {
+        return Response.json({ error: "bad_request" }, { status: 400 });
+      }
+      logGatewayRpcFailure(kind, body, error);
+      return Response.json({ error: "internal_error" }, { status: 500 });
     }
     return Response.json({ error: "unknown_kind" }, { status: 400 });
   }

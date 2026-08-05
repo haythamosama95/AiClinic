@@ -123,4 +123,28 @@ describe("scorer_branch_coverage", () => {
     expect(scoreQuality(request, content, baseExpectation)).toBe("pass");
     expect(scoreSchema(successOutcome(content), baseExpectation)).toBe("pass");
   });
+
+  it("fails quality for insufficient-context needles when output omits what is missing", () => {
+    const expectation: ExpectationDefinition = {
+      case_id: "visit_summary.insufficient_context",
+      system_instruction_must_contain: ["state what is missing"],
+      output_must_contain: ["insufficient", "missing"],
+      output_min_length: 40,
+      output_mode: "prose",
+    };
+    expect(
+      scoreQuality(
+        requestWithSystem("state what is missing in advisory summaries"),
+        "The patient presents with headache; advisory summary for review.",
+        expectation,
+      ),
+    ).toBe("fail");
+    expect(
+      scoreQuality(
+        requestWithSystem("state what is missing in advisory summaries"),
+        "Context is insufficient; what is missing is a concrete chief complaint.",
+        expectation,
+      ),
+    ).toBe("pass");
+  });
 });

@@ -370,6 +370,35 @@ describe("T-A4-20 content_enum_validation", () => {
     (manifest.Identity as Record<string, unknown>).lifecycleState = "zombie";
     expect(() => load(manifest)).toThrow(/lifecycleState|Identity/i);
   });
+
+  it("rejects diagnostic retentionClass outside the 1–90 day band", () => {
+    const tooLong = validManifest();
+    (tooLong.Governance as Record<string, unknown>).retentionClass =
+      "diagnostic_365d";
+    expect(() => load(tooLong)).toThrow(/retentionClass/i);
+
+    const tooShort = validManifest();
+    (tooShort.Governance as Record<string, unknown>).retentionClass =
+      "diagnostic_0d";
+    expect(() => load(tooShort)).toThrow(/retentionClass/i);
+
+    const malformed = validManifest();
+    (malformed.Governance as Record<string, unknown>).retentionClass =
+      "forever";
+    expect(() => load(malformed)).toThrow(/retentionClass/i);
+  });
+
+  it("accepts diagnostic retentionClass at band edges", () => {
+    const min = validManifest();
+    (min.Governance as Record<string, unknown>).retentionClass =
+      "diagnostic_1d";
+    expect(() => load(min)).not.toThrow();
+
+    const max = validManifest();
+    (max.Governance as Record<string, unknown>).retentionClass =
+      "diagnostic_90d";
+    expect(() => load(max)).not.toThrow();
+  });
 });
 
 describe("T-A4-21 deep_freeze_rejects_group_mutation", () => {

@@ -415,6 +415,27 @@ async function assertAuditPointersNonNull(
   }
 }
 
+async function countActiveRows(
+  db: D1Database,
+  policyId: string = FIXTURE_POLICY_ID,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM routing_policy
+       WHERE policy_id = ? AND status = 'active'`,
+    )
+    .bind(policyId)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function assertExactlyOneActive(
+  db: D1Database,
+  policyId: string = FIXTURE_POLICY_ID,
+): Promise<void> {
+  expect(await countActiveRows(db, policyId)).toBe(1);
+}
+
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, canaryMigrationSql);
@@ -1012,5 +1033,151 @@ describe("routing_policy_canary_split", () => {
     );
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "installation_not_found" });
+  });
+
+  it("rejects canary of active version with 409 illegal_policy_transition", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyCanary,
+      handleRoutingPolicyPromote,
+    } = await loadRoutingControlHandlers();
+
+    await publishAndPromoteV1(
+      { handleRoutingPolicyPublish, handleRoutingPolicyPromote },
+      bindings,
+      operatorAuth,
+    );
+    await assertExactlyOneActive(env.DB);
+
+    const response = await handleRoutingPolicyCanary(
+      buildCanaryRequest(FIXTURE_VERSION_V1, [COHORT_INSTALLATION_ID]),
+      bindings,
+      operatorAuth,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_policy_transition",
+    });
+    await assertExactlyOneActive(env.DB);
+  });
+
+  it("rejects rollback of sole active version with no superseded prior", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyPromote,
+      handleRoutingPolicyRollback,
+    } = await loadRoutingControlHandlers();
+
+    await publishAndPromoteV1(
+      { handleRoutingPolicyPublish, handleRoutingPolicyPromote },
+      bindings,
+      operatorAuth,
+    );
+    await assertExactlyOneActive(env.DB);
+
+    const response = await handleRoutingPolicyRollback(
+      buildRollbackRequest(FIXTURE_VERSION_V1),
+      bindings,
+      operatorAuth,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "illegal_policy_transition",
+    });
+    await assertExactlyOneActive(env.DB);
+  });
+
+  it("keeps exactly one active row per policy after every mutation", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyCanary,
+      handleRoutingPolicyPromote,
+      handleRoutingPolicyRollback,
+    } = await loadRoutingControlHandlers();
+
+    await publishAndPromoteV1(
+      { handleRoutingPolicyPublish, handleRoutingPolicyPromote },
+      bindings,
+      operatorAuth,
+    );
+    await assertExactlyOneActive(env.DB);
+
+    vi.setSystemTime(new Date("2026-08-03T12:01:00.000Z"));
+    expect(
+      (
+        await handleRoutingPolicyPublish(
+          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
+
+    expect(
+      (
+        await handleRoutingPolicyCanary(
+          buildCanaryRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
+
+    expect(
+      (
+        await handleRoutingPolicyRollback(
+          buildRollbackRequest(FIXTURE_VERSION_V2),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
+
+    expect(
+      (
+        await handleRoutingPolicyCanary(
+          buildCanaryRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
+
+    expect(
+      (
+        await handleRoutingPolicyPromote(
+          buildPromoteRequest(FIXTURE_VERSION_V2),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
+
+    expect(
+      (
+        await handleRoutingPolicyRollback(
+          buildRollbackRequest(FIXTURE_VERSION_V2),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    await assertExactlyOneActive(env.DB);
   });
 });

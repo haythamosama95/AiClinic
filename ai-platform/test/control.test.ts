@@ -53,6 +53,11 @@ type ControlHandlers = {
     bindings: ControlBindings,
     operatorAuth: OperatorAuth,
   ) => Promise<Response>;
+  handleRevokeKey: (
+    request: Request,
+    bindings: ControlBindings,
+    operatorAuth: OperatorAuth,
+  ) => Promise<Response>;
   handleSuspend: (
     request: Request,
     bindings: ControlBindings,
@@ -168,7 +173,7 @@ function buildEnrollRequest(
 
 function buildLifecycleRequest(
   installationId: string,
-  action: "rotate" | "suspend" | "resume" | "delete",
+  action: "rotate" | "revoke-key" | "suspend" | "resume" | "delete",
   body?: Record<string, unknown>,
 ): Request {
   return new Request(
@@ -455,6 +460,96 @@ describe("lifecycle_rotate_audit", () => {
   });
 });
 
+describe("lifecycle_revoke_key_audit", () => {
+  it("stamps revoked_at and writes revoke-key audit", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleRevokeKey(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+        kid: DEFAULT_ENROLL_PAYLOAD.kid,
+      }),
+      bindings(),
+      operatorAuth,
+    );
+    expect(response.ok).toBe(true);
+
+    const afterCounts = await readTableCounts();
+    expect(afterCounts.installation_key).toBe(1);
+    expect(afterCounts.control_audit).toBe(beforeCounts.control_audit + 1);
+
+    const key = await env.DB.prepare(
+      "SELECT key_id, revoked_at FROM installation_key WHERE key_id = ?",
+    )
+      .bind(DEFAULT_ENROLL_PAYLOAD.kid)
+      .first<{ key_id: string; revoked_at: string | null }>();
+    expect(key?.key_id).toBe(DEFAULT_ENROLL_PAYLOAD.kid);
+    expect(key?.revoked_at).toBeTruthy();
+
+    const audit = await env.DB.prepare(
+      "SELECT operator_id, action, after_pointer FROM control_audit WHERE action = 'revoke-key'",
+    ).first<{ operator_id: string; action: string; after_pointer: string }>();
+    expect(audit).toMatchObject({
+      operator_id: FAKE_OPERATOR.operatorId,
+      action: "revoke-key",
+      after_pointer: DEFAULT_ENROLL_PAYLOAD.kid,
+    });
+  });
+
+  it("rejects revoke of unknown kid with 404 key_not_found", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleRevokeKey(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+        kid: "kid-does-not-exist",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "key_not_found" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects double revoke with 409 key_already_revoked", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    expect(
+      (
+        await handlers.handleRevokeKey(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+            kid: DEFAULT_ENROLL_PAYLOAD.kid,
+          }),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleRevokeKey(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+        kid: DEFAULT_ENROLL_PAYLOAD.kid,
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "key_already_revoked" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+});
+
 describe("lifecycle_delete_audit", () => {
   it("writes delete audit and transitions lifecycle status", async () => {
     const handlers = await loadControlHandlers();
@@ -494,7 +589,7 @@ describe("lifecycle_delete_audit", () => {
 });
 
 describe("non_operator_credentials_rejected", () => {
-  it("rejects all five mutations with 401 unauthorized and no D1 writes", async () => {
+  it("rejects all six mutations with 401 unauthorized and no D1 writes", async () => {
     const handlers = await loadControlHandlers();
     const rejectAuth = createFakeOperatorAuth(null);
 
@@ -523,6 +618,17 @@ describe("non_operator_credentials_rejected", () => {
               kid: "kid-reject-rotate",
               public_key: "cHVibGlj",
               algorithm: "EdDSA",
+            }),
+            bindings(),
+            rejectAuth,
+          ),
+      },
+      {
+        label: "revoke-key",
+        invoke: () =>
+          handlers.handleRevokeKey(
+            buildLifecycleRequest("inst-reject-006", "revoke-key", {
+              kid: "kid-reject-revoke",
             }),
             bindings(),
             rejectAuth,
@@ -1057,7 +1163,7 @@ describe("invalid_route_rejected", () => {
 });
 
 describe("installation_not_found", () => {
-  it("rejects rotate/suspend/resume/delete on unknown id with 404", async () => {
+  it("rejects rotate/revoke-key/suspend/resume/delete on unknown id with 404", async () => {
     const handlers = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
     const unknownId = "inst-does-not-exist";
@@ -1071,6 +1177,17 @@ describe("installation_not_found", () => {
               kid: "kid-missing",
               public_key: "cHVibGlj",
               algorithm: "EdDSA",
+            }),
+            bindings(),
+            operatorAuth,
+          ),
+      },
+      {
+        label: "revoke-key",
+        invoke: () =>
+          handlers.handleRevokeKey(
+            buildLifecycleRequest(unknownId, "revoke-key", {
+              kid: "kid-missing",
             }),
             bindings(),
             operatorAuth,

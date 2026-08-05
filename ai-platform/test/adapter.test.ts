@@ -857,7 +857,143 @@ describe("T-A6-T11 no second terminal after the first (T013)", () => {
       "traceId",
       "requestReference",
       "headers",
+      "signal",
     ]);
+    expect(contexts[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(contexts[0]!.signal.aborted).toBe(false);
+  });
+});
+
+describe("T-A6-R-disconnect event source notified on client abort (§2.3)", () => {
+  it("calls eventSource.disconnect exactly once on reader.cancel() mid-stream", async () => {
+    let resolveHold: (() => void) | undefined;
+    const hold = new Promise<void>((resolve) => {
+      resolveHold = resolve;
+    });
+    const disconnectReasons: string[] = [];
+    let contextSignal: AbortSignal | undefined;
+
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      eventSource: (sink, context) => {
+        contextSignal = context.signal;
+        void (async () => {
+          sink.push({
+            type: "heartbeat",
+            data: { trace_id: context.traceId },
+            trace_id: context.traceId,
+          });
+          await hold;
+          sink.push({
+            type: "completed",
+            data: { result: {}, trace_id: context.traceId },
+            trace_id: context.traceId,
+          });
+        })();
+        return {
+          disconnect(reason) {
+            disconnectReasons.push(reason);
+          },
+        };
+      },
+    });
+
+    const reader = response.body!.getReader();
+    const seen: AdapterSseEvent[] = [];
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const parsed = parseSseBlock(part);
+        if (parsed) seen.push(parsed);
+      }
+      if (
+        seen.some((e) => e.type === "accepted") &&
+        seen.some((e) => e.type === "heartbeat")
+      ) {
+        await expect(reader.cancel()).resolves.toBeUndefined();
+        break;
+      }
+    }
+
+    resolveHold?.();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(disconnectReasons).toEqual(["client_close"]);
+    expect(contextSignal?.aborted).toBe(true);
+    expect(seen.some((e) => e.type === "cancelled")).toBe(false);
+  });
+
+  it("calls eventSource.disconnect once on request.signal abort mid-stream", async () => {
+    const abortController = new AbortController();
+    let resolveHold: (() => void) | undefined;
+    const hold = new Promise<void>((resolve) => {
+      resolveHold = resolve;
+    });
+    const disconnectReasons: string[] = [];
+    let contextSignal: AbortSignal | undefined;
+
+    const response = await handleAdapterRequest(
+      buildWellFormedRequest({ signal: abortController.signal }),
+      {
+        eventSource: (sink, context) => {
+          contextSignal = context.signal;
+          void (async () => {
+            sink.push({
+              type: "heartbeat",
+              data: { trace_id: context.traceId },
+              trace_id: context.traceId,
+            });
+            await hold;
+            sink.push({
+              type: "completed",
+              data: { result: {}, trace_id: context.traceId },
+              trace_id: context.traceId,
+            });
+          })();
+          return {
+            disconnect(reason) {
+              disconnectReasons.push(reason);
+            },
+          };
+        },
+      },
+    );
+
+    const reader = response.body!.getReader();
+    const seen: AdapterSseEvent[] = [];
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const parsed = parseSseBlock(part);
+        if (parsed) seen.push(parsed);
+      }
+      if (
+        seen.some((e) => e.type === "accepted") &&
+        seen.some((e) => e.type === "heartbeat")
+      ) {
+        abortController.abort();
+        break;
+      }
+    }
+
+    resolveHold?.();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(disconnectReasons).toEqual(["client_close"]);
+    expect(contextSignal?.aborted).toBe(true);
   });
 });
 

@@ -988,6 +988,30 @@ describe("router_kill_switch_excludes_providers", () => {
       "kill_switch",
     ]);
   });
+
+  it("excludes providers with an active kill_switches cache row without context.killedProviderIds", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("kill-switch-cache", [
+          policyTarget("deepseek", "deepseek-chat"),
+          policyTarget("google", "gemini-1.5-pro"),
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    cache.remember("kill_switches", "provider:deepseek", {
+      active: true,
+      scope: "provider",
+      target: "deepseek",
+    });
+
+    const outcome = route(cache, defaultContext());
+
+    expect(chainKeys(outcome)).toEqual(["google/gemini-1.5-pro"]);
+    expect(excludedReasons(outcome, "deepseek", "deepseek-chat")).toEqual([
+      "kill_switch",
+    ]);
+  });
 });
 
 describe("router_document_validation", () => {
