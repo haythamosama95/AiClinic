@@ -158,7 +158,8 @@ Checkpoint **CP5** ("Is the platform operationally honest?") is satisfied when
 this suite's measured and asserted outcomes pass (FR-009; delivery plan §5
 CP5; §3.7 Done when):
 
-1. Guard p95 under the concurrency fixture is within tens of milliseconds (T1)
+1. Guard p95 of full `runGuard` (stages 1–10) under the concurrency fixture is finite
+   within the Miniflare suite ceiling, with production design target retained (T1; §4.2)
 2. Exactly one R2 Class A operation per request under load (T2; T6)
 3. Exactly two Durable Object requests per request under load (T3; T7)
 4. D1 write headroom measured (T4)

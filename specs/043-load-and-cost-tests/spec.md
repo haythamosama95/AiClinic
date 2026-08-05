@@ -164,10 +164,11 @@ are suite outcomes (T1–T5), not request error codes.
 - **No runtime taxonomy codes.** F5 does not emit `quota_exhausted`, `rate_limited`,
   `request_too_large`, or any other §5.4 code. A failing load assertion fails the suite /
   checkpoint gate; it does not invent a new request error code (§13.5; §3.10).
-- **p95 bound is "tens of milliseconds", not an invented numeric cutoff.** §3.11.6 F5
-  and the Done when cell require guard p95 within tens of milliseconds at target
-  concurrency. This slice does not invent a millisecond integer or a concurrency integer
-  beyond those cited phrases (§3.11.6 F5; §13.5).
+- **p95 bound is "tens of milliseconds", not an invented numeric cutoff in FR/SC.**
+  §3.11.6 F5 and the Done when cell require guard p95 within tens of milliseconds at
+  target concurrency. FR/SC prose keeps those phrases; suite fixture parameters
+  (Clarification Q3 / 2026-08-05) encode production design target 100 ms and workers-pool
+  Miniflare ceiling 2000 ms without rewriting FR-003 / SC-001.
 - **D1 headroom and DO throughput are measured, not thresholded here.** Done when and
   §3.11.6 require those quantities to be **measured**. No pass/fail numeric ceiling for
   either is named in §13.5 or §13.6; inventing one is out of scope (§3.7 Done when;
@@ -312,7 +313,9 @@ Prohibitions copied from delivery plan §6.4 (inherited by every slice):
   established by earlier slices (notably C3 and B4); F5 freezes the under-load proof,
   not those pipeline contracts themselves (§13.6; §13.6.1).
 - "Target concurrency" and "tens of milliseconds" are used exactly as cited in delivery
-  plan §3.11.6 F5 / Done when; this slice does not invent numeric substitutes.
+  plan §3.11.6 F5 / Done when in FR/SC prose; suite fixture parameters (Clarification Q3 /
+  2026-08-05) encode N=20, production target 100 ms, and Miniflare ceiling 2000 ms without
+  rewriting those FR/SC phrases.
 - D1 write headroom and Durable Object throughput per installation have no numeric
   pass/fail ceilings named in §13.5 or §13.6; measurement satisfies Done when.
 - The §13.6.2 pre-flight estimator remains C2's contract; F5 does not re-open it.
