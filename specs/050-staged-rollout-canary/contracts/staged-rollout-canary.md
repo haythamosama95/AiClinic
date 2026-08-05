@@ -50,8 +50,9 @@ All routes remain `POST` only on the existing `/control` boundary (B2). Operator
 
 | Route (illustrative) | Purpose | D1 / R2 writes |
 | --- | --- | --- |
-| `POST /control/routing-policies/{policy_id}/versions/{version}/publish` | Publish a new versioned policy document | `routing_policy` row + R2 object at `control/routing-policy/{policy_id}/{version}.json` (§4.3.7); `control_audit` |
+| `POST /control/routing-policies/{policy_id}/versions/{version}/publish` | Publish a new versioned policy document (non-serving) | `routing_policy` row + R2 object at `control/routing-policy/{policy_id}/{version}.json` (§4.3.7); `control_audit` |
 | `POST /control/routing-policies/{policy_id}/versions/{version}/canary` | Activate that version for a named cohort | Cohort-scoped activation on `routing_policy`; `control_audit` |
+| `POST /control/routing-policies/{policy_id}/versions/{version}/promote` | Promote that version to global active and end the canary split | Global activation on `routing_policy`; clear canary; `control_audit` |
 | `POST /control/routing-policies/{policy_id}/versions/{version}/rollback` | Roll back to the previous active version | Reactivate prior version; clear canary split; `control_audit` |
 | `POST /control/capabilities/{capability_id}/versions/{version}/activate` | Activate a capability build for a named cohort | Installation-scoped `capability_grant` rows for cohort members; `control_audit` |
 | `POST /control/capabilities/{capability_id}/versions/{version}/promote` | Promote so all cohorts receive the activated version | Expand grants / end split; `control_audit` |
@@ -87,6 +88,7 @@ B2's five lifecycle actions and J1's `deprecate` / `retire` remain. J3 **extends
 | --- | --- |
 | `routing_policy_publish` | Publish a new versioned routing policy |
 | `routing_policy_canary` | Canary a policy version to a named cohort |
+| `routing_policy_promote` | Promote a policy version to global active |
 | `routing_policy_rollback` | Roll back routing policy to the previous version |
 | `cohort_activate` | Activate a capability / prompt-backed build for a named cohort |
 | `cohort_promote` | Promote so all cohorts move onto the activated version |
@@ -140,22 +142,30 @@ Publishing creates:
 1. An immutable R2 object at `control/routing-policy/{policy_id}/{version}.json` (document shape
    remains D2's frozen policy document — chain selection rules unchanged).
 2. A `routing_policy` row (`policy_id`, `version`, `content_pointer`, `active_from`,
-   `activated_by`) plus `control_audit`.
+   `activated_by`, `status='published'`, `canary_installation_ids=NULL`) plus `control_audit`.
 
-### 5.2 Canary and promote
+Publish does **not** activate the version for any installation. The row remains non-serving until
+canary (cohort) or promote (global).
 
-Canary activates the published version for the named cohort only. Other installations keep the
-previously promoted active version. Promotion makes the version the global active policy and clears
-the canary split (FR-002, FR-004).
+### 5.2 Canary, promote, and status
 
-Optional additive column on `routing_policy` (no new entity):
+Canary sets `status='canary'` and `canary_installation_ids` to the named cohort JSON. Other
+installations keep the previously promoted `status='active'` version. Promote sets the named
+version to `status='active'` (clearing canary), supersedes any prior active / canary rows for the
+same `policy_id`, and ends the split (FR-002, FR-004).
+
+Additive columns on `routing_policy` (no new entity):
 
 | Column | Type | Nullable | Meaning |
 | --- | --- | --- | --- |
-| `canary_installation_ids` | TEXT | Yes | JSON array of installation ids for which this version is canary-active; `NULL` = not canary-scoped (promoted / global semantics). |
+| `status` | TEXT | No | `published` \| `canary` \| `active` \| `superseded`. Default `published`. Serving reads consult `canary` (cohort) then `active` (global). |
+| `canary_installation_ids` | TEXT | Yes | JSON array of installation ids for which this version is canary-active when `status='canary'`. `NULL` when not canary-scoped (published / active / superseded). |
 
 A5 columns are otherwise unchanged. Cold-isolate config reads reconstruct the split via
-`active_routing_policy` without a second entity kind.
+`active_routing_policy` without a second entity kind. Production `createD1ConfigReader` reconstructs
+the split (prefer `status='canary'` containing the installation id, else `status='active'`);
+request-path wiring of preload may still be invoked by callers (`preloadRoutingPolicyForInstallation`
+exists on the router).
 
 ### 5.3 Roll back
 

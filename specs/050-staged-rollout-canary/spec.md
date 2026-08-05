@@ -213,7 +213,8 @@ cohort activation).
 - **FR-003**: A prompt change MUST be roll-backable by deploying the previous
   build after staged cohort deploy (§12.4 Change a prompt).
 - **FR-004**: The control plane MUST support publishing a new versioned routing
-  policy, canarying it, and rolling it back (§4.5 Routing policy row).
+  policy (non-serving), canarying it, promoting it to global active, and rolling
+  it back (§4.5 Routing policy row).
 - **FR-005**: Every cohort activation, promotion, routing-policy canary, and roll
   back MUST be journaled with the operator identity as a `control_audit` row
   (§4.5; B2 Freezes; delivery plan §3.9 Done when).

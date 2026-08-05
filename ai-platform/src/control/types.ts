@@ -56,7 +56,7 @@ export type CohortCapabilityRoute = {
 export type RoutingPolicyRoute = {
   policyId: string;
   version: string;
-  action: "publish" | "canary" | "rollback";
+  action: "publish" | "canary" | "promote" | "rollback";
 };
 
 export type TokenContractBeginPayload = {

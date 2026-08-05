@@ -53,3 +53,48 @@ Required-case status: **case 1 present** (T-J3-01 + `routing_policy_canary_split
 5. **[Medium] Validate mutation targets**: 404 cohort activate/promote on unknown capability version (mirroring the routing handlers) and reject unknown installation ids; record `before_pointer`/`after_pointer` (prior version, cohort membership) on all five audit actions per contract §3.
 6. **[Low] Harden the rollback-by-deploy test**: assert the absence of a runtime pointer structurally (e.g. no D1 table/column selecting prompt text — grep migrations and `schema.snap.sql`), and rename or re-scope T-J3-03 so its name does not claim a deploy it never performs.
 7. **[Low] Add the missing branch tests**: non-operator on all five mutations, empty `installation_ids`, malformed JSON, unpublished-version canary/rollback, and a two-published-versions ordering case with a deterministic tiebreaker in the read query.
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **J3-R1 — Routing-policy status machine** | Critical #1, #2; Arch Dev #2; Missing/Weak Tests #1, #2; Rec Imp #1, #2 | `migrations/20260805190000_routing_policy_status.sql`; `schema.snap.sql`; `control/routing-policy.ts`; `control/types.ts`; `control/index.ts`; `contracts/staged-rollout-canary.md`; `test/routing-policy-canary.test.ts` |
+| **J3-R2 — Production canary-split reader** | Arch Dev #1; Rec Imp #3; Missing/Weak Tests #7 (cache-miss / reader parity) | `config-cache/index.ts` (`createD1ConfigReader`); routing + cohort tests now use production reader |
+| **J3-R3 — Cohort promote completeness** | Bugs #1; Missing/Weak Tests #4; Rec Imp #4 | `control/cohort.ts`; `capability/index.ts` (discover / `getGrantedCapabilityVersion` plan fallback); `test/cohort-activate-promote.test.ts` |
+| **J3-R4 — Validation + audit pointers** | Bugs #2, #3; Rec Imp #5 | `control/cohort.ts`; `control/routing-policy.ts` (404 targets; before/after pointers) |
+| **J3-R5 — Grant uniqueness + kill-switch canary** | Bugs #4, #5 | Status migration unique indexes; `capability/index.ts` (`resolveProviderId` installation-first) |
+| **J3-R6 — Branch / hardening tests** | Missing/Weak Tests #3, #5, #6, #7; Rec Imp #6, #7 | Non-operator + rejection branches; T-J3-03 rename + structural no-pointer assert; `active_from` ordering case |
+
+Every numbered review item appears in exactly one stage. No escalations — all fixes stayed within J3 scope (implementation + Spec Kit contract extension). Architecture docs untouched.
+
+### 7.2 Test cases created first
+
+- **J3-R1:** `publish_does_not_activate_until_promote`; `rollback_restores_previous_policy_version`; `promote_makes_canary_global`; `rollback_after_promote_reactivates_prior`; T-J3-04 post-rollback serving asserts + `routing_policy_promote` audit.
+- **J3-R2:** Canary-split and promote/rollback cases assert via `createD1ConfigReader(db, r2)` (test-owned `makeRoutingD1Reader` removed).
+- **J3-R3:** `T-J3-02b promotion_moves_plan_scoped_installations`; `T-J3-02c promotion_covers_post_enroll_installation`.
+- **J3-R4:** Unknown capability/installation → 404; audit pointer non-null asserts on canary/promote/rollback/activate.
+- **J3-R5:** Covered by unique-index migration + installation-first policy load (kill-switch path uses per-installation policy key).
+- **J3-R6:** Non-operator on all routing + cohort mutations; empty `installation_ids` / malformed JSON / unpublished-version 404; `published_versions_ordering_later_promote_wins`; T-J3-03 renamed with schema/migration structural pointer assert.
+
+### 7.3 Fix implemented
+
+- **J3-R1:** Additive `status` column (`published`/`canary`/`active`/`superseded`); publish inserts non-serving rows; new `/promote` route + `routing_policy_promote` audit action; rollback clears canary or reactivates prior `superseded` instead of promoting the rolled-back version. Contract §2/§3/§5 extended accordingly.
+- **J3-R2:** `createD1ConfigReader(db, r2?)` reconstructs `active_routing_policy` (canary-then-active) and reads `grants` / `entitlements`; J3 tests call the production reader.
+- **J3-R3:** `handleCohortPromote` updates installation + plan grants, materializes entitled installations, upserts plan grants from entitlements; discover / `getGrantedCapabilityVersion` fall back to plan grants.
+- **J3-R4:** Activate/promote 404 on unregistered capability versions and missing installations; canary validates installation ids; all five(+promote) mutations populate `before_pointer`/`after_pointer`.
+- **J3-R5:** Partial unique indexes on live installation/plan grants; `resolveProviderId` tries `${policyRef}/${installationId}` before the global key.
+- **J3-R6:** Rejection and hardening coverage listed above.
+- Spec Kit aligned: `contracts/staged-rollout-canary.md`, `spec.md` FR-004, `plan.md`, `tasks.md` Notes, `quickstart.md`.
+
+### 7.4 Verification
+
+Full `ai-platform` suite (`npm test`):
+
+- Node pool: **41 files, 639 tests passed**
+- Workers pool: **19 files, 300 tests passed** (includes J3 suites **22/22**)
+
+Modified/added: `ai-platform/migrations/20260805190000_routing_policy_status.sql`; `schema.snap.sql`; `src/control/{routing-policy,cohort,index,types}.ts`; `src/config-cache/index.ts`; `src/capability/index.ts`; `test/{routing-policy-canary,cohort-activate-promote}.test.ts`; Spec Kit under `specs/050-staged-rollout-canary/`; this review resolution appendix.
