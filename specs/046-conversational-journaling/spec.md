@@ -347,27 +347,40 @@ prohibition, every named boundary):
   `awaiting_context` and MUST be credited with actual usage because the
   inference happened (§6.7.2; §8.10).
 - **FR-008**: On terminal `completed`, the client MUST render the validated
-  prose answer and append it to the transcript (§6.7.2).
+  prose answer and append the pending user turn (if any) then the answer to
+  the transcript (§6.7.2). The submit `intent` field MUST be the literal typed
+  message (§8.10; A14).
 - **FR-009**: On terminal `context_requested`, the client MUST resolve the
-  named keys through the existing Context Resolver under the requesting
-  user's own session and RLS, append the request and the resolved payload to
-  the transcript, and submit the next leg (§6.7.2; §8.10).
+  named `{key, arguments}` requests through the Context Resolver under the
+  requesting user's own session and RLS, append the request and the resolved
+  payload to the transcript only on resolution success, and **automatically**
+  submit the next leg with a new idempotency key and the resupplied transcript
+  (no fabricated user turn), looping until `completed` or a failure/cancel
+  terminal (§6.7.2; §8.10). `ContextResolveFailure` MUST NOT append an empty
+  `context_resolved` and MUST fail the leg visibly; RLS-empty is success with
+  empty/omitted values, not failure.
 - **FR-010**: The Context Resolver path used for conversational
   context-request resolution MUST remain a generic key → resolver registry: it
   MUST NOT receive a capability id and MUST NOT branch on one (§4.1; §8.10).
+  The key-list API remains; an arguments-aware `resolveRequests` channel is an
+  allowed extension.
 - **FR-011**: Each leg MUST carry its own idempotency key; the next leg MUST
   use a new idempotency key; a transport retry of a leg MUST return that leg
   and MUST NOT re-run the turn (§6.7.4; §8.10).
 - **FR-012**: The Flutter Conversation store MUST hold the transcript of an
   open chat locally, resupply it on each turn, and discard it when the
-  conversation is closed (§4.1).
+  conversation is closed (§4.1). Transcript turn ordinals MUST be strictly
+  increasing, duplicate-free, and strictly less than the leg's `turn_ordinal`
+  (§6.7.1). The current user message MUST NOT be appended before submit; on
+  fail/cancel/stream-drop the transcript MUST remain unchanged (no dangling
+  unanswered user turn).
 - **FR-013**: The Conversation store MUST NOT interpret the transcript,
   classify the user's message, or choose which capability or which context
   keys a message needs; the client MUST forward the message without
   interpretation (§4.1; §8.10).
 - **FR-014**: Cancellation MUST remain connection-scoped: closing one leg's
   stream MUST cancel only that leg; the conversation MUST survive on the
-  client, which still holds the transcript (§6.7.4; §8.10).
+  client (§6.7.4; §8.10).
 - **FR-015**: H3 MUST NOT introduce a new pipeline stage, a new store, a new
   stateful component beyond the existing Quota Durable Object, per-request
   server-side state, a second R2 object per request, or a second Quota Durable
@@ -477,9 +490,12 @@ Prohibitions copied from delivery plan §6.4:
 ### Measurable Outcomes
 
 - **SC-001**: Every conversational leg's `ai_request` row carries the
-  submitted `conversation_id` and `turn_ordinal` (Done when; §7.3; §6.7.1).
-- **SC-002**: One indexed query by `conversation_id` returns the whole
-  conversation ordered by `turn_ordinal` (Done when; §7.3).
+  submitted `conversation_id` and `turn_ordinal`. Fields are parsed from the
+  submit body and written by pipeline `runGuard` stage 9 (`createRequestRow`),
+  not only by test composition (Done when; §7.3; §6.7.1; H3-R5).
+- **SC-002**: One indexed query by `conversation_id` (and `installation_id`)
+  returns the whole conversation ordered by `turn_ordinal`, backed by
+  `idx_ai_request_conversation` (Done when; §7.3; H3-R4).
 - **SC-003**: Automated integration (spy) tests prove each leg is
   independently admitted, journaled, and credited, and that a
   `context_requested` leg is credited with actual usage (Done when; §3.11.7

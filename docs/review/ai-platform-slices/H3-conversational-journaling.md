@@ -236,3 +236,45 @@ named. All eight §3.10 coverage additions also exist (`client_never_interprets_
 9. **[Low] Decide and test the dangling-turn policy** for cancelled/failed legs (keep-and-resubmit
    vs. roll back the unanswered `user` turn), and distinguish resolver failure from RLS-empty in
    what is appended (or fail the leg visibly instead of appending an empty `context_resolved`).
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **H3-R1 — Negotiation loop continues** | Critical #1; Missing/Weak Tests #1; Rec #1 | `frontend/lib/core/ai/conversation_loop.dart`; `conversation_loop_test.dart` |
+| **H3-R2 — Ordinals, intent, dangling-turn rollback** | Bugs #1, #2, #4; Missing/Weak Tests #2, #5, #6; Rec #2, #9 (dangling) | `conversation_store.dart`; `conversation_loop.dart`; store/loop tests |
+| **H3-R3 — Resolver arguments + failure visibility** | Bugs #3, #5; Rec #5, #9 (resolver failure) | `context_resolver.dart`; `context_registration.dart`; E3 contract §2.4; loop + resolver tests |
+| **H3-R4 — Conversation index + reject NULL grouping + tenant scope** | Bugs #6; Arch Deviations #1, #3; Missing/Weak Tests #3; Rec #3, #7 | `migrations/20260805180000_h3_conversation_index.sql`; `journal/index.ts`; journaling tests |
+| **H3-R5 — Wire conversational fields on request path** | Arch Deviation #2; Rec #4 | `pipeline/index.ts` (`runGuard` parse → validate → `createRequestRow`); Spec Kit SC-001 |
+| **H3-R6 — DO budget upper bounds + no-state strengthen + SDK** | Arch Deviation #4; Missing/Weak Tests #4, #7; Rec #6, #8 | `conversational-journaling.test.ts` DO exact budgets / no-state probes; SDK reconstruction already removed |
+
+Every numbered review item appears in exactly one stage. No escalations — arguments channel is an allowed E3 contract extension; index is an A5 follow-up migration (no architecture amend).
+
+### 7.2 Test cases created first
+
+- **H3-R1:** `continuation_leg_submitted_after_context_requested_with_resolved_payload` — second submit carries resolved context on the wire; existing context_requested cases now expect `submitCallCount == 2`.
+- **H3-R2:** `transcript_wire_ordinals_strictly_less_than_leg_ordinal`; `prepare_leg_submit_intent_is_typed_message_empty_transcript_on_leg_one`; `intent_field_carries_typed_message_not_base_intent`; `wire_resupply_carries_prior_transcript_including_resolved_context`; `failed_leg_does_not_leave_dangling_user_turn` / store rollback case.
+- **H3-R3:** `loop_passes_key_and_arguments_to_resolver`; `resolve_requests_passes_arguments_to_registration`; `context_resolve_failure_does_not_append_or_continue`; RLS-empty remains success with empty payload.
+- **H3-R4:** index existence via `sqlite_master` in `one_indexed_query_…`; reject-missing grouping fields; tenant-scoped `listConversationLegs`.
+- **H3-R5:** `runGuard` conversational body writes `conversation_id` / `turn_ordinal` on the `ai_request` row.
+- **H3-R6:** DO fetches asserted exact (`2` per leg / `6` for three legs); `platform_held_no_state_between_legs` strengthened with DO/module probes.
+
+### 7.3 Fix implemented
+
+- **Loop:** after successful resolve, auto-submits continuation (`prepareContinuationSubmit`) until `completed` or fail/cancel; no fabricated user turn.
+- **Store:** intent = typed message; prior-only transcript on submit; leg ordinal = last transcript ordinal + 1; user turn committed only on success; cancel/fail discard pending.
+- **Resolver:** `resolveRequests({key, arguments})` extension; key-list `resolve` retained; `ContextResolveFailure` → visible `FailedTerminal` (no empty `context_resolved`); RLS-empty stays success.
+- **Journal:** conversational legs reject missing grouping (`context_invalid`); `listConversationLegs(conversationId, installationId, db)`; A5 follow-up `idx_ai_request_conversation`.
+- **Pipeline:** `runGuard` extracts `conversation_id` / `turn_ordinal` / `transcript` from body, passes H2 conversational validate options, journals grouping columns at stage 9.
+- **I/O budgets:** exact DO per-leg counts; SDK per-leg reconstruction already absent (AAT cache preserved across legs).
+- **Spec Kit:** H3 contracts/spec/plan/quickstart/tasks + E3 contract §2.4 updated. Architecture and delivery plan untouched.
+
+### 7.4 Verification
+
+Full `ai-platform` `npm test`: verify-manifests **2 files / 4 tests**; node Vitest **41 files / 634 tests**; workers Vitest **19 files / 270 tests** — all passed.
+
+Flutter (H3 client): `conversation_store_test` + `conversation_loop_test` + `context_resolver_test` — **21+** named cases including new continuation/ordinal/intent/arguments/failure cases — all passed.

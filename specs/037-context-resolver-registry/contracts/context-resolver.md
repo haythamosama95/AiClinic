@@ -5,7 +5,9 @@
 `docs/architecture/17-ai-platform.md`  
 **Status:** Frozen. Later slices (E4, H3, J2) **consume** this artifact; they extend the registered
 key set, never rewrite the key-list API, the unknown-key typed failure, the no-capability-id rule,
-or the screen-scoped cache lifetime.
+or the screen-scoped cache lifetime. H3 may add an arguments-aware `resolveRequests` channel as a
+compatible extension ([§2.4](#24-arguments-aware-extension-h3-allowed)) without removing
+`resolve(List<String> keys)`.
 
 **Source of truth in code (this slice):** `frontend/lib/core/ai/context_resolver.dart`,
 `frontend/lib/core/ai/context_registration.dart`.
@@ -32,6 +34,10 @@ capability id and never branches on one.
 | --- | --- |
 | Parameter | An ordered list of context keys (`domain.concept@vN` strings). |
 | Capability id | **Absent.** The public API MUST NOT accept a capability id and MUST NOT branch on one. |
+
+`resolve(List<String> keys)` remains the frozen E3 surface. It is implemented as a thin wrapper
+over the H3 arguments-aware channel ([§2.4](#24-arguments-aware-extension-h3-allowed)) that passes
+empty/null arguments per key.
 
 ### 2.2 Success output — assembled payload
 
@@ -70,6 +76,25 @@ Inventing data for an unknown key is forbidden (§4.1 Must not: send unrequested
 
 This slice emits **no** §5.4 taxonomy codes for Resolver failures (spec Edge Cases). Adding
 `resolution_failed` is a **contract extension** of the unknown-key rule, not a rewrite of it.
+
+### 2.4 Arguments-aware extension (H3, allowed)
+
+H3 may add an arguments channel without removing the key-list API:
+
+| Aspect | Rule |
+| --- | --- |
+| Method | `resolveRequests(List<Map<String, Object?>> requests)` where each entry is `{key, arguments}`. |
+| `key` | Required string (`domain.concept@vN`). |
+| `arguments` | Optional object (or null/empty). Passed through to the registered resolver function. |
+| Capability id | Still **absent.** |
+| Key-list wrapper | `resolve(keys)` MUST remain and MUST delegate with null/empty arguments. |
+
+Registered resolver functions accept an optional `arguments` parameter. Existing E3 registrations
+MAY ignore arguments (e.g. visit id constructor-injected on the port). New keys MAY use arguments
+for request-scoped filters (patient hint, date range) per §6.7.2 / §8.10.
+
+RLS “payloads — or nothing” is a **success** with empty/omitted values for a key, not
+`ContextResolveFailure`. `resolution_failed` / `unknown_context_key` remain true failures.
 
 ---
 
