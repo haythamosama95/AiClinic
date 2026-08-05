@@ -1,4 +1,8 @@
-import { OVERLAP_WINDOW_MS } from "../capability";
+import {
+  OVERLAP_WINDOW_MS,
+  isCapabilityVersionRegistered,
+  isSuccessorRegistered,
+} from "../capability";
 import {
   newId,
   nowIso,
@@ -45,6 +49,26 @@ async function loadGlobalOverlay(
   return row ?? null;
 }
 
+function requireRegisteredVersion(
+  capabilityId: string,
+  version: string,
+): Response | null {
+  if (!isCapabilityVersionRegistered(capabilityId, version)) {
+    return reject(404, "capability_not_found");
+  }
+  return null;
+}
+
+/** Epoch-ms window gate; unparseable retire_after is treated as not yet elapsed. */
+function overlapWindowStillActive(retireAfter: string, now: string): boolean {
+  const retireAfterMs = Date.parse(retireAfter);
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(retireAfterMs) || !Number.isFinite(nowMs)) {
+    return true;
+  }
+  return nowMs < retireAfterMs;
+}
+
 export async function handleDeprecate(
   request: Request,
   bindings: ControlBindings,
@@ -60,6 +84,14 @@ export async function handleDeprecate(
     return reject(400, "invalid_route");
   }
 
+  const missingCapability = requireRegisteredVersion(
+    route.capabilityId,
+    route.version,
+  );
+  if (missingCapability) {
+    return missingCapability;
+  }
+
   const body = await parseJsonBody<DeprecatePayload>(request);
   if (body instanceof Response) {
     return body;
@@ -68,8 +100,22 @@ export async function handleDeprecate(
   if (!body.successor_id) {
     return reject(400, "missing_successor_id");
   }
+  if (!isSuccessorRegistered(body.successor_id)) {
+    return reject(400, "unknown_successor");
+  }
 
   const { DB } = bindings;
+  const overlay = await loadGlobalOverlay(DB, route.capabilityId, route.version);
+  if (overlay?.lifecycle_state === "retired") {
+    return reject(409, "already_retired");
+  }
+  if (overlay?.lifecycle_state === "deprecated") {
+    if (overlay.successor_id === body.successor_id) {
+      return ok();
+    }
+    return reject(409, "already_deprecated");
+  }
+
   const deprecatedAt = nowIso();
   const retireAfter = new Date(
     new Date(deprecatedAt).getTime() + OVERLAP_WINDOW_MS,
@@ -77,17 +123,21 @@ export async function handleDeprecate(
   const grantId = newId();
   const target = `${route.capabilityId}@${route.version}`;
 
+  // Overlay rows are not live grants: stamp revoked_at = changed_at so
+  // `revoked_at IS NULL` grant readers never treat them as active grants.
+  // granted_at remains NOT NULL on the A5 schema, so it mirrors changed_at.
   await DB.batch([
     DB.prepare(
       `INSERT INTO capability_grant (
          grant_id, scope, capability_id, capability_version,
          granted_at, revoked_at, changed_at, changed_by,
          lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, NULL, ?, ?, 'deprecated', ?, ?, ?)`,
+       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'deprecated', ?, ?, ?)`,
     ).bind(
       grantId,
       route.capabilityId,
       route.version,
+      deprecatedAt,
       deprecatedAt,
       deprecatedAt,
       auth.operatorId,
@@ -98,8 +148,8 @@ export async function handleDeprecate(
     DB.prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'deprecate', ?, NULL, NULL, ?)`,
-    ).bind(newId(), auth.operatorId, target, deprecatedAt),
+       VALUES (?, ?, 'deprecate', ?, NULL, ?, ?)`,
+    ).bind(newId(), auth.operatorId, target, body.successor_id, deprecatedAt),
   ]);
 
   return ok();
@@ -120,6 +170,14 @@ export async function handleRetire(
     return reject(400, "invalid_route");
   }
 
+  const missingCapability = requireRegisteredVersion(
+    route.capabilityId,
+    route.version,
+  );
+  if (missingCapability) {
+    return missingCapability;
+  }
+
   const { DB } = bindings;
   const overlay = await loadGlobalOverlay(DB, route.capabilityId, route.version);
 
@@ -134,11 +192,11 @@ export async function handleRetire(
 
   const retireAfter =
     typeof overlay.retire_after === "string" ? overlay.retire_after : null;
-  if (!retireAfter || nowIso() < retireAfter) {
+  const recordedAt = nowIso();
+  if (!retireAfter || overlapWindowStillActive(retireAfter, recordedAt)) {
     return reject(400, "overlap_window_active");
   }
 
-  const recordedAt = nowIso();
   const grantId = newId();
   const target = `${route.capabilityId}@${route.version}`;
 
@@ -148,11 +206,12 @@ export async function handleRetire(
          grant_id, scope, capability_id, capability_version,
          granted_at, revoked_at, changed_at, changed_by,
          lifecycle_state, successor_id, deprecated_at, retire_after
-       ) VALUES (?, 'global', ?, ?, ?, NULL, ?, ?, 'retired', ?, ?, ?)`,
+       ) VALUES (?, 'global', ?, ?, ?, ?, ?, ?, 'retired', ?, ?, ?)`,
     ).bind(
       grantId,
       route.capabilityId,
       route.version,
+      recordedAt,
       recordedAt,
       recordedAt,
       auth.operatorId,
@@ -163,8 +222,8 @@ export async function handleRetire(
     DB.prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'retire', ?, NULL, NULL, ?)`,
-    ).bind(newId(), auth.operatorId, target, recordedAt),
+       VALUES (?, ?, 'retire', ?, NULL, ?, ?)`,
+    ).bind(newId(), auth.operatorId, target, overlay.successor_id, recordedAt),
   ]);
 
   return ok();

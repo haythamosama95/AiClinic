@@ -412,6 +412,30 @@ export function setCapabilityRegistry(
   registryInstalled = true;
 }
 
+/** True when the in-memory registry contains this exact capability id + version. */
+export function isCapabilityVersionRegistered(
+  capabilityId: string,
+  version: string,
+): boolean {
+  return capabilityRegistry.has(registryKey(capabilityId, version));
+}
+
+/**
+ * True when successor identity is known to the registry.
+ * Accepts either `capabilityId` (any version) or `capabilityId@version`.
+ */
+export function isSuccessorRegistered(successorId: string): boolean {
+  if (successorId.includes("@")) {
+    return capabilityRegistry.has(successorId);
+  }
+  for (const key of capabilityRegistry.keys()) {
+    if (key.startsWith(`${successorId}@`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function resolve(
   principal: Principal,
   capabilityId: string,

@@ -127,6 +127,9 @@ Layer names are from the testing-strategy table in §13.5. The slice's required 
 | 3   | After retirement the same pinned request returns `capability_retired`                        | Pipeline tests |
 | 4   | Retirement is journaled with the operator identity (`control_audit`)                         | Pipeline tests |
 | 5   | A lifecycle transition survives a cold isolate: discovery and resolve read it from the `capability_grant` overlay via the config cache, and the manifest is unchanged | Pipeline tests |
+| 6   | Deprecate after retire is rejected; duplicate deprecate same successor is idempotent; different successor is rejected | Pipeline tests |
+| 7   | Unauthenticated deprecate/retire → 401; retire gates `not_deprecated` / `overlap_window_active`; missing/unknown successor; unknown capability version | Pipeline tests |
+| 8   | Discovery excludes retired; etag changes on deprecate/retire; deprecated still serves after `retire_after` before operator retire; published Identity used when overlay absent | Pipeline tests |
 
 ### Edge Cases
 
@@ -141,6 +144,14 @@ Layer names are from the testing-strategy table in §13.5. The slice's required 
   violates §5.7 (§5.7; §12.4).
 - **Boundary: deprecate versus retire**: `deprecated` remains servable for the window;
   `retired` returns `capability_retired` (§5.7; §12.4; C1 Freezes for the taxonomy code).
+- **Boundary: one-directional deprecate**: deprecate after retire is rejected (`already_retired`);
+  a duplicate deprecate with the same successor is idempotent; a duplicate with a different
+  successor is rejected (`already_deprecated`). Deprecate must not restart the overlap window.
+- **Boundary: no auto-retire on the clock**: after `retire_after` has passed but before the
+  operator `retire` mutation, a deprecated pin remains servable.
+- **Boundary: registry validation**: deprecate/retire require the target version in the registry;
+  deprecate requires a registered successor identity so discovery never announces an unknown
+  successor.
 - **Failure branch: opaque failure is forbidden on retirement**: retirement MUST return
   `capability_retired` rather than failing opaquely, so old clients can prompt for an
   update (§12.4).

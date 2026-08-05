@@ -54,6 +54,11 @@ Existing A5 columns (`grant_id`, `scope`, `capability_id`, `capability_version`,
 | Deprecate | `global` | Insert a new `capability_grant` row (append-only history) with overlay fields set; `changed_by` = operator id. |
 | Retire | `global` | Insert a new row transitioning overlay `lifecycle_state` to `retired`. |
 
+Lifecycle-overlay rows are **not** live grants. Writers stamp `revoked_at = changed_at` (and
+`granted_at = changed_at` because A5's `granted_at` is `NOT NULL`) so any future reader that filters
+`revoked_at IS NULL` without scoping excludes overlay history. Overlay readers key
+`scope = 'global'` + id/version and do not require `revoked_at IS NULL`.
+
 Plan- or installation-scoped grant / gate rows are out of this contract (Entitlement management /
 other slices). Lifecycle is a property of the capability version, not of one tenant (§7.3).
 
@@ -82,6 +87,13 @@ Overlay rows are read through A5's existing `"grants"` `ConfigEntityKind` (no ne
 
 Cold isolates reconstruct lifecycle from D1 via `loadConfig` exactly as for grants and kill
 switches (§6.1 stage 5; FR-010).
+
+**Production-reader dependency (handoff):** FR-010's config-cache path requires a production
+`D1Reader` that handles kind `grants`, including the `global/{capabilityId}/{version}` key form.
+Today's `createD1ConfigReader` only covers `installations` / `keys` / `token_contracts` and returns
+`"miss"` for `grants`. Slice tests supply a grants-aware reader. The slice that wires the request
+pipeline MUST NOT ship the miss-everything reader for capability resolve/discover — extend or
+compose a reader that loads global overlays before enforcing retirement in production.
 
 ---
 
@@ -115,25 +127,45 @@ B2's non-taxonomy JSON `{ "error": "<reason>" }` pattern — no new §5.4 codes.
 | --- | --- | --- |
 | `successor_id` | yes | Successor capability identity announced through discovery |
 
+Deprecate **requires** (before any D1 write):
+
+1. `{capability_id}@{version}` exists in the in-memory capability registry (`404 capability_not_found`).
+2. Non-empty `successor_id` (`400 missing_successor_id`).
+3. `successor_id` is a known registry identity — either `capabilityId@version` or a `capabilityId`
+   that has at least one registered version (`400 unknown_successor`).
+
+Deprecate **state guard** (one-directional lifecycle — §5.7 / §12.4):
+
+| Latest global overlay | Behaviour |
+| --- | --- |
+| `retired` | `409 already_retired` — no write (retirement is terminal; deprecate must not resurrect). |
+| `deprecated` with the **same** `successor_id` | Idempotent `200` — no new overlay row; do not reset `deprecated_at` / `retire_after`. |
+| `deprecated` with a **different** `successor_id` | `409 already_deprecated` — no write. |
+| Absent / non-deprecated | Insert overlay as below. |
+
 ### 4.3 Retire request body
 
 Empty JSON object `{}`. Retire **requires**:
 
-1. A prior global overlay with `lifecycle_state = deprecated` and a non-empty `successor_id`
-   (announcement before enforcement — FR-002; §5.7).
-2. Current time `>= retire_after` (window elapsed — FR-005; FR-007).
+1. `{capability_id}@{version}` exists in the registry (`404 capability_not_found`).
+2. A prior global overlay with `lifecycle_state = deprecated` and a non-empty `successor_id`
+   (announcement before enforcement — FR-002; §5.7) — else `400 not_deprecated`.
+3. Current time `>= retire_after` compared as **epoch milliseconds** via `Date.parse` (window
+   elapsed — FR-005; FR-007). Unparseable `retire_after` → `400 overlap_window_active`.
 
 ### 4.4 Extended `control_audit.action` vocabulary
 
 B2 froze `enroll` / `rotate` / `suspend` / `resume` / `delete`. J1 **extends** (does not rewrite)
 with:
 
-| `action` | Mutation | `target` |
-| --- | --- | --- |
-| `deprecate` | Mark capability version deprecated with successor | `{capability_id}@{version}` |
-| `retire` | Retire capability version after the overlap window | `{capability_id}@{version}` |
+| `action` | Mutation | `target` | `after_pointer` (extension) |
+| --- | --- | --- | --- |
+| `deprecate` | Mark capability version deprecated with successor | `{capability_id}@{version}` | Successor id announced on the overlay |
+| `retire` | Retire capability version after the overlap window | `{capability_id}@{version}` | Successor id carried from the deprecate overlay |
 
-Every row carries `operator_id` from the resolved operator principal (FR-008).
+`target` keeps the B2-compatible `{id}@{version}` shape. `after_pointer` records the successor so
+`control_audit` alone answers “deprecated / retired in favour of what” (§7.3). Every row carries
+`operator_id` from the resolved operator principal (FR-008).
 
 ---
 

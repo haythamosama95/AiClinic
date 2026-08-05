@@ -42,8 +42,13 @@ capability), and **A12** (overlap window for deprecated versions).
 - **Resolve / discovery overlay reads** — `effectiveLifecycle()` via `loadConfig("grants",
   "global/{id}/{version}")`; resolve rejects only effective `retired`; discovery includes
   overlay-announced `deprecated` with successor.
+- **Deprecate state guard + registry checks** — one-directional lifecycle; target/successor must
+  exist in the capability registry; overlay rows stamp `revoked_at`; window compare uses epoch ms;
+  deprecate audit records successor in `after_pointer`.
 - **OD-9 overlap constant** — `OVERLAP_WINDOW_MS` (90 days minimum; not a configuration surface).
 - **Frozen contract** — [`contracts/capability-deprecation.md`](./contracts/capability-deprecation.md).
+  **Handoff:** production `D1Reader` must handle `grants` / `global/…` before the request pipeline
+  enforces overlays (see contract §2.4).
 
 See [`spec.md`](./spec.md) for full requirements and [`plan.md`](./plan.md) for file-level
 traceability.
@@ -79,7 +84,7 @@ From `ai-platform/`:
 npx vitest run --config vitest.workers.config.ts test/capability-deprecation.test.ts
 ```
 
-Expected: **5 passing tests** in `test/capability-deprecation.test.ts` for this slice only. Do
+Expected: **20 passing tests** in `test/capability-deprecation.test.ts` for this slice only. Do
 **not** run `npm test` for the full platform suite.
 
 | Test id | Describe name |
@@ -89,6 +94,7 @@ Expected: **5 passing tests** in `test/capability-deprecation.test.ts` for this 
 | T-J1-03 | `retired_pin_returns_capability_retired` |
 | T-J1-04 | `retire_journaled_with_operator_identity` |
 | T-J1-05 | `lifecycle_survives_cold_isolate_manifest_unchanged` |
+| T-J1-06 … T-J1-20 | Review-resolution branches (state guard, registry, auth, retire gates, discovery/etag/window/overlay-absent) |
 
 ## 6. Inspect the changes
 
