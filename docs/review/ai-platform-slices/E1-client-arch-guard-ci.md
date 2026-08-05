@@ -46,3 +46,38 @@ E1 delivers the artifacts its slice names: a standalone Dart guard script (`fron
 4. **Reduce per-line evasion cheaply**: match patterns against whole-file content (or a whitespace-normalized form) instead of individual lines (`architecture_guard.dart:138-141`), so multi-line string literals cannot hide a phrase; document concatenation/interpolation as residual evasion accepted by the representative-catalogue scope, or add a secondary heuristic (e.g. adjacent-literal folding for the prompt patterns).
 5. **Make coverage honest**: either extend the scan and `clientSourceRoots` beyond Dart (at minimum `windows/`, `linux/`, `web/`, and other `frontend/` source paths that build or ship the client, with explicit include globs), or enumerate *all* files under `frontend/` (minus `build/`, `.dart_tool/`, and an explicit exclusion list) in `_assertFullCoverage` and assert each is either scanned or named in the exclusion list — turning T5 from a constants-agreement check into a tree-wide discovery assertion. Add the spec's missing negative case: a controlled CI invocation with a root omitted (or a planted out-of-root Dart file) expecting non-zero exit.
 6. **Amend the spec/plan documentation to reconcile scope with the architecture**: if the Dart-only scope is deliberate, the spec's Assumptions should say so explicitly and note the narrowing of §3.4.1's "Flutter codebase" / the done-when's "anywhere in client code" (architecture takes precedence, so the mismatch must be recorded even if accepted); if it is not, Deviation 1 is an implementation gap to close per item 5.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **E1-R1 — CI triggers for `ai/**`** | Critical #1; Recommended Improvements #1 | `.github/workflows/ci.yml` (`on.push` / `on.pull_request`) |
+| **E1-R2 — Expect-fail exit 1 + category + exit 2** | Critical #2; Bugs #4; Missing/Weak Tests #1; Recommended Improvements #2 | `.github/workflows/ci.yml` architecture-guard step; `architecture_guard.dart` missing-root preflight |
+| **E1-R3 — Detection surface** | Bugs #1, #2, #3; Missing/Weak Tests #3; Recommended Improvements #3, #4 | `architecture_guard.dart` patterns + whole-file matching; T1–T3 fixtures |
+| **E1-R4 — Coverage honesty** | Architectural Deviations #1, #2; Missing/Weak Tests #2, #4; Recommended Improvements #5, #6 | `architecture_guard.dart` scan roots / tree-wide coverage; multi-root + `test/` probes; Spec Kit `spec.md` / `plan.md` / `quickstart.md` |
+
+Every numbered finding maps to exactly one stage. No escalations — all fixes stay within implementation and Spec Kit docs (architecture / delivery plan unread for edit).
+
+### 1.2 Test cases created first
+
+- **E1-R1:** Workflow trigger change is structural; proven by inspecting `on.push.branches` includes `ai/**` and `on.pull_request.branches` includes `ai/master` (FR-006 / DP-6 enforcement line).
+- **E1-R2:** Before tightening production CI, local invocations established the contract: missing fixture path → exit **2**; fixture with violations → exit **1**. CI step rewritten to require `$LASTEXITCODE -eq 1` and stderr category per named test, plus an explicit missing-root exit-2 assertion.
+- **E1-R3:** Fixtures rewritten **before** pattern/matcher changes to the harder cases: multi-line prompt (`prompt_like_string`), `deepseek` provider, `claude-sonnet-4-5` + `deepseek-chat` models. Against the prior guard these exited 0 / mismatched categories; after the fix they exit 1 with the expected category labels.
+- **E1-R4:** Added `fixtures/multi_root/{root_a,root_b}` (violation only in `root_b`), CI lib-only `--assert-coverage` omission case, and a planted `test/.architecture_guard_probe.dart` live-root probe — all written as expect-fail proofs before / with the coverage rewrite.
+
+### 1.3 Fix implemented
+
+- **E1-R1:** Added `"ai/**"` to push branch filters and `ai/master` to pull_request targets so the guard runs on the AI Platform branch line.
+- **E1-R2:** Preflight validates all scan roots exist and exits 2 before scanning; CI treats only exit 1 as successful expect-fail proof and asserts the category string on stderr; documents exit 0 / 1 / 2 in the script header.
+- **E1-R3:** Added `deepseek` provider and `deepseek-\w+` model patterns; broadened `\bclaude-[\w.-]+` and `\bgemini-[\w.-]+`; switched to whole-file matching with whitespace-tolerant prompt patterns; documented residual adjacent-literal / interpolation evasion. Fixtures updated to multi-line prompt, platform provider, and current vendor/platform model ids.
+- **E1-R4:** Default scan roots are `lib`, `test`, `windows`, `linux`, `web` with scannable text extensions (Dart, C/C++, web, CMake, arb, md, …). Coverage walks all of `frontend/` and requires every non-excluded scannable file to lie under a configured scan root (explicit exclusion list for `build/`, `.dart_tool/`, `tool/`, ephemeral generated trees, assets, root metadata). Spec Assumptions / plan Test Layout / quickstart amended to record the non-Dart scope (architecture wins; implementation gap closed, not narrowed).
+
+### 1.4 Verification
+
+- Guard local suite (from `frontend/`): T1–T3 exit 1 with correct categories; multi-root exit 1; lib-only omission non-zero; missing root exit 2; clean `--assert-coverage` exit 0; `test/` probe exit 1 then cleaned up.
+- Full `ai-platform` suite: **19** files, **241** tests, all passed.
+- Files added/modified: `frontend/tool/architecture_guard/architecture_guard.dart`; fixtures under `fixtures/{prompt_like_string,provider_name,model_identifier,multi_root}/`; `.github/workflows/ci.yml`; `specs/035-client-arch-guard-ci/{spec.md,plan.md,quickstart.md}`; this review resolution appendix.

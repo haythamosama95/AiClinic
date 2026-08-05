@@ -245,15 +245,31 @@ acknowledged. The R-12 prohibition is the one this slice actively enforces.
 
 - "Client source" / "Flutter codebase" means the Flutter application sources under
   `frontend/` that ship in or build the desktop client — the surface §3.4.1 and R-12 name.
-  Exact include/exclude globs (e.g. generated files versus hand-written Dart) are an
-  implementation choice so long as T5 still proves every client source path is covered and
-  T4 still passes on the clean tree.
+  That surface is not Dart-only: it includes `lib/`, `test/`, and the desktop/web build
+  trees (`windows/`, `linux/`, `web/`) with their scannable text sources (Dart, C/C++
+  runner sources, HTML/JSON/JS/CSS, CMake lists, localization `.arb`, and other declared
+  text extensions). Generated/ephemeral trees (e.g. `linux/flutter/ephemeral/`),
+  `build/`, `.dart_tool/`, the guard's own `tool/` tree, assets, and named root metadata
+  files are excluded from coverage discovery by an explicit list. Exact include/exclude
+  globs remain an implementation choice so long as T5 still proves every non-excluded
+  client source path is covered (tree-wide discovery, not a constants-agreement check)
+  and T4 still passes on the clean tree.
 - The concrete fixture strings that stand for "prompt-like string", "provider name", and
   "model identifier" are chosen in implementation to exercise the three categories named by
   §3.4.1 / R-12 / §13.5; the architecture does not enumerate an exhaustive corpus. Clarify
-  may pin representative examples without amending the architecture.
+  may pin representative examples without amending the architecture. Representative
+  fixtures include the platform's integrated provider id, current vendor model naming, and
+  a multi-line prompt form. Residual evasion via adjacent-literal concatenation /
+  interpolation (no contiguous source match) is accepted by the representative-catalogue
+  scope; whole-file whitespace-tolerant matching closes multi-line string splits.
 - Deliberately failing fixtures are invoked in controlled CI jobs that expect failure; they
-  are not left in the clean tree that T4 gates (Done when; §3.11.5).
+  are not left in the clean tree that T4 gates (Done when; §3.11.5). Expect-fail proof
+  requires exit code exactly 1 (violations detected) and a stderr category label matching
+  the fixture; exit 2 is reserved for operator/configuration errors (e.g. missing scan
+  root) and must fail the CI step.
+- The architecture-guard CI workflow must run on the AI Platform branch line (`ai/**`
+  pushes and PRs targeting `ai/master`) so the R-12 defence is live where E2+ client AI
+  code lands (DP-6; FR-006).
 - No §15 open decision is assumed; none applies to this slice.
 - E2 and later client AI slices are out of scope and must not begin until this guard is in
   CI (DP-6).

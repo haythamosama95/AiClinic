@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, "001-*", "feature/*"]
+    branches: [main, master, "001-*", "feature/*", "ai/**"]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, ai/master]
 
 jobs:
   frontend-quality:
@@ -34,24 +34,78 @@ jobs:
         shell: pwsh
         run: |
           $guard = "tool/architecture_guard/architecture_guard.dart"
-          $fixtures = @(
-            "tool/architecture_guard/fixtures/prompt_like_string",
-            "tool/architecture_guard/fixtures/provider_name",
-            "tool/architecture_guard/fixtures/model_identifier"
+          $cases = @(
+            @{
+              Name = "guard_prompt_like_string_fails_build"
+              Path = "tool/architecture_guard/fixtures/prompt_like_string"
+              Category = "prompt-like string"
+            },
+            @{
+              Name = "guard_provider_name_fails_build"
+              Path = "tool/architecture_guard/fixtures/provider_name"
+              Category = "provider name"
+            },
+            @{
+              Name = "guard_model_identifier_fails_build"
+              Path = "tool/architecture_guard/fixtures/model_identifier"
+              Category = "model identifier"
+            }
           )
-          foreach ($fixture in $fixtures) {
-            Write-Host "guard_prompt_like_string_fails_build / provider / model: expect-fail on $fixture"
-            dart $guard $fixture
-            if ($LASTEXITCODE -eq 0) {
-              Write-Error "Expected non-zero exit scanning fixture: $fixture"
+          foreach ($case in $cases) {
+            Write-Host "$($case.Name): expect exit 1 + category '$($case.Category)' on $($case.Path)"
+            $output = & dart $guard $case.Path 2>&1 | Out-String
+            Write-Host $output
+            if ($LASTEXITCODE -ne 1) {
+              Write-Error "$($case.Name): expected exit 1 (violations), got $LASTEXITCODE (0=clean, 2=operator error)"
+              exit 1
+            }
+            if ($output -notmatch [regex]::Escape($case.Category)) {
+              Write-Error "$($case.Name): expected stderr to name category '$($case.Category)'"
               exit 1
             }
           }
+
+          Write-Host "guard_multi_root_second_root_scanned: expect exit 1"
+          $multiA = "tool/architecture_guard/fixtures/multi_root/root_a"
+          $multiB = "tool/architecture_guard/fixtures/multi_root/root_b"
+          & dart $guard $multiA $multiB 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 1) {
+            Write-Error "Expected exit 1 when only the second scan root contains a violation; got $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "guard_covers_every_client_source_path omission: expect non-zero (lib-only)"
+          & dart $guard lib --assert-coverage 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Expected coverage assertion to fail when scan roots omit client sources"
+            exit 1
+          }
+
+          Write-Host "guard_missing_scan_root_is_operator_error: expect exit 2"
+          & dart $guard tool/architecture_guard/fixtures/does_not_exist 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 2) {
+            Write-Error "Expected exit 2 for missing scan root; got $LASTEXITCODE"
+            exit 1
+          }
+
           Write-Host "guard_clean_tree_passes / guard_covers_every_client_source_path: expect-success"
-          dart $guard --assert-coverage
+          & dart $guard --assert-coverage
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Expected zero exit on clean client scan roots"
             exit 1
+          }
+
+          Write-Host "guard_test_root_is_live: plant violation under test/, expect exit 1, then clean up"
+          $probe = "test/.architecture_guard_probe.dart"
+          Set-Content -Path $probe -Value "const probe = 'deepseek';"
+          try {
+            & dart $guard --assert-coverage 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 1) {
+              Write-Error "Expected exit 1 after planting a provider name under test/; got $LASTEXITCODE"
+              exit 1
+            }
+          } finally {
+            Remove-Item -Path $probe -ErrorAction SilentlyContinue
           }
 
       - name: Analyze
