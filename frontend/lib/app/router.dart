@@ -27,6 +27,7 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_c
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/queue/presentation/pages/queue_page.dart';
 import 'package:ai_clinic/features/home/presentation/pages/home_page.dart';
+import 'package:ai_clinic/features/ai/presentation/pages/ai_page.dart';
 import 'package:ai_clinic/features/billing/presentation/navigation/invoice_detail_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/navigation/visit_billing_route_extra.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
@@ -107,15 +108,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 return AiFeatureHostPage(dependencies: deps);
               }
               return const Scaffold(
-                body: Center(
-                  child: Text(
-                    'AI feature host requires AiFeatureHostDependencies via route extra.',
-                  ),
-                ),
+                body: Center(child: Text('AI feature host requires AiFeatureHostDependencies via route extra.')),
               );
             },
           ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
+          GoRoute(path: AppRoutes.ai, builder: (context, state) => const AiPage()),
           GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),

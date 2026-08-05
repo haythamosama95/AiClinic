@@ -59,6 +59,7 @@ const kClinicNavGroups = <AppNavGroup>[
     items: [
       AppNavItem(id: 'home', label: 'Home', icon: Icons.home_outlined),
       AppNavItem(id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined),
+      AppNavItem(id: 'ai', label: 'AI', icon: Icons.auto_awesome_outlined),
     ],
   ),
   AppNavGroup(

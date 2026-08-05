@@ -5,6 +5,7 @@ abstract final class ShellRouteMeta {
   static const _descriptions = <String, String>{
     'home': 'Your clinic workspace overview and quick actions.',
     'dashboard': 'Key metrics, activity, and operational insights at a glance.',
+    'ai': 'AI assistants, visit summaries, suggestions, and advisory actions.',
     'patients': 'Manage patient records, demographics, and care history.',
     'appointments': 'Schedule, confirm, and track patient appointments.',
     'encounters': 'Document visits, diagnoses, and clinical notes.',

@@ -54,6 +54,7 @@ class AiFeatureHostDependencies {
     this.persistenceProbe,
     this.exportProbe,
     this.skipReachabilityProbe = false,
+    this.autoInvoke = true,
   });
 
   final AiAvailabilityReader availabilityReader;
@@ -66,13 +67,19 @@ class AiFeatureHostDependencies {
   final AiPersistenceProbe? persistenceProbe;
   final AiExportProbe? exportProbe;
   final bool skipReachabilityProbe;
+
+  /// When false, [FirstAiFeatureSurface] stays idle until the caller triggers invoke.
+  final bool autoInvoke;
 }
 
 /// Standalone host composing availability gate + surface (Clarification Q2).
 class AiFeatureHostPage extends StatefulWidget {
-  const AiFeatureHostPage({super.key, required this.dependencies});
+  const AiFeatureHostPage({super.key, required this.dependencies, this.embedded = false});
 
   final AiFeatureHostDependencies dependencies;
+
+  /// When true, omit [Scaffold]/[AppBar] so the host can sit inside the app shell.
+  final bool embedded;
 
   @override
   State<AiFeatureHostPage> createState() => _AiFeatureHostPageState();
@@ -183,43 +190,56 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       mode == AiDegradedMode.appUpdate ||
       mode == AiDegradedMode.providerUnavailable;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _body() {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: Text(key: Key('ai_host_loading'), 'Loading…')),
-      );
+      return const Center(child: Text(key: Key('ai_host_loading'), 'Loading…'));
     }
 
     // Non-enrolled: hide AI chrome entirely (§4.2; A11) — no banner, no AI app bar.
     if (_mode == AiDegradedMode.nonEnrolled) {
-      return const Scaffold(body: SizedBox.shrink());
+      return const SizedBox.shrink();
     }
 
     final hideSurface = _hidesSurface(_mode);
 
+    return Padding(
+      padding: widget.embedded ? EdgeInsets.zero : const EdgeInsets.all(16),
+      child: AiDegradedView(
+        mode: _mode,
+        onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
+        child: hideSurface
+            ? const Text('Clinical workflows remain available.')
+            : _resolver != null
+            ? FirstAiFeatureSurface(
+                sdk: widget.dependencies.sdk,
+                resolver: _resolver!,
+                visitId: widget.dependencies.visitId,
+                requiredContextKeys: widget.dependencies.requiredContextKeys,
+                persistenceProbe: widget.dependencies.persistenceProbe,
+                exportProbe: widget.dependencies.exportProbe,
+                onTerminalFailure: _onTerminalFailure,
+                autoInvoke: widget.dependencies.autoInvoke,
+              )
+            : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final body = _body();
+    if (widget.embedded) {
+      return body;
+    }
+    if (_loading) {
+      return Scaffold(body: body);
+    }
+    if (_mode == AiDegradedMode.nonEnrolled) {
+      return Scaffold(body: body);
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('AI Feature')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: AiDegradedView(
-          mode: _mode,
-          onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
-          child: hideSurface
-              ? const Text('Clinical workflows remain available.')
-              : _resolver != null
-              ? FirstAiFeatureSurface(
-                  sdk: widget.dependencies.sdk,
-                  resolver: _resolver!,
-                  visitId: widget.dependencies.visitId,
-                  requiredContextKeys: widget.dependencies.requiredContextKeys,
-                  persistenceProbe: widget.dependencies.persistenceProbe,
-                  exportProbe: widget.dependencies.exportProbe,
-                  onTerminalFailure: _onTerminalFailure,
-                )
-              : null,
-        ),
-      ),
+      body: body,
     );
   }
 }
