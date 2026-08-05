@@ -153,12 +153,25 @@ key resolution) exercised together with SDK integration behaviour.
   client must not loop (§8.4; delivery plan §3.11.8 J2).
 - **Boundary: same idempotency key on resubmit**: the self-healing resubmission MUST
   reuse the original action's idempotency key, not mint a new one (§8.4; E2 Freezes for
-  key stability across the action).
+  key stability across the action). The heal helper owns that key and pins it across both
+  `AiClientSdk.invoke` calls.
 - **Boundary: `single_shot` only**: conversational capabilities MUST NOT enter this
-  path; §5.2 Negotiation / §8.10 remain out of scope (§8.4; §5.2; delivery plan §3.9).
+  path; the gate is the capability's manifest-declared `interactionMode` after refresh
+  (§8.4; §5.2; delivery plan §3.9; A14).
 - **Failure branch: second `context_required` is user-visible**: the request reference
   MUST be shown so support can look the defect up; silent swallow or opaque failure is
   forbidden (§8.4).
+- **Failure branch: `ContextResolveFailure`**: if the Resolver cannot resolve a named
+  key (e.g. `unknown_context_key` on a stale client registry), the heal MUST short-circuit
+  and surface the typed failure with the original rejection's request reference — it MUST
+  NOT resubmit unchanged context.
+- **Failure branch: payload-less `context_required`**: null or empty `missingKeys` is
+  unhealable; the client MUST rethrow immediately without refreshing, resolving, or burning
+  the single automatic resubmission.
+- **Version semantics on resubmit**: the resubmission keeps the original
+  `capabilityVersion`; C2 `manifestVersion` / `manifestCapabilityId` on the rejection are
+  diagnostic only (J1 overlap window serves the enriched context against the still-serving
+  version; §5.2 Evolution).
 - **Inherited prohibition: no per-request server-side state** holding a "healing
   session" on the gateway — recovery is entirely client-driven from the typed rejection
   (§4.4, §9.7; delivery plan §6.4; §8.4 sequence).

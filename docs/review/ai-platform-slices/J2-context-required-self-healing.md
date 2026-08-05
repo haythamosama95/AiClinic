@@ -54,3 +54,49 @@ Required-case status (delivery plan §3.11.8 J2 / spec Test plan):
 4. **[Low] Fail fast on payload-less `context_required`.** Treat null/empty `missingKeys` as unhealable and rethrow immediately, preserving the single attempt; extend `contextRequiredErrorStep` to allow an explicit null-payload case and test it (§3, §5).
 5. **[Low] Decide and document the resubmission's capability-version semantics.** State whether the heal resubmits under the original `capabilityVersion` (relying on the overlap window) or the refreshed `manifestVersion`; use or remove the captured `manifestVersion`/`manifestCapabilityId` fields accordingly (§3; §5.2 Evolution; J1 overlap).
 6. **[Low] Record the wiring gap honestly.** Either land the production construction of `ContextRequiredSelfHeal` + `ManifestRefreshPort` (C1 discovery revalidation) or state in plan/quickstart that wiring is deferred to a named later slice, so the Done-when is not read as already reachable from the app (§4).
+
+---
+
+## 7. Review Resolution
+
+### 7.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **J2-R1 — Same-key idempotency ownership** | Bugs #1; Missing/Weak Tests #1; Recommended Improvements #1 | `frontend/lib/core/ai/context_required_self_heal.dart`; `context_required_self_heal_test.dart` (test 1 rewritten) |
+| **J2-R2 — Short-circuit ContextResolveFailure** | Bugs #2; Missing/Weak Tests #2; Recommended Improvements #2 | `context_required_self_heal.dart` (`ContextHealResolveException`); test `context_resolve_failure_short_circuits_without_resubmit` |
+| **J2-R3 — Fail fast on payload-less / empty missingKeys** | Bugs #3; Missing/Weak Tests #3; Recommended Improvements #4 | `context_required_self_heal.dart`; `fakes.dart` (`nullMissingKeys`); tests `payload_less_*`, `empty_missing_keys_*` |
+| **J2-R4 — Manifest-declared interaction mode gate** | Architectural Deviations #1; Missing/Weak Tests #5; Recommended Improvements #3 | `ManifestRefreshPort.interactionModeFor`; removed constructor `InteractionMode`; tests 4 + `manifest_declared_conversational_mode_*` |
+| **J2-R5 — Resubmit capability-version semantics** | Bugs #4; Recommended Improvements #5 | Keep original `capabilityVersion`; document C2 manifest fields as diagnostic; test `resubmit_keeps_original_capability_version_*` |
+| **J2-R6 — Record wiring gap** | Architectural Deviations #2; Recommended Improvements #6 | Spec Kit `plan.md` Constraints, `quickstart.md` §2 — production C1/`ContextRequiredSelfHeal` wiring deferred |
+| **J2-R7 — Non-context_required passthrough** | Missing/Weak Tests #4 | test `non_context_required_errors_passthrough_without_heal` |
+
+Every numbered review item appears in exactly one stage. No escalations — all fixes stayed within J2 scope (Flutter sibling + Spec Kit). Architecture docs untouched.
+
+### 7.2 Test cases created first
+
+- **J2-R1:** Rewrote test 1 so the SDK factory would mint distinct keys per invoke (`sdk-minted-N`) while the heal factory supplies a stable key; asserts `submit.idempotencyKeys == [stableKey, stableKey]` and `sdkFactoryCalls == 0`.
+- **J2-R2:** `context_resolve_failure_short_circuits_without_resubmit` — unknown key → `ContextHealResolveException` with typed failure + original request reference; submit count stays 1.
+- **J2-R3:** `payload_less_context_required_rethrows_without_burning_heal_attempt` (`nullMissingKeys: true`) and `empty_missing_keys_context_required_rethrows_without_heal`.
+- **J2-R4:** Updated test 4 to gate via `FakeManifestRefreshPort(modes: …)`; added `manifest_declared_conversational_mode_blocks_heal_even_for_single_shot_shaped_input`.
+- **J2-R5:** `resubmit_keeps_original_capability_version_not_manifest_version` — rejection `manifestVersion: 2.0.0`, both submits keep `1.0.0`.
+- **J2-R6:** documentation-only (no new production test).
+- **J2-R7:** `non_context_required_errors_passthrough_without_heal` (`quota_exhausted`).
+
+### 7.3 Fix implemented
+
+- **J2-R1:** Heal stores `idempotencyKeyFactory`, mints once per action, and passes `idempotencyKey:` into both `AiClientSdk.invoke` calls (E2 per-invoke override already present).
+- **J2-R2:** On `ContextResolveFailure`, throw `ContextHealResolveException` carrying the failure and the rejection's request reference — no resubmit.
+- **J2-R3:** Null/empty `missingKeys` rethrows before refresh/resolve so the single heal attempt is preserved.
+- **J2-R4:** Removed constructor `InteractionMode`; FR-008 gate reads `ManifestRefreshPort.interactionModeFor(capabilityId)` (re-checked after refresh).
+- **J2-R5:** Resubmit keeps caller `capabilityVersion`; code comment + Spec Kit edge case state that C2 `manifestVersion` / `manifestCapabilityId` are diagnostic only (J1 overlap).
+- **J2-R6:** Plan Constraints and quickstart §2 state that production construction / C1 wiring is deferred; Done-when is fake-proven in this slice.
+- **J2-R7:** Passthrough coverage for non-`context_required` taxonomy codes.
+- Spec Kit aligned: `spec.md` edge cases; `plan.md` Constraints / Structure Decision / Files; `quickstart.md`.
+
+### 7.4 Verification
+
+- Flutter AI unit suite: **105** tests passed (`frontend/test/unit/core/ai/`), including **10** in `context_required_self_heal_test.dart`.
+- Full `ai-platform` suite (`npm test`): Node + Workers pools green (Workers: **19** files / **285** tests; prior full run also green for verify-manifests + Node pool).
+
+Modified/added: `frontend/lib/core/ai/context_required_self_heal.dart`; `frontend/test/unit/core/ai/{context_required_self_heal_test,fakes}.dart`; Spec Kit under `specs/049-context-required-self-healing/`; this review resolution appendix.

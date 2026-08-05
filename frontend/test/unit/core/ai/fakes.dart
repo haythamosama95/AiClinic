@@ -414,11 +414,20 @@ List<SseEvent> contextRequestedStream({
 
 /// Spy for [ManifestRefreshPort] — records refresh call count (J2).
 class FakeManifestRefreshPort implements ManifestRefreshPort {
+  FakeManifestRefreshPort({Map<String, InteractionMode>? modes})
+      : _modes = modes ?? const {};
+
+  final Map<String, InteractionMode> _modes;
   int refreshCallCount = 0;
 
   @override
   Future<void> refresh() async {
     refreshCallCount++;
+  }
+
+  @override
+  InteractionMode interactionModeFor(String capabilityId) {
+    return _modes[capabilityId] ?? InteractionMode.singleShot;
   }
 }
 
@@ -428,23 +437,28 @@ SubmitHttpErrorStep contextRequiredErrorStep({
   Map<String, Object?>? shapes,
   String manifestVersion = '1.0.0',
   String manifestCapabilityId = 'clinic.visit_summary',
+  bool nullMissingKeys = false,
 }) =>
     SubmitHttpErrorStep(
       code: TaxonomyCode.contextRequired,
       requestReference: requestReference,
       traceId: 'trace-ctx-req',
       retrySafe: true,
-      missingKeys: missingKeys ?? [visitChiefComplaintV1Key],
-      shapes: shapes ??
-          {
-            visitChiefComplaintV1Key: {
-              'type': 'object',
-              'properties': {
-                'visit_id': {'type': 'string'},
-                'complaint': {'type': 'string'},
-              },
-            },
-          },
+      missingKeys: nullMissingKeys
+          ? null
+          : (missingKeys ?? [visitChiefComplaintV1Key]),
+      shapes: nullMissingKeys
+          ? null
+          : (shapes ??
+              {
+                visitChiefComplaintV1Key: {
+                  'type': 'object',
+                  'properties': {
+                    'visit_id': {'type': 'string'},
+                    'complaint': {'type': 'string'},
+                  },
+                },
+              }),
       manifestVersion: manifestVersion,
       manifestCapabilityId: manifestCapabilityId,
     );
