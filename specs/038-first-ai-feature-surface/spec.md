@@ -89,7 +89,7 @@ definition:
 ### Session 2026-08-02
 
 - Q: Where should AI Feature Surfaces code live under `frontend/`? → A: `frontend/lib/features/ai/` for surfaces / degraded-mode UI; import SDK + Resolver from `core/ai` `[implementation choice — no §citation]`
-- Q: How should the first AI feature surface be hosted for CP3 and the widget suite? → A: Standalone host shell/route under `features/ai/` for tests + CP3 entry; not embedded in a production clinical screen in this slice `[implementation choice — no §citation]`
+- Q: How should the first AI feature surface be hosted for CP3 and the widget suite? → A: Standalone host shell/route under `features/ai/` for tests + CP3 entry; not embedded in a production clinical screen in this slice. The route builds `AiFeatureHostPage` when `AiFeatureHostDependencies` are passed via GoRouter `extra` (CP3 composition supplies mint/submit ports); without extra it shows a composition-required message rather than a placeholder string claiming the host is registered. `[implementation choice — no §citation]`
 - Q: How should T1 (`surface_provisional_content_visually_distinct`) assert that live/provisional prose is visually distinct as draft? → A: Stable test `Key` / Semantics marker + draft styling token asserted by the widget test `[implementation choice — no §citation]`
 
 ## User Scenarios & Testing *(mandatory)*
@@ -183,7 +183,7 @@ widget (spy) layer.
 | T5 | `surface_failure_displays_request_reference` | Flutter widget (spy) | Failure UI displays the request reference (§3.11.5 E4; §13.2; §5.4) |
 | T6 | `surface_provisional_does_not_survive_rebuild` | Flutter widget (spy) | Provisional content does not survive a widget rebuild (§3.11.5 E4; §6.4 invariant 2) |
 | T7 | `surface_provisional_does_not_survive_restart` | Flutter widget (spy) | Provisional content does not survive an app restart (§3.11.5 E4; §6.4 invariant 2) |
-| T8 | `degraded_non_enrolled_hides_affordances_no_network` | Flutter widget (spy) | Non-enrolled: no AI affordances; spy shows zero AI-platform network calls (§3.11.5 E4; §4.2) |
+| T8 | `degraded_non_enrolled_hides_affordances_no_network` | Flutter widget (spy) | Non-enrolled: no AI chrome/affordances; `reachabilityPort.callCount == 0` and network spy zero (§3.11.5 E4; §4.2) |
 | T9 | `degraded_unreachable_is_normal_state_not_error_dialog` | Flutter widget (spy) | Unreachable platform → normal state, not an error dialog; clinical work not blocked (A11; §3.11.5 E4) |
 | T10 | `degraded_enrolled_reachable_shows_affordances` | Flutter widget (spy) | Enrolled and reachable shows AI affordances (§3.11.5 E4; §4.2) |
 | T11 | `degraded_quota_exhausted_distinct_state` | Flutter widget (spy) | `quota_exhausted` shows quota state as a distinct first-class UI state (A11; §5.4) |
@@ -191,9 +191,9 @@ widget (spy) layer.
 | T13 | `surface_internal_error_shows_request_reference` | Flutter widget (spy) | `internal_error` failure displays the request reference (§5.4 Client behaviour; §13.2) |
 | T14 | `surface_context_invalid_shows_request_reference` | Flutter widget (spy) | `context_invalid` failure displays the request reference (§5.4; §13.2) |
 | T15 | `surface_uses_terminal_payload_not_chunk_assembly` | Flutter widget (spy) | Final displayed answer equals the terminal validated payload, not a client assembly of deltas (§6.4 invariant 1; delivery plan §6.4) |
-| T16 | `surface_provisional_never_exported` | Flutter widget (spy) | No export path emits provisional (pre-`completed`) content (§6.4 invariant 2; Done when) |
-| T17 | `surface_provisional_never_persisted` | Flutter widget (spy) | Spy/persistence probe: provisional content is not written to durable local or clinic storage (§6.4 invariant 2; §4.1 Must not) |
-| T18 | `surface_installation_suspended_hides_ai_features` | Flutter widget (spy) | `installation_suspended` → hide AI features per §5.4 Client behaviour; clinical workflows remain usable (A11) |
+| T16 | `surface_provisional_never_exported` | Flutter widget (spy) | Live provisional path fires export-probe visibility hook; `exports` stays empty (§6.4 invariant 2; Done when) |
+| T17 | `surface_provisional_never_persisted` | Flutter widget (spy) | Live provisional path fires persistence-probe visibility hook; `writes` stays empty (§6.4 invariant 2; §4.1 Must not) |
+| T18 | `surface_installation_suspended_hides_ai_features` | Flutter widget (spy) | Terminal `FailedEvent(installation_suspended)` through SDK → host hides AI features per §5.4; clinical workflows remain usable (A11) |
 | T19 | `surface_forbidden_capability_hides_affordance` | Flutter widget (spy) | `forbidden_capability` → hide the affordance for this role (§5.4) |
 | T20 | `surface_contains_no_prompt_provider_or_model_identifiers` | Flutter widget (spy) | Feature surface sources pass the E1 architecture guard (R-12; delivery plan §6.4; §4.1) |
 | T21 | `availability_flag_readable_without_platform_probe` | Flutter widget (spy) | Enrollment/availability and platform base URL are read from the clinic-side AI availability flag; non-enrolled path makes no platform probe (§4.2; T8 companion) |

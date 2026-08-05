@@ -25,6 +25,8 @@ AS $$
   );
 $$;
 
+REVOKE ALL ON FUNCTION auth_internal.get_ai_availability() FROM PUBLIC, authenticated, anon;
+
 CREATE OR REPLACE FUNCTION public.get_ai_availability()
 RETURNS jsonb
 LANGUAGE sql

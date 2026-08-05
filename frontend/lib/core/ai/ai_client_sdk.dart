@@ -285,7 +285,13 @@ class AiInvokeSession {
         cause: error,
       );
     } finally {
-      await _sourceSubscription.cancel();
+      // Never await cancel while nested inside the source onData stack — that
+      // deadlocks the terminal Future until an outer event-loop turn flushes,
+      // which Flutter widget pumps do not always provide in time.
+      final sub = _sourceSubscription;
+      scheduleMicrotask(() {
+        unawaited(sub.cancel());
+      });
     }
   }
 }
