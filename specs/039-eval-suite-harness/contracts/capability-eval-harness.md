@@ -126,6 +126,8 @@ Each completed run **MUST** write a JSON score report with at least:
 - Every eval suite run (CI golden or scheduled smoke) **MUST** write a report
   when the run completes.
 - Quality and schema are recorded **per case** as pass/fail.
+- An empty case array yields `overall: "fail"` (`deriveOverall([])` **MUST**
+  return `"fail"`).
 - This contract invents **no numeric cutoff** beyond the golden pass/fail gate
   (A9; §13.5).
 - CI/smoke **MAY** upload or retain the report as a workflow artifact; retention

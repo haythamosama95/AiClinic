@@ -1,6 +1,6 @@
 # Quickstart: Eval suite harness and first capability eval (F1)
 
-Slice F1 freezes the capability eval harness (A9): golden cases for `clinic.visit_summary` run in CI against recorded provider fixtures on the current pinned prompt, a deliberately worse prompt fails the gate, each run writes a JSON score report, and a scheduled workflow exercises pinned model targets via the live-smoke Vitest entry.
+Slice F1 freezes the capability eval harness (A9): golden cases for `clinic.visit_summary` run in CI against D5 recorded fixtures (`d5_fixture_subdir` → `test/fixtures/deepseek/`) on the current pinned prompt (composition + schema; fixture-output sanity only), a deliberately worse prompt fails the gate, each run writes a JSON score report, and a scheduled workflow invokes live adapter smoke against pinned product/version model IDs (workflow-supplied secrets; `run_kind: "live_smoke"`).
 
 **Scope rule:** This quickstart documents **this slice only** — F1 files, tests, and workflows.
 
@@ -33,7 +33,7 @@ See [`spec.md`](spec.md) for full requirements and [`plan.md`](plan.md) for file
 | `ai-platform/test/eval/harness.ts` | Golden runner, fixture replay, scoring, live-smoke model targets |
 | `ai-platform/test/eval/score-report.ts` | JSON score-report shape and writer |
 | `ai-platform/test/eval/clinic.visit_summary/cases/` | First-capability golden case inputs |
-| `ai-platform/test/eval/clinic.visit_summary/fixtures/` | Capability-scoped recorded provider fixture bindings |
+| `ai-platform/test/eval/clinic.visit_summary/fixtures/` | Capability-scoped bindings (`d5_fixture_subdir` → D5 `test/fixtures/deepseek/`) |
 | `ai-platform/test/eval/clinic.visit_summary/expectations/` | Per-case quality + schema expectations |
 | `ai-platform/test/eval/prompts/clinic.visit_summary.worse/` | Deliberately worse prompt artifact (T2) |
 | `ai-platform/test/eval/golden.test.ts` | T1, T2, T3, T5, T6 |

@@ -24,7 +24,7 @@ Copied verbatim from the slice's `Canonical` cell (delivery plan §3.7, row F1):
 
 Contracts this slice establishes for the first time:
 
-- The **capability eval harness (A9)**: a prompt/capability evaluation suite gated in CI. Golden cases per capability run against recorded provider fixtures; a smaller live smoke set runs on a schedule against pinned model versions. The suite tests output quality and schema conformance per capability (§13.5 Capability evals row; A9). Later slices (D7's capability-eval clause, H4 conversation evals, J3 staged rollout) consume this harness and must not redefine how golden cases gate CI or how live smoke is scheduled against pinned models.
+- The **capability eval harness (A9)**: a prompt/capability evaluation suite gated in CI. Golden cases per capability run against recorded provider fixtures (composition / request gating + schema conformance of the fixture-backed result; fixture-output substring/length checks are fixture sanity only); a smaller live smoke set runs on a schedule against pinned model versions via live adapter egress and is the path that catches live output-quality drift (§13.5 Capability evals row; A9). Later slices (D7's capability-eval clause, H4 conversation evals, J3 staged rollout) consume this harness and must not redefine how golden cases gate CI or how live smoke is scheduled against pinned models.
 - The **CI regression gate for prompt changes**: a deliberately regressed prompt fails the golden set so a prompt change that regresses quality or schema conformance is blocked in CI; the current prompt's golden set passes (delivery plan §3.7 Done when; §3.11.6 row F1; A9). Prompt artifacts remain immutable D1 assets; swapping a prompt is a new capability *build* guarded by this suite (Consumes D1).
 - The **per-run score recording contract**: eval scores are recorded per run so regression is measurable across CI and scheduled smoke executions (delivery plan §3.11.6 row F1; §13.5 Capability evals — output quality and schema conformance).
 
@@ -33,7 +33,7 @@ Contracts this slice establishes for the first time:
 Contracts frozen by the slices in `Needs` (D1, D5). Changing any of these is out of scope by definition:
 
 - **From D1 (prompt registry and composer)**: the **prompt registry contract** — immutable prompt artifacts deployed with the Worker, pinned by the capability manifest; a prompt change is a new capability *build*, not an editable D1 row; the composer produces the canonical request the capability under eval uses (§4.3.6 / §5.7 Freezes in D1). F1 evaluates against those pinned artifacts and does not store prompt text in D1, invent an editable-prompt path, or redefine composition.
-- **From D5 (first real provider adapter)**: the **first real provider adapter** and its **recorded-fixture adapter suite** behind the D2 provider port — wire mapping, stream normalization, usage extraction, and error classification proven against recorded fixtures (§4.3.8 Freezes in D5). F1's golden cases run against recorded provider fixtures (A9; §13.5); F1 does not redefine the adapter port, invent a second real adapter, or replace D5's fixture-suite duties. Live smoke exercises pinned model versions through the existing adapter/routing path without changing adapter ownership.
+- **From D5 (first real provider adapter)**: the **first real provider adapter** and its **recorded-fixture adapter suite** behind the D2 provider port — wire mapping, stream normalization, usage extraction, and error classification proven against recorded fixtures (§4.3.8 Freezes in D5). F1's golden cases run against recorded provider fixtures under `ai-platform/test/fixtures/deepseek/` via `d5_fixture_subdir` bindings (A9; §13.5) — not eval-local response-body duplicates; F1 does not redefine the adapter port, invent a second real adapter, or replace D5's fixture-suite duties. Live smoke exercises pinned model versions through the existing adapter/routing path (live egress; workflow-supplied secrets) without changing adapter ownership.
 
 ### Open decisions relied on
 
@@ -50,8 +50,14 @@ Contracts frozen by the slices in `Needs` (D1, D5). Changing any of these is out
 - Q: How should the scheduled live smoke set be triggered? → A: GitHub Actions scheduled workflow runs the live-smoke Vitest entry against pinned models (same `test/eval/` harness as CI goldens) `[implementation choice — no §citation]`
 - Q: How should T2 construct the deliberately regressed prompt that must fail the golden set? → A: Checked-in deliberately-worse prompt artifact under `ai-platform/test/eval/` (separate from the production pinned prompt); T2 runs the golden set against that build and expects failure `[implementation choice — no §citation]`
 - Q: How should golden cases assert output quality (alongside schema conformance) against recorded provider fixtures? → A: Per-case golden expectations under `test/eval/` — `system_instruction_must_contain` / optional request-system golden for composition, plus canned-output sanity (`output_must_contain` / `output_min_length`) and schema validation of the fixture-backed result; pass/fail only. Live model output-quality drift is caught by scheduled live smoke, not by fixture replay `[implementation choice — no §citation]`
+
+### Session 2026-08-05 (F1 review honesty)
+
 - Q: How does live smoke prove it ran against providers? → A: `runLiveSmokeSuite` invokes wired adapters per pinned routing-policy target, writes `run_kind: "live_smoke"` score reports, and the scheduled workflow supplies `DEEPSEEK_API_KEY` / `GEMINI_API_KEY`; credential-less local runs may skip live egress `[implementation choice — no §citation]`
 - Q: What counts as a pinned model version for smoke? → A: Explicit product/version IDs from routing policy (e.g. `deepseek-v4-flash`, `gemini-3.5-flash`); reject floating aliases (`latest` / `auto` / `default`, legacy `deepseek-chat` / `deepseek-reasoner`, bare `gemini-1.5-flash`) `[implementation choice — no §citation]`
+- Q: Where do golden provider response bodies live (Consumes D5)? → A: Bindings resolve `d5_fixture_subdir` against `ai-platform/test/fixtures/deepseek/` (D5 tree); response bodies are not duplicated under `test/eval/` `[implementation choice — no §citation]`
+- Q: How does an empty golden/smoke case set score? → A: `deriveOverall([])` / empty `cases` → overall `fail` (no vacuous pass) `[implementation choice — no §citation]`
+- Q: What does `cases[].quality` mean on a golden run? → A: Pass/fail label unchanged; for goldens it covers composition needles **or** fixture-output sanity — not a live-model quality measurement (see contract §2.2 / §4.1) `[implementation choice — no §citation]`
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -65,10 +71,10 @@ As the platform operator and reviewer of prompt changes, after a real prompt reg
 
 **Acceptance Scenarios**:
 
-1. **Given** the first capability's current pinned prompt artifact and its golden case set against recorded provider fixtures, **When** the eval suite runs in CI, **Then** the golden set passes (output quality and schema conformance). *(The golden set passes on the current prompt)*
+1. **Given** the first capability's current pinned prompt artifact and its golden case set against recorded provider fixtures (D5 tree via `d5_fixture_subdir`), **When** the eval suite runs in CI, **Then** the golden set passes (composition / request gating, fixture-output sanity, and schema conformance). *(The golden set passes on the current prompt)*
 2. **Given** a deliberately regressed prompt artifact for that capability (a new capability build that worsens quality or breaks schema conformance relative to the golden expectations), **When** the eval suite runs in CI, **Then** the golden set fails and the change is blocked. *(A deliberately regressed prompt fails)*
 3. **Given** any eval suite run (CI golden or scheduled smoke), **When** the run completes, **Then** scores for output quality and schema conformance are recorded for that run. *(Scores are recorded per run)*
-4. **Given** pinned model versions in routing policy (never floating aliases), **When** the scheduled live smoke set executes, **Then** the smoke set runs against those pinned model versions. *(The scheduled live smoke set runs against pinned model versions)*
+4. **Given** pinned model versions in routing policy (explicit product/version IDs; never floating aliases) and workflow-supplied provider secrets, **When** the scheduled live smoke set executes, **Then** the smoke set invokes adapters against live endpoints for those pinned models and records `run_kind: "live_smoke"`. *(The scheduled live smoke set runs against pinned model versions)*
 
 ### Test plan
 
@@ -93,8 +99,9 @@ Coverage of every error code the slice can emit (§3.10 item 2): this slice is a
 
 - **No runtime taxonomy codes.** F1 does not emit `validation_failed`, `provider_unavailable`, or any other §5.4 code. A failing golden case fails CI; it does not invent a new request error code (A9; §13.5; §3.10).
 - **Current prompt vs regressed prompt.** The happy path is the current pinned prompt passing goldens (T1). The regression branch is a deliberate worse prompt failing and blocking the change (T2). There is no third "soft fail" or warn-only mode named in A9 or §13.5.
-- **Fixtures vs live smoke.** Golden cases use recorded provider fixtures in CI (A9; §13.5). Live smoke is the smaller scheduled set against pinned models — not a substitute for the CI golden gate, and not an unbounded live matrix (A9; OD-5).
-- **Pinned models only.** Live smoke targets pinned model versions; floating aliases are out of scope for this harness's smoke set (§13.5; Consumes routing/policy pinning already required by the platform — F1 does not invent pin syntax).
+- **Fixtures vs live smoke.** Golden cases use recorded provider fixtures in CI and gate composition + schema (plus fixture-output sanity); they do not measure live model quality (A9; §13.5). Live smoke is the smaller scheduled set that **MUST** invoke adapters against live endpoints (or skip only when credentials are absent locally), write `run_kind: "live_smoke"`, and catch silent model / output-quality drift — not a substitute for the CI golden gate, and not an unbounded live matrix (A9; OD-5). The scheduled workflow **MUST** supply provider secrets.
+- **Pinned models only.** Live smoke targets explicit product/version `model_id` values from routing policy (e.g. `deepseek-v4-flash`, `gemini-3.5-flash`). Forbidden: `latest`/`auto`/`default` and floating family aliases such as bare `gemini-1.5-flash` or legacy `deepseek-chat` (§13.5; Consumes routing/policy pinning — F1 does not invent pin syntax).
+- **Empty suite fails.** An eval run with no cases (`deriveOverall([])`) is overall `fail`.
 - **Scores recorded, thresholds not invented.** Scores for output quality and schema conformance are recorded per run (§3.11.6 F1; §13.5). A9 and §13.5 name no numeric score cutoff beyond the golden pass/fail gate; this slice does not invent one.
 - **Per-capability scope.** Evals are per capability (A9; §13.5). Conversation-scored multi-leg evals are H4, not F1.
 - **Second-provider eval clause.** D7's "capability evals pass" case is written against this harness and lands with F1's harness available, not as D7-alone work (delivery plan §3.5 row D7; §3.11.4 D7). F1 does not rework D7's adapter or policy registration.
@@ -106,13 +113,13 @@ Coverage of every error code the slice can emit (§3.10 item 2): this slice is a
 
 - **FR-001**: The platform MUST provide a prompt/capability evaluation suite gated in CI (A9).
 - **FR-002**: The suite MUST include golden cases per capability, run against recorded provider fixtures (A9; §13.5 Capability evals).
-- **FR-003**: The suite MUST include a smaller live smoke set that runs on a schedule against pinned model versions (A9; §13.5 Capability evals).
-- **FR-004**: Capability evals MUST test output quality and schema conformance per capability (§13.5 Capability evals).
+- **FR-003**: The suite MUST include a smaller live smoke set that runs on a schedule, invokes adapters against live endpoints (skip only when credentials are absent locally; scheduled workflow MUST supply secrets), writes `run_kind: "live_smoke"` scores, and targets pinned model versions (A9; §13.5 Capability evals).
+- **FR-004**: Capability evals MUST test schema conformance per capability, and quality as defined for each run kind: golden quality = composition needles / request-golden and fixture-output sanity; live-smoke quality = checks on live adapter responses that catch model drift (§13.5 Capability evals).
 - **FR-005**: The golden set MUST pass on the current prompt for the first capability under eval (delivery plan §3.7 Done when; §3.11.6 F1).
 - **FR-006**: A deliberately regressed prompt MUST fail the golden set so a prompt change that regresses the suite is blocked in CI (delivery plan §3.7 Done when; §3.11.6 F1; A9).
 - **FR-007**: Eval scores MUST be recorded per run (delivery plan §3.11.6 F1; §13.5).
-- **FR-008**: The scheduled live smoke set MUST run against pinned model versions (delivery plan §3.7 Done when; §3.11.6 F1; §13.5).
-- **FR-009**: Golden CI cases MUST use recorded provider fixtures rather than depending on live provider egress as the permanent regression gate (A9; §13.5; Consumes D5).
+- **FR-008**: The scheduled live smoke set MUST run against pinned model versions (explicit product/version IDs; never `latest`/`auto`/`default` or floating family aliases such as bare `gemini-1.5-flash` / legacy `deepseek-chat`) (delivery plan §3.7 Done when; §3.11.6 F1; §13.5).
+- **FR-009**: Golden CI cases MUST use recorded provider fixtures under the D5 tree (`d5_fixture_subdir` → `test/fixtures/deepseek/`) rather than depending on live provider egress as the permanent regression gate (A9; §13.5; Consumes D5).
 - **FR-010**: The harness MUST NOT redefine D1 prompt immutability or D5 adapter/port contracts; it evaluates against those frozen artifacts and adapters (Consumes D1, D5; A9).
 
 ### Key Entities
