@@ -1,4 +1,5 @@
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const REFERENCE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
 export function generateRequestReference(): string {
   const bytes = new Uint8Array(8);
@@ -22,4 +23,9 @@ export function normalizeRequestReference(input: string): string {
     .replace(/I/g, "1")
     .replace(/L/g, "1")
     .replace(/O/g, "0");
+}
+
+/** True when `normalized` already matches the Crockford base32 reference format. */
+export function isValidRequestReference(normalized: string): boolean {
+  return REFERENCE_PATTERN.test(normalized);
 }

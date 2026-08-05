@@ -43,14 +43,14 @@ the audit trail (FR-016).
 
 ## 3. Named diagnostics
 
-| Id | Diagnostic | Primary source columns / tables |
-| --- | --- | --- |
-| `ttft_by_provider` | Time to first token by provider | `ai_attempt` latency / provider (and any TTFT field already journaled); aggregate by provider |
-| `validation_failure_by_prompt_version` | Validation-failure rate by prompt version | `ai_request.prompt_artifact_hash` + terminal / error codes indicating validation failure |
-| `repair_rate_by_capability` | Repair rate by capability | Journal attempt/repair signals by `capability_id` (+ version as stored) |
-| `fallback_rate_by_provider` | Fallback rate by provider | Multi-attempt / fallback outcomes by provider on `ai_attempt` |
-| `cost_per_capability_per_installation` | Cost per capability per installation | `usage_rollup` and/or `usage_event` / attempt cost dimensions |
-| `quota_rejection_rate` | Quota rejection rate | `platform_counter` (and journal where applicable) for quota/admission rejections |
+| Id | Diagnostic | Primary source columns / tables | Honesty notes |
+| --- | --- | --- | --- |
+| `ttft_by_provider` / `avg_attempt_latency_by_provider` | Average first-attempt latency by provider | `ai_attempt.latency_ms` where `attempt_no = 1`, grouped by `provider` | Reports **first-attempt total latency**, not true TTFT — time-to-first-token is not journaled. Code export: `dashboardAvgAttemptLatencyByProvider` (`dashboardTtftByProvider` is a deprecated alias). |
+| `validation_failure_by_prompt_version` | Validation-failure rate by prompt version | `ai_request.prompt_artifact_hash` + `terminal_error_code = 'validation_failed'` | Denominator is `state IN ('Completed', 'Failed')` only — `Cancelled` / `AwaitingContext` must not dilute. |
+| `repair_rate_by_capability` | Repair rate by capability | Named diagnostic id retained | **Unavailable** until `RepairJournalSink` is persisted on the write path. Function returns empty `{}` rather than querying a never-written `outcome='repair'`. |
+| `fallback_rate_by_provider` | True provider-fallback rate by provider | `ai_attempt` compared to the previous attempt's provider | `selection_reason` is not in D1. Heuristic: an attempt is a fallback when its `provider` differs from the previous attempt (`attempt_no - 1`) on the same request; rate = fallback attempts for that provider / all attempts for that provider. Same-provider retries do not count. |
+| `cost_per_capability_per_installation` | Cost per capability (+ version) per installation | `ai_attempt.cost` joined to `ai_request` | Grouped by `capability_id`, `capability_version`, and `installation_id` ("+ version as stored"). |
+| `quota_rejection_rate` | Quota rejection approximation | `platform_counter` (quota) + `ai_request` count | Rate = `SUM(count)` where `dimension_set LIKE '%quota_exhausted%'` / `COUNT(*)` of journaled `ai_request`. Approximation of rejections per request; returns `0` when request count is 0. Do not use fabricated `ok` counters as denominator. |
 
 Exact SQL is an implement detail; each named test asserts correct values against a **seeded**
 journal (T14–T19).

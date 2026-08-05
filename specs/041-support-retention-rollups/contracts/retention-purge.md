@@ -30,7 +30,7 @@ Retention expires each class on its own horizon. The diagnostic envelope’s hor
 | Class | Applies to | Default horizon (architecture band) | F3 default constant | Expiry mechanism |
 | --- | --- | --- | --- | --- |
 | `diagnostic` | R2 payload envelope (prompt, context, raw responses, result) | Days to weeks; short by default, extendable per capability | **7 days** baseline; override via manifest `retentionClass` (e.g. `diagnostic_30d` → 30 days) | Scheduled purge deletes past-horizon R2 objects |
-| `journal` | `ai_request`, `ai_attempt` metadata | Months | **90 days** | Scheduled purge deletes past-horizon D1 rows |
+| `journal` | `ai_request`, `ai_attempt` metadata | Months | **90 days** | Scheduled purge deletes past-horizon D1 rows as a unit. Before deleting requests, `usage_event.request_id` is set NULL so ledger rows may retain years of commercial evidence with a nulled FK. |
 | `ledger` | `usage_event`, `usage_rollup`, `control_audit`, `capability_grant` | Years | **2555 days** (~7 years) | Scheduled purge deletes past-horizon D1 rows |
 | `ephemeral` | `jti` replay and idempotency records inside the Quota DO | Minutes to hours | **B4 `EPHEMERAL_HORIZON_MS` (2 hours)** — unchanged | Expire **in place** inside the DO; **no** D1/R2 table to prune |
 
@@ -43,6 +43,9 @@ associated request time). Exact column choice per class is an implement detail w
 ## 3. Per-capability diagnostic horizon
 
 - Retention class is a **per-capability** manifest Governance field (`retentionClass`).
+- Production wiring uses `createManifestRetentionClassResolver()` (eager-bundled
+  `manifests/published/*.json`) in support lookup and the scheduled purge; unknown
+  capabilities fall back to the diagnostic baseline via `defaultRetentionClassResolver`.
 - When two capabilities differ, a purge run at a time between their horizons deletes only the
   shorter-horizon capability’s envelopes (FR-008; T8).
 - Unknown / missing `retentionClass` falls back to the diagnostic baseline (7 days).
@@ -67,7 +70,7 @@ F3 **reads** manifests; it does not redefine the A4/C1 Governance field set.
 | Property | Value |
 | --- | --- |
 | **Trigger** | Operator-authenticated control-plane action (installation deletion recovery path §7.7); may be invoked alongside or after B2 lifecycle `delete` without rewriting enroll/suspend/resume/rotate |
-| **D1** | Delete platform rows scoped to that `installation_id` (journal, attempts via request FK, usage events/rollups as applicable, related audit targets) |
+| **D1** | Delete platform rows scoped to that `installation_id`: journal (`ai_request` / `ai_attempt`), `usage_event`, `usage_rollup` (via `json_extract(dimensions, '$.installation_id')`), and `platform_counter` (via `json_extract(dimension_set, '$.installation_id')`) |
 | **R2** | Delete envelopes for that installation’s requests |
 | **Isolation** | Other installations untouched |
 | **Audit** | Mutation journaled to `control_audit` with **operator identity** (FR-018; reuse B2 pattern) |

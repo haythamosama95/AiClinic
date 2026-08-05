@@ -81,3 +81,53 @@ Coverage is measured against the §3.11.6 F3 floor and §3.10 (every branch of e
 - **Set-based reconciliation and purge SQL, plus the three FK indexes** (Bugs 7–8): two `LEFT JOIN … IS NULL` queries for reconciliation; a `json_extract` predicate for rollup expiry; a horizon prefilter for the diagnostic scan; indexes on `ai_attempt.request_id`, `usage_event.request_id`, `usage_event.installation_id` as an additive migration.
 - **Fix the two mis-seeded dashboard tests and the quota-rate denominator** (Bugs 2, 6 / Weak Tests 3): seed only write-path-producible rows; for quota rejection rate, divide quota-coded counters by journaled request volume for the window (documenting the approximation in `contracts/journal-dashboards.md` §3), and drop the `'ok'` fixture.
 - **Tighten the remaining branches** (Bugs 9–11, Weak Tests 2, 4, 7, 8): validate/trim the reference and return a control-plane 400 for malformed input with tests per normalisation branch; add the zero-GetObject spy to T2; add reconciliation negative cases; use `selection_reason`/`routing_decision` for the fallback diagnostic; exclude pre-validation states from the validation-failure denominator.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **F3-R1 — Manifest retention resolver wiring** | Critical #1; Arch Dev #1; Weak Tests #1; Rec (wire resolver) | `src/retention/index.ts` (`createManifestRetentionClassResolver`); `src/control/support-purge.ts`; `src/worker.ts` scheduled purge; `test/retention.test.ts`; `test/support-lookup.test.ts`; Spec Kit retention/plan/spec |
+| **F3-R2 — Journal expiry as a unit** | Bugs #1; Arch Dev #2; Weak Tests #5; Rec (journal unit) | Migration `20260805120000_f3_retention_indexes.sql` (nullable `usage_event.request_id` + `ON DELETE SET NULL`); `src/retention/index.ts` journal purge; `schema.snap.sql`; contracts `retention-purge.md` §2; credited-request journal test |
+| **F3-R3 — Dashboard honesty** | Bugs #2, #6, #10, #11; Arch Dev #3; Weak Tests #3, #9; Rec (honesty pass) | `src/dashboards/index.ts`; `test/journal-dashboards.test.ts`; `contracts/journal-dashboards.md` |
+| **F3-R4 — Period-aligned rollups** | Bugs #3; Arch Dev #4; Weak Tests #6; Rec (period-aligned) | `src/rollup/index.ts` aggregate; `test/rollup-reconciliation.test.ts` advanced-window; `contracts/usage-rollup-reconciliation.md` §2 |
+| **F3-R5 — Reconciliation surface + set-based** | Bugs #4, #7; Arch Dev #5; Weak Tests #7; Rec (surface report) | `src/rollup/index.ts` (`logReconciliationReport`, LEFT JOIN queries); `src/worker.ts` cron emit; contract §3.1 `AwaitingContext`; negative + log-spy tests |
+| **F3-R6 — Install purge + indexes/SQL** | Bugs #5, #8; Rec (residue + indexes) | `purgeByInstallationId` rollup/counter deletes; diagnostic prefilter; set-based rollup expiry; FK/`json_extract` indexes in same migration; T9 extended |
+| **F3-R7 — Reference validation + weak tests** | Bugs #9; Weak Tests #2, #4, #8; Rec (validate/trim) | `src/reference.ts` (`isValidRequestReference`); `handleSupportLookup` 400 paths; support-lookup + reference tests; `contracts/support-lookup.md` §2 |
+
+Every numbered Critical, Bug, Architectural Deviation, Missing/Weak Test, and Recommended Improvement is covered by exactly one stage. No architecture-doc edits. Repair/TTFT honesty is contract-extension within F3 (empty repair until write path; latency labeled as attempt latency). Fallback uses a provider-switch heuristic because `selection_reason` is not persisted in D1 yet.
+
+### 1.2 Test cases created first
+
+- **F3-R1:** `createManifestRetentionClassResolver` asserts `clinic.visit_summary@1.0.0` → `diagnostic_30d`; route-level support lookup at day-15 with published capability keeps envelope (production wiring, not injected fake).
+- **F3-R2:** Credited journal case seeds old `ai_request` + attempt + `usage_event`; after purge request/attempts gone, usage retained with null `request_id`.
+- **F3-R3:** Dashboard seeds drop `outcome='repair'` and `error_code:'ok'`; assertions updated for empty repair, latency rename, provider-switch fallback, quota÷request_count, Completed/Failed-only validation denom, cost+version.
+- **F3-R4:** Advanced-window re-run keeps prior-period rollup equal to full period ledger.
+- **F3-R5:** Negative reconciliation cases + `logReconciliationReport` console spy.
+- **F3-R6:** Install-purge asserts `usage_rollup` / `platform_counter` cleared for target installation only.
+- **F3-R7:** Lowercase / I·L·O / trim resolve; malformed → 400 `invalid_reference`; unknown → 404; expired GetObject=0; missing R2 GetObject=1.
+
+### 1.3 Fix implemented
+
+- **R1:** Static import of published manifests (Workers-safe; no `import.meta.glob`); wired into support lookup and `0 3 * * *` purge.
+- **R2:** Journal deletes attempts + all aged requests after nulling ledger FKs; removed `NOT IN usage_event` guard and misnamed journal-cutoff orphan delete.
+- **R3:** Honesty renames/empty repair; fallback heuristic; quota vs journal volume; validation state filter; cost groups by version.
+- **R4:** Period-complete aggregation (window selects periods; sums all events for those periods).
+- **R5:** Set-based reconciliation; structured log per scheduled rollup run; contract includes `AwaitingContext`.
+- **R6:** Installation purge clears aggregates; diagnostic age prefilter; set-based rollup delete; additive indexes.
+- **R7:** Trim + format validation before lookup.
+
+Spec Kit contracts/plan/spec updated; `17-ai-platform.md` / delivery plan untouched.
+
+### 1.4 Verification
+
+Full `ai-platform` suite (`npm test`):
+
+- Gate: **2** files, **4** tests passed
+- Node: **41** files, **595** tests passed
+- Workers: **19** files, **258** tests passed
+
+Modified/added tests: `retention.test.ts`, `support-lookup.test.ts`, `journal-dashboards.test.ts`, `rollup-reconciliation.test.ts`, `reference.test.ts`. New migration: `20260805120000_f3_retention_indexes.sql`.

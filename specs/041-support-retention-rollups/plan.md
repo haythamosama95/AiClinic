@@ -218,7 +218,11 @@ rewritten. No second metrics store. No clinic/`frontend` files.
 `retention/index.ts` / `contracts/retention-purge.md` — diagnostic baseline **7 days** (short by
 default; override via manifest `retentionClass` e.g. `diagnostic_30d`); journal **90 days**
 (months); ledger **2555 days** (~7 years); ephemeral **unchanged** — B4 `EPHEMERAL_HORIZON_MS`
-(2 hours).
+(2 hours). Production support lookup and scheduled purge wire
+`createManifestRetentionClassResolver()` (eager-bundled published manifests); unknown caps fall
+back to `defaultRetentionClassResolver`. Journal expiry nulls `usage_event.request_id` then
+deletes `ai_request` + `ai_attempt` together; installation purge also clears matching
+`usage_rollup` / `platform_counter` rows.
 
 ## Test Layout
 

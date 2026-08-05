@@ -13,8 +13,14 @@ import {
   getRequestAuthErrorBody,
 } from "./journal";
 import { flushRejectionCounters } from "./rate-limit";
-import { runRetentionPurge } from "./retention";
-import { runRollupAndReconciliation } from "./rollup";
+import {
+  createManifestRetentionClassResolver,
+  runRetentionPurge,
+} from "./retention";
+import {
+  logReconciliationReport,
+  runRollupAndReconciliation,
+} from "./rollup";
 import {
   admissionRPC,
   creditRPC,
@@ -205,9 +211,11 @@ export default {
       await runRetentionPurge({
         db: runtimeEnv.DB,
         r2: runtimeEnv.R2,
+        resolveRetentionClass: createManifestRetentionClassResolver(),
       });
     } else if (cron === "0 4 * * *") {
-      await runRollupAndReconciliation({ db: runtimeEnv.DB });
+      const result = await runRollupAndReconciliation({ db: runtimeEnv.DB });
+      logReconciliationReport(result);
     }
   },
 };

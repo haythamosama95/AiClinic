@@ -118,17 +118,17 @@ CREATE TABLE token_contract (
   changed_by TEXT NOT NULL
 );
 
-CREATE TABLE usage_event (
+CREATE TABLE "usage_event" (
   usage_event_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,
   period TEXT NOT NULL,
-  request_id TEXT NOT NULL,
+  request_id TEXT,
   quota_weight INTEGER NOT NULL,
   tokens INTEGER NOT NULL,
   cost REAL NOT NULL,
   recorded_at TEXT NOT NULL,
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id),
-  FOREIGN KEY (request_id) REFERENCES ai_request (request_id)
+  FOREIGN KEY (request_id) REFERENCES ai_request (request_id) ON DELETE SET NULL
 );
 
 CREATE TABLE usage_rollup (
