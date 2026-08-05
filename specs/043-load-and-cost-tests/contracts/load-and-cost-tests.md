@@ -38,7 +38,9 @@ checkpoint **CP5** can be answered honestly (delivery plan §5 CP5; §13.6.1).
 
 This suite is **workers-pool Miniflare tooling** under `ai-platform/test/load/`.
 It is not a Worker pipeline stage, emits **no** §5.4 taxonomy codes, and adds
-**no** `src/load/` runtime module. Completing F5's measured and asserted
+**no** `src/load/` runtime module. It **does** call the thin production composer
+at `ai-platform/src/pipeline/` so spies observe the same §6.1 composition a
+future Worker orchestrator will use. Completing F5's measured and asserted
 outcomes **is** what satisfies CP5 (FR-009).
 
 ---
@@ -50,10 +52,11 @@ outcomes **is** what satisfies CP5 (FR-009).
 | Element | Contract |
 | --- | --- |
 | Root | `ai-platform/test/load/` |
-| Runtime module | **None** — no `ai-platform/src/load/` |
+| Runtime module | Thin production composer `ai-platform/src/pipeline/` (`runGuard`, `settleHappyPath`) — **no** `ai-platform/src/load/` |
 | Runtime | Workers-pool Miniflare with real D1, R2, and Quota DO bindings (`vitest.workers.config.ts` / Wrangler development env) |
-| Metering | Counting spies on the D1 / R2 / `DO` (Quota DO) bindings — not invented secondary meters |
-| Request path | Full happy path under load with a **fake** provider via production `src/pipeline` (`runGuard` + `settleHappyPath`): admission + credit + one R2 envelope (no live provider egress) |
+| Metering | Counting spies on the D1 / R2 / `DO` (Quota DO) bindings — D1 INSERT into `ai_request` at `run`/`batch`; R2 Class A put/list/multipart; per-request maxima via AsyncLocalStorage tagging; prototype-preserving D1 spy — not invented secondary meters |
+| Request path | Full happy path under load with a **fake** provider via production `src/pipeline` (`runGuard` stages 1–10 + `settleHappyPath`: FakeAdapter + credit + one R2 envelope); no warm-up / discarded admissions; no live provider egress |
+| Concurrency | Bounded worker pool of size `Math.min(N=20, CONCURRENCY_LIMIT=16)` on **one shared installation**; `concurrency` is the observed in-flight peak |
 | Consumes | D7 second-provider adapter / fixture suite / policy registration — unchanged; F5 measures the post-D7 platform and does not rewrite those contracts |
 
 ### 2.2 When the layer runs
@@ -69,11 +72,11 @@ outcomes **is** what satisfies CP5 (FR-009).
 
 | Concern | Contract |
 | --- | --- |
-| Guard latency | p95 of stages that constitute the guard (architecture §6.1 stages 1–10) under concurrency |
-| R2 Class A | Exactly **one** Class A operation (one payload envelope) per request under load (§13.6; §13.6.1) |
-| Durable Object requests | Exactly **two** DO requests per request under load — one admission in the guard, one credit at settle (§13.6; §13.6.1) |
-| D1 write headroom | **Measured** under load — consistent with one row per request on the hot path, detail afterwards; no invented numeric pass ceiling (§13.6 D1 writes row) |
-| DO throughput per installation | **Measured** under load — no invented numeric pass ceiling (§13.5) |
+| Guard latency | p95 of the full production `runGuard` path — architecture §6.1 stages 1–10 — under concurrency (not admission-only) |
+| R2 Class A | Exactly **one** Class A operation (one payload envelope) per request under load — average **and** max (§13.6; §13.6.1) |
+| Durable Object requests | Exactly **two** DO requests per request under load — one admission in the guard, one credit at settle — average **and** max (§13.6; §13.6.1) |
+| D1 write headroom | **Measured** under load — one hot-path `ai_request` INSERT per request, detail afterwards; no invented numeric pass ceiling (§13.6 D1 writes row) |
+| DO throughput per installation | **Measured** under load as pinned-installation DO fetches / wall_clock_seconds — no invented numeric pass ceiling (§13.5) |
 
 ### 2.4 What later checkpoints must not redefine
 
@@ -117,17 +120,17 @@ quantities.
 
 | Field | Meaning | Pass rule |
 | --- | --- | --- |
-| `guard_p95_ms` | Guard latency p95 (ms) under the concurrency fixture | Must be within tens of milliseconds (suite fixture bound in §4.2) |
+| `guard_p95_ms` | Guard latency p95 (ms) of full `runGuard` (stages 1–10) under the concurrency fixture | Finite; within the Miniflare suite ceiling in §4.2 (production design target retained separately) |
 | `r2_class_a_ops_per_request` | Class A ops counted per request under load (average) | Must equal `1` |
 | `r2_class_a_ops_max_per_request` | Max Class A ops on any single request | Must equal `1` |
 | `durable_object_requests_per_request` | DO requests counted per request under load (average) | Must equal `2` |
 | `durable_object_requests_max_per_request` | Max DO fetches on any single request | Must equal `2` |
 | `wall_clock_ms` | Wall-clock duration of the concurrent measured window | Finite; used with latency sum to prove overlap |
-| `do_throughput_per_installation` | DO fetches/sec against the pinned installation (time-dimensioned) | Finite; **no** ceiling |
 | `d1_hot_path_writes_per_request` | Hot-path D1 writes observed per request (headroom evidence) | Must be a finite number; **no** ceiling asserted here |
-| `do_throughput_per_installation` | Installation-scoped DO work / throughput evidence under load | Must be a finite number; **no** ceiling asserted here |
-| `concurrency` | Concurrency fixture used for the run | Suite fixture (§4.2) |
-| `request_count` | Number of happy-path requests exercised under load | Finite positive integer |
+| `d1_hot_path_writes_max_per_request` | Max hot-path D1 INSERTs on any single request | Must equal `1` |
+| `do_throughput_per_installation` | Pinned-installation DO fetches / wall_clock_seconds (time-dimensioned) | Finite; **no** ceiling |
+| `concurrency` | Observed in-flight peak during the measured window (bounded pool size) | Equals `Math.min(N=20, CONCURRENCY_LIMIT=16)` |
+| `request_count` | Number of happy-path requests exercised under load | Finite positive integer (`N=20`) |
 
 The report is an in-test artifact (asserted by the suite). It is not a second
 metrics store and not a runtime Worker surface.
@@ -141,11 +144,13 @@ do not redefine them:
 
 | Phrase | Suite fixture |
 | --- | --- |
-| Target concurrency | `N = 20` concurrent happy-path requests |
-| Guard p95 within tens of milliseconds | Assert `guard_p95_ms < 100` |
+| Target concurrency | `N = 20` happy-path requests on **one shared installation**; in-flight pool size `Math.min(20, CONCURRENCY_LIMIT=16)` |
+| Guard p95 within tens of milliseconds (production design target) | `GUARD_P95_PRODUCTION_TARGET_MS = 100` — retained as the production-oriented encoding of “tens of milliseconds” |
+| Guard p95 workers-pool Miniflare ceiling | `GUARD_P95_CEILING_MS = 2000` — a single sequential Miniflare `runGuard` is already ~300–400 ms; T1 asserts finite p95 under this ceiling plus wall-clock overlap proof |
 
 These parameters are suite fixture bindings for T1 / the CP5 gate. They do
-not rewrite FR-003 / SC-001 prose.
+not rewrite FR-003 / SC-001 prose. The production target and the Miniflare
+ceiling are both frozen so checkpoints do not redefine either.
 
 ### 4.3 CP5 satisfaction
 
