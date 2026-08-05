@@ -51,3 +51,45 @@ All ten spec-named tests (T-J4-01..T-J4-10) exist with matching names and are re
 4. **[Low] Strengthen T-J4-07** so the non-writer invariant would fail on regression — e.g. a static assertion that no file under `src/` outside `control/` references `INSERT`/`UPDATE`/`DELETE` on `token_contract` (mirroring the grep this review relied on), or a worker-level fetch test with a spy D1 binding.
 5. **[Low] Record the cache-TTL retirement lag for operators** in `contracts/token-contract-rotation.md` or the quickstart: a retire takes full effect within one config-cache TTL, so the safe sequencing is advance-all-clinics → wait token lifetime **and** cache TTL → retire (§7.3).
 6. **[Low] Reconcile the plan Files table** with the actual `src/control/token-contract.ts` module, and de-duplicate the clinic SQL's hardcoded `'2'` in favor of the re-read setting value.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **J4-R1 — Writer-enforcement + retire errors** | Missing/Weak Tests #1, #2; Recommended Improvements #1 | `ai-platform/test/token-contract-control.test.ts` — third-`ver` 409, `ver_not_found`, `ver_already_retired`, `no_rotation_open`, cancel-rotation |
+| **J4-R2 — D1 reader + workers verify** | Missing/Weak Tests #3, #6; Recommended Improvements #2 | `token-contract-control.test.ts` — `createD1ConfigReader(env.DB)` + `EnrolledKeyVerifier` for accepted/retired/unknown; T-J4-10 workers half now verifies both `ver`s |
+| **J4-R3 — Atomic begin/retire race** | Bugs #1; Recommended Improvements #3 | `ai-platform/src/control/token-contract.ts` — `INSERT … SELECT … WHERE COUNT < 2`; conditional retire `UPDATE`; contract §3 documents atomic FR-002 |
+| **J4-R4 — Strengthen T-J4-07** | Missing/Weak Tests #4; Recommended Improvements #4 | `token-contract-rotation.test.ts` — static scan: no `src/` file outside `control/` writes `token_contract` |
+| **J4-R5 — Operator-auth + invalid_ver** | Missing/Weak Tests #5 | `token-contract-control.test.ts` — 401 unauthorized (no D1 writes); 400 `invalid_ver` on both handlers |
+| **J4-R6 — TTL lag documentation** | Bugs #2; Recommended Improvements #5 | `contracts/token-contract-rotation.md` §2.3; `quickstart.md` §2 — retire lag / safe sequencing |
+| **J4-R7 — Plan Files + clinic SQL** | Architectural Deviations #1; Missing/Weak Tests #7; Recommended Improvements #6 | `plan.md` Files + Project Structure; `tasks.md` T014; clinic SQL T-J4-09/T-J4-10 compare to re-read `ai.aat.ver` |
+
+Every numbered review item is in exactly one stage. No architecture-doc change. No escalation.
+
+### 1.2 Test cases created first
+
+- **J4-R1:** `writer_enforcement_refuses_third_accepted_ver`; `retire_error_branches` (`ver_not_found`, `ver_already_retired`, `no_rotation_open`, cancel-rotation) — assert 409/404 codes and accepted-set invariants before relying on the atomic handlers.
+- **J4-R2:** `d1_config_reader_token_contracts_identity_path` — accepted/retired/unknown through production `createD1ConfigReader`; T-J4-10 workers half extended to call `EnrolledKeyVerifier.verify` for both accepted `ver`s.
+- **J4-R3:** Covered by R1 writer-enforcement cases against the atomic `INSERT … SELECT` / conditional `UPDATE` (affected-row detection classifies `rotation_already_open` / `ver_already_exists` / retire errors).
+- **J4-R4:** T-J4-07 second case — static source scan of `src/` outside `control/` for `INSERT`/`UPDATE`/`DELETE` near `token_contract`.
+- **J4-R5:** `token_contract_operator_auth_and_payload_validation` — 401 + 400 `invalid_ver` before treating auth/payload branches as covered.
+- **J4-R6 / J4-R7:** Docs / clinic SQL only (no new production behaviour).
+
+### 1.3 Fix implemented
+
+- **J4-R1 / R5:** Workers-pool control suite expanded with writer-enforcement, retire error, cancel-rotation, operator-auth, and `invalid_ver` cases. No production-code change beyond what R3 requires.
+- **J4-R2:** Real Miniflare D1 path seeds installation + key, runs `EnrolledKeyVerifier` via `createD1ConfigReader(env.DB)` (FR-009 cold-isolate reconstruction); T-J4-10 workers half verifies tokens under both accepted `ver`s.
+- **J4-R3:** Begin-rotation uses a single `INSERT … SELECT … WHERE (COUNT accepted) < 2 AND NOT EXISTS (ver)`; retire uses conditional `UPDATE … WHERE retired_at IS NULL AND accepted COUNT >= 2` with nested subquery; zero-change paths reclassify errors.
+- **J4-R4:** T-J4-07 keeps the verify non-mutation check and adds the static non-writer scan.
+- **J4-R6:** Contract §2.3 and quickstart record cache-TTL retire lag and safe operator sequencing.
+- **J4-R7:** Plan / tasks / quickstart list `src/control/token-contract.ts`; clinic T-J4-09 drops literal `'2'`; clinic T-J4-10 compares mint `ver` to re-read `ai.aat.ver`.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **60** files, **948** tests, all passing (`npm test` — Node pool 41/640 + workers pool 19/308).
+
+J4 files touched in tests: `test/token-contract-rotation.test.ts` (6 tests), `test/token-contract-control.test.ts` (12 tests). Production: `src/control/token-contract.ts`. Spec Kit: `contracts/token-contract-rotation.md`, `plan.md`, `tasks.md`, `quickstart.md`. Clinic: `backend/tests/ai_token_contract_rotation.sql`.

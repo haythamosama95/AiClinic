@@ -183,9 +183,11 @@ ai-platform/
 │   │   └── index.ts                                   # MODIFIED — extend ConfigEntityKind
 │   │                                                  #   with "token_contracts" (FR-009)
 │   ├── control/
-│   │   └── index.ts                                   # MODIFIED — begin-rotation / retire
-│   │                                                  #   + control_audit + dispatch
-│   │                                                  #   (FR-005..FR-008)
+│   │   ├── token-contract.ts                          # NEW — begin-rotation / retire
+│   │   │                                              #   handlers + FR-002 guards +
+│   │   │                                              #   control_audit (FR-005..FR-008)
+│   │   └── index.ts                                   # MODIFIED — re-export handlers +
+│   │                                                  #   dispatchControlRequest routes
 │   ├── errors.ts                                      # UNCHANGED — reuse unauthenticated
 │   └── worker.ts                                      # MODIFIED — /control token-contract
 │                                                      #   routes
@@ -254,10 +256,11 @@ entitlement unchanged).
 | `ai-platform/schema.snap.sql` | Modified | FR-003 — snapshot matches post-migration `token_contract` shape. |
 | `ai-platform/src/config-cache/index.ts` | Modified | FR-009 — extend `ConfigEntityKind` with `"token_contracts"` (forward-only; A5 contract file untouched). |
 | `ai-platform/src/identity/index.ts` | Modified | FR-001, FR-009, FR-010 — `EnrolledKeyVerifier` loads accepted `ver` via `loadConfig(..., "token_contracts", payload.ver)`; miss / retired → `{ ok: false, code: "unauthenticated" }`; no new taxonomy code; signature/audience/expiry/skew path unchanged. |
-| `ai-platform/src/control/index.ts` | Modified | FR-005, FR-006, FR-007, FR-008 — `handleTokenContractBeginRotation` / `handleTokenContractRetire`; insert new `ver` while keeping prior; stamp `retired_at`; enforce at-most-two / return-to-one (FR-002); write `control_audit`; `dispatchControlRequest` routes. |
+| `ai-platform/src/control/token-contract.ts` | Created | FR-005, FR-006, FR-007, FR-008 — `handleTokenContractBeginRotation` / `handleTokenContractRetire`; atomic at-most-two insert / return-to-one retire (FR-002); write `control_audit`. |
+| `ai-platform/src/control/index.ts` | Modified | FR-008 — re-export handlers; `dispatchControlRequest` routes for `/control/token-contract/...`. |
 | `ai-platform/src/worker.ts` | Modified | FR-008 — dispatch new `/control/token-contract/...` paths (same `/control` boundary B2 froze). |
-| `ai-platform/test/token-contract-rotation.test.ts` | Created | Tests 1–3, 7, Unit half of 10 (SC-001, SC-002, SC-005, SC-008). |
-| `ai-platform/test/token-contract-control.test.ts` | Created | Tests 4–6, SQL half of 10 (SC-003, SC-004, SC-008). |
+| `ai-platform/test/token-contract-rotation.test.ts` | Created | Tests 1–3, 7, Unit half of 10 (SC-001, SC-002, SC-005, SC-008); static non-writer scan. |
+| `ai-platform/test/token-contract-control.test.ts` | Created | Tests 4–6, SQL/D1 half of 10 (SC-003, SC-004, SC-008); writer-enforcement + retire error + operator-auth + `createD1ConfigReader` identity path. |
 | `ai-platform/vitest.config.ts` | Modified | — include unit file; exclude workers control file from Node pool. |
 | `ai-platform/vitest.workers.config.ts` | Modified | — include `test/token-contract-control.test.ts`. |
 | `backend/tests/ai_token_contract_rotation.sql` | Created | Tests 8–9, SQL half of 10 (SC-006, SC-007, SC-008) — advance `ai.aat.ver`, mint, assert every §5.6 claim and single `ver`; same enrolled installation without re-enrollment. |

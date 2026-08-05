@@ -8,7 +8,8 @@
 **Source of truth in code:**
 - D1: `ai-platform/migrations/20260803120000_token_contract.sql`
 - Identity: `ai-platform/src/identity/index.ts` (`EnrolledKeyVerifier` accepted-`ver` check)
-- Control: `ai-platform/src/control/index.ts` (begin-rotation / retire handlers)
+- Control: `ai-platform/src/control/token-contract.ts` (begin-rotation / retire handlers);
+  `ai-platform/src/control/index.ts` (re-exports + `dispatchControlRequest` routes)
 - Config cache kind: `ai-platform/src/config-cache/index.ts` (`"token_contracts"`)
 - Clinic mint setting: `ai_internal.app_settings` key `ai.aat.ver` (B1; issuer already reads it)
 
@@ -67,6 +68,11 @@ loadConfig(cache, reader, "token_contracts", payload.ver)
 - Cold isolate reconstructs from D1 like every other volatile flag; rotation takes effect within
   one cache TTL without a deploy (§5.6; §7.3).
 
+**Operator sequencing note (retire lag):** Identity reads `token_contract` through the config cache
+(`CACHE_TTL_MS`, currently 30s). After an operator retires a `ver`, tokens of that version may keep
+verifying until the cached accepted row expires — at most one TTL. Safe sequencing is:
+advance all clinics → wait token lifetime **and** one cache TTL → then retire (§7.3).
+
 A5's frozen `contracts/config-cache.md` is **not** rewritten; this kind is frozen here.
 
 ---
@@ -80,6 +86,12 @@ The **only** writers of `token_contract` are two operator-authenticated control-
 | --- | --- | --- | --- |
 | Begin rotation | `/control/token-contract/begin-rotation` | Insert row for the new `ver` (`retired_at` null); prior accepted `ver` kept | `token_contract_begin_rotation` |
 | Retire | `/control/token-contract/retire` | Stamp `retired_at` on the named `ver`; accepted set returns to one | `token_contract_retire` |
+
+Begin-rotation enforces FR-002 atomically: the insert is
+`INSERT … SELECT … WHERE (SELECT COUNT(*) … retired_at IS NULL) < 2 AND NOT EXISTS (… ver …)`,
+so concurrent operator begin-rotation requests cannot both observe a count of 1 and produce a
+three-member accepted set. Retire similarly stamps only when the named `ver` is still accepted and
+the accepted set already has at least two members (forbids emptying to zero).
 
 Both reuse B2 `OperatorAuth` and the existing `control_audit` row shape (operator, action, target,
 before/after pointer, at). B2's contract file is not edited; the `action` vocabulary is extended

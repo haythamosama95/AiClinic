@@ -23,10 +23,13 @@ mint from `ai.aat.ver` without re-enrollment.
 
 - D1 `token_contract` table with seed `ver = '1'` (no `retire_after` / TTL).
 - Config-cache kind `"token_contracts"` and identity accepted-`ver` membership check.
-- Control handlers `handleTokenContractBeginRotation` / `handleTokenContractRetire` with
-  `control_audit` actions `token_contract_begin_rotation` / `token_contract_retire`.
+- Control handlers `handleTokenContractBeginRotation` / `handleTokenContractRetire` in
+  `src/control/token-contract.ts` with `control_audit` actions
+  `token_contract_begin_rotation` / `token_contract_retire`.
 - `/control/token-contract/begin-rotation` and `/control/token-contract/retire` routes via
   existing `dispatchControlRequest`.
+- Retire takes full effect within one config-cache TTL; safe sequencing is advance-all-clinics →
+  wait token lifetime **and** cache TTL → retire (see contract §2.3).
 - Clinic SQL coverage for advanced `ai.aat.ver` mint and no-re-enrollment.
 - See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file traceability.
 
@@ -38,9 +41,10 @@ mint from `ai.aat.ver` without re-enrollment.
 | `ai-platform/schema.snap.sql` | Post-migration DDL snapshot |
 | `ai-platform/src/config-cache/index.ts` | `"token_contracts"` kind |
 | `ai-platform/src/identity/index.ts` | Accepted-`ver` check after signature path |
-| `ai-platform/src/control/index.ts` | Begin-rotation / retire handlers + dispatch |
+| `ai-platform/src/control/token-contract.ts` | Begin-rotation / retire handlers (FR-002 atomic guards) |
+| `ai-platform/src/control/index.ts` | Re-exports + `dispatchControlRequest` routes |
 | `ai-platform/test/token-contract-rotation.test.ts` | T-J4-01 .. T-J4-03, T-J4-07, Unit T-J4-10 |
-| `ai-platform/test/token-contract-control.test.ts` | T-J4-04 .. T-J4-06, SQL T-J4-10 |
+| `ai-platform/test/token-contract-control.test.ts` | T-J4-04 .. T-J4-06, D1 T-J4-10, writer/retire/auth/D1-reader cases |
 | `backend/tests/ai_token_contract_rotation.sql` | T-J4-08 .. T-J4-10 clinic halves |
 | `backend/tests/run_ai_platform_trust_tests.sh` | Registers clinic SQL in trust suite |
 | `specs/051-token-contract-rotation/data-model.md` | D1 entity binding |
@@ -63,7 +67,7 @@ npx vitest run test/token-contract-rotation.test.ts
 npx vitest run --config vitest.workers.config.ts test/token-contract-control.test.ts
 ```
 
-Expected: **9 passing tests** in the Worker files (5 Unit + 4 workers-pool).
+Expected: **18 passing tests** in the Worker files (6 Unit + 12 workers-pool).
 
 Clinic SQL (requires local Supabase):
 
