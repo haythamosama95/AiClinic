@@ -15,9 +15,16 @@ class FakeMintPort implements AatMintPort {
   final Queue<String> _tokens;
   int mintCallCount = 0;
 
+  /// When set, [mint] awaits this before returning (concurrency tests).
+  Completer<void>? gate;
+
   @override
   Future<String> mint() async {
     mintCallCount++;
+    final pendingGate = gate;
+    if (pendingGate != null) {
+      await pendingGate.future;
+    }
     if (_tokens.isEmpty) {
       throw StateError('No more AAT tokens configured');
     }
@@ -121,10 +128,12 @@ class FakeSubmitPort implements HttpsSubmitPort {
 }
 
 /// Controllable in-memory SSE connection.
+///
+/// Uses a single-subscription stream (natural for HTTP SSE). The SDK must
+/// rebroadcast — fakes deliberately do **not** call `asBroadcastStream()`.
 class FakeSseConnection implements SseConnection {
   FakeSseConnection({required List<SseEvent> events})
       : _controller = StreamController<SseEvent>() {
-    _broadcast = _controller.stream.asBroadcastStream();
     Future.microtask(() async {
       for (final event in events) {
         if (_controller.isClosed) {
@@ -139,17 +148,17 @@ class FakeSseConnection implements SseConnection {
   }
 
   final StreamController<SseEvent> _controller;
-  late final Stream<SseEvent> _broadcast;
   var closeCallCount = 0;
 
   @override
-  Stream<SseEvent> get events => _broadcast;
+  Stream<SseEvent> get events => _controller.stream;
 
   @override
   void close() {
     closeCallCount++;
     if (!_controller.isClosed) {
-      _controller.add(const CancelledEvent());
+      // Do not inject CancelledEvent — the real wire never writes cancelled to a
+      // live socket (§5.4). The SDK synthesizes CancelledTerminal locally.
       _controller.close();
     }
   }
@@ -161,7 +170,6 @@ class DelayedFakeSseConnection implements SseConnection {
     required SseEvent accepted,
   })  : _accepted = accepted,
         _controller = StreamController<SseEvent>() {
-    _broadcast = _controller.stream.asBroadcastStream();
     Future.microtask(() {
       if (!_controller.isClosed) {
         _controller.add(_accepted);
@@ -171,7 +179,6 @@ class DelayedFakeSseConnection implements SseConnection {
 
   final SseEvent _accepted;
   final StreamController<SseEvent> _controller;
-  late final Stream<SseEvent> _broadcast;
   var closeCallCount = 0;
 
   void emitContent(SseEvent event) {
@@ -180,14 +187,27 @@ class DelayedFakeSseConnection implements SseConnection {
     }
   }
 
+  /// Close without a terminal event (network drop / silence case).
+  void drop() {
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+  }
+
+  void fail(Object error) {
+    if (!_controller.isClosed) {
+      _controller.addError(error);
+      _controller.close();
+    }
+  }
+
   @override
-  Stream<SseEvent> get events => _broadcast;
+  Stream<SseEvent> get events => _controller.stream;
 
   @override
   void close() {
     closeCallCount++;
     if (!_controller.isClosed) {
-      _controller.add(const CancelledEvent());
       _controller.close();
     }
   }

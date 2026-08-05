@@ -49,3 +49,59 @@ E2 delivers the artifacts its slice names: a transport-only SDK (`frontend/lib/c
 7. **Harden the token path under concurrency and at rest**: single-flight the mint in `_acquireAat` (share one in-flight mint future), deduplicate concurrent remints, and switch key/trace generation to `Random.secure()` with at least 128 bits for the idempotency key.
 8. **Decouple the idempotency key from SDK construction**: allow the caller to supply (or rotate) the key per `invoke` so a user-initiated retry of the same action can reuse the original key — and so downstream slices stop working around the constructor-bound factory. `ConversationLoop._sdkForLeg` (`frontend/lib/core/ai/conversation_loop.dart:64-73`) already rebuilds the entire SDK per leg to get key rotation, silently discarding the AAT cache (a re-mint per leg) and the retained request reference; a per-invoke key parameter removes that workaround and its costs.
 9. **Annotate the H-band growth in E2's files**: add a brief note to E2's spec/plan (or the affected classes) recording that the conversational members postdate the slice per §2.3's extend-don't-rewrite rule, keeping the slice's frozen surface auditable against the code on disk.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **E2-R1 — Cancel synthesizes `CancelledTerminal`** | Critical #1; Missing/Weak Tests #1; Recommended Improvements #1 | `ai_client_sdk.dart` (`_cancelled` → terminal); `fakes.dart` (no wire `CancelledEvent` on `close`); T6 + synthesis test |
+| **E2-R2 — Bound transport retry + cancelSignal** | Critical #2; Missing/Weak Tests #5 (transport boundary); Recommended Improvements #2 | `ai_client_sdk.dart` / `ports.dart` (`maxTransportAttempts=3`, backoff, `TransportRetryExhausted`, `cancelSignal`) |
+| **E2-R3 — Stream rebroadcast + T27 listens** | Bugs #1; Missing/Weak Tests #2; Recommended Improvements #3 | `AiInvokeSession` broadcast relay; single-subscription fakes; T27 collects `session.events` |
+| **E2-R4 — Typed stream-drop outcome** | Bugs #2; Missing/Weak Tests #4; Recommended Improvements #4 | `StreamDroppedTerminal`; silence + stream-error tests; E4 surface / conversation loop switches |
+| **E2-R5 — Single-flight AAT mint/remint** | Bugs #3; Recommended Improvements #7 (concurrency) | `_inFlightMint` in `_acquireAat`; concurrent cold + remint tests |
+| **E2-R6 — Secure ≥128-bit keys** | Bugs #4; Recommended Improvements #7 (PRNG) | `Random.secure()` 32-hex idempotency + trace defaults |
+| **E2-R7 — `FailedEvent.fromWire`** | Recommended Improvements #5 | `sse_events.dart` factory; T25 uses `fromWire` |
+| **E2-R8 — Broaden HTTP / remint proof surface** | Missing/Weak Tests #3; Missing/Weak Tests #5 (remint asserts); Recommended Improvements #6 | Parameterized HTTP no-retry family; HTTP body reference retention; T2 key/token asserts |
+| **E2-R9 — Per-invoke idempotency key** | Recommended Improvements #8 | `invoke(..., idempotencyKey:)`; `ConversationLoop` stops per-leg SDK rebuild |
+| **E2-R10 — Annotate H-band growth** | Architectural Deviations (b); Recommended Improvements #9 | Spec Kit clarifications + doc-comments on conversational members |
+
+Architectural Deviations (a) (delivery-plan "last N" vs §4.1 "last"): no slice change — architecture wins; Independent Test already reconciles; delivery plan is read-only for this skill.
+
+### 1.2 Test cases created first
+
+For each stage, the failing-or-proving tests were written (or rewritten) before / with the fix they lock:
+
+- **E2-R1:** `sdk_cancel_closes_stream` (rewritten — no fake `CancelledEvent`; asserts synthesis); `sdk_cancel_synthesizes_cancelled_without_wire_event`
+- **E2-R2:** `sdk_transport_retry_exhausts_after_ceiling`; `sdk_transport_retry_applies_backoff_between_attempts`; `sdk_invoke_cancel_signal_aborts_transport_retries`
+- **E2-R3:** `sdk_does_not_interpret_model_output` (now listens to `session.events`); `sdk_session_events_allow_caller_listen_with_single_sub_source`
+- **E2-R4:** `sdk_stream_end_without_terminal_is_not_completed`; `sdk_stream_error_surfaces_stream_dropped_terminal`
+- **E2-R5:** `sdk_concurrent_cold_invokes_single_flight_mint`; `sdk_concurrent_unauthenticated_single_flight_remint`
+- **E2-R6:** `sdk_default_idempotency_key_is_at_least_128_bit_hex`; `sdk_default_trace_id_uses_secure_length`
+- **E2-R7:** `failed_event_from_wire_maps_unknown_to_internal_error`; `failed_event_from_wire_preserves_known_code`
+- **E2-R8:** `sdk_http_no_retry_after_*` (parameterized over `terminalNoRetryCodes`); `sdk_last_request_reference_retained_from_http_error_body`; remint key/token asserts on T2
+- **E2-R9:** `sdk_invoke_per_call_idempotency_key_overrides_factory`; `sdk_invoke_omitted_key_uses_factory`; `conversation_loop_preserves_aat_cache_across_legs`
+- **E2-R10:** docs only — no new Flutter tests
+
+### 1.3 Fix implemented
+
+- **Cancel:** `_consumeToTerminal` returns `CancelledTerminal` when `_cancelled` and the stream ends without a wire terminal; fakes' `close()` no longer injects `CancelledEvent` (kept as a defensive wire kind only).
+- **Transport retry:** ceiling `maxTransportAttempts=3`, injectable backoff (default exponential + jitter), `TransportRetryExhausted(idempotencyKey, attempts)`, `invoke(cancelSignal:)` races submit/backoff.
+- **Rebroadcast:** `AiInvokeSession` owns a broadcast relay over a single listen on `connection.events`; port contract documents that sources may be single-subscription.
+- **Drop path:** new `StreamDroppedTerminal` (with request reference + optional cause, `retrySafe`); replaces bare `StateError`.
+- **AAT:** shared `_inFlightMint` Future for cold and remint acquires.
+- **Keys:** `Random.secure()`, 32 hex chars for default idempotency key and trace id.
+- **Classification:** `FailedEvent.fromWire` applies `classifyTaxonomyCode`.
+- **Per-invoke key:** optional `idempotencyKey` on `invoke`; `ConversationLoop` uses it and preserves the AAT cache across legs.
+- **H-band note:** Clarification Session 2026-08-05 in Spec Kit + class/field doc-comments.
+- Call sites updated for exhaustive `TerminalState` switches (`conversation_loop.dart`, `first_ai_feature_surface.dart`).
+
+### 1.4 Verification
+
+- Flutter AI suites: **`test/unit/core/ai/` + `test/widget/ai/` — 110 tests passed** (including expanded `ai_client_sdk_test.dart` and `conversation_loop_test.dart`).
+- Full `ai-platform` suite: **19 files, 241 tests passed**.
+- Spec Kit updated: `specs/036-ai-client-sdk/{spec.md,plan.md,tasks.md,quickstart.md}`.
+- Architecture docs (`17-ai-platform.md`, `17b-ai-platform-delivery-plan.md`) untouched.

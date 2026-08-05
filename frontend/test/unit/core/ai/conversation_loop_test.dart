@@ -79,6 +79,37 @@ void main() {
       expect(submit.idempotencyKeys.toSet(), hasLength(2));
     });
 
+    test('conversation_loop_preserves_aat_cache_across_legs', () async {
+      final mint = FakeMintPort(tokens: ['shared-aat']);
+      final submit = FakeSubmitPort(
+        script: [
+          SubmitOpenStreamStep(completedStream(requestReference: 'req-1')),
+          SubmitOpenStreamStep(completedStream(requestReference: 'req-2')),
+        ],
+      );
+      var leg = 0;
+      final sdk = AiClientSdk(mintPort: mint, submitPort: submit);
+      final store = ConversationStore(
+        conversationId: 'conv-loop-aat-cache',
+        isConversational: true,
+      );
+      final loop = ConversationLoop(
+        sdk: sdk,
+        mintPort: mint,
+        submitPort: submit,
+        resolver: ContextResolver(providerPort: FakeContextProviderPort()),
+        store: store,
+        baseInput: conversationalInvokeInput(),
+        idempotencyKeyFactory: () => 'leg-${++leg}',
+      );
+
+      await loop.submitLeg('First question');
+      await loop.submitLeg('Second question');
+
+      expect(mint.mintCallCount, 1);
+      expect(submit.headerLog.every((h) => h.aat == 'shared-aat'), isTrue);
+    });
+
     test('closing_one_leg_stream_cancels_only_that_leg', () async {
       final mint = FakeMintPort();
       final connection = DelayedFakeSseConnection(
