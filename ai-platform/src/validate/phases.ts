@@ -171,8 +171,9 @@ function checkSafety(
   }
 
   if (markers?.refusalPrefixes) {
+    const trimmed = raw.trimStart();
     for (const prefix of markers.refusalPrefixes) {
-      if (raw.includes(prefix)) {
+      if (trimmed.startsWith(prefix)) {
         return { phase: "safety", message: "model refusal" };
       }
     }
@@ -198,27 +199,41 @@ export function runValidationPhases(input: RunPhasesInput): RunPhasesResult {
 
   if (input.outputSchemaRef !== null) {
     const schemaRunner = input.schemaRegistry.get(input.outputSchemaRef);
-    if (schemaRunner) {
-      const schemaError = schemaRunner(parsed);
-      if (schemaError !== null) {
-        return {
-          ok: false,
-          failure: { phase: "schema", message: schemaError },
-        };
-      }
+    if (!schemaRunner) {
+      return {
+        ok: false,
+        failure: {
+          phase: "schema",
+          message: `unresolved schema ref: ${input.outputSchemaRef}`,
+        },
+      };
+    }
+    const schemaError = schemaRunner(parsed);
+    if (schemaError !== null) {
+      return {
+        ok: false,
+        failure: { phase: "schema", message: schemaError },
+      };
     }
   }
 
   for (const ruleRef of input.businessValidationRuleRefs) {
     const ruleRunner = input.ruleRegistry.get(ruleRef);
-    if (ruleRunner) {
-      const ruleError = ruleRunner(parsed, input.context ?? {});
-      if (ruleError !== null) {
-        return {
-          ok: false,
-          failure: { phase: "business", message: ruleError },
-        };
-      }
+    if (!ruleRunner) {
+      return {
+        ok: false,
+        failure: {
+          phase: "business",
+          message: `unresolved business rule ref: ${ruleRef}`,
+        },
+      };
+    }
+    const ruleError = ruleRunner(parsed, input.context ?? {});
+    if (ruleError !== null) {
+      return {
+        ok: false,
+        failure: { phase: "business", message: ruleError },
+      };
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "id": "ds-visit-summary-001",
   "object": "chat.completion",
-  "model": "deepseek-chat",
+  "model": "deepseek-v4-flash",
   "choices": [
     {
       "index": 0,

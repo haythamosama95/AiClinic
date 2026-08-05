@@ -8,10 +8,9 @@ CREATE TABLE ai_internal.acceptance_targets (
   table_name text NOT NULL
 );
 
--- F2 needs service_role read of the registry; B1 no longer grants schema USAGE broadly.
-GRANT USAGE ON SCHEMA ai_internal TO service_role;
-REVOKE ALL ON TABLE ai_internal.acceptance_targets FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON TABLE ai_internal.acceptance_targets TO postgres, service_role;
+-- Registry is read only by SECURITY DEFINER RPCs (owner). No service_role surface.
+REVOKE ALL ON TABLE ai_internal.acceptance_targets FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON TABLE ai_internal.acceptance_targets TO postgres;
 
 INSERT INTO ai_internal.acceptance_targets (target_key, domain_function, table_name)
 VALUES ('visit_clinical_notes', 'save_visit_documentation', 'visit_clinical_notes')
@@ -56,8 +55,10 @@ CREATE POLICY ai_accepted_output_select ON public.ai_accepted_output
     )
   );
 
+GRANT SELECT ON TABLE public.ai_accepted_output TO authenticated;
+
 -- -----------------------------------------------------------------------------
--- auth_internal.record_ai_acceptance
+-- auth_internal.invoke_acceptance_domain_rpc — registry-driven dynamic dispatch
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION auth_internal.invoke_acceptance_domain_rpc(
@@ -69,22 +70,76 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_oid oid;
+  v_argnames text[];
+  v_argtypes oidvector;
+  v_nargs int;
+  v_parts text[] := ARRAY[]::text[];
+  v_i int;
+  v_sql text;
+  v_success boolean;
+  v_data jsonb;
+  v_error_code text;
+  v_error_message text;
 BEGIN
-  IF p_domain_function = 'save_visit_documentation' THEN
-    RETURN public.save_visit_documentation(
-      (p_target_args ->> 'p_visit_id')::uuid,
-      p_target_args ->> 'p_complaint',
-      p_target_args ->> 'p_history',
-      p_target_args ->> 'p_examination',
-      p_target_args ->> 'p_diagnosis',
-      p_target_args ->> 'p_plan',
-      (p_target_args ->> 'p_expected_updated_at')::timestamptz
-    );
+  IF p_domain_function IS NULL OR length(trim(p_domain_function)) = 0 THEN
+    RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
   END IF;
 
-  RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
+  -- Registry is the only source of which public domain RPC may be invoked.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ai_internal.acceptance_targets t
+    WHERE t.domain_function = p_domain_function
+  ) THEN
+    RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
+  END IF;
+
+  SELECT p.oid, p.proargnames, p.proargtypes
+  INTO v_oid, v_argnames, v_argtypes
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = p_domain_function
+    AND p.prokind = 'f'
+    AND pg_get_function_result(p.oid) = 'rpc_result'
+  ORDER BY p.oid
+  LIMIT 1;
+
+  IF v_oid IS NULL THEN
+    RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
+  END IF;
+
+  v_nargs := coalesce(array_length(v_argnames, 1), 0);
+  IF v_nargs = 0 THEN
+    RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
+  END IF;
+
+  FOR v_i IN 1 .. v_nargs LOOP
+    v_parts := v_parts || format(
+      '($1->>%L)::%s',
+      v_argnames[v_i],
+      format_type(v_argtypes[v_i - 1], NULL)
+    );
+  END LOOP;
+
+  v_sql := format(
+    'SELECT r.success, r.data, r.error_code, r.error_message FROM public.%I(%s) AS r',
+    p_domain_function,
+    array_to_string(v_parts, ', ')
+  );
+  EXECUTE v_sql
+    USING coalesce(p_target_args, '{}'::jsonb)
+    INTO v_success, v_data, v_error_code, v_error_message;
+
+  RETURN (v_success, v_data, v_error_code, v_error_message)::public.rpc_result;
 END;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.record_ai_acceptance
+-- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION auth_internal.record_ai_acceptance(
   p_request_reference text,
@@ -120,6 +175,27 @@ BEGIN
     RETURN public.rpc_error('INVALID_INPUT', 'Acceptance target is not registered.');
   END IF;
 
+  -- Foreseeable duplicate: reject before the delegated write so the client gets a
+  -- clean rpc_result and no domain change is attempted.
+  IF EXISTS (
+    SELECT 1
+    FROM public.ai_accepted_output a
+    WHERE a.ai_request_reference = p_request_reference
+      AND a.table_name = v_target.table_name
+  ) THEN
+    RETURN public.rpc_error(
+      'INVALID_INPUT',
+      'This AI output was already accepted for this record.'
+    );
+  END IF;
+
+  -- Organization context is required before any write so a missing claim cannot
+  -- leave a delegated domain change committed without provenance.
+  v_org_id := public.jwt_organization_id();
+  IF v_org_id IS NULL THEN
+    RETURN public.rpc_error('FORBIDDEN', 'Organization context is required.');
+  END IF;
+
   v_domain_result := auth_internal.invoke_acceptance_domain_rpc(
     v_target.domain_function,
     p_target_args
@@ -129,24 +205,27 @@ BEGIN
     RETURN v_domain_result;
   END IF;
 
-  v_org_id := public.jwt_organization_id();
-  IF v_org_id IS NULL THEN
-    RETURN public.rpc_error('FORBIDDEN', 'Organization context is required.');
+  -- Provenance records the domain row that was written, not the request payload.
+  v_record_id := coalesce(
+    (v_domain_result.data ->> 'record_id')::uuid,
+    (v_domain_result.data ->> 'visit_id')::uuid,
+    (v_domain_result.data ->> 'id')::uuid
+  );
+  IF v_record_id IS NULL THEN
+    -- Propagate so the delegated write rolls back with this transaction.
+    RAISE EXCEPTION 'Domain write did not return a record id.';
   END IF;
 
-  IF v_target.domain_function = 'save_visit_documentation' THEN
-    v_record_id := (p_target_args ->> 'p_visit_id')::uuid;
-    SELECT v.branch_id
-    INTO v_branch_id
-    FROM public.visits v
-    WHERE v.id = v_record_id
-      AND v.is_deleted = false;
-  ELSE
-    RETURN public.rpc_error('INTERNAL_ERROR', 'Domain function is not configured.');
-  END IF;
+  SELECT v.branch_id
+  INTO v_branch_id
+  FROM public.visits v
+  WHERE v.id = v_record_id
+    AND v.is_deleted = false;
 
   v_acceptance_id := gen_random_uuid();
 
+  -- Post-write exceptions must propagate so the PostgREST transaction aborts and
+  -- rolls back the delegated domain write. Do not convert them into RETURN rpc_error.
   INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
@@ -191,12 +270,6 @@ BEGIN
     );
 
   RETURN public.rpc_success(v_merged_data);
-EXCEPTION
-  WHEN OTHERS THEN
-    IF SQLERRM = 'FORBIDDEN' THEN
-      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to record AI acceptance.');
-    END IF;
-    RAISE;
 END;
 $$;
 
@@ -207,8 +280,8 @@ CREATE OR REPLACE FUNCTION public.record_ai_acceptance(
 )
 RETURNS public.rpc_result
 LANGUAGE sql
-SECURITY INVOKER
-SET search_path = public
+SECURITY DEFINER
+SET search_path = public, auth_internal
 AS $$
   SELECT auth_internal.record_ai_acceptance(
     p_request_reference,
@@ -217,6 +290,9 @@ AS $$
   );
 $$;
 
-GRANT EXECUTE ON FUNCTION auth_internal.invoke_acceptance_domain_rpc(text, jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION auth_internal.record_ai_acceptance(text, text, jsonb) TO authenticated;
+-- Wrapper-gate: only the public INVOKER wrapper is executable by authenticated.
+REVOKE ALL ON FUNCTION auth_internal.invoke_acceptance_domain_rpc(text, jsonb)
+  FROM PUBLIC, authenticated, anon;
+REVOKE ALL ON FUNCTION auth_internal.record_ai_acceptance(text, text, jsonb)
+  FROM PUBLIC, authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.record_ai_acceptance(text, text, jsonb) TO authenticated;

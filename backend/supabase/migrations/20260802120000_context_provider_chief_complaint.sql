@@ -41,10 +41,10 @@ BEGIN
       v_payload := v_payload || jsonb_build_object('complaint', v_note.complaint);
     END IF;
 
-    IF v_note.updated_at IS NOT NULL THEN
+    IF v_note.created_at IS NOT NULL THEN
       v_payload := v_payload || jsonb_build_object(
         'recorded_at',
-        to_char(v_note.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        to_char(v_note.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
       );
     END IF;
   END IF;

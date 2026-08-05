@@ -3,6 +3,7 @@ name: AI Platform Eval Live Smoke
 on:
   schedule:
     - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 jobs:
   live-smoke:
@@ -27,6 +28,9 @@ jobs:
         run: npm ci
 
       - name: Run live-smoke eval entry
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npx vitest run test/eval/live-smoke.test.ts
 
       - name: Upload score report artifacts
@@ -35,5 +39,5 @@ jobs:
         with:
           name: ai-platform-eval-score-reports
           path: ai-platform/test/eval/reports/*.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 14

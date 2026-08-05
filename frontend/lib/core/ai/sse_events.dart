@@ -41,6 +41,21 @@ final class FailedEvent extends SseEvent {
     this.retrySafe = false,
   });
 
+  /// Wire-boundary constructor — applies [classifyTaxonomyCode] so unknown codes
+  /// never surface raw (FR-010). Prefer this for port implementations.
+  factory FailedEvent.fromWire(
+    String wireCode, {
+    String? requestReference,
+    String? traceId,
+    bool retrySafe = false,
+  }) =>
+      FailedEvent(
+        code: classifyTaxonomyCode(wireCode),
+        requestReference: requestReference,
+        traceId: traceId,
+        retrySafe: retrySafe,
+      );
+
   final TaxonomyCode code;
   final String? requestReference;
   final String? traceId;
@@ -48,11 +63,19 @@ final class FailedEvent extends SseEvent {
 }
 
 /// Terminal — client closed the stream (§5.5 rule 5).
+///
+/// The platform never writes this to a live socket (§5.4 `cancelled` / 499 note);
+/// the SDK synthesizes [CancelledTerminal] locally when the caller cancels.
+/// Kept as a defensive wire parse for get-request / replay paths that may still
+/// materialize the journaled code as an event-shaped value in tests.
 final class CancelledEvent extends SseEvent {
   const CancelledEvent();
 }
 
-/// Terminal — conversational context request (H1 fourth kind; not a taxonomy code).
+/// Terminal — conversational context request (H-band §2.3 extension; not a taxonomy code).
+///
+/// Postdates the E2 single-shot freeze; retained on disk as an allowed contract
+/// extension per delivery plan §2.3.
 final class ContextRequestedEvent extends SseEvent {
   const ContextRequestedEvent({required this.contextRequest});
 
@@ -88,6 +111,24 @@ final class CancelledTerminal extends TerminalState {
   const CancelledTerminal();
 }
 
+/// Stream ended (or errored) without a terminal event and without a local cancel.
+///
+/// Carries the last recorded request reference so callers can offer a manual
+/// retry (§5.5 rule 5) without catching bare [StateError].
+final class StreamDroppedTerminal extends TerminalState {
+  const StreamDroppedTerminal({
+    this.requestReference,
+    this.cause,
+  });
+
+  final String? requestReference;
+  final Object? cause;
+
+  /// Connection loss mid-generation is independently retryable.
+  bool get retrySafe => true;
+}
+
+/// Terminal — conversational context request (H-band §2.3 extension).
 final class ContextRequestedTerminal extends TerminalState {
   const ContextRequestedTerminal({required this.contextRequest});
 

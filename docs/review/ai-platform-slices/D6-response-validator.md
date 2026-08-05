@@ -93,3 +93,46 @@ Prioritized:
 6. **(P2) Consolidate the brokers or fix the docs.** Either fold structured emission into `stream/index.ts` as the contract/plan/quickstart claim, or update all three documents to name `stream/structured.ts`. If the broker stays separate, port `abortableAsyncIterate` and drop the required-but-unused `guardThresholds` option (`structured.ts:70-71`).
 
 7. **(P2) Carry failure detail on the terminal result** (`validate/index.ts:60-62`) so C3 journaling can record *why* validation failed; match refusal prefixes at string start (`phases.ts:175`); propagate a truncation signal (e.g. finish-reason from the chunk source) into `AssembledOutput.truncated` so the truncated guard is reachable on the broker path (`structured.ts:205`).
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **D6-R1 — Repair cost, reask resilience, failure detail** | Bugs #1, #2, #6; Recommended #2, #4; Rec #7 (failure detail); Weak T-D6-16; Missing reask-throws | `ai-platform/src/validate/index.ts`; `ai-platform/test/response-validator.test.ts` |
+| **D6-R2 — Fail-closed refs + refusal prefix matching** | Bugs #3, #5; Recommended #3; Rec #7 (refusal); Missing unresolved-ref | `ai-platform/src/validate/phases.ts`; `ai-platform/test/response-validator.test.ts` |
+| **D6-R3 — Structured broker repair seam + truncation** | Critical #1; Bugs #4; Recommended #1; Rec #7 (truncation); Missing broker validation failure | `ai-platform/src/stream/structured.ts`; `ai-platform/test/structured-modes.test.ts` |
+| **D6-R4 — Broker parity (abortable iterate, drop guardThresholds)** | Architectural Deviations #2 (impl parts); Recommended #6 (port abortable; drop unused option) | `ai-platform/src/stream/structured.ts`; `ai-platform/test/structured-modes.test.ts` |
+| **D6-R5 — Strengthen weak tests** | Weak T-D6-10, T-D6-19, T-D6-21, T-D6-22; Recommended #5; Weak T-D6-24 (kept; rests on D4 suite) | `ai-platform/test/response-validator.test.ts`; `ai-platform/test/structured-modes.test.ts` |
+| **D6-R6 — Spec Kit docs** | Architectural Deviations #1, #2 (docs), #3; Recommended #6 (docs) | `specs/033-response-validator/{spec,plan,tasks,quickstart,contracts/response-validator}.md` |
+
+Architectural Deviations #4 (verified clean) required no change.
+
+### 1.2 Test cases created first
+
+- **D6-R1:** T-D6-16 rewritten to assert sink receives reask-reported usage; T-D6-25 reask-throws → `validation_failed`; T-D6-27 failure carries `phase` + `message`.
+- **D6-R2:** T-D6-06 start-anchored refusal + mid-sentence negative; T-D6-26 unresolved schema/rule refs fail closed.
+- **D6-R3:** T-D6-28 broker validation failure terminal; T-D6-29 broker bounded repair seam; T-D6-30 truncation via `ChunkSource.wasTruncated`.
+- **D6-R4:** Covered by existing cancel/stream harnesses after `abortableAsyncIterate` port and `guardThresholds` removal (harness no longer passes the unused option).
+- **D6-R5:** T-D6-10 schema→business and business→safety ordering fixtures; T-D6-19 `progress + heartbeat > 0`; T-D6-21 regenerating-chunk divergence; T-D6-22 concurrent brokers observationally independent.
+- **D6-R6:** Docs-only — no new production tests.
+
+### 1.3 Fix implemented
+
+- **D6-R1:** `ReaskPort` now returns `{ output, usage }`; deleted `repairCostPerAttempt`; reask throws map to `validation_failed`; terminal failure includes `message`.
+- **D6-R2:** Missing schema/rule runners fail closed; refusal prefixes match `raw.trimStart().startsWith(prefix)`.
+- **D6-R3:** Structured broker routes completion through `validateAndRepair` with `repairPolicy` + optional `reask`/sinks; `ChunkSource.wasTruncated()` feeds `AssembledOutput.truncated`.
+- **D6-R4:** Ported `abortableAsyncIterate`; dropped required-but-unused `guardThresholds`.
+- **D6-R5:** Weak tests strengthened as above; T-D6-24 left as structured-path prose-guard spy (D4 suite remains the prose integrity proof).
+- **D6-R6:** Spec Kit artifacts now name `stream/structured.ts`, document the repair seam, fail-closed refs, reask usage, failure detail, and H2 ownership of conversational semantics vs D6-owned phases.
+
+### 1.4 Verification
+
+Full `ai-platform` suite: **59 test files**, **825 tests**, all passing (`npm test`: verify-manifests 4 + vitest 580 + workers 241).
+
+D6-focused: `response-validator.test.ts` (29) + `structured-modes.test.ts` (11) = **40 passing**.
+
+Modified/added test files: `ai-platform/test/response-validator.test.ts`, `ai-platform/test/structured-modes.test.ts`.

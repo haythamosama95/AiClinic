@@ -12,7 +12,7 @@ Slice D6 freezes ordered response validation (transport/parse → schema → dec
 
 **Language/Version**: TypeScript (Cloudflare Workers runtime, `compatibility_date` 2026-05-03). No new language or runtime version is introduced.
 
-**Primary Dependencies**: The Cloudflare Worker in `ai-platform/` (Wrangler bundler, Vitest). No new external package is added. Consumes D4's `stream/` broker (relay, heartbeat, one-terminal-event, `prose` incremental guards, connection-scoped cancel) unchanged for those duties. Extends `stream/` for structured-mode emission only. Manifest Output fields (`mode`, `outputSchemaRef`, `businessValidationRuleRefs`, `repairPolicy`) are read from the existing A4 manifest types (`ai-platform/src/manifest/index.ts`). Repair re-ask uses an injected `reask(errors) => Promise<assembled output>` port (Clarification Q2). Schema and business-rule refs resolve through in-memory test registries in this slice (Clarification Q3) — no on-disk schema/rule store.
+**Primary Dependencies**: The Cloudflare Worker in `ai-platform/` (Wrangler bundler, Vitest). No new external package is added. Consumes D4's `stream/` prose broker (relay, heartbeat, one-terminal-event, `prose` incremental guards, connection-scoped cancel) unchanged for those duties. Owns structured-mode emission in sibling `stream/structured.ts`. Manifest Output fields (`mode`, `outputSchemaRef`, `businessValidationRuleRefs`, `repairPolicy`) are read from the existing A4 manifest types (`ai-platform/src/manifest/index.ts`). Repair re-ask uses an injected `reask(errors) => Promise<{ output; usage }>` port (Clarification Q2). Schema and business-rule refs resolve through in-memory test registries in this slice (Clarification Q3) — no on-disk schema/rule store.
 
 **Storage**: None. Validator, repair, and structured emission create no per-request Durable Object, request registry, or D1 row per chunk (§4.4, §9.7; FR-014; delivery plan §6.4). D6 adds no D1 migration and no second R2 object. Repair-attempt journaling and repair-cost counting use injectable sinks in tests (Assumptions → C3 journal writer; FR-003, FR-006); C3's writer and B4's credit module are not modified.
 
@@ -67,7 +67,8 @@ ai-platform/
 │   │   ├── index.ts                 # Ordered validate + bounded repair orchestration; reask port; sinks (FR-001–FR-007, FR-012, FR-014)
 │   │   └── phases.ts                # Transport/parse → schema → business rules → safety guards (FR-001, FR-002)
 │   └── stream/
-│       ├── index.ts                 # Extended for structured / structured_atomic emission; prose/cancel unchanged (FR-008–FR-011, FR-013, FR-014)
+│       ├── index.ts                 # D4 prose broker (unchanged by this slice — FR-013)
+│       ├── structured.ts            # structured / structured_atomic emission + commit-time validation/repair (FR-008–FR-011, FR-014)
 │       └── prose-guards.ts          # Unchanged (D4 Consumes — not modified by this slice)
 └── test/
     ├── response-validator.test.ts   # T1–T16 (unit ordering/phases + integration repair)
@@ -82,7 +83,7 @@ No `frontend/` or `backend/` tree is shown — D6 touches neither. No migration,
 
 | Consumes entry (from spec) | Bound to (existing module / file / type) |
 | --- | --- |
-| From D4 — stream broker that relays normalized chunks, emits heartbeats, enforces provisional-versus-committed semantics, and ends every stream with exactly one terminal event | `ai-platform/src/stream/index.ts` (`createStreamBroker`, `StreamBrokerOptions`, `StreamBrokerController`, heartbeat / one-terminal emit); frozen in `specs/031-stream-broker/contracts/stream-broker.md` §2. D6 extends emission for `structured` / `structured_atomic` and does not rewrite relay, heartbeat, or one-terminal-event duties |
+| From D4 — stream broker that relays normalized chunks, emits heartbeats, enforces provisional-versus-committed semantics, and ends every stream with exactly one terminal event | `ai-platform/src/stream/index.ts` (`createStreamBroker`, `StreamBrokerOptions`, `StreamBrokerController`, heartbeat / one-terminal emit); frozen in `specs/031-stream-broker/contracts/stream-broker.md` §2. D6 owns structured emission in sibling `stream/structured.ts` and does not rewrite relay, heartbeat, or one-terminal-event duties |
 | From D4 — `prose` path with incremental cheap guards and completion-time full guard set | `ai-platform/src/stream/prose-guards.ts` (`checkIncrementalGuards`, `runFullGuardSet`) and prose application in `ai-platform/src/stream/index.ts`; frozen in `specs/031-stream-broker/contracts/stream-broker.md` §3. D6 must not rewrite prose incremental or completion-time guards (FR-013; T24) |
 | From D4 — connection-scoped cancellation via abort signal with partial-usage credit and no per-request server-side state | `createStreamBroker` disconnect / `fetchSignal` / credit + journal-terminal sinks in `ai-platform/src/stream/index.ts`; frozen in `specs/031-stream-broker/contracts/stream-broker.md` §4–§5. D6 does not redefine cancel, Session DO rejection, or the no-per-request-state rule |
 
@@ -105,9 +106,9 @@ Two §4 component groups, with explicit reason:
 | --- | --- |
 | `ai-platform/src/validate/phases.ts` | FR-001, FR-002 (ordered transport/parse → schema → business-constraint categories → safety guards) |
 | `ai-platform/src/validate/index.ts` | FR-001–FR-007, FR-012, FR-014 (orchestrate phases; repair policy / reask port / cap / count / journal; `validation_failed`; never return invalid content; read Output fields; no per-request state) |
-| `ai-platform/src/stream/index.ts` | FR-008–FR-011, FR-013, FR-014 (structured provisional `partial_structured`; structured_atomic progress/heartbeat only; self-contained terminal; non-committable provisional emission; extend without rewriting D4 prose/cancel; no per-request state) |
-| `ai-platform/test/response-validator.test.ts` | T1–T16 (FR-001–FR-007, FR-012; in-memory schema/rule registries per Clarification Q3; injected `reask` per Clarification Q2) |
-| `ai-platform/test/structured-modes.test.ts` | T17–T24 (FR-008–FR-011, FR-013, FR-014) |
+| `ai-platform/src/stream/structured.ts` | FR-008–FR-011, FR-014 (structured provisional `partial_structured`; structured_atomic progress/heartbeat only; self-contained terminal; non-committable provisional emission; commit-time `validateAndRepair` seam; no per-request state). FR-013 satisfied by leaving `stream/index.ts` / `prose-guards.ts` untouched |
+| `ai-platform/test/response-validator.test.ts` | T1–T16 (+ T25–T27 review cases: FR-001–FR-007, FR-012, FR-015, FR-016; in-memory schema/rule registries per Clarification Q3; injected `reask` per Clarification Q2) |
+| `ai-platform/test/structured-modes.test.ts` | T17–T24 (+ T28–T30 review cases: FR-008–FR-011, FR-013, FR-014; broker validation failure / repair seam / truncation) |
 | `specs/033-response-validator/contracts/response-validator.md` | Freezes → phase order; bounded repair; structured / structured_atomic emission |
 | `specs/033-response-validator/quickstart.md` | Documentation task (written after implementation/verification) |
 
@@ -153,7 +154,7 @@ Tests and implementation land together, tests first or alongside — never after
 1. **Frozen contract first.** `contracts/response-validator.md` constrains the modules; later slices (H2, E4) bind to this artifact, not to prose (delivery plan DP-4).
 2. **Phases + T1–T11.** Implement ordered phases in `validate/phases.ts` / orchestrator; unit suite proves valid pass, each failure class, phase order, and no invalid emission. Schema/rule refs resolve via in-memory test registries (Clarification Q3).
 3. **Bounded repair + T12–T16.** Injected `reask` port; allowed → one re-ask with errors → success; disallowed → immediate `validation_failed`; fail after re-ask → `validation_failed`; max-attempts cap journaled; repair cost counted on injectable sinks (Clarification Q2).
-4. **Structured emission + T17–T21.** Extend `stream/index.ts` for `structured` (`partial_structured` provisional) and `structured_atomic` (progress/heartbeat only); terminal carries whole validated document; client ignoring chunks still correct; terminal not assembled from chunks.
+4. **Structured emission + T17–T21.** Implement `stream/structured.ts` for `structured` (`partial_structured` provisional) and `structured_atomic` (progress/heartbeat only) with commit-time `validateAndRepair`; terminal carries whole validated document; client ignoring chunks still correct; terminal not assembled from chunks.
 5. **Prohibitions + T22–T24.** No per-request state; provisional structured not committable on emission; D4 `prose` path unchanged (spy).
 6. **Quickstart.** `quickstart.md` is written last, after the suite is green, documenting only this slice's files and commands.
 

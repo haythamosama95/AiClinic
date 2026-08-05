@@ -2,9 +2,13 @@
   "case_id": "visit_summary.happy_path",
   "system_instruction_must_contain": [
     "advisory only",
-    "clinical documentation assistant"
+    "clinical documentation assistant",
+    "licensed clinician",
+    "does not enter the medical record",
+    "outpatient visit summaries"
   ],
   "output_must_contain": ["headache", "advisory"],
   "output_min_length": 40,
-  "output_mode": "prose"
+  "output_mode": "prose",
+  "request_system_golden_file": "request-goldens/visit_summary.happy_path.system.txt"
 }

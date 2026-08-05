@@ -8,11 +8,11 @@
 
 ## Summary
 
-F2 freezes the clinic-side AI acceptance mechanism: `public.record_ai_acceptance` delegates to an allow-listed existing domain RPC and, in one transaction, writes the domain change, the `ai_accepted_output` row carrying the AI request reference, and the `audit_log` entry (`action = 'ai.acceptance_record'`) that joins them bidirectionally — plus the Flutter clinical accept/discard path on AI Feature Surfaces. It sits in Band F after E4 and C3 (`Needs: E4, C3`); it is required before any capability may write to a clinical record, but is not a CP3 prerequisite when the first capability stays `advisory_display` (delivery plan §3.7; Open Decision 1).
+F2 freezes the clinic-side AI acceptance mechanism: `public.record_ai_acceptance` delegates to an allow-listed existing domain RPC and, in one transaction, writes the domain change, the `ai_accepted_output` row carrying the AI request reference, and the `audit_log` entry (`action = 'ai.acceptance_record'`) that joins them bidirectionally — plus the Flutter clinical accept/discard library under `frontend/lib/features/ai/acceptance/` (harness/tests; not wired into the E4 `advisory_display` production surface). It sits in Band F after E4 and C3 (`Needs: E4, C3`); it is required before any capability may write to a clinical record, but is not a CP3 prerequisite when the first capability stays `advisory_display` (delivery plan §3.7; Open Decision 1).
 
 ## Technical Context
 
-**Language/Version**: PostgreSQL / Supabase SQL for the acceptance RPC, registry, and `ai_accepted_output` (matching existing `public` INVOKER → `auth_internal` SECURITY DEFINER clinic RPCs); Dart (SDK `^3.11.5` as declared in `frontend/pubspec.yaml`) for the clinical accept path on AI Feature Surfaces.
+**Language/Version**: PostgreSQL / Supabase SQL for the acceptance RPC, registry, and `ai_accepted_output` (matching existing `public` INVOKER → `auth_internal` SECURITY DEFINER clinic RPCs); Dart (SDK `^3.11.5` as declared in `frontend/pubspec.yaml`) for the clinical accept library under `frontend/lib/features/ai/acceptance/` (harness/tests; production Feature Surface wiring awaits `human_accept_required`).
 
 **Primary Dependencies**: Existing clinic RPC/audit patterns under `backend/supabase/migrations/`; existing demonstration domain RPC `public.save_visit_documentation` → `auth_internal.save_visit_documentation` (writes `public.visit_clinical_notes`); E4 AI Feature Surfaces under `frontend/lib/features/ai/` (Consumes — provisional styling / accept-discard affordances / advisory_display non-writing behaviour not redefined); C3/A2 request reference as the join key (Consumes — text handle only; no D1 write). No Worker source changes, no new pub packages, no platform error-taxonomy codes.
 
@@ -95,18 +95,19 @@ as E4 behavioural Freezes).
 - **§1 Architecture context** — F2 row of the delivery plan (§3.7) and §4.2 / §4.2.2 / §4.1 / A5;
   what the spec delivered; what the plan scoped.
 - **§2 What was implemented** — `record_ai_acceptance`, registry + demonstration target,
-  `ai_accepted_output`, clinical accept path on Feature Surfaces (without promoting
-  `advisory_display`).
-- **§3 Files to review** — this slice’s migration(s), `frontend/lib/features/ai/acceptance/`,
+  `ai_accepted_output`, clinical accept library beside E4 (harness/tests; not wired into
+  the E4 `advisory_display` surface).
+- **§3 Files to review** — this slice’s migration(s) including review-resolution
+  `20260805150000_f2_review_resolution.sql`, `frontend/lib/features/ai/acceptance/`,
   SQL + Flutter test files, and `contracts/acceptance-recording.md` only.
 - **§5 Run the automated suite** — slice-only SQL (`psql -f` / trust-runner entry for this
   slice’s SQL file) and `flutter test` against this slice’s test files; no full-suite `npm test`,
   no combined prior-slice counts.
 - **§6 Inspect the changes** — `\df+ public.record_ai_acceptance`, registry row,
   `ai_accepted_output` columns, clinical accept module, focused SQL/Flutter tests.
-- **§7 Manual validation** — optional: drive the clinical accept harness against a local visit
-  documentation save via the demonstration target. Omit detailed deploy steps — SQL + Flutter
-  suites are the primary verification path (DP-3).
+- **§7 Manual validation** — optional: drive the clinical accept harness (test fixture /
+  library) against a local visit documentation save via the demonstration target. Omit
+  detailed deploy steps — SQL + Flutter suites are the primary verification path (DP-3).
 
 ### Source Code (repository root)
 
@@ -121,10 +122,11 @@ frontend/
 │       └── ai/
 │           ├── surface/
 │           │   └── first_ai_feature_surface.dart  # UNCHANGED behaviour for advisory_display (FR-018; T8)
-│           └── acceptance/                        # NEW — clinical accept path (FR-012–FR-014, FR-017)
+│           └── acceptance/                        # NEW — clinical accept library (FR-012–FR-014, FR-017)
 │               ├── clinical_acceptance_port.dart  # NEW — injectable port → record_ai_acceptance
 │               ├── clinical_acceptance_client.dart# NEW — Supabase RPC caller (no prompts/models)
 │               └── clinical_accept_controller.dart# NEW — accept invokes RPC; discard writes nothing
+│                                                  # (harness/tests; not wired into E4 advisory_display)
 ├── test/
 │   ├── widget/
 │   │   └── ai/
@@ -138,7 +140,8 @@ frontend/
 backend/
 ├── supabase/
 │   └── migrations/
-│       └── 20260802150000_ai_acceptance_recording.sql  # NEW — targets, ai_accepted_output, RPC, demo seed
+│       ├── 20260802150000_ai_acceptance_recording.sql  # NEW — targets, ai_accepted_output, RPC, demo seed
+│       └── 20260805150000_f2_review_resolution.sql     # NEW — review honesty: registry dispatch, auth, duplicate reject
 └── tests/
     ├── ai_acceptance_recording.sql                # NEW — SQL T1/T2/T5/T6/T9/T10 (+ Flutter-paired asserts)
     └── run_ai_platform_trust_tests.sh             # MODIFIED — append this slice’s SQL file
@@ -148,10 +151,12 @@ backend/
 
 **Structure Decision**: Clinic acceptance lives entirely under `backend/` as additive schema + the
 established `public` → `auth_internal` SECURITY DEFINER pattern (F4; FR-002, FR-015). The Flutter
-clinical accept path lives under `frontend/lib/features/ai/acceptance/` beside E4 surfaces, and
-invokes the clinic RPC with the request reference retained by the E2 SDK — it does not redefine E4
-provisional styling, degraded mode, or `clinic.visit_summary` `advisory_display` accept (FR-018;
-Consumes E4). Demonstration proof uses the existing `public.save_visit_documentation` RPC; that
+clinical accept library lives under `frontend/lib/features/ai/acceptance/` beside E4 surfaces; it is
+exercised by harness/tests and is **not** wired into the E4 `advisory_display` production surface.
+It invokes the clinic RPC with the request reference retained by the E2 SDK — it does not redefine
+E4 provisional styling, degraded mode, or `clinic.visit_summary` `advisory_display` accept (FR-018;
+Consumes E4). Production Feature Surface wiring awaits the first `human_accept_required` capability
+(Open Decision 1). Demonstration proof uses the existing `public.save_visit_documentation` RPC; that
 RPC is not modified (Consumes ordinary domain write; Freezes only the registry row). Tests follow
 existing `backend/tests/*.sql` and `frontend/test/widget/ai/` layouts. No `ai-platform/` path is
 modified.
@@ -163,7 +168,7 @@ F2 has `Needs: E4, C3` (delivery plan §3.7). Changing any Consumes contract is 
 
 | Consumes entry | Existing module / file / type it binds to |
 | --- | --- |
-| **E4 — AI Feature Surfaces** (§4.1 Freezes: provisional/draft styling, no commit before terminal success, explicit accept/discard, request-reference on failure, provisional never persisted/exported; `advisory_display` accept non-writing) | `frontend/lib/features/ai/surface/first_ai_feature_surface.dart` (`FirstAiFeatureSurface`, `kAiAcceptKey` / `kAiDiscardKey`, advisory acknowledge-only `_accept`), `provisional_prose_view.dart`, `request_reference_view.dart`, degraded/availability modules under `frontend/lib/features/ai/`, frozen artifact `specs/038-first-ai-feature-surface/contracts/ai-availability-flag.md`. F2 adds the clinical accept path alongside these surfaces and proves `advisory_display` accept still does not invoke `record_ai_acceptance` (T8); it does not redefine provisional styling, degraded-mode UX, or rewrite E4 modules’ advisory behaviour. |
+| **E4 — AI Feature Surfaces** (§4.1 Freezes: provisional/draft styling, no commit before terminal success, explicit accept/discard, request-reference on failure, provisional never persisted/exported; `advisory_display` accept non-writing) | `frontend/lib/features/ai/surface/first_ai_feature_surface.dart` (`FirstAiFeatureSurface`, `kAiAcceptKey` / `kAiDiscardKey`, advisory acknowledge-only `_accept`), `provisional_prose_view.dart`, `request_reference_view.dart`, degraded/availability modules under `frontend/lib/features/ai/`, frozen artifact `specs/038-first-ai-feature-surface/contracts/ai-availability-flag.md`. F2 adds the clinical accept library alongside these surfaces (harness/tests; not production-wired into E4) and proves `advisory_display` accept still does not invoke `record_ai_acceptance` (T8); it does not redefine provisional styling, degraded-mode UX, or rewrite E4 modules’ advisory behaviour. |
 | **C3 — request reference + get-request / terminal validated result** (C3 Freezes; join key to platform journal) | Request reference as `text` in §8.9 format (`XXXX-XXXX`), carried on the client via E2 `AiClientSdk.lastRequestReference` / SSE terminal events (`frontend/lib/core/ai/ai_client_sdk.dart`, `sse_events.dart`) and journaled by C3 (`ai-platform/src/journal/index.ts`, `ai-platform/src/reference.ts`; frozen artifact `specs/027-journal-writer-get-request/contracts/journal.md`). F2 stores that reference on `public.ai_accepted_output.ai_request_reference` at human accept; it does not write D1, invent a second platform acceptance journal, or change get-request semantics. |
 
 **Demonstration domain RPC (assumption / Freezes proof target — not a Consumes rewrite):**
@@ -181,9 +186,11 @@ Two §4 components, with explicit reason:
 1. **§4.2 AI acceptance recording RPC** (clinic backend) — `record_ai_acceptance`,
    `ai_internal.acceptance_targets`, `public.ai_accepted_output`, demonstration registry row, and
    `ai.acceptance_record` audit join (§4.2 / §4.2.2; delivery plan §3.7 Done when).
-2. **§4.1 AI Feature Surfaces** (client clinical accept path) — after terminal success, explicit
+2. **§4.1 AI Feature Surfaces** (client clinical accept library) — after terminal success, explicit
    human accept for clinical-content acceptance invokes `public.record_ai_acceptance`; discard
-   writes nothing; unaccepted content never persisted; no auto-commit (§4.1; A5; Done when).
+   writes nothing; unaccepted content never persisted; no auto-commit (§4.1; A5; Done when). F2
+   ships the library under `frontend/lib/features/ai/acceptance/` (harness/tests); production
+   surface wiring awaits `human_accept_required` (Open Decision 1).
 
 **Reason for two components:** Delivery plan §3.7 row F2 Canonical cell names §4.2, §4.2.2, §4.1,
 and A5 together; Done when requires both the clinic RPC/provenance write and the client accept
@@ -193,7 +200,7 @@ scope creep into E4 rewrite, C3/D1 journal, F1/F3–F5, B1 token issuer, or gate
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |
-| §4.1 AI Feature Surfaces | **Extended** | Clinical accept path (FR-012–FR-014); advisory_display behaviour Consumed unchanged |
+| §4.1 AI Feature Surfaces | **Extended** | Clinical accept library (FR-012–FR-014); not wired into E4 advisory_display; advisory_display behaviour Consumed unchanged |
 | §4.1 AI Client SDK | **Not touched** | Consumes request reference via existing SDK fields only |
 | §4.1 Context Resolver | **Not touched** | E3 |
 | §4.1 Conversation store | **Not touched** | H band |
@@ -210,11 +217,12 @@ count stays under ~25.
 | --- | --- | --- |
 | `specs/040-acceptance-recording/contracts/acceptance-recording.md` | Freezes (RPC, registry, table, audit, demo target); FR-001–FR-011, FR-015–FR-016, FR-019 | NEW — frozen artifact for later Consumes (Open Decision 14 / `human_accept_required`). |
 | `backend/supabase/migrations/20260802150000_ai_acceptance_recording.sql` | FR-001–FR-011, FR-015–FR-016, FR-019; T1/T2/T5/T6/T9/T10 | NEW — `ai_internal.acceptance_targets`; `public.ai_accepted_output` (+ RLS/indexes/CHECK); `auth_internal.record_ai_acceptance` + `public` wrapper; seed `visit_clinical_notes` → `save_visit_documentation` / `visit_clinical_notes`. |
+| `backend/supabase/migrations/20260805150000_f2_review_resolution.sql` | FR-003–FR-005, FR-019 | NEW — review honesty: registry-driven `pg_proc` dispatch, duplicate-acceptance pre-check, auth_internal EXECUTE revoke, no service_role registry grant. |
 | `backend/tests/ai_acceptance_recording.sql` | FR-001–FR-011, FR-015–FR-016; T1, T2, T5, T6, T9, T10 | NEW — SQL suite for atomicity, bidirectional provenance, unregistered reject, boundary spy (no AI request state columns), delegated error pass-through, demonstration registry proof. |
 | `backend/tests/run_ai_platform_trust_tests.sh` | T1–T2, T5–T6, T9–T10 (CI wiring) | MODIFIED — append `ai_acceptance_recording.sql`. |
 | `frontend/lib/features/ai/acceptance/clinical_acceptance_port.dart` | FR-012–FR-014, FR-017; T1, T3, T4, T7 | NEW — injectable port for `record_ai_acceptance` (test doubles). |
 | `frontend/lib/features/ai/acceptance/clinical_acceptance_client.dart` | FR-001, FR-012–FR-013, FR-017; T1 | NEW — production Supabase RPC caller; no prompts/providers/models/business rules. |
-| `frontend/lib/features/ai/acceptance/clinical_accept_controller.dart` | FR-012–FR-014, FR-018; T1, T3, T4, T7, T8 | NEW — clinical accept invokes RPC with request reference + registered target; discard writes nothing; does not replace E4 advisory_display acknowledge path. |
+| `frontend/lib/features/ai/acceptance/clinical_accept_controller.dart` | FR-012–FR-014, FR-018; T1, T3, T4, T7, T8 | NEW — clinical accept library: invokes RPC with request reference + registered target; discard writes nothing; not wired into E4 advisory_display acknowledge path. |
 | `frontend/test/widget/ai/clinical_accept_path_test.dart` | FR-012–FR-014, FR-018; T1, T3, T4, T7, T8 | NEW — Flutter widget/spy suite: accept writes via RPC against demonstration target args; discard/unaccepted/auto-commit spies; advisory_display accept unchanged. |
 | `frontend/test/unit/ai/clinical_acceptance_client_test.dart` | FR-013, FR-017; T1, T7 | NEW — unit coverage for RPC parameter mapping / no auto-commit helper behaviour. |
 | `specs/040-acceptance-recording/quickstart.md` | — | NEW — written during the implement-phase Documentation task (sections named above). |

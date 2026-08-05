@@ -60,3 +60,49 @@ None. The atomic write path as exercised today is correct: delegated failure ret
 6. **Make the prohibition tests honest** (Weak Tests 4–6): delete the SQL halves of T3/T4 or replace them with a real negative drive (e.g. attempt the write path the prohibition guards and assert refusal); connect T8's spy through an actual injected dependency or replace it with a static guard assertion; replace the unit no-auto-commit test with a controller-level case that drives idle/discard and asserts zero port invocations.
 7. **Close the coverage-rule gaps** (Missing Tests 1–3, 7–9): add the no-`visits.edit_soap` denial case, the malformed-reference case, positive column/constraint/index assertions in T6, the merged-`data` and `acceptance_id` cross-checks in T1/T2, and a cross-tenant RLS read case.
 8. **Decide the accept path's production status** (Deviation 3): either wire `ClinicalAcceptController` into a real (possibly internal/demonstration) surface in `frontend/lib`, or amend the spec Freezes, plan, and quickstart to state plainly that F2 ships the accept path as a tested library whose UI integration awaits the first `human_accept_required` capability — the current documents claim a surface that does not exist.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **F2-R1 — Exception scope + post-write atomicity** | Bugs #1; Missing/Weak Tests #2; Rec #1 | `20260802150000_ai_acceptance_recording.sql`; `20260805150000_f2_review_resolution.sql`; `backend/tests/ai_acceptance_recording.sql` (`acceptance_write_failure_rolls_back_domain_change`) |
+| **F2-R2 — Duplicate acceptance clean reject + client transport** | Bugs #2; Rec #3 | Same migrations (pre-check → `INVALID_INPUT`); `clinical_acceptance_client.dart` try/catch; unit PostgrestException case |
+| **F2-R3 — Registry-driven dispatch** | Architectural Deviations #1; Rec #2 | Dynamic `pg_proc` marshalling in `invoke_acceptance_domain_rpc`; alias-target SQL case; contract §3 reinforced |
+| **F2-R4 — Wrapper-gate + drop dead service_role surface** | Architectural Deviations #2, #4; Rec #4 | `REVOKE` on `auth_internal.*`; public wrapper `SECURITY DEFINER`; drop registry `service_role` grants; B1 comment honesty |
+| **F2-R5 — Provenance from domain write** | Bugs #3; Rec #5 | `record_id` from delegated `data` (`visit_id` / `record_id` / `id`); branch lookup from written visit |
+| **F2-R6 — Coverage gaps** | Missing/Weak Tests #1, #3, #7, #8, #9; Rec #7 | SQL: no-`edit_soap`, malformed ref, T6 positive schema asserts, T1/T2 merge/`acceptance_id` checks, RLS tenant isolation |
+| **F2-R7 — Honest prohibition + discard behaviour** | Bugs #4; Missing/Weak Tests #4–#6; Rec #6 | Controller `stageDraft`/`discard`; T8 static source guard; remove tautological SQL T3/T4; controller-level no-port unit test |
+| **F2-R8 — Library-only accept path honesty** | Architectural Deviations #3; Rec #8 | Spec Kit `spec.md` / `plan.md` / `contracts/` / `quickstart.md` / `tasks.md` — library + harness; UI awaits `human_accept_required` |
+
+Every numbered review item appears in exactly one stage. No escalations.
+
+### 1.2 Test cases created first
+
+- **F2-R1:** `acceptance_write_failure_rolls_back_domain_change` — domain write then unique collision rolls back complaint.
+- **F2-R2:** `duplicate_acceptance_rejected_cleanly` (SQL) + unit `returns RpcResult failure when Supabase throws PostgrestException`.
+- **F2-R3:** `registry_row_enables_dispatch_without_hardcoded_branch` — alternate `target_key` → same `domain_function` succeeds without a new IF branch.
+- **F2-R4:** `auth_internal_acceptance_not_granted_to_authenticated`.
+- **F2-R5:** T1 asserts `record_id` / `branch_id` / merged `visit_id` from the write.
+- **F2-R6:** `acceptance_grants_no_privilege_without_edit_soap`, `malformed_request_reference_rejected`, strengthened T6/T1/T2, `ai_accepted_output_rls_tenant_isolation`.
+- **F2-R7:** discard clears staged draft; T8 source-guard; controller idle/discard never calls port.
+- **F2-R8:** documentation-only (no new production test).
+
+### 1.3 Fix implemented
+
+- Removed the outer `EXCEPTION WHEN OTHERS` → `RETURN rpc_error('FORBIDDEN')` path so post-write failures abort the transaction; org check moved before the delegated write; missing record id after write raises.
+- Duplicate accept: pre-write `INVALID_INPUT` when `(ai_request_reference, table_name)` already exists; residual transport failures mapped in `ClinicalAcceptanceClient`.
+- Dispatch: registry-gated dynamic SQL from `public` `rpc_result` signatures (`proargnames` / `proargtypes`); public wrapper is `SECURITY DEFINER` with `auth_internal` EXECUTE revoked from `authenticated`.
+- Provenance: `record_id` from delegated success payload; dropped hardcoded per-function IF for id derivation.
+- Flutter: real `discard()` clears staged draft; T8 no longer uses a disconnected spy; Spec Kit states library-only scope until `human_accept_required`.
+
+### 1.4 Verification
+
+- `backend/tests/ai_acceptance_recording.sql` — pass (local Supabase).
+- `flutter test test/unit/ai/clinical_acceptance_client_test.dart test/widget/ai/clinical_accept_path_test.dart` — 8 passed.
+- `ai-platform/` `npm test` — **41** Node-pool files / **593** tests; **19** workers-pool files / **241** tests — all passed.
+
+Modified / added: `20260802150000_ai_acceptance_recording.sql`, `20260805150000_f2_review_resolution.sql`, `20260803140000_b1_review_resolution.sql` (comment), `backend/tests/ai_acceptance_recording.sql`, Flutter acceptance library + tests, Spec Kit `specs/040-acceptance-recording/*`.

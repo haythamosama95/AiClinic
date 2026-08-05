@@ -19,19 +19,35 @@ class _HarnessFixedConnectionSubmitPort implements HttpsSubmitPort {
       connection;
 }
 
+Future<void> _pumpOpenStreamReady(WidgetTester tester, AiSurfaceHarness harness) async {
+  await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
+  await harness.pumpUntilSurfaceReady(tester);
+}
+
+Future<void> _emitChunk(WidgetTester tester, DelayedFakeSseConnection connection, SseEvent chunk) async {
+  connection.emitContent(chunk);
+  await tester.idle();
+  await tester.pump();
+}
+
 void main() {
   group('first AI feature surface', () {
     testWidgets('surface_provisional_content_visually_distinct', (tester) async {
       final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-vis'));
       addTearDown(connection.close);
-      final submitPort = _HarnessFixedConnectionSubmitPort(connection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: submitPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      connection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Draft prose in flight'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Draft prose in flight', 'provisional': true}),
+      );
 
       expect(find.byKey(kAiProvisionalProseKey), findsOneWidget);
 
@@ -46,14 +62,19 @@ void main() {
     testWidgets('surface_no_commit_control_before_completed', (tester) async {
       final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-1'));
       addTearDown(connection.close);
-      final submitPort = _HarnessFixedConnectionSubmitPort(connection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: submitPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      connection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Still streaming'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Still streaming'}),
+      );
 
       expect(find.byKey(kAiAcceptKey), findsNothing);
       expect(find.byKey(kAiDiscardKey), findsNothing);
@@ -69,6 +90,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -87,6 +109,7 @@ void main() {
           SubmitOpenStreamStep(streamingThenCompleted(provisionalText: 'draft', terminalText: 'Discard me')),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -104,6 +127,7 @@ void main() {
           SubmitOpenStreamStep(failedStream(code: TaxonomyCode.validationFailed, requestReference: 'req-fail-1')),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -115,14 +139,19 @@ void main() {
     testWidgets('surface_provisional_does_not_survive_rebuild', (tester) async {
       final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-rebuild'));
       addTearDown(connection.close);
-      final submitPort = _HarnessFixedConnectionSubmitPort(connection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: submitPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      connection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Ephemeral draft'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Ephemeral draft'}),
+      );
       expect(find.text('Ephemeral draft'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -130,6 +159,7 @@ void main() {
       connection.close();
 
       final freshHarness = AiSurfaceHarness();
+      addTearDown(freshHarness.disposeResolvers);
       await freshHarness.pumpWidgetWithTheme(tester, Scaffold(body: freshHarness.surface(autoInvoke: false)));
       await tester.pump();
 
@@ -139,14 +169,19 @@ void main() {
     testWidgets('surface_provisional_does_not_survive_restart', (tester) async {
       final openConnection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-restart'));
       addTearDown(openConnection.close);
-      final openPort = _HarnessFixedConnectionSubmitPort(openConnection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: openPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(openConnection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      openConnection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Restart draft'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        openConnection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Restart draft'}),
+      );
       expect(find.text('Restart draft'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -174,6 +209,7 @@ void main() {
           ]),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -182,12 +218,110 @@ void main() {
       expect(find.text('WRONG assembled chunk text'), findsNothing);
     });
 
+    testWidgets('surface_accumulates_multi_delta_provisional_text', (tester) async {
+      final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-accum'));
+      addTearDown(connection.close);
+      final harness = AiSurfaceHarness();
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
+
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Hello ', 'provisional': true}),
+      );
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'world', 'provisional': true}),
+      );
+
+      expect(find.text('Hello world'), findsOneWidget);
+      expect(find.text('Hello '), findsNothing);
+      expect(find.text('world'), findsNothing);
+    });
+
+    testWidgets('surface_stream_drop_without_terminal_shows_failure', (tester) async {
+      final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-drop'));
+      addTearDown(connection.close);
+      final harness = AiSurfaceHarness();
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
+
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'orphan draft', 'provisional': true}),
+      );
+      expect(find.text('orphan draft'), findsOneWidget);
+
+      connection.close();
+      await tester.idle();
+      await tester.pumpAndSettle();
+
+      expect(find.text('orphan draft'), findsNothing);
+      expect(find.textContaining('req-drop'), findsOneWidget);
+    });
+
+    testWidgets('surface_cancelled_returns_to_idle', (tester) async {
+      final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-cancel'));
+      addTearDown(connection.close);
+      final harness = AiSurfaceHarness();
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
+
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'going away', 'provisional': true}),
+      );
+      expect(find.text('going away'), findsOneWidget);
+
+      connection.emitContent(const CancelledEvent());
+      await tester.idle();
+      await tester.pumpAndSettle();
+
+      expect(find.text('going away'), findsNothing);
+      expect(find.byKey(kAiIdleKey), findsOneWidget);
+      expect(find.byKey(kAiRequestReferenceKey), findsNothing);
+    });
+
+    testWidgets('surface_failure_without_request_reference_shows_local_message', (tester) async {
+      final harness = AiSurfaceHarness(
+        submitScript: [
+          SubmitOpenStreamStep([
+            const FailedEvent(code: TaxonomyCode.internalError),
+          ]),
+        ],
+      );
+      addTearDown(harness.disposeResolvers);
+
+      await harness.pumpSurface(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(kAiRequestReferenceKey), findsNothing);
+      expect(find.byKey(kAiLocalFailureKey), findsOneWidget);
+    });
+
     testWidgets('surface_internal_error_shows_request_reference', (tester) async {
       final harness = AiSurfaceHarness(
         submitScript: [
           SubmitOpenStreamStep(failedStream(code: TaxonomyCode.internalError, requestReference: 'req-internal')),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -201,6 +335,7 @@ void main() {
           SubmitOpenStreamStep(failedStream(code: TaxonomyCode.contextInvalid, requestReference: 'req-ctx-invalid')),
         ],
       );
+      addTearDown(harness.disposeResolvers);
 
       await harness.pumpSurface(tester);
       await tester.pumpAndSettle();
@@ -211,30 +346,42 @@ void main() {
     testWidgets('surface_provisional_never_exported', (tester) async {
       final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-export'));
       addTearDown(connection.close);
-      final submitPort = _HarnessFixedConnectionSubmitPort(connection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: submitPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      connection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Never export this'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Never export this'}),
+      );
 
+      expect(harness.exportProbe.provisionalVisibles, isNotEmpty);
       expect(harness.exportProbe.exports, isEmpty);
     });
 
     testWidgets('surface_provisional_never_persisted', (tester) async {
       final connection = DelayedFakeSseConnection(accepted: const AcceptedEvent(requestReference: 'req-persist'));
       addTearDown(connection.close);
-      final submitPort = _HarnessFixedConnectionSubmitPort(connection);
       final harness = AiSurfaceHarness();
-      harness.sdk = AiClientSdk(mintPort: harness.mintPort, submitPort: submitPort);
+      addTearDown(harness.disposeResolvers);
+      harness.sdk = AiClientSdk(
+        mintPort: harness.mintPort,
+        submitPort: _HarnessFixedConnectionSubmitPort(connection),
+      );
 
-      await harness.pumpWidgetWithTheme(tester, Scaffold(body: harness.surface()));
-      await tester.pump();
-      connection.emitContent(const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Never persist this'}));
-      await tester.pump();
+      await _pumpOpenStreamReady(tester, harness);
+      await _emitChunk(
+        tester,
+        connection,
+        const ContentChunkEvent(kind: 'text_delta', payload: {'text': 'Never persist this'}),
+      );
 
+      expect(harness.persistenceProbe.provisionalVisibles, isNotEmpty);
       expect(harness.persistenceProbe.writes, isEmpty);
     });
   });

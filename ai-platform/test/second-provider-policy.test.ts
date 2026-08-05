@@ -279,7 +279,7 @@ describe("T-D7-14 fallback_ordering_honoured", () => {
     const geminiTarget = firstOutcome.routing_decision.chain.find(
       (entry) => entry.provider_id === "gemini",
     );
-    expect(geminiTarget?.model_id).toBe("gemini-1.5-flash");
+    expect(geminiTarget?.model_id).toBe("gemini-3.5-flash");
 
     const decision = firstOutcome.routing_decision;
     expect(decision.policy_id).toBe(document.policy_id);

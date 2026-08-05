@@ -65,3 +65,50 @@ E4 delivers the module set its plan names: an `AiAvailability` model and injecta
 7. **Resolve the ownership and consumption smells**: let the host own and dispose the `ContextResolver`; drive the surface from SDK-exposed chunk/terminal streams rather than double-subscribing `connection.events` (or make the SDK broadcast explicitly); source the context key list from capability discovery instead of a hardcoded constant.
 8. **Make the spy tests honest and the probes real**: assert `reachabilityPort.callCount == 0` in T8 alongside the network spy; either route a genuine persistence/export port through the surface so T16/T17 spy on a real channel, or replace them with a static assertion (e.g. the E1 guard extended with persistence-call patterns) and document the change in the spec's Test plan.
 9. **Decide the host route's status**: either point `AppRoutes.aiFeatureHost` at `AiFeatureHostPage` with production dependency wiring, or amend plan/tasks to record that the route is a deliberate CP3 stub — the current state contradicts T018's completion claim.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **E4-R1 — Wire terminal failures → degraded mode** | Critical #1; Missing #3; Rec #1 | `first_ai_feature_surface.dart` (`onTerminalFailure`); `ai_feature_host_page.dart` (remove `terminalFailureCode`); degraded host tests drive `FailedEvent` through SDK |
+| **E4-R2 — Host route hosts AiFeatureHostPage** | Critical #2; Rec #9 | `router.dart` builds `AiFeatureHostPage` from GoRouter `extra`; Spec Kit Clarification Q2 / T018 / plan updated |
+| **E4-R3 — Settle terminal / cancel / stream-drop** | Critical #3; Bugs #3; Missing #4; Rec #2 | Surface awaits `session.terminal` with event-path settle; `CancelledTerminal` → idle; `StreamDroppedTerminal` → failure + reference; SDK cancel deferred off onData stack |
+| **E4-R4 — Accumulate provisional deltas** | Bugs #1; Missing #5; Rec #3 | `_provisionalText += chunk`; `surface_accumulates_multi_delta_provisional_text` |
+| **E4-R5 — No fabricated request references** | Bugs #2; Rec #4 | Local-failure UI; no `ctx-fail` / `invoke-error`; no invented `context_invalid` for resolver / `ContextRequested` |
+| **E4-R6 — Bootstrap fail-closed + migration REVOKE** | Bugs #4, #6; Rec #5 | try/catch → non-enrolled; `REVOKE` on `auth_internal.get_ai_availability`; bootstrap failure widget test |
+| **E4-R7 — §5.4 presentation mappings** | Bugs #5; Rec #6 | `appUpdate` + `providerUnavailable` modes; retry affordance; resolveDegradedMode mapping tests |
+| **E4-R8 — Ownership, broadcast, context keys** | Arch #1–#3; Rec #7 | Host owns resolver dispose; SDK already rebroadcasts (post-merge); injectable `requiredContextKeys` |
+| **E4-R9 — Non-enrolled hides AI chrome** | Arch #4 | Empty scaffold (no banner / AI app bar); T8 updated |
+| **E4-R10 — Honest spies** | Missing #1–#2; Rec #8 | T8 asserts `reachabilityPort.callCount`; T16/T17 fire live `recordProvisionalVisible` then assert writes/exports empty |
+| **E4-R11 — Scope T20 guard** | Missing #6 | Guard scan root `lib/features/ai` only |
+| **E4-R12 — Dead conditional** | Bugs #7 | Removed vacuous `SizedBox.shrink` failure branch |
+
+Every numbered review item appears in exactly one stage. No architecture-doc edits.
+
+### 1.2 Test cases created first
+
+- **E4-R1:** Host tests rewritten to submit `failedStream(code: …)` and assert degraded keys (quota / suspended / forbidden / appUpdate / providerUnavailable / aiUnavailable) — proving the former `terminalFailureCode` seam is gone.
+- **E4-R3:** `surface_stream_drop_without_terminal_shows_failure`, `surface_cancelled_returns_to_idle`, `surface_failure_without_request_reference_shows_local_message`.
+- **E4-R4:** `surface_accumulates_multi_delta_provisional_text`.
+- **E4-R6:** `bootstrap_availability_read_failure_fail_closed`.
+- **E4-R7:** `resolveDegradedMode` unit cases + `degraded_app_update_*` / `degraded_provider_unavailable_shows_retry`.
+- **E4-R9/R10:** T8 asserts no AI chrome + `reachabilityPort.callCount == 0`; T16/T17 assert visibility hooks non-empty and writes/exports empty.
+
+### 1.3 Fix implemented
+
+- Surface reports platform terminal failures upward; host re-resolves degraded mode from real codes; injection seam deleted.
+- Route hosts `AiFeatureHostPage` when dependencies are composed via `extra`.
+- Terminal contract settled via events + awaited `session.terminal`; cancel → idle; stream-drop → failure with real reference only.
+- Provisional deltas accumulate; local failures no longer fabricate support references or taxonomy codes.
+- Migration REVOKE; bootstrap fail-closed; §5.4 app-update / provider-retry presentations; non-enrolled chrome removed; resolver owned by host; context keys injectable; T20 scoped; dead conditional removed.
+- Spec Kit: `spec.md` (Clarification Q2, T8/T16–T18), `tasks.md` T018, `plan.md` router note.
+
+### 1.4 Verification
+
+- `frontend`: `flutter test test/widget/ai/ test/unit/core/ai/ai_client_sdk_test.dart` — **103 passed**.
+- `ai-platform`: `npm test` — **19 files, 241 tests passed**.
+- Modified/added coverage in `first_ai_feature_surface_test.dart`, `ai_degraded_mode_test.dart`, `ai_surface_test_harness.dart`.

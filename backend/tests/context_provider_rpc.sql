@@ -1,4 +1,4 @@
--- E3 context provider RPC tests (E3-T05..E3-T08).
+-- E3 context provider RPC tests (E3-T05..E3-T08 + E3-R1/R2 review cases).
 -- Run: psql ... -v ON_ERROR_STOP=1 -f backend/tests/context_provider_rpc.sql
 
 BEGIN;
@@ -53,15 +53,28 @@ DECLARE
   v_patient_b uuid := 'e3740000-0000-4000-8000-0000000000b2';
   v_appt_a uuid := 'e3750000-0000-4000-8000-0000000000a1';
   v_appt_b uuid := 'e3750000-0000-4000-8000-0000000000b2';
+  v_appt_c uuid := 'e3750000-0000-4000-8000-0000000000c3';
+  v_appt_d uuid := 'e3750000-0000-4000-8000-0000000000d4';
   v_visit_a uuid := 'e3760000-0000-4000-8000-0000000000a1';
   v_visit_b uuid := 'e3760000-0000-4000-8000-0000000000b2';
+  v_visit_c uuid := 'e3760000-0000-4000-8000-0000000000c3';
+  v_visit_d uuid := 'e3760000-0000-4000-8000-0000000000d4';
   v_note_a uuid := 'e3770000-0000-4000-8000-0000000000a1';
+  v_note_b uuid := 'e3770000-0000-4000-8000-0000000000b2';
+  v_note_d uuid := 'e3770000-0000-4000-8000-0000000000d4';
+  v_created_at timestamptz := '2026-07-30T10:00:00+00'::timestamptz;
+  v_updated_at timestamptz := '2026-07-31T12:00:00+00'::timestamptz;
+  v_expected_recorded_at text := '2026-07-30T10:00:00.000Z';
+  v_updated_at_iso text := '2026-07-31T12:00:00.000Z';
+  v_complaint_10k text := repeat('x', 10000);
   v_result public.rpc_result;
   v_payload jsonb;
   v_passed boolean;
   v_detail text;
   v_arg_names text;
   v_body text;
+  v_extra_keys text;
+  v_check_blocked boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -121,21 +134,44 @@ BEGIN
     (v_appt_a, v_branch_a, v_patient_a, v_doctor_a, now(), now() + interval '30 minutes',
      'planned', 'in_progress', v_user_a, v_user_a),
     (v_appt_b, v_branch_b, v_patient_b, v_staff_b, now(), now() + interval '30 minutes',
-     'planned', 'in_progress', v_user_b, v_user_b);
+     'planned', 'in_progress', v_user_b, v_user_b),
+    -- Extra in-scope visits: non-in_progress appointments (one-in-progress-per-doctor index).
+    (v_appt_c, v_branch_a, v_patient_a, v_doctor_a, now() + interval '1 hour', now() + interval '90 minutes',
+     'planned', 'scheduled', v_user_a, v_user_a),
+    (v_appt_d, v_branch_a, v_patient_a, v_doctor_a, now() + interval '2 hours', now() + interval '150 minutes',
+     'planned', 'scheduled', v_user_a, v_user_a);
 
   INSERT INTO public.visits (
     id, branch_id, appointment_id, patient_id, doctor_id, visit_date, status, created_by, updated_by
   )
   VALUES
     (v_visit_a, v_branch_a, v_appt_a, v_patient_a, v_doctor_a, current_date, 'in_progress', v_user_a, v_user_a),
-    (v_visit_b, v_branch_b, v_appt_b, v_patient_b, v_staff_b, current_date, 'in_progress', v_user_b, v_user_b);
+    (v_visit_b, v_branch_b, v_appt_b, v_patient_b, v_staff_b, current_date, 'in_progress', v_user_b, v_user_b),
+    (v_visit_c, v_branch_a, v_appt_c, v_patient_a, v_doctor_a, current_date, 'in_progress', v_user_a, v_user_a),
+    (v_visit_d, v_branch_a, v_appt_d, v_patient_a, v_doctor_a, current_date, 'in_progress', v_user_a, v_user_a);
 
+  -- Note A: distinct created_at vs updated_at for recorded_at stability (E3-R2).
   INSERT INTO public.visit_clinical_notes (
-    id, visit_id, complaint, created_by, updated_by, updated_at
+    id, visit_id, complaint, created_by, updated_by, created_at, updated_at
   )
   VALUES
     (v_note_a, v_visit_a, 'Persistent headache for three days.', v_user_a, v_user_a,
-     '2026-07-31T12:00:00+00'::timestamptz);
+     v_created_at, v_updated_at);
+
+  -- Note B: out-of-scope complaint that must not leak (E3-R1 / Critical #2).
+  INSERT INTO public.visit_clinical_notes (
+    id, visit_id, complaint, created_by, updated_by
+  )
+  VALUES
+    (v_note_b, v_visit_b, 'Out of scope complaint that must not leak.', v_user_b, v_user_b);
+
+  -- Visit C: in-scope, no clinical note (no-note / NULL complaint case).
+  -- Visit D: 10000-char boundary complaint.
+  INSERT INTO public.visit_clinical_notes (
+    id, visit_id, complaint, created_by, updated_by
+  )
+  VALUES
+    (v_note_d, v_visit_d, v_complaint_10k, v_user_a, v_user_a);
 
   -- E3-T05 context_rpc_returns_declared_shape
   PERFORM pg_temp.set_authenticated_session(
@@ -156,18 +192,19 @@ BEGIN
     v_detail
   );
 
-  -- E3-T06 context_rpc_rls_denies_out_of_scope
+  -- E3-T06 context_rpc_scope_denies_out_of_scope
+  -- Strict: fails if assert_visit_branch_scope / clinical-access checks are removed,
+  -- because a successful leak of visit B's complaint would fail the assertion.
   PERFORM pg_temp.set_authenticated_session(
     v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
   );
   v_result := public.get_visit_chief_complaint(v_visit_b);
   v_passed := (NOT v_result.success)
-    OR (v_result.data IS NULL)
-    OR (NOT (v_result.data ? 'complaint'));
+    AND v_result.error_code IN ('NOT_FOUND', 'FORBIDDEN');
   v_detail := format('success=%s error=%s data=%s', v_result.success, v_result.error_code, v_result.data);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO context_provider_rpc_results VALUES (
-    'context_rpc_rls_denies_out_of_scope',
+    'context_rpc_scope_denies_out_of_scope',
     v_passed,
     v_detail
   );
@@ -201,12 +238,16 @@ BEGIN
     v_detail
   );
 
-  -- E3-T08 context_rpc_shape_matches_a5_published_key
+  -- E3-T08 context_rpc_shape_matches_a5_published_key (+ undeclared-field guard)
   PERFORM pg_temp.set_authenticated_session(
     v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
   );
   v_result := public.get_visit_chief_complaint(v_visit_a);
   v_payload := v_result.data;
+  SELECT string_agg(k, ', ' ORDER BY k)
+  INTO v_extra_keys
+  FROM jsonb_object_keys(v_payload) AS k
+  WHERE k NOT IN ('visit_id', 'complaint', 'recorded_at');
   v_passed := v_result.success
     AND (v_payload->>'visit_id') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
     AND jsonb_typeof(v_payload->'complaint') = 'string'
@@ -214,11 +255,92 @@ BEGIN
     AND (
       NOT (v_payload ? 'recorded_at')
       OR (v_payload->>'recorded_at') ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$'
-    );
-  v_detail := format('data=%s', v_payload);
+    )
+    AND v_extra_keys IS NULL;
+  v_detail := format('data=%s extra_keys=%s', v_payload, coalesce(v_extra_keys, '<none>'));
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO context_provider_rpc_results VALUES (
     'context_rpc_shape_matches_a5_published_key',
+    v_passed,
+    v_detail
+  );
+
+  -- E3-R2: no-note visit returns {visit_id} only
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
+  v_result := public.get_visit_chief_complaint(v_visit_c);
+  v_payload := v_result.data;
+  v_passed := v_result.success
+    AND (v_payload->>'visit_id') = v_visit_c::text
+    AND NOT (v_payload ? 'complaint')
+    AND NOT (v_payload ? 'recorded_at')
+    AND (SELECT count(*)::int FROM jsonb_object_keys(v_payload)) = 1;
+  v_detail := format('success=%s data=%s', v_result.success, v_payload);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO context_provider_rpc_results VALUES (
+    'context_rpc_no_note_returns_visit_id_only',
+    v_passed,
+    v_detail
+  );
+
+  -- E3-R2: 10000-char complaint boundary succeeds; >10000 blocked by CHECK
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
+  v_result := public.get_visit_chief_complaint(v_visit_d);
+  v_payload := v_result.data;
+  PERFORM set_config('role', 'postgres', true);
+  v_check_blocked := false;
+  BEGIN
+    INSERT INTO public.visit_clinical_notes (
+      id, visit_id, complaint, created_by, updated_by
+    )
+    VALUES (
+      'e3770000-0000-4000-8000-0000000000e5',
+      v_visit_c,
+      repeat('y', 10001),
+      v_user_a,
+      v_user_a
+    );
+  EXCEPTION
+    WHEN check_violation THEN
+      v_check_blocked := true;
+  END;
+  v_passed := v_result.success
+    AND length(v_payload->>'complaint') = 10000
+    AND (v_payload->>'complaint') = v_complaint_10k
+    AND v_check_blocked;
+  v_detail := format(
+    'success=%s len=%s check_blocked=%s',
+    v_result.success,
+    length(v_payload->>'complaint'),
+    v_check_blocked
+  );
+  INSERT INTO context_provider_rpc_results VALUES (
+    'context_rpc_complaint_10000_char_boundary',
+    v_passed,
+    v_detail
+  );
+
+  -- E3-R2: recorded_at matches created_at (not updated_at)
+  PERFORM pg_temp.set_authenticated_session(
+    v_doctor_user_a, v_org_a, v_branch_a, v_doctor_a, 'doctor'
+  );
+  v_result := public.get_visit_chief_complaint(v_visit_a);
+  v_payload := v_result.data;
+  v_passed := v_result.success
+    AND (v_payload->>'recorded_at') = v_expected_recorded_at
+    AND (v_payload->>'recorded_at') IS DISTINCT FROM v_updated_at_iso;
+  v_detail := format(
+    'recorded_at=%s expected=%s updated_at_iso=%s',
+    v_payload->>'recorded_at',
+    v_expected_recorded_at,
+    v_updated_at_iso
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO context_provider_rpc_results VALUES (
+    'context_rpc_recorded_at_uses_created_at',
     v_passed,
     v_detail
   );

@@ -63,10 +63,14 @@ Contracts this slice establishes for the first time:
 - The **single shared clinical acceptance path** for every capability (including later
   conversational acceptance under Open Decision 14): one RPC, registry-driven targets, no
   second acceptance path by construction (§4.2.2; Open Decision 14; A5).
-- The **client clinical accept path** on AI Feature Surfaces: after terminal success, an
-  explicit human accept for a clinical-content capability invokes
-  `public.record_ai_acceptance`; discard writes nothing; unaccepted content is never
-  persisted; no auto-commit of AI output (§4.1 AI Feature Surfaces; A5; delivery plan
+- The **client clinical accept path** as a tested library under
+  `frontend/lib/features/ai/acceptance/` (port / client / controller), exercised by
+  harness and automated tests: after terminal success, an explicit human accept for a
+  clinical-content capability invokes `public.record_ai_acceptance`; discard writes
+  nothing; unaccepted content is never persisted; no auto-commit of AI output. F2 ships
+  that library, not a production Feature Surface wiring — Open Decision 1 keeps the first
+  capability on `advisory_display`; production UI integration awaits the first
+  `human_accept_required` capability (§4.1 AI Feature Surfaces; A5; delivery plan
   §3.11.6 F2).
 
 Later slices may extend these and may not rewrite them (delivery plan §2.3). Required
@@ -81,11 +85,12 @@ definition:
 - **From E4 (first AI feature surface and degraded mode)**: the **AI Feature Surfaces**
   component — provisional/draft styling, no commit control before terminal success,
   explicit accept/discard affordances, request-reference display on failure, and the rule
-  that provisional content is never persisted or exported (§4.1 Freezes in E4). F2 wires
-  the clinical accept path through those surfaces against the demonstration target; it
-  does not redefine provisional styling, degraded-mode UX, or the first capability's
-  `advisory_display` accept behaviour that deliberately does not write a clinical record
-  (Open Decision 1; E4; §4.2.2).
+  that provisional content is never persisted or exported (§4.1 Freezes in E4). F2 ships
+  the clinical accept library beside those surfaces and proves it against the
+  demonstration target in harness/tests; it does not wire a production clinical-accept
+  surface, and does not redefine provisional styling, degraded-mode UX, or the first
+  capability's `advisory_display` accept behaviour that deliberately does not write a
+  clinical record (Open Decision 1; E4; §4.2.2).
 - **From C3 (journal writer, post-response detail, and get-request)**: the **request
   reference** as the join key between platform journal and clinic acceptance, and the
   **get-request / terminal validated result** contract a completed request exposes to the
@@ -236,7 +241,7 @@ Coverage rule additions (delivery plan §3.10) inherited by this slice:
 - **FR-010**: Provenance MUST resolve in both directions: from the field via `audit_log` by `(table_name, record_id)` to the reference, and from a reference via `ai_accepted_output` to the field and its audit entry. `(§4.2.2; delivery plan §3.11.6 F2)`
 - **FR-011**: The mechanism MUST be proved against registered demonstration target `visit_clinical_notes` → `public.save_visit_documentation` (writing `public.visit_clinical_notes`); registering that target MUST NOT promote any product capability to clinical writing — that right comes only from a capability declaring acceptance mode `human_accept_required` in its manifest. `(§4.2.2; Open Decision 1; delivery plan §3.7 Done when)`
 - **FR-012**: Every clinical-content capability MUST require an explicit human accept action recorded in the clinic DB with the AI request reference; AI output MUST remain advisory and MUST never auto-commit into a clinical record. `(A5)`
-- **FR-013**: AI Feature Surfaces MUST expose explicit accept and discard for the clinical accept path; accept invokes `public.record_ai_acceptance`; discard MUST write nothing; unaccepted content MUST never be persisted as a clinical write. `(§4.1; A5; delivery plan §3.11.6 F2)`
+- **FR-013**: The clinical accept library under `frontend/lib/features/ai/acceptance/` MUST expose explicit accept and discard; accept invokes `public.record_ai_acceptance`; discard MUST write nothing; unaccepted content MUST never be persisted as a clinical write. AI Feature Surfaces that declare clinical accept (`human_accept_required`) MUST use that library — F2 ships the library and harness/tests, not a production Feature Surface. `(§4.1; A5; delivery plan §3.11.6 F2)`
 - **FR-014**: AI Feature Surfaces MUST NOT persist provisional content and MUST NOT auto-commit AI output. `(§4.1; A5)`
 - **FR-015**: The acceptance recording addition MUST be additive clinic-backend surface area; it MUST NOT change existing table semantics. `(§4.2)`
 - **FR-016**: The clinic database MUST gain no knowledge of prompts, providers, quotas, or AI request state beyond the two AI-shaped facts named in §4.2 (token minting capability and human acceptance of AI output here). `(§4.2 boundary note)`
@@ -271,14 +276,16 @@ Coverage rule additions (delivery plan §3.10) inherited by this slice:
 - **Layer Placement**: This slice touches **`backend/` (Supabase / PostgreSQL)** for
   `public.record_ai_acceptance`, `ai_internal.acceptance_targets`,
   `public.ai_accepted_output`, delegated domain write, and `audit_log`, and
-  **`frontend/` (Flutter)** for the clinical accept/discard path on AI Feature Surfaces
-  (§4.2; §4.2.2; §4.1). It does **not** place acceptance logic in `ai-platform/`
-  (Cloudflare Worker): the gateway has no write path into Supabase and journals delivery,
-  not human acceptance (§4.2 boundary note; §4.2.2). The §14 acknowledgement that the
-  gateway is a non-primary, additive component (no domain logic, no business data, no write
-  path into Supabase, always optional) is preserved — F2 reinforces that boundary by
-  keeping clinical acceptance entirely on the clinic side, and by routing clinical writes
-  through existing domain RPCs (constitution III / §14).
+  **`frontend/` (Flutter)** for the clinical accept/discard library under
+  `frontend/lib/features/ai/acceptance/` (harness/tests; production Feature Surface
+  wiring awaits `human_accept_required`) (§4.2; §4.2.2; §4.1). It does **not** place
+  acceptance logic in `ai-platform/` (Cloudflare Worker): the gateway has no write path
+  into Supabase and journals delivery, not human acceptance (§4.2 boundary note;
+  §4.2.2). The §14 acknowledgement that the gateway is a non-primary, additive component
+  (no domain logic, no business data, no write path into Supabase, always optional) is
+  preserved — F2 reinforces that boundary by keeping clinical acceptance entirely on the
+  clinic side, and by routing clinical writes through existing domain RPCs
+  (constitution III / §14).
 - **Data Integrity & Security**: Domain correctness stays in PostgreSQL: the delegated
   domain RPC keeps its own authorization, validation, triggers, and RLS; acceptance grants
   no privilege the clinician did not already have (§4.2.2). Atomicity of domain write +
@@ -355,8 +362,9 @@ Prohibitions from delivery plan §6.4:
   to consume.
 - The first shipped capability may remain `advisory_display` / non-clinical-record per Open
   Decision 1; F2 still ships `record_ai_acceptance`, the registry, `ai_accepted_output`,
-  and the client path against the demonstration target so a later `human_accept_required`
-  capability can write without redesign (delivery plan §3.7; §4.2.2).
+  and the clinical accept library (harness/tests against the demonstration target) so a
+  later `human_accept_required` capability can wire a production Feature Surface without
+  redesign (delivery plan §3.7; §4.2.2).
 - `public.save_visit_documentation` already exists as an ordinary domain RPC (public
   wrapper → `auth_internal.save_visit_documentation`) and is suitable as the demonstration
   target named in §4.2.2; it writes `public.visit_clinical_notes`.

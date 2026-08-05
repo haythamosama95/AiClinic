@@ -16,14 +16,31 @@ const kFirstAiCapabilityId = 'clinic.visit_summary';
 const kFirstAiCapabilityVersion = '1.0.0';
 const kFirstAiIntent = 'generate';
 
+/// Default required context keys for the frozen first capability.
+///
+/// Production hosts SHOULD replace this with the key list from capability
+/// discovery (§5.5); the surface never branches the resolver on capability id.
+const kFirstAiRequiredContextKeys = <String>[visitChiefComplaintV1Key];
+
 const kAiAcceptKey = Key('ai_accept');
 const kAiDiscardKey = Key('ai_discard');
 const kAiTerminalProseKey = Key('ai_terminal_prose');
 const kAiAcknowledgedKey = Key('ai_acknowledged');
+const kAiLocalFailureKey = Key('ai_local_failure');
+const kAiIdleKey = Key('ai_idle');
+const kAiSurfaceSessionActiveKey = Key('ai_surface_session_active');
+const kAiSurfaceLoadingKey = Key('ai_surface_loading');
 
 /// Probe for persistence assertions in widget tests (§6.4 inv. 2).
+///
+/// The surface never writes through this channel. Streaming calls
+/// [recordProvisionalVisible] so the spy is live on the draft path; T16 asserts
+/// [writes] stays empty.
 abstract class AiPersistenceProbe {
   void recordWrite(String key, Object? value);
+
+  /// Observability hook when provisional draft text is shown (not a write).
+  void recordProvisionalVisible(String text);
 
   List<MapEntry<String, Object?>> get writes;
 }
@@ -32,15 +49,24 @@ abstract class AiPersistenceProbe {
 abstract class AiExportProbe {
   void recordExport(Object? payload);
 
+  /// Observability hook when provisional draft text is shown (not an export).
+  void recordProvisionalVisible(String text);
+
   List<Object?> get exports;
 }
 
 class InMemoryAiPersistenceProbe implements AiPersistenceProbe {
   final List<MapEntry<String, Object?>> _writes = [];
+  final List<String> provisionalVisibles = [];
 
   @override
   void recordWrite(String key, Object? value) {
     _writes.add(MapEntry(key, value));
+  }
+
+  @override
+  void recordProvisionalVisible(String text) {
+    provisionalVisibles.add(text);
   }
 
   @override
@@ -49,6 +75,7 @@ class InMemoryAiPersistenceProbe implements AiPersistenceProbe {
 
 class InMemoryAiExportProbe implements AiExportProbe {
   final List<Object?> _exports = [];
+  final List<String> provisionalVisibles = [];
 
   @override
   void recordExport(Object? payload) {
@@ -56,10 +83,24 @@ class InMemoryAiExportProbe implements AiExportProbe {
   }
 
   @override
+  void recordProvisionalVisible(String text) {
+    provisionalVisibles.add(text);
+  }
+
+  @override
   List<Object?> get exports => List.unmodifiable(_exports);
 }
 
-enum _SurfacePhase { loading, streaming, completed, failed, acknowledged, discarded }
+enum _SurfacePhase {
+  idle,
+  loading,
+  streaming,
+  completed,
+  failed,
+  localFailed,
+  acknowledged,
+  discarded,
+}
 
 class FirstAiFeatureSurface extends StatefulWidget {
   const FirstAiFeatureSurface({
@@ -67,16 +108,28 @@ class FirstAiFeatureSurface extends StatefulWidget {
     required this.sdk,
     required this.resolver,
     required this.visitId,
+    this.requiredContextKeys = kFirstAiRequiredContextKeys,
     this.persistenceProbe,
     this.exportProbe,
+    this.onTerminalFailure,
     this.autoInvoke = true,
   });
 
   final AiClientSdk sdk;
   final ContextResolver resolver;
   final String visitId;
+
+  /// Context keys from capability discovery (injected; surface does not hardcode
+  /// discovery itself). Defaults to the frozen first-capability key list.
+  final List<String> requiredContextKeys;
+
   final AiPersistenceProbe? persistenceProbe;
   final AiExportProbe? exportProbe;
+
+  /// Notifies the host when a platform terminal failure arrives so degraded mode
+  /// can apply the §5.4 Client behaviour column.
+  final void Function(TaxonomyCode code)? onTerminalFailure;
+
   final bool autoInvoke;
 
   @override
@@ -84,13 +137,14 @@ class FirstAiFeatureSurface extends StatefulWidget {
 }
 
 class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
-  _SurfacePhase _phase = _SurfacePhase.loading;
+  _SurfacePhase _phase = _SurfacePhase.idle;
   String? _provisionalText;
   String? _terminalText;
   String? _requestReference;
   TaxonomyCode? _failureCode;
   StreamSubscription<SseEvent>? _eventSubscription;
   AiInvokeSession? _session;
+  var _sessionListening = false;
 
   @override
   void initState() {
@@ -104,7 +158,7 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
   void dispose() {
     _eventSubscription?.cancel();
     _session?.cancel();
-    widget.resolver.dispose();
+    // Host owns ContextResolver lifetime (E3 screen-scoped cache).
     super.dispose();
   }
 
@@ -115,11 +169,12 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       _terminalText = null;
       _requestReference = null;
       _failureCode = null;
+      _sessionListening = false;
     });
 
-    final resolveResult = await widget.resolver.resolve([visitChiefComplaintV1Key]);
+    final resolveResult = await widget.resolver.resolve(widget.requiredContextKeys);
     if (resolveResult is ContextResolveFailure) {
-      _setFailed(code: TaxonomyCode.contextInvalid, requestReference: widget.sdk.lastRequestReference ?? 'ctx-fail');
+      _setLocalFailure();
       return;
     }
 
@@ -135,13 +190,27 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
         ),
       );
       _session = session;
+
+      var settledFromEvents = false;
+      void settle(TerminalState terminal) {
+        if (settledFromEvents) {
+          return;
+        }
+        settledFromEvents = true;
+        _onTerminal(terminal);
+      }
+
+      // Live draft from chunks; terminal events settle immediately when present.
+      // session.terminal is also awaited below for stream-drop / cancel-without-event.
       _eventSubscription = session.events.listen((event) {
         switch (event) {
           case ContentChunkEvent(:final kind, :final payload):
             if (_phase == _SurfacePhase.completed ||
                 _phase == _SurfacePhase.failed ||
+                _phase == _SurfacePhase.localFailed ||
                 _phase == _SurfacePhase.acknowledged ||
-                _phase == _SurfacePhase.discarded) {
+                _phase == _SurfacePhase.discarded ||
+                _phase == _SurfacePhase.idle) {
               return;
             }
             if (kind == 'text_delta') {
@@ -149,31 +218,53 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
               if (chunk != null) {
                 setState(() {
                   _phase = _SurfacePhase.streaming;
-                  _provisionalText = chunk;
+                  _provisionalText = (_provisionalText ?? '') + chunk;
                 });
+                widget.persistenceProbe?.recordProvisionalVisible(chunk);
+                widget.exportProbe?.recordProvisionalVisible(chunk);
               }
             }
           case AcceptedEvent(:final requestReference):
             _requestReference = requestReference;
           case CompletedEvent(:final result):
-            _onTerminal(CompletedTerminal(result: result));
+            settle(CompletedTerminal(result: result));
           case FailedEvent(:final code, :final requestReference, :final traceId, :final retrySafe):
-            _onTerminal(
-              FailedTerminal(code: code, requestReference: requestReference, traceId: traceId, retrySafe: retrySafe),
+            settle(
+              FailedTerminal(
+                code: code,
+                requestReference: requestReference,
+                traceId: traceId,
+                retrySafe: retrySafe,
+              ),
             );
-          case ContextRequestedEvent(:final contextRequest):
-            _onTerminal(ContextRequestedTerminal(contextRequest: contextRequest));
-          case HeartbeatEvent():
           case CancelledEvent():
+            settle(const CancelledTerminal());
+          case ContextRequestedEvent(:final contextRequest):
+            settle(ContextRequestedTerminal(contextRequest: contextRequest));
+          case HeartbeatEvent():
             break;
         }
       });
-      unawaited(session.terminal);
+
+      if (mounted) {
+        setState(() => _sessionListening = true);
+      }
+
+      final terminal = await session.terminal;
+      if (!mounted) {
+        return;
+      }
+      // Applies StreamDroppedTerminal / CancelledTerminal when the wire had no
+      // terminal event; no-ops if events already settled the surface.
+      settle(terminal);
     } on PlatformHttpException catch (error) {
+      widget.onTerminalFailure?.call(error.code);
       _setFailed(code: error.code, requestReference: error.requestReference);
+    } on InvokeCancelledException {
+      _returnToIdle();
     } catch (e, st) {
       debugPrint('FirstAiFeatureSurface invoke failed: $e\n$st');
-      _setFailed(code: TaxonomyCode.internalError, requestReference: widget.sdk.lastRequestReference ?? 'invoke-error');
+      _setLocalFailure();
     }
   }
 
@@ -190,14 +281,19 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
           _terminalText = text;
         });
       case FailedTerminal(:final code, :final requestReference):
+        widget.onTerminalFailure?.call(code);
         _setFailed(code: code, requestReference: requestReference);
-      case CancelledTerminal():
-        break;
-      case ContextRequestedTerminal():
+      case StreamDroppedTerminal(:final requestReference):
         _setFailed(
-          code: TaxonomyCode.contextInvalid,
-          requestReference: _requestReference ?? widget.sdk.lastRequestReference,
+          code: TaxonomyCode.internalError,
+          requestReference: requestReference ?? widget.sdk.lastRequestReference,
         );
+      case CancelledTerminal():
+        _returnToIdle();
+      case ContextRequestedTerminal():
+        // single_shot surfaces never receive this (§5.5 rule 4); do not invent
+        // context_invalid — show a local failure with any real reference only.
+        _setLocalFailure();
     }
   }
 
@@ -207,6 +303,26 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
       _failureCode = code;
       _requestReference = requestReference ?? widget.sdk.lastRequestReference;
       _provisionalText = null;
+    });
+  }
+
+  void _setLocalFailure() {
+    setState(() {
+      _phase = _SurfacePhase.localFailed;
+      _failureCode = null;
+      // Only a real SDK-recorded reference — never fabricate support handles.
+      _requestReference = widget.sdk.lastRequestReference;
+      _provisionalText = null;
+    });
+  }
+
+  void _returnToIdle() {
+    setState(() {
+      _phase = _SurfacePhase.idle;
+      _provisionalText = null;
+      _terminalText = null;
+      _failureCode = null;
+      // Keep last known reference for support if one was accepted.
     });
   }
 
@@ -230,11 +346,18 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_phase == _SurfacePhase.loading) const LinearProgressIndicator(),
+        if (_phase == _SurfacePhase.loading)
+          Text(
+            key: _sessionListening ? kAiSurfaceSessionActiveKey : kAiSurfaceLoadingKey,
+            _sessionListening ? 'Waiting for AI…' : 'Loading…',
+          ),
+        if (_phase == _SurfacePhase.idle)
+          const SizedBox.shrink(key: kAiIdleKey),
         if (_provisionalText != null &&
             _phase != _SurfacePhase.completed &&
             _phase != _SurfacePhase.acknowledged &&
-            _phase != _SurfacePhase.discarded)
+            _phase != _SurfacePhase.discarded &&
+            _phase != _SurfacePhase.idle)
           ProvisionalProseView(text: _provisionalText!),
         if (_terminalText != null)
           Semantics(
@@ -243,6 +366,20 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
           ),
         if (_phase == _SurfacePhase.failed && _requestReference != null)
           RequestReferenceView(requestReference: _requestReference!),
+        if (_phase == _SurfacePhase.failed && _requestReference == null)
+          Text(
+            key: kAiLocalFailureKey,
+            'AI request failed. No request reference is available.',
+            style: AppTypography.body(context),
+          ),
+        if (_phase == _SurfacePhase.localFailed) ...[
+          Text(
+            key: kAiLocalFailureKey,
+            'AI request could not be started on this device.',
+            style: AppTypography.body(context),
+          ),
+          if (_requestReference != null) RequestReferenceView(requestReference: _requestReference!),
+        ],
         if (_phase == _SurfacePhase.acknowledged)
           const Text(key: kAiAcknowledgedKey, 'Acknowledged for advisory review.'),
         if (_phase == _SurfacePhase.completed) ...[
@@ -255,7 +392,6 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
             child: const Text('Discard'),
           ),
         ],
-        if (_failureCode != null && _failureCode != TaxonomyCode.contextInvalid) const SizedBox.shrink(),
       ],
     );
   }

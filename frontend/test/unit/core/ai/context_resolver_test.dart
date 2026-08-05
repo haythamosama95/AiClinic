@@ -36,20 +36,54 @@ void main() {
       final failure = result as ContextResolveFailure;
       expect(failure.code, 'unknown_context_key');
       expect(failure.unknownKey, 'patient.demographics@v1');
+      expect(failure.failedKey, isNull);
       expect(result, isNot(isA<ContextResolveSuccess>()));
     });
 
-    test('resolver_api_exposes_no_capability_id', () {
-      Future<ContextResolveResult> assertApiShape(
-        Future<ContextResolveResult> Function(List<String>) resolve,
-      ) =>
-          resolve(['visit.chief_complaint@v1']);
-
+    test('resolver_port_throw_resolution_failed', () async {
       final resolver = ContextResolver(
-        providerPort: FakeContextProviderPort(),
+        providerPort: ThrowingContextProviderPort(),
       );
 
-      expect(assertApiShape(resolver.resolve), completes);
+      final result = await resolver.resolve([visitChiefComplaintV1Key]);
+
+      expect(result, isA<ContextResolveFailure>());
+      final failure = result as ContextResolveFailure;
+      expect(failure.code, 'resolution_failed');
+      expect(failure.failedKey, visitChiefComplaintV1Key);
+      expect(failure.unknownKey, isNull);
+      expect(result, isNot(isA<ContextResolveSuccess>()));
+    });
+
+    test('resolver_api_exposes_no_capability_id', () async {
+      Future<ContextResolveResult> Function(List<String>) assertApiShape(
+        Future<ContextResolveResult> Function(List<String>) resolve,
+      ) =>
+          resolve;
+
+      final spy = ResolverSpy(providerPort: FakeContextProviderPort());
+      final resolve = assertApiShape(spy.resolve);
+
+      // Same key list as if supplied by two different capability manifests —
+      // resolution must be invariant to which capability declared the keys.
+      final first = await resolve([visitChiefComplaintV1Key]);
+      final second = await resolve([visitChiefComplaintV1Key]);
+
+      expect(first, isA<ContextResolveSuccess>());
+      expect(second, isA<ContextResolveSuccess>());
+      expect(
+        (first as ContextResolveSuccess).payload,
+        equals((second as ContextResolveSuccess).payload),
+      );
+      expect(spy.resolveCalls, [
+        [visitChiefComplaintV1Key],
+        [visitChiefComplaintV1Key],
+      ]);
+      for (final call in spy.resolveCalls) {
+        expect(call, isA<List<String>>());
+        expect(call, isNot(contains(isA<Map>())));
+      }
+      spy.dispose();
     });
 
     test('resolver_cache_screen_scoped_discarded_on_dispose', () async {
@@ -64,10 +98,30 @@ void main() {
 
       resolver.dispose();
 
-      final freshResolver = ContextResolver(providerPort: port);
-      await freshResolver.resolve([visitChiefComplaintV1Key]);
+      await expectLater(
+        resolver.resolve([visitChiefComplaintV1Key]),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('disposed'),
+          ),
+        ),
+      );
+
+      // Double-dispose must be safe (host + surface may both call dispose).
+      resolver.dispose();
+
+      // Independent instances with the same port do not share cache.
+      final resolverA = ContextResolver(providerPort: port);
+      final resolverB = ContextResolver(providerPort: port);
+      await resolverA.resolve([visitChiefComplaintV1Key]);
       expect(port.fetchVisitChiefComplaintCallCount, 2);
-      freshResolver.dispose();
+      await resolverB.resolve([visitChiefComplaintV1Key]);
+      expect(port.fetchVisitChiefComplaintCallCount, 3);
+
+      resolverA.dispose();
+      resolverB.dispose();
     });
   });
 }

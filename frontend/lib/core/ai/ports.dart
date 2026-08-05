@@ -24,12 +24,18 @@ class CapabilityInvokeInput {
   final Map<String, dynamic> context;
 
   /// Client-supplied conversation grouping (conversational capabilities only).
+  ///
+  /// H-band §2.3 extension — postdates the E2 single-shot freeze.
   final String? conversationId;
 
   /// Client-supplied leg ordinal (conversational capabilities only).
+  ///
+  /// H-band §2.3 extension — postdates the E2 single-shot freeze.
   final int? turnOrdinal;
 
   /// Prior transcript turns resupplied on each leg (conversational capabilities only).
+  ///
+  /// H-band §2.3 extension — postdates the E2 single-shot freeze.
   final List<Map<String, Object?>>? transcript;
 }
 
@@ -49,6 +55,10 @@ class SubmitRequestHeaders {
 }
 
 /// Open SSE connection returned by a successful submit.
+///
+/// [events] may be single-subscription (natural for HTTP SSE). The AI Client
+/// SDK rebroadcasts internally so its terminal consumer and any caller listeners
+/// do not conflict — port implementers need not expose a broadcast stream.
 abstract class SseConnection {
   Stream<SseEvent> get events;
 
@@ -84,6 +94,29 @@ class PlatformHttpException implements Exception {
 /// Transport failure before a terminal platform event (retryable by SDK).
 class TransportFailure implements Exception {
   const TransportFailure();
+}
+
+/// Transport retries exhausted — caller may offer a manual retry with the same key.
+class TransportRetryExhausted implements Exception {
+  const TransportRetryExhausted({
+    required this.idempotencyKey,
+    required this.attempts,
+  });
+
+  final String idempotencyKey;
+  final int attempts;
+
+  @override
+  String toString() =>
+      'TransportRetryExhausted(idempotencyKey: $idempotencyKey, attempts: $attempts)';
+}
+
+/// Submit-phase cancel via [AiClientSdk.invoke]'s `cancelSignal` before a session opens.
+class InvokeCancelledException implements Exception {
+  const InvokeCancelledException();
+
+  @override
+  String toString() => 'InvokeCancelledException';
 }
 
 /// Injectable port for HTTPS submit that opens the SSE stream.

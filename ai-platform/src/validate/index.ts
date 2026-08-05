@@ -27,14 +27,21 @@ export {
 
 export type RepairPolicy = { allowed: boolean; maxAttempts: number };
 
-export type ReaskPort = (errors: ValidationError[]) => Promise<AssembledOutput>;
+export type ReaskUsage = { tokens: number; cost: number };
+
+export type ReaskResult = {
+  output: AssembledOutput;
+  usage: ReaskUsage;
+};
+
+export type ReaskPort = (errors: ValidationError[]) => Promise<ReaskResult>;
 
 export type RepairJournalSink = (record: {
   attempt: number;
   errors: ValidationError[];
 }) => void;
 
-export type RepairCostSink = (usage: { tokens: number; cost: number }) => void;
+export type RepairCostSink = (usage: ReaskUsage) => void;
 
 export type ValidateAndRepairInput = {
   output: AssembledOutput;
@@ -51,7 +58,6 @@ export type ValidateAndRepairInput = {
   reask?: ReaskPort;
   repairJournalSink?: RepairJournalSink;
   repairCostSink?: RepairCostSink;
-  repairCostPerAttempt?: { tokens: number; cost: number };
 };
 
 export type ValidateAndRepairSuccess = { ok: true; validated: unknown };
@@ -59,10 +65,22 @@ export type ValidateAndRepairFailure = {
   ok: false;
   code: "validation_failed";
   phase: ValidationPhase;
+  message: string;
 };
 export type ValidateAndRepairResult =
   | ValidateAndRepairSuccess
   | ValidateAndRepairFailure;
+
+function terminalFailure(
+  failure: ValidationError,
+): ValidateAndRepairFailure {
+  return {
+    ok: false,
+    code: "validation_failed",
+    phase: failure.phase,
+    message: failure.message,
+  };
+}
 
 export async function validateAndRepair(
   input: ValidateAndRepairInput,
@@ -89,19 +107,11 @@ export async function validateAndRepair(
     }
 
     if (!input.repairPolicy.allowed || attempt >= input.repairPolicy.maxAttempts) {
-      return {
-        ok: false,
-        code: "validation_failed",
-        phase: result.failure.phase,
-      };
+      return terminalFailure(result.failure);
     }
 
     if (!input.reask) {
-      return {
-        ok: false,
-        code: "validation_failed",
-        phase: result.failure.phase,
-      };
+      return terminalFailure(result.failure);
     }
 
     attempt += 1;
@@ -109,10 +119,18 @@ export async function validateAndRepair(
       attempt,
       errors: [result.failure],
     });
-    input.repairCostSink?.(
-      input.repairCostPerAttempt ?? { tokens: 0, cost: 0 },
-    );
 
-    currentOutput = await input.reask([result.failure]);
+    let reaskResult: ReaskResult;
+    try {
+      reaskResult = await input.reask([result.failure]);
+    } catch {
+      return terminalFailure({
+        phase: result.failure.phase,
+        message: `reask failed: ${result.failure.message}`,
+      });
+    }
+
+    input.repairCostSink?.(reaskResult.usage);
+    currentOutput = reaskResult.output;
   }
 }

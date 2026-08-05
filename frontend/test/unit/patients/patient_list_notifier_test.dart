@@ -254,9 +254,7 @@ void main() {
     }
 
     setUp(() {
-      repository = FakePatientRepository(
-        patients: samplePatientList(count: 2),
-      );
+      repository = FakePatientRepository(patients: samplePatientList(count: 2));
     });
 
     test('initial build uses default filters and issues exactly one search', () async {
@@ -323,9 +321,7 @@ void main() {
       await container.read(patientListProvider.future);
       final callsBefore = repository.searchCallCount;
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(searchText: 'Sara'));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(searchText: 'Sara'));
 
       expect(repository.lastQuery, 'Sara');
       expect(repository.searchCallCount, callsBefore + 1);
@@ -345,9 +341,7 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(page: 2, pageSize: 20));
 
       expect(repository.lastOffset, 20);
       expect(repository.lastLimit, 20);
@@ -369,9 +363,7 @@ void main() {
       final container = createContainer();
       addTearDown(container.dispose);
 
-      await container
-          .read(patientListProvider.notifier)
-          .applyFilters(const PatientListFilters(page: 2, pageSize: 20));
+      await container.read(patientListProvider.notifier).applyFilters(const PatientListFilters(page: 2, pageSize: 20));
 
       final state = container.read(patientListProvider).requireValue;
       expect(state.rows, isEmpty);
@@ -380,9 +372,7 @@ void main() {
     });
 
     test('search error surfaces as AsyncValue error then reload recovers', () async {
-      final failingRepository = _ToggleSearchPatientRepository(
-        patients: samplePatientList(count: 1),
-      );
+      final failingRepository = _ToggleSearchPatientRepository(patients: samplePatientList(count: 1));
       final container = ProviderContainer(
         overrides: [
           authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
@@ -425,34 +415,31 @@ void main() {
       expect(repository.lastLimit, 10);
     });
 
-    test(
-      'concurrent applyFilters keeps the last-applied filters when earlier response is slower',
-      () async {
-        final delayedRepository = _SequentialDelayPatientRepository(
-          delays: const [Duration(milliseconds: 200), Duration.zero],
-        );
-        final container = ProviderContainer(
-          overrides: [
-            authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
-            searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(delayedRepository)),
-          ],
-        );
-        addTearDown(container.dispose);
-        final notifier = container.read(patientListProvider.notifier);
+    test('concurrent applyFilters keeps the last-applied filters when earlier response is slower', () async {
+      final delayedRepository = _SequentialDelayPatientRepository(
+        delays: const [Duration(milliseconds: 200), Duration.zero],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(delayedRepository)),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(patientListProvider.notifier);
 
-        await container.read(patientListProvider.future);
-        final callsBefore = delayedRepository.searchCallCount;
+      await container.read(patientListProvider.future);
+      final callsBefore = delayedRepository.searchCallCount;
 
-        final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
-        final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
-        await Future.wait([first, second]);
+      final first = notifier.applyFilters(const PatientListFilters(searchText: 'Alpha'));
+      final second = notifier.applyFilters(const PatientListFilters(searchText: 'Beta'));
+      await Future.wait([first, second]);
 
-        final state = container.read(patientListProvider).requireValue;
-        expect(state.filters.searchText, 'Beta');
-        expect(state.rows.single.item.fullName, contains('Beta'));
-        expect(delayedRepository.searchCallCount, callsBefore + 2);
-      },
-    );
+      final state = container.read(patientListProvider).requireValue;
+      expect(state.filters.searchText, 'Beta');
+      expect(state.rows.single.item.fullName, contains('Beta'));
+      expect(delayedRepository.searchCallCount, callsBefore + 2);
+    });
   });
 }
 
@@ -530,121 +517,6 @@ class _TrackingPatientRepository implements PatientRepository {
 
   @override
   Future<String> reassignPatientMrn({required String patientId, required String newMrn}) => throw UnimplementedError();
-<<<<<<< HEAD
-=======
-}
-
-class _NoPatientListAuthNotifier extends TestAuthSessionNotifier {
-  @override
-  AuthSessionState build() => AuthSessionState(
-    status: AuthSessionStatus.authenticated,
-    context: sampleAuthSessionContext(permissions: const {}),
-  );
-}
-
-class _NoActiveBranchAuthNotifier extends TestAuthSessionNotifier {
-  @override
-  AuthSessionState build() => AuthSessionState(
-    status: AuthSessionStatus.authenticated,
-    context: sampleAuthSessionContext(branchIds: const [], activeBranchId: null),
-  );
-}
-
-class _ToggleSearchPatientRepository extends FakePatientRepository {
-  _ToggleSearchPatientRepository({super.patients});
-
-  bool throwOnNextSearch = false;
-
-  @override
-  Future<PatientSearchPage> searchPatients({
-    String? query,
-    required PatientListScope scope,
-    String? branchId,
-    int limit = 25,
-    int offset = 0,
-    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
-    PatientSortField sortField = PatientSortField.nameAsc,
-  }) async {
-    searchCallCount++;
-    if (throwOnNextSearch) {
-      throwOnNextSearch = false;
-      throw StateError('search failed');
-    }
-    return super.searchPatients(
-      query: query,
-      scope: scope,
-      branchId: branchId,
-      limit: limit,
-      offset: offset,
-      lastVisitFilter: lastVisitFilter,
-      sortField: sortField,
-    );
-  }
-}
-
-class _SequentialDelayPatientRepository implements PatientRepository {
-  _SequentialDelayPatientRepository({required List<Duration> delays}) : _delays = delays;
-
-  final List<Duration> _delays;
-  int _callIndex = 0;
-  int searchCallCount = 0;
-
-  @override
-  Future<PatientSearchPage> searchPatients({
-    String? query,
-    required PatientListScope scope,
-    String? branchId,
-    int limit = 25,
-    int offset = 0,
-    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
-    PatientSortField sortField = PatientSortField.nameAsc,
-  }) async {
-    searchCallCount++;
-    final delay = _callIndex < _delays.length ? _delays[_callIndex] : Duration.zero;
-    _callIndex++;
-    if (delay > Duration.zero) {
-      await Future<void>.delayed(delay);
-    }
-
-    final label = query ?? 'browse';
-    return PatientSearchPage(
-      items: [
-        PatientListItem(
-          id: 'patient-$label',
-          fullName: 'Result for $label',
-          registeringBranchId: testBranchAId,
-          registeringBranchName: 'Branch A',
-        ),
-      ],
-      totalCount: 1,
-      limit: limit,
-      offset: offset,
-    );
-  }
-
-  @override
-  Future<void> archivePatient(String patientId) => throw UnimplementedError();
-
-  @override
-  Future<List<DuplicateCandidate>> checkDuplicates({
-    String? fullName,
-    String? phone,
-    DateTime? dateOfBirth,
-    String? excludePatientId,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<CreatePatientResult> createPatient(CreatePatientInput input) => throw UnimplementedError();
-
-  @override
-  Future<PatientDetail> getPatient(String patientId) => throw UnimplementedError();
-
-  @override
-  Future<DateTime> updatePatient(UpdatePatientInput input) => throw UnimplementedError();
-
-  @override
-  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) => throw UnimplementedError();
->>>>>>> master
 }
 
 class _NoPatientListAuthNotifier extends TestAuthSessionNotifier {

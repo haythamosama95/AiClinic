@@ -17,6 +17,9 @@ export type ScoreReport = {
 };
 
 export function deriveOverall(cases: CaseScore[]): "pass" | "fail" {
+  if (cases.length === 0) {
+    return "fail";
+  }
   for (const entry of cases) {
     if (entry.quality === "fail" || entry.schema === "fail") {
       return "fail";

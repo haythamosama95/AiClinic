@@ -13,17 +13,23 @@ deliberately failing fixtures and a clean-tree pass with full path coverage.
   (client-side lint as an architectural component, not an optional test).
 - **Spec** — Five named CI-lint tests (T1–T5) proving detection of three forbidden
   categories plus clean-tree pass and full client-source coverage (FR-001–FR-006).
-- **Plan** — Standalone Dart script under `frontend/tool/architecture_guard/`, three
-  fixtures outside clean scan roots, dedicated CI step on `frontend-quality`.
+- **Plan** — Standalone Dart script under `frontend/tool/architecture_guard/`, fixtures
+  outside clean scan roots, dedicated CI step on `frontend-quality` triggered on the
+  `ai/**` branch line.
 
 ## 2. What was implemented
 
-- Standalone Dart guard script (`architecture_guard.dart`) scanning `lib/` and `test/`
-  for prompt-like strings, provider names, and model identifiers.
-- Three deliberately failing fixtures (one per forbidden category) invoked in
-  expect-fail CI runs.
-- Dedicated architecture-guard CI step on the existing `frontend-quality` job.
-- Clean-tree gate with full client-source coverage assertion (T5).
+- Standalone Dart guard script (`architecture_guard.dart`) scanning `lib/`, `test/`,
+  `windows/`, `linux/`, and `web/` (Dart + native/web text) with whole-file /
+  whitespace-tolerant matching; exit 1 = violations/coverage gaps, exit 2 = missing
+  scan root.
+- Deliberately failing fixtures (multi-line prompt, platform-integrated provider id,
+  current vendor + platform model ids) invoked with expect-fail exit-code-1 + category
+  assertions; multi-root and `test/` probes prove every configured root is live.
+- Tree-wide coverage discovery with an explicit exclusion list (T5), plus a lib-only
+  omission case that must fail.
+- Dedicated architecture-guard CI step; workflow triggers include `ai/**` pushes and
+  PRs targeting `ai/master`.
 
 See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file traceability.
 
@@ -32,10 +38,11 @@ See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file 
 | Path | Role |
 | --- | --- |
 | `frontend/tool/architecture_guard/architecture_guard.dart` | Standalone CI lint script; detection patterns and coverage assertion |
-| `frontend/tool/architecture_guard/fixtures/prompt_like_string/forbidden.dart` | T1 fixture — prompt-like string |
-| `frontend/tool/architecture_guard/fixtures/provider_name/forbidden.dart` | T2 fixture — provider name |
-| `frontend/tool/architecture_guard/fixtures/model_identifier/forbidden.dart` | T3 fixture — model identifier |
-| `.github/workflows/ci.yml` | Dedicated architecture-guard step (expect-fail fixtures + clean-tree gate) |
+| `frontend/tool/architecture_guard/fixtures/prompt_like_string/forbidden.dart` | T1 fixture — multi-line prompt-like string |
+| `frontend/tool/architecture_guard/fixtures/provider_name/forbidden.dart` | T2 fixture — platform-integrated provider name |
+| `frontend/tool/architecture_guard/fixtures/model_identifier/forbidden.dart` | T3 fixture — model identifiers |
+| `frontend/tool/architecture_guard/fixtures/multi_root/` | Second-root scan proof |
+| `.github/workflows/ci.yml` | Triggers + architecture-guard step (expect-fail + clean-tree gate) |
 
 ## 4. Prerequisites
 
@@ -49,24 +56,37 @@ From the repository root:
 ```bash
 cd frontend
 
-# T1 — guard_prompt_like_string_fails_build (expect non-zero)
+# T1 — guard_prompt_like_string_fails_build (expect exit 1 + "prompt-like string")
 dart tool/architecture_guard/architecture_guard.dart \
   tool/architecture_guard/fixtures/prompt_like_string/
 
-# T2 — guard_provider_name_fails_build (expect non-zero)
+# T2 — guard_provider_name_fails_build (expect exit 1 + "provider name")
 dart tool/architecture_guard/architecture_guard.dart \
   tool/architecture_guard/fixtures/provider_name/
 
-# T3 — guard_model_identifier_fails_build (expect non-zero)
+# T3 — guard_model_identifier_fails_build (expect exit 1 + "model identifier")
 dart tool/architecture_guard/architecture_guard.dart \
   tool/architecture_guard/fixtures/model_identifier/
 
-# T4 + T5 — guard_clean_tree_passes + guard_covers_every_client_source_path (expect zero)
+# Multi-root second-root proof (expect exit 1)
+dart tool/architecture_guard/architecture_guard.dart \
+  tool/architecture_guard/fixtures/multi_root/root_a \
+  tool/architecture_guard/fixtures/multi_root/root_b
+
+# T5 omission case (expect non-zero)
+dart tool/architecture_guard/architecture_guard.dart lib --assert-coverage
+
+# Missing root is operator error (expect exit 2)
+dart tool/architecture_guard/architecture_guard.dart \
+  tool/architecture_guard/fixtures/does_not_exist
+
+# T4 + T5 — guard_clean_tree_passes + coverage (expect zero)
 dart tool/architecture_guard/architecture_guard.dart --assert-coverage
 ```
 
-Expected: fixture invocations exit non-zero (forbidden content detected); clean-tree
-invocation exits zero with message `architecture_guard: clean — no forbidden content detected.`
+Expected: fixture / multi-root invocations exit 1; omission exits non-zero; missing root
+exits 2; clean-tree exits zero with
+`architecture_guard: clean — no forbidden content detected.`
 
 ## 6. Inspect the changes
 
@@ -75,6 +95,6 @@ invocation exits zero with message `architecture_guard: clean — no forbidden c
 ls frontend/tool/architecture_guard/
 cat frontend/tool/architecture_guard/architecture_guard.dart
 
-# Confirm the CI step name in the workflow
-grep -n "Architecture guard" .github/workflows/ci.yml
+# Confirm the CI step name and ai/** triggers in the workflow
+grep -n "Architecture guard\|ai/\*\*\|ai/master" .github/workflows/ci.yml
 ```

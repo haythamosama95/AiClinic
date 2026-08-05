@@ -1,19 +1,23 @@
 import type { AdapterSseEvent } from "../adapter";
 import type { TaxonomyCode } from "../errors";
 import {
-  runValidationPhases,
+  validateAndRepair,
   type BusinessRuleRegistry,
+  type RepairCostSink,
+  type RepairJournalSink,
+  type RepairPolicy,
+  type ReaskPort,
   type SafetyMarkers,
   type SchemaRegistry,
 } from "../validate";
-import type { ProseGuardThresholds } from "./prose-guards";
 
 /**
  * Structured-mode stream broker (D6).
  *
- * Shared sink / chunk / ticker shapes intentionally mirror the NEW prose
- * broker API that the parent rewrite will land on `./index`. This module is
- * self-contained so it can land before that rewrite.
+ * Lives beside the D4 prose broker in `./index.ts`. Shares sink / chunk /
+ * ticker shapes so callers can wire either path with the same plumbing, but
+ * owns structured emission and commit-time validation (including optional
+ * bounded repair).
  */
 
 export type StreamChunk = string | { kind: "regenerating" };
@@ -23,6 +27,8 @@ export type OutputMode = "structured" | "structured_atomic";
 
 export interface ChunkSource {
   getPartialUsage?(): { tokens: number; cost: number } | undefined;
+  /** True when the provider finished because of an output-length limit. */
+  wasTruncated?(): boolean;
   stream(input: { signal: AbortSignal }): AsyncIterable<StreamChunk>;
 }
 
@@ -55,6 +61,7 @@ export interface StructuredValidationConfig {
   businessValidationRuleRefs: readonly string[];
   schemaRegistry: SchemaRegistry;
   ruleRegistry: BusinessRuleRegistry;
+  repairPolicy: RepairPolicy;
   context?: unknown;
   safetyMarkers?: SafetyMarkers;
 }
@@ -67,10 +74,12 @@ export interface StructuredStreamBrokerOptions {
   heartbeatTicker: HeartbeatTicker;
   creditSink: CreditSink;
   journalTerminalSink: JournalTerminalSink;
-  /** Required for API compatibility with the shared broker options shape; unused on the structured path. */
-  guardThresholds: ProseGuardThresholds;
   outputMode: OutputMode;
   structuredValidation: StructuredValidationConfig;
+  /** When omitted, repair is refused even if the policy allows it. */
+  reask?: ReaskPort;
+  repairJournalSink?: RepairJournalSink;
+  repairCostSink?: RepairCostSink;
 }
 
 export interface StreamBrokerController {
@@ -96,6 +105,50 @@ function isAbortError(error: unknown): boolean {
     error instanceof DOMException &&
     error.name === "AbortError"
   );
+}
+
+/**
+ * Yields from `iterable` until `signal` aborts, even when the source ignores
+ * the abort signal passed to `stream()`. Mirrors the D4 prose broker defense.
+ */
+async function* abortableAsyncIterate<T>(
+  iterable: AsyncIterable<T>,
+  signal: AbortSignal,
+): AsyncIterable<T> {
+  const iterator = iterable[Symbol.asyncIterator]();
+  try {
+    while (!signal.aborted) {
+      const nextPromise = iterator.next();
+      const result = await new Promise<IteratorResult<T>>((resolve, reject) => {
+        if (signal.aborted) {
+          resolve({ done: true, value: undefined as T });
+          return;
+        }
+        const onAbort = () => {
+          resolve({ done: true, value: undefined as T });
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        nextPromise.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      });
+      if (result.done) {
+        return;
+      }
+      yield result.value;
+    }
+  } finally {
+    if (typeof iterator.return === "function") {
+      await iterator.return(undefined);
+    }
+  }
 }
 
 function tryParsePartialStructured(assembled: string): unknown | null {
@@ -197,18 +250,26 @@ export function createStructuredStreamBroker(
     handleFailed("validation_failed");
   };
 
-  const completeStructured = (assembled: string): void => {
+  const completeStructured = async (assembled: string): Promise<void> => {
     const config = options.structuredValidation;
 
-    const validation = runValidationPhases({
-      output: { raw: assembled, transportValid: true },
+    const validation = await validateAndRepair({
+      output: {
+        raw: assembled,
+        transportValid: true,
+        truncated: options.chunkSource.wasTruncated?.() === true,
+      },
       mode: outputMode === "structured_atomic" ? "structured_atomic" : "structured",
       outputSchemaRef: config.outputSchemaRef,
       businessValidationRuleRefs: config.businessValidationRuleRefs,
+      repairPolicy: config.repairPolicy,
       schemaRegistry: config.schemaRegistry,
       ruleRegistry: config.ruleRegistry,
       context: config.context,
       safetyMarkers: config.safetyMarkers,
+      reask: options.reask,
+      repairJournalSink: options.repairJournalSink,
+      repairCostSink: options.repairCostSink,
     });
 
     if (!validation.ok) {
@@ -251,9 +312,13 @@ export function createStructuredStreamBroker(
 
     try {
       try {
-        for await (const chunk of chunkSource.stream({
+        const rawStream = chunkSource.stream({
           signal: abortController.signal,
-        })) {
+        });
+        for await (const chunk of abortableAsyncIterate(
+          rawStream,
+          abortController.signal,
+        )) {
           if (terminalEmitted) {
             return;
           }
@@ -327,7 +392,7 @@ export function createStructuredStreamBroker(
         return;
       }
 
-      completeStructured(assembled);
+      await completeStructured(assembled);
     } finally {
       heartbeatHandle?.cancel();
     }

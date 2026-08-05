@@ -18,7 +18,7 @@ E3 lands the Flutter **Context Resolver** as the §4.1 generic key→resolver re
 
 **Storage**: No D1 entities (spec Key Entities: not applicable). Clinic: ordinary read over existing visit clinical-notes rows — no new clinic tables, no AI-shaped columns, no prompts/providers/quotas/AI request state (§4.2 Boundary note). Resolver cache is ephemeral instance state on one Resolver per screen, discarded on dispose (Clarification Q1; FR-005).
 
-**Testing**: Flutter unit + SQL / RLS + contract (delivery plan §3.11.5 row E3; §13.5 Client contract tests). Named cases E3-T01–E3-T10 via `flutter test` (Resolver unit + contract suite) and `psql` SQL/RLS scripts (RPC shape + RLS denial + no AI parameter + A5 shape match), joined to CI permanently (delivery plan §3.10). Contract suite feeds C1-shaped active manifests through an injectable manifest source; E3-T10 uses a synthetic/fixture manifest declaring an unregistered key (Clarification Q3). No live Worker required for the Flutter suite (mirrors E2 injectable-port precedent).
+**Testing**: Flutter unit + SQL / RLS + contract (delivery plan §3.11.5 row E3; §13.5 Client contract tests). Named cases E3-T01–E3-T10 via `flutter test` (Resolver unit + contract suite) and `psql` SQL/RLS scripts (RPC shape + branch-scope / clinical-access denial + no AI parameter + A5 shape match), joined to CI permanently (delivery plan §3.10). Contract suite feeds C1-shaped active manifests **derived from** `ai-platform/manifests/published/*.json` (checked-in fixture under `frontend/test/fixtures/ai/published_manifests_discovery.json`) through an injectable manifest source, with a Dart drift gate asserting fixture ↔ published agreement; E3-T10 uses a synthetic/fixture manifest declaring an unregistered key (Clarification Q3). **Hermetic narrowing (flagged Deviation 1 fix):** no live Worker discovery fetch — fixtures generated/derived from platform published manifests with a drift gate still catch key drift (§13.5 purpose). No live Worker required for the Flutter suite (mirrors E2 injectable-port precedent).
 
 **Target Platform**: Flutter Windows desktop client (`frontend/`) and local/clinic Supabase PostgreSQL (`backend/`). AI remains optional and additive; this slice adds no gateway stage.
 
@@ -133,7 +133,7 @@ E3 has `Needs: E2, C1` (delivery plan §3.6). It also Consumes **A5 via §5.2 / 
 | Consumes entry | Existing module / file / type it binds to |
 | --- | --- |
 | **E2 — AI Client SDK** (§4.1 AI Client SDK; §5.5; §5.4) | `frontend/lib/core/ai/ai_client_sdk.dart`, `ports.dart`, `sse_events.dart`, `taxonomy.dart` (transport-only acquire AAT, submit, stream, cancel, last-N request references). E3 adds Context Resolver **siblings** under the same folder; it does not reinterpret transport, idempotency, SSE consumption, terminal-error retry, or embed those concerns into the Resolver. |
-| **C1 — Capability registry, resolver stage, and discovery endpoint** (§4.3.4, §5.1, §5.5 discovery, §5.2 Discovery) | Frozen artifact `specs/025-capability-resolver-discovery/contracts/capability-registry.md`; implementation `ai-platform/src/capability/index.ts` (`discover`, `DiscoveryResult`, `buildDiscoveryResponse` — body `{ manifests }`, `ETag` header, active+granted filtering). E3’s client contract suite fetches active manifests in that wire shape via an injectable manifest source (fixtures representing the live active set in CI; Clarification Q3 for the unsatisfiable-key case) and asserts Resolver coverage of every declared context key. E3 does not redefine discovery, capability resolution, or manifest schema, and does not modify C1 modules. |
+| **C1 — Capability registry, resolver stage, and discovery endpoint** (§4.3.4, §5.1, §5.5 discovery, §5.2 Discovery) | Frozen artifact `specs/025-capability-resolver-discovery/contracts/capability-registry.md`; implementation `ai-platform/src/capability/index.ts` (`discover`, `DiscoveryResult`, `buildDiscoveryResponse` — body `{ manifests }`, `ETag` header, active+granted filtering). E3’s client contract suite loads active manifests in that wire shape via an injectable manifest source fed by fixtures **derived from** `ai-platform/manifests/published/*.json` with a drift gate (hermetic narrowing of live discovery; Clarification Q3 for the unsatisfiable-key case) and asserts Resolver coverage of every declared context key plus A5 shape checks. E3 does not redefine discovery, capability resolution, or manifest schema, and does not modify C1 modules. |
 | **A5 via §5.2 / C1 — Context key vocabulary and first key shape** (§5.2; delivery plan §3.2 A5) | Frozen artifact `specs/019-ai-context-keys-d1-config/contracts/context-key-schema.md`; implementation `ai-platform/src/context/index.ts` — `VISIT_CHIEF_COMPLAINT_V1` (`visit.chief_complaint@v1`), `VISIT_CHIEF_COMPLAINT_V1_SHAPE` (`visit_id` uuid required; `complaint` string maxLength 10000; `recorded_at` optional iso8601), `validateKey` / `validatePayload`. E3’s first context provider RPC returns that shape and the contract/unit suites resolve declared keys against it; E3 does not rename keys, change shapes, or publish a new key version. |
 
 No Consumes entry lacks an existing implementation. None is modified (delivery plan §2.3). Stop condition 2 is not triggered.
@@ -163,12 +163,16 @@ Stop condition 5 (multi-component without reason) is not triggered — reason re
 
 | File | FR(s) | Status |
 | --- | --- | --- |
-| `frontend/lib/core/ai/context_provider_port.dart` | FR-001, FR-008 | NEW — injectable clinic-read port used by registered resolver functions (production: Supabase RPC; tests: in-memory fake). |
+| `frontend/lib/core/ai/context_provider_port.dart` | FR-001, FR-008 | NEW — injectable clinic-read port used by registered resolver functions (production: `SupabaseContextProviderPort`; tests: in-memory fake). |
+| `frontend/lib/core/ai/supabase_context_provider_port.dart` | FR-001, FR-008 | NEW — production port: `public.get_visit_chief_complaint` with constructor-injected `visitId` (per-visit port construction). |
 | `frontend/lib/core/ai/context_registration.dart` | FR-001, FR-002, FR-006 | NEW — closed static map of context key → resolver function in one registration module (Clarification Q2); registers `visit.chief_complaint@v1` against the first context provider RPC. |
-| `frontend/lib/core/ai/context_resolver.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-007, FR-013 | NEW — Context Resolver: `resolve(List<String> keys)` → assembled payload or typed failure; no capability-id parameter or branching; instance-state cache discarded with the instance (Clarification Q1); never invents data for unknown keys; no prompts/providers/models. |
-| `frontend/test/unit/core/ai/fakes.dart` | FR-001–FR-012 (test support) | EXTEND — fake clinic-read port and injectable active-manifest source returning C1-shaped `{ manifests }` (Clarification Q3). |
-| `frontend/test/unit/core/ai/context_resolver_test.dart` | FR-001–FR-007, FR-013; E3-T01–E3-T04 | NEW — Flutter unit suite for Resolver happy path, unknown-key typed failure, no capability id, screen-scoped cache discard. |
-| `frontend/test/unit/core/ai/context_contract_test.dart` | FR-011, FR-012; E3-T09–E3-T10 | NEW — client contract suite: every declared key of every active manifest resolvable; synthetic unregistered-key manifest fails the suite (Clarification Q3). |
+| `frontend/lib/core/ai/context_resolver.dart` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-007, FR-013 | NEW — Context Resolver: `resolve(List<String> keys)` → assembled payload or typed failure (`unknown_context_key` / `resolution_failed`); no capability-id parameter or branching; instance-state cache discarded with the instance (Clarification Q1); never invents data for unknown keys; no prompts/providers/models. |
+| `frontend/test/unit/core/ai/fakes.dart` | FR-001–FR-012 (test support) | EXTEND — fake clinic-read port, throwing port, and injectable active-manifest source returning C1-shaped `{ manifests }` (Clarification Q3). |
+| `frontend/test/unit/core/ai/context_resolver_test.dart` | FR-001–FR-005; E3-T01–E3-T04 | NEW — Resolver unit cases (payload assembly, unknown key, no capability id / invariance spy, dispose + cache isolation, resolution_failed). |
+| `frontend/test/unit/core/ai/context_contract_test.dart` | FR-011, FR-012; E3-T09–E3-T10 | NEW — client contract suite: derived published manifests + drift gate; every declared key resolvable with A5 shape checks; synthetic unregistered-key manifest fails the suite (Clarification Q3). |
+| `frontend/test/fixtures/ai/published_manifests_discovery.json` | FR-011 | NEW — hermetic `{ manifests }` body copied from `ai-platform/manifests/published/`. |
+| `frontend/test/unit/core/ai/published_manifests.dart` | FR-011 | NEW — fixture loader + drift gate helper. |
+| `frontend/test/unit/core/ai/supabase_context_provider_port_test.dart` | FR-008 | NEW — production port unit tests via injectable RPC callable. |
 | `backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql` | FR-008, FR-009, FR-010 | NEW — ordinary `auth_internal` + `public` read RPC returning `{ visit_id, complaint, recorded_at }` for `visit.chief_complaint@v1` under caller RLS; no AI-specific parameters; no prompts/providers/quotas/AI request state. |
 | `backend/tests/context_provider_rpc.sql` | FR-008–FR-010; E3-T05–E3-T08 | NEW — SQL/RLS suite: declared shape, RLS out-of-scope denial, no AI-specific parameter, shape matches A5 published key. |
 | `backend/tests/run_ai_platform_trust_tests.sh` | — (verification wiring) | MODIFIED — append `context_provider_rpc.sql` so the suite joins CI permanently (delivery plan §3.10). |
@@ -180,22 +184,22 @@ Every file traces to an `FR-###` (or Freezes / deferred Documentation). No file 
 
 ## Test Layout
 
-The spec’s Test plan names ten tests at layers **Flutter unit + SQL / RLS + contract** (delivery plan §3.11.5 row E3). Mapping to §13.5: Flutter unit cases exercise the Resolver; SQL/RLS cases exercise the clinic RPC; Client contract tests exercise coverage against fetched (C1-shaped) manifests. Tests join CI permanently (delivery plan §3.10).
+The spec’s Test plan names ten tests at layers **Flutter unit + SQL / RLS + contract** (delivery plan §3.11.5 row E3). Mapping to §13.5: Flutter unit cases exercise the Resolver; SQL/RLS cases exercise the clinic RPC; Client contract tests exercise coverage against C1-shaped manifests **derived from** platform published artifacts (hermetic drift gate). Tests join CI permanently (delivery plan §3.10).
 
 | Test ID | Named test | Spec layer | Where it lives | Asserts |
 | --- | --- | --- | --- | --- |
 | E3-T01 | `resolver_key_list_assembles_payload` | Flutter unit | `context_resolver_test.dart` | Key list resolves to a payload conforming to declared shapes (§4.1; §5.2) |
 | E3-T02 | `resolver_unknown_key_typed_failure` | Flutter unit | `context_resolver_test.dart` | Unknown key → typed failure; no partial success payload |
-| E3-T03 | `resolver_api_exposes_no_capability_id` | Flutter unit | `context_resolver_test.dart` | Public API has no capability-id parameter and no capability branching |
-| E3-T04 | `resolver_cache_screen_scoped_discarded_on_dispose` | Flutter unit | `context_resolver_test.dart` | Cache is instance/screen-scoped; discarded when the instance is disposed (Clarification Q1) |
+| E3-T03 | `resolver_api_exposes_no_capability_id` | Flutter unit | `context_resolver_test.dart` | Public API has no capability-id parameter; ResolverSpy proves key-list invariance across conceptual capability sources |
+| E3-T04 | `resolver_cache_screen_scoped_discarded_on_dispose` | Flutter unit | `context_resolver_test.dart` | Cache is instance/screen-scoped; `dispose()` → `StateError` on resolve; instances do not share cache (Clarification Q1) |
 | E3-T05 | `context_rpc_returns_declared_shape` | SQL / RLS | `context_provider_rpc.sql` | RPC returns `visit.chief_complaint@v1` declared shape |
-| E3-T06 | `context_rpc_rls_denies_out_of_scope` | SQL / RLS | `context_provider_rpc.sql` | RLS denies out-of-scope rows |
+| E3-T06 | `context_rpc_scope_denies_out_of_scope` | SQL / RLS | `context_provider_rpc.sql` | Branch-scope / clinical-access checks deny out-of-scope rows |
 | E3-T07 | `context_rpc_no_ai_specific_parameter` | SQL / RLS | `context_provider_rpc.sql` | RPC signature/body has no AI-specific parameter |
 | E3-T08 | `context_rpc_shape_matches_a5_published_key` | SQL / RLS | `context_provider_rpc.sql` | Returned shape matches A5 `VISIT_CHIEF_COMPLAINT_V1_SHAPE` |
-| E3-T09 | `contract_every_active_manifest_key_resolvable` | Contract (§13.5 Client contract tests) | `context_contract_test.dart` | Every declared key of every active (C1-shaped) manifest is resolvable |
+| E3-T09 | `contract_every_active_manifest_key_resolvable` | Contract (§13.5 Client contract tests) | `context_contract_test.dart` | Derived published manifests + drift gate; every declared key resolvable; A5 shape on resolved Maps |
 | E3-T10 | `contract_manifest_unknown_key_fails_suite` | Contract (§13.5 Client contract tests) | `context_contract_test.dart` | Synthetic/fixture manifest with unregistered key fails the suite (Clarification Q3) |
 
-Every named test places in a §13.5 / §3.11.5 layer — stop condition 3 not triggered. Coverage matches delivery plan §3.10 / spec Coverage paragraph (happy paths, unknown-key typed failure, RLS denial, no capability id, screen-scoped cache, ordinary RPC with no AI knowledge, contract fail-closed).
+Every named test places in a §13.5 / §3.11.5 layer — stop condition 3 not triggered. Coverage matches delivery plan §3.10 / spec Coverage paragraph (happy paths, unknown-key typed failure, branch-scope / clinical-access denial, no capability id, screen-scoped cache, ordinary RPC with no AI knowledge, contract fail-closed).
 
 ## Sequencing
 
@@ -205,7 +209,7 @@ Tests land first or alongside their implementation, never after (delivery plan �
 2. **Clinic-read port + fakes** — land `context_provider_port.dart` and extend `fakes.dart` so Resolver unit tests can run without a network.
 3. **Registration map + first key resolver (Clarification Q2; FR-001, FR-002, FR-006)** — land `context_registration.dart` registering `visit.chief_complaint@v1`.
 4. **Resolver API + cache (FR-003–FR-005, FR-007; E3-T01–E3-T04)** — land `context_resolver.dart` with key-list API, typed unknown-key failure, instance cache; prove T01–T04 alongside (Clarification Q1).
-5. **First context provider RPC (FR-008–FR-010; E3-T05–E3-T08)** — land the migration and `context_provider_rpc.sql`; prove shape, RLS denial, no AI parameter, A5 match.
+5. **First context provider RPC (FR-008–FR-010; E3-T05–E3-T08)** — land the migration and `context_provider_rpc.sql`; prove shape, branch-scope / clinical-access denial, no AI parameter, A5 match.
 6. **Client contract suite (FR-011, FR-012; E3-T09–E3-T10)** — land `context_contract_test.dart` with injectable C1-shaped active manifests; T10 uses synthetic unregistered-key fixture (Clarification Q3).
 7. **CI wiring** — append SQL suite to `run_ai_platform_trust_tests.sh`; ensure Flutter tests join existing frontend CI.
 8. **Documentation** — fill `quickstart.md` after implementation and verification (sections named above).

@@ -51,3 +51,53 @@ E3 delivers the artifacts its slice names: a generic `ContextResolver` registry 
 5. **Dispose the Resolver in `_AiFeatureHostPageState.dispose()`** and extend T04 to assert post-dispose behaviour (`StateError`) and that a disposed instance's cache is not merely shadowed but cleared.
 6. **Tighten the SQL suite**: assert absence of undeclared payload fields in T08, add the no-note/NULL-complaint case, and add the 10000-character boundary cases for `complaint`; align the test names and spec scenario 6 wording with the actual enforcement mechanism (imperative scope checks, not table RLS), or add `FORCE ROW LEVEL SECURITY`-equivalent defence so the "RLS denies" claim is literally true.
 7. **Note the CI trigger caveat from the E1 review**: the `flutter test` step (`.github/workflows/ci.yml:61`) that runs this slice's unit and contract suites is in the workflow whose triggers do not fire on `ai/*` pushes, so E3's Flutter suites join CI permanently only on the `main`/`master` line — the same dormancy as E1 Critical 1, inherited by every Band E suite until the triggers are widened.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **E3-R1 — Vacuous scope-denial SQL proof** | Critical #2; Missing/Weak Tests #2; Recommended Improvements #2 | `backend/tests/context_provider_rpc.sql` (seed note B; rename T06; strict `NOT success` + `NOT_FOUND`/`FORBIDDEN`) |
+| **E3-R2 — recorded_at + SQL suite tightening** | Bugs #4; Missing/Weak Tests #4(b,c,d); Architectural Deviations #2; Recommended Improvements #6 | `20260802120000_…chief_complaint.sql`; new `20260805120000_e3_review_recorded_at_created_at.sql`; SQL no-note / 10000-char / undeclared-keys / `created_at` stability; Spec Kit RLS→scope wording |
+| **E3-R3 — Derived manifests + shape check** | Critical #1; Architectural Deviations #1, #3; Missing/Weak Tests #1; Recommended Improvements #1 | `frontend/test/fixtures/ai/published_manifests_discovery.json`; `published_manifests.dart` drift gate; `context_contract_test.dart` A5 shape asserts; Spec Kit hermetic-narrowing docs |
+| **E3-R4 — Production port + visit_id** | Bugs #1; Recommended Improvements #3 | `supabase_context_provider_port.dart` (per-visit `visitId`); port unit tests; contract §3.1 |
+| **E3-R5 — Typed resolution_failed** | Bugs #2; Missing/Weak Tests #4(a); Recommended Improvements #4 | `context_resolver.dart` try/catch; `ThrowingContextProviderPort`; contract §2.3 extension |
+| **E3-R6 — Dispose + cache isolation** | Bugs #3; Missing/Weak Tests #5; Recommended Improvements #5 | Host `dispose()`; T04 `StateError` + independent-instance cache; idempotent dispose |
+| **E3-R7 — Capability-id invariance spy** | Missing/Weak Tests #3 | `resolver_api_exposes_no_capability_id` via `ResolverSpy` |
+| **E3-R8 — CI trigger caveat** | Recommended Improvements #7 | No code change — `ai/**` push + `ai/master` PR already present (E1-R1) |
+
+Every numbered review item appears in exactly one stage. No architecture-doc edits. No escalations.
+
+### 1.2 Test cases created first
+
+- **E3-R1:** T06 rewritten to seed an out-of-scope clinical note and require `NOT success` with `error_code IN ('NOT_FOUND','FORBIDDEN')` before relying on enforcement.
+- **E3-R2:** Added `context_rpc_no_note_returns_visit_id_only`, `context_rpc_complaint_10000_char_boundary`, T08 undeclared-key guard, and `recorded_at`/`created_at` stability assertions; then fixed `recorded_at` sourcing.
+- **E3-R3:** `contract_published_manifests_fixture_agrees_with_platform` drift gate + shape asserts in `runContextContractSuite` before treating fixtures as verified.
+- **E3-R4:** `supabase_context_provider_port_test.dart` — RPC params include injected `p_visit_id`; `RpcFailure` on `!success`.
+- **E3-R5:** `resolver_port_throw_resolution_failed` with `ThrowingContextProviderPort` written before the try/catch normalize path.
+- **E3-R6:** Extended T04 with post-dispose `StateError`, double-dispose safety, and two-instance cache isolation.
+- **E3-R7:** T03 rewritten around `ResolverSpy` key-list invariance before treating the no-capability-id claim as proven.
+- **E3-R8:** Confirmed existing CI triggers; no new test required.
+
+### 1.3 Fix implemented
+
+- **E3-R1:** Out-of-scope note B seeded; test renamed `context_rpc_scope_denies_out_of_scope`; loose `data ? 'complaint'` disjunct removed.
+- **E3-R2:** `recorded_at` from `created_at` in original + review migration; SQL suite covers no-note, 10000-char boundary (+ CHECK >10000), undeclared keys, recorded_at stability; Spec Kit scenario 6 / T06 wording aligned to imperative branch-scope / clinical-access (not table RLS).
+- **E3-R3:** Hermetic fixtures derived from `ai-platform/manifests/published/` with Dart deep-equality drift gate; positive contract case loads derived fixture; resolved payloads checked for A5 fields and no undeclared keys; spec/plan/contract document the narrowing of “fetched manifests.”
+- **E3-R4:** Production `SupabaseContextProviderPort` with constructor-injected `visitId`; key-list API unchanged; contract §3.1 documents per-visit construction.
+- **E3-R5:** Closed failure codes `unknown_context_key` | `resolution_failed`; port throws no longer escape as raw exceptions; existing consumers already handle any `ContextResolveFailure`.
+- **E3-R6:** `_AiFeatureHostPageState.dispose()` discards the Resolver; dispose is idempotent for host+surface double-call.
+- **E3-R7:** Spy-based invariance replaces signature-only T03.
+- **E3-R8:** Already satisfied by E1-R1 — no further CI change.
+
+### 1.4 Verification
+
+- Flutter AI suites: `test/unit/core/ai/` + `test/widget/ai/` — **114 tests passed** (includes resolver, contract drift gate, production-port tests).
+- Full `ai-platform` suite:
+  - Manifest gates: **2 files, 4 tests passed**
+  - Unit (`vitest run`): **40 files, 580 tests passed**
+  - Workers (`vitest.workers.config.ts`): **19 files, 241 tests passed**
+- Spec Kit updated under `specs/037-context-resolver-registry/` only. Architecture / delivery-plan docs untouched.

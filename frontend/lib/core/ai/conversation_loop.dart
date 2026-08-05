@@ -21,7 +21,11 @@ class ConversationLoop {
         _idempotencyKeyFactory = idempotencyKeyFactory;
 
   final AiClientSdk _sdk;
+  // Retained for constructor compatibility with H3 call sites; per-invoke
+  // idempotency keys mean the loop no longer rebuilds the SDK per leg.
+  // ignore: unused_field
   final AatMintPort _mintPort;
+  // ignore: unused_field
   final HttpsSubmitPort _submitPort;
   final ContextResolver _resolver;
   final ConversationStore _store;
@@ -36,8 +40,7 @@ class ConversationLoop {
     void Function(AiInvokeSession session)? onSession,
   }) async {
     final leg = _store.prepareLegSubmit(userMessage);
-    final sdk = _sdkForLeg();
-    final session = await sdk.invoke(
+    final session = await _sdk.invoke(
       CapabilityInvokeInput(
         capabilityId: _baseInput.capabilityId,
         capabilityVersion: _baseInput.capabilityVersion,
@@ -47,6 +50,7 @@ class ConversationLoop {
         turnOrdinal: leg.turnOrdinal,
         transcript: leg.transcript,
       ),
+      idempotencyKey: _idempotencyKeyFactory?.call(),
     );
     _currentSession = session;
     onSession?.call(session);
@@ -59,17 +63,6 @@ class ConversationLoop {
   /// Cancels only the in-flight leg's stream (§6.7.4).
   void cancelCurrentLeg() {
     _currentSession?.cancel();
-  }
-
-  AiClientSdk _sdkForLeg() {
-    if (_idempotencyKeyFactory == null) {
-      return _sdk;
-    }
-    return AiClientSdk(
-      mintPort: _mintPort,
-      submitPort: _submitPort,
-      idempotencyKeyFactory: _idempotencyKeyFactory,
-    );
   }
 
   Future<void> _handleTerminal(TerminalState terminal) async {
@@ -92,6 +85,7 @@ class ConversationLoop {
         }
       case FailedTerminal():
       case CancelledTerminal():
+      case StreamDroppedTerminal():
         break;
     }
   }
