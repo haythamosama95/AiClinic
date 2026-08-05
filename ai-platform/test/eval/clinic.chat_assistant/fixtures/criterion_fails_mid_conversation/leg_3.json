@@ -1,0 +1,7 @@
+{
+  "leg_id": "leg_3",
+  "assistant_turn": {
+    "kind": "model",
+    "text": "I asked for medications after the chief complaint; the conversation still ends with an answer."
+  }
+}

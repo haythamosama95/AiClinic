@@ -36,10 +36,12 @@ Contracts this slice establishes for the first time:
   aggregation as the acceptance unit (§13.5 Conversation evals — "scored per
   conversation rather than per turn"; delivery plan §3.11.7 row H4).
 - **The three conversation-eval criteria as the H4 acceptance bar**: (1) the assistant
-  requests the correct key when the script requires it; (2) a key outside the
-  permitted set cannot be obtained; (3) the scripted conversation converges within the
-  capability's declared round budget (§13.5 Conversation evals; delivery plan §3.8
-  Done when; §3.11.7 H4).
+  requests the correct key when the script requires it; (2) the assistant stays inside
+  the permitted set — no out-of-set **request** and no out-of-set **obtainment** after
+  H2 allowlist drop; (3) the scripted conversation converges within the capability's
+  declared round budget (budget non-breach **and**, when `expect_convergence` is set,
+  a terminal `model` answer) (§13.5 Conversation evals; delivery plan §3.8 Done when;
+  §3.11.7 H4).
 
 ### Consumes
 

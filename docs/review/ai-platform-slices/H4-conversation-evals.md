@@ -58,3 +58,44 @@ Error-code coverage: correctly N/A — H4 emits no §5.4 codes.
 5. **[Low] Reconcile `plan.md` with the `harness.ts` edit** — update the Files table and Consumes Binding to record the one-predicate extension honestly, as `tasks.md` T018 already does.
 6. **[Low] Normalise path assertions** with `path.join`/`path.sep` (or assert on `path.relative` segments) so the suite runs green on Windows checkouts, matching CI.
 7. **[Low] Make T2 multi-leg** (append the scripted resolution turn and a closing model answer) so the right-key criterion is scored across a negotiation, and drop the vacuous `usedLiveEgress` flag/assertions or replace them with a real fetch-interception guard if the harness ever gains a provider path.
+
+---
+
+## 1. Review Resolution
+
+### 1.1 Stage grouping
+
+| Stage | Review items covered | Files / logic |
+| --- | --- | --- |
+| **H4-R1 — Deconflate criteria + expected_outcome gate** | Bugs #2 (criterion conflation / triple validate / dead `suppliedContext`); Bugs #3 (`expect_convergence` / `expected_outcome` dead); Recommended Improvements #4 | `conversation-harness.ts`; `conversation-score-report.ts`; `contracts/conversation-evals.md` |
+| **H4-R2 — Score convergence + budget boundary cases** | Bugs #1 (convergence never scored); Missing/Weak Tests #3; Recommended Improvements #2 | `conversation-harness.ts` (`scoreRoundBudget`); cases `fails_to_converge_within_budget`, `exceeds_round_budget`; contract §4 |
+| **H4-R3 — Request-side permitted_set + T3 redesign** | Architectural Deviations #1; Recommended Improvements #3 | `scorePermittedSet`; T3 case/fixtures redesigned; Spec Kit Freezes / contract §4 |
+| **H4-R4 — Negative controls + multi-leg T2 + e2e T4** | Missing/Weak Tests #1, #2, #4; Recommended Improvements #1, #7 (T2 multi-leg) | New cases `requests_wrong_permitted_key`, `requests_key_outside_permitted_set`, `criterion_fails_mid_conversation`; T2 multi-leg; `conversation.test.ts` |
+| **H4-R5 — Spec Kit honesty + test hygiene** | Architectural Deviations #2, #3; Bugs #4, #5; Missing/Weak Tests #5, #6; Recommended Improvements #5, #6, #7 (`usedLiveEgress`) | `plan.md` / contract Clarification Q1 note; path-portable asserts; T9 fix; drop `usedLiveEgress`; T6 CI-job-scoped assert |
+
+Every numbered review item appears in exactly one stage. No architecture-doc amendment; AD #1 aligned implementation + Spec Kit to §13.5; AD #2 documented Clarification Q1 fixture-only scope in Spec Kit only.
+
+### 1.2 Test cases created first
+
+- **H4-R1:** `matchesExpectedOutcome` / suite gate driven by case `expected_outcome`; `criteria_are_independent_on_budget_breach` asserts budget fail does not force `permitted_set` fail.
+- **H4-R2:** `negative_control_round_budget_non_convergence` (`fails_to_converge_within_budget`); `negative_control_round_budget_exceeded` (`exceeds_round_budget`, four trailing `context_requested` vs `maxContextRoundsPerTurn: 3`).
+- **H4-R3:** T3 rewritten assertions (forbidden key injected via `context_resolved`, assistant requests only permitted keys); `negative_control_permitted_set` for out-of-set **request**.
+- **H4-R4:** `negative_control_right_keys`; T2 asserts `legs.length >= 2`; T4 runs `criterion_fails_mid_conversation` end-to-end (not only synthetic `deriveConversationOverall`).
+- **H4-R5:** T5 structural no-provider / no-`fetch` asserts; portable `path.join` segment checks; T9 path-normalize assert (removed vacuous `harnessSource.startsWith(EVAL_ROOT)`); T6 keeps golden re-run + golden-job CI wiring check.
+
+### 1.3 Fix implemented
+
+- **H4-R1:** Single `validateContext` per case; scorers consume that result; `scorePermittedSet` no longer fails on any validation error; dead `suppliedContext` plumbing removed; suite `overall`/`passed` matches every case's `expected_outcome`.
+- **H4-R2:** `scoreRoundBudget` fails on `conversation_budget_exhausted` **or** (when `expect_convergence`) last assistant turn ≠ `model`; new non-converge and budget-breach cases.
+- **H4-R3:** `scorePermittedSet` fails on out-of-set `context_requested` keys (aligns §13.5); T3 proves cannot-obtain via H2 allowlist drop without requesting out-of-set keys.
+- **H4-R4:** Negative-control cases per criterion; T2 multi-leg; T4 multi-leg failing conversation.
+- **H4-R5:** Spec Kit `plan.md` / Consumes Binding record `harness.ts` `expectations/` discriminator; contract documents fixture-only Clarification Q1; removed vacuous `usedLiveEgress`; portable paths; fixed T9.
+
+### 1.4 Verification
+
+Full `ai-platform` suite (`npm test`):
+
+- Node pool: **41** files, **639** tests passed
+- Workers pool: **19** files, **270** tests passed
+
+Modified / added test surfaces: `conversation.test.ts`, `prohibitions.test.ts`, `conversation-harness.ts`, `conversation-score-report.ts`, and new/updated cases+fixtures under `clinic.chat_assistant/`.

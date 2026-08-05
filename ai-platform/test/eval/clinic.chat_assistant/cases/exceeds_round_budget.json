@@ -1,0 +1,36 @@
+{
+  "case_id": "exceeds_round_budget",
+  "legs": [
+    {
+      "fixture": "exceeds_round_budget/leg_1.json",
+      "append_before_fixture": [
+        {
+          "kind": "user",
+          "text": "Keep requesting context."
+        }
+      ]
+    },
+    {
+      "fixture": "exceeds_round_budget/leg_2.json",
+      "append_before_fixture": []
+    },
+    {
+      "fixture": "exceeds_round_budget/leg_3.json",
+      "append_before_fixture": []
+    },
+    {
+      "fixture": "exceeds_round_budget/leg_4.json",
+      "append_before_fixture": []
+    }
+  ],
+  "scoring": {
+    "required_key_requests": ["visit.chief_complaint@v1"],
+    "forbidden_resolved_keys": [],
+    "expect_convergence": false
+  },
+  "expected_outcome": {
+    "right_keys": "pass",
+    "permitted_set": "pass",
+    "round_budget": "fail"
+  }
+}
