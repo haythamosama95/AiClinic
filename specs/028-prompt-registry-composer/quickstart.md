@@ -19,7 +19,7 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 D1 implements the **D1** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.5 (Band D — inference path), covering architecture sections **§4.3.6** (prompt composer and prompt
 registry), **§5.7** (prompt artifact immutability and version pinning), **§9.5** (no prompt text in
 D1), and **§5.3** (canonical inference representation — no provider-shaped fields upstream of

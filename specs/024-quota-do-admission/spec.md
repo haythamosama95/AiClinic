@@ -8,7 +8,7 @@
 
 **Input**: Slice `B4` — "Quota Durable Object and admission stage" (delivery plan §3.3, row B4). Not a
 prose feature description; it is a row of the delivery plan, so every requirement below cites a section
-of `docs/architecture/17-ai-platform.md`.
+of `docs/architecture/ai-platform/01-ai-platform.md`.
 
 > Constitution note: Specs MUST explain clinic-fit scope, layer placement, data and
 > security boundaries, and degraded behavior when AI or supporting services are
@@ -90,7 +90,7 @@ A5, B3; A2, A6, B1, and B2 are transitive prerequisites of those.
   blip must not block care (R-15)." B4 implements this default: a Quota DO that cannot be reached is
   served under a capped grace allowance, the request proceeds without a second round trip, and grace usage
   is reconciled afterwards. The recommended default is assumed verbatim; if it changes, this slice stops
-  and amends `17-ai-platform.md` first (§15 #3; §4.3.3; delivery plan §3.3 row B4 "Done when").
+  and amends `01-ai-platform.md` first (§15 #3; §4.3.3; delivery plan §3.3 row B4 "Done when").
 - No other §15 decision is assumed. The quota unit and period (Open Decision 2) are read from the
   `entitlement` snapshot A5 froze and are not chosen here; per-clinic model preference (Open Decision 5)
   and soft-threshold routing (Open Decision & §8.8) belong to F4, not B4.

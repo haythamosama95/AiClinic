@@ -12,8 +12,8 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 This slice implements delivery-plan row **B3** (*Guard stages: identity, rate limiting, entitlement
 and kill switches*), which maps to §4.3.2, §4.2.1, §5.6, §4.3.3, §4.3.4, §4.3.12, §7.5, and §6.1
 stages 2–4 of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row B3 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row B3 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 
 - The **spec** freezes the token verifier port (enrolled-key strategy, `alg: EdDSA` pin), the
   immutable request principal, guard-stage rejection discipline (bucketed `platform_counter`, no

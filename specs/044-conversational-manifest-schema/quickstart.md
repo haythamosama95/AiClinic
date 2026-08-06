@@ -10,10 +10,10 @@ this slice's test files, and only commands that run this slice's tests.
 ## 1. Architecture context
 
 - **Delivery plan** — Band H row H1 in
-  [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+  [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   (Needs: A2, A4, A6).
 - **Architecture** — Implements §5.1, §5.7, §6.7.4, §6.7.2, §5.5, §5.4, §6.3, A14 of
-  [`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)
+  [`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)
   (see `spec.md` Slice Contract → Implements).
 - **Spec** — [`spec.md`](./spec.md) freezes conversational Interaction fields + permitted key set,
   the shared context-request schema, fourth terminal kind, and terminal `AwaitingContext`.

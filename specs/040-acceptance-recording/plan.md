@@ -79,7 +79,7 @@ specs/040-acceptance-recording/
 `data-model.md` is **not** produced — F2 defines clinic-side Supabase entities, not D1 entities
 (the platform's store). Entity shapes live in `contracts/acceptance-recording.md`.
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` is produced because **Freezes** entries have wire/table shapes later slices’
 **Consumes** must bind to: the RPC signature and success/failure contract, the

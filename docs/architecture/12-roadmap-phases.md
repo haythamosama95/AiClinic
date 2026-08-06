@@ -291,7 +291,7 @@ Deliverables:
 
 ## V2 -- Future Capabilities
 
-V2 scope is pending a new architecture definition. The previous Ollama-based AI integration plan has been removed. AI platform delivery is tracked separately in `17b-ai-platform-delivery-plan.md` and `specs/` AI feature directories. V2 will be redefined once the replacement architecture is finalized.
+V2 scope is pending a new architecture definition. The previous Ollama-based AI integration plan has been removed. AI platform delivery is tracked separately in `ai-platform/03-ai-platform-delivery-plan.md` and `specs/` AI feature directories. V2 will be redefined once the replacement architecture is finalized.
 
 ## V3 -- Analytics, Advanced Features, and Polish
 

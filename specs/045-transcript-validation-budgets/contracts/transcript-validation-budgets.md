@@ -1,7 +1,7 @@
 # Contract: Transcript validation, budgets, and allowlist (H2)
 
 **Frozen by:** Slice H2 — Transcript validation, conversation budgets, and composer rendering
-**Implements:** §4.3.5, §6.7.1, §6.7.3 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.5, §6.7.1, §6.7.3 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H3, H4) **consume** this artifact; they may extend enforcement
 sites but may not rewrite evaluation order, breach codes, or the allowlist-drop rule (delivery plan
 §2.3).

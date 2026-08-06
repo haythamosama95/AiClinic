@@ -1,7 +1,7 @@
 # Contract: `usage_rollup` production and reconciliation (F3)
 
 **Frozen by:** Slice F3 — Support lookup, retention purges, usage rollups, and journal dashboards
-**Implements:** §7.6 (Billing period close / Analytics), R-6 of `docs/architecture/17-ai-platform.md`
+**Implements:** §7.6 (Billing period close / Analytics), R-6 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (including band G commercial surfaces) may **extend** rollup
 dimensions or report consumers; they may not **rewrite** ledger-as-evidence, equality-to-ledger,
 idempotent re-run, or the two reconciliation flags (delivery plan §2.3).

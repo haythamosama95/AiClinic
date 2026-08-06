@@ -116,7 +116,7 @@ specs/042-soft-threshold-degraded-routing/
 already owns `entitlement.soft_threshold` and nullable `ai_request.routing_tier` /
 `routing_decision` (spec Key Entities; escalation resolution).
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` is produced because **Freezes** entries have wire shapes later slices' **Consumes**
 must bind to: soft-threshold `{ degraded }` admission branch; hard-exhaustion `period_end` → A2

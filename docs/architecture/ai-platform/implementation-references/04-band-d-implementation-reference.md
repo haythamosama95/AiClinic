@@ -1,9 +1,9 @@
 # AI Platform — Band D Implementation Reference
 
-- Purpose: Explain, in plain language, what Band D of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md), [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md), and [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band D of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md), [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md), and [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md).
 - Read this when: onboarding after Band C, reviewing prompt/provider/stream/validate work, or preparing for Band E / CP3.
 - Canonical for: Band D completion status, where to find the code and tests, and which architecture boxes are now green.
-- Usually paired with: [`17c`](17c-band-a-implementation-reference.md) (Band A baseline), [`17d`](17d-band-b-implementation-reference.md) (trust/admission), [`17e`](17e-band-c-implementation-reference.md) (capability/context/journal), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture).
+- Usually paired with: [`01-band-a`](01-band-a-implementation-reference.md) (Band A baseline), [`02-band-b`](02-band-b-implementation-reference.md) (trust/admission), [`03-band-c`](03-band-c-implementation-reference.md) (capability/context/journal), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
 - Not covered here: Flutter client work (Band E), eval harnesses (F1), operator tooling (Band F), conversational turns (Band H), or review-comment remediations after tip `181ab637`.
 
 > **Status:** Band D (slices **D1–D7**) is **complete** on branch `ai/master` (tip `181ab637`, 2026-08-02). Automated evidence: **143 Band D tests** — **13** (D1) + **37** (D2) + **13** (D3) + **20** (D4) + **14** (D5) + **30** (D6) + **16** (D7) — all passing under Node **22+**. Combined Worker suites at this tip: **332** default-config tests + **86** workers-pool tests = **418** (configs are disjoint). Prompt compose, routing, invocation, stream broker, response validation, DeepSeek, and Gemini **modules exist and are tested in isolation**; they are **not yet wired into** `POST /v1/requests` (that route is still the Band A SSE stub). Live HTTP client routes unchanged from Band C: stub `POST /v1/requests` and real `GET /v1/requests/{reference}`. **No end-to-end live inference on the public POST path yet.**
@@ -37,7 +37,7 @@ Band D answers the question: **how does the platform turn an admitted request in
 
 ### 2.1 Start with Bands A–C
 
-If earlier bands are new to you, read [`17c`](17c-band-a-implementation-reference.md), [`17d`](17d-band-b-implementation-reference.md), and [`17e`](17e-band-c-implementation-reference.md) first.
+If earlier bands are new to you, read [`01-band-a`](01-band-a-implementation-reference.md), [`02-band-b`](02-band-b-implementation-reference.md), and [`03-band-c`](03-band-c-implementation-reference.md) first.
 
 | Band | What it delivered |
 | --- | --- |
@@ -92,7 +92,7 @@ Spec Kit directories: `specs/028` … `specs/034`.
 
 ## 3. What Band D Is and Why It Exists
 
-The delivery plan titles Band D **"The inference path"** (`17b` §3.5).
+The delivery plan titles Band D **"The inference path"** (`03-ai-platform-delivery-plan` §3.5).
 
 | ID | Slice | Spec directory | Needs | One-line purpose |
 | --- | --- | --- | --- | --- |
@@ -446,9 +446,9 @@ sequenceDiagram
 
 **Legend:** ✅ implemented & tested | 🔶 partial | ⬜ not built
 
-> **Stage-order note:** Canonical pipeline order is in `17-ai-platform.md` §6.1. Trust the stage table and the diagrams below. Band D greens stages 10–14 as **modules**; the live POST path still stops at the A6 stub after accept.
+> **Stage-order note:** Canonical pipeline order is in `../01-ai-platform.md` §6.1. Trust the stage table and the diagrams below. Band D greens stages 10–14 as **modules**; the live POST path still stops at the A6 stub after accept.
 
-### 6.1 System context — from `17-ai-platform.md` §3.2
+### 6.1 System context — from `../01-ai-platform.md` §3.2
 
 ```mermaid
 flowchart TB
@@ -488,7 +488,7 @@ flowchart TB
     style providers fill:#e8f5e9,stroke:#2e7d32
 ```
 
-### 6.2 Gateway pipeline — from `17-ai-platform.md` §4.3
+### 6.2 Gateway pipeline — from `../01-ai-platform.md` §4.3
 
 ```mermaid
 flowchart TB
@@ -559,7 +559,7 @@ flowchart TB
 
 **How to read this:** Green boxes are implemented and tested. **Only stage 1 (and C3 GET) run automatically on HTTP today.** B3–B4, C1–C3, and D1–D7 functions are **callable libraries**, not yet chained on `POST /v1/requests`.
 
-### 6.3 Pipeline stages — from `17-ai-platform.md` §6.1
+### 6.3 Pipeline stages — from `../01-ai-platform.md` §6.1
 
 | Stage | Name | Band | Status |
 | --- | --- | --- | --- |
@@ -592,7 +592,7 @@ Adapters (**D5/D7**) and the fake (**D2**) sit behind stage 12's port; they are 
 | R2 envelopes | ✅ C3 | Unchanged; ready for composed prompt section when wired |
 | Secret bindings | ✅ D5/D7 | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` (adapter-level; not exercised on live POST) |
 
-### 6.5 Request state machine — `17-ai-platform.md` §6.3
+### 6.5 Request state machine — `../01-ai-platform.md` §6.3
 
 C3 already stamps §6.3 transitions. Band D modules emit the mid-pipeline signals tests care about (`regenerating`, terminal `completed` / `failed` / `cancelled`) through broker and invocation sinks. **Live POST does not drive these states yet.**
 
@@ -677,11 +677,11 @@ Same as earlier bands: **a slice is done when a test a human can read and believ
 
 **Band D total: 143 tests** (all passing under Node **22.23.2** when run as the eleven Band D files). Combined Worker suites: **418 tests** (332 + 86; configs are disjoint).
 
-On a full `npm test` run at this tip, **1** Band A reference-generator case (`reference.test.ts` T21 uniqueness across 1,000,000 draws) may fail under collision — **pre-existing flake**, unrelated to Band D (also noted in [`17e`](17e-band-c-implementation-reference.md) §8.7).
+On a full `npm test` run at this tip, **1** Band A reference-generator case (`reference.test.ts` T21 uniqueness across 1,000,000 draws) may fail under collision — **pre-existing flake**, unrelated to Band D (also noted in [`03-band-c`](03-band-c-implementation-reference.md) §8.7).
 
 Node **22+** required (`package.json` `engines`).
 
-### 8.3 Test layers by slice (`17b` §3.11.3)
+### 8.3 Test layers by slice (`03-ai-platform-delivery-plan` §3.11.3)
 
 | Slice | Layer | File(s) | Named suites | Vitest count |
 | --- | --- | --- | --- | --- |
@@ -855,7 +855,7 @@ Band D is not a release gate (delivery plan DP-1), but it removes the inference 
 
 ### 11.1 Checkpoint CP3 (not satisfied yet)
 
-**CP3** (`17b` §5) is the falsification checkpoint: one Flutter button through guard, composed prompt, fake provider, stream, and rendered draft (**D4 + E4**).
+**CP3** (`03-ai-platform-delivery-plan` §5) is the falsification checkpoint: one Flutter button through guard, composed prompt, fake provider, stream, and rendered draft (**D4 + E4**).
 
 Band D satisfies the **platform half** of that thread at the module level:
 
@@ -879,12 +879,12 @@ Band D alone does **not** satisfy CP3.
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Band A contracts baseline |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | Trust/admission |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | Capability, context, journal |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | Slice definitions §3.5, §3.11.3 test floors |
-| [`17-ai-platform.md`](17-ai-platform.md) | Authoritative architecture — §4.3.6–4.3.10, §6.1, §6.4–6.5, §13.5 |
-| [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) | Operator operations (separate from this implementation reference) |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Band A contracts baseline |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | Trust/admission |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | Capability, context, journal |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | Slice definitions §3.5, §3.11.3 test floors |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | Authoritative architecture — §4.3.6–4.3.10, §6.1, §6.4–6.5, §13.5 |
+| [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) | Operator operations (separate from this implementation reference) |
 | `specs/028` … `specs/034` quickstarts | Run one slice's tests |
 | `ai-platform/README.md` | Worker dev/deploy commands |
 
@@ -905,4 +905,4 @@ cd ai-platform && npx vitest run \
 
 ---
 
-*This document describes Band D as implemented on `ai/master` (tip `181ab637`). For Bands A–C, see [`17c`](17c-band-a-implementation-reference.md), [`17d`](17d-band-b-implementation-reference.md), and [`17e`](17e-band-c-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band D as implemented on `ai/master` (tip `181ab637`). For Bands A–C, see [`01-band-a`](01-band-a-implementation-reference.md), [`02-band-b`](02-band-b-implementation-reference.md), and [`03-band-c`](03-band-c-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

@@ -1,7 +1,7 @@
 # Contract: Context validator stage and cost pre-flight (C2)
 
 **Frozen by:** Slice C2 — Context validator stage and cost pre-flight
-**Implements:** §4.3.5, §5.2, §4.3.3, §6.1 stages 6–7, §13.6.2 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.5, §5.2, §4.3.3, §6.1 stages 6–7, §13.6.2 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (D1, J2, B4, D3) **consume** this artifact; they extend, never rewrite
 the `ValidateResult` union, the `context_required` wire payload shape, the `PreflightResult` union,
 the §13.6.2 estimator formula, or the stage-7 rejection predicates.

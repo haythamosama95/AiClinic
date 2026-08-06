@@ -1,7 +1,7 @@
 # F4 — Soft-threshold Degraded Routing: Static Review
 
 **Slice**: F4 — Soft-threshold degraded routing (`specs/042-soft-threshold-degraded-routing/`)
-**Canonical architecture sections**: §4.3.3, §8.8, §4.3.7 of `docs/architecture/17-ai-platform.md`
+**Canonical architecture sections**: §4.3.3, §8.8, §4.3.7 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Review type**: Static review only (no build, no test execution, no file modifications)
 **Date**: 2026-08-05
 

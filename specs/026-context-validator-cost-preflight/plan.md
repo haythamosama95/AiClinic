@@ -64,7 +64,7 @@ specs/026-context-validator-cost-preflight/
 
 `data-model.md` is **not** produced — C2 defines no D1 entity (spec `### Key Entities`: "Not applicable"). Stages 6–7 are CPU-only (§6.1) and introduce no stored data.
 
-`research.md` is **never** produced on this platform — the research is `docs/architecture/17-ai-platform.md`; redoing it is how architecture drift starts.
+`research.md` is **never** produced on this platform — the research is `docs/architecture/ai-platform/01-ai-platform.md`; redoing it is how architecture drift starts.
 
 `contracts/` is produced because the spec's **Freezes** entries have wire shapes later slices' **Consumes** bind to (D1 consumes the filtered context payload; J2 consumes the `context_required` missing-key manifest; B4/D3 consume the pre-flight decision). The plan names the artifact; the implement phase writes it.
 

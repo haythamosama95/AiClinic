@@ -2,8 +2,8 @@
 
 - Purpose: Give a developer or architect a fast, complete mental model of the AI platform — its shape, its parts, and how a request travels through it.
 - Read this when: you are new to the AI platform, reviewing a feature that touches it, or need orientation before diving into detail.
-- Canonical for: nothing. This is a **companion overview**; `docs/architecture/17-ai-platform.md` is the canonical specification.
-- Relationship to `17-ai-platform.md`: this document describes the **final architecture only** — no rationale, alternatives, trade-offs, or implementation guidance. Each section points to the corresponding section of the canonical document for depth.
+- Canonical for: nothing. This is a **companion overview**; `docs/architecture/ai-platform/01-ai-platform.md` is the canonical specification.
+- Relationship to `01-ai-platform.md`: this document describes the **final architecture only** — no rationale, alternatives, trade-offs, or implementation guidance. Each section points to the corresponding section of the canonical document for depth.
 - Usually paired with: `docs/architecture/02-system-overview.md`, `docs/architecture/04-backend.md`, `docs/architecture/09-security-rbac.md`.
 
 > **Status:** Describes an architecture proposal. Nothing here is implemented yet.
@@ -68,9 +68,9 @@ clinical record. The AI platform never writes to it.
 Adding a typical AI feature means publishing a new manifest and its prompt/schema artifacts — not
 editing the pipeline, and often not releasing the client at all.
 
-> Detail: [§3.1](17-ai-platform.md#31-architecture-style-and-why-this-one) (architecture style),
-> [§5.1](17-ai-platform.md#51-capability-manifest) (capability manifest),
-> [§2.5](17-ai-platform.md#25-amendment-a14-an-open-chat-surface-is-a-declared-capability-not-an-inferred-one)
+> Detail: [§3.1](01-ai-platform.md#31-architecture-style-and-why-this-one) (architecture style),
+> [§5.1](01-ai-platform.md#51-capability-manifest) (capability manifest),
+> [§2.5](01-ai-platform.md#25-amendment-a14-an-open-chat-surface-is-a-declared-capability-not-an-inferred-one)
 > (why the chat surface is a declared capability).
 
 ---
@@ -149,9 +149,9 @@ treated as untrusted input.
 Revocation is entirely platform-side and never affects clinic logins: revoke a token id, suspend an
 actor, rotate the installation key, suspend the installation, or trip a kill switch.
 
-> Detail: [§3.3](17-ai-platform.md#33-trust-and-network-topology) (trust and network topology),
-> [§5.6](17-ai-platform.md#56-token-contract) (token contract),
-> [§8.1](17-ai-platform.md#81-clinic-enrollment-and-trust-bootstrap) (enrollment sequence).
+> Detail: [§3.3](01-ai-platform.md#33-trust-and-network-topology) (trust and network topology),
+> [§5.6](01-ai-platform.md#56-token-contract) (token contract),
+> [§8.1](01-ai-platform.md#81-clinic-enrollment-and-trust-bootstrap) (enrollment sequence).
 
 ---
 
@@ -205,9 +205,9 @@ permitted set it may draw on, and names the specific keys during the conversatio
 the question. Either way the platform asks and the client resolves — data still flows client → platform
 only, and every read still happens under the requesting user's own permissions.
 
-> Detail: [§3.4](17-ai-platform.md#34-the-three-seams) (the seams),
-> [§5.2](17-ai-platform.md#52-context-contract) (context contract),
-> [§5.7](17-ai-platform.md#57-versioning-and-compatibility-rules) (versioning rules).
+> Detail: [§3.4](01-ai-platform.md#34-the-three-seams) (the seams),
+> [§5.2](01-ai-platform.md#52-context-contract) (context contract),
+> [§5.7](01-ai-platform.md#57-versioning-and-compatibility-rules) (versioning rules).
 
 ---
 
@@ -362,12 +362,12 @@ management, capability grants and deprecation, routing policy publication, kill 
 capability, per installation, per provider), support lookup by request reference, and operational
 dashboards. Every mutation is journaled with the operator identity.
 
-> Detail: [§4](17-ai-platform.md#4-components-and-responsibilities) (all components in full),
-> [§4.4](17-ai-platform.md#44-storage-ownership) (storage ownership),
-> [§4.6](17-ai-platform.md#46-responsibility-matrix) (responsibility matrix),
-> [§9.8](17-ai-platform.md#98-d1-as-the-only-platform-store),
-> [§9.15](17-ai-platform.md#915-workers-kv-as-a-hot-config-cache) and
-> [§9.16](17-ai-platform.md#916-analytics-engine-as-the-metrics-store) (why the store set is this
+> Detail: [§4](01-ai-platform.md#4-components-and-responsibilities) (all components in full),
+> [§4.4](01-ai-platform.md#44-storage-ownership) (storage ownership),
+> [§4.6](01-ai-platform.md#46-responsibility-matrix) (responsibility matrix),
+> [§9.8](01-ai-platform.md#98-d1-as-the-only-platform-store),
+> [§9.15](01-ai-platform.md#915-workers-kv-as-a-hot-config-cache) and
+> [§9.16](01-ai-platform.md#916-analytics-engine-as-the-metrics-store) (why the store set is this
 > small, and what would reverse each omission).
 
 ---
@@ -447,9 +447,9 @@ second inference, never a second charge.
 - A **user-initiated retry** is a new request with a new key, linked to the previous one in the
 journal, because the user is genuinely asking for another attempt.
 
-> Detail: [§5.4](17-ai-platform.md#54-error-taxonomy) (full error taxonomy),
-> [§5.5](17-ai-platform.md#55-api-surface-and-streaming-protocol) (API and streaming protocol),
-> [§6.6](17-ai-platform.md#66-idempotency-retry-and-duplicate-suppression) (idempotency and retry).
+> Detail: [§5.4](01-ai-platform.md#54-error-taxonomy) (full error taxonomy),
+> [§5.5](01-ai-platform.md#55-api-surface-and-streaming-protocol) (API and streaming protocol),
+> [§6.6](01-ai-platform.md#66-idempotency-retry-and-duplicate-suppression) (idempotency and retry).
 
 ---
 
@@ -574,10 +574,10 @@ timeline, error code, trace id), the attempt rows (provider, model, latency, tok
 single R2 envelope (exact prompt, exact context, raw provider response, result). The failure is
 explained without reproducing it.
 
-> Detail: [§6.1](17-ai-platform.md#61-the-pipeline) (all sixteen stages),
-> [§6.3](17-ai-platform.md#63-request-state-machine) (state machine),
-> [§6.7](17-ai-platform.md#67-conversational-capabilities) (conversational capabilities in full),
-> [§8](17-ai-platform.md#8-sequence-diagrams) (ten sequence diagrams, including self-healing, chat
+> Detail: [§6.1](01-ai-platform.md#61-the-pipeline) (all sixteen stages),
+> [§6.3](01-ai-platform.md#63-request-state-machine) (state machine),
+> [§6.7](01-ai-platform.md#67-conversational-capabilities) (conversational capabilities in full),
+> [§8](01-ai-platform.md#8-sequence-diagrams) (ten sequence diagrams, including self-healing, chat
 > negotiation, and support trace).
 
 ---
@@ -650,10 +650,10 @@ turns into a validation failure.
 Provider credentials come from the platform's secret store, are never logged, and never appear in the
 journal.
 
-> Detail: [§5.3](17-ai-platform.md#53-canonical-inference-representation) (canonical representation),
-> [§4.3.7](17-ai-platform.md#437-provider-router-and-policy-engine) and
-> [§4.3.8](17-ai-platform.md#438-provider-adapters-and-egress) (router and adapters),
-> [§8.6](17-ai-platform.md#86-provider-failure-retry-and-fallback) (failure and fallback sequence).
+> Detail: [§5.3](01-ai-platform.md#53-canonical-inference-representation) (canonical representation),
+> [§4.3.7](01-ai-platform.md#437-provider-router-and-policy-engine) and
+> [§4.3.8](01-ai-platform.md#438-provider-adapters-and-egress) (router and adapters),
+> [§8.6](01-ai-platform.md#86-provider-failure-retry-and-fallback) (failure and fallback sequence).
 
 ---
 
@@ -784,11 +784,11 @@ Four properties make this an extension rather than a second architecture:
 The only "tool" a chat capability can invoke is context-key resolution. Tools that write, call third
 parties, or are chosen at runtime remain out of scope.
 
-> Detail: [§6.4](17-ai-platform.md#64-streaming-with-commit-time-validation) (streaming and
-> validation), [§6.7](17-ai-platform.md#67-conversational-capabilities) (conversational capabilities),
-> [§4.3.3](17-ai-platform.md#433-entitlement-quota-and-rate-control) (quota and rate
-> control), [§7](17-ai-platform.md#7-data-flow-and-data-model) (data model, retention, write-path
-> rules), [§13](17-ai-platform.md#13-operational-concerns) (observability, service levels, testing).
+> Detail: [§6.4](01-ai-platform.md#64-streaming-with-commit-time-validation) (streaming and
+> validation), [§6.7](01-ai-platform.md#67-conversational-capabilities) (conversational capabilities),
+> [§4.3.3](01-ai-platform.md#433-entitlement-quota-and-rate-control) (quota and rate
+> control), [§7](01-ai-platform.md#7-data-flow-and-data-model) (data model, retention, write-path
+> rules), [§13](01-ai-platform.md#13-operational-concerns) (observability, service levels, testing).
 
 ---
 
@@ -1079,12 +1079,12 @@ context rounds per turn: 2; acceptance mode `advisory_display`.
 it was told to resolve, and appended to a transcript — while the platform did every piece of inference,
 held no state between the two legs, and never touched clinic data itself.
 
-> Detail: [§8.2](17-ai-platform.md#82-streaming-prose-request--happy-path) (streaming happy path),
-> [§8.3](17-ai-platform.md#83-structured-json-request-with-context-enrichment) (structured with
-> context), [§8.4](17-ai-platform.md#84-missing-context-self-healing) (missing-context recovery),
-> [§8.5](17-ai-platform.md#85-validation-failure-bounded-repair-then-terminal-failure)–[§8.7](17-ai-platform.md#87-user-initiated-cancellation)
+> Detail: [§8.2](01-ai-platform.md#82-streaming-prose-request--happy-path) (streaming happy path),
+> [§8.3](01-ai-platform.md#83-structured-json-request-with-context-enrichment) (structured with
+> context), [§8.4](01-ai-platform.md#84-missing-context-self-healing) (missing-context recovery),
+> [§8.5](01-ai-platform.md#85-validation-failure-bounded-repair-then-terminal-failure)–[§8.7](01-ai-platform.md#87-user-initiated-cancellation)
 > (repair, fallback, cancellation),
-> [§8.10](17-ai-platform.md#810-conversational-turn-with-context-negotiation) (chat negotiation).
+> [§8.10](01-ai-platform.md#810-conversational-turn-with-context-negotiation) (chat negotiation).
 
 ---
 
@@ -1092,33 +1092,33 @@ held no state between the two legs, and never touched clinic data itself.
 
 ## 10. Where to Read More
 
-`17-ai-platform.md` is the canonical document. This table maps each overview section to it.
+`01-ai-platform.md` is the canonical document. This table maps each overview section to it.
 
 
 | To go deeper on                                                            | Read                                                                                                                                                                                                                                                          |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Architecture style, capability model                                       | [§3.1](17-ai-platform.md#31-architecture-style-and-why-this-one)                                                                                                                                                                                              |
-| System context and topology diagrams                                       | [§3.2](17-ai-platform.md#32-system-context), [§3.3](17-ai-platform.md#33-trust-and-network-topology)                                                                                                                                                          |
-| The three contracts, and how they are enforced in CI                       | [§3.4](17-ai-platform.md#34-the-three-seams)                                                                                                                                                                                                                  |
-| What the platform deliberately excludes                                    | [§3.5](17-ai-platform.md#35-deliberately-not-in-the-platform)                                                                                                                                                                                                 |
-| Every component in full detail                                             | [§4](17-ai-platform.md#4-components-and-responsibilities)                                                                                                                                                                                                     |
-| Storage ownership and the control plane                                    | [§4.4](17-ai-platform.md#44-storage-ownership), [§4.5](17-ai-platform.md#45-control-plane)                                                                                                                                                                    |
-| Capability manifest fields                                                 | [§5.1](17-ai-platform.md#51-capability-manifest)                                                                                                                                                                                                              |
-| Context keys, shapes, evolution rules                                      | [§5.2](17-ai-platform.md#52-context-contract)                                                                                                                                                                                                                 |
-| Canonical inference representation                                         | [§5.3](17-ai-platform.md#53-canonical-inference-representation)                                                                                                                                                                                               |
-| Full error taxonomy and streaming protocol                                 | [§5.4](17-ai-platform.md#54-error-taxonomy), [§5.5](17-ai-platform.md#55-api-surface-and-streaming-protocol)                                                                                                                                                  |
-| Token claims                                                               | [§5.6](17-ai-platform.md#56-token-contract)                                                                                                                                                                                                                   |
-| Versioning and compatibility rules                                         | [§5.7](17-ai-platform.md#57-versioning-and-compatibility-rules)                                                                                                                                                                                               |
-| The sixteen pipeline stages and their ordering                             | [§6.1](17-ai-platform.md#61-the-pipeline), [§6.2](17-ai-platform.md#62-why-this-order-and-not-another)                                                                                                                                                        |
-| Cancellation semantics                                                     | [§6.5](17-ai-platform.md#65-cancellation)                                                                                                                                                                                                                     |
-| Conversational capabilities, chat context negotiation                      | [§6.7](17-ai-platform.md#67-conversational-capabilities), [§8.10](17-ai-platform.md#810-conversational-turn-with-context-negotiation)                                                                                                                         |
-| Why chat is a declared capability, and why the client holds the transcript | [§2.5](17-ai-platform.md#25-amendment-a14-an-open-chat-surface-is-a-declared-capability-not-an-inferred-one), [§9.18](17-ai-platform.md#918-platform-held-conversation-state), [§9.19](17-ai-platform.md#919-client-side-intent-routing-for-the-chat-surface) |
-| D1 entities, R2 layout, retention classes                                  | [§7.3](17-ai-platform.md#73-d1-logical-model)–[§7.7](17-ai-platform.md#77-retention-and-recovery)                                                                                                                                                             |
-| Sequence diagrams for every major flow                                     | [§8](17-ai-platform.md#8-sequence-diagrams)                                                                                                                                                                                                                   |
-| Risks and their mitigations                                                | [§11](17-ai-platform.md#11-risks-and-mitigations)                                                                                                                                                                                                             |
-| Evolution path and extension recipes                                       | [§12](17-ai-platform.md#12-evolution-path)                                                                                                                                                                                                                    |
-| Build order, slice boundaries, and spec-authoring rules                    | `17b-ai-platform-delivery-plan.md`                                                                                                                                                                                                                            |
-| Observability, service levels, testing, cost                               | [§13](17-ai-platform.md#13-operational-concerns)                                                                                                                                                                                                              |
-| Terminology                                                                | [§16](17-ai-platform.md#16-glossary-additions)                                                                                                                                                                                                                |
+| Architecture style, capability model                                       | [§3.1](01-ai-platform.md#31-architecture-style-and-why-this-one)                                                                                                                                                                                              |
+| System context and topology diagrams                                       | [§3.2](01-ai-platform.md#32-system-context), [§3.3](01-ai-platform.md#33-trust-and-network-topology)                                                                                                                                                          |
+| The three contracts, and how they are enforced in CI                       | [§3.4](01-ai-platform.md#34-the-three-seams)                                                                                                                                                                                                                  |
+| What the platform deliberately excludes                                    | [§3.5](01-ai-platform.md#35-deliberately-not-in-the-platform)                                                                                                                                                                                                 |
+| Every component in full detail                                             | [§4](01-ai-platform.md#4-components-and-responsibilities)                                                                                                                                                                                                     |
+| Storage ownership and the control plane                                    | [§4.4](01-ai-platform.md#44-storage-ownership), [§4.5](01-ai-platform.md#45-control-plane)                                                                                                                                                                    |
+| Capability manifest fields                                                 | [§5.1](01-ai-platform.md#51-capability-manifest)                                                                                                                                                                                                              |
+| Context keys, shapes, evolution rules                                      | [§5.2](01-ai-platform.md#52-context-contract)                                                                                                                                                                                                                 |
+| Canonical inference representation                                         | [§5.3](01-ai-platform.md#53-canonical-inference-representation)                                                                                                                                                                                               |
+| Full error taxonomy and streaming protocol                                 | [§5.4](01-ai-platform.md#54-error-taxonomy), [§5.5](01-ai-platform.md#55-api-surface-and-streaming-protocol)                                                                                                                                                  |
+| Token claims                                                               | [§5.6](01-ai-platform.md#56-token-contract)                                                                                                                                                                                                                   |
+| Versioning and compatibility rules                                         | [§5.7](01-ai-platform.md#57-versioning-and-compatibility-rules)                                                                                                                                                                                               |
+| The sixteen pipeline stages and their ordering                             | [§6.1](01-ai-platform.md#61-the-pipeline), [§6.2](01-ai-platform.md#62-why-this-order-and-not-another)                                                                                                                                                        |
+| Cancellation semantics                                                     | [§6.5](01-ai-platform.md#65-cancellation)                                                                                                                                                                                                                     |
+| Conversational capabilities, chat context negotiation                      | [§6.7](01-ai-platform.md#67-conversational-capabilities), [§8.10](01-ai-platform.md#810-conversational-turn-with-context-negotiation)                                                                                                                         |
+| Why chat is a declared capability, and why the client holds the transcript | [§2.5](01-ai-platform.md#25-amendment-a14-an-open-chat-surface-is-a-declared-capability-not-an-inferred-one), [§9.18](01-ai-platform.md#918-platform-held-conversation-state), [§9.19](01-ai-platform.md#919-client-side-intent-routing-for-the-chat-surface) |
+| D1 entities, R2 layout, retention classes                                  | [§7.3](01-ai-platform.md#73-d1-logical-model)–[§7.7](01-ai-platform.md#77-retention-and-recovery)                                                                                                                                                             |
+| Sequence diagrams for every major flow                                     | [§8](01-ai-platform.md#8-sequence-diagrams)                                                                                                                                                                                                                   |
+| Risks and their mitigations                                                | [§11](01-ai-platform.md#11-risks-and-mitigations)                                                                                                                                                                                                             |
+| Evolution path and extension recipes                                       | [§12](01-ai-platform.md#12-evolution-path)                                                                                                                                                                                                                    |
+| Build order, slice boundaries, and spec-authoring rules                    | `03-ai-platform-delivery-plan.md`                                                                                                                                                                                                                            |
+| Observability, service levels, testing, cost                               | [§13](01-ai-platform.md#13-operational-concerns)                                                                                                                                                                                                              |
+| Terminology                                                                | [§16](01-ai-platform.md#16-glossary-additions)                                                                                                                                                                                                                |
 
 

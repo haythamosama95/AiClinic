@@ -31,11 +31,11 @@ The first argument is the review file path.
 
 | Document | Path |
 | --- | --- |
-| Delivery plan (slice table, canonical refs, needs) | `docs/architecture/17b-ai-platform-delivery-plan.md` |
-| Architecture (read **only** cited sections) | `docs/architecture/17-ai-platform.md` |
+| Delivery plan (slice table, canonical refs, needs) | `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` |
+| Architecture (read **only** cited sections) | `docs/architecture/ai-platform/01-ai-platform.md` |
 | Review index | `docs/review/ai-platform-slices/README.md` |
 
-The user may say `delivery-hase.md`; that means `17b-ai-platform-delivery-plan.md`.
+The user may say `delivery-hase.md`; that means `03-ai-platform-delivery-plan.md`.
 
 ---
 
@@ -74,10 +74,10 @@ item as a comment that **must** be resolved or escalated.
 
 **Do not read either document in full.**
 
-1. In `17b-ai-platform-delivery-plan.md`, locate the slice row in §3.2–§3.9
+1. In `03-ai-platform-delivery-plan.md`, locate the slice row in §3.2–§3.9
    (search for `| **<slice-id>** |`). Read only that row and its band intro
    paragraph (the `### 3.N Band …` section it sits under).
-2. In `17-ai-platform.md`, read **only** the sections named in the review
+2. In `01-ai-platform.md`, read **only** the sections named in the review
    header's `Canonical:` field and the delivery-plan row's `Canonical` column.
    Use the Table of Contents or `^## N\.` / `^### N\.M` headings to jump
    directly to each § section.
@@ -141,7 +141,7 @@ For **each stage**, in order:
 
 #### 5a. Escalation gate (before any code)
 
-If resolving a comment would require **changing** `17-ai-platform.md` — new
+If resolving a comment would require **changing** `01-ai-platform.md` — new
 behaviour, amended contract meaning, new component, or contradiction with a cited
 § section — **stop immediately**. Output an `## ESCALATION` block (see below) and
 do not proceed.
@@ -156,7 +156,7 @@ Allowed without escalation:
   changed meaning)
 
 Architectural Deviations that say "architecture wins" or require amending
-`17-ai-platform.md` are escalation cases unless the review item can be fixed
+`01-ai-platform.md` are escalation cases unless the review item can be fixed
 purely in implementation without contradicting the architecture.
 
 #### 5b. Write the test first
@@ -196,7 +196,7 @@ Modify `specs/<NNN>-<name>/` artifacts so they match the implementation:
 - `tasks.md` — only if task descriptions or completion evidence changed
 - `contracts/` — only on allowed extension, never meaning change
 
-Do **not** edit `17-ai-platform.md` or `17b-ai-platform-delivery-plan.md`.
+Do **not** edit `01-ai-platform.md` or `03-ai-platform-delivery-plan.md`.
 
 Repeat 5a–5e for every stage.
 
@@ -287,7 +287,7 @@ output **only**:
 **Review item:** Critical Issues #1
 **Conflict:** Fixing operator auth requires a new §4.5 verification scheme not
 present in the current implementation or spec scope.
-**Should be answered by:** architecture amendment to `17-ai-platform.md` §4.5,
+**Should be answered by:** architecture amendment to `01-ai-platform.md` §4.5,
 or a revised review scope excluding this item.
 **Blocked until:** human decision
 ```

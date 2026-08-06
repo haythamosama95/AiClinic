@@ -1,7 +1,7 @@
 # Contract: Control-plane installation lifecycle (B2)
 
 **Frozen by:** Slice B2 — Control-plane enrollment and installation lifecycle
-**Implements:** §4.5, §8.1 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.5, §8.1 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices **B3** (guard), **J3** (control_audit activations), and **F3**
 (installation purge by lifecycle status) **consume** this contract; the no-rework rule applies
 (Delivery Plan §2.3). A later slice may **extend** (e.g. J3 adds further `control_audit.action`

@@ -1,6 +1,6 @@
 # Slice Review: H1 — Conversational manifest fields and context-request schema
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §5.1, §5.4, §5.5, §5.7, §6.3, §6.7.2, §6.7.4, amendment A14 (source of truth); `specs/044-conversational-manifest-schema/` (spec, plan, tasks, contracts).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §5.1, §5.4, §5.5, §5.7, §6.3, §6.7.2, §6.7.4, amendment A14 (source of truth); `specs/044-conversational-manifest-schema/` (spec, plan, tasks, contracts).
 **Implementation reviewed:** `ai-platform/src/manifest/index.ts`, `ai-platform/src/context/context-request.ts`, `ai-platform/src/adapter.ts`, `ai-platform/src/journal/index.ts`, `ai-platform/src/errors.ts`, plus the four H1 test files and `ai-platform/test/helpers/adapter-stub.ts`.
 **Method:** Static review only; no build, no test execution.
 

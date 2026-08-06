@@ -6,8 +6,8 @@ E3 lands the Flutter Context Resolver — a generic key-list registry that assem
 
 ## 1. Architecture context
 
-- **Delivery plan row E3** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.6): Context Resolver registry, first context RPC, and client contract test in band E.
-- **Architecture sections implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row E3** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.6): Context Resolver registry, first context RPC, and client contract test in band E.
+- **Architecture sections implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §4.1 — Context Resolver: generic key → resolver registry, key list in / payload or typed failure out, screen-scoped cache
   - §5.2 — Context key vocabulary and published shapes (`visit.chief_complaint@v1`)
   - §4.2 — First ordinary context provider read RPC under caller RLS with no AI knowledge

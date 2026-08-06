@@ -5,8 +5,8 @@
 - Canonical for: AI platform boundaries, trust model, request lifecycle, prompt ownership, provider routing, AI platform data model, and AI observability.
 - Usually paired with: `docs/architecture/01-principles.md`, `docs/architecture/04-backend.md`, `docs/architecture/09-security-rbac.md`, `docs/architecture/10-resilience-and-scale.md`, `.specify/memory/constitution.md`.
 - Not covered here: clinical content of specific AI features, prompt text, provider pricing negotiation, clinic business schema, or Flutter widget design.
-- Orientation first: `docs/architecture/17a-ai-platform-overview.md` is a short companion overview of the final architecture. Start there if you need the shape of the system rather than its detail.
-- Build order: `docs/architecture/17b-ai-platform-delivery-plan.md` decomposes this architecture into individually specifiable slices and defines the rules for authoring their specs. Read it before opening a Spec Kit feature for AI platform work.
+- Orientation first: `docs/architecture/ai-platform/02-ai-platform-overview.md` is a short companion overview of the final architecture. Start there if you need the shape of the system rather than its detail.
+- Build order: `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` decomposes this architecture into individually specifiable slices and defines the rules for authoring their specs. Read it before opening a Spec Kit feature for AI platform work.
 
 > **Status:** Architecture proposal. Nothing in this document is implemented. This document
 > **supersedes** every earlier AI-related statement in the architecture set and specs,
@@ -3432,7 +3432,7 @@ read and believe**, not a demonstration.
 
 ### 12.2 Delivery plan
 
-The build order itself lives in `docs/architecture/17b-ai-platform-delivery-plan.md`, which
+The build order itself lives in `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`, which
 decomposes this architecture into individually specifiable slices grouped into lettered bands, gives
 each slice its acceptance shape, and defines the review checkpoints and the spec-authoring rules. It
 is not repeated here: this document decides what the platform is, that one decides in what order the

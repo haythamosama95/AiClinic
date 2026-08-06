@@ -8,7 +8,7 @@
 
 **Input**: Slice `B3` — "Guard stages: identity, rate limiting, entitlement and kill switches"
 (delivery plan §3.3, row B3). Not a prose feature description; it is a row of the delivery plan, so
-every requirement below cites a section of `docs/architecture/17-ai-platform.md`.
+every requirement below cites a section of `docs/architecture/ai-platform/01-ai-platform.md`.
 
 > Constitution note: Specs MUST explain clinic-fit scope, layer placement, data and
 > security boundaries, and degraded behavior when AI or supporting services are

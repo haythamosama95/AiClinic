@@ -85,7 +85,7 @@ specs/019-ai-context-keys-d1-config/
 └── tasks.md             # /ai-platform-tasks output (NOT created here)
 ```
 
-`data-model.md` **is** produced — A5 defines every D1 entity of §7.3 (spec §Key Entities). `contracts/` carries two artifacts because A5 freezes two wire-shape contracts (the context key and the config cache) that later slices' **Consumes** must bind to (C2 validator, C3 journal, B3 guard, E3 Resolver). `research.md` is never produced on this platform; the research is `docs/architecture/17-ai-platform.md` (delivery plan §6, plan-phase protocol).
+`data-model.md` **is** produced — A5 defines every D1 entity of §7.3 (spec §Key Entities). `contracts/` carries two artifacts because A5 freezes two wire-shape contracts (the context key and the config cache) that later slices' **Consumes** must bind to (C2 validator, C3 journal, B3 guard, E3 Resolver). `research.md` is never produced on this platform; the research is `docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6, plan-phase protocol).
 
 ### Source Code (repository root)
 

@@ -1,7 +1,7 @@
 # Contract: Soft-threshold admission answer extension (F4)
 
 **Frozen by:** Slice F4 — Soft-threshold degraded routing  
-**Implements:** §4.3.3, §8.8 of `docs/architecture/17-ai-platform.md`  
+**Implements:** §4.3.3, §8.8 of `docs/architecture/ai-platform/01-ai-platform.md`  
 **Extends:** B4 `specs/024-quota-do-admission/contracts/quota-do-rpc.md` (admission response only)  
 **Status:** Frozen. Later slices may extend these fields and may not rewrite the soft/hard
 branches below (delivery plan §2.3).

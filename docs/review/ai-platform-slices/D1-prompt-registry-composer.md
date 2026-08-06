@@ -77,7 +77,7 @@ None. At the library level this slice scopes itself to, the done-when criteria a
 | --- | --- | --- |
 | **D1-R1 — Template governs rendering** | Bugs #1; Rec (make template real) | `composer.ts` `renderThroughTemplate`; fixture template substitution; golden + T-D1-06/08 |
 | **D1-R2 — Mandatory requestReference** | Bugs #2; Rec (remove minting fallback) | `ComposeRequestInput.requestReference` required; no `generateRequestReference`; eval harness + tests |
-| **D1-R3 — Stop / tone / refusal operationalization** | Bugs #3, #4; Missing/Weak Tests #8; Rec (source stop/tone or amend contract) | `stopConditionsFromManifest`; Spec Kit contract §4.2/§4.3 + spec Assumptions/FR-004 clarification (no `17-ai-platform.md` edit; A4 §5.1 has no stop/tone/refusal fields) |
+| **D1-R3 — Stop / tone / refusal operationalization** | Bugs #3, #4; Missing/Weak Tests #8; Rec (source stop/tone or amend contract) | `stopConditionsFromManifest`; Spec Kit contract §4.2/§4.3 + spec Assumptions/FR-004 clarification (no `01-ai-platform.md` edit; A4 §5.1 has no stop/tone/refusal fields) |
 | **D1-R4 — Build-time registry index + pin gate** | Bugs #5, #6; Architectural Deviations #2, #4; Missing/Weak Tests #2; Rec (generalize registry; prove bytes) | `registry.ts` `import.meta.glob` index; test overlay seam; `verifyAllRegistryPins`; `prompt-registry-gate.test.ts`; published manifest refs aligned |
 | **D1-R5 — Log composition failures** | Bugs #7; Rec (log failures) | `console.error` with `trace_id` in catch; T-D1-12 log case |
 | **D1-R6 — H2 contract + conversational rendering** | Architectural Deviations #1; Rec (amend frozen contract for H2) | `contracts/composer-output.md` §2/§4.4; permittedKeySet-ordered conversational context; stable key order for transcript `context_resolved` |
@@ -85,7 +85,7 @@ None. At the library level this slice scopes itself to, the done-when criteria a
 | **D1-R8 — Remaining coverage** | Missing/Weak Tests #1, #3, #4, #5, #7; Rec (add missing cases) | Prompt-text vocabulary guard; all `internal_error` branches; frozen golden file; R-10 role/adapter-bind pin; nested provider-shape walk |
 | **D1-R9 — Unwired composer observation** | Architectural Deviations #5 | Docs only — consumption deferred to D2/D3 per contract; no production change |
 
-Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) untouched.
+Every numbered review item appears in exactly one stage. Architecture docs (`01-ai-platform.md`, `03-ai-platform-delivery-plan`) untouched.
 
 ### 1.2 Test cases created first
 

@@ -6,8 +6,8 @@ Slice D2 adds the typed provider port, exhaustive failure classification, a dete
 
 ## 1. Architecture context
 
-- **Delivery plan row D2** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.5): provider port, fake adapter, and routing policy in band D.
-- **Architecture sections implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row D2** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.5): provider port, fake adapter, and routing policy in band D.
+- **Architecture sections implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §4.3.8 — provider adapters and egress (port boundary, classification, fake)
   - §4.3.7 — provider router and policy engine (policy-as-data → candidate chain + selection reason)
   - §7.3 — `routing_policy` entity shape (interpreted, not migrated)

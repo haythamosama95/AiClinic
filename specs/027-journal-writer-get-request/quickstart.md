@@ -21,7 +21,7 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 C3 implements the **C3** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.4, covering architecture sections **§4.3.11** (journal writer), **§6.1 stages 9, 15, 16**
 (pipeline write-path timings), **§6.3** (state transition stamping), **§7.4** and **§7.4.1** (R2
 payload envelope — one object per request), **§7.6** (indexed get-request lookup), and **§5.5**

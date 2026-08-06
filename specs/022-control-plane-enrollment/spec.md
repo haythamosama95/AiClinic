@@ -8,7 +8,7 @@
 
 **Input**: Slice `B2` — "Control-plane enrollment and installation lifecycle" (delivery plan
 §3.3, row B2). Not a prose feature description; it is a row of the delivery plan, so every
-requirement below cites a section of `docs/architecture/17-ai-platform.md`.
+requirement below cites a section of `docs/architecture/ai-platform/01-ai-platform.md`.
 
 > Constitution note: Specs MUST explain clinic-fit scope, layer placement, data and
 > security boundaries, and degraded behavior when AI or supporting services are

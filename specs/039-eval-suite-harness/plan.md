@@ -59,14 +59,14 @@ specs/039-eval-suite-harness/
 
 `quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`:
 
-1. **Architecture context** — cites delivery plan §3.7 row F1 and `17-ai-platform.md` §13.5 Capability evals (A9) / A9; what the spec delivered; what the plan scoped.
+1. **Architecture context** — cites delivery plan §3.7 row F1 and `01-ai-platform.md` §13.5 Capability evals (A9) / A9; what the spec delivered; what the plan scoped.
 2. **What was implemented** — the `test/eval/` harness, first-capability golden cases, deliberately-worse prompt artifact, JSON score report, CI golden gate, scheduled live-smoke workflow.
 3. **Files to review** — this slice's `ai-platform/test/eval/` files, workflow deltas, and frozen contract only.
 4. **Run the automated suite** — slice-only `npx vitest run test/eval/...` commands (no full-suite `npm test`, no prior-slice counts).
 5. **Inspect the changes** — open the harness entry, golden expectations, score report path, and frozen contract.
 6. **Manual validation** — omitted for goldens (CI is the verification path); scheduled smoke may note how to inspect the workflow run / retained score artifact when live credentials are available, without expanding scope beyond this slice.
 
-`data-model.md` is **not** produced — F1 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/17-ai-platform.md`.
+`data-model.md` is **not** produced — F1 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/capability-eval-harness.md` freezes the three Freezes entries so later slices (D7's capability-eval clause, H4 conversation evals, J3 staged rollout) bind to a frozen artifact, not prose: how golden cases gate CI against recorded fixtures, how the deliberately regressed prompt fails the gate, how live smoke is scheduled against pinned models, and the per-run JSON score-report payload (quality + schema, pass/fail only).
 
@@ -110,7 +110,7 @@ Every **Consumes** entry binds to an existing implementation. None requires modi
 
 ## Components Touched
 
-F1 modifies **no** §4 runtime component of `17-ai-platform.md`. Implements cites **§13.5** and **A9** (Capability evals) — a testing-strategy layer, not a Worker pipeline stage. Clarification Q1 places the harness under `ai-platform/test/eval/` only with no `src/eval/` module. §4.3.6 mentions CI evals (A9) as the reason prompts are immutable assets; F1 does not modify the prompt composer/registry — it evaluates against them. §4.3.8 (adapters) and §4.3.7 (router) are **consumed**, not modified.
+F1 modifies **no** §4 runtime component of `01-ai-platform.md`. Implements cites **§13.5** and **A9** (Capability evals) — a testing-strategy layer, not a Worker pipeline stage. Clarification Q1 places the harness under `ai-platform/test/eval/` only with no `src/eval/` module. §4.3.6 mentions CI evals (A9) as the reason prompts are immutable assets; F1 does not modify the prompt composer/registry — it evaluates against them. §4.3.8 (adapters) and §4.3.7 (router) are **consumed**, not modified.
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |

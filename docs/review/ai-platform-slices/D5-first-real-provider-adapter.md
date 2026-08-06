@@ -96,7 +96,7 @@ D5 delivers the artifacts its contract names — `src/provider/deepseek.ts` (`De
 | **D5-R3 — Structured classification** | Bugs #5–#6; Weak Tests #10 (filter cases); Recs (classify by structured signals) | `mapFinishReason` path via `finishReasonErrorOutcome`; `isContentFiltered` (no bare `"safety"`); `classifyHttpFailure` status-first; finish-reason / 429+safety fixtures |
 | **D5-R4 — Budget, timing, usage honesty** | Bugs #7–#9; Weak Tests #2, #10 (usage/budget); Recs (telemetry/usage) | `consumedBudget` override on missing key; measured `provider_ms`; `stream_options.include_usage`; `prompt_cache_hit_tokens` → `cached`; `usage_absent` `provider_note` |
 | **D5-R5 — Credential & prohibition spies** | Bugs #10; Weak Tests #7–#9; Recs (strengthen spies); Deviation #1 (already closed by D2-R2 — no JournalSink) | T-D5-08/09/10/11 tightened; options-surface keys only `transport`/`secretStore`/`timeoutMs` |
-| **D5-R6 — Document architectural remainder** | Deviations #4–#5; Recs (buffered transport; deadline ambiguity without amending `17-ai-platform.md`) | Spec Kit only: `contracts/first-real-provider-adapter.md` §2.5–2.6; `spec.md` / `plan.md` / `tasks.md` |
+| **D5-R6 — Document architectural remainder** | Deviations #4–#5; Recs (buffered transport; deadline ambiguity without amending `01-ai-platform.md`) | Spec Kit only: `contracts/first-real-provider-adapter.md` §2.5–2.6; `spec.md` / `plan.md` / `tasks.md` |
 
 Every numbered finding is in exactly one stage. No architecture-doc edits; no escalation (Deviations 2–3 already repaired on `ai/master` via D2-R1; Deviation 5 resolved as D5 adapter interpretation of remaining-ms, not an A3 architecture amendment).
 

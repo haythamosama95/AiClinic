@@ -12,8 +12,8 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 
 This slice implements delivery-plan row **A6** (*Protocol adapter and SSE framing*), which maps to
 §4.3.1 and §5.5 of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A6 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row A6 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 
 - The **spec** freezes the Submit-request wire format (ingress body-size gate at stage 1, three
   correlation headers, SSE event vocabulary, one-terminal-event invariant, connection-scoped

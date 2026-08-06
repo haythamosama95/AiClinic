@@ -76,7 +76,7 @@ specs/037-context-resolver-registry/
 
 `data-model.md` is **not** produced — E3 defines no D1 (or other) entities (spec Key Entities: "Not applicable").
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` is produced because two **Freezes** entries have wire shapes later slices’ **Consumes** must bind to: the Resolver key-list → assembled payload API, and the first context provider RPC return shape. Screen-scoped cache lifetime and the client contract suite itself are behavioural / CI Freezes without new wire shapes beyond those two.
 

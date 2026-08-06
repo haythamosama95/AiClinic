@@ -54,7 +54,7 @@ Justification: over the 32⁸ (~2⁴⁰) Crockford space, birthday `P(collision)
 - Replaced `GENERATION_RUN = 1_000_000` with `GENERATION_RUN = 20_000` and updated the T21 test title.
 - No change to `generateRequestReference` / `normalizeRequestReference` — the generator was correct; the assertion was not.
 - Spec Kit aligned: clarify Q&A, acceptance #21, T21 table row, SC-004, edge-case / assumptions wording in `spec.md`; T21 references in `plan.md` and `tasks.md` T003.
-- Architecture docs (`17-ai-platform.md`) untouched — format, support-handle-not-key, and A6 D1 uniqueness unchanged.
+- Architecture docs (`01-ai-platform.md`) untouched — format, support-handle-not-key, and A6 D1 uniqueness unchanged.
 
 ### 1.4 Verification
 

@@ -2,7 +2,7 @@
 
 **Frozen by:** Slice E3 — Context Resolver registry, first context RPC, and client contract test  
 **Implements:** §4.1 Context Resolver, §5.2 Shape (client assembly), §13.5 Client contract tests of
-`docs/architecture/17-ai-platform.md`  
+`docs/architecture/ai-platform/01-ai-platform.md`  
 **Status:** Frozen. Later slices (E4, H3, J2) **consume** this artifact; they extend the registered
 key set, never rewrite the key-list API, the unknown-key typed failure, the no-capability-id rule,
 or the screen-scoped cache lifetime. H3 may add an arguments-aware `resolveRequests` channel as a

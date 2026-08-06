@@ -11,8 +11,8 @@ slices, or full-suite regression commands (those belong in Verification T018).
 
 ## 1. Architecture context
 
-- **Delivery plan row H4** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.8): Conversation evals after F1 and H2 — scripted multi-leg conversations scored per conversation on right keys, permitted set, and round-budget convergence.
-- **Architecture sections implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row H4** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.8): Conversation evals after F1 and H2 — scripted multi-leg conversations scored per conversation on right keys, permitted set, and round-budget convergence.
+- **Architecture sections implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §13.5 Conversation evals (A14) — for conversational capabilities, scripted multi-leg conversations against fixtures, scored per conversation rather than per turn.
   - A9 — CI-gated prompt/capability evaluation suite; H4 is a sibling extension under the same gate, not a second eval product.
 - **Spec delivered** ([`spec.md`](spec.md)): FR-001–FR-010 — active multi-leg harness loop against recorded fixtures; one fixture conversational capability (`clinic.chat_assistant`) with three scripted cases; per-conversation pass/fail on `right_keys`, `permitted_set`, and `round_budget`; JSON score recording; same CI gate as F1; no Flutter prompt/provider/model strings; no per-request server-side state.

@@ -2,8 +2,8 @@
 
 - Purpose: Explain how to run the implemented AI platform stack locally, what is visible from the Flutter UI, and how to observe each band’s behaviour through Wrangler (D1, R2, logs, crons) and control-plane HTTP.
 - Read this when: exercising AI features after delivery-plan slices are complete, debugging a request by reference, or verifying enroll / support / deprecation / canary operations.
-- Canonical for: day-to-day run and observe recipes across bands A–J (as built). Not a substitute for architecture decisions in `17-ai-platform.md` or slice boundaries in `17b-ai-platform-delivery-plan.md`.
-- Usually paired with: [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md), [`17c`](17c-band-a-implementation-reference.md) / [`17d`](17d-band-b-implementation-reference.md) / [`17e`](17e-band-c-implementation-reference.md) band references, and per-slice `specs/*/quickstart.md`.
+- Canonical for: day-to-day run and observe recipes across bands A–J (as built). Not a substitute for architecture decisions in `01-ai-platform.md` or slice boundaries in `03-ai-platform-delivery-plan.md`.
+- Usually paired with: [`03-ai-platform-delivery-plan.md`](03-ai-platform-delivery-plan.md), [`01-band-a`](implementation-references/01-band-a-implementation-reference.md) / [`02-band-b`](implementation-references/02-band-b-implementation-reference.md) / [`03-band-c`](implementation-references/03-band-c-implementation-reference.md) band references, and per-slice `specs/*/quickstart.md`.
 
 > **Honesty rule:** Automated tests are the primary proof of slice completion (delivery-plan DP-3). Several client and pipeline pieces ship as libraries + suites before full product wiring. This runbook marks those gaps explicitly so UI and Wrangler expectations stay accurate.
 
@@ -158,7 +158,7 @@ End-to-end enrollment spans **clinic Supabase** (keypair + availability flag) an
 
 ### 5.1 Clinic: mint installation key material
 
-As an owner/admin session on local Supabase, call the keystore enroll RPC (see B1 quickstart / `17d`):
+As an owner/admin session on local Supabase, call the keystore enroll RPC (see B1 quickstart / `02-band-b`):
 
 ```sql
 SELECT public.enroll_installation_keypair();
@@ -351,7 +351,7 @@ All control routes require `Authorization: Bearer $OPERATOR_BEARER_TOKEN`.
 | `POST` | `/v1/requests` | AAT (when pipeline auth is engaged) | SSE adapter entry (`handleAdapterRequest`) |
 | `GET` | `/v1/requests/{reference}` | AAT | Journal get-request (C3) |
 
-Discovery is **not** an HTTP route; use library `discover()` / workers tests (`17e`).
+Discovery is **not** an HTTP route; use library `discover()` / workers tests (`03-band-c`).
 
 ### 7.2 Support lookup (F3)
 
@@ -525,10 +525,10 @@ Each directory has `quickstart.md` with slice-scoped commands. Use this runbook 
 
 | Doc | Use |
 | --- | --- |
-| [`17-ai-platform.md`](17-ai-platform.md) | Canonical architecture |
-| [`17a-ai-platform-overview.md`](17a-ai-platform-overview.md) | Mental model |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | Slice sequence and checkpoints |
-| [`17c`](17c-band-a-implementation-reference.md) / [`17d`](17d-band-b-implementation-reference.md) / [`17e`](17e-band-c-implementation-reference.md) | What bands A–C built |
+| [`01-ai-platform.md`](01-ai-platform.md) | Canonical architecture |
+| [`02-ai-platform-overview.md`](02-ai-platform-overview.md) | Mental model |
+| [`03-ai-platform-delivery-plan.md`](03-ai-platform-delivery-plan.md) | Slice sequence and checkpoints |
+| [`01-band-a`](implementation-references/01-band-a-implementation-reference.md) / [`02-band-b`](implementation-references/02-band-b-implementation-reference.md) / [`03-band-c`](implementation-references/03-band-c-implementation-reference.md) | What bands A–C built |
 | `ai-platform/README.md` | Gateway directory orientation |
 | `specs/*/quickstart.md` | Per-slice run / inspect / test |
 
@@ -537,4 +537,4 @@ Each directory has `quickstart.md` with slice-scoped commands. Use this runbook 
 1. Hub-page live invoke adapters (AAT mint + HTTPS submit) are not composed — `/ai` visit summary stays idle by design.
 2. HTTP discovery route is not wired.
 3. F2 clinical accept, H3 chat, and J2 self-heal are library + test proven; product screens / host wiring follow later integration work.
-4. Band G (commercial) and band K (explicitly later) remain out of scope per `17b` §4.
+4. Band G (commercial) and band K (explicitly later) remain out of scope per `03-ai-platform-delivery-plan` §4.

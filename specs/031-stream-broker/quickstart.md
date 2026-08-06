@@ -6,8 +6,8 @@ Slice D4 adds the **prose-only** stream broker: after D3's invocation loop produ
 
 ## 1. Architecture context
 
-- **Delivery plan row D4** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.5): stream broker, prose streaming, and cancellation in band D.
-- **Architecture sections implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row D4** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.5): stream broker, prose streaming, and cancellation in band D.
+- **Architecture sections implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §4.3.10 — stream broker: ordered chunk relay, heartbeat emission during provider silence, one-terminal-event guarantee, connection-scoped cancellation without per-request state
   - §6.4 — `prose` streaming path: incremental cheap guards (assembled length ceiling, stop-sequence, system-prompt-leak), full guard set on assembled text at completion, validated terminal payload (provisional chunks are not authoritative)
   - §5.5 — streaming protocol rules 3–6 as broker behaviour using A6 framing (heartbeats, one terminal event, cancel ≡ network drop, journal completeness on cancel)

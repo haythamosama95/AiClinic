@@ -13,10 +13,10 @@ CP5 checkpoint gate.
 ## 1. Architecture context
 
 - **Delivery plan** — Band F row F5 in
-  [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+  [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   (Needs: D7; satisfies checkpoint CP5).
 - **Architecture** — Implements the testing strategy in
-  [`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)
+  [`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)
   §13.5 Load and cost tests, §13.6 metered-footprint assertions, and §13.6.1 clinic-scale
   design-shape budget proof.
 - **Spec** — [`spec.md`](./spec.md) freezes the load layer, under-load one-R2 / two-DO proof,

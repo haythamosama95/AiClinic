@@ -37,7 +37,7 @@
 
 This artifact documents the platform's D1 logical model created by slice A5. It is the binding surface for later slices that write or read platform rows — not prose in the architecture doc. A5 creates schema only; no row-level write paths land in this slice.
 
-The model follows `docs/architecture/17-ai-platform.md` §7.3. Field lists indicate shape and cardinality; payloads live in R2 and are referenced by pointer columns in D1.
+The model follows `docs/architecture/ai-platform/01-ai-platform.md` §7.3. Field lists indicate shape and cardinality; payloads live in R2 and are referenced by pointer columns in D1.
 
 ### 1.2 Migration artifacts
 

@@ -1,9 +1,9 @@
 # AI Platform — Band F Implementation Reference
 
-- Purpose: Explain, in plain language, what Band F of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md), [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md), and [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band F of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md), [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md), and [`05-band-e-implementation-reference.md`](05-band-e-implementation-reference.md).
 - Read this when: onboarding after Bands D–E, reviewing eval/acceptance/ops hardening, or preparing for Band H / Band J.
 - Canonical for: Band F completion status, where to find the code and tests, and which architecture boxes are now green for hardening and operations.
-- Usually paired with: [`17c`](17c-band-a-implementation-reference.md) / [`17d`](17d-band-b-implementation-reference.md) / [`17e`](17e-band-c-implementation-reference.md) (A–C baseline), [`17g`](17g-band-d-implementation-reference.md) (inference), [`17h`](17h-band-e-implementation-reference.md) (Flutter client), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture), [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) (operator procedures).
+- Usually paired with: [`01-band-a`](01-band-a-implementation-reference.md) / [`02-band-b`](02-band-b-implementation-reference.md) / [`03-band-c`](03-band-c-implementation-reference.md) (A–C baseline), [`04-band-d`](04-band-d-implementation-reference.md) (inference), [`05-band-e`](05-band-e-implementation-reference.md) (Flutter client), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture), [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) (operator procedures).
 - Not covered here: conversational mode (Band H), staged rollout / self-heal (Band J), or review-comment follow-ups after tip `9084b9d7`.
 
 > **Status:** Band F (slices **F1–F5**) is **complete** on tip `9084b9d7` (2026-08-02) — end of Band F before later review-comment commits. Automated evidence: **45 Band F Worker Vitest tests** — **9** (F1 eval, default pool) + **20** (F3) + **7** (F4) + **9** (F5 load) — plus **7 Flutter** and **9 SQL assertions** (F2). Combined Worker suites at this tip: **341** default + **122** workers-pool (**463** total; configs are disjoint). Eval goldens gate CI; load suite is the **CP5** gate (`npm run test:load`). Soft-threshold and dashboard query modules are **proven in tests**; soft-threshold helpers are **composed in the F4 test harness**, not imported by the live `worker.ts` POST path. F2 freezes the clinical acceptance **mechanism** against a demonstration target — it does **not** promote a product capability to clinical write.
@@ -37,7 +37,7 @@ Band F makes the platform **operationally honest** after the inference and clien
 
 ### 2.1 Start with Bands A–E
 
-If earlier bands are new to you, read in order: [`17c`](17c-band-a-implementation-reference.md) (shell/contracts), [`17d`](17d-band-b-implementation-reference.md) (trust/admission), [`17e`](17e-band-c-implementation-reference.md) (capability/context/journal), [`17g`](17g-band-d-implementation-reference.md) (prompt/provider/stream), [`17h`](17h-band-e-implementation-reference.md) (Flutter client).
+If earlier bands are new to you, read in order: [`01-band-a`](01-band-a-implementation-reference.md) (shell/contracts), [`02-band-b`](02-band-b-implementation-reference.md) (trust/admission), [`03-band-c`](03-band-c-implementation-reference.md) (capability/context/journal), [`04-band-d`](04-band-d-implementation-reference.md) (prompt/provider/stream), [`05-band-e`](05-band-e-implementation-reference.md) (Flutter client).
 
 | Band | What it delivered |
 | --- | --- |
@@ -94,7 +94,7 @@ Spec Kit directories: `specs/039` … `specs/043`.
 
 ## 3. What Band F Is and Why It Exists
 
-The delivery plan titles Band F **"Hardening and operations"** (`17b` §3.7).
+The delivery plan titles Band F **"Hardening and operations"** (`03-ai-platform-delivery-plan` §3.7).
 
 | ID | Slice | Spec directory | Needs | One-line purpose |
 | --- | --- | --- | --- | --- |
@@ -403,7 +403,7 @@ flowchart TB
     style providers fill:#e8f5e9,stroke:#2e7d32
 ```
 
-### 6.2 Soft-threshold path — from `17-ai-platform.md` §8.8 / §4.3.7
+### 6.2 Soft-threshold path — from `../01-ai-platform.md` §8.8 / §4.3.7
 
 ```mermaid
 flowchart TB
@@ -528,7 +528,7 @@ Same as prior bands: **a slice is done when a test a human can read and believe 
 
 Node **22+** required for ai-platform engines field (Node 20 may warn but often still runs).
 
-### 8.3 Test layers by slice (`17b` §3.11)
+### 8.3 Test layers by slice (`03-ai-platform-delivery-plan` §3.11)
 
 | Slice | Layer | File(s) | Count |
 | --- | --- | --- | --- |
@@ -673,13 +673,13 @@ specs/
 
 ### 11.1 Checkpoint CP5
 
-**CP5** (`17b` §5): *Is the platform operationally honest?* Every request explainable from its reference, costs bounded and measured, metered footprint matches §13.6.1.
+**CP5** (`03-ai-platform-delivery-plan` §5): *Is the platform operationally honest?* Every request explainable from its reference, costs bounded and measured, metered footprint matches §13.6.1.
 
 At tip `9084b9d7`, F5's `test:load` suite **satisfies CP5's automated gate**: guard p95 under concurrency is measured, D1/DO headroom fields are finite, and one-R2 / two-DO assertions pass under load. F3 supplies the explainability and rollup half of the checkpoint narrative.
 
 ### 11.2 Checkpoint CP4 (F1 half)
 
-**CP4** needs **D7 and F1**: provider independence via a second adapter **and** capability evals. F1 delivers the eval harness half. D7's adapter/policy half is a Band D concern ([`17g`](17g-band-d-implementation-reference.md)); together they close CP4.
+**CP4** needs **D7 and F1**: provider independence via a second adapter **and** capability evals. F1 delivers the eval harness half. D7's adapter/policy half is a Band D concern ([`04-band-d`](04-band-d-implementation-reference.md)); together they close CP4.
 
 ### 11.3 What this unlocks
 
@@ -688,7 +688,7 @@ At tip `9084b9d7`, F5's `test:load` suite **satisfies CP5's automated gate**: gu
 | **Band H4** | Conversation evals reuse the F1 harness |
 | **Band J3** | Staged rollout / canary assumes eval gates exist |
 | **Clinical write capabilities** | May declare `human_accept_required` only because F2 froze `record_ai_acceptance` |
-| **Operator runbooks** | F3 lookup/purge/rollup are the APIs behind [`17f`](17f-ai-platform-operator-runbook.md) procedures |
+| **Operator runbooks** | F3 lookup/purge/rollup are the APIs behind [`04-operator-runbook`](../04-ai-platform-operator-runbook.md) procedures |
 | **Ongoing delivery checkpoints** | F5 load layer is the recurring metered-footprint proof |
 
 ---
@@ -697,14 +697,14 @@ At tip `9084b9d7`, F5's `test:load` suite **satisfies CP5's automated gate**: gu
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Contracts / shell baseline |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | Trust / Quota DO (F4 extends soft branch) |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | Journal / GET reference (F3 reads) |
-| [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) | Inference path F1/F4/F5 consume |
-| [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md) | Flutter surfaces F2 extends |
-| [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) | Operator procedures for support/retention |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | §3.7 Band F, §5 CP4/CP5 |
-| [`17-ai-platform.md`](17-ai-platform.md) | §4.2.2, §4.5, §7.6–7.7, §8.8–8.9, §13.1, §13.5–13.6 |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Contracts / shell baseline |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | Trust / Quota DO (F4 extends soft branch) |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | Journal / GET reference (F3 reads) |
+| [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md) | Inference path F1/F4/F5 consume |
+| [`05-band-e-implementation-reference.md`](05-band-e-implementation-reference.md) | Flutter surfaces F2 extends |
+| [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) | Operator procedures for support/retention |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | §3.7 Band F, §5 CP4/CP5 |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | §4.2.2, §4.5, §7.6–7.7, §8.8–8.9, §13.1, §13.5–13.6 |
 | `specs/039` … `specs/043` quickstarts | Run one slice's tests |
 
 **Run tests:**
@@ -717,4 +717,4 @@ cd ai-platform && npm run test:load
 
 ---
 
-*This document describes Band F as implemented at tip `9084b9d7` (2026-08-02), before later review-comment follow-ups. For Bands A–E see [`17c`](17c-band-a-implementation-reference.md), [`17d`](17d-band-b-implementation-reference.md), [`17e`](17e-band-c-implementation-reference.md), [`17g`](17g-band-d-implementation-reference.md), and [`17h`](17h-band-e-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band F as implemented at tip `9084b9d7` (2026-08-02), before later review-comment follow-ups. For Bands A–E see [`01-band-a`](01-band-a-implementation-reference.md), [`02-band-b`](02-band-b-implementation-reference.md), [`03-band-c`](03-band-c-implementation-reference.md), [`04-band-d`](04-band-d-implementation-reference.md), and [`05-band-e`](05-band-e-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

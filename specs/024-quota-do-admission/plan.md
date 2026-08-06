@@ -102,7 +102,7 @@ specs/024-quota-do-admission/
 `data-model.md` is **not** produced — this slice defines no D1 entity and writes no D1 schema; it
 reads `installation` / `installation_key` / `entitlement` through the config cache frozen by A5 and
 writes only bucketed `platform_counter` rows whose shape B3 froze (spec § Key Entities).
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`, and redoing
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`, and redoing
 it is how architecture drift starts. `contracts/quota-do-rpc.md` **is** produced: the spec's
 `## Slice Contract → Freezes` lists the admission and credit RPCs as contracts this slice establishes
 for the first time, and a later slice's **Consumes** must bind to a frozen artifact (the two RPC message

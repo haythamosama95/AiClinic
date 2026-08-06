@@ -10,9 +10,9 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 ## 1. Architecture context
 
 This slice implements delivery-plan row **A1** (*Worker skeleton and environments*), which maps to
-[§13.4 *Environments* and §1.4](../../docs/architecture/17-ai-platform.md) of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A1 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[§13.4 *Environments* and §1.4](../../docs/architecture/ai-platform/01-ai-platform.md) of
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row A1 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 The **spec** delivers three isolated Worker environments (dev, staging, production) with separate
 D1/R2/DO bindings, a health endpoint reporting build and environment identity, and startup failure
 on a missing required binding. The **plan** scopes only the `ai-platform/` skeleton —

@@ -10,7 +10,7 @@ slice; full-suite regression is the Verification task (T023), not repeated here.
 
 ## 1. Architecture context
 
-- **Delivery plan row:** [H3 in §3.8](../../docs/architecture/17b-ai-platform-delivery-plan.md) —
+- **Delivery plan row:** [H3 in §3.8](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) —
   Conversational journaling and client chat surface (band H).
 - **Architecture sections implemented:** §7.3 (journal grouping columns + ordered query), §6.7.1
   (independent legs, no conversation entity), §6.7.2 (`context_requested` credit and client

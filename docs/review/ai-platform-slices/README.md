@@ -5,8 +5,8 @@ Static implementation reviews of the AI Platform delivery slices merged into `ai
 | Field | Value |
 | --- | --- |
 | Branch reviewed | `ai/master` |
-| Architecture source of truth | [`docs/architecture/17-ai-platform.md`](../../architecture/17-ai-platform.md) |
-| Delivery plan | [`docs/architecture/17b-ai-platform-delivery-plan.md`](../../architecture/17b-ai-platform-delivery-plan.md) |
+| Architecture source of truth | [`docs/architecture/ai-platform/01-ai-platform.md`](../../architecture/ai-platform/01-ai-platform.md) |
+| Delivery plan | [`docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../architecture/ai-platform/03-ai-platform-delivery-plan.md) |
 | Review type | Static (no build, run, or code changes) |
 | Status | Slice reviews complete; final cross-slice review delivered |
 

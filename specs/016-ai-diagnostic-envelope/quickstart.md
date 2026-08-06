@@ -10,9 +10,9 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 ## 1. Architecture context
 
 This slice implements delivery-plan row **A2** (*Diagnostic envelope*), which maps to
-[§5.4, §4.3.1, §13.1, and §13.2](../../docs/architecture/17-ai-platform.md) of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A2 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[§5.4, §4.3.1, §13.1, and §13.2](../../docs/architecture/ai-platform/01-ai-platform.md) of
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row A2 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 The **spec** freezes the gateway's closed §5.4 error taxonomy (normative HTTP mapping),
 request-reference generator, and trace-id propagation contract. The **plan** scopes three contract
 modules (`errors.ts`, `reference.ts`, `trace.ts`), minimal wiring into `worker.ts`, and twenty-nine

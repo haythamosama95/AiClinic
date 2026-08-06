@@ -48,10 +48,10 @@ verbatim and stop.
 1. The slice's `tasks.md` — the execution order.
 2. The slice's `plan.md` — the Files, Test Layout, and Sequencing sections.
 3. The slice's `spec.md` — the Requirements and Test plan a task claims to satisfy.
-4. `docs/architecture/17b-ai-platform-delivery-plan.md` §3.10 and §6.
+4. `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` §3.10 and §6.
 5. Any `contracts/` or `data-model.md` the plan names, plus the modules in its Consumes Binding.
 
-Do not read `17-ai-platform.md` at this phase. If you believe you need it, the spec or the plan is
+Do not read `01-ai-platform.md` at this phase. If you believe you need it, the spec or the plan is
 incomplete — that is stop condition 1.
 
 ## Scope — which phases to run

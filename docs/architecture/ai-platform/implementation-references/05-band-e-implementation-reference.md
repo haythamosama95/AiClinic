@@ -1,9 +1,9 @@
 # AI Platform — Band E Implementation Reference
 
-- Purpose: Explain, in plain language, what Band E of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md), [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md), and [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band E of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md), [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md), and [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md).
 - Read this when: onboarding after Bands A–D, reviewing Flutter AI client work, or preparing for Band F / CP3 composition.
 - Canonical for: Band E completion status, where to find the code and tests across `frontend/` and `backend/`, and which client-side architecture boxes are now green.
-- Usually paired with: [`17c`](17c-band-a-implementation-reference.md)–[`17e`](17e-band-c-implementation-reference.md) (platform bands A–C), upcoming [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) (Band D tip `181ab637`), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture).
+- Usually paired with: [`01-band-a`](01-band-a-implementation-reference.md)–[`03-band-c`](03-band-c-implementation-reference.md) (platform bands A–C), upcoming [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md) (Band D tip `181ab637`), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
 - Not covered here: Worker prompt/provider/stream internals (Band D), acceptance recording into clinical records (Band F2), or conversational surfaces (Band H).
 
 > **Status:** Band E (slices **E1–E4**) is **complete** on the Band E tip (`b41e3894`, 2026-08-02, "Phase 4 Implementation") — **before** later review-comment remediation commits. Automated evidence: **55 Flutter AI tests** (28 E2 + 6 E3 + 21 E4) all passing, **4** E3 SQL cases in the trust suite all passing, and **E1** architecture-guard CI checks proven locally (3 expect-fail fixtures + clean-tree `--assert-coverage`). The transport SDK, Context Resolver, first context RPC, availability flag, and first feature surface **exist and are tested with fakes**; production adapters for AAT mint / HTTPS SSE submit / Supabase context fetch are **not wired into app bootstrap**, and the `/ai/feature-host` router entry is still a **placeholder** (does not mount `AiFeatureHostPage`). **No `ai-platform/` code was added by E1–E4** — the client consumes frozen Worker contracts (A6 SSE, A2 taxonomy, C1 capability identity) without changing the gateway.
@@ -41,10 +41,10 @@ If earlier bands are new to you, read in order:
 
 | Band | Doc | What it delivered |
 | --- | --- | --- |
-| **Band A** | [`17c`](17c-band-a-implementation-reference.md) | Worker shell, frozen error/capability/context contracts, SSE framing |
-| **Band B** | [`17d`](17d-band-b-implementation-reference.md) | AAT minting (clinic), guard stages, quota/admission DO |
-| **Band C** | [`17e`](17e-band-c-implementation-reference.md) | Capability resolve, context validate, journal + GET request |
-| **Band D** | upcoming [`17g`](17g-band-d-implementation-reference.md) (tip `181ab637`) | Prompt compose, providers, retry/fallback, stream broker |
+| **Band A** | [`01-band-a`](01-band-a-implementation-reference.md) | Worker shell, frozen error/capability/context contracts, SSE framing |
+| **Band B** | [`02-band-b`](02-band-b-implementation-reference.md) | AAT minting (clinic), guard stages, quota/admission DO |
+| **Band C** | [`03-band-c`](03-band-c-implementation-reference.md) | Capability resolve, context validate, journal + GET request |
+| **Band D** | upcoming [`04-band-d`](04-band-d-implementation-reference.md) (tip `181ab637`) | Prompt compose, providers, retry/fallback, stream broker |
 
 Band E **consumes** those platform contracts from the Flutter side. It does not rewrite frozen Worker wire shapes.
 
@@ -91,7 +91,7 @@ Spec Kit directories: `specs/035` … `specs/038`.
 
 ## 3. What Band E Is and Why It Exists
 
-The delivery plan titles Band E **"Client integration"** (`17b` §3.6).
+The delivery plan titles Band E **"Client integration"** (`03-ai-platform-delivery-plan` §3.6).
 
 | ID | Slice | Spec directory | Needs | One-line purpose |
 | --- | --- | --- | --- | --- |
@@ -435,7 +435,7 @@ flowchart TB
 
 ## 7. Frozen Contracts at a Glance
 
-Band E froze new **client/clinic** contracts. Later slices may **extend** (more keys, more surfaces) but not **rewrite** these shapes (`17b` §2.3).
+Band E froze new **client/clinic** contracts. Later slices may **extend** (more keys, more surfaces) but not **rewrite** these shapes (`03-ai-platform-delivery-plan` §2.3).
 
 ### 7.1 Architecture guard categories (E1)
 
@@ -506,7 +506,7 @@ Same as earlier bands: **a slice is done when a test a human can read and believ
 
 **Flutter AI total: 55 tests** (28 + 6 + 21). **SQL: 4.** **E1: CI harness (not counted in Flutter total).**
 
-### 8.3 Test layers by slice (`17b` §3.11.3 style)
+### 8.3 Test layers by slice (`03-ai-platform-delivery-plan` §3.11.3 style)
 
 | Slice | Named cases | File(s) |
 | --- | --- | --- |
@@ -646,7 +646,7 @@ specs/
 
 ## 11. What Band E Unlocks Next
 
-Band E is not itself a release gate (`17b` DP-1), but it removes client blockers:
+Band E is not itself a release gate (`03-ai-platform-delivery-plan` DP-1), but it removes client blockers:
 
 | Next work | Why E1–E4 matter |
 | --- | --- |
@@ -658,7 +658,7 @@ Band E is not itself a release gate (`17b` DP-1), but it removes client blockers
 
 ### 11.1 Checkpoint CP3 (not satisfied yet)
 
-**CP3** (`17b` §5) is: one Flutter button through guard, composed prompt, provider (or fake), stream, and rendered draft (**D4 + E4**).
+**CP3** (`03-ai-platform-delivery-plan` §5) is: one Flutter button through guard, composed prompt, provider (or fake), stream, and rendered draft (**D4 + E4**).
 
 Band E satisfies the **client half** at component level:
 
@@ -669,7 +669,7 @@ What remains for **CP3**:
 
 - Production mint/submit/context adapters and DI.
 - Mount `AiFeatureHostPage` (or embed the surface) on a real route.
-- Live Band D path on `POST /v1/requests` (see upcoming [`17g`](17g-band-d-implementation-reference.md), tip `181ab637`).
+- Live Band D path on `POST /v1/requests` (see upcoming [`04-band-d`](04-band-d-implementation-reference.md), tip `181ab637`).
 
 Band E alone does **not** satisfy CP3.
 
@@ -679,12 +679,12 @@ Band E alone does **not** satisfy CP3.
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Band A contracts / SSE baseline |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | AAT minting and trust |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | Capability resolve, context validate, journal |
-| [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) | Band D inference path (upcoming; tip `181ab637`) |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | §3.6 Band E slice definitions, CP3 |
-| [`17-ai-platform.md`](17-ai-platform.md) | §4.1 Feature Surfaces, §4.2 availability, §5.4 taxonomy, §6.4 provisional prose, R-12 |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Band A contracts / SSE baseline |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | AAT minting and trust |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | Capability resolve, context validate, journal |
+| [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md) | Band D inference path (upcoming; tip `181ab637`) |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | §3.6 Band E slice definitions, CP3 |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | §4.1 Feature Surfaces, §4.2 availability, §5.4 taxonomy, §6.4 provisional prose, R-12 |
 | `specs/035` … `specs/038` quickstarts | Run one slice's checks |
 
 **Run tests:**
@@ -700,4 +700,4 @@ bash backend/tests/run_ai_platform_trust_tests.sh
 
 ---
 
-*This document describes Band E as implemented at tip `b41e3894` (2026-08-02), before review-comment remediation. For Bands A–C see [`17c`](17c-band-a-implementation-reference.md)–[`17e`](17e-band-c-implementation-reference.md). Band D tip `181ab637` is covered by upcoming [`17g`](17g-band-d-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band E as implemented at tip `b41e3894` (2026-08-02), before review-comment remediation. For Bands A–C see [`01-band-a`](01-band-a-implementation-reference.md)–[`03-band-c`](03-band-c-implementation-reference.md). Band D tip `181ab637` is covered by upcoming [`04-band-d`](04-band-d-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

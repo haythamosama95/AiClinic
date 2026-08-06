@@ -16,9 +16,9 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 ## 1. Architecture context
 
 This slice implements delivery-plan row **B1** (*Installation keystore and AAT issuer*) from
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 (§3.3), which maps to the clinic-backend components in
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md):
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md):
 
 - **§4.2** — Installation keystore and AI token issuer RPC (restricted schema, session
   verification, RBAC-derived claims, issuance ledger, issuer rate limiting).

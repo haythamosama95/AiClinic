@@ -7,9 +7,9 @@ request reference; conversational capabilities never enter this path.
 
 ## 1. Architecture context
 
-- **Delivery plan row J2** ([§3.9](../../docs/architecture/17b-ai-platform-delivery-plan.md)) implements
+- **Delivery plan row J2** ([§3.9](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)) implements
   **§8.4 Self-healing** and **§5.2 Self-healing vs Negotiation** from
-  [`17-ai-platform.md`](../../docs/architecture/17-ai-platform.md).
+  [`01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md).
 - **Spec** (`spec.md`) froze the one-resubmission bound, same idempotency key reuse, second-rejection
   surfacing, and conversational exclusion for the §8.4 client handshake against C2's missing-key
   manifest payload.

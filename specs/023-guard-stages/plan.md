@@ -74,7 +74,7 @@ specs/023-guard-stages/
 
 `data-model.md` is **not** produced — B3 defines no D1 entities (spec `### Key Entities`: "Not applicable"). It writes only bucketed `platform_counter` rows whose shape is already frozen by A5's migration and the §4.3.12/§7.5 contract.
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`; redoing it is how architecture drift starts.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`; redoing it is how architecture drift starts.
 
 `contracts/` is produced because two **Freezes** entries have wire shapes a later slice's **Consumes** must bind to (the `TokenVerifier` port and the immutable `RequestPrincipal`). The plan names them; the implement phase writes the two files above. J4 (token-contract rotation) and B4 (admission) will consume the verifier port; every downstream pipeline stage consumes the principal.
 

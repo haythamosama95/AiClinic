@@ -2,7 +2,7 @@
 
 **Frozen by:** Slice H1 — Conversational manifest fields and context-request schema
 **Implements:** §5.4 (absence), §5.5 rule 4, §6.3, §6.7.2, §6.7.4 of
-`docs/architecture/17-ai-platform.md`
+`docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H2, H3, E2) **consume** this artifact; they may extend payloads
 carried by the event but may not rewrite the kind name, its terminal status, or its exclusion from
 the §5.4 taxonomy (delivery plan §2.3).

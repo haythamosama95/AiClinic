@@ -64,7 +64,7 @@ specs/027-journal-writer-get-request/
 
 `data-model.md` is **not** produced — C3 defines no new D1 entity and adds no column (spec `### Key Entities`: "C3 defines no new D1 entities"; the §6.3 amendment confirms the three milestone timestamps suffice). The schema is frozen by A5 and unchanged.
 
-`research.md` is **never** produced on this platform — the research is `docs/architecture/17-ai-platform.md`; redoing it is how architecture drift starts.
+`research.md` is **never** produced on this platform — the research is `docs/architecture/ai-platform/01-ai-platform.md`; redoing it is how architecture drift starts.
 
 `contracts/` is produced because the spec's **Freezes** entries have wire shapes later slices' **Consumes** bind to (F3 consumes the envelope layout; D3/D4/D6 feed the write-path contract; the client consumes the get-request response shape). The plan names the artifact; the implement phase writes it.
 

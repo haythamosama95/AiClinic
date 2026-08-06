@@ -1,7 +1,7 @@
 # Contract: Control-plane support lookup (F3)
 
 **Frozen by:** Slice F3 — Support lookup, retention purges, usage rollups, and journal dashboards
-**Implements:** §4.5, §8.9, §7.6, A13 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.5, §8.9, §7.6, A13 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices may **extend** this surface; they may not **rewrite** the I/O
 budget, operator-auth boundary, reference input contract, or reconstructable-trace field set
 (delivery plan §2.3).

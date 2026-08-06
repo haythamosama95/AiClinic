@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/049-context-required-self-healing/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/17-ai-platform.md`). `data-model.md` is not produced — J2 defines no entities (spec Key Entities: not applicable). `contracts/` is not produced — Freezes are client behavioural rules with no new wire shape (plan Project Structure → Documentation). `quickstart.md` is written in Phase 4 (Documentation).
+**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/ai-platform/01-ai-platform.md`). `data-model.md` is not produced — J2 defines no entities (spec Key Entities: not applicable). `contracts/` is not produced — Freezes are client behavioural rules with no new wire shape (plan Project Structure → Documentation). `quickstart.md` is written in Phase 4 (Documentation).
 
 **Tests**: Tests are mandatory on this platform (delivery plan §3.10). Every named test in the spec's `### Test plan` (tests 1–4) is covered by its own task, written to fail before the heal helper exists. Layer is **Flutter integration** (delivery plan §3.11.8 row J2; DP-3). Cases live under `frontend/test/unit/core/ai/context_required_self_heal_test.dart` and run via `flutter test` against injectable SDK / Resolver / manifest-refresh fakes — no live Worker. Permanent suite joins CI permanently (delivery plan §3.10).
 

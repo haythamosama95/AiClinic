@@ -141,7 +141,7 @@ effective-lifecycle rule are frozen in `contracts/capability-deprecation.md` so 
 an artifact without rewriting A5's `specs/019-…/data-model.md` (delivery plan §2.3).
 
 `research.md` is **never** produced on this platform — the research is
-`docs/architecture/17-ai-platform.md`.
+`docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` **is** produced — Freezes entries have wire / table shapes (overlay columns, deprecate /
 retire control routes and `control_audit.action` extensions, discovery announcement of deprecated +

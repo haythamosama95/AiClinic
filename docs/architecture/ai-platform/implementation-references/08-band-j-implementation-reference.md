@@ -1,9 +1,9 @@
 # AI Platform — Band J Implementation Reference
 
-- Purpose: Explain, in plain language, what Band J of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used the Band A–H implementation references ([`17c`](17c-band-a-implementation-reference.md)–[`17j`](17j-band-h-implementation-reference.md)).
+- Purpose: Explain, in plain language, what Band J of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used the Band A–H implementation references ([`01-band-a`](01-band-a-implementation-reference.md)–[`07-band-h`](07-band-h-implementation-reference.md)).
 - Read this when: onboarding after Bands A–H, reviewing deprecation / self-heal / canary / token-rotation behaviour, or asking why compatibility machinery waited until late.
 - Canonical for: Band J completion status, where to find the code and tests, which triggers fire each slice, and which architecture boxes are now green for deferred compatibility.
-- Usually paired with: [`17c`](17c-band-a-implementation-reference.md)–[`17j`](17j-band-h-implementation-reference.md) (prior bands), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions, DP-5, §3.9), [`17-ai-platform.md`](17-ai-platform.md) (full architecture), [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) (operator how-to).
+- Usually paired with: [`01-band-a`](01-band-a-implementation-reference.md)–[`07-band-h`](07-band-h-implementation-reference.md) (prior bands), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions, DP-5, §3.9), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture), [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) (operator how-to).
 - Not covered here: commercial plan/billing UI (Band G — undecomposed), deliberately later items (Band K — undecomposed), review-comment follow-ups after tip `37b82f0e`.
 
 > **Status:** Band J (slices **J1–J4**) is **complete** at tip `37b82f0e` (2026-08-03). Automated evidence: **25** Band J automated tests verified at tip — **5** (J1 workers) + **4** (J2 Flutter) + **7** (J3 workers) + **9** (J4 Vitest: 5 default pool + 4 workers) — plus **3** clinic SQL assertion blocks for J4 (`backend/tests/ai_token_contract_rotation.sql`; require local Supabase). Band J is mostly **behaviour on contracts frozen earlier** (DP-5): lifecycle overlays, `context_required` self-heal, cohort/canary activation, and overlapping AAT `ver` acceptance. **J1** may add one forward-only additive migration for `capability_grant` lifecycle-overlay columns. **Triggers matter more than band position** — build a slice when its audience exists, not because it is next alphabetically.
@@ -41,15 +41,15 @@ If earlier bands are new to you, read them in order:
 
 | Band | Reference | What it delivered that Band J consumes |
 | --- | --- | --- |
-| **A** | [`17c`](17c-band-a-implementation-reference.md) | Error taxonomy, manifests, D1 schema definitions, config cache |
-| **B** | [`17d`](17d-band-b-implementation-reference.md) | AAT minting, identity verify, control plane, `control_audit` |
-| **C** | [`17e`](17e-band-c-implementation-reference.md) | Capability resolve/discovery, `context_required` payload, journal |
-| **D** | [`17g`](17g-band-d-implementation-reference.md) | Prompt registry, router, provider path (J3 stages builds / policies) |
-| **E** | [`17h`](17h-band-e-implementation-reference.md) | Client SDK + context resolver (J2 composes them) |
-| **F** | [`17i`](17i-band-f-implementation-reference.md) | Eval harness / ops surfaces (J3 assumes F1 eval gate as CI precondition) |
-| **H** | [`17j`](17j-band-h-implementation-reference.md) | Conversational mode (J2 explicitly **excludes** it) |
+| **A** | [`01-band-a`](01-band-a-implementation-reference.md) | Error taxonomy, manifests, D1 schema definitions, config cache |
+| **B** | [`02-band-b`](02-band-b-implementation-reference.md) | AAT minting, identity verify, control plane, `control_audit` |
+| **C** | [`03-band-c`](03-band-c-implementation-reference.md) | Capability resolve/discovery, `context_required` payload, journal |
+| **D** | [`04-band-d`](04-band-d-implementation-reference.md) | Prompt registry, router, provider path (J3 stages builds / policies) |
+| **E** | [`05-band-e`](05-band-e-implementation-reference.md) | Client SDK + context resolver (J2 composes them) |
+| **F** | [`06-band-f`](06-band-f-implementation-reference.md) | Eval harness / ops surfaces (J3 assumes F1 eval gate as CI precondition) |
+| **H** | [`07-band-h`](07-band-h-implementation-reference.md) | Conversational mode (J2 explicitly **excludes** it) |
 
-Band **G** (commercial) and Band **K** (explicitly later) are **not decomposed** — see [`17b` §4](17b-ai-platform-delivery-plan.md#4-bands-not-yet-decomposed). There is no `17*-band-g-*` or Band K implementation reference.
+Band **G** (commercial) and Band **K** (explicitly later) are **not decomposed** — see [`03-delivery-plan` §4](../03-ai-platform-delivery-plan.md#4-bands-not-yet-decomposed). There is no `implementation-references/*-band-g-*` or Band K implementation reference.
 
 ### 2.2 Why Band J waited (DP-5)
 
@@ -98,7 +98,7 @@ Spec Kit directories: `specs/048` … `specs/051`.
 
 ## 3. What Band J Is and Why It Exists
 
-The delivery plan titles Band J **"Deferred compatibility machinery"** (`17b` §3.9).
+The delivery plan titles Band J **"Deferred compatibility machinery"** (`03-ai-platform-delivery-plan` §3.9).
 
 | ID | Slice | Spec directory | Needs | Build when | One-line purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -418,7 +418,7 @@ Band J does **not** add new pipeline stage numbers. It extends stages that alrea
 
 ## 7. Frozen Contracts at a Glance
 
-Band J freezes **behavioural contracts** on surfaces that earlier bands already named. Later slices may extend but not rewrite them (`17b` §2.3).
+Band J freezes **behavioural contracts** on surfaces that earlier bands already named. Later slices may extend but not rewrite them (`03-ai-platform-delivery-plan` §2.3).
 
 ### 7.1 Capability deprecation (J1)
 
@@ -471,11 +471,11 @@ Full: `specs/051-.../contracts/token-contract-rotation.md` + `data-model.md`.
 
 ### 8.1 The completion rule
 
-Same as prior bands: **a slice is done when a test a human can read and believe passes** (`17b` DP-3 / §3.10). Band J splits evidence across Worker Vitest, Flutter tests, and clinic SQL.
+Same as prior bands: **a slice is done when a test a human can read and believe passes** (`03-ai-platform-delivery-plan` DP-3 / §3.10). Band J splits evidence across Worker Vitest, Flutter tests, and clinic SQL.
 
 ### 8.2 Band J test inventory (verified at tip `37b82f0e`)
 
-| Slice | Layer (`17b` §3.11.8) | File(s) | Count |
+| Slice | Layer (`03-ai-platform-delivery-plan` §3.11.8) | File(s) | Count |
 | --- | --- | --- | --- |
 | **J1** | Integration (workers) | `capability-deprecation.test.ts` | **5** |
 | **J2** | Flutter integration | `context_required_self_heal_test.dart` | **4** |
@@ -601,8 +601,8 @@ specs/
 
 | Capability | Status |
 | --- | --- |
-| Commercial plan catalogue, billing close, in-app quota UI | **Band G — undecomposed** (`17b` §4.1) |
-| Health-based routing, stream resume, sharding, fine-tuning, … | **Band K — undecomposed** (`17b` §4.2) |
+| Commercial plan catalogue, billing close, in-app quota UI | **Band G — undecomposed** (`03-ai-platform-delivery-plan` §4.1) |
+| Health-based routing, stream resume, sharding, fine-tuning, … | **Band K — undecomposed** (`03-ai-platform-delivery-plan` §4.2) |
 | Auto-retire deprecated capabilities on a timer | Not built (operator retire) |
 | Operator Flutter console for deprecate/canary/rotation | Control HTTP only |
 | Conversational context negotiation | Band H — different path; J2 excluded |
@@ -642,11 +642,11 @@ Band J is not a release gate (DP-1). It removes the “no audience yet” blocke
 | **Manifest evolution** | J2 keeps stale single_shot clients from hard-failing on new required keys |
 | **Safe prompt/policy changes** | J3 canary → promote / rollback-by-deploy |
 | **AAT claim evolution** | J4 rotates `ver` without re-enrollment |
-| **Operator runbook** | [`17f`](17f-ai-platform-operator-runbook.md) §8.8 Compatibility can cite live mutations |
+| **Operator runbook** | [`04-operator-runbook`](../04-ai-platform-operator-runbook.md) §8.8 Compatibility can cite live mutations |
 
 ### 11.1 Still not a substitute for undecomposed work
 
-Band J does **not** satisfy Band G product decisions or Band K triggers. It also does not replace checkpoints CP3–CP5 — those remain composition reviews of inference, second provider, and operational honesty (`17b` §5).
+Band J does **not** satisfy Band G product decisions or Band K triggers. It also does not replace checkpoints CP3–CP5 — those remain composition reviews of inference, second provider, and operational honesty (`03-ai-platform-delivery-plan` §5).
 
 ---
 
@@ -654,16 +654,16 @@ Band J does **not** satisfy Band G product decisions or Band K triggers. It also
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Band A contracts baseline |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | Trust, control plane, admission |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | Resolve, `context_required`, journal |
-| [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) | Inference path J3 stages |
-| [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md) | Client SDK / resolver J2 composes |
-| [`17i-band-f-implementation-reference.md`](17i-band-f-implementation-reference.md) | Hardening / eval gate context |
-| [`17j-band-h-implementation-reference.md`](17j-band-h-implementation-reference.md) | Conversational (J2 exclusion) |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | DP-5, §3.9 triggers, §3.11.8 floors, §4 G/K |
-| [`17-ai-platform.md`](17-ai-platform.md) | §5.2, §5.6–5.7, §8.4, §12.4, §13.4 |
-| [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) | Operator procedures |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Band A contracts baseline |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | Trust, control plane, admission |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | Resolve, `context_required`, journal |
+| [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md) | Inference path J3 stages |
+| [`05-band-e-implementation-reference.md`](05-band-e-implementation-reference.md) | Client SDK / resolver J2 composes |
+| [`06-band-f-implementation-reference.md`](06-band-f-implementation-reference.md) | Hardening / eval gate context |
+| [`07-band-h-implementation-reference.md`](07-band-h-implementation-reference.md) | Conversational (J2 exclusion) |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | DP-5, §3.9 triggers, §3.11.8 floors, §4 G/K |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | §5.2, §5.6–5.7, §8.4, §12.4, §13.4 |
+| [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) | Operator procedures |
 | `specs/048` … `specs/051` quickstarts | Run one slice's tests |
 
 **Run Band J tests:**
@@ -680,4 +680,4 @@ cd frontend && flutter test test/unit/core/ai/context_required_self_heal_test.da
 
 ---
 
-*This document describes Band J as implemented at tip `37b82f0e` (2026-08-03), before later review-comment commits. For Bands A–H see [`17c`](17c-band-a-implementation-reference.md)–[`17j`](17j-band-h-implementation-reference.md). Band G and Band K remain undecomposed (`17b` §4). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band J as implemented at tip `37b82f0e` (2026-08-03), before later review-comment commits. For Bands A–H see [`01-band-a`](01-band-a-implementation-reference.md)–[`07-band-h`](07-band-h-implementation-reference.md). Band G and Band K remain undecomposed (`03-ai-platform-delivery-plan` §4). Do not rewrite frozen contract sections without an architecture amendment.*

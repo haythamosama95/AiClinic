@@ -7,7 +7,7 @@ description: "Task list for AI platform slice A4 — Capability manifest schema 
 
 **Input**: Design documents from `/specs/018-ai-capability-manifest/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required). `contracts/` and `quickstart.md` are produced by this slice's Documentation phase; none of `data-model.md`, `research.md`, or prior-slice docs are needed — A4 defines no D1 entity and the research is `docs/architecture/17-ai-platform.md` (never re-produced on this platform).
+**Prerequisites**: `plan.md` (required), `spec.md` (required). `contracts/` and `quickstart.md` are produced by this slice's Documentation phase; none of `data-model.md`, `research.md`, or prior-slice docs are needed — A4 defines no D1 entity and the research is `docs/architecture/ai-platform/01-ai-platform.md` (never re-produced on this platform).
 
 **Tests**: Mandatory, not optional (delivery plan §3.10 overrides the template). Every named test in the spec's Test plan is a task, written to fail before the implementation exists.
 

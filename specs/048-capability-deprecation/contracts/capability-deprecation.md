@@ -1,7 +1,7 @@
 # Contract: Capability deprecation and the overlap window (J1)
 
 **Frozen by:** Slice J1 — Capability deprecation and the overlap window
-**Implements:** §5.7, §12.4, A12 of `docs/architecture/17-ai-platform.md`; Open Decision 9
+**Implements:** §5.7, §12.4, A12 of `docs/architecture/ai-platform/01-ai-platform.md`; Open Decision 9
 **Status:** Frozen. Later slices **may extend, never rewrite** the overlay column set, the
 effective-lifecycle rule, the deprecate / retire control surface and `control_audit.action`
 values added here, the discovery announcement of deprecated + successor, or the OD-9 overlap

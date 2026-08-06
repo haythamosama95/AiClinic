@@ -28,9 +28,11 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 - `docs/architecture/14-visits-encounter-workspace.md`: visit lifecycle, clinical documentation, encounter workspace UI.
 - `docs/architecture/15-billing.md`: billing schema, invoice lifecycle, RPC inventory, frontend status.
 - `docs/architecture/16-testing.md`: backend SQL tests, Flutter test layout, CI scope.
-- `docs/architecture/17-ai-platform.md`: AI platform architecture — gateway boundaries, trust model, prompt ownership, provider routing, AI data model. Proposal; supersedes earlier AI statements in this doc set.
-- `docs/architecture/17a-ai-platform-overview.md`: high-level AI platform overview — components, contracts, request flow. Read this first for orientation; `17-ai-platform.md` remains canonical.
-- `docs/architecture/17b-ai-platform-delivery-plan.md`: AI platform build order — slice decomposition, acceptance criteria, review checkpoints, and spec-authoring rules. Read before opening a Spec Kit feature for AI platform work.
+- `docs/architecture/ai-platform/01-ai-platform.md`: AI platform architecture — gateway boundaries, trust model, prompt ownership, provider routing, AI data model. Proposal; supersedes earlier AI statements in this doc set.
+- `docs/architecture/ai-platform/02-ai-platform-overview.md`: high-level AI platform overview — components, contracts, request flow. Read this first for orientation; `01-ai-platform.md` remains canonical.
+- `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`: AI platform build order — slice decomposition, acceptance criteria, review checkpoints, and spec-authoring rules. Read before opening a Spec Kit feature for AI platform work.
+- `docs/architecture/ai-platform/04-ai-platform-operator-runbook.md`: AI platform operator runbook — day-to-day run, observe, and support procedures across implemented bands.
+- `docs/architecture/ai-platform/implementation-references/`: per-band implementation references (`01-band-a` through `08-band-j`) — plain-language accounts of what each delivery band built.
 - `docs/architecture/ARCHITECTURAL_FLAWS.md`: known architectural risks, doc/code drift, and remediation priorities.
 
 ## Common Routing Shortcuts
@@ -42,7 +44,7 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
   - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `docs/specs/013-visits/`, `docs/specs/014-visit-encounter-workspace/`
   - Billing: `15-billing.md`, `docs/specs/007-billing/`
   - Shifts: `docs/specs/008-shift-management/`
-- AI features: `17-ai-platform.md`, `17a-ai-platform-overview.md`, `17b-ai-platform-delivery-plan.md`, plus `specs/` AI feature directories (e.g. `017-ai-canonical-inference/`, `019-ai-context-keys-d1-config/`).
+- AI features: `docs/architecture/ai-platform/` (`01-ai-platform.md`, `02-ai-platform-overview.md`, `03-ai-platform-delivery-plan.md`, `04-ai-platform-operator-runbook.md`, `implementation-references/`), plus `specs/` AI feature directories (e.g. `017-ai-canonical-inference/`, `019-ai-context-keys-d1-config/`).
 - Deployment and installer work: `03-deployment-networking.md`, `07-frontend.md`, `10-resilience-and-scale.md`.
 - Analytics: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md` (V3-1).
 

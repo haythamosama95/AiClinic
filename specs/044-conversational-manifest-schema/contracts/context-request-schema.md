@@ -1,7 +1,7 @@
 # Contract: Platform-owned context-request schema (H1)
 
 **Frozen by:** Slice H1 — Conversational manifest fields and context-request schema
-**Implements:** §6.7.2 of `docs/architecture/17-ai-platform.md`
+**Implements:** §6.7.2 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H2 composer/validator, H3 client negotiation) **consume** this
 artifact; they may not introduce a per-capability alternate shape (delivery plan §2.3).
 

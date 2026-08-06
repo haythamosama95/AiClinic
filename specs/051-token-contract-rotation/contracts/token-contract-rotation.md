@@ -1,7 +1,7 @@
 # Contract: Token contract rotation with overlapping acceptance (J4)
 
 **Frozen by:** Slice J4 — Token contract rotation with overlapping acceptance
-**Implements:** §5.7, §5.6, §4.5, §7.3 of `docs/architecture/17-ai-platform.md`
+**Implements:** §5.7, §5.6, §4.5, §7.3 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices may **extend** this contract; they may not **rewrite** it
 (Delivery Plan §2.3).
 

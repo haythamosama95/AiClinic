@@ -1,7 +1,7 @@
 # Contract: Retention purge policy (F3)
 
 **Frozen by:** Slice F3 — Support lookup, retention purges, usage rollups, and journal dashboards
-**Implements:** §7.7, Open Decision 4 / A10 of `docs/architecture/17-ai-platform.md`
+**Implements:** §7.7, Open Decision 4 / A10 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices may **extend** horizons or purge entrypoints; they may not
 **rewrite** the four-class table, the per-capability diagnostic rule, the in-horizon prohibition,
 or purge-by-installation-id across D1 and R2 (delivery plan §2.3).

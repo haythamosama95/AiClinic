@@ -21,7 +21,7 @@
 
 This artifact documents the D1 entity **`token_contract`** created by slice J4. It is the binding
 surface for the platform-global accepted AAT `ver` set — not prose in the architecture doc. Field
-lists follow `docs/architecture/17-ai-platform.md` §7.3 (`token_contract` row) and the J4 Freezes.
+lists follow `docs/architecture/ai-platform/01-ai-platform.md` §7.3 (`token_contract` row) and the J4 Freezes.
 
 ### 1.2 Migration artifacts
 

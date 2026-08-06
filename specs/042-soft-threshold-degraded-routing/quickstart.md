@@ -9,11 +9,11 @@ receives `accepted { degraded_notice }`. Hard budget exhaustion returns `quota_e
 ## 1. Architecture context
 
 - **Delivery plan** — Band F row F4 in
-  [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+  [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   (Needs: D2, B4).
 - **Architecture** — Implements §4.3.3 (entitlement / quota soft-threshold branch), §8.8 (sequence),
   and §4.3.7 (provider router `routing_tier` signal) of
-  [`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md).
+  [`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md).
 - **Spec** — [`spec.md`](./spec.md) defines soft-threshold allow with `{ degraded: true }`, hard
   exhaustion non-lockout with `period_reset`, gateway-set `routing_tier`, and client-visible
   `degraded_notice`.

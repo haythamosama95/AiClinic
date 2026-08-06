@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Branch reviewed | `ai/master` (post-merge of all slice review fixes, HEAD `97253fe0`) |
-| Architecture source of truth | [`docs/architecture/17-ai-platform.md`](../architecture/17-ai-platform.md) |
-| Delivery plan | [`docs/architecture/17b-ai-platform-delivery-plan.md`](../architecture/17b-ai-platform-delivery-plan.md) |
+| Architecture source of truth | [`docs/architecture/ai-platform/01-ai-platform.md`](../architecture/ai-platform/01-ai-platform.md) |
+| Delivery plan | [`docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../architecture/ai-platform/03-ai-platform-delivery-plan.md) |
 | Prior per-slice reviews | [`docs/review/ai-platform-slices/`](ai-platform-slices/README.md) — all comments addressed and merged |
 | Review type | Static, whole-directory (cross-slice seams prioritized) |
 | Date | 2026-08-05 |

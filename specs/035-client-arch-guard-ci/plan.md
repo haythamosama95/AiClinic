@@ -72,7 +72,7 @@ specs/035-client-arch-guard-ci/
 
 `data-model.md` is **not** produced — E1 defines no D1 (or other) entities (spec Key Entities: "Not applicable").
 
-`contracts/` is **not** produced — the **Freezes** entries (the CI guard as architectural component, the deliberately failing fixture proof, the full client-source coverage rule) have no wire shape (no table, payload, token, event, or error taxonomy). Later slices (E2+) must not weaken, bypass, or relocate the guard; they bind to the permanent CI step and script, not to a prose contract file. `research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`contracts/` is **not** produced — the **Freezes** entries (the CI guard as architectural component, the deliberately failing fixture proof, the full client-source coverage rule) have no wire shape (no table, payload, token, event, or error taxonomy). Later slices (E2+) must not weaken, bypass, or relocate the guard; they bind to the permanent CI step and script, not to a prose contract file. `research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `quickstart.md` (written during the implement-phase Documentation task, per `.specify/templates/ai-platform-quickstart-template.md`) will contain:
 
@@ -119,7 +119,7 @@ No consumed entry lacks an implementation. None is modified (delivery plan §2.3
 
 ## Components Touched
 
-E1 modifies **no** §4 component of `17-ai-platform.md`. §4.1 enumerates the AI Client SDK, Context Resolver, AI Feature Surfaces, and Conversation store — all out of scope (E2–E4 / H). The architecture places the client-side lint explicitly **outside** §4: it is an architectural CI component (§3.4.1 item 1; §13.5 Architecture guard (R-12)) that "protect[s] the decoupling more reliably than any component in §4". This is the explicit reason a multi-component-touch rule is not violated: there is no §4 component to touch. (Stop condition 5 is not triggered.)
+E1 modifies **no** §4 component of `01-ai-platform.md`. §4.1 enumerates the AI Client SDK, Context Resolver, AI Feature Surfaces, and Conversation store — all out of scope (E2–E4 / H). The architecture places the client-side lint explicitly **outside** §4: it is an architectural CI component (§3.4.1 item 1; §13.5 Architecture guard (R-12)) that "protect[s] the decoupling more reliably than any component in §4". This is the explicit reason a multi-component-touch rule is not violated: there is no §4 component to touch. (Stop condition 5 is not triggered.)
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |

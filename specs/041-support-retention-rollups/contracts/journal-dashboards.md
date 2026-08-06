@@ -1,7 +1,7 @@
 # Contract: Named journal dashboards (F3)
 
 **Frozen by:** Slice F3 — Support lookup, retention purges, usage rollups, and journal dashboards
-**Implements:** §13.1, §7.6 (Analytics and dashboards) of `docs/architecture/17-ai-platform.md`
+**Implements:** §13.1, §7.6 (Analytics and dashboards) of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices may **extend** additional diagnostics; they may not **rewrite**
 the six named questions, the journal-side metrics rule, or the prohibition on a second metrics
 store (delivery plan §2.3).

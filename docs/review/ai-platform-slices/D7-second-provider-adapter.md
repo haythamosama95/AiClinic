@@ -104,7 +104,7 @@ D7 delivers the artifacts its contract names: `src/provider/gemini.ts` (`GeminiA
 | **D7-R5 — Wire floor + spies** | Bugs #10; Weak Tests #7–#9, #12 (mapping); Recs (complete wire mapping / strengthen spies); Deviation #1 (already closed — no JournalSink) | `systemInstruction`, role merge, `topK`, `responseSchema`, tools; T-D7-08/09/10/11 tightened |
 | **D7-R6 — Spec Kit remainder + T13/wiring** | Deviations #4–#6; Weak Tests #10–#11; Recs (buffered/deadline docs; wiring/model restatement; T13 diff; F1 eval clause) | Contract §2.5–2.9; Spec Kit docs; T-D7-13 merge-base allowlist + `createProviderAdapter` smoke; T-D7-14 asserts `model_id` |
 
-Every numbered finding is in exactly one stage. No architecture-doc edits; no escalation (Deviations 2–3 already repaired on `ai/master` via D2-R1; Deviations 4–6 resolved as adapter/Spec Kit interpretation mirroring D5-R6, without amending `17-ai-platform.md`).
+Every numbered finding is in exactly one stage. No architecture-doc edits; no escalation (Deviations 2–3 already repaired on `ai/master` via D2-R1; Deviations 4–6 resolved as adapter/Spec Kit interpretation mirroring D5-R6, without amending `01-ai-platform.md`).
 
 ### 1.2 Test cases created first
 

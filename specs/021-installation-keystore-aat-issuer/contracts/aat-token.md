@@ -1,7 +1,7 @@
 # Contract: AI Access Token (AAT) JWS Wire Shape (B1)
 
 **Frozen by:** Slice B1 — Installation keystore and AAT issuer
-**Implements:** §4.2.1, §5.6, §8.1 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.2.1, §5.6, §8.1 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (B3 verifier, B4 `jti` admission) **consume** this contract; the
 no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g. J4 overlapping `ver`
 acceptance) but may not **rewrite** anything below.

@@ -18,11 +18,11 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 C2 implements the **C2** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.4, covering architecture sections **§4.3.5** (context validator), **§5.2** (context-key shapes
 and minimization), **§4.3.3** (cost-ceiling check), **§6.1 stages 6–7** (pipeline stages), and
 **§13.6.2** (byte-based input-token estimator). Full detail lives in
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md).
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md).
 
 - **What the spec delivered** ([`spec.md`](./spec.md)): stage-6 validation that enforces required
   keys, declared shapes, per-key max size, and org/branch consistency against token claims; drops

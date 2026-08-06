@@ -1,7 +1,7 @@
 # Contract: Staged rollout and canary cohorts (J3)
 
 **Frozen by:** Slice J3 — Staged rollout and canary cohorts
-**Implements:** §12.4, §4.5, §13.4 of `docs/architecture/17-ai-platform.md`
+**Implements:** §12.4, §4.5, §13.4 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices **may extend, never rewrite** the cohort activate / promote
 surface, the rollback-by-deploy rule for prompts / capability builds, the routing-policy publish /
 canary / roll back control functions, the `control_audit.action` values added here, or the journal

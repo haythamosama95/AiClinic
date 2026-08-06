@@ -68,7 +68,7 @@ specs/018-ai-capability-manifest/
 └── tasks.md             # /ai-platform-tasks output (NOT created here)
 ```
 
-`data-model.md` is omitted — A4 defines no D1 entity (spec §Key Entities). `research.md` is never produced on this platform; the research is `docs/architecture/17-ai-platform.md` (delivery plan §6, plan-phase protocol).
+`data-model.md` is omitted — A4 defines no D1 entity (spec §Key Entities). `research.md` is never produced on this platform; the research is `docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6, plan-phase protocol).
 
 ### Source Code (repository root)
 

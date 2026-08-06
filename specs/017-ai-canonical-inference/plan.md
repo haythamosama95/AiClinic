@@ -62,7 +62,7 @@ specs/017-ai-canonical-inference/
 └── quickstart.md           # Written during the implement phase's Documentation task (per the ai-platform-quickstart-template)
 ```
 
-No `data-model.md` — A3 defines no D1 entities (spec § Key Entities). No `research.md` — the research is `17-ai-platform.md` §5.3 and §9.10; redoing it is architecture drift (delivery plan preamble). No `tasks.md` here — produced by `/ai-platform-tasks`.
+No `data-model.md` — A3 defines no D1 entities (spec § Key Entities). No `research.md` — the research is `01-ai-platform.md` §5.3 and §9.10; redoing it is architecture drift (delivery plan preamble). No `tasks.md` here — produced by `/ai-platform-tasks`.
 
 ### Source Code (repository root)
 
@@ -99,7 +99,7 @@ Both bindings resolve to implementations already on `ai/master`. No frozen contr
 
 ## Components Touched
 
-Slice A3 modifies **no §4 component of `17-ai-platform.md`**. It defines the §5.3 contract that §4.3.6 (composer), §4.3.8 (provider adapter), §4.3.10 (stream broker), and §4.3.9 (validator) will later consume. A3 is a contract-freezing slice (DP-4); touching a §4 component's behaviour belongs to bands C and D. This satisfies stop condition 5 by default — zero §4 components touched, with no written reason required beyond that statement.
+Slice A3 modifies **no §4 component of `01-ai-platform.md`**. It defines the §5.3 contract that §4.3.6 (composer), §4.3.8 (provider adapter), §4.3.10 (stream broker), and §4.3.9 (validator) will later consume. A3 is a contract-freezing slice (DP-4); touching a §4 component's behaviour belongs to bands C and D. This satisfies stop condition 5 by default — zero §4 components touched, with no written reason required beyond that statement.
 
 ## Files
 

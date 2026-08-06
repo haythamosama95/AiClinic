@@ -7,7 +7,7 @@ description: "Task list for AI platform slice A5 — Context key vocabulary, D1 
 
 **Input**: Design documents from `/specs/019-ai-context-keys-d1-config/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required). This slice's `data-model.md`, `contracts/context-key-schema.md`, `contracts/config-cache.md`, and `quickstart.md` are produced by this slice's Documentation phase; none of `research.md` or prior-slice docs are needed — the research is `docs/architecture/17-ai-platform.md` (never re-produced on this platform).
+**Prerequisites**: `plan.md` (required), `spec.md` (required). This slice's `data-model.md`, `contracts/context-key-schema.md`, `contracts/config-cache.md`, and `quickstart.md` are produced by this slice's Documentation phase; none of `research.md` or prior-slice docs are needed — the research is `docs/architecture/ai-platform/01-ai-platform.md` (never re-produced on this platform).
 
 **Tests**: Mandatory, not optional (delivery plan §3.10 overrides the template). Every named test in the spec's Test plan is a task, written to fail before the implementation exists.
 

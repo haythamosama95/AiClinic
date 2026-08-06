@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/027-journal-writer-get-request/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/17-ai-platform.md`). `data-model.md` is not produced (C3 defines no D1 entities and adds no column — spec `### Key Entities`: "C3 defines no new D1 entities"; the §6.3 amendment confirms the three milestone timestamps suffice). `contracts/` is written in Phase 1 (Setup) and `quickstart.md` in Phase 5 (Documentation).
+**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/ai-platform/01-ai-platform.md`). `data-model.md` is not produced (C3 defines no D1 entities and adds no column — spec `### Key Entities`: "C3 defines no new D1 entities"; the §6.3 amendment confirms the three milestone timestamps suffice). `contracts/` is written in Phase 1 (Setup) and `quickstart.md` in Phase 5 (Documentation).
 
 **Tests**: Tests are mandatory on this platform (delivery plan §3.10). Every named test in the spec's `### Test plan` is a task, written to fail before the code exists.
 

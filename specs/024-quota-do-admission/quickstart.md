@@ -11,8 +11,8 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 
 This slice implements delivery-plan row **B4** (*Quota Durable Object and admission stage*), which
 maps to §4.3.3, §4.4, §9.17, §7.7, §6.1 stage 8, §6.2, and §6.6 of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row B4 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row B4 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 (§3.3). It is sequenced after slices A5 and B3 and precedes C3 — admission is the last gate before
 the journal writer's stage 9.
 

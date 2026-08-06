@@ -102,7 +102,7 @@ No `data-model.md` — A1 defines no D1 entities (spec Key Entities: "Not applic
 No `contracts/` — A1 freezes the environment-topology and health-endpoint *contract surfaces* as
 prose in its `## Slice Contract` and Requirements; it produces no machine-readable contract
 artifact (the first such artifacts are A2/A3). No `research.md` — the research is
-`17-ai-platform.md` and redoing it is how architecture drift starts (Delivery Plan §6.1).
+`01-ai-platform.md` and redoing it is how architecture drift starts (Delivery Plan §6.1).
 
 ### Source Code (repository root)
 
@@ -134,7 +134,7 @@ A1 has `Needs: —` (Delivery Plan §3.2). It consumes no frozen contract from a
 
 ## Components Touched
 
-A1 modifies **no** §4 component of `17-ai-platform.md`. §4 enumerates the Worker's *behavioural*
+A1 modifies **no** §4 component of `01-ai-platform.md`. §4 enumerates the Worker's *behavioural*
 components (protocol adapter, identity stage, journal writer, etc.); A1 is infra/config that
 provisions the deployable those components will later live in, and it introduces none of their
 behaviour. This is the explicit reason a single-component-touch rule is not violated: there is no

@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/051-token-contract-rotation/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/17-ai-platform.md`). `data-model.md` and `contracts/token-contract-rotation.md` are already frozen on disk (written during the plan phase per DP-4; `AVAILABLE_DOCS` includes both). `quickstart.md` is written in Phase 5 (Documentation).
+**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/ai-platform/01-ai-platform.md`). `data-model.md` and `contracts/token-contract-rotation.md` are already frozen on disk (written during the plan phase per DP-4; `AVAILABLE_DOCS` includes both). `quickstart.md` is written in Phase 5 (Documentation).
 
 **Tests**: Tests are mandatory on this platform (delivery plan §3.10). Every named test in the spec's `### Test plan` (T-J4-01 .. T-J4-10) is covered by its own task, written to fail before the accepted-`ver` check, control writers, and clinic mint assertions exist. Layers are **Unit + SQL** (delivery plan §3.11.8 row J4; §13.5): Node-pool Unit in `ai-platform/test/token-contract-rotation.test.ts`; workers-pool D1 SQL in `ai-platform/test/token-contract-control.test.ts`; clinic Contract SQL in `backend/tests/ai_token_contract_rotation.sql`. Permanent suites join CI via both Vitest harness configs and `backend/tests/run_ai_platform_trust_tests.sh` (delivery plan §3.10).
 

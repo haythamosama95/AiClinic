@@ -105,7 +105,7 @@ specs/020-ai-protocol-adapter-sse/
 ```
 
 No `data-model.md` — A6 defines no D1 entities (spec Key Entities: "Not applicable").
-No `research.md` — the research is `17-ai-platform.md` and redoing it is how architecture drift starts
+No `research.md` — the research is `01-ai-platform.md` and redoing it is how architecture drift starts
 (Delivery Plan §6.1).
 
 `contracts/sse-framing.md` is produced because A6's **Freezes** establish wire shapes a later slice's

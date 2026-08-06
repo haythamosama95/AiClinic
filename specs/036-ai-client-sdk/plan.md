@@ -71,7 +71,7 @@ specs/036-ai-client-sdk/
 
 `data-model.md` is **not** produced — E2 defines no D1 (or other) entities (spec Key Entities: "Not applicable").
 
-`contracts/` is **not** produced — the **Freezes** entries are client behavioural rules (SDK transport surface, AAT acquire-and-cache / remint ceiling, stable idempotency key, client-side SSE consumption, no-auto-retry-after-terminal, unknown→`internal_error`). They introduce no new wire shape (table, payload, token, event, or error taxonomy); those remain A6 / A2 / C1 / B1. Later slices (E3, E4, H3, J2) bind to the SDK module under `frontend/lib/core/ai/`, not to a prose contract file. `research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`contracts/` is **not** produced — the **Freezes** entries are client behavioural rules (SDK transport surface, AAT acquire-and-cache / remint ceiling, stable idempotency key, client-side SSE consumption, no-auto-retry-after-terminal, unknown→`internal_error`). They introduce no new wire shape (table, payload, token, event, or error taxonomy); those remain A6 / A2 / C1 / B1. Later slices (E3, E4, H3, J2) bind to the SDK module under `frontend/lib/core/ai/`, not to a prose contract file. `research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `quickstart.md` (written during the implement-phase Documentation task, per `.specify/templates/ai-platform-quickstart-template.md`) will contain:
 

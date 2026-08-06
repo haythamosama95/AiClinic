@@ -1,9 +1,9 @@
 # AI Platform — Band C Implementation Reference
 
-- Purpose: Explain, in plain language, what Band C of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) and [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band C of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) and [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md).
 - Read this when: onboarding after Band B, reviewing capability/context/journal work, or preparing for Band D.
 - Canonical for: Band C completion status, where to find the code and tests, and which architecture boxes are now green.
-- Usually paired with: [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) (Band A baseline), [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) (trust/admission), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture).
+- Usually paired with: [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) (Band A baseline), [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) (trust/admission), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
 - Not covered here: prompt composition, provider calls, streaming, Flutter client work (Bands D–E).
 
 > **Status:** Band C (slices **C1–C3**) is **complete** on branch `ai/master` (tip `69372c56`, 2026-08-01). Automated evidence: **58 Band C tests** — **11** (C1, workers pool) + **19** (C2, default pool) + **28** (C3, workers pool) — within **275** total Worker tests (**189** default config + **86** workers pool; configs are disjoint). Capability resolve, context validate, cost pre-flight, and journal write-path **modules exist and are tested in isolation**; they are **not yet wired into** `POST /v1/requests`. The only Band C client HTTP route live today is **`GET /v1/requests/{reference}`** (C3). **No real AI inference happens yet.**
@@ -37,7 +37,7 @@ Band C answers three questions before any AI provider is called: **which AI feat
 
 ### 2.1 Start with Bands A and B
 
-If Bands A and B are new to you, read [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) and [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) first.
+If Bands A and B are new to you, read [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) and [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) first.
 
 | Band | What it delivered |
 | --- | --- |
@@ -83,7 +83,7 @@ Spec Kit directories: `specs/025` … `specs/027`.
 
 ## 3. What Band C Is and Why It Exists
 
-The delivery plan titles Band C **"Capability, context, and the journal"** (`17b` §3.4).
+The delivery plan titles Band C **"Capability, context, and the journal"** (`03-ai-platform-delivery-plan` §3.4).
 
 | ID | Slice | Spec directory | Needs | One-line purpose |
 | --- | --- | --- | --- | --- |
@@ -313,9 +313,9 @@ sequenceDiagram
 
 **Legend:** ✅ implemented & tested | 🔶 partial | ⬜ not built
 
-> **Stage-order note:** Canonical pipeline order is in `17-ai-platform.md` §6.1 — capability resolve (5) and context validate/preflight (6–7) come **before** admission (8). The Band B reference diagram in [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) §6.2 shows `ADM` before `CAP`; that diagram is simplified and **contradicts** §6.1. Trust the stage table and the diagram below.
+> **Stage-order note:** Canonical pipeline order is in `../01-ai-platform.md` §6.1 — capability resolve (5) and context validate/preflight (6–7) come **before** admission (8). The Band B reference diagram in [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) §6.2 shows `ADM` before `CAP`; that diagram is simplified and **contradicts** §6.1. Trust the stage table and the diagram below.
 
-### 6.1 System context — from `17-ai-platform.md` §3.2
+### 6.1 System context — from `../01-ai-platform.md` §3.2
 
 ```mermaid
 flowchart TB
@@ -351,7 +351,7 @@ flowchart TB
     style providers fill:#f5f5f5,stroke:#999
 ```
 
-### 6.2 Gateway pipeline — from `17-ai-platform.md` §4.3
+### 6.2 Gateway pipeline — from `../01-ai-platform.md` §4.3
 
 ```mermaid
 flowchart TB
@@ -411,7 +411,7 @@ flowchart TB
 
 **How to read this:** Green boxes are implemented and tested. **Only stage 1 runs automatically on `POST /v1/requests` today.** C1, C2, B3, B4, and C3 write-path functions are **callable libraries**, not yet chained. C3 **GET** is the first client-facing Band C HTTP route.
 
-### 6.3 Pipeline stages — from `17-ai-platform.md` §6.1
+### 6.3 Pipeline stages — from `../01-ai-platform.md` §6.1
 
 | Stage | Name | Band | Status |
 | --- | --- | --- | --- |
@@ -439,7 +439,7 @@ flowchart TB
 | Config cache | ✅ A5+C1 | Discovery reads entitlements, grants, kill switches |
 | In-memory capability registry | ✅ C1 | Test/bootstrap via `setCapabilityRegistry()` |
 
-### 6.5 Request state machine — `17-ai-platform.md` §6.3
+### 6.5 Request state machine — `../01-ai-platform.md` §6.3
 
 C3 implements timestamped transitions for all §6.3 states used in tests (`Accepted` through `Cancelled`). **`Rejected` is a guard outcome** — it never creates an `ai_request` row; only `platform_counter` increments.
 
@@ -510,7 +510,7 @@ Same as Bands A and B: **a slice is done when a test a human can read and believ
 
 Node **22+** required.
 
-### 8.3 Test layers by slice (`17b` §3.11.3)
+### 8.3 Test layers by slice (`03-ai-platform-delivery-plan` §3.11.3)
 
 | Slice | Layer | File | Named suites |
 | --- | --- | --- | --- |
@@ -653,7 +653,7 @@ Band C is not a release gate (delivery plan DP-1), but it removes blockers:
 
 ### 11.1 Checkpoint CP3 (not satisfied yet)
 
-**CP3** (`17b` §5) is the falsification checkpoint: one Flutter button through guard, composed prompt, fake provider, stream, and rendered draft (**D4 + E4**).
+**CP3** (`03-ai-platform-delivery-plan` §5) is the falsification checkpoint: one Flutter button through guard, composed prompt, fake provider, stream, and rendered draft (**D4 + E4**).
 
 Band C satisfies **component-level** prerequisites for that thread:
 
@@ -673,10 +673,10 @@ Band C alone does **not** satisfy CP3.
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Band A contracts baseline |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | Trust/admission (note: §6.2 diagram stage order differs from §6.1 — see §6.2 here) |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | Slice definitions, §3.11.3 test floors, band ordering |
-| [`17-ai-platform.md`](17-ai-platform.md) | Authoritative architecture — §4.3.4–4.3.5, §4.3.11, §6.1, §7.2–7.4 |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Band A contracts baseline |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | Trust/admission (note: §6.2 diagram stage order differs from §6.1 — see §6.2 here) |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | Slice definitions, §3.11.3 test floors, band ordering |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | Authoritative architecture — §4.3.4–4.3.5, §4.3.11, §6.1, §7.2–7.4 |
 | `specs/025` … `specs/027` quickstarts | Run one slice's tests |
 | `ai-platform/README.md` | Worker dev/deploy commands |
 
@@ -689,4 +689,4 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts
 
 ---
 
-*This document describes Band C as implemented on `ai/master` (tip `69372c56`). For Bands A and B, see [`17c`](17c-band-a-implementation-reference.md) and [`17d`](17d-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band C as implemented on `ai/master` (tip `69372c56`). For Bands A and B, see [`01-band-a`](01-band-a-implementation-reference.md) and [`02-band-b`](02-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

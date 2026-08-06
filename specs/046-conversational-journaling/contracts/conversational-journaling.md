@@ -1,7 +1,7 @@
 # Contract: Conversational journaling (H3)
 
 **Frozen by:** Slice H3 — Conversational journaling and client chat surface  
-**Implements:** §7.3, §6.7.1, §6.7.2, §8.10 of `docs/architecture/17-ai-platform.md`  
+**Implements:** §7.3, §6.7.1, §6.7.2, §8.10 of `docs/architecture/ai-platform/01-ai-platform.md`  
 **Status:** Frozen. Later slices (support conversation reads, conversation evals) **consume** this
 artifact; they may extend it and may not rewrite the column-population rule, the ordered
 conversation query, independent per-leg accountability, or the no-conversation-entity rule

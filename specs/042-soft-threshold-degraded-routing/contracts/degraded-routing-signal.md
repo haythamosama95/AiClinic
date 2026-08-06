@@ -1,7 +1,7 @@
 # Contract: Gateway `routing_tier` and `degraded_notice` (F4)
 
 **Frozen by:** Slice F4 — Soft-threshold degraded routing  
-**Implements:** §4.3.7, §8.8 of `docs/architecture/17-ai-platform.md`  
+**Implements:** §4.3.7, §8.8 of `docs/architecture/ai-platform/01-ai-platform.md`  
 **Consumes (unchanged):** D2 routing-policy-as-data (`specs/029-provider-port-routing/contracts/routing-decision.md`);
 C3 request-row writer (`specs/027-journal-writer-get-request/contracts/journal.md`);
 A5 `ai_request.routing_tier` column (`specs/019-ai-context-keys-d1-config/data-model.md` §2.6);

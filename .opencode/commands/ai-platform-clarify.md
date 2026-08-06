@@ -34,7 +34,7 @@ It diverges in exactly two ways, both forced by the delivery plan:
 
 - **`/speckit-clarify` rewrites the spec body** — Functional Requirements, Success Criteria, Data
   Model, Edge Cases — to absorb each answer. Here every requirement must stay traceable to a `§`
-  section of `docs/architecture/17-ai-platform.md`, so the body is read-only and the answer is
+  section of `docs/architecture/ai-platform/01-ai-platform.md`, so the body is read-only and the answer is
   recorded as a tagged, non-normative bullet instead.
 - **`/speckit-clarify` treats every ambiguity as answerable by the user.** Here an ambiguity in the
   architecture is stop condition 1 (delivery plan §6.3) and produces an `## ESCALATION`, never a
@@ -61,8 +61,8 @@ If the script fails or `FEATURE_SPEC` does not exist, stop and instruct the user
 ## Sources — read exactly these
 
 1. `FEATURE_SPEC` — whole file, including its `## Slice Contract` block.
-2. `docs/architecture/17b-ai-platform-delivery-plan.md` — the slice's §3 row, §3.11, and §6.
-3. `docs/architecture/17-ai-platform.md` — **only** the sections in the spec's **Implements**, plus
+2. `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` — the slice's §3 row, §3.11, and §6.
+3. `docs/architecture/ai-platform/01-ai-platform.md` — **only** the sections in the spec's **Implements**, plus
    any §15 Open Decision named in **Open decisions relied on**.
 4. `.specify/memory/constitution.md`.
 
@@ -198,6 +198,6 @@ Collect every gap found in one block; do not stop at the first.
 **Stop condition:** 1 — architecture gap
 **Slice:** A2
 **Question:** The spec names no maximum length for the request reference.
-**Should be answered by:** §5.4 or §13.2 of docs/architecture/17-ai-platform.md
+**Should be answered by:** §5.4 or §13.2 of docs/architecture/ai-platform/01-ai-platform.md
 **Blocked until:** the architecture document is amended
 ```

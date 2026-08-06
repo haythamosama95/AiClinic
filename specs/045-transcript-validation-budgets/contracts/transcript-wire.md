@@ -1,7 +1,7 @@
 # Contract: Closed transcript wire shape (H2)
 
 **Frozen by:** Slice H2 — Transcript validation, conversation budgets, and composer rendering
-**Implements:** §6.7.1 of `docs/architecture/17-ai-platform.md`
+**Implements:** §6.7.1 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H3 journaling/client chat, H4 conversation evals) **consume** this
 artifact; they may not redefine how a turn is spelled (delivery plan §2.3).
 

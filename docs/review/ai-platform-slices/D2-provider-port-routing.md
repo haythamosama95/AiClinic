@@ -82,7 +82,7 @@ D2 delivers the four modules its plan names — `src/provider/classify.ts` (`cla
 | **D2-R5 — Filters, reason codes, missing cases** | Bug #7; Weak Tests #4–#6, #8–#9; Deviation #1 (J3 consult assert + contract) | Latency→`feature_unsupported` asserted; empty chain; carry-through; SOURCE_PRIORITY; `killedProviderIds`→`kill_switch`; T-D2-20 exact clamp; T-D2-19 dual consult |
 | **D2-R6 — Spec Kit amendments for merged reality** | Architectural Deviations #1, #3, #4; Recommended Improvements (contract amendments) | `contracts/routing-decision.md` (J3 preload); `spec.md` FR-010 / acceptance #14 (`RouterOutcome`); unwired consumers remain deferred to D3/CP3 per contract |
 
-Every numbered review item appears in exactly one stage. Architecture docs (`17-ai-platform.md`, `17b-…`) were not edited.
+Every numbered review item appears in exactly one stage. Architecture docs (`01-ai-platform.md`, `03-ai-platform-delivery-plan`) were not edited.
 
 ### 1.2 Test cases created first
 

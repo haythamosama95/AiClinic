@@ -140,7 +140,7 @@ specs/051-token-contract-rotation/
 `data-model.md` (delivery plan §2.3).
 
 `research.md` is **never** produced on this platform — the research is
-`docs/architecture/17-ai-platform.md`.
+`docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` **is** produced — Freezes entries have wire / table / mutation / error shapes
 (accepted-`ver` set, begin-rotation / retire control routes and `control_audit.action` values,

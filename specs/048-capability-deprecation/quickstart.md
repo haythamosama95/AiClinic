@@ -18,7 +18,7 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 J1 implements the **J1** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.9, covering architecture sections **§5.7** (deprecation announcement), **§12.4** (retire a
 capability), and **A12** (overlap window for deprecated versions).
 

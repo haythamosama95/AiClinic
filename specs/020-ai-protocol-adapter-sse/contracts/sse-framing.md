@@ -1,7 +1,7 @@
 # Contract: SSE Event Framing and Submit-Request Header Set (A6)
 
 **Frozen by:** Slice A6 — Protocol adapter and SSE framing
-**Implements:** §4.3.1, §5.5 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.1, §5.5 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (D4, E2, H1) **consume** this contract; the no-rework rule applies
 (Delivery Plan §2.3). A later slice may **extend** (e.g. H1 adds a fourth terminal kind) but may
 not **rewrite** anything below.

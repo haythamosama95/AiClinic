@@ -18,7 +18,7 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 F3 implements the **F3** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.7, covering architecture sections **§4.5** (control plane), **§8.9** (support lookup trace),
 **§7.6** (support lookup I/O budget, rollups, dashboards), **§7.7** (four-class retention),
 **§13.1** (named diagnostics, no second metrics store), **R-6** (reconciliation), and **A13**

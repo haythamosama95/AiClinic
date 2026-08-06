@@ -60,14 +60,14 @@ specs/043-load-and-cost-tests/
 
 `quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`:
 
-1. **Architecture context** — cites delivery plan §3.7 row F5 and `17-ai-platform.md` §13.5 Load and cost tests / §13.6 / §13.6.1; what the spec delivered; what the plan scoped.
+1. **Architecture context** — cites delivery plan §3.7 row F5 and `01-ai-platform.md` §13.5 Load and cost tests / §13.6 / §13.6.1; what the spec delivered; what the plan scoped.
 2. **What was implemented** — workers-pool load suite, binding spies, `src/pipeline` composer, fake-provider happy path under bounded-pool concurrency on one shared installation, structured measurement report (production target 100 ms / Miniflare ceiling 3000 ms), `test:load` + CI checkpoint gate, frozen contract.
 3. **Files to review** — this slice's `ai-platform/src/pipeline/`, `ai-platform/test/load/` files, `package.json` / vitest / CI config deltas, and frozen contract only.
 4. **Run the automated suite** — slice-only `npm run test:load` (workers-pool) / `npx vitest run --config vitest.workers.config.ts test/load/load-and-cost.test.ts` (no full-suite `npm test`, no prior-slice counts).
 5. **Inspect the changes** — open the pipeline composer, load entry, measurement-report shape, binding spies, and frozen contract.
 6. **Manual validation** — omitted; CI / `test:load` is the verification path (no behaviour beyond the automated suite).
 
-`data-model.md` is **not** produced — F5 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/17-ai-platform.md`.
+`data-model.md` is **not** produced — F5 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/load-and-cost-tests.md` freezes the three Freezes entries so later checkpoints bind to a frozen artifact, not prose: the load and cost test layer (placement, timing, `test:load` + CI gate), the under-load one-R2 / two-DO metered-footprint assertion, the CP5 measurement gate, and the structured in-test measurement report (finite values; no D1/DO ceilings; suite fixture `N=20` / production target 100 ms / Miniflare ceiling 3000 ms).
 
@@ -105,7 +105,7 @@ Every **Consumes** entry binds to an existing implementation. None requires modi
 
 ## Components Touched
 
-F5 modifies **no** §4 runtime component of `17-ai-platform.md`. Implements cites **§13.5** and **§13.6** (testing strategy / cost model) — operational concerns, not a new Worker pipeline stage. Review resolution adds a thin production composer at `ai-platform/src/pipeline/` (`runGuard` / `settleHappyPath`) so the load harness and a future Worker orchestrator share one composition; there is still no `src/load/` module. §4.3.3 (quota / admission), §4.3.8 (adapters), and §4.3.11 (journal) are **exercised or consumed**, not modified.
+F5 modifies **no** §4 runtime component of `01-ai-platform.md`. Implements cites **§13.5** and **§13.6** (testing strategy / cost model) — operational concerns, not a new Worker pipeline stage. Review resolution adds a thin production composer at `ai-platform/src/pipeline/` (`runGuard` / `settleHappyPath`) so the load harness and a future Worker orchestrator share one composition; there is still no `src/load/` module. §4.3.3 (quota / admission), §4.3.8 (adapters), and §4.3.11 (journal) are **exercised or consumed**, not modified.
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |

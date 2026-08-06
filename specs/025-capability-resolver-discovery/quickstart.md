@@ -18,7 +18,7 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 ## 1. Architecture context
 
 C1 implements the **C1** row in
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
 §3.4, covering architecture sections **§4.3.4** (capability resolver), **§5.1** (manifest
 immutability), **§6.1 stage 5** (pipeline stage-5 resolve), **§5.5** (discovery surface), and
 **§5.2** (client context-key discovery).

@@ -1,7 +1,7 @@
 # Contract: Conversational composition and dual output shapes (H2)
 
 **Frozen by:** Slice H2 — Transcript validation, conversation budgets, and composer rendering
-**Implements:** §4.3.6, §6.7.2 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.6, §6.7.2 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H3 client chat, H4 evals) **consume** this artifact; they may not
 rewrite role-tag mapping, R-10 delimited opacity, or the dual permitted output shapes (delivery plan
 §2.3).

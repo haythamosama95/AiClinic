@@ -9,7 +9,7 @@
 **Input**: Slice `A1` — *Worker skeleton and environments* (Delivery Plan §3.2, row A1).
 
 > Constitution note: This slice provisions a new deployable component — the Cloudflare AI
-> Gateway Worker — and its three associated stores. Per §14 acknowledgement of `17-ai-platform.md`,
+> Gateway Worker — and its three associated stores. Per §14 acknowledgement of `01-ai-platform.md`,
 > the gateway is an additive, non-primary component: it holds no domain logic, no business data,
 > and has no write path into Supabase. It is always optional; if it vanishes, no business rule
 > is lost. This slice stays inside that boundary.
@@ -18,7 +18,7 @@
 
 ### Implements
 
-§13.4, §1.4 of `docs/architecture/17-ai-platform.md` (copied verbatim from the A1 `Canonical`
+§13.4, §1.4 of `docs/architecture/ai-platform/01-ai-platform.md` (copied verbatim from the A1 `Canonical`
 cell, Delivery Plan §3.2).
 
 ### Freezes
@@ -177,7 +177,7 @@ those entities will later live behind.
   its `wrangler` environment definitions, its D1 / R2 / Durable Object namespace bindings, and
   its secret bindings (Delivery Plan §7.1 — the gateway lives in `ai-platform/` at the repo
   root as a sibling of `frontend/` and `backend/`). It touches neither `backend/` (Supabase)
-  nor `frontend/` (Flutter). Per the §14 acknowledgement in `17-ai-platform.md`, the gateway
+  nor `frontend/` (Flutter). Per the §14 acknowledgement in `01-ai-platform.md`, the gateway
   is a new, additive, non-primary deployable component; its acceptable boundary is *no domain
   logic, no business data, no write path into Supabase, always optional*. A1 introduces only
   empty environments and bindings and carries no behaviour, so it stays squarely inside that

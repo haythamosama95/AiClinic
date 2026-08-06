@@ -9,9 +9,9 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 ## 1. Architecture context
 
 This slice implements delivery-plan row **A4** (*Capability manifest schema and loader*), which maps to
-[§5.1 and §5.7](../../docs/architecture/17-ai-platform.md) of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A4 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[§5.1 and §5.7](../../docs/architecture/ai-platform/01-ai-platform.md) of
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row A4 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 The **spec** freezes the ten §5.1 manifest field groups, a `load()` validator (including
 `single_shot` default and conversational-field rules), and build-time immutability for published
 versions. The **plan** scopes `manifest/index.ts`, seventeen contract tests (T-A4-01..17), and a

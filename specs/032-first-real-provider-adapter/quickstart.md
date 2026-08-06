@@ -6,8 +6,8 @@ Slice D5 adds the first real provider adapter — DeepSeek behind the D2 provide
 
 ## 1. Architecture context
 
-- **Delivery plan row D5** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.5): first real provider adapter in band D — wire mapping, stream normalization, usage extraction, error classification, and secret-store credentials proven by recorded fixtures.
-- **Architecture section implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row D5** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.5): first real provider adapter in band D — wire mapping, stream normalization, usage extraction, error classification, and secret-store credentials proven by recorded fixtures.
+- **Architecture section implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §4.3.8 — provider adapters and egress (first real adapter behind the D2 port; owns auth, mapping, normalization, timeouts, and retryable/terminal classification; owns no retry, fallback, or logging policy)
 - **Spec delivered** ([`spec.md`](spec.md)): frozen first real provider adapter duties, recorded-fixture adapter suite shape (T1–T11), and secret-store credential path with absence spy; exactly one provider (`deepseek`) in this slice.
 - **Plan scoped** ([`plan.md`](plan.md)): `DeepSeekAdapter` in `ai-platform/src/provider/deepseek.ts`; recorded fixtures under `ai-platform/test/fixtures/deepseek/`; adapter-fixture suite in `ai-platform/test/deepseek-adapter.test.ts`; frozen contract in `contracts/first-real-provider-adapter.md`; no D1 migrations, no `wrangler.toml` changes, no pipeline registration.

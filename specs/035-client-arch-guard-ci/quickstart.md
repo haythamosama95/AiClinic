@@ -6,10 +6,10 @@ deliberately failing fixtures and a clean-tree pass with full path coverage.
 
 ## 1. Architecture context
 
-- **Delivery plan** — [§3.6 row E1](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+- **Delivery plan** — [§3.6 row E1](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   (Band E, `Needs: —`). Must land before any client AI code (DP-6).
-- **Architecture** — [`17-ai-platform.md` §13.5](../../docs/architecture/17-ai-platform.md)
-  Architecture guard (R-12); [§3.4.1](../../docs/architecture/17-ai-platform.md) item 1
+- **Architecture** — [`01-ai-platform.md` §13.5](../../docs/architecture/ai-platform/01-ai-platform.md)
+  Architecture guard (R-12); [§3.4.1](../../docs/architecture/ai-platform/01-ai-platform.md) item 1
   (client-side lint as an architectural component, not an optional test).
 - **Spec** — Five named CI-lint tests (T1–T5) proving detection of three forbidden
   categories plus clean-tree pass and full client-source coverage (FR-001–FR-006).

@@ -54,7 +54,7 @@ B2 delivers the §4.5 installation-lifecycle surface: five operator-gated handle
 | **B2-R4 — Rejection-code coverage** | Missing/Weak Tests #1 (remaining codes); Recommended Improvements (missing cases remainder) | `test/control.test.ts` (`invalid_json`, `invalid_route`, `installation_not_found`, `invalid_payload`, `duplicate_kid`, same-org duplicate; T-B2-06/07 body pins) |
 | **B2-R5 — Sibling modules + writeAudit convention** | Architectural Deviations #2; Recommended Improvements (split modules; writeAudit convention) | `src/control/{types,http,auth,audit,lifecycle,capability-lifecycle,cohort,routing-policy,token-contract,support-purge,index}.ts` — `writeAudit` kept for non-batched token-contract; lifecycle keeps inlined batch audit |
 
-Every numbered review item appears in exactly one stage. No escalations — §4.5 already requires verifying operator identity; implementation + Spec Kit contract extension reconcile without amending `17-ai-platform.md`.
+Every numbered review item appears in exactly one stage. No escalations — §4.5 already requires verifying operator identity; implementation + Spec Kit contract extension reconcile without amending `01-ai-platform.md`.
 
 ### 1.2 Test cases created first
 
@@ -74,4 +74,4 @@ Every numbered review item appears in exactly one stage. No escalations — §4.
 
 - Workers-pool: **19 files, 161 tests passed** (`npx vitest run --config vitest.workers.config.ts`), including `control.test.ts` (**22 tests**).
 - Unit/`npm test`: **38 files, 457 tests passed**.
-- Spec Kit updated under `specs/022-control-plane-enrollment/` (`contracts/control-plane.md`, `spec.md`, `plan.md`, `tasks.md`, `quickstart.md`). Architecture docs (`17-ai-platform.md`, `17b`) untouched.
+- Spec Kit updated under `specs/022-control-plane-enrollment/` (`contracts/control-plane.md`, `spec.md`, `plan.md`, `tasks.md`, `quickstart.md`). Architecture docs (`01-ai-platform.md`, `03-ai-platform-delivery-plan`) untouched.

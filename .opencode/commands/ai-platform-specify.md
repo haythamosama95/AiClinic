@@ -1,5 +1,5 @@
 ---
-description: Specify an AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/17-ai-platform.md into the Spec Kit spec template. Pass the slice id as the argument.
+description: Specify an AI platform delivery slice (A1, D6, H3, …) by transcribing docs/architecture/ai-platform/01-ai-platform.md into the Spec Kit spec template. Pass the slice id as the argument.
 ---
 
 # AI Platform — Specify a Slice
@@ -56,7 +56,7 @@ prefix must be the same and exactly one `specs/<FEATURE_NUM>-*` directory may ex
 This is the AI platform variant of Spec Kit's `/speckit-specify`, in the same slot and producing the
 same artifact: `specs/<NNN>-<name>/spec.md` from `.specify/templates/spec-template.md`. It diverges in
 that the feature description is not the user's prose but a row of the delivery plan, so every
-requirement must cite a `§` section of `docs/architecture/17-ai-platform.md`, and an untraceable
+requirement must cite a `§` section of `docs/architecture/ai-platform/01-ai-platform.md`, and an untraceable
 requirement is an `## ESCALATION` rather than a `[NEEDS CLARIFICATION]` marker. The rest of Spec Kit
 still applies: same directory layout, same templates, same constitution gate. The phase order is
 `/ai-platform-specify` → `/ai-platform-clarify` → `/ai-platform-plan` → `/ai-platform-tasks` →
@@ -64,13 +64,13 @@ still applies: same directory layout, same templates, same constitution gate. Th
 
 ## Sources — read exactly these
 
-1. `docs/architecture/17b-ai-platform-delivery-plan.md` — whole file.
-2. `docs/architecture/17-ai-platform.md` — **only** the sections named in the slice's `Canonical`
+1. `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` — whole file.
+2. `docs/architecture/ai-platform/01-ai-platform.md` — **only** the sections named in the slice's `Canonical`
    cell in §3 of the delivery plan.
-3. `docs/architecture/17-ai-platform.md` §15 Open Decisions — only if the slice depends on one.
+3. `docs/architecture/ai-platform/01-ai-platform.md` §15 Open Decisions — only if the slice depends on one.
 4. `.specify/templates/spec-template.md` and `.specify/memory/constitution.md`.
 
-Do not read other sections of `17-ai-platform.md`. Do not read other architecture docs. Needing one
+Do not read other sections of `01-ai-platform.md`. Do not read other architecture docs. Needing one
 is a stop condition, not a reason to read it.
 
 ## Scope
@@ -148,6 +148,6 @@ it yourself, do not guess, do not proceed partially, do not substitute `[NEEDS C
 **Stop condition:** 1 — untraceable requirement
 **Slice:** A2
 **Question:** What is the required length and alphabet of the request reference?
-**Should be answered by:** §5.4 or §13.2 of docs/architecture/17-ai-platform.md
+**Should be answered by:** §5.4 or §13.2 of docs/architecture/ai-platform/01-ai-platform.md
 **Blocked until:** the architecture document is amended
 ```

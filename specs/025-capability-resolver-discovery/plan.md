@@ -8,7 +8,7 @@
 
 ## Summary
 
-C1 builds the pipeline's stage-5 capability resolver and the §5.5 capability-discovery surface: a registry-backed lookup that turns `capability id + requested version` into exactly one immutable manifest honouring the client's pin and plan-level allowances / grant version, distinguishing `capability_unknown` / `capability_retired` / `forbidden_capability` / `capability_disabled`, and a discovery read that returns the granted effective-active or effective-deprecated manifests for an installation/plan, cacheable and revalidated by quoted etag (`If-None-Match` weak comparison; `Cache-Control: private, must-revalidate`). Review-resolution behaviours: resolve enforces allowances; registry is deep-frozen + unmodifiable Map with install-once `setCapabilityRegistry`; kill-switch miss ⇒ inactive. It sits immediately after A4 (froze the manifest schema/loader) and B3 (froze the immutable `Principal` and the in-isolate config-cache surface); it is the unlock for parallel work in bands D and E, which both need a resolved manifest (`17b-ai-platform-delivery-plan.md` §3.4).
+C1 builds the pipeline's stage-5 capability resolver and the §5.5 capability-discovery surface: a registry-backed lookup that turns `capability id + requested version` into exactly one immutable manifest honouring the client's pin and plan-level allowances / grant version, distinguishing `capability_unknown` / `capability_retired` / `forbidden_capability` / `capability_disabled`, and a discovery read that returns the granted effective-active or effective-deprecated manifests for an installation/plan, cacheable and revalidated by quoted etag (`If-None-Match` weak comparison; `Cache-Control: private, must-revalidate`). Review-resolution behaviours: resolve enforces allowances; registry is deep-frozen + unmodifiable Map with install-once `setCapabilityRegistry`; kill-switch miss ⇒ inactive. It sits immediately after A4 (froze the manifest schema/loader) and B3 (froze the immutable `Principal` and the in-isolate config-cache surface); it is the unlock for parallel work in bands D and E, which both need a resolved manifest (`03-ai-platform-delivery-plan.md` §3.4).
 
 ## Technical Context
 
@@ -79,7 +79,7 @@ specs/025-capability-resolver-discovery/
 
 `data-model.md` is **not** produced — C1 defines no D1 entity (spec `### Key Entities`: "Not applicable for D1"). The registry is bundled manifests, not a D1 table; the config-cache reads go through A5's frozen surface.
 
-`research.md` is **never** produced on this platform — the research is `docs/architecture/17-ai-platform.md`; redoing it is how architecture drift starts.
+`research.md` is **never** produced on this platform — the research is `docs/architecture/ai-platform/01-ai-platform.md`; redoing it is how architecture drift starts.
 
 `contracts/` is produced because three **Freezes** entries have wire shapes a later slice's **Consumes** must bind to (C2 consumes the resolved manifest for context validation; D1 consumes it for prompt composition; E3 fetches discovery and runs its contract test against live manifests). The plan names the artifact; the implement phase writes it.
 

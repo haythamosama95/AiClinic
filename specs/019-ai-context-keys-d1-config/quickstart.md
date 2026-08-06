@@ -11,8 +11,8 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 
 This slice implements delivery-plan row **A5** (*Context key vocabulary, D1 schema, and config cache*),
 which maps to §5.2, §7.3, §13.4, §4.3.2, §4.4, and §9.15 of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row A5 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row A5 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 
 - The **spec** freezes the context-key naming and shape contract (`domain.concept@vN`, storage-named
   rejection, published field names/types/cardinality/units), the platform's D1 logical model (every

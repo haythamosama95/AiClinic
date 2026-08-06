@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/028-prompt-registry-composer/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/17-ai-platform.md`). `data-model.md` is not produced — D1 defines no D1 entities and adds no column (spec `### Key Entities`: "Not applicable"). `contracts/composer-output.md` is already frozen on disk (written during the plan phase per DP-4; the plan's Sequencing step 1 places it first so the composer is constrained by the frozen wire shape, not prose). `quickstart.md` is written in Phase 5 (Documentation).
+**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/ai-platform/01-ai-platform.md`). `data-model.md` is not produced — D1 defines no D1 entities and adds no column (spec `### Key Entities`: "Not applicable"). `contracts/composer-output.md` is already frozen on disk (written during the plan phase per DP-4; the plan's Sequencing step 1 places it first so the composer is constrained by the frozen wire shape, not prose). `quickstart.md` is written in Phase 5 (Documentation).
 
 **Tests**: Tests are mandatory on this platform (delivery plan §3.10). Every named test in the spec's `### Test plan` is a task, written to fail before the code exists.
 

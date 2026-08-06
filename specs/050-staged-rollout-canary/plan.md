@@ -148,7 +148,7 @@ additive `canary_installation_ids` on A5's `routing_policy` and installation-sco
 an artifact without rewriting A5's `specs/019-…/data-model.md` (delivery plan §2.3).
 
 `research.md` is **never** produced on this platform — the research is
-`docs/architecture/17-ai-platform.md`.
+`docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` **is** produced — Freezes entries have wire / table / audit shapes (control routes and
 `control_audit.action` extensions, cohort activate/promote payloads, routing-policy publish/canary/

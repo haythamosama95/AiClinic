@@ -1,6 +1,6 @@
 # Slice Review: J4 — Token contract rotation with overlapping acceptance
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §5.6, §5.7 (plus §4.5 row and §7.3 `token_contract` entry as cited by the spec — source of truth); `specs/051-token-contract-rotation/` (spec, plan, tasks, data-model, contracts).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §5.6, §5.7 (plus §4.5 row and §7.3 `token_contract` entry as cited by the spec — source of truth); `specs/051-token-contract-rotation/` (spec, plan, tasks, data-model, contracts).
 **Implementation reviewed:** `ai-platform/migrations/20260803120000_token_contract.sql`, `ai-platform/schema.snap.sql`, `ai-platform/src/identity/index.ts`, `ai-platform/src/config-cache/index.ts`, `ai-platform/src/control/token-contract.ts`, `ai-platform/src/control/index.ts`, `ai-platform/src/worker.ts`, plus the three J4 test suites (`ai-platform/test/token-contract-rotation.test.ts`, `ai-platform/test/token-contract-control.test.ts`, `backend/tests/ai_token_contract_rotation.sql`) and their harness registrations.
 **Method:** Static review only; no build, no test execution.
 

@@ -114,7 +114,7 @@ No `data-model.md` — A2 defines no D1 entities (spec Key Entities: "Not applic
 No `contracts/` — A2 freezes the error-taxonomy, error-body, request-reference, and trace contracts
 as prose + code in its `## Slice Contract`, Requirements, and `ai-platform/` source; it produces no
 machine-readable contract artifact beyond the TypeScript types that encode them (the contract *is*
-the typed module). No `research.md` — the research is `17-ai-platform.md` and redoing it is how
+the typed module). No `research.md` — the research is `01-ai-platform.md` and redoing it is how
 architecture drift starts (Delivery Plan §6.1).
 
 ### Source Code (repository root)

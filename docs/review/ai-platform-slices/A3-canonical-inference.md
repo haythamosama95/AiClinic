@@ -40,7 +40,7 @@ None within the slice's own logic. Round-trip, chunk-kind exhaustiveness, termin
 | --- | --- | --- |
 | **A3-R1 — Fail-closed codec** | Missing/Weak Tests #1 (static-only guard); Missing/Weak Tests #2 (no extra-key rejection); Recommended Improvements (reject unknown keys) | `ai-platform/src/contracts/canonical.ts` (`assertOnlyManifestKeys`); `ai-platform/test/canonical.test.ts` (T-A3-05 codec path + T-A3-08); Spec Kit `specs/017-ai-canonical-inference/{spec,plan,tasks,contracts}` |
 | **A3-R2 — Typed field schema** | Architectural Deviations #2 (`unknown` ManifestRecord); Recommended Improvements (typed schema; delete adapter casts) | `canonical.ts` real per-field types + `CANONICAL_MESSAGE_ROLES`; `gemini.ts` / `deepseek.ts` / `composer.ts` cast removal; T-A3-09; Spec Kit |
-| **A3-R3 — Rename prose keys** | Architectural Deviations #1 (contents prose as JSON keys); Recommended Improvements (rename via §2.3 contract-change) | `17-ai-platform.md` §5.3 Field column; `canonical.ts`; all consumers; Spec Kit; **resolved** — see §2 |
+| **A3-R3 — Rename prose keys** | Architectural Deviations #1 (contents prose as JSON keys); Recommended Improvements (rename via §2.3 contract-change) | `01-ai-platform.md` §5.3 Field column; `canonical.ts`; all consumers; Spec Kit; **resolved** — see §2 |
 
 Also brought forward the already-resolved A2 T21 uniqueness methodology (`reference.test.ts` @ 20k draws) from local `ai/master`, because `origin/ai/master` still had the flaky 1M strict-uniqueness case and the full suite failed on it after the squash-merge sync.
 
@@ -64,7 +64,7 @@ Full `ai-platform` suite after A3-R1/R2: **37 files, 418 tests passed**. After A
 
 ### 1.5 Escalation (A3-R3) — resolved
 
-Human decision: **option (a)** — amend `17-ai-platform.md` §5.3 with Field identifiers
+Human decision: **option (a)** — amend `01-ai-platform.md` §5.3 with Field identifiers
 and migrate all consumers (Delivery Plan §2.3 contract-change).
 
 ```text
@@ -85,7 +85,7 @@ and migrate all consumers (Delivery Plan §2.3 contract-change).
 
 | Stage | Review items covered | Files / logic |
 | --- | --- | --- |
-| **A3-R3 — Rename prose keys** | Architectural Deviations #1; Recommended Improvements (rename via §2.3) | `docs/architecture/17-ai-platform.md` §5.3; `canonical.ts` manifest/types; all `ai-platform` consumers + fixtures; Spec Kit `specs/017-ai-canonical-inference/*` |
+| **A3-R3 — Rename prose keys** | Architectural Deviations #1; Recommended Improvements (rename via §2.3) | `docs/architecture/ai-platform/01-ai-platform.md` §5.3; `canonical.ts` manifest/types; all `ai-platform` consumers + fixtures; Spec Kit `specs/017-ai-canonical-inference/*` |
 
 ### 2.2 Test cases created first
 

@@ -8,9 +8,9 @@ transport failures within a bounded ceiling, and maps unknown taxonomy codes to 
 
 ## 1. Architecture context
 
-- **Delivery plan row E2** ([§3.6](../../docs/architecture/17b-ai-platform-delivery-plan.md)) implements
+- **Delivery plan row E2** ([§3.6](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)) implements
   **§4.1 AI Client SDK**, **§5.5 SSE consumption rules**, and **§5.4 taxonomy branching** from
-  [`17-ai-platform.md`](../../docs/architecture/17-ai-platform.md).
+  [`01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md).
 - **Spec** (`spec.md`) froze the transport-only client seam: AAT cache/remint ceiling, stable
   idempotency key, consume-to-terminal SSE, cancel-by-close, last request-reference retention,
   no-auto-retry-after-terminal, and unknown→`internal_error`.

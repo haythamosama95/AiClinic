@@ -1,6 +1,6 @@
 # H2 — Transcript validation, conversation budgets, and composer rendering
 
-Static review of slice H2 against `docs/architecture/17-ai-platform.md` §4.3.5, §6.7.1, §6.7.3,
+Static review of slice H2 against `docs/architecture/ai-platform/01-ai-platform.md` §4.3.5, §6.7.1, §6.7.3,
 §4.3.6, §6.7.2 (source of truth) and `specs/045-transcript-validation-budgets/` (spec, plan,
 contracts). No code was built or executed; no implementation files were modified.
 
@@ -230,7 +230,7 @@ Required case list is from delivery plan §3.11.7 row H2 and §3.10.
 | **H2-R3 — Dual-acceptance heuristics + phase label** | Bugs #5–#6; Missing/Weak Tests #8; Recommended Improvements #6 (phase) | `ai-platform/src/validate/phases.ts`; `conversational-response-validator.test.ts` |
 | **H2-R4 — R-10 delimited rendering + template skip + neutralize** | Architectural Deviations #1, #4; Missing/Weak Tests #1, #6; Recommended Improvements #1, #2, #7 | `ai-platform/src/prompt/composer.ts`; `conversational-composer.test.ts`; `contracts/conversational-composition.md` |
 | **H2-R5 — Allowlist / boundary / preflight serialize tests** | Missing/Weak Tests #2–#7; Recommended Improvements #8 (H2-layer strengthen + defer pipeline) | `preflight.ts` (`serializePreflightInput`); `transcript-validation.test.ts`; contract out-of-scope note for H3/handler integration |
-| **H2-R6 — Spec Kit clarifications (tenant + dual-shape offer)** | Architectural Deviations #3, #5 | Spec Kit only: tenant-check divergence + structured-output dual-offer clarification in contracts; no `17-ai-platform.md` edit |
+| **H2-R6 — Spec Kit clarifications (tenant + dual-shape offer)** | Architectural Deviations #3, #5 | Spec Kit only: tenant-check divergence + structured-output dual-offer clarification in contracts; no `01-ai-platform.md` edit |
 
 Every numbered review item appears in exactly one stage. No escalations — Arch #1 resolved by delimited `<turn>` payloads with closed role tags; Arch #2 by enforcing `transcriptSizeLimit`; Arch #5 clarified in Spec Kit contract only.
 
@@ -250,7 +250,7 @@ Every numbered review item appears in exactly one stage. No escalations — Arch
 - **Phases:** empty `[]` not dual-accepted; prose that opens with `[`/`{` but is not JSON accepted; neither failures labeled `transport_parse`.
 - **Composer:** user/model text rendered as neutralized `<turn kind="…">` blocks under closed role tags; `context_requested` payload neutralized; conversational path skips `contextRenderingTemplateRef` resolution.
 - **Spec Kit:** `transcript-validation-budgets.md`, `transcript-wire.md`, `conversational-composition.md`, `spec.md` Assumptions updated to match.
-- Architecture (`17-ai-platform.md`) and delivery plan untouched.
+- Architecture (`01-ai-platform.md`) and delivery plan untouched.
 
 ### 1.4 Verification
 

@@ -10,7 +10,7 @@
 
 > Constitution note: This slice lives entirely inside the Cloudflare AI Gateway Worker
 > (`ai-platform/`), the additive, non-primary component registered by A1. Per §14 of
-> `docs/architecture/17-ai-platform.md`, the gateway holds no domain logic, no business data, and has
+> `docs/architecture/ai-platform/01-ai-platform.md`, the gateway holds no domain logic, no business data, and has
 > no write path into Supabase. This slice stays inside that boundary: it freezes a context-key
 > vocabulary, the platform's own D1 schema, and an in-isolate config cache. It performs no
 > request-path work and writes no clinic data.
@@ -19,7 +19,7 @@
 
 ### Implements
 
-§5.2, §7.3, §13.4, §4.3.2, §4.4, §9.15 of `docs/architecture/17-ai-platform.md` (copied verbatim from
+§5.2, §7.3, §13.4, §4.3.2, §4.4, §9.15 of `docs/architecture/ai-platform/01-ai-platform.md` (copied verbatim from
 the A5 `Canonical` cell, Delivery Plan §3.2).
 
 ### Freezes

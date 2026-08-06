@@ -299,7 +299,7 @@ leak across runs.
   here.
 
 The concrete table and column names are not named by the cited sections of
-`17-ai-platform.md`; this slice MUST follow the established `public` wrapper →
+`01-ai-platform.md`; this slice MUST follow the established `public` wrapper →
 `auth_internal` `SECURITY DEFINER` pattern (§4.2 header "every addition follows the
 established `public` wrapper → `auth_internal` `SECURITY DEFINER` pattern (F4)") and
 the repository's shared schema conventions, rather than inventing names.

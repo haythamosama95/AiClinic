@@ -10,7 +10,7 @@ gateway or D1 journal involvement. No production Feature Surface wires clinical 
 
 ## 1. Architecture context
 
-- **Delivery plan row:** F2 in [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.7 — acceptance recording RPC and client accept path.
+- **Delivery plan row:** F2 in [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.7 — acceptance recording RPC and client accept path.
 - **Architecture sections:** §4.2 / §4.2.2 (clinic acceptance RPC and provenance), §4.1 (Feature Surfaces clinical accept path), A5 (human-gated acceptance; no auto-commit).
 - **Spec delivered:** Single shared `record_ai_acceptance` RPC, registry + demonstration target `visit_clinical_notes` → `save_visit_documentation`, atomic domain + `ai_accepted_output` + `ai.acceptance_record` audit, clinical accept library (harness/tests) without promoting or wiring `advisory_display`.
 - **Plan scoped:** Migration(s) including review-resolution, Flutter `acceptance/` library, SQL + Flutter test suites T1–T10, frozen contract at `contracts/acceptance-recording.md`.

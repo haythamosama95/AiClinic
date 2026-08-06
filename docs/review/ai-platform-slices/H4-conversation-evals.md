@@ -1,6 +1,6 @@
 # Slice Review: H4 — Conversation evals
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §13.5 (Testing strategy, Conversation evals row) and amendment A9 (source of truth); delivery plan §3.8 row H4 and §3.11.7 row H4; `specs/047-conversation-evals/` (spec, plan, tasks, contracts/conversation-evals.md).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §13.5 (Testing strategy, Conversation evals row) and amendment A9 (source of truth); delivery plan §3.8 row H4 and §3.11.7 row H4; `specs/047-conversation-evals/` (spec, plan, tasks, contracts/conversation-evals.md).
 **Implementation reviewed:** `ai-platform/test/eval/conversation-harness.ts`, `ai-platform/test/eval/conversation-score-report.ts`, `ai-platform/test/eval/conversation.test.ts`, `ai-platform/test/eval/prohibitions.test.ts` (H4 additions), `ai-platform/test/eval/clinic.chat_assistant/` (capability, three cases, five leg fixtures), the H4 delta to `ai-platform/test/eval/harness.ts`, and the `.github/workflows/ci.yml` golden-eval job; Consumes-checked against `ai-platform/src/context/validator.ts` (H2) and `ai-platform/test/eval/harness.ts` / `score-report.ts` (F1).
 **Method:** Static review only; no build, no test execution. Git history used read-only to attribute the `harness.ts` change to this slice (branch `ai/047-h4-conversation-evals`, commit `f26249ff`).
 

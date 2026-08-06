@@ -4,7 +4,7 @@
 > Later slices (D2/D3 invocation, D6 validator) **consume** this shape; they may extend it and may
 > not rewrite it (delivery plan §2.3). Bind to this file, not to prose in `spec.md` or `plan.md`.
 >
-> Authority: `docs/architecture/17-ai-platform.md` §4.3.6, §5.3, §5.7, §9.5; `spec.md` Freezes → composer output contract.
+> Authority: `docs/architecture/ai-platform/01-ai-platform.md` §4.3.6, §5.3, §5.7, §9.5; `spec.md` Freezes → composer output contract.
 
 **Review extension (D1-R):** H2 merged conversational transcript rendering into `composer.ts`
 (architecture §4.3.6 conversational paragraph / §6.7): optional `transcript` input, `assistant`

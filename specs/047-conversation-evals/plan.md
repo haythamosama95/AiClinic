@@ -59,14 +59,14 @@ specs/047-conversation-evals/
 
 `quickstart.md` will contain, per `.specify/templates/ai-platform-quickstart-template.md`:
 
-1. **Architecture context** — cites delivery plan §3.8 row H4 and `17-ai-platform.md` §13.5 Conversation evals / A9; what the spec delivered; what the plan scoped.
+1. **Architecture context** — cites delivery plan §3.8 row H4 and `01-ai-platform.md` §13.5 Conversation evals / A9; what the spec delivered; what the plan scoped.
 2. **What was implemented** — sibling conversation harness + scoring, one fixture conversational capability with three scripted multi-leg cases, per-conversation JSON scores, same CI gate as F1.
 3. **Files to review** — this slice's `ai-platform/test/eval/` conversation files, CI delta, and frozen contract only.
 4. **Run the automated suite** — slice-only `npx vitest run test/eval/conversation...` commands (no full-suite `npm test`, no prior-slice counts).
 5. **Inspect the changes** — open the conversation harness, three cases, score-report shape, and frozen contract.
 6. **Manual validation** — omitted; CI/`vitest` is the only verification path for this eval-harness slice.
 
-`data-model.md` is **not** produced — H4 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/17-ai-platform.md`.
+`data-model.md` is **not** produced — H4 defines no D1 entities (spec Key Entities: not applicable). `research.md` is **not** produced — research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/conversation-evals.md` freezes the three Freezes entries so later work (and J3's "evals pass" half) binds to a frozen artifact, not prose: conversation evals as a CI-gated extension of the A9 suite, per-conversation (not per-turn) scoring, and the three acceptance criteria with their recorded score payload.
 
@@ -117,7 +117,7 @@ Every **Consumes** entry binds to an existing implementation. None requires modi
 
 ## Components Touched
 
-H4 modifies **no** §4 runtime component of `17-ai-platform.md`. Implements cites **§13.5** and **A9** — testing-strategy / eval-suite layers, not a Worker pipeline stage. Conversation evals live under `ai-platform/test/eval/` only (Clarification Q3), matching the F1 precedent.
+H4 modifies **no** §4 runtime component of `01-ai-platform.md`. Implements cites **§13.5** and **A9** — testing-strategy / eval-suite layers, not a Worker pipeline stage. Conversation evals live under `ai-platform/test/eval/` only (Clarification Q3), matching the F1 precedent.
 
 | §4 component | Touched? | Reason |
 | --- | --- | --- |

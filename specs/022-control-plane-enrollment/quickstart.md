@@ -11,8 +11,8 @@ Full requirements: [`spec.md`](spec.md). File-level traceability: [`plan.md`](pl
 
 This slice implements delivery-plan row **B2** (*Control-plane enrollment and installation
 lifecycle*), which maps to §4.5 and §8.1 of
-[`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) and row B2 of
-[`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md).
+[`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) and row B2 of
+[`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md).
 
 - The **spec** freezes the installation-lifecycle control-plane surface (five mutations, verifying
   operator auth, audit journaling), the enroll write set (four D1 tables), one-time enrollment,

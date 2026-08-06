@@ -182,7 +182,7 @@ snapshot the guard reads. B3's `Consumes` will bind to the status enum and audit
 extend them (each is "may extend, never rewrite", §2.3), so they must bind to an artifact, not prose.
 
 `research.md` is never produced on this platform; the research is
-`docs/architecture/17-ai-platform.md` (delivery plan §6, plan-phase protocol).
+`docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6, plan-phase protocol).
 
 ### Source Code (repository root)
 

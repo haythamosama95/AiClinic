@@ -6,8 +6,8 @@ Slice D7 adds the second real provider adapter — Gemini behind the D2 provider
 
 ## 1. Architecture context
 
-- **Delivery plan row D7** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.5): second real provider adapter in band D — wire mapping, stream normalization, usage extraction, error classification, secret-store credentials, and policy-data fallback registration proven by recorded fixtures.
-- **Architecture section implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row D7** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.5): second real provider adapter in band D — wire mapping, stream normalization, usage extraction, error classification, secret-store credentials, and policy-data fallback registration proven by recorded fixtures.
+- **Architecture section implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §4.3.8 — provider adapters and egress (second real adapter behind the D2 port; owns auth, mapping, normalization, timeouts, and retryable/terminal classification; owns no retry, fallback, or logging policy)
   - §13.5 — provider adapter tests (recorded provider fixtures)
 - **Spec delivered** ([`spec.md`](spec.md)): frozen Gemini adapter duties, D5 suite shape applied to the second provider, secret-store credential path, routing-policy low-priority registration with structural path allowlist; FR-010 / T12 deferred to F1.

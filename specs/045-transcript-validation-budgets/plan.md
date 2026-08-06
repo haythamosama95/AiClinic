@@ -85,7 +85,7 @@ specs/045-transcript-validation-budgets/
 ```
 
 `data-model.md` is omitted — H2 defines no D1 entity (spec Key Entities; FR-019).
-`research.md` is never produced — the research is `docs/architecture/17-ai-platform.md` (delivery plan §6).
+`research.md` is never produced — the research is `docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6).
 
 **`quickstart.md` sections (to fill after implementation + verification):** Architecture context;
 What was implemented; Files to review (this slice only); Run the automated suite (`npx vitest run`

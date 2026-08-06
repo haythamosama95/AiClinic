@@ -63,7 +63,7 @@ A reviewer of the platform's internal types wants every component upstream of th
 
 ### Test plan
 
-Expanded from delivery plan §3.11.1 row A3 (Layer: Contract). Layer names follow §13.5 of `17-ai-platform.md`.
+Expanded from delivery plan §3.11.1 row A3 (Layer: Contract). Layer names follow §13.5 of `01-ai-platform.md`.
 
 | Test name | Layer | Case (§3.11.1 A3) |
 | --- | --- | --- |

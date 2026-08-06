@@ -3,7 +3,7 @@
 - Purpose: Explain, in plain language, what Band A of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet.
 - Read this when: onboarding to the AI platform, reviewing what Band A delivered, or preparing for Band B work.
 - Canonical for: Band A completion status and where to find the code and tests.
-- Usually paired with: [`17a-ai-platform-overview.md`](17a-ai-platform-overview.md) (architecture orientation), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture).
+- Usually paired with: [`../02-ai-platform-overview.md`](../02-ai-platform-overview.md) (architecture orientation), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
 - Not covered here: Band B onward, Flutter client work, or Supabase clinic-side changes.
 
 > **Status:** Band A (slices A1–A6) is **complete**. All 170 automated tests in `ai-platform/` pass. Nothing in Band A handles a real AI request end-to-end yet — it lays down the contracts and scaffolding that later bands build on.
@@ -578,10 +578,10 @@ The next checkpoint, **CP2 (after B4)**, asks whether a request can be authentic
 
 | Document | Use when |
 | --- | --- |
-| [`17a-ai-platform-overview.md`](17a-ai-platform-overview.md) | You want the full architecture story in readable form |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | You need slice definitions, test requirements, or Band B+ ordering |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | You need what Band B actually built (trust, guard, admission) |
-| [`17-ai-platform.md`](17-ai-platform.md) | You need the authoritative specification |
+| [`../02-ai-platform-overview.md`](../02-ai-platform-overview.md) | You want the full architecture story in readable form |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | You need slice definitions, test requirements, or Band B+ ordering |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | You need what Band B actually built (trust, guard, admission) |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | You need the authoritative specification |
 | `specs/015` through `specs/020` | You need acceptance criteria for a specific slice |
 | `ai-platform/README.md` | You need to run tests or deploy the Worker |
 | [`AGENTS.md`](../../AGENTS.md) | You are an AI agent orienting to the repo |
@@ -604,4 +604,4 @@ curl http://localhost:8787/health
 
 ---
 
-*This document describes Band A as implemented. For Band B (trust, identity, admission), see [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band A as implemented. For Band B (trust, identity, admission), see [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

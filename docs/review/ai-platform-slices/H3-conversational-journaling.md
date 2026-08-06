@@ -1,6 +1,6 @@
 # Slice Review: H3 — Conversational journaling and client chat surface
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §7.3, §6.7.1, §8.10, §4.1, §6.7,
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §7.3, §6.7.1, §8.10, §4.1, §6.7,
 amendment A14 (source of truth); `specs/046-conversational-journaling/` (spec, plan, tasks,
 contracts, quickstart).
 **Implementation reviewed:** `ai-platform/src/journal/index.ts`,

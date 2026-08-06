@@ -120,7 +120,7 @@ Every numbered Critical, Bug, Architectural Deviation, Missing/Weak Test, and Re
 - **R6:** Installation purge clears aggregates; diagnostic age prefilter; set-based rollup delete; additive indexes.
 - **R7:** Trim + format validation before lookup.
 
-Spec Kit contracts/plan/spec updated; `17-ai-platform.md` / delivery plan untouched.
+Spec Kit contracts/plan/spec updated; `01-ai-platform.md` / delivery plan untouched.
 
 ### 1.4 Verification
 

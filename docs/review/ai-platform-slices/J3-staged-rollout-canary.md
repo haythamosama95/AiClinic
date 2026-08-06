@@ -1,6 +1,6 @@
 # Slice Review: J3 — Staged rollout and canary cohorts
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §12.4, §4.5, §13.4 (source of truth); `specs/050-staged-rollout-canary/` (spec, plan, tasks, contracts).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §12.4, §4.5, §13.4 (source of truth); `specs/050-staged-rollout-canary/` (spec, plan, tasks, contracts).
 **Implementation reviewed:** `ai-platform/migrations/20260803100000_routing_policy_canary.sql`, `ai-platform/schema.snap.sql`, `ai-platform/src/control/index.ts`, `ai-platform/src/control/cohort.ts`, `ai-platform/src/control/routing-policy.ts`, `ai-platform/src/control/http.ts`, `ai-platform/src/control/auth.ts`, `ai-platform/src/router/index.ts`, `ai-platform/src/capability/index.ts`, `ai-platform/src/config-cache/index.ts`, `ai-platform/src/worker.ts`, plus the two J3 test files and `ai-platform/test/helpers/control-audit-assert.ts`.
 **Method:** Static review only; no build, no test execution.
 

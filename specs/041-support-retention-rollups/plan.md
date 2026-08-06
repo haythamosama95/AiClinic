@@ -86,7 +86,7 @@ specs/041-support-retention-rollups/
 exist from A5; F3 freezes production/purge/query behaviour over them. Entity presence remains in
 A5 / C3 artifacts.
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` is produced because **Freezes** entries have wire/policy shapes later slices’
 **Consumes** must bind to: support-lookup request/response and I/O budget; reference input

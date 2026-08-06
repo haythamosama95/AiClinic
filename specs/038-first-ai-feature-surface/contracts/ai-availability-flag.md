@@ -1,7 +1,7 @@
 # Contract: AI availability flag (E4)
 
 **Frozen by:** Slice E4 — First AI feature surface and degraded mode  
-**Implements:** §4.2 AI availability flag of `docs/architecture/17-ai-platform.md`; Open Decision 8
+**Implements:** §4.2 AI availability flag of `docs/architecture/ai-platform/01-ai-platform.md`; Open Decision 8
 recommended default  
 **Status:** Frozen. Later slices may extend how enrollment is written (control-plane / operator
 paths) but must not rewrite the clinic-readable shape `{ enrolled, platform_base_url }` or the

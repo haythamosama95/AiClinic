@@ -3,12 +3,12 @@
 - Purpose: Decompose the AI platform architecture into small, individually specifiable, individually implementable slices, and define the rules that keep those slices from drifting away from the architecture.
 - Read this when: choosing what to build next on the AI platform, opening a new Spec Kit feature for AI platform work, or reviewing a completed AI platform slice.
 - Canonical for: AI platform build order, slice boundaries, slice completion criteria, and the authoring rules for AI platform feature specs.
-- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), the band implementation references [`17c`](17c-band-a-implementation-reference.md)–[`17e`](17e-band-c-implementation-reference.md) (A–C), [`17g`](17g-band-d-implementation-reference.md)–[`17k`](17k-band-j-implementation-reference.md) (D, E, F, H, J; `17f` is the operator runbook), and `.specify/memory/constitution.md`.
-- Not covered here: any architectural decision. This document sequences decisions made in `17-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `17-ai-platform.md` wins and this document is wrong.
+- Usually paired with: `docs/architecture/ai-platform/01-ai-platform.md` (the architecture this plan sequences), `docs/architecture/ai-platform/02-ai-platform-overview.md` (orientation), the band implementation references [`01-band-a`](implementation-references/01-band-a-implementation-reference.md)–[`03-band-c`](implementation-references/03-band-c-implementation-reference.md) (A–C), [`04-band-d`](implementation-references/04-band-d-implementation-reference.md)–[`08-band-j`](implementation-references/08-band-j-implementation-reference.md) (D, E, F, H, J; `04-ai-platform-operator-runbook` is the operator runbook), and `.specify/memory/constitution.md`.
+- Not covered here: any architectural decision. This document sequences decisions made in `01-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `01-ai-platform.md` wins and this document is wrong.
 
 > **Status:** Delivery plan. Bands A–J are sliced and largely implemented as modules and suites;
 > band I wires those modules onto the live Worker and Flutter request paths. Section references of
-> the form §N.M refer to `docs/architecture/17-ai-platform.md` unless stated otherwise.
+> the form §N.M refer to `docs/architecture/ai-platform/01-ai-platform.md` unless stated otherwise.
 
 ---
 
@@ -34,7 +34,7 @@
 
 ### 1.1 Why this document exists separately
 
-`17-ai-platform.md` decides *what* the AI platform is. It is deliberately dense, and it is stable:
+`01-ai-platform.md` decides *what* the AI platform is. It is deliberately dense, and it is stable:
 once a decision in it is settled, it should not churn. This document decides *in what order the
 decisions get built*, and it is expected to churn — slice boundaries will move as the first few
 slices reveal how much a single Spec Kit cycle can actually absorb.
@@ -51,7 +51,7 @@ obvious, and because if any of them stops being true the plan needs revisiting.
 | #   | Assumption                                                                                                                                              | Consequence for the plan                                                                                                                                                        |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Nothing is sold and nothing is deployed.** The product ships only when the Flutter client, the Supabase backend, and the AI platform are all complete | "Independently shippable" is not a useful property of an increment. No slice needs to be demoable, and no slice needs a migration path from a previous release                  |
-| 2   | **Feature specs are authored by a capable but not exceptional reasoning model.** Its job is to transcribe architecture into tasks, not to design        | A slice must be answerable entirely from `17-ai-platform.md`. Any slice that would require inventing an architectural decision is mis-scoped ([§6.3](#63-stop-conditions))      |
+| 2   | **Feature specs are authored by a capable but not exceptional reasoning model.** Its job is to transcribe architecture into tasks, not to design        | A slice must be answerable entirely from `01-ai-platform.md`. Any slice that would require inventing an architectural decision is mis-scoped ([§6.3](#63-stop-conditions))      |
 | 3   | **Implementation is performed by a model with weak judgement.** It will implement whatever the spec says, including whatever the spec got wrong         | Contracts must be frozen as *code* before their consumers are built, so the implementer is constrained by the type system rather than by prose ([§2.3](#23-the-no-rework-rule)) |
 | 4   | **The reviewer is one human.** Review capacity, not implementation capacity, is the binding constraint                                                  | Slice size is chosen so that one diff is reviewable in one sitting against one named part of the architecture                                                                   |
 
@@ -86,7 +86,7 @@ These supersede the phase model previously carried in §12.2 of the architecture
 ### 2.1 Definition
 
 A slice is one Spec Kit feature: one `specs/<NNN>-<name>/` directory, one branch, one review. It
-implements *named parts* of `17-ai-platform.md` — one component group from §4 or the contracts from
+implements *named parts* of `01-ai-platform.md` — one component group from §4 or the contracts from
 §5 that group needs — and nothing else.
 
 Slice identifiers in this document (`A1`, `D3`, `D4`, …) are stable and do not change when a slice
@@ -111,8 +111,8 @@ a slice's boundary self-enforcing — work that cannot be named in a test belong
 case, a column, or an implementation is extension. Changing the meaning of an existing one is not.
 
 If a slice discovers that a frozen contract is wrong, that is not a licence to change it inside the
-slice. It is a finding: stop, amend `17-ai-platform.md`, and treat the amendment as a contract change
-reviewed on its own ([§13.4](17-ai-platform.md#134-environments-configuration-and-secrets),
+slice. It is a finding: stop, amend `01-ai-platform.md`, and treat the amendment as a contract change
+reviewed on its own ([§13.4](01-ai-platform.md#134-environments-configuration-and-secrets),
 "contracts first"). The rule exists because the implementer will otherwise "fix" a contract to suit
 the slice in front of it, and the fix will be invisible in a large diff.
 
@@ -157,7 +157,7 @@ A1–A4 were implemented before the merge and are unchanged.
 
 ### 3.1 How to read the tables
 
-`Canonical` names the sections of `17-ai-platform.md` a slice implements; these are the sections the
+`Canonical` names the sections of `01-ai-platform.md` a slice implements; these are the sections the
 spec must cite and the reviewer must check against. `Needs` lists prerequisite slices. `Done when`
 states the acceptance shape — the spec expands each into named test cases.
 
@@ -171,7 +171,7 @@ Worker fetch handler and the first Flutter AI surface ([§3.10](#310-band-i--liv
 
 ### 3.2 Band A — Foundations and frozen contracts
 
-> **Implementation reference:** [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) — plain-language account of what A1–A6 built, with diagrams and test commands.
+> **Implementation reference:** [`implementation-references/01-band-a-implementation-reference.md`](implementation-references/01-band-a-implementation-reference.md) — plain-language account of what A1–A6 built, with diagrams and test commands.
 
 Nothing in this band handles a real request. It exists so that everything after it is constrained.
 
@@ -194,7 +194,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.3 Band B — Trust, identity, and admission
 
-> **Implementation reference:** [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) — plain-language account of what B1–B4 built, with diagrams and test commands.
+> **Implementation reference:** [`implementation-references/02-band-b-implementation-reference.md`](implementation-references/02-band-b-implementation-reference.md) — plain-language account of what B1–B4 built, with diagrams and test commands.
 
 **What this band does:** Answers "who is calling, are they allowed, and have they exceeded their budget?" before any inference work begins. It mints installation-scoped access tokens (AATs) from Supabase, enrolls and manages installations in the control plane, runs the guard pipeline stages (identity, rate limiting, entitlement, kill switches), and admits requests through a per-installation Quota Durable Object that tracks `jti` freshness, idempotency, budget, and concurrency.
 
@@ -217,7 +217,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **Useful to know:** C1 is the unlock for parallel work in bands D and E — both need a resolved manifest. C1 freezes `resolve()` / `discover()` as libraries; the live discovery HTTP route is Band I (I2). C2 emits `context_required` with the missing-key manifest (the self-healing *behaviour* for stale clients is deferred to J2 under DP-5; hosting that behaviour on the live submit path is I4). C3's journal is the audit backbone that band F's support lookup and dashboards query. A guard rejection must produce **no** journal row. Wiring stages 5–9 into live `POST /v1/requests` is I1.
 
-> **Implementation reference:** [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) — plain-language account of what C1–C3 built, with diagrams and test commands.
+> **Implementation reference:** [`implementation-references/03-band-c-implementation-reference.md`](implementation-references/03-band-c-implementation-reference.md) — plain-language account of what C1–C3 built, with diagrams and test commands.
 
 
 | ID     | Slice                                     | Canonical                            | Needs  | Done when                                                                                                                                                                                                                                          |
@@ -231,7 +231,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.5 Band D — The inference path
 
-> **Implementation reference:** [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) — plain-language account of what D1–D7 built, with diagrams and test commands (tip `181ab637`, before review-comment remediation).
+> **Implementation reference:** [`implementation-references/04-band-d-implementation-reference.md`](implementation-references/04-band-d-implementation-reference.md) — plain-language account of what D1–D7 built, with diagrams and test commands (tip `181ab637`, before review-comment remediation).
 
 **What this band does:** The core AI pipeline: compose a prompt from immutable artifacts, route to a provider through a policy-driven chain, invoke with bounded retry and fallback, stream normalized chunks to the client, validate the assembled output (with optional repair), and adapt real providers behind a shared port. D1–D4 use the fake adapter; D5 adds the first real provider; D7 proves a second provider needs only an adapter and a routing-policy edit.
 
@@ -253,7 +253,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.6 Band E — Client integration
 
-> **Implementation reference:** [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md) — plain-language account of what E1–E4 built, with diagrams and test commands (tip `b41e3894`, before review-comment remediation).
+> **Implementation reference:** [`implementation-references/05-band-e-implementation-reference.md`](implementation-references/05-band-e-implementation-reference.md) — plain-language account of what E1–E4 built, with diagrams and test commands (tip `b41e3894`, before review-comment remediation).
 
 **What this band does:** Wires the Flutter desktop app to the platform without leaking AI internals. E1 installs the architecture guard (R-12) in CI; E2 is the AI Client SDK (token acquisition, idempotency, SSE consumption, cancel); E3 is the Context Resolver and the first clinic-side context RPC; E4 is the first user-visible AI surface with provisional-draft UX and degraded-mode behaviour.
 
@@ -272,7 +272,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.7 Band F — Hardening and operations
 
-> **Implementation reference:** [`17i-band-f-implementation-reference.md`](17i-band-f-implementation-reference.md) — plain-language account of what F1–F5 built, with diagrams and test commands (tip `9084b9d7`, before review-comment remediation).
+> **Implementation reference:** [`implementation-references/06-band-f-implementation-reference.md`](implementation-references/06-band-f-implementation-reference.md) — plain-language account of what F1–F5 built, with diagrams and test commands (tip `9084b9d7`, before review-comment remediation).
 
 **What this band does:** Makes the platform operationally honest after the inference path works. Eval harnesses block prompt regressions; the acceptance RPC ties AI output to clinical records with provenance; support lookup, retention purges, and usage rollups make every request explainable from its reference; soft-threshold routing degrades gracefully under quota pressure; load tests assert the metered footprint in §13.6.
 
@@ -292,7 +292,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.8 Band H — Conversational capabilities
 
-> **Implementation reference:** [`17j-band-h-implementation-reference.md`](17j-band-h-implementation-reference.md) — plain-language account of what H1–H4 built, with diagrams and test commands (tip `24d1e7cc`, before review-comment remediation).
+> **Implementation reference:** [`implementation-references/07-band-h-implementation-reference.md`](implementation-references/07-band-h-implementation-reference.md) — plain-language account of what H1–H4 built, with diagrams and test commands (tip `24d1e7cc`, before review-comment remediation).
 
 **What this band does:** Adds multi-turn conversational AI on top of the single-shot path. A capability may declare `interaction_mode: conversational` with transcript limits, permitted context keys, and a shared context-request schema; the validator enforces turn budgets; the composer renders prior turns as delimited typed data; the client holds the transcript locally and resupplies it per leg with a new idempotency key; journaling records `conversation_id` and `turn_ordinal` per leg without introducing a server-side conversation entity.
 
@@ -309,7 +309,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.9 Band J — Deferred compatibility machinery
 
-> **Implementation reference:** [`17k-band-j-implementation-reference.md`](17k-band-j-implementation-reference.md) — plain-language account of what J1–J4 built, with diagrams and test commands (tip `37b82f0e`, before review-comment remediation).
+> **Implementation reference:** [`implementation-references/08-band-j-implementation-reference.md`](implementation-references/08-band-j-implementation-reference.md) — plain-language account of what J1–J4 built, with diagrams and test commands (tip `37b82f0e`, before review-comment remediation).
 
 **What this band does:** Adds the runtime behaviour for compatibility scenarios that have no audience yet: capability deprecation overlap windows, `context_required` self-healing for stale manifest caches, staged rollout and canary cohorts, and token-contract rotation with overlapping `ver` acceptance. The error codes, lifecycle states, and journal columns these features need were frozen early (DP-5); this band wires up the behaviour.
 
@@ -521,7 +521,7 @@ This section is the instruction set for whichever model authors a slice's `spec.
 
 ### 6.1 The authoring model's job is transcription, not design
 
-`17-ai-platform.md` has already made the decisions. A slice spec is correctly written when it can be
+`01-ai-platform.md` has already made the decisions. A slice spec is correctly written when it can be
 produced by citing sections and attaching acceptance tests to their statements. If the spec contains
 original architectural reasoning, something has gone wrong: either the slice is too large, or a
 decision is missing from the architecture document and is being invented in the wrong place
@@ -532,7 +532,7 @@ decision is missing from the architecture document and is being invented in the 
 
 | Section                      | Contents                                                                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Implements**               | The exact sections of `17-ai-platform.md` this slice realises, copied from the `Canonical` column of the slice's row                                            |
+| **Implements**               | The exact sections of `01-ai-platform.md` this slice realises, copied from the `Canonical` column of the slice's row                                            |
 | **Freezes**                  | Contracts this slice establishes for the first time. Later slices may extend these and may not rewrite them ([§2.3](#23-the-no-rework-rule))                    |
 | **Consumes**                 | Contracts frozen by earlier slices that this slice uses. Changing any of them is out of scope by definition                                                     |
 | **Requirements**             | Restatements of the cited architecture, each with acceptance criteria expressed as named test cases ([§2.2](#22-the-completion-criterion))                      |
@@ -548,7 +548,7 @@ decision is missing from the architecture document and is being invented in the 
 Authoring must stop and escalate to an architecture change, rather than proceed, when any of these is
 true:
 
-1. A requirement cannot be traced to a section of `17-ai-platform.md` or to a recommended default in
+1. A requirement cannot be traced to a section of `01-ai-platform.md` or to a recommended default in
   §15.
 2. Satisfying the slice appears to require changing a contract listed in its **Consumes** section.
 3. The slice cannot be given acceptance criteria as test cases.
@@ -556,7 +556,7 @@ true:
   group named in its row in [§3](#3-the-slice-sequence) without an explicit reason recorded in the
   plan.
 
-Escalation means amending `17-ai-platform.md` first, then returning. The amendment is reviewed as a
+Escalation means amending `01-ai-platform.md` first, then returning. The amendment is reviewed as a
 contract change, which is the discipline §13.4 already requires of every capability and context-key
 change.
 

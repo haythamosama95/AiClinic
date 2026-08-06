@@ -1,7 +1,7 @@
 # Contract: AI acceptance recording (F2)
 
 **Frozen by:** Slice F2 — Acceptance recording RPC and client accept path  
-**Implements:** §4.2, §4.2.2, §4.1, A5 of `docs/architecture/17-ai-platform.md`  
+**Implements:** §4.2, §4.2.2, §4.1, A5 of `docs/architecture/ai-platform/01-ai-platform.md`  
 **Status:** Frozen. Later slices (capability manifests declaring `human_accept_required`, Open
 Decision 14 conversational acceptance) **consume** this artifact; they may add registry rows and
 call this exact RPC, and must not rewrite the RPC signature, registry shape, `ai_accepted_output`

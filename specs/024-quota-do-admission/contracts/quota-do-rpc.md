@@ -1,7 +1,7 @@
 # Contract: Quota Durable Object RPC wire shapes (B4)
 
 **Frozen by:** Slice B4 — Quota Durable Object and admission stage
-**Implements:** §4.3.3, §4.4, §6.1 stages 8 and 15, §6.6, §7.7, §9.17 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.3, §4.4, §6.1 stages 8 and 15, §6.6, §7.7, §9.17 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (C3 journal writer, F4 soft-threshold routing) **consume** this artifact;
 the no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g. F4 routes on optional
 `degraded` from the admission response) but may not **rewrite** the field set, discriminant

@@ -122,7 +122,7 @@ automatic self-heal round trip; one-resubmission bound; conversational exclusion
 new wire shape (table, payload, token, event, or error taxonomy); the `context_required` missing-key
 manifest remains C2’s frozen artifact. Later callers bind to the sibling module under
 `frontend/lib/core/ai/`, not to a prose contract file. `research.md` is **not** produced — the
-research is `docs/architecture/17-ai-platform.md`.
+research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `quickstart.md` (written during the implement-phase Documentation task, per
 `.specify/templates/ai-platform-quickstart-template.md`) will contain:

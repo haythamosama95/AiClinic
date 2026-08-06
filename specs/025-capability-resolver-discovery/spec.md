@@ -17,7 +17,7 @@
 ### Implements
 
 `§4.3.4, §5.1, §6.1 stage 5, §5.5, §5.2` (copied verbatim from the slice's `Canonical` cell
-in §3.4 of `17b-ai-platform-delivery-plan.md`).
+in §3.4 of `03-ai-platform-delivery-plan.md`).
 
 ### Freezes
 
@@ -79,7 +79,7 @@ capabilities must be absent from discovery for an ineligible installation.
 
 **Why this priority**: C1 sits where it does because both Band D and Band E need a
 resolved manifest, and nothing downstream can be built until the resolver exists — "C1 is
-the unlock for parallel work in bands D and E" (`17b-ai-platform-delivery-plan.md` §3.4).
+the unlock for parallel work in bands D and E" (`03-ai-platform-delivery-plan.md` §3.4).
 Its `Needs` (A4, B3) are already frozen.
 
 **Independent Test**: A capability id plus requested version resolves to one immutable
@@ -120,7 +120,7 @@ manifest honouring the client's pin and plan-level allowances, distinguishing
 ### Test plan
 
 Layer names are from the testing-strategy table in §13.5. The slice's required layer is
-"Unit + integration" (`17b-ai-platform-delivery-plan.md` §3.11.3); the closest §13.5
+"Unit + integration" (`03-ai-platform-delivery-plan.md` §3.11.3); the closest §13.5
 layers are **Pipeline tests** (stage ordering and guard rejection paths) and **Contract
 tests** (manifest internal consistency and immutability).
 

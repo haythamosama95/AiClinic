@@ -55,11 +55,11 @@ Use the `TASKS_TEMPLATE` path it returns.
 
 1. The slice's `spec.md` and `plan.md`. The spec's `## Clarifications` section, when present, holds
    decided implementation choices, not requirements — a task still traces to an `FR-###`.
-2. `docs/architecture/17b-ai-platform-delivery-plan.md` §3.10 and §6.
+2. `docs/architecture/ai-platform/03-ai-platform-delivery-plan.md` §3.10 and §6.
 3. `.specify/templates/tasks-template.md`.
 4. `.specify/templates/ai-platform-quickstart-template.md`.
 
-Do not read `17-ai-platform.md` at this phase. If you believe you need it, the spec is incomplete —
+Do not read `01-ai-platform.md` at this phase. If you believe you need it, the spec is incomplete —
 that is stop condition 1.
 
 ## Overrides to the template
@@ -127,6 +127,6 @@ it yourself, do not guess, do not proceed partially.
 **Slice:** D5
 **Count:** 34 tasks
 **Question:** Should retry and fallback be split into two slices?
-**Should be answered by:** §3.5 of docs/architecture/17b-ai-platform-delivery-plan.md
+**Should be answered by:** §3.5 of docs/architecture/ai-platform/03-ai-platform-delivery-plan.md
 **Blocked until:** the delivery plan is amended
 ```

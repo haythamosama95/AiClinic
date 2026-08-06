@@ -128,7 +128,7 @@ specs/046-conversational-journaling/
 
 `data-model.md` is omitted — H3 defines no D1 entity; columns were reserved in A5 (spec Key Entities;
 FR-002, FR-004).
-`research.md` is never produced — the research is `docs/architecture/17-ai-platform.md` (delivery plan §6).
+`research.md` is never produced — the research is `docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6).
 
 **`quickstart.md` sections (to fill after implementation + verification):** Architecture context
 (H3 row §3.8; §7.3 / §6.7.1 / §8.10 / §4.1 / §6.7); What was implemented (journal column population

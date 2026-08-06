@@ -1,6 +1,6 @@
 # Slice Review: J1 — Capability deprecation and the overlap window
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §5.1, §5.7, §7.3, §12.4, amendment A12, OD-9 (source of truth); `specs/048-capability-deprecation/` (spec, plan, tasks, `contracts/capability-deprecation.md`).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §5.1, §5.7, §7.3, §12.4, amendment A12, OD-9 (source of truth); `specs/048-capability-deprecation/` (spec, plan, tasks, `contracts/capability-deprecation.md`).
 **Implementation reviewed:** `ai-platform/migrations/20260802100000_capability_grant_lifecycle.sql`, `ai-platform/schema.snap.sql`, `ai-platform/src/capability/index.ts`, `ai-platform/src/control/capability-lifecycle.ts`, `ai-platform/src/control/index.ts`, `ai-platform/src/worker.ts`, `ai-platform/test/capability-deprecation.test.ts`, plus both vitest configs.
 **Method:** Static review only; no build, no test execution.
 

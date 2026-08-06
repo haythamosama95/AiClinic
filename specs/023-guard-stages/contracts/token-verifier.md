@@ -1,7 +1,7 @@
 # Contract: TokenVerifier port and enrolled-key verification (B3)
 
 **Frozen by:** Slice B3 — Guard stages: identity, rate limiting, entitlement and kill switches
-**Implements:** §4.3.2, §4.2.1, §5.6 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.2, §4.2.1, §5.6 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices **B4** (admission — verifies nothing itself but consumes the
 principal), **J4** (token-contract rotation — adds a second accepted `ver` value) **consume** this
 contract; the no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (e.g. J4

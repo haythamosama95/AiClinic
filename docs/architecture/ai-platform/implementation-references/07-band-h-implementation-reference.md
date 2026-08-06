@@ -1,10 +1,10 @@
 # AI Platform — Band H Implementation Reference
 
-- Purpose: Explain, in plain language, what Band H of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17c`](17c-band-a-implementation-reference.md)–[`17i`](17i-band-f-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band H of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`01-band-a`](01-band-a-implementation-reference.md)–[`06-band-f`](06-band-f-implementation-reference.md).
 - Read this when: onboarding after Bands A–F, reviewing multi-turn / chat capabilities, or preparing for Band J compatibility behaviour.
 - Canonical for: Band H completion status, where to find the code and tests, and which architecture boxes are now green for conversational mode.
-- Usually paired with: [`17c`](17c-band-a-implementation-reference.md)–[`17e`](17e-band-c-implementation-reference.md) (A–C), [`17g`](17g-band-d-implementation-reference.md) (compose/validate), [`17h`](17h-band-e-implementation-reference.md) (Flutter SDK/resolver), [`17i`](17i-band-f-implementation-reference.md) (eval harness F1), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture §6.7).
-- Not covered here: Band G commercial surface (undecomposed — skipped), Band J deferred compatibility (see [`17k`](17k-band-j-implementation-reference.md)), or review-comment remediations after tip `24d1e7cc`.
+- Usually paired with: [`01-band-a`](01-band-a-implementation-reference.md)–[`03-band-c`](03-band-c-implementation-reference.md) (A–C), [`04-band-d`](04-band-d-implementation-reference.md) (compose/validate), [`05-band-e`](05-band-e-implementation-reference.md) (Flutter SDK/resolver), [`06-band-f`](06-band-f-implementation-reference.md) (eval harness F1), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture §6.7).
+- Not covered here: Band G commercial surface (undecomposed — skipped), Band J deferred compatibility (see [`08-band-j`](08-band-j-implementation-reference.md)), or review-comment remediations after tip `24d1e7cc`.
 
 > **Status:** Band H (slices **H1–H4**) is **complete** on branch `ai/master` (tip `24d1e7cc`, 2026-08-02) — **before** later review-comment remediation commits. Automated evidence: **73 Band H Worker tests** — **28** (H1) + **28** (H2) + **8** (H3, workers pool) + **9** (H4 named T1–T9) — plus **12 Flutter** tests (H3 client: **5** store + **7** loop) — within **536** total Worker tests at this tip (**406** default config + **130** workers pool; configs are disjoint). Conversational manifest load, transcript validation, composer dual-output, journaling columns, client Conversation store/loop, and conversation evals **exist and are tested**; they are **additive** — `interaction_mode` defaults to `single_shot`, so no existing button-invoked capability acquires chat behaviour from this band's existence. **No server-side conversation entity** is introduced; `conversation_id` / `turn_ordinal` were reserved in A5. Live `POST /v1/requests` remains the earlier SSE stub path — H modules are proven in focused suites and H3 pipeline spies, not as a new public chat HTTP product.
 
@@ -96,7 +96,7 @@ Spec Kit directories: `specs/044` … `specs/047`.
 
 ## 3. What Band H Is and Why It Exists
 
-The delivery plan titles Band H **"Conversational capabilities"** (`17b` §3.8).
+The delivery plan titles Band H **"Conversational capabilities"** (`03-ai-platform-delivery-plan` §3.8).
 
 | ID | Slice | Spec directory | Needs | One-line purpose |
 | --- | --- | --- | --- | --- |
@@ -427,7 +427,7 @@ flowchart TB
     style IN fill:#c8e6c9,stroke:#2e7d32
 ```
 
-**How to read this:** Green Band H boxes are implemented and tested in their modules. **Live `POST /v1/requests` at this tip still opens the SSE stub** (same caution as [`17g`](17g-band-d-implementation-reference.md)); H3 journaling integration tests exercise `createRequestRow` / admit / credit spies directly.
+**How to read this:** Green Band H boxes are implemented and tested in their modules. **Live `POST /v1/requests` at this tip still opens the SSE stub** (same caution as [`04-band-d`](04-band-d-implementation-reference.md)); H3 journaling integration tests exercise `createRequestRow` / admit / credit spies directly.
 
 ### 6.3 Pipeline stages — conversational notes
 
@@ -538,7 +538,7 @@ Scoring is **per conversation**. Same CI job as F1 goldens.
 
 ### 8.1 The completion rule
 
-Same as prior bands: **a slice is done when a test a human can read and believe passes** (`17b` §3.11.7).
+Same as prior bands: **a slice is done when a test a human can read and believe passes** (`03-ai-platform-delivery-plan` §3.11.7).
 
 ### 8.2 Two Vitest configurations (+ Flutter)
 
@@ -550,7 +550,7 @@ Same as prior bands: **a slice is done when a test a human can read and believe 
 
 **Band H Worker total: 73 tests** (28+28+8+9). Combined Worker suites: **536** (406+130; disjoint). Node **22+** required for ai-platform engines field.
 
-### 8.3 Test layers by slice (`17b` §3.11.7)
+### 8.3 Test layers by slice (`03-ai-platform-delivery-plan` §3.11.7)
 
 | Slice | Layer | Files | Count |
 | --- | --- | --- | --- |
@@ -687,7 +687,7 @@ specs/
 | Live `POST /v1/requests` conversational E2E | **Not the public path at this tip** (stub) |
 | Shipped clinic chat UI route | **Core library only** |
 | Band G commercial / plan UI | Undecomposed — skipped |
-| `context_required` auto-heal on conversational | **Explicitly out** — J2 does not apply to conversational (`17b` §3.9) |
+| `context_required` auto-heal on conversational | **Explicitly out** — J2 does not apply to conversational (`03-ai-platform-delivery-plan` §3.9) |
 
 ### 10.2 Implementation gaps inside Band H scope
 
@@ -716,7 +716,7 @@ specs/
 
 ## 11. What Band H Unlocks Next
 
-Band H is the last large **new behaviour** block in the delivery plan (`17b` §3). It unlocks:
+Band H is the last large **new behaviour** block in the delivery plan (`03-ai-platform-delivery-plan` §3). It unlocks:
 
 | Next | Why H matters |
 | --- | --- |
@@ -727,7 +727,7 @@ Band H is the last large **new behaviour** block in the delivery plan (`17b` §3
 
 ### 11.1 Relationship to checkpoints
 
-CP3/CP4 in `17b` §5 target the single-shot first-feature thread (D+E). Band H is **orthogonal and additive**: it does not replace CP3, and shipping chat still needs a product capability, mounted UI, and a live POST path that runs the full module chain.
+CP3/CP4 in `03-ai-platform-delivery-plan` §5 target the single-shot first-feature thread (D+E). Band H is **orthogonal and additive**: it does not replace CP3, and shipping chat still needs a product capability, mounted UI, and a live POST path that runs the full module chain.
 
 ---
 
@@ -735,16 +735,16 @@ CP3/CP4 in `17b` §5 target the single-shot first-feature thread (D+E). Band H i
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | Manifest default, A5 columns, SSE reservation |
-| [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md) | Per-leg admission / quota |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | Context validate + journal baseline |
-| [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) | Composer / response validator Band H extends |
-| [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md) | SDK + Resolver Band H wires |
-| [`17i-band-f-implementation-reference.md`](17i-band-f-implementation-reference.md) | F1 eval harness Band H extends |
-| [`17k-band-j-implementation-reference.md`](17k-band-j-implementation-reference.md) | Deferred compatibility (J2 ≠ conversational) |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | §3.8 Band H, §3.11.7 test floors |
-| [`17-ai-platform.md`](17-ai-platform.md) | Authoritative §6.7 conversational model |
-| [`17f-ai-platform-operator-runbook.md`](17f-ai-platform-operator-runbook.md) | Day-to-day run/observe |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | Manifest default, A5 columns, SSE reservation |
+| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | Per-leg admission / quota |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | Context validate + journal baseline |
+| [`04-band-d-implementation-reference.md`](04-band-d-implementation-reference.md) | Composer / response validator Band H extends |
+| [`05-band-e-implementation-reference.md`](05-band-e-implementation-reference.md) | SDK + Resolver Band H wires |
+| [`06-band-f-implementation-reference.md`](06-band-f-implementation-reference.md) | F1 eval harness Band H extends |
+| [`08-band-j-implementation-reference.md`](08-band-j-implementation-reference.md) | Deferred compatibility (J2 ≠ conversational) |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | §3.8 Band H, §3.11.7 test floors |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | Authoritative §6.7 conversational model |
+| [`../04-ai-platform-operator-runbook.md`](../04-ai-platform-operator-runbook.md) | Day-to-day run/observe |
 | `specs/044` … `specs/047` quickstarts | Run one slice's tests |
 
 **Run tests:**
@@ -759,4 +759,4 @@ cd frontend && flutter test \
 
 ---
 
-*This document describes Band H as implemented at tip `24d1e7cc` (2026-08-02), before review-comment remediation commits. For Bands A–F see [`17c`](17c-band-a-implementation-reference.md)–[`17i`](17i-band-f-implementation-reference.md). Band G remains undecomposed. Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band H as implemented at tip `24d1e7cc` (2026-08-02), before review-comment remediation commits. For Bands A–F see [`01-band-a`](01-band-a-implementation-reference.md)–[`06-band-f`](06-band-f-implementation-reference.md). Band G remains undecomposed. Do not rewrite frozen contract sections without an architecture amendment.*

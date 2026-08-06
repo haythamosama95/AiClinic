@@ -15,7 +15,7 @@ consume the AAT contract it freezes.
 
 > **Note on superseded clarifications.** The `## Clarifications` session in `spec.md` recorded
 > Q1 as "ES256" and Q3 fixtures as "ES256" because, at clarify time, the cited sections named no
-> signing mechanism. `docs/architecture/17-ai-platform.md` has since added **§4.2.1 The
+> signing mechanism. `docs/architecture/ai-platform/01-ai-platform.md` has since added **§4.2.1 The
 > clinic-side signing mechanism**, which fixes `pgsodium` Ed25519 / `alg: EdDSA` as the only
 > compliant mechanism and §5.6 makes `alg` non-negotiable. Per the delivery plan rule that the
 > architecture wins over stale choices, this plan follows **§4.2.1 (EdDSA)**, not the ES256
@@ -95,7 +95,7 @@ specs/021-installation-keystore-aat-issuer/
 
 `data-model.md` is **not** produced: B1 defines clinic-side Supabase entities, not D1 entities
 (the platform's store). `research.md` is **never** produced — the research is
-`docs/architecture/17-ai-platform.md` (delivery plan §6).
+`docs/architecture/ai-platform/01-ai-platform.md` (delivery plan §6).
 
 `contracts/aat-token.md` is required because a **Freezes** entry has a wire shape: the AAT is a
 JWS whose header carries `alg: EdDSA` + `kid` (§5.6, §4.2.1) and whose payload is the §5.6 claim
@@ -105,7 +105,7 @@ contract tests.
 
 The quickstart is written during the Documentation task after the suite is green, using
 `.specify/templates/ai-platform-quickstart-template.md`. Sections it will contain: (1) Architecture
-context — cites delivery plan §3.3 row B1 and `17-ai-platform.md` §4.2 / §4.2.1 / §5.6 / §8.1;
+context — cites delivery plan §3.3 row B1 and `01-ai-platform.md` §4.2 / §4.2.1 / §5.6 / §8.1;
 (2) What was implemented — the `ai_internal` keystore, the `auth_internal` keypair routines and
 issuer RPC, the `public` wrappers; (3) Files to review — the four migrations (incl. review overlay) and two SQL suites;
 (4) Prerequisites — local Supabase stack up, `pgsodium` enabled by the migration; (5) Run the

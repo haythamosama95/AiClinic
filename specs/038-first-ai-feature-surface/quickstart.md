@@ -4,8 +4,8 @@ E4 lands the first Flutter AI Feature Surface (`prose` / `advisory_display`), fi
 
 ## 1. Architecture context
 
-- **Delivery plan** — Band E row E4 in [`docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.6: first user-visible Feature Surfaces + degraded mode + AI availability flag.
-- **Architecture** — Implements `docs/architecture/17-ai-platform.md` §4.1 (Feature Surfaces), §6.4 (provisional `prose` rules), §13.2 (request reference), §4.2 (availability flag), §5.4 (taxonomy client behaviours), and A11 (AI never blocks clinical work).
+- **Delivery plan** — Band E row E4 in [`docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.6: first user-visible Feature Surfaces + degraded mode + AI availability flag.
+- **Architecture** — Implements `docs/architecture/ai-platform/01-ai-platform.md` §4.1 (Feature Surfaces), §6.4 (provisional `prose` rules), §13.2 (request reference), §4.2 (availability flag), §5.4 (taxonomy client behaviours), and A11 (AI never blocks clinical work).
 - **Spec** — Provisional draft rendering with no commit before `completed`, terminal-payload authority, accept/discard under `advisory_display`, request reference on every failure, and distinct degraded states.
 - **Plan** — Flutter modules under `frontend/lib/features/ai/`, widget spy suite T1–T21, Supabase `get_ai_availability` migration, frozen `contracts/ai-availability-flag.md`, standalone host route for tests/CP3.
 

@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/048-capability-deprecation/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/17-ai-platform.md`). `data-model.md` is not produced — J1 defines no new D1 entity (spec Key Entities). `contracts/capability-deprecation.md` is already frozen on disk (written during the plan phase per DP-4). `quickstart.md` is written in Phase 5 (Documentation).
+**Prerequisites**: `plan.md` (required), `spec.md` (required for the user story). `research.md` is never produced on this platform (the research is `docs/architecture/ai-platform/01-ai-platform.md`). `data-model.md` is not produced — J1 defines no new D1 entity (spec Key Entities). `contracts/capability-deprecation.md` is already frozen on disk (written during the plan phase per DP-4). `quickstart.md` is written in Phase 5 (Documentation).
 
 **Tests**: Tests are mandatory on this platform (delivery plan §3.10). Every named test in the spec's `### Test plan` (T-J1-01 .. T-J1-05) is covered by its own task, written to fail before the overlay / control / resolve behaviour exists. Layer is **Integration** / Pipeline tests (delivery plan §3.11.8 row J1; §13.5 Pipeline tests). Permanent suite = Vitest workers pool under `ai-platform/test/capability-deprecation.test.ts`.
 

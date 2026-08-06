@@ -9,7 +9,7 @@ mint from `ai.aat.ver` without re-enrollment.
 
 ## 1. Architecture context
 
-- **Delivery plan row:** J4 in [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.9 — deferred band-J token contract rotation.
+- **Delivery plan row:** J4 in [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.9 — deferred band-J token contract rotation.
 - **Architecture sections:** §5.7 (overlapping acceptance), §5.6 (minting `ver` from `ai.aat.ver`),
   §4.5 (control-plane writers), §7.3 (`token_contract` D1 entity).
 - **Spec delivered:** platform-global accepted set (one stable, two mid-rotation); begin-rotation /

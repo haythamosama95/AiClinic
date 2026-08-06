@@ -1,6 +1,6 @@
 # Slice Review: J2 — `context_required` self-healing round trip
 
-**Reviewed against:** `docs/architecture/17-ai-platform.md` §8.4 and §5.2 (source of truth); `specs/049-context-required-self-healing/` (spec, plan, tasks, quickstart; no `contracts/` by design).
+**Reviewed against:** `docs/architecture/ai-platform/01-ai-platform.md` §8.4 and §5.2 (source of truth); `specs/049-context-required-self-healing/` (spec, plan, tasks, quickstart; no `contracts/` by design).
 **Implementation reviewed:** `frontend/lib/core/ai/context_required_self_heal.dart`, the `PlatformHttpException` extension in `frontend/lib/core/ai/ports.dart`, the consumed E2/E3 surfaces (`frontend/lib/core/ai/ai_client_sdk.dart`, `context_resolver.dart`) for binding correctness, plus `frontend/test/unit/core/ai/context_required_self_heal_test.dart` and the J2 additions to `frontend/test/unit/core/ai/fakes.dart`.
 **Method:** Static review only; no build, no test execution.
 

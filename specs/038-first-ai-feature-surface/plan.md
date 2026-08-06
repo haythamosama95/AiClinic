@@ -76,7 +76,7 @@ specs/038-first-ai-feature-surface/
 
 `data-model.md` is **not** produced — E4 defines no D1 entities (spec Key Entities: "Not applicable"). The availability flag is clinic-side configuration; its wire shape lives in `contracts/ai-availability-flag.md`.
 
-`research.md` is **not** produced — the research is `docs/architecture/17-ai-platform.md`.
+`research.md` is **not** produced — the research is `docs/architecture/ai-platform/01-ai-platform.md`.
 
 `contracts/` is produced because one **Freezes** entry has a wire shape later slices’ **Consumes** must bind to: the AI availability flag clinic-side store (`enrolled` + `platform_base_url`). The other Freezes (Feature Surfaces UI rules, provisional-content client rules, terminal-payload authority, request-reference display, degraded mode) are behavioural and bind to the Flutter modules under `frontend/lib/features/ai/`, not to additional prose contract files (same posture as E2 behavioural Freezes).
 

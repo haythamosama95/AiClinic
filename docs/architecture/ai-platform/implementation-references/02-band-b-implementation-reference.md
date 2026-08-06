@@ -1,9 +1,9 @@
 # AI Platform — Band B Implementation Reference
 
-- Purpose: Explain, in plain language, what Band B of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md).
+- Purpose: Explain, in plain language, what Band B of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet, especially readers who already used [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md).
 - Read this when: onboarding after Band A, reviewing what trust/admission work delivered, or preparing for Band C.
 - Canonical for: Band B completion status, where to find the code and tests, and which architecture boxes are now green.
-- Usually paired with: [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) (Band A baseline), [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) (slice definitions), [`17-ai-platform.md`](17-ai-platform.md) (full architecture).
+- Usually paired with: [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) (Band A baseline), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
 - Not covered here: capability resolution, journaling on the request path, prompt building, provider calls, or Flutter client work (Bands C–E).
 
 > **Status:** Band B (slices **B1–B4**) is **complete** on branch `ai/master` (tip `0b0f7070`, 2026-08-01). Automated evidence: **59 Band B tests** — **12** named SQL cases (B1) plus **47** Vitest workers-pool tests (B2–B4) — plus **170** Band A Worker tests (`npm test`). Guard and admission **modules exist and are tested in isolation**; they are **not yet wired into** `POST /v1/requests`. **No real AI inference happens yet.**
@@ -37,7 +37,7 @@ Band B answers the question: **"Who is allowed to ask the AI platform for anythi
 
 ### 2.1 Start with Band A
 
-If Band A is new to you, read [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) first. Band A delivered the empty Worker shell, frozen error/capability/context contracts, the D1 schema **definitions**, and the SSE adapter framing. Band B **uses** those foundations (especially the A5 config cache and D1 tables) but does not change the frozen Band A contracts.
+If Band A is new to you, read [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) first. Band A delivered the empty Worker shell, frozen error/capability/context contracts, the D1 schema **definitions**, and the SSE adapter framing. Band B **uses** those foundations (especially the A5 config cache and D1 tables) but does not change the frozen Band A contracts.
 
 ### 2.2 The trust problem Band B solves
 
@@ -48,7 +48,7 @@ Before Band B, the platform had no way to know:
 - Whether the same request is being replayed or double-submitted
 - Whether the installation has quota left
 
-Band B builds the **machinery** to answer those questions. Band C modules (resolve, validate, journal) are built — see [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md); wiring them into the live `POST /v1/requests` path is still pending.
+Band B builds the **machinery** to answer those questions. Band C modules (resolve, validate, journal) are built — see [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md); wiring them into the live `POST /v1/requests` path is still pending.
 
 ### 2.3 Enrollment and daily use (plain language)
 
@@ -756,10 +756,10 @@ The next major milestone, **CP3 (after D4 + E4)**, is the first full Flutter-to-
 
 | Document | Use when |
 | --- | --- |
-| [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) | You need Band A baseline and frozen contracts |
-| [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) | You need Band C capability/context/journal status |
-| [`17b-ai-platform-delivery-plan.md`](17b-ai-platform-delivery-plan.md) | You need slice definitions, §3.11.2 test floors, or Band C+ ordering |
-| [`17-ai-platform.md`](17-ai-platform.md) | You need the authoritative architecture spec |
+| [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md) | You need Band A baseline and frozen contracts |
+| [`03-band-c-implementation-reference.md`](03-band-c-implementation-reference.md) | You need Band C capability/context/journal status |
+| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | You need slice definitions, §3.11.2 test floors, or Band C+ ordering |
+| [`../01-ai-platform.md`](../01-ai-platform.md) | You need the authoritative architecture spec |
 | `specs/021` … `specs/024` | Acceptance criteria and quickstarts per Band B slice |
 | `specs/023-guard-stages/quickstart.md` | Running B3 tests only |
 | `specs/022-control-plane-enrollment/quickstart.md` | Running B2 control tests |
@@ -776,4 +776,4 @@ bash backend/tests/run_ai_platform_trust_tests.sh   # requires local Supabase
 
 ---
 
-*This document describes Band B as implemented on `ai/master`. For Band A contracts, see [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band B as implemented on `ai/master`. For Band A contracts, see [`01-band-a-implementation-reference.md`](01-band-a-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*

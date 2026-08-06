@@ -1,6 +1,6 @@
 # AI Platform Implementation Review
 
-The AI Platform was implemented incrementally according to @docs/architecture/17b-ai-platform-delivery-plan.md
+The AI Platform was implemented incrementally according to @docs/architecture/ai-platform/03-ai-platform-delivery-plan.md
 
 - Each slice has its own branch.
 - Each slice has its own Speckit artifacts (`spec.md`, `plan.md`, `tasks.md`).
@@ -21,7 +21,7 @@ Do **not**:
 
 Minimize token usage by reading only the files necessary for the current review.
 
-DO NOT READ THE ENTIRE @docs/architecture/17-ai-platform.md. I REPEAT, DO NOT READ THE ENTIRE @docs/architecture/17-ai-platform.md. For each slice, you will find the relevant sections to read in the @docs/architecture/17b-ai-platform-delivery-plan.md, these are the ones you read only for each section.
+DO NOT READ THE ENTIRE @docs/architecture/ai-platform/01-ai-platform.md. I REPEAT, DO NOT READ THE ENTIRE @docs/architecture/ai-platform/01-ai-platform.md. For each slice, you will find the relevant sections to read in the @docs/architecture/ai-platform/03-ai-platform-delivery-plan.md, these are the ones you read only for each section.
 
 
 ## Slice Review

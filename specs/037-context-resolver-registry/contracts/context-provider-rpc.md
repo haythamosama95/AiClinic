@@ -2,7 +2,7 @@
 
 **Frozen by:** Slice E3 — Context Resolver registry, first context RPC, and client contract test  
 **Implements:** §4.2 Context provider RPCs, §5.2 Shape / Authorization of
-`docs/architecture/17-ai-platform.md`  
+`docs/architecture/ai-platform/01-ai-platform.md`  
 **Status:** Frozen. Later slices may add further ordinary context provider RPCs for additional
 published keys; they must not rewrite this RPC’s return shape, RLS posture, or “no AI knowledge”
 boundary.

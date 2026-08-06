@@ -2,7 +2,7 @@
 
 **Frozen by:** Slice H1 — Conversational manifest fields and context-request schema
 **Implements:** §5.1 Interaction + Context requirements rows, §5.7 Interaction mode row, A14 of
-`docs/architecture/17-ai-platform.md`
+`docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (H2, H3) **consume** this artifact; they extend, never rewrite
 these field keys, load rules, or the interaction-mode versioning rule (delivery plan §2.3).
 

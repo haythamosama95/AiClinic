@@ -10,7 +10,7 @@
 
 > Constitution note: This slice provisions no new deployable component. It lives entirely inside the
 > Cloudflare AI Gateway Worker (`ai-platform/`), the additive, non-primary component registered by A1.
-> Per §14 acknowledgement of `17-ai-platform.md`, the gateway holds no domain logic, no business data,
+> Per §14 acknowledgement of `01-ai-platform.md`, the gateway holds no domain logic, no business data,
 > and has no write path into Supabase. This slice stays inside that boundary: it owns the wire format
 > and the SSE framing, and nothing else.
 
@@ -18,7 +18,7 @@
 
 ### Implements
 
-§4.3.1, §5.5 of `docs/architecture/17-ai-platform.md` (copied verbatim from the A6 `Canonical` cell,
+§4.3.1, §5.5 of `docs/architecture/ai-platform/01-ai-platform.md` (copied verbatim from the A6 `Canonical` cell,
 Delivery Plan §3.2).
 
 ### Freezes

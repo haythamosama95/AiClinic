@@ -6,9 +6,9 @@ turns as delimited typed data, and accept either prose or a platform-owned conte
 
 ## 1. Architecture context
 
-- **Delivery plan row:** [§3.8 band H — H2](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+- **Delivery plan row:** [§3.8 band H — H2](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   (Transcript validation, conversation budgets, and composer rendering).
-- **Architecture sections:** `17-ai-platform.md` §4.3.5 (context validator), §6.7.1 (transcript wire
+- **Architecture sections:** `01-ai-platform.md` §4.3.5 (context validator), §6.7.1 (transcript wire
   shape), §6.7.3 (conversation budgets), §4.3.6 (composer), §6.7.2 (dual output shapes).
 - **Spec delivered:** Closed transcript wire validation (whole accept-or-reject, shape before
   budgets), `conversation_budget_exhausted` for budget breaches, permitted-key allowlist drops,

@@ -1,7 +1,7 @@
 # Contract: Journal writer, post-response detail, and get-request endpoint (C3)
 
 **Frozen by:** Slice C3 — Journal writer, post-response detail, and get-request endpoint
-**Implements:** §4.3.11, §6.1 stages 9/15/16, §6.3, §7.4, §7.4.1, §7.6, §5.5 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.11, §6.1 stages 9/15/16, §6.3, §7.4, §7.4.1, §7.6, §5.5 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (D3, D4, D6, F3) and the client-facing read path **consume** this
 artifact; they extend, never rewrite the R2 envelope layout, the get-request response shape's
 existing Completed/Failed/Cancelled success meanings, or the journal write-path timings and row

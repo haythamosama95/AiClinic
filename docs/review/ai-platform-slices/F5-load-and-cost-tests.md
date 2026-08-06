@@ -3,7 +3,7 @@
 Scope: slice F5 (`specs/043-load-and-cost-tests/`), implementation in
 `ai-platform/test/load/` plus wiring in `ai-platform/package.json`,
 `ai-platform/vitest.config.ts`, `ai-platform/vitest.workers.config.ts`.
-Source of truth: `docs/architecture/17-ai-platform.md` §13.5 and §13.6
+Source of truth: `docs/architecture/ai-platform/01-ai-platform.md` §13.5 and §13.6
 (including §13.6.1 and §13.6.2). Static review only — no code was executed.
 
 ## 1. Executive Summary

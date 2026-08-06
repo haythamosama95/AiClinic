@@ -6,8 +6,8 @@ Slice F1 freezes the capability eval harness (A9): golden cases for `clinic.visi
 
 ## 1. Architecture context
 
-- **Delivery plan row F1** ([`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md) §3.7): eval suite harness and first capability eval after D1 and D5.
-- **Architecture sections implemented** ([`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md)):
+- **Delivery plan row F1** ([`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md) §3.7): eval suite harness and first capability eval after D1 and D5.
+- **Architecture sections implemented** ([`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md)):
   - §13.5 Capability evals (A9) — golden cases against recorded fixtures in CI; smaller live smoke on schedule against pinned models.
 - **Spec delivered** ([`spec.md`](spec.md)): CI-gated golden suite per capability, deliberately regressed prompt blocks CI, per-run JSON score recording, scheduled live smoke against pinned `model_id` values, recorded-fixture goldens (no permanent live egress).
 - **Plan scoped** ([`plan.md`](plan.md)): harness under `ai-platform/test/eval/` only (no `src/eval/`); first capability `clinic.visit_summary`; frozen contract in `contracts/capability-eval-harness.md`; CI golden gate and scheduled workflow.

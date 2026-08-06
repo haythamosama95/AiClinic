@@ -1,7 +1,7 @@
 # Contract: Capability registry, resolver, and discovery (C1)
 
 **Frozen by:** Slice C1 — Capability registry, resolver stage, and discovery endpoint
-**Implements:** §4.3.4, §5.1, §6.1 stage 5, §5.5, §5.2 of `docs/architecture/17-ai-platform.md`
+**Implements:** §4.3.4, §5.1, §6.1 stage 5, §5.5, §5.2 of `docs/architecture/ai-platform/01-ai-platform.md`
 **Status:** Frozen. Later slices (C2, D1, E3) **consume** this artifact; they extend, never rewrite
 the `ResolveResult` union, the `DiscoveryResult` shape, the registry key format, the etag
 computation, the `If-None-Match` → `304` rule, or the resolved-manifest immutability guarantee.

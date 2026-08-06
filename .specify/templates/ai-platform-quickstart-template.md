@@ -18,9 +18,9 @@ sections — do not leave gaps (e.g. 1, 2, 4, 5).
 <Brief paragraph or a few bullets — in simple words:>
 
 - Which **architecture section** this slice implements — cite the row in
-  [`../../docs/architecture/17b-ai-platform-delivery-plan.md`](../../docs/architecture/17b-ai-platform-delivery-plan.md)
+  [`../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md`](../../docs/architecture/ai-platform/03-ai-platform-delivery-plan.md)
   and the relevant section(s) of
-  [`../../docs/architecture/17-ai-platform.md`](../../docs/architecture/17-ai-platform.md) (read `plan.md` /
+  [`../../docs/architecture/ai-platform/01-ai-platform.md`](../../docs/architecture/ai-platform/01-ai-platform.md) (read `plan.md` /
   `spec.md` **Slice Contract → Implements** for the exact refs).
 - What the **spec** (`spec.md`) was aiming to deliver.
 - What the **plan** (`plan.md`) scoped for implementation.

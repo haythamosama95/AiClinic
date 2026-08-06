@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `/specs/017-ai-canonical-inference/`
 
-**Prerequisites**: `plan.md` (required), `spec.md` (required). No `data-model.md` (A3 defines no D1 entities); no `research.md` (the research is `17-ai-platform.md` §5.3/§9.10, not redone here).
+**Prerequisites**: `plan.md` (required), `spec.md` (required). No `data-model.md` (A3 defines no D1 entities); no `research.md` (the research is `01-ai-platform.md` §5.3/§9.10, not redone here).
 
 **Tests**: Tests are mandatory for this slice — one task per named case in the spec's Test plan (§3.11.1 row A3). The template's "Tests are OPTIONAL" note does not apply to the AI platform.
 
