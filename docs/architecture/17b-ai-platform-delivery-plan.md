@@ -3,11 +3,12 @@
 - Purpose: Decompose the AI platform architecture into small, individually specifiable, individually implementable slices, and define the rules that keep those slices from drifting away from the architecture.
 - Read this when: choosing what to build next on the AI platform, opening a new Spec Kit feature for AI platform work, or reviewing a completed AI platform slice.
 - Canonical for: AI platform build order, slice boundaries, slice completion criteria, and the authoring rules for AI platform feature specs.
-- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md), [`17d-band-b-implementation-reference.md`](17d-band-b-implementation-reference.md), and [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) (what is actually built), `.specify/memory/constitution.md`.
+- Usually paired with: `docs/architecture/17-ai-platform.md` (the architecture this plan sequences), `docs/architecture/17a-ai-platform-overview.md` (orientation), the band implementation references [`17c`](17c-band-a-implementation-reference.md)–[`17e`](17e-band-c-implementation-reference.md) (A–C), [`17g`](17g-band-d-implementation-reference.md)–[`17k`](17k-band-j-implementation-reference.md) (D, E, F, H, J; `17f` is the operator runbook), and `.specify/memory/constitution.md`.
 - Not covered here: any architectural decision. This document sequences decisions made in `17-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `17-ai-platform.md` wins and this document is wrong.
 
-> **Status:** Delivery plan for an unimplemented architecture. Section references of the form
-> §N.M refer to `docs/architecture/17-ai-platform.md` unless stated otherwise.
+> **Status:** Delivery plan. Bands A–J are sliced and largely implemented as modules and suites;
+> band I wires those modules onto the live Worker and Flutter request paths. Section references of
+> the form §N.M refer to `docs/architecture/17-ai-platform.md` unless stated otherwise.
 
 ---
 
@@ -70,8 +71,8 @@ These supersede the phase model previously carried in §12.2 of the architecture
 | DP-4 | **Contracts are frozen in dedicated early slices that contain no behaviour**                                                                             | A frozen, typed contract is a constraint a weak implementer cannot drift away from; prose in a spec is a suggestion                                                                                                                                                                                                                                                         |
 | DP-5 | **Compatibility machinery is deferred, but its contract surface is not**                                                                                 | There are no deployed clients, so overlap windows, deprecation flows, staged prompt rollout, and the `context_required` self-healing *behaviour* have no audience yet. The error codes, lifecycle states, and journal columns they need are cheap now and expensive to retrofit, so those land early and stay unused; the behaviour is sliced as band J ([§3.9](#39-band-j--deferred-compatibility-machinery)) |
 | DP-6 | **The client architecture guard (R-12) lands before any client AI code**, not at hardening time                                                          | The guard exists to stop prompt text, provider names, and model identifiers from entering the Flutter app. With generated client code, that is the expected outcome rather than a tail risk, so the guard must precede the code it guards                                                                                                                                   |
-| DP-7 | **The walking-skeleton thread is retained as a falsification checkpoint**, not as a release                                                              | Without shipping pressure, the failure mode is fifty well-tested slices that have never run together. One end-to-end thread through a fake provider is the earliest point at which the contract slices can be proven wrong ([§5](#5-review-checkpoints))                                                                                                                    |
-| DP-8 | **Everything the architecture decides is sliced (bands A–J).** Only band G and band K stay coarse                                                        | Band G is blocked on product decisions rather than architectural ones, and band K is deliberately undesigned — slicing either would encode a default or a deferral as a commitment ([§4](#4-bands-not-yet-decomposed))                                                                                                                                                       |
+| DP-7 | **The walking-skeleton thread is retained as a falsification checkpoint**, not as a release                                                              | Without shipping pressure, the failure mode is fifty well-tested slices that have never run together. One end-to-end thread through a fake provider is the earliest point at which the contract slices can be proven wrong ([§5](#5-review-checkpoints)). Band I is the slice set that makes that thread run on the live Worker and Flutter paths rather than only in harnesses |
+| DP-8 | **Everything the architecture decides is sliced (bands A–J plus band I).** Only band G and band K stay coarse                                            | Band G is blocked on product decisions rather than architectural ones, and band K is deliberately undesigned — slicing either would encode a default or a deferral as a commitment ([§4](#4-bands-not-yet-decomposed)). Band I adds no new §4 component: it composes modules already frozen by A–J onto `POST /v1/requests`, discovery HTTP, and the first client invoke path |
 
 
 ---
@@ -97,8 +98,8 @@ to here as A1.
 
 **A slice is done when a test a human can read and believe passes.** Every slice's `spec.md` states
 its acceptance criteria as test cases, and the review artifact is the test file plus the diff. The
-minimum case list for each slice is [§3.11](#311-required-test-cases-per-slice), governed by the
-coverage rule in [§3.10](#310-coverage-rule).
+minimum case list for each slice is [§3.12](#312-required-test-cases-per-slice), governed by the
+coverage rule in [§3.11](#311-coverage-rule).
 
 This replaces "independently shippable" (DP-1, DP-3). It has two useful side effects: it gives the
 spec-authoring model something concrete to write instead of prose about clinical value, and it makes
@@ -142,7 +143,7 @@ document's first version. Each merged slice keeps **one** sequential id within i
 
 A merged slice is still **one** Spec Kit feature: one `specs/<NNN>-<name>/` directory, one branch,
 one review. Its `Implements` section lists the union of the merged components' canonical sections, and
-its test plan is the union of their former case lists in [§3.11](#311-required-test-cases-per-slice).
+its test plan is the union of their former case lists in [§3.12](#312-required-test-cases-per-slice).
 
 A1–A4 were implemented before the merge and are unchanged.
 
@@ -163,9 +164,14 @@ states the acceptance shape — the spec expands each into named test cases.
 Bands A, B, and C are close to strictly ordered. Band D and band E may proceed in parallel once
 C1 exists. Band F may start any time after the slice it hardens. Band H is the last large block of
 new behaviour. Band J is ordered by trigger rather than by position: each of its slices waits for the
-condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility-machinery)).
+condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility-machinery)). Band I
+is the live-composition band: it starts after the modules named in each slice's `Needs` column exist,
+and it freezes no new contract — it only attaches already-built stages and client libraries to the
+Worker fetch handler and the first Flutter AI surface ([§3.10](#310-band-i--live-composition-and-request-path-wiring)).
 
 ### 3.2 Band A — Foundations and frozen contracts
+
+> **Implementation reference:** [`17c-band-a-implementation-reference.md`](17c-band-a-implementation-reference.md) — plain-language account of what A1–A6 built, with diagrams and test commands.
 
 Nothing in this band handles a real request. It exists so that everything after it is constrained.
 
@@ -192,7 +198,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **What this band does:** Answers "who is calling, are they allowed, and have they exceeded their budget?" before any inference work begins. It mints installation-scoped access tokens (AATs) from Supabase, enrolls and manages installations in the control plane, runs the guard pipeline stages (identity, rate limiting, entitlement, kill switches), and admits requests through a per-installation Quota Durable Object that tracks `jti` freshness, idempotency, budget, and concurrency.
 
-**Useful to know:** B1 can start in parallel with Band A once RBAC tables are stable ([§7](#7-dependencies-outside-the-platform)). B3 deliberately excludes replay rejection — that belongs to B4's Quota DO. Completing B4 satisfies checkpoint **CP2**: a request can be authenticated, admitted, and correctly rejected with no inference, at the §6.1 I/O budget (one Durable Object round trip, one D1 insert).
+**Useful to know:** B1 can start in parallel with Band A once RBAC tables are stable ([§7](#7-dependencies-outside-the-platform)). B3 deliberately excludes replay rejection — that belongs to B4's Quota DO. Completing B4 satisfies the *module* half of checkpoint **CP2**; I1 reifies CP2 on live HTTP. Guard and admission modules are library-ready after Band B; attaching them to `POST /v1/requests` is Band I.
 
 
 | ID     | Slice                                               | Canonical                           | Needs      | Done when                                                                                                                                                                                                                                                                               |
@@ -209,7 +215,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **What this band does:** Resolves which AI capabilities an installation may use, validates the clinic context payload against each capability's declared key requirements, and journals every admitted request from first touch through terminal state. The discovery endpoint lets the client learn what is available without hard-coding capability ids.
 
-**Useful to know:** C1 is the unlock for parallel work in bands D and E — both need a resolved manifest. C2 emits `context_required` with the missing-key manifest (the self-healing *behaviour* for stale clients is deferred to J2 under DP-5). C3's journal is the audit backbone that band F's support lookup and dashboards query. A guard rejection must produce **no** journal row.
+**Useful to know:** C1 is the unlock for parallel work in bands D and E — both need a resolved manifest. C1 freezes `resolve()` / `discover()` as libraries; the live discovery HTTP route is Band I (I2). C2 emits `context_required` with the missing-key manifest (the self-healing *behaviour* for stale clients is deferred to J2 under DP-5; hosting that behaviour on the live submit path is I4). C3's journal is the audit backbone that band F's support lookup and dashboards query. A guard rejection must produce **no** journal row. Wiring stages 5–9 into live `POST /v1/requests` is I1.
 
 > **Implementation reference:** [`17e-band-c-implementation-reference.md`](17e-band-c-implementation-reference.md) — plain-language account of what C1–C3 built, with diagrams and test commands.
 
@@ -225,9 +231,11 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.5 Band D — The inference path
 
+> **Implementation reference:** [`17g-band-d-implementation-reference.md`](17g-band-d-implementation-reference.md) — plain-language account of what D1–D7 built, with diagrams and test commands (tip `181ab637`, before review-comment remediation).
+
 **What this band does:** The core AI pipeline: compose a prompt from immutable artifacts, route to a provider through a policy-driven chain, invoke with bounded retry and fallback, stream normalized chunks to the client, validate the assembled output (with optional repair), and adapt real providers behind a shared port. D1–D4 use the fake adapter; D5 adds the first real provider; D7 proves a second provider needs only an adapter and a routing-policy edit.
 
-**Useful to know:** D4 plus E4 together satisfy checkpoint **CP3** (the falsification / walking-skeleton thread, DP-7) — one button press through guard, prompt, fake provider, stream, and rendered draft. D7 plus F1 satisfy **CP4**: provider independence. Prompt text never lives in D1; context is rendered as delimited typed data, never merged into instructions (R-10).
+**Useful to know:** D4 plus E4 produce the *module* half of checkpoint **CP3** (the falsification / walking-skeleton thread, DP-7). Band I wires those modules onto live HTTP and Flutter invoke so the thread runs end to end ([§3.10](#310-band-i--live-composition-and-request-path-wiring)). D7 plus F1 satisfy **CP4**: provider independence. Prompt text never lives in D1; context is rendered as delimited typed data, never merged into instructions (R-10).
 
 
 | ID      | Slice                                      | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                                                                                               |
@@ -245,9 +253,11 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.6 Band E — Client integration
 
+> **Implementation reference:** [`17h-band-e-implementation-reference.md`](17h-band-e-implementation-reference.md) — plain-language account of what E1–E4 built, with diagrams and test commands (tip `b41e3894`, before review-comment remediation).
+
 **What this band does:** Wires the Flutter desktop app to the platform without leaking AI internals. E1 installs the architecture guard (R-12) in CI; E2 is the AI Client SDK (token acquisition, idempotency, SSE consumption, cancel); E3 is the Context Resolver and the first clinic-side context RPC; E4 is the first user-visible AI surface with provisional-draft UX and degraded-mode behaviour.
 
-**Useful to know:** E1 must land before E2 (DP-6) — the guard must exist before any client AI code is written. The rest of the band may proceed in parallel with band D once C1 exists. E3's contract test fetches live manifests and fails if the Resolver cannot satisfy every declared key — this catches context-key drift early. E4 plus D4 is the CP3 falsification thread.
+**Useful to know:** E1 must land before E2 (DP-6) — the guard must exist before any client AI code is written. The rest of the band may proceed in parallel with band D once C1 exists. E3's contract test fetches live manifests and fails if the Resolver cannot satisfy every declared key — this catches context-key drift early. E4 ships the first surface and degraded-mode UX; composing production AAT mint and HTTPS submit onto that surface is Band I ([§3.10](#310-band-i--live-composition-and-request-path-wiring)), which together with I1 reifies CP3.
 
 
 | ID     | Slice                                  | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                   |
@@ -261,6 +271,8 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 
 ### 3.7 Band F — Hardening and operations
+
+> **Implementation reference:** [`17i-band-f-implementation-reference.md`](17i-band-f-implementation-reference.md) — plain-language account of what F1–F5 built, with diagrams and test commands (tip `9084b9d7`, before review-comment remediation).
 
 **What this band does:** Makes the platform operationally honest after the inference path works. Eval harnesses block prompt regressions; the acceptance RPC ties AI output to clinical records with provenance; support lookup, retention purges, and usage rollups make every request explainable from its reference; soft-threshold routing degrades gracefully under quota pressure; load tests assert the metered footprint in §13.6.
 
@@ -280,6 +292,8 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 ### 3.8 Band H — Conversational capabilities
 
+> **Implementation reference:** [`17j-band-h-implementation-reference.md`](17j-band-h-implementation-reference.md) — plain-language account of what H1–H4 built, with diagrams and test commands (tip `24d1e7cc`, before review-comment remediation).
+
 **What this band does:** Adds multi-turn conversational AI on top of the single-shot path. A capability may declare `interaction_mode: conversational` with transcript limits, permitted context keys, and a shared context-request schema; the validator enforces turn budgets; the composer renders prior turns as delimited typed data; the client holds the transcript locally and resupplies it per leg with a new idempotency key; journaling records `conversation_id` and `turn_ordinal` per leg without introducing a server-side conversation entity.
 
 **Useful to know:** Everything amendment A14 introduces, and nothing before it — `interaction_mode` defaults to `single_shot`, so no existing button-invoked capability acquires behaviour from this band's existence. The band is fully determined by §6.7, §5.1, §5.2, §5.4, §5.5, and §8.10; it is placed late because it is the largest capability addition, not because it is under-specified. The nullable `conversation_id` / `turn_ordinal` columns were reserved in A5 so H3 does not require a schema migration.
@@ -294,6 +308,8 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 
 ### 3.9 Band J — Deferred compatibility machinery
+
+> **Implementation reference:** [`17k-band-j-implementation-reference.md`](17k-band-j-implementation-reference.md) — plain-language account of what J1–J4 built, with diagrams and test commands (tip `37b82f0e`, before review-comment remediation).
 
 **What this band does:** Adds the runtime behaviour for compatibility scenarios that have no audience yet: capability deprecation overlap windows, `context_required` self-healing for stale manifest caches, staged rollout and canary cohorts, and token-contract rotation with overlapping `ver` acceptance. The error codes, lifecycle states, and journal columns these features need were frozen early (DP-5); this band wires up the behaviour.
 
@@ -310,7 +326,25 @@ Nothing in this band handles a real request. It exists so that everything after 
 | **J4** | Token contract rotation with overlapping acceptance | §5.7, §5.6            | B1, B3 | The token contract needs its first change                                        | Two `ver` values are accepted simultaneously during a rotation window; tokens of the retired version are refused after it; rotation requires no re-enrollment                                                                     |
 
 
-### 3.10 Coverage rule
+### 3.10 Band I — Live composition and request-path wiring
+
+**What this band does:** Attaches the modules bands A–J already built onto the live Cloudflare Worker fetch handler and the first Flutter AI surface so a clinic installation can enroll, discover capabilities, submit a request, stream a draft, and look the request up by reference — without inventing new pipeline stages, contracts, or stores.
+
+**Why this band exists:** Earlier slices froze each §4 component behind an injectable surface and deferred production wiring so a single Spec Kit review could stay inside one component group. The result matches DP-7's failure mode: suites that pass while `POST /v1/requests` still returns an adapter shell (no `eventSource`), discovery remains an in-process library, and the E4 hub leaves invoke idle. Band I closes that composition gap. It freezes **no** new contract ([§2.3](#23-the-no-rework-rule)); every requirement cites an existing §4 / §5 / §6 surface. Completing **I1** and **I3** reifies checkpoint **CP3** on the live paths.
+
+**Useful to know:** I1 consumes the existing `src/pipeline` composer (`runGuard` / settle) and D4's stream broker as the adapter `eventSource` — it does not rewrite those modules. I2 exposes C1's `discover()` over HTTP and ensures the production config-cache D1 reader covers every entity kind the guard reads on a warm/cold isolate (installations, keys, entitlements, grants, kill switches, routing policy). I3 composes E2 and E3 onto E4. I4 is the thin operator + client glue required for a non-pending installation and for J2's self-heal on the live submit path; it is not Band G (no plan catalogue, billing, or usage-summary UI).
+
+
+| ID     | Slice                                                      | Canonical                                      | Needs                                      | Done when                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ---------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **I1** | Worker request orchestrator on `POST /v1/requests`         | §6.1 stages 1–16, §4.3.1, §4.3.10, §5.5, §6.4 | A6, B3, B4, C1, C2, C3, D1, D2, D3, D4, D6 | `worker.ts` supplies a production `eventSource` to the protocol adapter so a live `POST /v1/requests` runs the §6.1 sequence end to end: guard stages 1–10 (including one Quota DO admission and one D1 journal insert), route/invoke, stream relay with heartbeats and disconnect abort, validate/repair, exactly one terminal SSE event, then credit and post-response detail; a guard rejection returns the taxonomy error with **no** `ai_request` row; the fake adapter path satisfies the CP3 Worker half; real adapters (D5/D7) are selected only by routing policy; no per-request server-side state and no second DO or R2 object per request |
+| **I2** | Discovery HTTP route and production config-cache readers   | §5.5, §4.3.4, §4.3.2, §13.4                    | A5, C1                                     | Capability discovery is reachable over HTTP for an authenticated installation, returns only granted active manifests, supports etag/version revalidation, and never requires a capability id from the client beyond the installation's entitlements; the production D1 config reader serves every kind the guard and resolver consult on the request path (installations, keys, entitlements, grants / lifecycle overlay, kill switches, active routing policy, token contracts) so a cold isolate still pays exactly one D1 read pattern already frozen by A5 |
+| **I3** | Live client invoke on the first AI feature surface         | §4.1, §5.5, §5.4, §6.4, A11                    | E2, E3, E4, I1, I2                         | The Flutter `/ai` visit-summary (or equivalent) host composes production AAT mint and HTTPS submit adapters from E2, resolves required context keys through E3, submits with a stable idempotency key, consumes the SSE stream to a terminal event, renders provisional draft with no commit affordance until `completed`, and displays the request reference on every failure; non-enrolled installations still hide affordances and make no network probe; platform unreachability remains a normal degraded state |
+| **I4** | Entitle-and-grant operator path and live `context_required` self-heal | §4.5, §7.3, §8.4, §5.2                | B2, I3, J2                                 | An operator-authenticated control action activates an enrolled installation's entitlement and capability grants (and the budget fields admission already reads) so stages 3 and 8 can admit a real request — without introducing a plan catalogue, billing period close, or usage-summary UI (those remain Band G); the E2 submit path hosts J2's `context_required` self-heal so a stale manifest refreshes, resolves the named keys, and resubmits **once** with the same idempotency key |
+
+
+
+### 3.11 Coverage rule
 
 A slice's suite must cover, with no exceptions:
 
@@ -323,14 +357,14 @@ A slice's suite must cover, with no exceptions:
 Coverage is **behavioural, not line-based**; a line-coverage percentage is not evidence. Where a case
 below says *spy*, the assertion is on the number or absence of calls, because several of this
 platform's invariants are about work *not* done. The cases in
-[§3.11](#311-required-test-cases-per-slice) are a floor, not a ceiling.
+[§3.12](#312-required-test-cases-per-slice) are a floor, not a ceiling.
 
 Every slice's suite joins CI permanently. A checkpoint ([§5](#5-review-checkpoints)) requires every
 prior suite green, not just the latest.
 
-### 3.11 Required test cases per slice
+### 3.12 Required test cases per slice
 
-#### 3.11.1 Band A
+#### 3.12.1 Band A
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -341,7 +375,7 @@ prior suite green, not just the latest.
 | **A5** | Contract + migration + unit (spy) | *Context keys:* valid key accepted; malformed format rejected; storage-named key rejected; unknown key version rejected; a conforming payload validates and one case per shape violation (type, cardinality, units, missing field). *Schema:* migrations apply cleanly to an empty database; schema snapshot matches; one presence case per §7.3 entity; request-reference index exists and is unique; `conversation_id` and `turn_ordinal` are nullable; re-running migrations is a no-op. *Config cache:* cold isolate performs exactly one D1 read; warm isolate performs zero I/O; TTL expiry triggers exactly one refetch; one case per cached entity kind; a D1 miss surfaces as a typed failure rather than an empty cache entry |
 | **A6** | Integration | Oversized body → `request_too_large` before any other work; one case per header parsed and per malformed header; stream opens with `accepted` carrying the reference; heartbeat emitted while idle; exactly one terminal event for each of `completed`, `failed`, `cancelled`; abort mid-stream still yields exactly one terminal event; no duplicate terminal event under any path |
 
-#### 3.11.2 Band B
+#### 3.12.2 Band B
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -350,7 +384,7 @@ prior suite green, not just the latest.
 | **B3** | Unit + integration (spy) | *Identity:* valid token accepted; one rejection case each for bad signature, wrong audience, expired, not-yet-valid inside skew, outside skew, unknown issuer, suspended installation; the principal cannot be mutated by a later stage; swapping the verifier implementation changes no outcome. *Rate limiting:* one case per composite key tripping independently; `retry_after` returned; counter incremented with correct dimensions per rejection; no `ai_request` row created on rejection; counters flush bucketed, never one row per event. *Entitlement:* AI-disabled installation; plan tier too low; capability not granted; one case per kill-switch scope (global, capability, installation, provider); warm isolate performs no D1 read |
 | **B4** | DO unit + concurrency + integration (spy) | *Durable Object:* fresh `jti` accepted, repeated `jti` rejected; new idempotency key accepted, repeat returns the prior record; budget exhaustion; concurrency ceiling; credit adjusts counters correctly including partial usage; N parallel admissions produce an exact final count; ephemeral entries expire in place. *Admission stage:* exactly one Durable Object fetch per request; a repeated idempotency key returns the original state and starts no second inference; expired token with the same key → `unauthenticated` (§6.2); Durable Object unavailable → capped grace then rejection; grace usage is reconciled afterwards |
 
-#### 3.11.3 Band C
+#### 3.12.3 Band C
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -358,7 +392,7 @@ prior suite green, not just the latest.
 | **C2** | Unit (spy) | *Validator:* complete valid context passes; one case per required key missing, each listing exactly the missing keys in `context_required`; one case per shape violation → `context_invalid`; oversize key rejected; an undeclared key is provably absent from the composer input; org or branch mismatch against the token rejected; absent optional key passes. *Pre-flight:* under ceiling passes; over ceiling → `request_too_large`; the estimate includes the capability's max output tokens; no egress occurs on rejection |
 | **C3** | Integration (ordering + spy) | *Request row:* the row exists before the provider is invoked; one terminal-state case each for `completed`, `failed`, `cancelled`, `rejected`; every §6.3 transition timestamped; a guard-rejected request produces no row; the row survives a failed generation. *Post-response:* exactly one R2 `PutObject` per request; the envelope contains all four sections; one `ai_attempt` row per attempt; exactly one `usage_event`; a failure here does not fail the request; all of it runs after the terminal event. *Get-request:* completed → state plus validated result; failed → state plus error code and no content; cancelled → state only; unknown reference → not found; exactly one indexed query |
 
-#### 3.11.4 Band D
+#### 3.12.4 Band D
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -370,7 +404,7 @@ prior suite green, not just the latest.
 | **D6** | Unit (ordering) + integration | *Validator:* valid output passes; parse failure; schema violation; one case per declared business rule; one case per safety guard (leaked instruction, refusal, empty, truncated, injection echo); the four phases run in the stated order; invalid content is never emitted. *Repair:* repair allowed → one re-ask with errors appended → success; repair disallowed → immediate `validation_failed`; repair fails → `validation_failed`; the attempt cap is enforced and journaled; repair cost is counted against the request. *Output modes:* `structured` emits `partial_structured` events all flagged provisional; the terminal event carries the whole validated document; `structured_atomic` emits progress only; a client ignoring all chunks still receives the correct result; the terminal payload is not assembled from chunks |
 | **D7** | Adapter fixtures + evals | The full D5 case list against the second provider; the provider is added by a routing-policy edit with no pipeline diff; fallback ordering honoured; capability evals pass — the eval case is written against F1's harness and lands with F1, not with D7 alone (§3.5 row D7) |
 
-#### 3.11.5 Band E
+#### 3.12.5 Band E
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -379,7 +413,7 @@ prior suite green, not just the latest.
 | **E3** | Flutter unit + SQL / RLS + contract | *Resolver:* a key list resolves to a payload; an unknown key surfaces a typed failure; the API exposes no capability id; the cache is screen-scoped and discarded on dispose. *RPC:* returns the declared shape; RLS denies out-of-scope rows; the RPC takes no AI-specific parameter; the returned shape matches the key shape published in A5. *Contract:* every declared key of every active manifest is resolvable; a manifest requiring an unknown key fails the suite |
 | **E4** | Flutter widget (spy) | *Surface:* provisional content is visually distinct; no commit control exists before `completed`; accept and discard both behave; failure displays the request reference; provisional content does not survive a rebuild or restart. *Degraded mode:* a non-enrolled installation shows no affordances and makes no network call; an unreachable platform renders a normal state, not an error dialog; enrolled and reachable shows affordances |
 
-#### 3.11.6 Band F
+#### 3.12.6 Band F
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -389,7 +423,7 @@ prior suite green, not just the latest.
 | **F4** | Integration | Crossing the soft threshold selects the degraded target; hard exhaustion returns `quota_exhausted` with the admin path and disables the feature without locking anything; below-threshold traffic is unaffected |
 | **F5** | Load | Guard p95 within tens of milliseconds at target concurrency; exactly one R2 Class A operation and two Durable Object requests per request under load; D1 write headroom measured; Durable Object throughput per installation measured |
 
-#### 3.11.7 Band H
+#### 3.12.7 Band H
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -398,7 +432,7 @@ prior suite green, not just the latest.
 | **H3** | Integration (spy) + Flutter | *Journaling:* `conversation_id` and `turn_ordinal` written per leg; one indexed query returns a whole conversation ordered; each leg admitted and credited independently; a `context_requested` leg is credited with actual usage; no conversation table and no per-request state object created. *Client:* transcript held locally and resupplied per leg; requested keys resolved through the existing Resolver with no capability branching; each leg uses a new idempotency key; the transcript is discarded on close; closing one leg's stream cancels only that leg; the conversation survives a cancelled leg |
 | **H4** | Evals | A scripted conversation converges within the round budget; one case where the assistant must request the correct key; one case proving it cannot obtain a key outside the permitted set; scoring is per conversation, not per turn |
 
-#### 3.11.8 Band J
+#### 3.12.8 Band J
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
@@ -406,6 +440,15 @@ prior suite green, not just the latest.
 | **J2** | Flutter integration | A stale client receiving `context_required` refreshes, resolves, and resubmits once with the same idempotency key and succeeds; a second `context_required` stops and surfaces the request reference; no automatic third attempt; conversational capabilities never take this path |
 | **J3** | Integration | A cohort receives the new build while others receive the previous one; promotion moves all cohorts; rollback restores the previous build; every activation writes a `control_audit` row; the journal records which version served each request |
 | **J4** | Unit + SQL | Both `ver` values verify during the rotation window; a retired `ver` is refused afterwards; a token minted under the new contract carries every claim; rotation requires no re-enrollment |
+
+#### 3.12.9 Band I
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **I1** | Workers integration (spy) | *Happy path:* `POST /v1/requests` through `SELF.fetch` (or equivalent) with a valid AAT opens `accepted`, streams fake-provider chunks, ends with exactly one `completed`, writes one `ai_request` before invoke, one R2 envelope after, and exactly two DO round trips (admit + credit); soft-threshold / degraded notice fields match F4 when admission returns grace or degraded tier. *Guard rejects:* one HTTP case each for unauthenticated, rate-limited, forbidden capability, capability unknown/retired/disabled, context_required, context_invalid, request_too_large, quota_exhausted — each asserting **no** journal row and no provider call. *Idempotency:* repeated key returns the prior state and starts no second inference. *Cancel:* client disconnect aborts the in-flight provider fetch, terminal state `cancelled`, partial usage credited when present. *Invariants:* no per-request Durable Object or other server-side request state; provider selection changes only via routing-policy data |
+| **I2** | Workers integration | *Discovery HTTP:* granted active manifests returned for an enrolled installation; etag not-modified; changed manifest changes etag; ungated capability absent for ineligible plan; unauthenticated → taxonomy unauthorized. *Config readers:* one presence case per request-path entity kind through the production D1 reader; cold isolate still performs a single config read pattern; a miss is a typed failure, not an empty grant set that silently admits |
+| **I3** | Flutter widget + integration | *Live host:* enrolled + reachable installation mints an AAT, resolves context keys, submits over HTTPS to the Worker, renders provisional draft, enables no commit control before `completed`, and shows the request reference on failure. *Degraded:* non-enrolled still makes no Worker probe; unreachable still renders the normal-state banner. *Spy:* production mint and submit ports are the ones composed on the hub (not test fakes left wired by default) |
+| **I4** | Integration + Flutter | *Entitle:* operator activate/grant writes entitlement and grant rows and a `control_audit` entry with operator identity; pending enroll still fails entitlement until activated; non-operator rejected. *Self-heal:* live submit path refreshes on first `context_required`, resubmits once with the same idempotency key, and surfaces the reference on a second `context_required`; conversational capabilities never take this path |
 
 
 ---
@@ -415,8 +458,8 @@ prior suite green, not just the latest.
 ## 4. Bands Not Yet Decomposed
 
 Two bands are deliberately left coarse, for two different reasons. Neither reason is "the
-architecture has not decided" — everything the architecture owns is decided, which is why bands A
-through J are slices.
+architecture has not decided" — everything the architecture owns is decided and sliced in bands A–J
+plus the live-composition band I; only G and K stay coarse.
 
 ### 4.1 Band G — Commercial surface
 
@@ -429,7 +472,8 @@ quota unit and period are Open Decision 2, plan structure and overage policy hav
 invoice generation is explicitly outside this platform (§12.3). Decomposing now would encode a
 recommended default as a commitment. Nothing here is on the critical path — its only claim on earlier
 slices is that entitlement and quota are consulted inside the guard, and stages 3 and 8 of §6.1
-already reserve that position.
+already reserve that position. Band I's entitle-and-grant operator path (I4) activates those existing
+entities for a runnable installation; it does not absorb Band G's commercial surface.
 
 ### 4.2 Band K — Explicitly later
 
@@ -456,14 +500,16 @@ continuing to build in the same direction.
 | #       | After                             | Question the checkpoint answers                                                                                                                                                                                                                                                                                                     |
 | ------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CP1** | A6                                | Do the frozen contracts compose at build time? Manifest, context key shapes, canonical representation, and error taxonomy are mutually consistent, and the contract tests in §13.5 pass                                                                                                                                             |
-| **CP2** | B4                             | Can a request be authenticated, admitted, and correctly rejected with no inference? The guard's I/O budget — one Durable Object round trip, one D1 insert — is measurable and met                                                                                                                                                   |
-| **CP3** | D4 with the fake adapter, plus E4 | **The falsification checkpoint (DP-7).** One thread runs from a Flutter button through the whole guard, a composed prompt, a fake provider, a stream, and a terminal event, and back to a rendered draft. This is the earliest point at which a wrong contract becomes visible, and the last point at which correcting one is cheap |
+| **CP2** | B4, reified by I1                 | Can a request be authenticated, admitted, and correctly rejected with no inference? The guard's I/O budget — one Durable Object round trip, one D1 insert — is measurable and met. Band B proves the modules; I1 proves them on live `POST /v1/requests`                                                                                                                                           |
+| **CP3** | I1 with the fake adapter, plus I3 | **The falsification checkpoint (DP-7).** One thread runs from a Flutter button through the whole guard, a composed prompt, a fake provider, a stream, and a terminal event, and back to a rendered draft — on the live Worker and composed E4 host, not only in injectable harnesses. This is the earliest point at which a wrong contract becomes visible, and the last point at which correcting one is cheap |
 | **CP4** | D7 and F1                        | Is the inference path complete and provider-independent? A second provider is added by adapter and policy alone, with no pipeline change — the claim in §12.4 that the whole design rests on                                                                                                                                        |
 | **CP5** | F5                                | Is the platform operationally honest? Every request is explainable from its reference, costs are bounded and measured, and the metered footprint matches §13.6.1                                                                                                                                                                    |
+| **CP6** | I4                                | Is the local stack operable end to end? An enrolled installation can be entitled and granted, discovery and submit work over HTTP, and a stale-manifest `context_required` self-heals once on the live client path                                                                                                                   |
 
 
-At CP2, CP4, and CP5, also perform the review R-19 and R-20 call for: diff the implemented components
-against §4, and confirm nothing from §9.14 was added without its trigger.
+At CP2, CP4, CP5, and CP6, also perform the review R-19 and R-20 call for: diff the implemented
+components against §4, and confirm nothing from §9.14 was added without its trigger. At CP6,
+confirm Band I introduced no new pipeline stage and no new contract field — only composition.
 
 ---
 
@@ -490,7 +536,7 @@ decision is missing from the architecture document and is being invented in the 
 | **Freezes**                  | Contracts this slice establishes for the first time. Later slices may extend these and may not rewrite them ([§2.3](#23-the-no-rework-rule))                    |
 | **Consumes**                 | Contracts frozen by earlier slices that this slice uses. Changing any of them is out of scope by definition                                                     |
 | **Requirements**             | Restatements of the cited architecture, each with acceptance criteria expressed as named test cases ([§2.2](#22-the-completion-criterion))                      |
-| **Test plan**                | The slice's row in [§3.11](#311-required-test-cases-per-slice) expanded into named tests, plus any case the coverage rule in [§3.10](#310-coverage-rule) adds  |
+| **Test plan**                | The slice's row in [§3.12](#312-required-test-cases-per-slice) expanded into named tests, plus any case the coverage rule in [§3.11](#311-coverage-rule) adds  |
 | **Out of scope**             | Explicit exclusions, including anything from a neighbouring slice that would be tempting to finish while nearby ([§2.4](#24-every-slice-states-its-exclusions)) |
 | **Open decisions relied on** | Any of the fourteen decisions in §15 whose recommended default this slice assumes                                                                               |
 
