@@ -1,0 +1,129 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root {
+  --paper: #eef2f6;
+  --chalk: #f7fafc;
+  --ink: #1c2a3a;
+  --steel: #5a6f85;
+  --rule: #c5d0dc;
+  --teal: #0e6b6d;
+  --teal-deep: #0a4f51;
+  --warn: #c45c26;
+  --ok-line: #1f6b4a;
+  --focus: #0e6b6d;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--paper);
+  background-image:
+    linear-gradient(180deg, #e4ebf3 0%, var(--paper) 180px),
+    repeating-linear-gradient(90deg,
+      transparent,
+      transparent 47px,
+      rgba(197, 208, 220, 0.35) 47px,
+      rgba(197, 208, 220, 0.35) 48px);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.ops-mono {
+  font-family: var(--font-mono);
+}
+
+.ops-fade-in {
+  animation: opsFade 120ms ease-out;
+}
+
+@keyframes opsFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ops-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.ops-setup-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ops-entity-nav {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--rule);
+  min-width: 200px;
+  max-width: 260px;
+  background: var(--paper);
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .ops-workspace {
+    flex-direction: column;
+  }
+
+  .ops-entity-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: none;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+}
