@@ -63,7 +63,10 @@ void main() {
         refreshPort: refresh,
         submitScript: [
           contextRequiredErrorStep(requestReference: 'req-first-ctx'),
-          SubmitOpenStreamStep(completedStream(requestReference: 'req-healed-success')),
+          SubmitOpenStreamStep(completedStream(
+            requestReference: 'req-healed-success',
+            result: const {'final content': {'text': 'Healed summary.'}},
+          )),
         ],
       );
 

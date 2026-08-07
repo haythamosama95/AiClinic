@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_registration.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -98,6 +99,7 @@ class FirstAiFeatureSurface extends StatefulWidget {
     super.key,
     required this.sdk,
     required this.resolver,
+    required this.manifestRefreshPort,
     required this.visitId,
     this.requiredContextKeys = kFirstAiRequiredContextKeys,
     this.persistenceProbe,
@@ -108,6 +110,7 @@ class FirstAiFeatureSurface extends StatefulWidget {
 
   final AiClientSdk sdk;
   final ContextResolver resolver;
+  final ManifestRefreshPort manifestRefreshPort;
   final String visitId;
 
   /// Context keys from capability discovery (injected; surface does not hardcode
@@ -170,7 +173,12 @@ class _FirstAiFeatureSurfaceState extends State<FirstAiFeatureSurface> {
     final contextPayload = (resolveResult as ContextResolveSuccess).payload;
 
     try {
-      final session = await widget.sdk.invoke(
+      final heal = ContextRequiredSelfHeal(
+        sdk: widget.sdk,
+        resolver: widget.resolver,
+        manifestRefreshPort: widget.manifestRefreshPort,
+      );
+      final session = await heal.invoke(
         CapabilityInvokeInput(
           capabilityId: kFirstAiCapabilityId,
           capabilityVersion: kFirstAiCapabilityVersion,

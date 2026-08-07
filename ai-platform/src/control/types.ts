@@ -66,3 +66,20 @@ export type TokenContractBeginPayload = {
 export type TokenContractRetirePayload = {
   ver: string;
 };
+
+export type EntitleGrantInput = {
+  capability_id: string;
+  capability_version: string;
+  scope?: "installation" | "plan";
+};
+
+export type EntitlePayload = {
+  period_start: string;
+  period_end: string;
+  request_quota: number;
+  token_budget: number;
+  cost_budget: number;
+  soft_threshold: number;
+  allowed_capabilities: string[];
+  grants: EntitleGrantInput[];
+};

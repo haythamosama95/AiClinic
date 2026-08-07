@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/shell/navigation/shell_route_meta.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/discovery_client.dart';
+import 'package:ai_clinic/core/ai/discovery_manifest_refresh_port.dart';
 import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
 import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
@@ -56,6 +58,7 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
   AiPersistenceProbe? persistenceProbe,
   AiExportProbe? exportProbe,
   ContextProviderPort? contextProviderOverride,
+  ManifestRefreshPort? manifestRefreshPortOverride,
   bool? autoInvoke,
   int? maxTransportAttempts,
   Duration Function(int attemptAfterFailure)? transportBackoff,
@@ -73,12 +76,20 @@ LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
     transportBackoff: transportBackoff,
   );
 
+  final manifestRefreshPort = manifestRefreshPortOverride ??
+      DiscoveryManifestRefreshPort(
+        discoveryClient: discoveryClientOverride ?? DiscoveryClient(),
+        mintPort: mintPort,
+        platformBaseUrl: platformBaseUrl,
+      );
+
   return LiveVisitSummaryComposition(
     dependencies: AiFeatureHostDependencies(
       availabilityReader: reader,
       reachabilityPort: reachability,
       sdk: sdk,
       contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+      manifestRefreshPort: manifestRefreshPort,
       visitId: visitId,
       requiredContextKeys: kFirstAiRequiredContextKeys,
       networkSpy: networkSpy,
@@ -104,6 +115,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
   AiPersistenceProbe? persistenceProbe,
   AiExportProbe? exportProbe,
   ContextProviderPort? contextProviderOverride,
+  ManifestRefreshPort? manifestRefreshPortOverride,
   int? maxTransportAttempts,
   Duration Function(int attemptAfterFailure)? transportBackoff,
 }) async {
@@ -120,6 +132,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
           : PlatformHttpsSubmitPort(platformBaseUrl: 'https://ai.invalid'));
 
   var requiredKeys = kFirstAiRequiredContextKeys;
+  var discoveryManifests = <Map<String, Object?>>[];
   String? discoveryFailureReference;
   TaxonomyCode? discoveryFailureCode;
 
@@ -128,6 +141,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
       final aat = await mintPort.mint();
       final discoveryResult = await discovery.fetchCapabilities(platformBaseUrl: baseUrl, aat: aat);
       if (!discoveryResult.notModified) {
+        discoveryManifests = discoveryResult.manifests;
         final discovered = requiredContextKeysFromManifests(discoveryResult.manifests, kFirstAiCapabilityId);
         if (discovered.isNotEmpty) {
           requiredKeys = discovered;
@@ -146,12 +160,21 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
     transportBackoff: transportBackoff,
   );
 
+  final manifestRefreshPort = manifestRefreshPortOverride ??
+      DiscoveryManifestRefreshPort(
+        discoveryClient: discovery,
+        mintPort: mintPort,
+        platformBaseUrl: baseUrl.isNotEmpty ? baseUrl : 'https://ai.invalid',
+        initialManifests: discoveryManifests,
+      );
+
   return LiveVisitSummaryComposition(
     dependencies: AiFeatureHostDependencies(
       availabilityReader: reader,
       reachabilityPort: reachability,
       sdk: sdk,
       contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+      manifestRefreshPort: manifestRefreshPort,
       visitId: visitId,
       requiredContextKeys: requiredKeys,
       networkSpy: networkSpy,

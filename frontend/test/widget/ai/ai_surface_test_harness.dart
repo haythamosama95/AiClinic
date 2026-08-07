@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
@@ -82,9 +83,12 @@ class AiSurfaceHarness {
        exportProbe = InMemoryAiExportProbe(),
        mintPort = FakeMintPort(),
        submitPort = FakeSubmitPort(script: submitScript),
-       contextProvider = HarnessContextProviderPort() {
+       contextProvider = HarnessContextProviderPort(),
+       manifestRefreshPort = FakeManifestRefreshPort() {
     sdk = AiClientSdk(mintPort: mintPort, submitPort: submitPort);
   }
+
+  late final FakeManifestRefreshPort manifestRefreshPort;
 
   late final FakeAiAvailabilityReader availabilityReader;
   late final FakePlatformReachabilityPort reachabilityPort;
@@ -117,6 +121,7 @@ class AiSurfaceHarness {
       reachabilityPort: reachabilityPort,
       sdk: sdk,
       contextProvider: contextProvider,
+      manifestRefreshPort: manifestRefreshPort,
       visitId: testVisitId,
       networkSpy: networkSpy,
       persistenceProbe: persistenceProbe,
@@ -130,6 +135,7 @@ class AiSurfaceHarness {
   Widget surface({bool autoInvoke = true}) => FirstAiFeatureSurface(
     sdk: sdk,
     resolver: createResolver(),
+    manifestRefreshPort: manifestRefreshPort,
     visitId: testVisitId,
     persistenceProbe: persistenceProbe,
     exportProbe: exportProbe,
