@@ -1,18 +1,55 @@
 import { DurableObject, env } from "cloudflare:workers";
-import { handleAdapterRequest } from "./adapter";
+import {
+  handleAdapterRequest,
+  pushTerminalEvent,
+  type AdapterEventSink,
+  type AdapterEventSourceFactory,
+  type PreAcceptGate,
+} from "./adapter";
+import {
+  createCapabilityRegistry,
+  setCapabilityRegistry,
+} from "./capability";
+import { ConfigCache, createD1ConfigReader } from "./config-cache";
+import { creditUsage, reconcileGraceUsage } from "./credit";
+import type { CanonicalRequest, CanonicalResult } from "./contracts/canonical";
+import {
+  buildErrorBody,
+  isTaxonomyCode,
+  liveHttpStatusForCode,
+  type TaxonomyCode,
+} from "./errors";
 import {
   createSecretOperatorAuth,
   dispatchControlRequest,
   isControlRoute,
 } from "./control";
-import { reconcileGraceUsage } from "./credit";
-import { liveHttpStatusForCode } from "./errors";
+import { EnrolledKeyVerifier } from "./identity";
 import {
   authenticateGetRequest,
   getRequest,
   getRequestAuthErrorBody,
+  recordTerminalState,
+  writePostResponseDetail,
+  type AttemptInput,
+  type PostResponseInput,
 } from "./journal";
-import { flushRejectionCounters } from "./rate-limit";
+import { load, type Manifest } from "./manifest";
+import visitSummaryPublished from "../manifests/published/clinic.visit_summary@1.0.0.json";
+import {
+  runGuard,
+  type GuardFreshSuccess,
+  type GuardIdempotentSuccess,
+  type GuardResult,
+} from "./pipeline";
+import { FakeAdapter } from "./provider/fake";
+import type { ProviderPort } from "./provider/port";
+import {
+  createProviderAdapter,
+  listWiredProviderIds,
+  type WiredProviderId,
+} from "./provider/wiring";
+import { flushRejectionCounters, type RateLimitBindings } from "./rate-limit";
 import {
   createManifestRetentionClassResolver,
   runRetentionPurge,
@@ -22,6 +59,17 @@ import {
   runRollupAndReconciliation,
 } from "./rollup";
 import {
+  preloadRoutingPolicyForInstallation,
+  selectCandidateChain,
+  type RoutingTier,
+} from "./router";
+import {
+  runInvocation,
+  type AttemptRecord,
+  type InvocationSink,
+  type PartialUsageAccessor,
+} from "./invocation";
+import {
   admissionRPC,
   creditRPC,
   releaseRPC,
@@ -29,6 +77,15 @@ import {
   type CreditRequest,
   type ReleaseRequest,
 } from "./quota-do/index";
+import {
+  createChunkSourceFromInvocationEvents,
+  createStreamBroker,
+  type ChunkSource,
+  type HeartbeatTicker,
+  type InvocationStreamEvent,
+  type StreamBrokerController,
+} from "./stream";
+import type { ProseGuardThresholds } from "./stream/prose-guards";
 
 interface Env {
   DB: D1Database;
@@ -56,6 +113,574 @@ function assertRequiredBindings(runtimeEnv: Env): void {
 }
 
 assertRequiredBindings(env as Env);
+
+try {
+  setCapabilityRegistry(
+    createCapabilityRegistry([
+      load(visitSummaryPublished as Record<string, unknown>),
+    ]),
+  );
+} catch {
+  // Test harness may install the registry first with { replace: true }.
+}
+
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
+const PRODUCTION_GUARD_THRESHOLDS: ProseGuardThresholds = {
+  maxLength: 128_000,
+  stopSequences: ["<|end|>"],
+  systemPromptLeakNeedle: "SYSTEM_PROMPT_LEAK_TEST_NEEDLE",
+};
+
+type AcceptContext =
+  | { kind: "fresh"; guard: GuardFreshSuccess }
+  | { kind: "idempotent"; guard: GuardIdempotentSuccess };
+
+const acceptContexts = new Map<string, AcceptContext>();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractBearerToken(request: Request): string | undefined {
+  const header = request.headers.get("authorization");
+  if (!header) {
+    return undefined;
+  }
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match?.[1]?.trim() || undefined;
+}
+
+function extractCapabilityId(body: Record<string, unknown>): string | undefined {
+  if (typeof body.capability_id === "string") {
+    return body.capability_id;
+  }
+  if (typeof body.capability === "string") {
+    return body.capability;
+  }
+  return undefined;
+}
+
+function extractUserIntent(body: Record<string, unknown>): string {
+  if (typeof body.user_intent === "string") {
+    return body.user_intent;
+  }
+  if (typeof body.intent === "string") {
+    return body.intent;
+  }
+  return "";
+}
+
+function extractSuppliedContext(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  if (isPlainObject(body.context)) {
+    return body.context;
+  }
+  return {};
+}
+
+function periodFromIso(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function createProductionHeartbeatTicker(): HeartbeatTicker {
+  return {
+    schedule(callback) {
+      let timer: ReturnType<typeof setInterval> | undefined;
+      const arm = () => {
+        if (timer !== undefined) {
+          clearInterval(timer);
+        }
+        timer = setInterval(() => callback(), HEARTBEAT_INTERVAL_MS);
+      };
+      arm();
+      return {
+        cancel() {
+          if (timer !== undefined) {
+            clearInterval(timer);
+          }
+        },
+        notifyActivity() {
+          arm();
+        },
+      };
+    },
+  };
+}
+
+function createWorkerExecutionContext(): {
+  waitUntil(promise: Promise<unknown>): void;
+  drainWaitUntil(): Promise<void>;
+} {
+  const pending: Promise<unknown>[] = [];
+  return {
+    waitUntil(promise: Promise<unknown>) {
+      pending.push(promise);
+    },
+    async drainWaitUntil() {
+      await Promise.all(pending);
+      pending.length = 0;
+    },
+  };
+}
+
+const allowAllRateLimit: RateLimit = {
+  async limit() {
+    return { success: true };
+  },
+};
+
+function productionRateLimitBindings(runtimeEnv: Env): RateLimitBindings {
+  return {
+    DB: runtimeEnv.DB,
+    RATE_LIMITER_INSTALLATION:
+      runtimeEnv.RATE_LIMITER_INSTALLATION ?? allowAllRateLimit,
+    RATE_LIMITER_INSTALLATION_ACTOR:
+      runtimeEnv.RATE_LIMITER_INSTALLATION_ACTOR ?? allowAllRateLimit,
+    RATE_LIMITER_INSTALLATION_CAPABILITY:
+      runtimeEnv.RATE_LIMITER_INSTALLATION_CAPABILITY ?? allowAllRateLimit,
+  };
+}
+
+function resolveProviderPort(providerId: string): ProviderPort {
+  if (providerId === "fake") {
+    return new FakeAdapter(["success"]);
+  }
+  if ((listWiredProviderIds() as readonly string[]).includes(providerId)) {
+    return createProviderAdapter(providerId as WiredProviderId, {
+      transport: fetch as never,
+      secretStore: {
+        getSecret(binding: string) {
+          const value = (env as Record<string, unknown>)[binding];
+          return typeof value === "string" ? value : undefined;
+        },
+      },
+    } as never);
+  }
+  return new FakeAdapter(["terminal:provider_unavailable"]);
+}
+
+function buildAttemptInput(record: AttemptRecord): AttemptInput {
+  return {
+    attemptNo: record.attempt_no,
+    provider: record.provider_id,
+    model: record.model_id,
+    outcome: record.outcome,
+    latencyMs: record.latency_ms ?? 0,
+    tokensIn: record.tokens_in ?? 0,
+    tokensOut: record.tokens_out ?? 0,
+    cost: record.cost ?? 0,
+    providerRequestId: record.provider_request_id,
+    errorCode: record.error_code,
+    rawBody: {},
+  };
+}
+
+function buildPostResponseInput(
+  requestId: string,
+  installationId: string,
+  manifest: Manifest,
+  filteredContext: Record<string, unknown>,
+  composed: CanonicalRequest,
+  attempts: AttemptInput[],
+  validatedResult: CanonicalResult,
+  recordedAt: string,
+  usage: { tokens: number; cost: number },
+): PostResponseInput {
+  return {
+    requestId,
+    installationId,
+    period: periodFromIso(new Date().toISOString()),
+    quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
+    totalTokens: usage.tokens,
+    totalCost: usage.cost,
+    filteredContext,
+    composedPrompt: composed,
+    attempts,
+    validatedResult,
+    recordedAt,
+  };
+}
+
+async function settleCompletedRequest(
+  runtimeEnv: Env,
+  input: {
+    requestId: string;
+    requestReference: string;
+    installationId: string;
+    manifest: Manifest;
+    filteredContext: Record<string, unknown>;
+    composed: CanonicalRequest;
+    attempts: AttemptInput[];
+    result: CanonicalResult;
+    recordedAt: string;
+  },
+): Promise<void> {
+  const usage = {
+    tokens: input.result.usage.input + input.result.usage.output,
+    cost: 0.001,
+  };
+  await creditUsage(
+    {
+      installationId: input.installationId,
+      requestId: input.requestId,
+      requestReference: input.requestReference,
+      usage,
+      partial: false,
+    },
+    { DO: runtimeEnv.DO },
+  );
+  const detail = buildPostResponseInput(
+    input.requestId,
+    input.installationId,
+    input.manifest,
+    input.filteredContext,
+    input.composed,
+    input.attempts,
+    input.result,
+    input.recordedAt,
+    usage,
+  );
+  const ctx = createWorkerExecutionContext();
+  writePostResponseDetail(detail, {
+    db: runtimeEnv.DB,
+    r2: runtimeEnv.R2,
+    ctx,
+  });
+  await ctx.drainWaitUntil();
+}
+
+function pushFailedTerminal(
+  sink: AdapterEventSink,
+  requestReference: string,
+  traceId: string,
+  code: TaxonomyCode,
+): void {
+  const errorBody = buildErrorBody({ code, requestReference, traceId });
+  sink.push({
+    type: "failed",
+    data: { ...errorBody },
+    trace_id: traceId,
+  });
+}
+
+function replayIdempotentTerminal(
+  sink: AdapterEventSink,
+  traceId: string,
+  guard: GuardIdempotentSuccess,
+  _runtimeEnv: Env,
+): void {
+  const prior = guard.priorState;
+  const streamCtx = {
+    traceId,
+    requestReference: guard.requestReference,
+    headers: {
+      idempotencyKey: guard.idempotencyKey,
+      traceId,
+      capabilityVersion: "",
+    },
+    signal: new AbortController().signal,
+  };
+  if (
+    prior.state === "completed" ||
+    prior.state === "admitted" ||
+    prior.state === "in_progress"
+  ) {
+    pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
+      result: {
+        finalContent: { text: "Prior request completed.", authoritative: true },
+      },
+    });
+    return;
+  }
+  if (prior.state === "failed") {
+    pushFailedTerminal(sink, guard.requestReference, traceId, "internal_error");
+    return;
+  }
+  if (prior.state === "cancelled") {
+    pushTerminalEvent(sink, streamCtx, "cancelled", "single_shot");
+    return;
+  }
+  pushFailedTerminal(sink, guard.requestReference, traceId, "internal_error");
+}
+
+function createProductionEventSource(
+  runtimeEnv: Env,
+  scheduleBackground: (promise: Promise<unknown>) => void,
+): AdapterEventSourceFactory {
+  return (sink, streamContext) => {
+    const accept = acceptContexts.get(streamContext.requestReference);
+    acceptContexts.delete(streamContext.requestReference);
+    if (!accept) {
+      pushFailedTerminal(
+        sink,
+        streamContext.requestReference,
+        streamContext.traceId,
+        "internal_error",
+      );
+      return;
+    }
+    if (accept.kind === "idempotent") {
+      replayIdempotentTerminal(
+        sink,
+        streamContext.traceId,
+        accept.guard,
+        runtimeEnv,
+      );
+      return {
+        disconnect(reason) {
+          brokerController?.disconnect(reason);
+        },
+      };
+    }
+    let brokerController: StreamBrokerController | undefined;
+    const freshGuard = accept.guard;
+    scheduleBackground(
+      (async () => {
+        brokerController = await runFreshEventSource(
+          sink,
+          streamContext,
+          freshGuard,
+          runtimeEnv,
+        );
+      })(),
+    );
+    return {
+      disconnect(reason) {
+        brokerController?.disconnect(reason);
+      },
+    };
+  };
+}
+
+async function runFreshEventSource(
+  sink: AdapterEventSink,
+  streamContext: {
+    traceId: string;
+    requestReference: string;
+    signal: AbortSignal;
+  },
+  guard: GuardFreshSuccess,
+  runtimeEnv: Env,
+): Promise<StreamBrokerController | undefined> {
+  const manifest = guard.manifest;
+  const cache = new ConfigCache();
+  const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
+  const policyRef = String(manifest.Routing.routingPolicyRef);
+  await preloadRoutingPolicyForInstallation(
+    cache,
+    reader,
+    policyRef,
+    guard.principal.installationId,
+  );
+  const requiredFeatures = manifest.Routing
+    .requiredProviderFeatures as {
+    contextWindow: number;
+    language: string;
+  };
+  const routing = selectCandidateChain({
+    cache,
+    policyCacheKey: policyRef,
+    context: {
+      installationId: guard.principal.installationId,
+      capabilityId: manifest.Identity.capabilityId,
+      routingTier: "standard",
+      requirements: {
+        structured_output_required: manifest.Output.mode !== "prose",
+        min_context_window: requiredFeatures.contextWindow,
+        languages: [requiredFeatures.language],
+        latency_class: String(manifest.Routing.latencyClass),
+      },
+      manifestCostClass: "standard",
+      entitlementMaxCostClass: "premium",
+    },
+  });
+
+  const events: InvocationStreamEvent[] = [];
+  const attemptRecords: AttemptRecord[] = [];
+  const partialUsage: PartialUsageAccessor = {};
+  const invocationSink: InvocationSink = {
+    recordAttempt(record) {
+      attemptRecords.push(record);
+    },
+    emitRegenerating() {
+      events.push({ kind: "regenerating" });
+    },
+    emitStreamText(text) {
+      events.push({ kind: "text", text });
+    },
+  };
+
+  const invokeResult = await runInvocation({
+    request: guard.composed,
+    routingDecision: routing.routing_decision,
+    requestId: guard.requestId,
+    idempotencyKey: guard.idempotencyKey,
+    portResolver: resolveProviderPort,
+    sink: invocationSink,
+    partialUsage,
+    sleeper: async () => {},
+    signal: streamContext.signal,
+  });
+
+  if (!invokeResult.ok) {
+    const code = invokeResult.error.taxonomyCode;
+    const taxonomy = isTaxonomyCode(code) ? code : "provider_unavailable";
+    pushFailedTerminal(
+      sink,
+      streamContext.requestReference,
+      streamContext.traceId,
+      taxonomy,
+    );
+    await recordTerminalState(
+      guard.requestId,
+      "Failed",
+      taxonomy,
+      new Date().toISOString(),
+      runtimeEnv.DB,
+      manifest.interactionMode,
+    );
+    return undefined;
+  }
+
+  async function* replayEvents(): AsyncGenerator<InvocationStreamEvent> {
+    for (const event of events) {
+      if (streamContext.signal.aborted) {
+        return;
+      }
+      yield event;
+    }
+  }
+
+  const chunkSource = createChunkSourceFromInvocationEvents(
+    replayEvents(),
+    () => partialUsage.getPartialUsage?.(),
+  );
+
+  const broker = createStreamBroker({
+    traceId: streamContext.traceId,
+    requestId: guard.requestId,
+    requestReference: streamContext.requestReference,
+    eventSink: sink,
+    chunkSource,
+    heartbeatTicker: createProductionHeartbeatTicker(),
+    creditSink: (input) => {
+      void creditUsage(
+        {
+          installationId: guard.principal.installationId,
+          requestId: input.requestId,
+          requestReference: streamContext.requestReference,
+          usage: input.usage,
+          partial: input.partial,
+        },
+        { DO: runtimeEnv.DO },
+      );
+    },
+    journalTerminalSink: (record) => {
+      void recordTerminalState(
+        record.requestId,
+        record.state === "completed"
+          ? "Completed"
+          : record.state === "cancelled"
+            ? "Cancelled"
+            : "Failed",
+        record.terminalErrorCode,
+        new Date().toISOString(),
+        runtimeEnv.DB,
+        manifest.interactionMode,
+      );
+    },
+    guardThresholds: PRODUCTION_GUARD_THRESHOLDS,
+  });
+
+  await broker.run();
+
+  await settleCompletedRequest(runtimeEnv, {
+    requestId: guard.requestId,
+    requestReference: streamContext.requestReference,
+    installationId: guard.principal.installationId,
+    manifest,
+    filteredContext: guard.filteredContext,
+    composed: guard.composed,
+    attempts: attemptRecords.map(buildAttemptInput),
+    result: invokeResult.result,
+    recordedAt: new Date().toISOString(),
+  });
+
+  return broker;
+}
+
+function createProductionPreAccept(runtimeEnv: Env): PreAcceptGate {
+  const verifier = new EnrolledKeyVerifier();
+  const cache = new ConfigCache();
+  const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
+  return async (input) => {
+    const { composeRequest } = await import("./prompt/composer");
+    const capabilityId = extractCapabilityId(input.body);
+    if (!capabilityId) {
+      return { ok: false, code: "internal_error" };
+    }
+    const token = extractBearerToken(input.request);
+    const guard = await runGuard(
+      {
+        bodyText: input.bodyText,
+        token,
+        verifier,
+        capabilityId,
+        capabilityVersion: input.headers.capabilityVersion,
+        entitlement: {
+          capabilityId,
+          capabilityVersion: input.headers.capabilityVersion,
+          minimumPlanTier: "standard",
+          providerId: "fake",
+        },
+        suppliedContext: extractSuppliedContext(input.body),
+        userIntent: extractUserIntent(input.body),
+        idempotencyKey: input.headers.idempotencyKey,
+        requestReference: input.requestReference,
+        traceId: input.headers.traceId,
+        cache,
+        reader,
+        composeRequest,
+      },
+      {
+        DB: runtimeEnv.DB,
+        DO: runtimeEnv.DO,
+        rateLimit: productionRateLimitBindings(runtimeEnv),
+      },
+    );
+    if (!guard.ok) {
+      return {
+        ok: false,
+        code: isTaxonomyCode(guard.code) ? guard.code : "internal_error",
+      };
+    }
+    if (guard.outcome === "idempotent") {
+      acceptContexts.set(input.requestReference, {
+        kind: "idempotent",
+        guard,
+      });
+    } else {
+      acceptContexts.set(input.requestReference, { kind: "fresh", guard });
+    }
+    return { ok: true };
+  };
+}
+
+async function handleLivePostRequest(
+  request: Request,
+  runtimeEnv: Env,
+  executionCtx: ExecutionContext,
+): Promise<Response> {
+  const scheduleBackground = (promise: Promise<unknown>) => {
+    executionCtx.waitUntil(promise);
+  };
+  return handleAdapterRequest(request, {
+    preAccept: createProductionPreAccept(runtimeEnv),
+    eventSource: createProductionEventSource(runtimeEnv, scheduleBackground),
+  });
+}
 
 /** Known caller/arg failures — must stay 400 so admission maps them to client_error, not grace. */
 export class ArgValidationError extends Error {
@@ -206,7 +831,11 @@ export class GatewayObject extends DurableObject {
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(
+    request: Request,
+    _bindings: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
@@ -218,7 +847,7 @@ export default {
     }
 
     if (url.pathname === "/v1/requests" && request.method === "POST") {
-      return handleAdapterRequest(request);
+      return handleLivePostRequest(request, env as Env, ctx);
     }
 
     if (request.method === "POST" && isControlRoute(url.pathname)) {

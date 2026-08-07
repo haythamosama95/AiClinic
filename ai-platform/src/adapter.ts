@@ -62,8 +62,27 @@ export type AdapterEventSourceFactory = (
   context: AdapterStreamContext,
 ) => AdapterEventSourceHandle | void;
 
+export type PreAcceptResult =
+  | { ok: true }
+  | { ok: false; code: TaxonomyCode };
+
+export interface PreAcceptInput {
+  request: Request;
+  bodyText: string;
+  body: Record<string, unknown>;
+  headers: {
+    idempotencyKey: string;
+    traceId: string;
+    capabilityVersion: string;
+  };
+  requestReference: string;
+}
+
+export type PreAcceptGate = (input: PreAcceptInput) => Promise<PreAcceptResult>;
+
 export interface HandleAdapterRequestOptions {
   eventSource?: AdapterEventSourceFactory;
+  preAccept?: PreAcceptGate;
   degradedNotice?: boolean;
 }
 
@@ -186,6 +205,19 @@ function adapterParseFailureResponse(): Response {
   return new Response(null, {
     status: 422,
     headers: { "content-type": "text/plain" },
+  });
+}
+
+function preAcceptFailureResponse(
+  code: TaxonomyCode,
+  requestReference: string,
+  traceId: string,
+): Response {
+  const body = buildErrorBody({ code, requestReference, traceId });
+  const status = liveHttpStatusForCode(code);
+  return new Response(JSON.stringify(body), {
+    status: status ?? 500,
+    headers: { "content-type": "application/json" },
   });
 }
 
@@ -353,12 +385,38 @@ export async function handleAdapterRequest(
     return adapterParseFailureResponse();
   }
 
+  const parsedBody = parseRequestBody(bodyResult.text);
+  if (parsedBody === null) {
+    return adapterParseFailureResponse();
+  }
+
+  let requestReference: string | undefined;
+
+  if (options.preAccept) {
+    requestReference = generateRequestReference();
+    const gate = await options.preAccept({
+      request,
+      bodyText: bodyResult.text,
+      body: parsedBody,
+      headers: parsedHeaders,
+      requestReference,
+    });
+    if (!gate.ok) {
+      return preAcceptFailureResponse(
+        gate.code,
+        requestReference,
+        parsedHeaders.traceId,
+      );
+    }
+  }
+
   const eventSource = options.eventSource;
   if (!eventSource) {
     return eventSourceRequiredResponse();
   }
 
-  const requestReference = generateRequestReference();
+  requestReference ??= generateRequestReference();
+
   const disconnectController = new AbortController();
   const context: AdapterStreamContext = {
     traceId: parsedHeaders.traceId,
