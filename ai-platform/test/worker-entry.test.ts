@@ -57,6 +57,7 @@ vi.mock("../src/control", () => ({
 }));
 
 vi.mock("../src/credit", () => ({
+  creditUsage: vi.fn(),
   reconcileGraceUsage: (...args: unknown[]) => mockReconcileGraceUsage(...args),
 }));
 
@@ -166,23 +167,33 @@ afterEach(() => {
   consoleErrorSpy.mockRestore();
 });
 
-describe("POST /v1/requests fail-fast without event source", () => {
-  it("returns 503 when the adapter has no event source", async () => {
-    const response = await workerModule.default.fetch(
+describe("POST /v1/requests production orchestrator wiring", () => {
+  it("injects preAccept and eventSource into handleAdapterRequest", async () => {
+    mockHandleAdapterRequest.mockResolvedValue(
+      new Response("ok", { status: 200 }),
+    );
+
+    const executionCtx = { waitUntil: vi.fn() };
+    await workerModule.default.fetch(
       new Request("https://ai-gateway.test/v1/requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ installation: "inst-1", capability: "cap@v1" }),
       }),
+      runtimeEnv as never,
+      executionCtx as never,
     );
 
-    expect(response.status).toBe(503);
     expect(mockHandleAdapterRequest).toHaveBeenCalledTimes(1);
     const adapterRequest = mockHandleAdapterRequest.mock.calls[0]?.[0] as Request;
     expect(adapterRequest.method).toBe("POST");
     expect(new URL(adapterRequest.url).pathname).toBe("/v1/requests");
-    // Worker routes without injecting an eventSource — fail-fast path.
-    expect(mockHandleAdapterRequest.mock.calls[0]?.length).toBe(1);
+    const options = mockHandleAdapterRequest.mock.calls[0]?.[1] as {
+      preAccept?: unknown;
+      eventSource?: unknown;
+    };
+    expect(typeof options?.preAccept).toBe("function");
+    expect(typeof options?.eventSource).toBe("function");
   });
 });
 

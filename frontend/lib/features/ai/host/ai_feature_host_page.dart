@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 
 import '../availability/ai_availability.dart';
@@ -48,6 +49,7 @@ class AiFeatureHostDependencies {
     required this.reachabilityPort,
     required this.sdk,
     required this.contextProvider,
+    required this.manifestRefreshPort,
     required this.visitId,
     this.requiredContextKeys = kFirstAiRequiredContextKeys,
     this.networkSpy,
@@ -61,6 +63,7 @@ class AiFeatureHostDependencies {
   final PlatformReachabilityPort reachabilityPort;
   final AiClientSdk sdk;
   final ContextProviderPort contextProvider;
+  final ManifestRefreshPort manifestRefreshPort;
   final String visitId;
   final List<String> requiredContextKeys;
   final PlatformNetworkSpy? networkSpy;
@@ -213,6 +216,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
             ? FirstAiFeatureSurface(
                 sdk: widget.dependencies.sdk,
                 resolver: _resolver!,
+                manifestRefreshPort: widget.dependencies.manifestRefreshPort,
                 visitId: widget.dependencies.visitId,
                 requiredContextKeys: widget.dependencies.requiredContextKeys,
                 persistenceProbe: widget.dependencies.persistenceProbe,

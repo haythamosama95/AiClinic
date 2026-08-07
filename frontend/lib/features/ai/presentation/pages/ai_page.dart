@@ -1,11 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/shell/navigation/shell_route_meta.dart';
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
+import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
+import 'package:ai_clinic/core/ai/context_provider_port.dart';
+import 'package:ai_clinic/core/ai/discovery_client.dart';
+import 'package:ai_clinic/core/ai/discovery_manifest_refresh_port.dart';
+import 'package:ai_clinic/core/ai/https_submit_port.dart';
+import 'package:ai_clinic/core/ai/ports.dart';
+import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
 import 'package:ai_clinic/core/ai/supabase_context_provider_port.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability_reader.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_mode.dart';
 import 'package:ai_clinic/features/ai/degraded/ai_degraded_view.dart';
@@ -13,6 +24,242 @@ import 'package:ai_clinic/features/ai/host/ai_feature_host_page.dart';
 import 'package:ai_clinic/features/ai/surface/first_ai_feature_surface.dart';
 import 'package:ai_clinic/features/ai/surface/provisional_prose_view.dart';
 import 'package:ai_clinic/features/ai/surface/request_reference_view.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Production hub composition for the live visit-summary host (I3 / T8 spy target).
+@immutable
+class LiveVisitSummaryComposition {
+  const LiveVisitSummaryComposition({
+    required this.dependencies,
+    required this.mintPort,
+    required this.submitPort,
+    this.discoveryFailureReference,
+    this.discoveryFailureCode,
+  });
+
+  final AiFeatureHostDependencies dependencies;
+  final AatMintPort mintPort;
+  final HttpsSubmitPort submitPort;
+  final String? discoveryFailureReference;
+  final TaxonomyCode? discoveryFailureCode;
+}
+
+/// Builds live-host dependencies with production mint/submit unless overridden.
+@visibleForTesting
+LiveVisitSummaryComposition buildLiveVisitSummaryComposition({
+  required SupabaseClient client,
+  required String visitId,
+  AiAvailabilityReader? availabilityReader,
+  PlatformReachabilityPort? reachabilityPort,
+  AatMintPort? mintPortOverride,
+  HttpsSubmitPort? submitPortOverride,
+  DiscoveryClient? discoveryClientOverride,
+  PlatformNetworkSpy? networkSpy,
+  AiPersistenceProbe? persistenceProbe,
+  AiExportProbe? exportProbe,
+  ContextProviderPort? contextProviderOverride,
+  ManifestRefreshPort? manifestRefreshPortOverride,
+  bool? autoInvoke,
+  int? maxTransportAttempts,
+  Duration Function(int attemptAfterFailure)? transportBackoff,
+  String platformBaseUrl = 'https://ai.example.workers.dev',
+}) {
+  final reader = availabilityReader ?? SupabaseAiAvailabilityReader(client: client);
+  final reachability = reachabilityPort ?? HttpPlatformReachabilityPort();
+  final mintPort = mintPortOverride ?? SupabaseAatMintPort(client: client);
+  final submitPort = submitPortOverride ?? PlatformHttpsSubmitPort(platformBaseUrl: platformBaseUrl);
+
+  final sdk = AiClientSdk(
+    mintPort: mintPort,
+    submitPort: submitPort,
+    maxTransportAttempts: maxTransportAttempts ?? kDefaultMaxTransportAttempts,
+    transportBackoff: transportBackoff,
+  );
+
+  final manifestRefreshPort = manifestRefreshPortOverride ??
+      DiscoveryManifestRefreshPort(
+        discoveryClient: discoveryClientOverride ?? DiscoveryClient(),
+        mintPort: mintPort,
+        platformBaseUrl: platformBaseUrl,
+      );
+
+  return LiveVisitSummaryComposition(
+    dependencies: AiFeatureHostDependencies(
+      availabilityReader: reader,
+      reachabilityPort: reachability,
+      sdk: sdk,
+      contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+      manifestRefreshPort: manifestRefreshPort,
+      visitId: visitId,
+      requiredContextKeys: kFirstAiRequiredContextKeys,
+      networkSpy: networkSpy,
+      persistenceProbe: persistenceProbe,
+      exportProbe: exportProbe,
+      autoInvoke: autoInvoke ?? true,
+    ),
+    mintPort: mintPort,
+    submitPort: submitPort,
+  );
+}
+
+/// Async composition: mint AAT, discover required keys, wire production ports.
+Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
+  required SupabaseClient client,
+  required String visitId,
+  AiAvailabilityReader? availabilityReader,
+  PlatformReachabilityPort? reachabilityPort,
+  AatMintPort? mintPortOverride,
+  HttpsSubmitPort? submitPortOverride,
+  DiscoveryClient? discoveryClientOverride,
+  PlatformNetworkSpy? networkSpy,
+  AiPersistenceProbe? persistenceProbe,
+  AiExportProbe? exportProbe,
+  ContextProviderPort? contextProviderOverride,
+  ManifestRefreshPort? manifestRefreshPortOverride,
+  int? maxTransportAttempts,
+  Duration Function(int attemptAfterFailure)? transportBackoff,
+}) async {
+  final reader = availabilityReader ?? SupabaseAiAvailabilityReader(client: client);
+  final reachability = reachabilityPort ?? HttpPlatformReachabilityPort();
+  final discovery = discoveryClientOverride ?? DiscoveryClient();
+  final mintPort = mintPortOverride ?? SupabaseAatMintPort(client: client);
+
+  final availability = await reader.read();
+  final baseUrl = availability.platformBaseUrl ?? '';
+  final submitPort = submitPortOverride ??
+      (baseUrl.isNotEmpty
+          ? PlatformHttpsSubmitPort(platformBaseUrl: baseUrl)
+          : PlatformHttpsSubmitPort(platformBaseUrl: 'https://ai.invalid'));
+
+  var requiredKeys = kFirstAiRequiredContextKeys;
+  var discoveryManifests = <Map<String, Object?>>[];
+  String? discoveryFailureReference;
+  TaxonomyCode? discoveryFailureCode;
+
+  if (availability.enrolled && baseUrl.isNotEmpty) {
+    try {
+      final aat = await mintPort.mint();
+      final discoveryResult = await discovery.fetchCapabilities(platformBaseUrl: baseUrl, aat: aat);
+      if (!discoveryResult.notModified) {
+        discoveryManifests = discoveryResult.manifests;
+        final discovered = requiredContextKeysFromManifests(discoveryResult.manifests, kFirstAiCapabilityId);
+        if (discovered.isNotEmpty) {
+          requiredKeys = discovered;
+        }
+      }
+    } on DiscoveryAuthFailure catch (error) {
+      discoveryFailureCode = error.code;
+      discoveryFailureReference = error.responseBody['request_reference']?.toString();
+    }
+  }
+
+  final sdk = AiClientSdk(
+    mintPort: mintPort,
+    submitPort: submitPort,
+    maxTransportAttempts: maxTransportAttempts ?? kDefaultMaxTransportAttempts,
+    transportBackoff: transportBackoff,
+  );
+
+  final manifestRefreshPort = manifestRefreshPortOverride ??
+      DiscoveryManifestRefreshPort(
+        discoveryClient: discovery,
+        mintPort: mintPort,
+        platformBaseUrl: baseUrl.isNotEmpty ? baseUrl : 'https://ai.invalid',
+        initialManifests: discoveryManifests,
+      );
+
+  return LiveVisitSummaryComposition(
+    dependencies: AiFeatureHostDependencies(
+      availabilityReader: reader,
+      reachabilityPort: reachability,
+      sdk: sdk,
+      contextProvider: contextProviderOverride ?? SupabaseContextProviderPort(client: client, visitId: visitId),
+      manifestRefreshPort: manifestRefreshPort,
+      visitId: visitId,
+      requiredContextKeys: requiredKeys,
+      networkSpy: networkSpy,
+      persistenceProbe: persistenceProbe,
+      exportProbe: exportProbe,
+      autoInvoke: availability.enrolled && discoveryFailureCode == null,
+    ),
+    mintPort: mintPort,
+    submitPort: submitPort,
+    discoveryFailureReference: discoveryFailureReference,
+    discoveryFailureCode: discoveryFailureCode,
+  );
+}
+
+/// Test entry that mirrors production hub wiring without the `/ai` page chrome.
+@visibleForTesting
+class LiveVisitSummaryHostWidget extends StatefulWidget {
+  const LiveVisitSummaryHostWidget({super.key, required this.visitId, this.composition});
+
+  final String visitId;
+  final LiveVisitSummaryComposition? composition;
+
+  @override
+  State<LiveVisitSummaryHostWidget> createState() => _LiveVisitSummaryHostWidgetState();
+}
+
+class _LiveVisitSummaryHostWidgetState extends State<LiveVisitSummaryHostWidget> {
+  LiveVisitSummaryComposition? _composition;
+  var _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.composition != null) {
+      _composition = widget.composition;
+      _loading = false;
+    } else {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    final container = ProviderScope.containerOf(context);
+    final client = container.read(supabaseClientProvider);
+    final composition = await composeLiveVisitSummaryHost(client: client, visitId: widget.visitId);
+    if (mounted) {
+      setState(() {
+        _composition = composition;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _composition == null) {
+      return const Center(child: Text(key: Key('live_host_loading'), 'Loading live host…'));
+    }
+    return liveVisitSummaryHostBody(visitId: widget.visitId, composition: _composition!);
+  }
+}
+
+/// Shared live-host body for production page and widget-test entry (I3 composition).
+@visibleForTesting
+Widget liveVisitSummaryHostBody({
+  required String visitId,
+  required LiveVisitSummaryComposition composition,
+}) {
+  // §5.4 / FR-012: discovery installation_suspended hides AI features and instructs admin.
+  if (composition.discoveryFailureCode == TaxonomyCode.installationSuspended) {
+    return AiDegradedView(
+      mode: AiDegradedMode.installationSuspended,
+      child: const Text('Clinical workflows remain available.'),
+    );
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (composition.discoveryFailureReference != null)
+        RequestReferenceView(requestReference: composition.discoveryFailureReference!),
+      AiFeatureHostPage(key: ValueKey(visitId), dependencies: composition.dependencies, embedded: true),
+    ],
+  );
+}
 
 /// Clinic AI hub — exposes implemented AI capabilities and design-system widgets.
 class AiPage extends ConsumerStatefulWidget {
@@ -312,24 +559,38 @@ class _AiFeatureSection extends StatelessWidget {
 }
 
 /// Live [AiFeatureHostPage] composed from clinic Supabase + platform reachability.
-class _LiveVisitSummaryHost extends ConsumerWidget {
+class _LiveVisitSummaryHost extends ConsumerStatefulWidget {
   const _LiveVisitSummaryHost({required this.visitId});
 
   final String visitId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final client = ref.watch(supabaseClientProvider);
-    final deps = AiFeatureHostDependencies(
-      availabilityReader: SupabaseAiAvailabilityReader(client: client),
-      reachabilityPort: HttpPlatformReachabilityPort(),
-      sdk: AiClientSdk(mintPort: const _UnconfiguredAatMintPort(), submitPort: const _UnconfiguredHttpsSubmitPort()),
-      contextProvider: SupabaseContextProviderPort(client: client, visitId: visitId),
-      visitId: visitId,
-      // Mint/submit HTTP adapters are not composed in this hub yet — stay idle.
-      autoInvoke: false,
-    );
+  ConsumerState<_LiveVisitSummaryHost> createState() => _LiveVisitSummaryHostState();
+}
 
+class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
+  LiveVisitSummaryComposition? _composition;
+  var _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final client = ref.read(supabaseClientProvider);
+    final composition = await composeLiveVisitSummaryHost(client: client, visitId: widget.visitId);
+    if (mounted) {
+      setState(() {
+        _composition = composition;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -341,37 +602,17 @@ class _LiveVisitSummaryHost extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Live host for visit $visitId',
+              'Live host for visit ${widget.visitId}',
               style: AppTypography.bodySm(context).copyWith(color: context.appColors.textSecondary),
             ),
             const SizedBox(height: AppSpacing.space3),
-            AiFeatureHostPage(key: ValueKey(visitId), dependencies: deps, embedded: true),
-            const SizedBox(height: AppSpacing.space2),
-            Text(
-              'Invoke stays idle until production AAT mint / HTTPS submit adapters are wired.',
-              style: AppTypography.caption(context).copyWith(color: context.appColors.textTertiary),
-            ),
+            if (_loading || _composition == null)
+              const Center(child: Text(key: Key('live_host_loading'), 'Loading live host…'))
+            else
+              liveVisitSummaryHostBody(visitId: widget.visitId, composition: _composition!),
           ],
         ),
       ),
     );
-  }
-}
-
-class _UnconfiguredAatMintPort implements AatMintPort {
-  const _UnconfiguredAatMintPort();
-
-  @override
-  Future<String> mint() {
-    throw UnsupportedError('AAT mint adapter is not configured on the AI hub page.');
-  }
-}
-
-class _UnconfiguredHttpsSubmitPort implements HttpsSubmitPort {
-  const _UnconfiguredHttpsSubmitPort();
-
-  @override
-  Future<SseConnection> submit({required CapabilityInvokeInput input, required SubmitRequestHeaders headers}) {
-    throw UnsupportedError('HTTPS submit adapter is not configured on the AI hub page.');
   }
 }

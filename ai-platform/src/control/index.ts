@@ -8,6 +8,7 @@ export {
   handleRotate,
   handleSuspend,
 } from "./lifecycle";
+export { handleEntitle } from "./entitle";
 export { handleDeprecate, handleRetire } from "./capability-lifecycle";
 export { handleCohortActivate, handleCohortPromote } from "./cohort";
 export {
@@ -35,6 +36,7 @@ import {
   handleCohortPromote,
   parseCohortCapabilityRoute,
 } from "./cohort";
+import { handleEntitle } from "./entitle";
 import { reject } from "./http";
 import {
   handleDelete,
@@ -62,7 +64,7 @@ import {
 import type { ControlBindings, OperatorAuth } from "./types";
 
 const CONTROL_ACTION_PATTERN =
-  /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge)$/;
+  /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge|entitle)$/;
 
 const CAPABILITY_LIFECYCLE_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(deprecate|retire)$/;
@@ -167,6 +169,8 @@ export async function dispatchControlRequest(
       return handleDelete(request, bindings, operatorAuth);
     case "purge":
       return handleInstallationPurge(request, bindings, operatorAuth);
+    case "entitle":
+      return handleEntitle(request, bindings, operatorAuth);
     default:
       return new Response("Not Found", { status: 404 });
   }

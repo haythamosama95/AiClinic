@@ -185,8 +185,40 @@ export function createD1ConfigReader(db: D1Database, r2?: R2Bucket): D1Reader {
           return row ?? "miss";
         }
         case "kill_switches": {
-          // No durable kill_switch table in A5 schema; miss ⇒ inactive at callers.
-          return "miss";
+          let scope: string;
+          let target: string;
+          if (key === "global") {
+            scope = "global";
+            target = "global";
+          } else {
+            const colon = key.indexOf(":");
+            if (colon === -1) {
+              return "miss";
+            }
+            scope = key.slice(0, colon);
+            target = key.slice(colon + 1);
+          }
+
+          const row = await db
+            .prepare(
+              `SELECT scope, target, active, changed_at, changed_by
+               FROM kill_switch
+               WHERE scope = ? AND target = ?
+               LIMIT 1`,
+            )
+            .bind(scope, target)
+            .first<D1Row>();
+          if (!row) {
+            return "miss";
+          }
+
+          return {
+            active: row.active === 1 || row.active === true,
+            scope: row.scope,
+            target: row.target,
+            changed_at: row.changed_at,
+            changed_by: row.changed_by,
+          };
         }
         case "grants": {
           if (key.startsWith("global/")) {

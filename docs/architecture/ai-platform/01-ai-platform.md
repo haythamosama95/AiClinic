@@ -1197,10 +1197,11 @@ The port has two strategies, and only the first is built now:
 
 Installation public keys and status are read through the **config cache**: an in-isolate memory map
 with a short TTL, populated from D1 on a miss. At clinic scale the entire config set — installations,
-keys, entitlements, grants, kill switches, the active routing policy — is a few kilobytes, so a warm
-isolate answers in nanoseconds and a cold one pays a single same-region D1 read. Replay rejection is
-not part of this stage's own I/O; the `jti` is checked inside the Quota Durable Object round trip at
-the next stage, where it costs nothing extra ([§4.3.3](#433-entitlement-quota-and-rate-control)).
+keys, entitlements, grants, kill switches, the active routing policy, and the global `token_contract`
+accepted-`ver` set ([§5.6](#56-token-contract)) — is a few kilobytes, so a warm isolate answers in
+nanoseconds and a cold one pays a single same-region D1 read. Replay rejection is not part of this
+stage's own I/O; the `jti` is checked inside the Quota Durable Object round trip at the next stage,
+where it costs nothing extra ([§4.3.3](#433-entitlement-quota-and-rate-control)).
 
 #### 4.3.3 Entitlement, quota, and rate control
 
@@ -1492,8 +1493,9 @@ of the others has; nothing is here for convenience.
 
 
 Alongside them sits the **config cache**, which is not a store: an in-isolate memory map, short TTL,
-D1 on miss, holding installations, keys, entitlements, grants, kill switches, and the active routing
-policy. It is a latency optimization over D1 and it owns nothing.
+D1 on miss, holding installations, keys, entitlements, grants, kill switches, the active routing
+policy, and the global `token_contract` accepted-`ver` set. It is a latency optimization over D1 and
+it owns nothing.
 
 Two properties of this set are worth internalizing.
 
@@ -1516,7 +1518,7 @@ A small internal surface, separate from the client-facing API and separately aut
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Installation lifecycle  | Enroll, rotate keys, suspend, resume, delete                                                                                                                                                                                 |
 | Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities, set period bounds and soft threshold                                                                                                                           |
-| Kill switches           | Global, per capability, per installation, per provider (A8)                                                                                                                                                                  |
+| Kill switches           | Global, per capability, per installation, per provider (A8) — every one of these writes a `kill_switch` row ([§7.3](#73-d1-logical-model))                                                                                    |
 | Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation — every one of these writes a `capability_grant` row ([§7.3](#73-d1-logical-model)); deprecate and retire write it at `global` scope       |
 | Token contract rotation | Begin a rotation (add a `ver` to the accepted set) or retire a `ver` (remove it) — the only two writers of the global `token_contract` record ([§5.7](#57-versioning-and-compatibility-rules), [§7.3](#73-d1-logical-model)) |
 | Routing policy          | Publish a new versioned policy; canary; roll back                                                                                                                                                                            |
@@ -1765,7 +1767,7 @@ conversational turn look like a failure in every dashboard the journal feeds.
 
 | Surface                        | Purpose                                                                                               | Notes                                                                                                                                                                                                                                      |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Capability discovery           | Fetch active manifests for this installation/plan                                                     | Cacheable and revalidated; drives the Context Resolver                                                                                                                                                                                     |
+| Capability discovery           | Fetch active manifests for this installation/plan                                                     | Wire: `GET /v1/capabilities`. Auth: Bearer AAT on `Authorization` (installation-scoped; same verifier as submit — [§4.3.2](#432-identity-and-tenant-resolution), [§5.6](#56-token-contract)). Conditional revalidation: request `If-None-Match` against the prior response `ETag`; response carries `Cache-Control: private, must-revalidate`. Drives the Context Resolver |
 | Submit request                 | Create an AI request for a capability, with intent, context payload, idempotency key, and version pin | Returns the request reference immediately; streams if the capability's mode allows. For a `conversational` capability the same surface also carries the conversation id and the prior-turn transcript — there is no separate chat endpoint |
 | Cancel                         | Cancel an in-flight request by closing its stream                                                     | Connection-scoped; no separate endpoint, no cross-invocation state                                                                                                                                                                         |
 | Get request                    | Terminal state, and the validated result if the request completed                                     | Answers "what happened to this request?" after the stream is gone                                                                                                                                                                          |
@@ -2295,6 +2297,7 @@ schema definition.
 | `entitlement`      | What this installation may use and how much                                                                                      | installation id, plan, period bounds, request quota, token/cost budget, allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                                                                                                                                                                                                                           | One current + history    | History kept for billing disputes       |
 | `capability_grant` | Which capability versions a plan or installation may use, **and** the current lifecycle of a capability version (scope `global`) | scope (`global` / `plan` / `installation`), capability id, version, granted/revoked, lifecycle state (`active` / `deprecated` / `retired`), successor id, deprecated_at, retire_after, changed_at, changed_by                                                                                                                                                                                                                                                                                      | Low                      | Full history                            |
 | `token_contract`   | The platform-global set of accepted AAT `ver` values                                                                             | accepted `ver` value, added_at, retired_at, changed_by — one row per `ver`; the accepted set is the rows with no `retired_at`                                                                                                                                                                                                                                                                                                                                                                      | A handful of rows ever   | Full history                            |
+| `kill_switch`      | Active kill-switch state for the four control-plane scopes (A8)                                                                  | scope (`global` / `capability` / `installation` / `provider`), target (literal `"global"` at global scope; otherwise the capability / installation / provider id), active, changed_at, changed_by — one current row per (`scope`, `target`); config-cache kind `kill_switches` with key `global` or `{scope}:{target}`                                                                                                                                                                              | Low                      | Full history                            |
 | `routing_policy`   | Versioned target chains and selection rules                                                                                      | policy id, version, content pointer (R2 key for the immutable policy document — schema in [§4.3.7](#437-provider-router-and-policy-engine)), active_from, activated_by                                                                                                                                                                                                                                                                                                                             | Low                      | Full history                            |
 | `ai_request`       | One row per request: the journal spine                                                                                           | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, `routing_tier` (`standard` / `degraded`), `routing_decision` ([§4.3.7](#437-provider-router-and-policy-engine)), plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
 | `ai_attempt`       | One row per provider attempt                                                                                                     | request id, attempt no., provider, model, `selection_reason` ([§4.3.7](#437-provider-router-and-policy-engine)), outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                                                                                                                                                                            | 1–3 per request          | With the request                        |
@@ -2334,6 +2337,19 @@ within one cache TTL without a deploy. Rows are append-only history, so "which c
 accepted when, and who changed that" is answerable without a second store. There is deliberately no
 `retire_after` column here — unlike `capability_grant`, retirement is not scheduled
 ([§5.7](#57-versioning-and-compatibility-rules)).
+
+`kill_switch` **is the durable kill-switch row, and D1 is its only authority.** It is the target for
+every [§4.5](#45-control-plane) kill-switch mutation — global, per capability, per installation, per
+provider (A8). Activate and lift are control-plane operator writes that also journal `control_audit`;
+the request path never writes here. The config-cache kind is `kill_switches` (A5): a miss loads the
+current row for that (`scope`, `target`) from D1, and callers treat a miss or `active: false` as
+inactive — only an explicit `active: true` trips the switch. Cache keys are `global` at global scope
+and `{scope}:{target}` otherwise (for example `capability:<id>`, `installation:<id>`,
+`provider:<id>`), with the cached value carrying `{ active, scope, target }`. Entitlement, capability
+resolution, and the router read through the config cache
+([§6.1](#61-the-pipeline) stages 3–5, [§4.3.7](#437-provider-router-and-policy-engine)), so a cold
+isolate reconstructs kill-switch state from D1 exactly as it reconstructs grants and the token
+contract.
 
 **Entitlement status** takes `pending`, `active`, or `suspended`. A row is created `pending` by
 enroll with no economics set and is moved to `active` by entitlement assignment
@@ -3639,7 +3655,7 @@ provider behaviour.
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Environments        | Separate Worker environments with separate D1, R2, and DO namespaces. No shared state, no shared installations                                                                                                        |
 | Development clinics | Non-production installations enrolled against non-production platform environments, so a clinic's staging build never touches production quota or journals                                                            |
-| Configuration       | Prompts, manifests, and schemas are deployed artifacts; only genuinely volatile policy (kill switches, capability grants, routing policy version) is data in D1, read through the config cache                        |
+| Configuration       | Prompts, manifests, and schemas are deployed artifacts; only genuinely volatile policy (kill switches, capability grants, routing policy version, token-contract accepted-`ver` set) is data in D1, read through the config cache |
 | D1 region           | Pinned to the region serving the clinics. This is what keeps a cold-isolate config read cheap and is the condition under which a distributed cache stays unnecessary ([§9.15](#915-workers-kv-as-a-hot-config-cache)) |
 | Secrets             | Provider keys and signing material in the platform secret store only. Never in config files, never journaled, never logged. Rotation without redeploy                                                                 |
 | Promotion           | Contracts first: a capability or context-key change is reviewed as a contract change, deployed, then activated by cohort                                                                                              |
