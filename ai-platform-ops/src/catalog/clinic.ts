@@ -79,7 +79,7 @@ export const CLINIC_ENTITIES: EntityDef[] = [
     category: "clinic",
     title: "Submit request (SSE)",
     description:
-      "POST /v1/requests — may return 503 until orchestrator is wired. Streams SSE when live.",
+      "POST /v1/requests — live Worker orchestrator (guard → admit → journal → stream → credit). Streams SSE to one terminal event.",
     mode: "proxy",
     fields: [
       {
@@ -196,58 +196,39 @@ export const CLINIC_ENTITIES: EntityDef[] = [
     category: "clinic",
     title: "Capability discovery",
     description:
-      "Library-only discover() — no Worker route yet. Runs via ops local handler when bindings allow; otherwise returns structured gap notice.",
-    mode: "local",
+      "GET /v1/capabilities — AAT-authenticated discovery of granted active/deprecated manifests. Supports If-None-Match → 304.",
+    mode: "proxy",
     fields: [
       {
-        name: "installation_id",
-        label: "installation_id (principal.iss)",
+        name: "if_none_match",
+        label: "If-None-Match (optional ETag)",
         kind: "text",
-        required: true,
+        placeholder: '"abc…"',
+        help: "Quoted ETag from a prior discovery response for conditional revalidation.",
       },
       {
-        name: "org_id",
-        label: "org",
-        kind: "text",
-        required: true,
-      },
-      {
-        name: "branch_id",
-        label: "branch",
-        kind: "text",
-        required: true,
-      },
-      {
-        name: "role",
-        label: "role",
-        kind: "text",
-        required: true,
-        defaultValue: "clinician",
-      },
-      {
-        name: "scopes",
-        label: "scopes (JSON array)",
-        kind: "json",
-        defaultValue: "[]",
-      },
-      {
-        name: "actor_id",
-        label: "sub (actor)",
-        kind: "text",
-        required: true,
+        name: "aat",
+        label: "AAT override",
+        kind: "password",
+        fromConnection: "aat",
+        help: "Blank → connection strip AAT.",
       },
     ],
-    buildRequest: (values) => ({
-      mode: "local",
-      handler: "discover",
-      input: {
-        installation_id: requireValue(values, "installation_id"),
-        org_id: requireValue(values, "org_id"),
-        branch_id: requireValue(values, "branch_id"),
-        role: requireValue(values, "role"),
-        scopes: parseJsonField(values.scopes ?? "[]", "scopes") ?? [],
-        actor_id: requireValue(values, "actor_id"),
-      },
-    }),
+    buildRequest: (values) => {
+      const headers: Record<string, string> = {};
+      if (values.if_none_match?.trim()) {
+        headers["if-none-match"] = values.if_none_match.trim();
+      }
+      if (values.aat?.trim()) {
+        headers["x-ops-aat-override"] = values.aat.trim();
+      }
+      return {
+        mode: "proxy",
+        method: "GET",
+        path: "/v1/capabilities",
+        auth: "aat",
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      };
+    },
   },
 ];

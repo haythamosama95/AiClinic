@@ -163,6 +163,107 @@ export const CONTROL_ENTITIES: EntityDef[] = [
     }),
   },
   {
+    id: "control.entitle",
+    category: "control",
+    title: "Entitle installation",
+    description:
+      "POST /control/installations/{id}/entitle — activate pending entitlement economics and write capability_grant row(s) in one mutation. Rejects if not pending (409).",
+    mode: "proxy",
+    fields: [
+      installationIdField,
+      {
+        name: "period_start",
+        label: "period_start (ISO)",
+        kind: "text",
+        required: true,
+        placeholder: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        name: "period_end",
+        label: "period_end (ISO)",
+        kind: "text",
+        required: true,
+        placeholder: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        name: "request_quota",
+        label: "request_quota",
+        kind: "number",
+        required: true,
+        defaultValue: 1000,
+      },
+      {
+        name: "token_budget",
+        label: "token_budget",
+        kind: "number",
+        required: true,
+        defaultValue: 1_000_000,
+      },
+      {
+        name: "cost_budget",
+        label: "cost_budget",
+        kind: "number",
+        required: true,
+        defaultValue: 100,
+      },
+      {
+        name: "soft_threshold",
+        label: "soft_threshold (0–1)",
+        kind: "number",
+        required: true,
+        defaultValue: 0.8,
+        help: "Fraction of budget; crossing selects degraded routing tier.",
+      },
+      {
+        name: "allowed_capabilities",
+        label: "allowed_capabilities (JSON string array)",
+        kind: "json",
+        required: true,
+        defaultValue: '["clinic.visit_summary"]',
+      },
+      {
+        name: "grants",
+        label: "grants (JSON array)",
+        kind: "json",
+        required: true,
+        defaultValue:
+          '[{"capability_id":"clinic.visit_summary","capability_version":"1.0.0","scope":"installation"}]',
+        help: 'Each grant: { capability_id, capability_version, scope?: "installation"|"plan" }',
+      },
+    ],
+    buildRequest: (values) => {
+      const request_quota = Number(requireValue(values, "request_quota"));
+      const token_budget = Number(requireValue(values, "token_budget"));
+      const cost_budget = Number(requireValue(values, "cost_budget"));
+      const soft_threshold = Number(requireValue(values, "soft_threshold"));
+      const allowed_capabilities = parseJsonField(
+        requireValue(values, "allowed_capabilities"),
+        "allowed_capabilities",
+      );
+      const grants = parseJsonField(requireValue(values, "grants"), "grants");
+      return {
+        mode: "proxy",
+        method: "POST",
+        path: installationPath(
+          requireValue(values, "installation_id"),
+          "entitle",
+        ),
+        auth: "operator",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          period_start: requireValue(values, "period_start"),
+          period_end: requireValue(values, "period_end"),
+          request_quota,
+          token_budget,
+          cost_budget,
+          soft_threshold,
+          allowed_capabilities,
+          grants,
+        }),
+      };
+    },
+  },
+  {
     id: "control.delete",
     category: "control",
     title: "Soft-delete installation",

@@ -5,7 +5,7 @@ import type { EntityDef } from "./types";
  *
  * Sources: architecture §8.1 (enrollment), §4.5 (control plane),
  * §5.6/§5.7 (token contract), routing publish→canary→promote,
- * and catalog gaps (no entitlement HTTP writer yet).
+ * and live composition: entitle (`/entitle`), discovery HTTP, Worker orchestrator.
  */
 export type SetupStep = {
   id: string;
@@ -98,22 +98,35 @@ export const SETUP_STEPS: SetupStep[] = [
     },
   },
   {
-    id: "setup.entitlement-gap",
+    id: "setup.entitle",
     order: 4,
-    title: "Entitlement economics (gap)",
-    why: "Architecture splits identity (enroll) from economics (entitlement management). Guard reads pending as “nothing allowed”.",
+    title: "Entitle the installation",
+    why: "Enroll leaves entitlement pending with zero budgets. Stages 3 and 8 only admit after Entitlement management activates economics and writes capability grants.",
     doThis:
-      "There is no Worker HTTP writer for entitlement assignment yet (catalog gap). For local play, the next step (cohort activate) is the available control path that writes capability_grant rows.",
-    note: "Not available: plan quota, budget, period bounds, soft threshold → active. Do not expect submit to succeed on economics alone until that API exists or you patch D1 in tests.",
-    entityIds: [],
+      "Run entitle once on the pending installation: set period bounds, quotas/budgets, soft_threshold (0–1), allowed_capabilities, and at least one grant (e.g. clinic.visit_summary@1.0.0). Re-run returns 409 not_pending.",
+    note: "One mutation activates entitlement + grants + control_audit. This is not Band G (no plan catalogue / billing UI).",
+    entityIds: ["control.entitle"],
+    fieldSeeds: {
+      "control.entitle": {
+        period_start: "2026-08-01T00:00:00.000Z",
+        period_end: "2027-08-01T00:00:00.000Z",
+        request_quota: "1000",
+        token_budget: "1000000",
+        cost_budget: "100",
+        soft_threshold: "0.8",
+        allowed_capabilities: '["clinic.visit_summary"]',
+        grants:
+          '[{"capability_id":"clinic.visit_summary","capability_version":"1.0.0","scope":"installation"}]',
+      },
+    },
   },
   {
     id: "setup.cohort-activate",
     order: 5,
-    title: "Grant a capability (cohort activate)",
-    why: "Without a capability_grant (or plan grant), resolve/discover treat the capability as unavailable for the installation.",
+    title: "Cohort activate (optional)",
+    why: "Entitle already wrote installation grants. Cohort activate is the staged-rollout path for additional installations or version moves without re-entitling.",
     doThis:
-      "Activate clinic.visit_summary @ 1.0.0 for your enrolled installation_ids. Optional cohort_name labels the audit target.",
+      "Skip for a single freshly entitled install. Use when rolling a capability version to a named installation cohort.",
     entityIds: ["control.cohort-activate"],
     fieldSeeds: {
       "control.cohort-activate": {
@@ -188,15 +201,15 @@ export const SETUP_STEPS: SetupStep[] = [
     id: "setup.clinic-closeout",
     order: 10,
     title: "Clinic closeout & play",
-    why: "Platform trust is one-way: after enroll, the clinic stores platform base URL + AI-enabled and mints AATs. Then Clinic / Debug / E2E tabs are meaningful.",
+    why: "After entitle + routing, the clinic stores platform URL + AI-enabled, mints AATs, discovers capabilities over HTTP, and submits live SSE.",
     doThis:
-      "On clinic Supabase: persist platform URL and enrolled flag. Mint an AAT (issue_ai_token), paste it into the connection strip, decode claims, then try get-request / submit. Live submit may still 503 until the Worker injects an orchestrator.",
-    note: "Decode AAT and get-request are safe smoke checks. Submit is transport-ready but inference may be unwired.",
+      "On clinic Supabase: persist platform URL and enrolled flag. Mint an AAT, paste it into the connection strip, then run discovery, decode, get-request, and submit.",
+    note: "Discovery is GET /v1/capabilities (AAT). Submit runs the live Worker orchestrator end to end when the installation is entitled and routing is active.",
     entityIds: [
+      "clinic.discovery",
       "clinic.decode-aat",
       "clinic.get-request",
       "clinic.submit",
-      "clinic.discovery",
     ],
   },
 ];
