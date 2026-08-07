@@ -11,6 +11,7 @@ import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/ports.dart';
 import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
 import 'package:ai_clinic/core/ai/supabase_context_provider_port.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
@@ -31,12 +32,14 @@ class LiveVisitSummaryComposition {
     required this.mintPort,
     required this.submitPort,
     this.discoveryFailureReference,
+    this.discoveryFailureCode,
   });
 
   final AiFeatureHostDependencies dependencies;
   final AatMintPort mintPort;
   final HttpsSubmitPort submitPort;
   final String? discoveryFailureReference;
+  final TaxonomyCode? discoveryFailureCode;
 }
 
 /// Builds live-host dependencies with production mint/submit unless overridden.
@@ -118,6 +121,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
 
   var requiredKeys = kFirstAiRequiredContextKeys;
   String? discoveryFailureReference;
+  TaxonomyCode? discoveryFailureCode;
 
   if (availability.enrolled && baseUrl.isNotEmpty) {
     try {
@@ -130,6 +134,7 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
         }
       }
     } on DiscoveryAuthFailure catch (error) {
+      discoveryFailureCode = error.code;
       discoveryFailureReference = error.responseBody['request_reference']?.toString();
     }
   }
@@ -152,11 +157,12 @@ Future<LiveVisitSummaryComposition> composeLiveVisitSummaryHost({
       networkSpy: networkSpy,
       persistenceProbe: persistenceProbe,
       exportProbe: exportProbe,
-      autoInvoke: availability.enrolled && discoveryFailureReference == null,
+      autoInvoke: availability.enrolled && discoveryFailureCode == null,
     ),
     mintPort: mintPort,
     submitPort: submitPort,
     discoveryFailureReference: discoveryFailureReference,
+    discoveryFailureCode: discoveryFailureCode,
   );
 }
 
@@ -204,16 +210,32 @@ class _LiveVisitSummaryHostWidgetState extends State<LiveVisitSummaryHostWidget>
     if (_loading || _composition == null) {
       return const Center(child: Text(key: Key('live_host_loading'), 'Loading live host…'));
     }
-    final composition = _composition!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (composition.discoveryFailureReference != null)
-          RequestReferenceView(requestReference: composition.discoveryFailureReference!),
-        AiFeatureHostPage(key: ValueKey(widget.visitId), dependencies: composition.dependencies, embedded: true),
-      ],
+    return liveVisitSummaryHostBody(visitId: widget.visitId, composition: _composition!);
+  }
+}
+
+/// Shared live-host body for production page and widget-test entry (I3 composition).
+@visibleForTesting
+Widget liveVisitSummaryHostBody({
+  required String visitId,
+  required LiveVisitSummaryComposition composition,
+}) {
+  // §5.4 / FR-012: discovery installation_suspended hides AI features and instructs admin.
+  if (composition.discoveryFailureCode == TaxonomyCode.installationSuspended) {
+    return AiDegradedView(
+      mode: AiDegradedMode.installationSuspended,
+      child: const Text('Clinical workflows remain available.'),
     );
   }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (composition.discoveryFailureReference != null)
+        RequestReferenceView(requestReference: composition.discoveryFailureReference!),
+      AiFeatureHostPage(key: ValueKey(visitId), dependencies: composition.dependencies, embedded: true),
+    ],
+  );
 }
 
 /// Clinic AI hub — exposes implemented AI capabilities and design-system widgets.
@@ -563,11 +585,8 @@ class _LiveVisitSummaryHostState extends ConsumerState<_LiveVisitSummaryHost> {
             const SizedBox(height: AppSpacing.space3),
             if (_loading || _composition == null)
               const Center(child: Text(key: Key('live_host_loading'), 'Loading live host…'))
-            else ...[
-              if (_composition!.discoveryFailureReference != null)
-                RequestReferenceView(requestReference: _composition!.discoveryFailureReference!),
-              AiFeatureHostPage(key: ValueKey(widget.visitId), dependencies: _composition!.dependencies, embedded: true),
-            ],
+            else
+              liveVisitSummaryHostBody(visitId: widget.visitId, composition: _composition!),
           ],
         ),
       ),

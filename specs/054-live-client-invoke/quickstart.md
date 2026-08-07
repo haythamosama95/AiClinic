@@ -16,7 +16,7 @@ I3 wires the Flutter `/ai` visit-summary host to the live Worker path: productio
 - **Production AAT mint** — `SupabaseAatMintPort` calling clinic `public.issue_ai_token`.
 - **Production HTTPS submit** — `PlatformHttpsSubmitPort` posting to `POST /v1/requests` with A6 headers and streaming SSE.
 - **Discovery client** — `GET /v1/capabilities` per I2 `discovery-http.md` (Bearer AAT, etag/`If-None-Match`, auth-failure taxonomy mapping).
-- **Hub composition** — `_LiveVisitSummaryHost` / `composeLiveVisitSummaryHost` replaces unconfigured stubs; enables live invoke when enrolled.
+- **Hub composition** — `_LiveVisitSummaryHost` / `composeLiveVisitSummaryHost` replaces unconfigured stubs; enables live invoke when enrolled. Discovery `installation_suspended` hides AI features via `AiDegradedView` (§5.4); other discovery auth failures surface taxonomy + request reference with auto-invoke off.
 
 See [`spec.md`](./spec.md) for requirements and [`plan.md`](./plan.md) for file-level traceability.
 
@@ -39,7 +39,7 @@ cd frontend
 flutter test test/widget/ai/live_client_invoke_test.dart
 ```
 
-Expected: **12 passing tests** in this slice's file (eleven named T1–T11 cases plus one suspended-install discovery unit assertion).
+Expected: **13 passing tests** in this slice's file (eleven named T1–T11 cases, plus discovery `installation_suspended` hide-AI widget assertion and discovery-wire unit assertion).
 
 ## 5. Inspect the changes
 

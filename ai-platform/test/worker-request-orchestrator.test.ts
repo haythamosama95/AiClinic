@@ -36,6 +36,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -372,6 +373,7 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
     env.DB.prepare("DELETE FROM installation_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM routing_policy"),
+    env.DB.prepare("DELETE FROM kill_switch"),
   ]);
 
   await seedInstallationRow(installationId);
@@ -535,6 +537,8 @@ beforeAll(async () => {
     await applySql(env.DB, tokenContractMigrationSql);
     await applySql(env.DB, canaryMigrationSql);
     await applySql(env.DB, statusMigrationSql);
+    // I2 production config readers query kill_switch; apply so live guard can warm/miss.
+    await applySql(env.DB, killSwitchMigrationSql);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,

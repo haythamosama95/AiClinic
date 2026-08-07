@@ -5,10 +5,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
+import 'package:ai_clinic/core/ai/context_registration.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ai/discovery_client.dart';
 import 'package:ai_clinic/core/ai/https_submit_port.dart';
 import 'package:ai_clinic/core/ai/supabase_aat_mint_port.dart';
+import 'package:ai_clinic/core/ai/taxonomy.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
@@ -232,6 +234,8 @@ void main() {
       expect(harness.submitPort.submitCallCount, greaterThan(0));
       expect(harness.submitPort.idempotencyKeys, isNotEmpty);
       expect(harness.submitPort.inputs.single.capabilityId, kFirstAiCapabilityId);
+      // E3 resolution: required keys appear in the submit context payload (FR-002).
+      expect(harness.submitPort.inputs.single.context.containsKey(visitChiefComplaintV1Key), isTrue);
       expect(find.byKey(kAiAffordanceKey), findsOneWidget);
     });
 
@@ -386,7 +390,12 @@ void main() {
       final discovery = _SpyDiscoveryClient(
         nextAuthFailure: const DiscoveryAuthFailure(
           code: TaxonomyCode.unauthenticated,
-          responseBody: {'code': 'unauthenticated', 'request_reference': 'req-disc', 'trace_id': 't-1'},
+          responseBody: {
+            'code': 'unauthenticated',
+            'request_reference': 'req-disc',
+            'trace_id': 't-1',
+            // Must not be treated as a discovery success payload.
+          },
         ),
       );
       final harness = LiveClientInvokeHarness(discoveryClient: discovery);
@@ -396,11 +405,38 @@ void main() {
       await harness.pumpHost(tester, composition: composition);
 
       expect(discovery.fetchCallCount, greaterThan(0));
+      expect(composition.discoveryFailureCode, TaxonomyCode.unauthenticated);
+      expect(composition.discoveryFailureReference, 'req-disc');
       expect(find.textContaining('req-disc'), findsOneWidget);
       expect(find.textContaining('manifests'), findsNothing);
+      expect(composition.dependencies.autoInvoke, isFalse);
     });
 
-    test('discovery_auth_failure_installation_suspended', () async {
+    testWidgets('discovery_auth_failure_installation_suspended_hides_ai', (tester) async {
+      final discovery = _SpyDiscoveryClient(
+        nextAuthFailure: const DiscoveryAuthFailure(
+          code: TaxonomyCode.installationSuspended,
+          responseBody: {
+            'code': 'installation_suspended',
+            'request_reference': 'req-sus',
+            'trace_id': 'trace-sus',
+          },
+        ),
+      );
+      final harness = LiveClientInvokeHarness(discoveryClient: discovery);
+      addTearDown(harness.dispose);
+      final composition = await harness.composeAsync(client: _fakeClient);
+
+      await harness.pumpHost(tester, composition: composition);
+
+      expect(composition.discoveryFailureCode, TaxonomyCode.installationSuspended);
+      expect(find.byKey(kAiDegradedInstallationSuspendedKey), findsOneWidget);
+      expect(find.byKey(kAiAffordanceKey), findsNothing);
+      expect(find.textContaining('manifests'), findsNothing);
+      expect(harness.submitPort.submitCallCount, 0);
+    });
+
+    test('discovery_auth_failure_installation_suspended_wire', () async {
       final client = DiscoveryClient(
         httpClient: _FakeDiscoveryHttpClient(
           statusCode: 403,
@@ -415,7 +451,9 @@ void main() {
       await expectLater(
         client.fetchCapabilities(platformBaseUrl: testPlatformBaseUrl, aat: 'token'),
         throwsA(
-          isA<DiscoveryAuthFailure>().having((e) => e.code, 'code', TaxonomyCode.installationSuspended),
+          isA<DiscoveryAuthFailure>()
+              .having((e) => e.code, 'code', TaxonomyCode.installationSuspended)
+              .having((e) => e.responseBody.containsKey('manifests'), 'no manifests', isFalse),
         ),
       );
     });
