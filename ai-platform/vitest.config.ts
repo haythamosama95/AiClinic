@@ -25,6 +25,7 @@ export default defineConfig({
       "test/routing-policy-canary.test.ts",
       "test/token-contract-control.test.ts",
       "test/load/**",
+      "test/worker-request-orchestrator.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,
