@@ -95,6 +95,15 @@ CREATE TABLE installation_key (
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
 
+CREATE TABLE kill_switch (
+  scope TEXT NOT NULL,
+  target TEXT NOT NULL,
+  active INTEGER NOT NULL,
+  changed_at TEXT NOT NULL,
+  changed_by TEXT NOT NULL,
+  PRIMARY KEY (scope, target)
+);
+
 CREATE TABLE platform_counter (
   counter_id TEXT PRIMARY KEY NOT NULL,
   dimension_set TEXT NOT NULL,
@@ -116,15 +125,6 @@ CREATE TABLE token_contract (
   added_at TEXT NOT NULL,
   retired_at TEXT,
   changed_by TEXT NOT NULL
-);
-
-CREATE TABLE kill_switch (
-  scope TEXT NOT NULL,
-  target TEXT NOT NULL,
-  active INTEGER NOT NULL,
-  changed_at TEXT NOT NULL,
-  changed_by TEXT NOT NULL,
-  PRIMARY KEY (scope, target)
 );
 
 CREATE TABLE "usage_event" (

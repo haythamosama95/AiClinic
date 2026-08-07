@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
+import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import schemaSnapSql from "../schema.snap.sql?raw";
 import {
   ConfigCache,
@@ -400,6 +401,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, lifecycleMigrationSql);
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
+  await applyPlatformSchema(env.DB, killSwitchMigrationSql);
 });
 
 beforeEach(async () => {
