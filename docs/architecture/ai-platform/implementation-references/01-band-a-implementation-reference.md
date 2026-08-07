@@ -3,12 +3,14 @@
 - Purpose: Explain, in plain language, what Band A of the AI platform delivery plan has actually built — for someone who does not know the project or its technologies yet.
 - Read this when: onboarding to the AI platform, reviewing what Band A delivered, or preparing for Band B work.
 - Canonical for: Band A completion status and where to find the code and tests.
-- Usually paired with: [`../02-ai-platform-overview.md`](../02-ai-platform-overview.md) (architecture orientation), [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) (slice definitions), [`../01-ai-platform.md`](../01-ai-platform.md) (full architecture).
+- Usually paired with: `[../02-ai-platform-overview.md](../02-ai-platform-overview.md)` (architecture orientation), `[../03-ai-platform-delivery-plan.md](../03-ai-platform-delivery-plan.md)` (slice definitions), `[../01-ai-platform.md](../01-ai-platform.md)` (full architecture).
 - Not covered here: Band B onward, Flutter client work, or Supabase clinic-side changes.
 
 > **Status:** Band A (slices A1–A6) is **complete**. All 170 automated tests in `ai-platform/` pass. Nothing in Band A handles a real AI request end-to-end yet — it lays down the contracts and scaffolding that later bands build on.
 
 ---
+
+
 
 ## Table of Contents
 
@@ -27,13 +29,19 @@
 
 ---
 
+
+
 ## 1. The One-Paragraph Summary
 
 Band A built the **empty shell and the rulebook** for the AI platform. A Cloudflare Worker now exists in three isolated environments (development, staging, production), each with its own database, file storage, and stateful counter service. On top of that shell, six small features ("slices") froze typed contracts: how errors are reported, how AI requests are represented internally, how capabilities are described, how clinic data keys are named, what the database tables look like, and how the client will talk to the platform over HTTP with a streaming response. **No authentication, no quota checks, no prompt building, and no real AI calls happen yet.** Band A's job was to make those later steps impossible to get wrong by accident, because the types and tests already say what "correct" looks like.
 
 ---
 
+
+
 ## 2. Background for New Readers
+
+
 
 ### 2.1 What AiClinic is
 
@@ -49,17 +57,23 @@ Think of it as a **smart middleman**:
 - The platform composes a prompt, calls an AI provider, validates the answer, and streams the result back.
 - The clinic app displays the draft; a human decides whether to keep it.
 
+
+
 ### 2.3 The three-way split
 
-| Part | Knows about | Must never know about |
-| --- | --- | --- |
-| **Flutter client** | Clinic data, UI, how to show drafts | Prompts, models, providers |
-| **AI platform** | Prompts, routing, validation, journaling | Clinic table names, SQL |
-| **Supabase (clinic DB)** | Patients, visits, permissions | AI provider details |
 
-Band A work lives entirely in **`ai-platform/`**. The Flutter app and Supabase were not changed for Band A.
+| Part                     | Knows about                              | Must never know about      |
+| ------------------------ | ---------------------------------------- | -------------------------- |
+| **Flutter client**       | Clinic data, UI, how to show drafts      | Prompts, models, providers |
+| **AI platform**          | Prompts, routing, validation, journaling | Clinic table names, SQL    |
+| **Supabase (clinic DB)** | Patients, visits, permissions            | AI provider details        |
+
+
+Band A work lives entirely in `ai-platform/`. The Flutter app and Supabase were not changed for Band A.
 
 ---
+
+
 
 ## 3. What Band A Is and Why It Exists
 
@@ -71,37 +85,45 @@ Band A exists so that every later band is **constrained by code and tests**, not
 
 Band A contains six slices, implemented as six Spec Kit features:
 
-| Slice | Spec directory | What it delivered |
-| --- | --- | --- |
-| **A1** | `specs/015-ai-worker-skeleton/` | Worker deploy shell and three environments |
-| **A2** | `specs/016-ai-diagnostic-envelope/` | Error codes, support reference, trace IDs |
-| **A3** | `specs/017-ai-canonical-inference/` | Internal AI request/response shapes |
-| **A4** | `specs/018-ai-capability-manifest/` | Capability description schema |
+
+| Slice  | Spec directory                         | What it delivered                           |
+| ------ | -------------------------------------- | ------------------------------------------- |
+| **A1** | `specs/015-ai-worker-skeleton/`        | Worker deploy shell and three environments  |
+| **A2** | `specs/016-ai-diagnostic-envelope/`    | Error codes, support reference, trace IDs   |
+| **A3** | `specs/017-ai-canonical-inference/`    | Internal AI request/response shapes         |
+| **A4** | `specs/018-ai-capability-manifest/`    | Capability description schema               |
 | **A5** | `specs/019-ai-context-keys-d1-config/` | Context keys, database schema, config cache |
-| **A6** | `specs/020-ai-protocol-adapter-sse/` | HTTP ingress and SSE streaming framing |
+| **A6** | `specs/020-ai-protocol-adapter-sse/`   | HTTP ingress and SSE streaming framing      |
+
 
 Completing Band A also satisfies **review checkpoint CP1** in the delivery plan: *"Do the frozen contracts compose at build time?"*
 
 ---
 
+
+
 ## 4. Technologies in Plain Language
 
 You do not need to be a Cloudflare expert to understand what Band A built. Here is what each piece means.
 
-| Technology | What it is | How Band A uses it |
-| --- | --- | --- |
-| **Cloudflare Worker** | A small program that runs on Cloudflare's edge network, close to users | The AI gateway itself — one `worker.ts` entry point |
-| **Wrangler** | Cloudflare's command-line tool to develop and deploy Workers | Configures three environments in `wrangler.toml` |
-| **D1** | Cloudflare's SQLite database | Schema created by A5 migrations; not yet written to on the request path |
-| **R2** | Cloudflare's object storage (like S3) | Binding exists (A1); payload storage comes in Band C |
-| **Durable Object** | A single strongly-consistent stateful instance per key | Binding and empty class exist (A1); quota logic comes in Band B |
-| **SSE (Server-Sent Events)** | A way to stream events from server to client over one HTTP connection | Framing implemented by A6 (`text/event-stream`) |
-| **Vitest** | JavaScript test runner | All 170 Band A tests |
-| **TypeScript** | Typed JavaScript | Contracts are enforced at compile time |
+
+| Technology                   | What it is                                                             | How Band A uses it                                                      |
+| ---------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Cloudflare Worker**        | A small program that runs on Cloudflare's edge network, close to users | The AI gateway itself — one `worker.ts` entry point                     |
+| **Wrangler**                 | Cloudflare's command-line tool to develop and deploy Workers           | Configures three environments in `wrangler.toml`                        |
+| **D1**                       | Cloudflare's SQLite database                                           | Schema created by A5 migrations; not yet written to on the request path |
+| **R2**                       | Cloudflare's object storage (like S3)                                  | Binding exists (A1); payload storage comes in Band C                    |
+| **Durable Object**           | A single strongly-consistent stateful instance per key                 | Binding and empty class exist (A1); quota logic comes in Band B         |
+| **SSE (Server-Sent Events)** | A way to stream events from server to client over one HTTP connection  | Framing implemented by A6 (`text/event-stream`)                         |
+| **Vitest**                   | JavaScript test runner                                                 | All 170 Band A tests                                                    |
+| **TypeScript**               | Typed JavaScript                                                       | Contracts are enforced at compile time                                  |
+
 
 **Node.js 22+** is required to run tests locally (see the repo `.nvmrc`).
 
 ---
+
+
 
 ## 5. What Was Built — Slice by Slice
 
@@ -116,7 +138,7 @@ Each subsection states what the slice does in simple terms, what files implement
 - The `ai-platform/` directory as a deployable Cloudflare Worker project.
 - Three **isolated environments** in `wrangler.toml`: `development`, `staging`, `production`.
 - Each environment has its **own** D1 database, R2 bucket, and Durable Object namespace — they cannot accidentally share data.
-- A **`/health`** endpoint returning JSON with `build` (git SHA) and `environment` (wrangler environment name).
+- A `/health` endpoint returning JSON with `build` (git SHA) and `environment` (wrangler environment name).
 - **Startup validation**: if D1, R2, or the Durable Object binding is missing, the Worker throws immediately instead of failing on first use.
 
 **Key files:**
@@ -128,6 +150,8 @@ Each subsection states what the slice does in simple terms, what files implement
 **Not included:** Secrets, business logic, or any route beyond `/health` and (added later by A6) `/v1/requests`.
 
 ---
+
+
 
 ### 5.2 A2 — Diagnostic envelope
 
@@ -151,6 +175,8 @@ Each subsection states what the slice does in simple terms, what files implement
 **Not included:** Emitting these errors from real pipeline stages (that comes in Bands B–D). A6 wires the taxonomy to HTTP for adapter-level failures.
 
 ---
+
+
 
 ### 5.3 A3 — Canonical inference representation
 
@@ -176,6 +202,8 @@ Each subsection states what the slice does in simple terms, what files implement
 
 ---
 
+
+
 ### 5.4 A4 — Capability manifest schema and loader
 
 **In simple terms:** Define the "recipe card" that describes each AI feature the platform can run.
@@ -198,27 +226,29 @@ Each subsection states what the slice does in simple terms, what files implement
 
 ---
 
+
+
 ### 5.5 A5 — Context keys, D1 schema, and config cache
 
 **In simple terms:** Name the clinic data the platform may ask for, create the platform's database tables, and add a fast in-memory cache for configuration.
 
 **What was implemented:**
 
-**Context key vocabulary (`ai-platform/src/context/index.ts`):**
+**Context key vocabulary (**`ai-platform/src/context/index.ts`**):**
 
 - Keys follow `domain.concept@vN` — e.g. `visit.chief_complaint@v1`.
 - Keys must name **meaning**, not storage (`visits_table@v1` is rejected).
 - The **first published key shape** is `visit.chief_complaint@v1` with fields `visit_id`, `complaint`, `recorded_at`.
 - `validateKey()` and `validatePayload()` enforce format and shape rules.
 
-**D1 database schema (`ai-platform/migrations/20260731120000_platform_schema.sql`):**
+**D1 database schema (**`ai-platform/migrations/20260731120000_platform_schema.sql`**):**
 
 - All §7.3 entities: `installation`, `installation_key`, `entitlement`, `capability_grant`, `routing_policy`, `ai_request`, `ai_attempt`, `usage_event`, `usage_rollup`, `platform_counter`, `control_audit`.
 - Unique index on `ai_request.request_reference`.
 - Nullable `conversation_id` and `turn_ordinal` on `ai_request` (for future chat features).
 - Pinned by `ai-platform/schema.snap.sql` and migration tests.
 
-**Config cache (`ai-platform/src/config-cache/index.ts`):**
+**Config cache (**`ai-platform/src/config-cache/index.ts`**):**
 
 - In-memory map with a 30-second TTL per entity kind.
 - Entity kinds: `installations`, `keys`, `entitlements`, `grants`, `kill_switches`, `active_routing_policy`.
@@ -238,13 +268,15 @@ Each subsection states what the slice does in simple terms, what files implement
 
 ---
 
+
+
 ### 5.6 A6 — Protocol adapter and SSE framing
 
 **In simple terms:** Define how the clinic app sends a request and how it receives a streaming answer — even before any real AI work happens.
 
 **What was implemented:**
 
-- **`POST /v1/requests`** — the submit-request endpoint (wired in `worker.ts`).
+- `POST /v1/requests` — the submit-request endpoint (wired in `worker.ts`).
 - **Ingress checks** before any other work:
   - Body size limit (1 MiB) → `request_too_large`
   - Required headers: `x-idempotency-key`, `x-capability-version`, `x-trace-id` (optional but validated if present)
@@ -265,15 +297,21 @@ Each subsection states what the slice does in simple terms, what files implement
 
 ---
 
+
+
 ## 6. Architecture Diagrams — What Is Finished
 
 Legend used in all diagrams below:
 
-| Symbol | Meaning |
-| --- | --- |
-| ✅ | Implemented and tested in Band A |
-| ⬜ | Designed in architecture, not built yet |
-| 🔶 | Partially present (scaffolding or contract only) |
+
+| Symbol | Meaning                                          |
+| ------ | ------------------------------------------------ |
+| ✅      | Implemented and tested in Band A                 |
+| ⬜      | Designed in architecture, not built yet          |
+| 🔶     | Partially present (scaffolding or contract only) |
+
+
+
 
 ### 6.1 System landscape
 
@@ -306,6 +344,8 @@ flowchart TB
     style edge fill:#e8f5e9,stroke:#2e7d32
     style providers fill:#f5f5f5,stroke:#999
 ```
+
+
 
 **What Band A actually turned on:** the Worker process, its three isolated environments, the `/health` endpoint, the `POST /v1/requests` SSE framing, the D1 table definitions, and the in-memory config cache module. Everything else in this picture is still ahead.
 
@@ -351,6 +391,8 @@ flowchart TB
     style JRN fill:#fff9c4,stroke:#f9a825
 ```
 
+
+
 **How to read this:** green boxes are done. Yellow boxes have scaffolding (bindings, schema, or empty classes) but no behaviour on the request path. Grey boxes are entirely future work.
 
 ### 6.3 The three contracts — what is frozen
@@ -372,19 +414,25 @@ flowchart LR
     style CI fill:#c8e6c9,stroke:#2e7d32
 ```
 
+
+
 The **Token Contract** (clinic-issued AI Access Token) is not built until Band B.
 
 ### 6.4 Platform stores — what exists today
 
-| Store | Band A status | What exists now |
-| --- | --- | --- |
-| **D1** | 🔶 Schema only | Tables and indexes created by migration; no request-path writes |
-| **R2** | 🔶 Binding only | Bucket binding per environment; no `PutObject` calls yet |
-| **Durable Object** | 🔶 Empty class | `GatewayObject` class registered; no quota logic |
-| **Config cache** | ✅ Module complete | In-isolate TTL cache with D1 reader port; not yet wired to live pipeline |
-| **Secrets** | ⬜ Not configured | Deferred until first provider adapter (Band D) |
+
+| Store              | Band A status     | What exists now                                                          |
+| ------------------ | ----------------- | ------------------------------------------------------------------------ |
+| **D1**             | 🔶 Schema only    | Tables and indexes created by migration; no request-path writes          |
+| **R2**             | 🔶 Binding only   | Bucket binding per environment; no `PutObject` calls yet                 |
+| **Durable Object** | 🔶 Empty class    | `GatewayObject` class registered; no quota logic                         |
+| **Config cache**   | ✅ Module complete | In-isolate TTL cache with D1 reader port; not yet wired to live pipeline |
+| **Secrets**        | ⬜ Not configured  | Deferred until first provider adapter (Band D)                           |
+
 
 ---
+
+
 
 ## 7. Frozen Contracts at a Glance
 
@@ -394,13 +442,15 @@ These are the "rulebooks" later bands must follow. They are enforced by TypeScri
 
 18 codes, each with HTTP status, retryability, and quota flag. Example:
 
-| Code | HTTP | Retryable? | Meaning (plain English) |
-| --- | --- | --- | --- |
-| `unauthenticated` | 401 | After re-mint | Token is missing or invalid |
-| `quota_exhausted` | 429 | Not until reset | Installation used its budget |
-| `request_too_large` | 413 | No | Request body or context too big |
-| `validation_failed` | 422 | User choice | AI output failed checks |
-| `internal_error` | 500 | Yes | Catch-all for unknown failures |
+
+| Code                | HTTP | Retryable?      | Meaning (plain English)         |
+| ------------------- | ---- | --------------- | ------------------------------- |
+| `unauthenticated`   | 401  | After re-mint   | Token is missing or invalid     |
+| `quota_exhausted`   | 429  | Not until reset | Installation used its budget    |
+| `request_too_large` | 413  | No              | Request body or context too big |
+| `validation_failed` | 422  | User choice     | AI output failed checks         |
+| `internal_error`    | 500  | Yes             | Catch-all for unknown failures  |
+
 
 Full table: `ai-platform/src/errors.ts`.
 
@@ -409,6 +459,8 @@ Full table: `ai-platform/src/errors.ts`.
 - Pattern: `XXXX-XXXX` (eight Crockford base32 characters)
 - Example: `7QK4-2B9F`
 - Purpose: a support handle the user can read aloud — not the internal database primary key
+
+
 
 ### 7.3 Canonical inference shapes (A3)
 
@@ -427,6 +479,8 @@ Ten groups every capability manifest must include. Default interaction mode: `si
 - Pattern: `domain.concept@vN` (e.g. `visit.chief_complaint@v1`)
 - First published shape: `visit_id` (UUID), `complaint` (string, max 10 000 chars), `recorded_at` (optional ISO 8601)
 
+
+
 ### 7.6 SSE event protocol (A6)
 
 Every stream:
@@ -440,7 +494,11 @@ Required request headers: `x-idempotency-key`, `x-capability-version`. Optional:
 
 ---
 
+
+
 ## 8. How Testing Was Carried Out
+
+
 
 ### 8.1 The completion rule
 
@@ -457,32 +515,40 @@ Some tests spin up a local Worker via Miniflare (the Wrangler dev runtime) to ex
 
 ### 8.3 Test layers by slice
 
-| Slice | Test layer | What is being proved |
-| --- | --- | --- |
-| **A1** | Infra / config | Three environments deploy; `/health` returns build + environment; no shared bindings; missing binding fails at startup |
-| **A2** | Unit + contract | One case per error code (HTTP, retry, quota); reference format valid and unique; trace ID on every log line; unknown code → `internal_error`; logs never contain prompts or credentials |
-| **A3** | Contract | Round-trip encode/decode; provider-shaped names rejected; chunk kinds exhaustive; exactly one terminal flag per sequence |
-| **A4** | Contract + build | Valid manifest loads; one failure per omitted group; in-place edit fails registry check; `interaction_mode` defaults; conversational fields rejected on `single_shot` |
-| **A5** | Contract + migration + spy | Key format and shape validation; migrations apply cleanly; schema snapshot matches; one presence case per D1 entity; cache cold = 1 D1 read, warm = 0 reads; D1 miss is typed error |
-| **A6** | Integration | Oversized body rejected; header parse cases; stream opens with `accepted`; heartbeat while idle; one terminal per outcome; abort yields `cancelled`; no duplicate terminal |
+
+| Slice  | Test layer                 | What is being proved                                                                                                                                                                    |
+| ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A1** | Infra / config             | Three environments deploy; `/health` returns build + environment; no shared bindings; missing binding fails at startup                                                                  |
+| **A2** | Unit + contract            | One case per error code (HTTP, retry, quota); reference format valid and unique; trace ID on every log line; unknown code → `internal_error`; logs never contain prompts or credentials |
+| **A3** | Contract                   | Round-trip encode/decode; provider-shaped names rejected; chunk kinds exhaustive; exactly one terminal flag per sequence                                                                |
+| **A4** | Contract + build           | Valid manifest loads; one failure per omitted group; in-place edit fails registry check; `interaction_mode` defaults; conversational fields rejected on `single_shot`                   |
+| **A5** | Contract + migration + spy | Key format and shape validation; migrations apply cleanly; schema snapshot matches; one presence case per D1 entity; cache cold = 1 D1 read, warm = 0 reads; D1 miss is typed error     |
+| **A6** | Integration                | Oversized body rejected; header parse cases; stream opens with `accepted`; heartbeat while idle; one terminal per outcome; abort yields `cancelled`; no duplicate terminal              |
+
+
+
 
 ### 8.4 Test file map
 
-| Test file | Primary slice | Test count (approx.) |
-| --- | --- | --- |
-| `test/env-deploys.test.ts` | A1 | 6 |
-| `test/health.test.ts` | A1 | 2 |
-| `test/taxonomy.test.ts` | A2 | 25 |
-| `test/error-body.test.ts` | A2 | 17 |
-| `test/reference.test.ts` | A2 | 4 |
-| `test/trace.test.ts` | A2 | 2 |
-| `test/log-redaction.test.ts` | A2 | 2 |
-| `test/canonical.test.ts` | A3 | 16 |
-| `test/manifest.test.ts` | A4 | 31 |
-| `test/context.test.ts` | A5 | 17 |
-| `test/migrations.test.ts` | A5 | 12 |
-| `test/config-cache.test.ts` | A5 | 13 |
-| `test/adapter.test.ts` | A6 | 28 |
+
+| Test file                    | Primary slice | Test count (approx.) |
+| ---------------------------- | ------------- | -------------------- |
+| `test/env-deploys.test.ts`   | A1            | 6                    |
+| `test/health.test.ts`        | A1            | 2                    |
+| `test/taxonomy.test.ts`      | A2            | 25                   |
+| `test/error-body.test.ts`    | A2            | 17                   |
+| `test/reference.test.ts`     | A2            | 4                    |
+| `test/trace.test.ts`         | A2            | 2                    |
+| `test/log-redaction.test.ts` | A2            | 2                    |
+| `test/canonical.test.ts`     | A3            | 16                   |
+| `test/manifest.test.ts`      | A4            | 31                   |
+| `test/context.test.ts`       | A5            | 17                   |
+| `test/migrations.test.ts`    | A5            | 12                   |
+| `test/config-cache.test.ts`  | A5            | 13                   |
+| `test/adapter.test.ts`       | A6            | 28                   |
+
+
+
 
 ### 8.5 Spy-based tests
 
@@ -496,6 +562,8 @@ Several invariants are about work **not** being done (for example, "warm cache p
 - Writing journal rows during a request
 
 ---
+
+
 
 ## 9. Repository Map
 
@@ -535,26 +603,32 @@ Each `specs/NNN-*/quickstart.md` has manual verification steps for that slice.
 
 ---
 
+
+
 ## 10. What Band A Does Not Do Yet
 
 This section is as important as what was built. Band A is **contracts and scaffolding**, not a working AI product.
 
-| Capability | Status after Band A |
-| --- | --- |
-| Log in / verify clinic identity | Not built (Band B) |
-| Check quotas or rate limits | Not built (Band B) |
-| Resolve which capability to run | Not built (Band C) |
-| Validate context payload on a request | Not built (Band C) |
-| Write request journal rows | Not built (Band C) |
-| Compose prompts | Not built (Band D) |
-| Call any AI provider | Not built (Band D) |
-| Validate AI output | Not built (Band D) |
-| Flutter client SDK | Not built (Band E) |
-| Any visible AI button in the app | Not built (Band E) |
+
+| Capability                            | Status after Band A |
+| ------------------------------------- | ------------------- |
+| Log in / verify clinic identity       | Not built (Band B)  |
+| Check quotas or rate limits           | Not built (Band B)  |
+| Resolve which capability to run       | Not built (Band C)  |
+| Validate context payload on a request | Not built (Band C)  |
+| Write request journal rows            | Not built (Band C)  |
+| Compose prompts                       | Not built (Band D)  |
+| Call any AI provider                  | Not built (Band D)  |
+| Validate AI output                    | Not built (Band D)  |
+| Flutter client SDK                    | Not built (Band E)  |
+| Any visible AI button in the app      | Not built (Band E)  |
+
 
 Calling `POST /v1/requests` today opens an SSE stream with an `accepted` event and then waits for a stub or future pipeline to emit content and a terminal event. **No inference happens.**
 
 ---
+
+
 
 ## 11. Checkpoint CP1
 
@@ -574,17 +648,21 @@ The next checkpoint, **CP2 (after B4)**, asks whether a request can be authentic
 
 ---
 
+
+
 ## 12. Where to Read More
 
-| Document | Use when |
-| --- | --- |
-| [`../02-ai-platform-overview.md`](../02-ai-platform-overview.md) | You want the full architecture story in readable form |
-| [`../03-ai-platform-delivery-plan.md`](../03-ai-platform-delivery-plan.md) | You need slice definitions, test requirements, or Band B+ ordering |
-| [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md) | You need what Band B actually built (trust, guard, admission) |
-| [`../01-ai-platform.md`](../01-ai-platform.md) | You need the authoritative specification |
-| `specs/015` through `specs/020` | You need acceptance criteria for a specific slice |
-| `ai-platform/README.md` | You need to run tests or deploy the Worker |
-| [`AGENTS.md`](../../AGENTS.md) | You are an AI agent orienting to the repo |
+
+| Document                                                                         | Use when                                                           |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `[../02-ai-platform-overview.md](../02-ai-platform-overview.md)`                 | You want the full architecture story in readable form              |
+| `[../03-ai-platform-delivery-plan.md](../03-ai-platform-delivery-plan.md)`       | You need slice definitions, test requirements, or Band B+ ordering |
+| `[02-band-b-implementation-reference.md](02-band-b-implementation-reference.md)` | You need what Band B actually built (trust, guard, admission)      |
+| `[../01-ai-platform.md](../01-ai-platform.md)`                                   | You need the authoritative specification                           |
+| `specs/015` through `specs/020`                                                  | You need acceptance criteria for a specific slice                  |
+| `ai-platform/README.md`                                                          | You need to run tests or deploy the Worker                         |
+| `[AGENTS.md](../../AGENTS.md)`                                                   | You are an AI agent orienting to the repo                          |
+
 
 **Run the test suite:**
 
@@ -604,4 +682,4 @@ curl http://localhost:8787/health
 
 ---
 
-*This document describes Band A as implemented. For Band B (trust, identity, admission), see [`02-band-b-implementation-reference.md`](02-band-b-implementation-reference.md). Do not rewrite frozen contract sections without an architecture amendment.*
+*This document describes Band A as implemented. For Band B (trust, identity, admission), see* `[02-band-b-implementation-reference.md](02-band-b-implementation-reference.md)`*. Do not rewrite frozen contract sections without an architecture amendment.*
