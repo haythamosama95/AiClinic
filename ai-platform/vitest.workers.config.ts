@@ -27,6 +27,7 @@ export default defineWorkersConfig({
       "test/config-readers.test.ts",
       "test/load/load-and-cost.test.ts",
       "test/worker-request-orchestrator.test.ts",
+      "test/entitle-grant.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
