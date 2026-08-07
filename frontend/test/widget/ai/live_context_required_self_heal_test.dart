@@ -1,12 +1,8 @@
 // I4 live context_required self-heal widget/integration suite (T5–T8).
 // ignore_for_file: depend_on_referenced_packages
 
-import 'dart:io';
-
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
-import 'package:ai_clinic/core/ai/context_registration.dart';
 import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
-import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/surface/first_ai_feature_surface.dart';
 import 'package:ai_clinic/features/ai/surface/request_reference_view.dart';

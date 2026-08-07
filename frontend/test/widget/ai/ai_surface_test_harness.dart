@@ -5,7 +5,6 @@ import 'dart:io';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
-import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/features/ai/availability/ai_availability.dart';
