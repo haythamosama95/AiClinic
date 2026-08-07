@@ -27,6 +27,7 @@ export default defineConfig({
       "test/discovery-http.test.ts",
       "test/config-readers.test.ts",
       "test/load/**",
+      "test/worker-request-orchestrator.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,

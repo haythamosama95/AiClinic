@@ -26,6 +26,7 @@ export default defineWorkersConfig({
       "test/discovery-http.test.ts",
       "test/config-readers.test.ts",
       "test/load/load-and-cost.test.ts",
+      "test/worker-request-orchestrator.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,

@@ -2,9 +2,10 @@
 
 **Frozen by:** Slice A6 — Protocol adapter and SSE framing
 **Implements:** §4.3.1, §5.5 of `docs/architecture/ai-platform/01-ai-platform.md`
-**Status:** Frozen. Later slices (D4, E2, H1) **consume** this contract; the no-rework rule applies
-(Delivery Plan §2.3). A later slice may **extend** (e.g. H1 adds a fourth terminal kind) but may
-not **rewrite** anything below.
+**Status:** Frozen. Later slices (D4, E2, H1, I1) **consume** this contract; the no-rework rule
+applies (Delivery Plan §2.3). A later slice may **extend** (e.g. H1 adds a fourth terminal kind;
+I1 adds the pre-stream accept gate in §8) but may **not rewrite** anything below except as that
+documented extension requires.
 
 ---
 
@@ -39,7 +40,7 @@ explicit `event:` type. The vocabulary:
 
 | Event type | When | Carries | Frozen by |
 | --- | --- | --- | --- |
-| `accepted` | Opening — the first event on every stream, emitted exactly once before any content or terminal event | The request reference (A2's `generateRequestReference` format) | A6 (§5.5 rule 1) |
+| `accepted` | Opening — the first event on every **accepted** stream, emitted exactly once before any content or terminal event, and **only after** the pre-stream accept gate succeeds (§8) | The request reference (A2's `generateRequestReference` format) | A6 (§5.5 rule 1); deferred until accept by I1 composition (§8) |
 | `heartbeat` | While the stream is open and idle (no content events), to keep intermediaries from closing the connection | Nothing — neither content nor terminal | A6 owns framing (§5.5 rule 3); autonomous idle emission is D4's broker |
 | Content events | Typed per A3's canonical chunk kinds (`text_delta`, `partial_structured`, `usage`, `provider_note`) | The chunk payload and the explicit type | A3 (kind vocabulary); A6 provides framing only — the relay is D4 (§4.3.10) |
 | `completed` | Terminal — the request completed with a validated result | The validated result | A6 (§5.5 rule 4) |
@@ -125,3 +126,42 @@ HTTP 503 and opens no stream — the Worker live `POST /v1/requests` route there
 D4 wires the broker. Production stubs (`StubEventSourceController`, mode-gated defaults,
 `attemptDuplicateTerminal`) do **not** live in `src/adapter.ts`; they live in the test harness
 (`test/adapter.test.ts` and `test/helpers/adapter-stub.ts`).
+
+`eventSource` is invoked **only after** the stream has been accepted: the SSE response is open and
+the `accepted` event has been enqueued (§8). It drives content, heartbeats, and terminal events; it
+MUST NOT be the path that returns pre-accept guard rejections as HTTP.
+
+---
+
+## 8. Pre-stream accept gate (composition extension — I1)
+
+**Why this section exists.** Architecture requires: (1) guard rejection before acceptance is a
+taxonomy **HTTP** response with **no** SSE stream and **no** `ai_request` row (§6.1 stages 1–8 vs 9;
+§4.3.11; §6.2); (2) the journal row is written synchronously **before the stream opens**
+(§4.3.11); (3) `accepted` is the opening event of an *accepted* stream (§5.5 rule 1) — not a signal
+that the guard is about to run. A6's original injectable shell emitted `accepted` and then called
+`eventSource`, which is sufficient for harness stubs that never run the guard, but is incomplete
+for Band I live composition. This section is the **minimal A6 surface extension** that makes
+§4.3.1 / §5.5 / §6.1 composable without inventing a parallel HTTP path that bypasses the adapter.
+
+**Rule.** After ingress size / body parse / required headers succeed and a request reference is
+allocated, and **before** any `text/event-stream` response is returned and **before** `accepted` is
+emitted, the adapter MUST invoke an optional injected **pre-stream accept gate**
+(`preAccept` / equivalent name on `HandleAdapterRequestOptions`).
+
+| Gate result | Adapter wire behaviour |
+| --- | --- |
+| Omitted (A6 harness default) | Behave as the original shell: open SSE, emit `accepted`, then call `eventSource`. Preserves A6 unit/integration suites. |
+| `{ ok: true }` (or equivalent success) | Open SSE (`200` + `text/event-stream`), emit exactly one `accepted` carrying the allocated request reference (and optional `degraded_notice`), then call `eventSource`. |
+| `{ ok: false, code: <taxonomy> }` (pre-accept failure) | Return taxonomy HTTP via A2 `buildErrorBody` + `liveHttpStatusForCode` for that code; **open no stream**; **emit no `accepted`**; do **not** call `eventSource`. Journal insert remains C3 / stage 9 — a pre-accept failure MUST NOT leave an `ai_request` row. |
+
+**Composition binding (I1).** Live `POST /v1/requests` supplies `preAccept` that runs the existing
+`runGuard` path through acceptance (stage 9 journal on success) and supplies `eventSource` that
+drives post-accept work (prompt / route / invoke / broker / validate / terminal / settle). I1 may
+**modify `ai-platform/src/adapter.ts` framing** to implement this deferred-`accepted` gate as
+in-scope composition work; that is an extension of this frozen surface, not a new platform contract
+and not a rewrite of §§1–7 above.
+
+**Non-goals of this extension.** No new taxonomy codes, no new SSE event types, no change to the
+one-terminal-event invariant, no change to connection-scoped cancel, and no second HTTP error
+envelope beyond A2's existing body.
