@@ -23,6 +23,8 @@ export default defineWorkersConfig({
       "test/cohort-activate-promote.test.ts",
       "test/routing-policy-canary.test.ts",
       "test/token-contract-control.test.ts",
+      "test/discovery-http.test.ts",
+      "test/config-readers.test.ts",
       "test/load/load-and-cost.test.ts",
     ],
     fileParallelism: false,

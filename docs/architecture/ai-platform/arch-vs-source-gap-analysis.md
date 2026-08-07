@@ -170,12 +170,12 @@ Architecture states surfaces by **purpose and fields**, not always by URL. Sourc
 | Field | Value |
 |-------|--------|
 | **Purpose** | Fetch active capability manifests for this installation/plan; drive Context Resolver; announce deprecation/retirement |
-| **Auth** | Installation-scoped (AAT implied) |
-| **Transport** | HTTPS; cacheable; revalidate by version/etag |
-| **Request** | Not field-detailed in architecture beyond “fetch active manifests”; etag/conditional GET expected by `buildDiscoveryResponse` |
+| **Auth** | Bearer AAT on `Authorization` (installation-scoped; same verifier as submit) — fixed by §5.5 |
+| **Transport** | HTTPS; `GET /v1/capabilities` — path fixed by §5.5; cacheable; revalidate by etag |
+| **Request** | Conditional GET via `If-None-Match` against prior response `ETag` (fixed by §5.5); response `Cache-Control: private, must-revalidate` |
 | **Response** | Active manifests (Identity: id, version, title, lifecycle, successor; Context requirements; Interaction/Output modes; etc.) |
 | **Source today** | `capability.discover` / `buildDiscoveryResponse` — **no Worker route** |
-| **Suggested future webservice op** | `DiscoverCapabilities` → e.g. `GET /v1/capabilities` (path not fixed by architecture) |
+| **Suggested future webservice op** | `DiscoverCapabilities` → `GET /v1/capabilities` (path fixed by §5.5) |
 
 ### 4.2 Submit request (primary inference)
 
