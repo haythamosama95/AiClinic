@@ -118,6 +118,15 @@ CREATE TABLE token_contract (
   changed_by TEXT NOT NULL
 );
 
+CREATE TABLE kill_switch (
+  scope TEXT NOT NULL,
+  target TEXT NOT NULL,
+  active INTEGER NOT NULL,
+  changed_at TEXT NOT NULL,
+  changed_by TEXT NOT NULL,
+  PRIMARY KEY (scope, target)
+);
+
 CREATE TABLE "usage_event" (
   usage_event_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,

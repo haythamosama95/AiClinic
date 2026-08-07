@@ -2,6 +2,8 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
+import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
+import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import {
   ConfigCache,
@@ -135,16 +137,6 @@ async function seedRoutingPolicy(): Promise<void> {
     .run();
 }
 
-async function seedTokenContract(): Promise<void> {
-  await env.DB
-    .prepare(
-      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
-       VALUES (?, ?, NULL, 'operator-test')`,
-    )
-    .bind(FIXTURE_TOKEN_VER, FIXTURE_NOW)
-    .run();
-}
-
 function createSpiedD1Reader(db: D1Database): D1Reader & { readCount: () => number } {
   const inner = createD1ConfigReader(db);
   const read = vi.fn(inner.read.bind(inner));
@@ -157,6 +149,8 @@ function createSpiedD1Reader(db: D1Database): D1Reader & { readCount: () => numb
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, tokenContractMigrationSql);
+  await applyPlatformSchema(env.DB, canaryMigrationSql);
+  await applyPlatformSchema(env.DB, statusMigrationSql);
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
 });
 
@@ -268,8 +262,6 @@ describe("T11 config_reader_presence_active_routing_policy", () => {
 
 describe("T12 config_reader_presence_token_contract", () => {
   it("serves a present token_contract accepted ver through the production D1 config reader", async () => {
-    await seedTokenContract();
-
     const cache = new ConfigCache();
     const reader = createD1ConfigReader(env.DB);
     const row = await loadConfig(cache, reader, "token_contracts", FIXTURE_TOKEN_VER);

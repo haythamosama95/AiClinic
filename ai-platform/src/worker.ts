@@ -1,5 +1,6 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { handleAdapterRequest } from "./adapter";
+import { handleDiscoveryRequest } from "./discovery";
 import {
   createSecretOperatorAuth,
   dispatchControlRequest,
@@ -214,6 +215,14 @@ export default {
       return Response.json({
         build: runtimeEnv.BUILD_SHA,
         environment: runtimeEnv.ENVIRONMENT,
+      });
+    }
+
+    if (url.pathname === "/v1/capabilities" && request.method === "GET") {
+      const runtimeEnv = env as Env;
+      return handleDiscoveryRequest(request, {
+        DB: runtimeEnv.DB,
+        R2: runtimeEnv.R2,
       });
     }
 

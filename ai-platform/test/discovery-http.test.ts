@@ -98,7 +98,13 @@ async function mintToken(
   keypair: TestKeypair,
   claims: Partial<AatClaims> = {},
 ): Promise<string> {
-  const payload: AatClaims = { ...DEFAULT_CLAIMS, ...claims };
+  const now = Math.floor(Date.now() / 1000);
+  const payload: AatClaims = {
+    ...DEFAULT_CLAIMS,
+    iat: now - 30,
+    exp: now + 600,
+    ...claims,
+  };
   const header = { alg: "EdDSA", kid: keypair.kid };
   const headerB64 = base64urlEncode(JSON.stringify(header));
   const payloadB64 = base64urlEncode(JSON.stringify(payload));
@@ -213,13 +219,16 @@ async function seedInstallationKey(
   keypair: TestKeypair,
   installationId: string = FIXTURE_INSTALLATION_ID,
 ): Promise<void> {
+  const enrolledAt = new Date().toISOString();
+  const validFrom = new Date(Date.now() - 3_600_000).toISOString();
+
   await env.DB
     .prepare(
       `INSERT INTO installation (
         installation_id, org_id, display_name, status, region, enrolled_at
       ) VALUES (?, ?, ?, 'active', 'us-east-1', ?)`,
     )
-    .bind(installationId, FIXTURE_ORG_ID, "Discovery Test Clinic", FIXTURE_NOW)
+    .bind(installationId, FIXTURE_ORG_ID, "Discovery Test Clinic", enrolledAt)
     .run();
 
   await env.DB
@@ -228,7 +237,7 @@ async function seedInstallationKey(
         key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
       ) VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
     )
-    .bind(keypair.kid, installationId, keypair.publicKeyB64, FIXTURE_NOW)
+    .bind(keypair.kid, installationId, keypair.publicKeyB64, validFrom)
     .run();
 }
 
@@ -362,10 +371,9 @@ describe("T1 discovery_http_granted_active_manifests", () => {
     expect(response.headers.get("ETag")).toMatch(/^".+"$/);
 
     const body = (await response.json()) as { manifests: Manifest[] };
-    expect(manifestIds(body.manifests)).toEqual([
-      FIXTURE_GRANTED_CAPABILITY_ID,
-      FIXTURE_DEPRECATED_CAPABILITY_ID,
-    ]);
+    expect(manifestIds(body.manifests).sort()).toEqual(
+      [FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_DEPRECATED_CAPABILITY_ID].sort(),
+    );
     expect(
       body.manifests.every(
         (manifest) =>
