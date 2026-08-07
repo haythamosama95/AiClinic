@@ -136,7 +136,55 @@ type AcceptContext =
   | { kind: "fresh"; guard: GuardFreshSuccess }
   | { kind: "idempotent"; guard: GuardIdempotentSuccess };
 
-const acceptContexts = new Map<string, AcceptContext>();
+type AcceptContextStore = Map<string, AcceptContext>;
+
+type BrokerTerminalState = "completed" | "cancelled" | "failed";
+
+/** Pushable async iterable so invoke and broker run concurrently (live relay). */
+function createPushableInvocationEvents(): {
+  push(event: InvocationStreamEvent): void;
+  end(): void;
+  iterable: AsyncIterable<InvocationStreamEvent>;
+} {
+  const buffer: InvocationStreamEvent[] = [];
+  let done = false;
+  let wake: (() => void) | undefined;
+
+  const notify = (): void => {
+    const resume = wake;
+    wake = undefined;
+    resume?.();
+  };
+
+  return {
+    push(event) {
+      if (done) {
+        return;
+      }
+      buffer.push(event);
+      notify();
+    },
+    end() {
+      done = true;
+      notify();
+    },
+    iterable: {
+      async *[Symbol.asyncIterator]() {
+        while (true) {
+          while (buffer.length > 0) {
+            yield buffer.shift() as InvocationStreamEvent;
+          }
+          if (done) {
+            return;
+          }
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      },
+    },
+  };
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -407,6 +455,7 @@ function replayIdempotentTerminal(
 
 function createProductionEventSource(
   runtimeEnv: Env,
+  acceptContexts: AcceptContextStore,
   scheduleBackground: (promise: Promise<unknown>) => void,
 ): AdapterEventSourceFactory {
   return (sink, streamContext) => {
@@ -428,23 +477,27 @@ function createProductionEventSource(
         accept.guard,
         runtimeEnv,
       );
-      return {
-        disconnect(reason) {
-          brokerController?.disconnect(reason);
-        },
-      };
+      return;
     }
     let brokerController: StreamBrokerController | undefined;
     const freshGuard = accept.guard;
     scheduleBackground(
-      (async () => {
-        brokerController = await runFreshEventSource(
+      runFreshEventSource(
+        sink,
+        streamContext,
+        freshGuard,
+        runtimeEnv,
+        (controller) => {
+          brokerController = controller;
+        },
+      ).catch(() => {
+        pushFailedTerminal(
           sink,
-          streamContext,
-          freshGuard,
-          runtimeEnv,
+          streamContext.requestReference,
+          streamContext.traceId,
+          "internal_error",
         );
-      })(),
+      }),
     );
     return {
       disconnect(reason) {
@@ -463,7 +516,8 @@ async function runFreshEventSource(
   },
   guard: GuardFreshSuccess,
   runtimeEnv: Env,
-): Promise<StreamBrokerController | undefined> {
+  onBrokerReady: (controller: StreamBrokerController) => void,
+): Promise<void> {
   const manifest = guard.manifest;
   const cache = new ConfigCache();
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
@@ -497,7 +551,7 @@ async function runFreshEventSource(
     },
   });
 
-  const events: InvocationStreamEvent[] = [];
+  const pushable = createPushableInvocationEvents();
   const attemptRecords: AttemptRecord[] = [];
   const partialUsage: PartialUsageAccessor = {};
   const invocationSink: InvocationSink = {
@@ -505,67 +559,46 @@ async function runFreshEventSource(
       attemptRecords.push(record);
     },
     emitRegenerating() {
-      events.push({ kind: "regenerating" });
+      pushable.push({ kind: "regenerating" });
     },
     emitStreamText(text) {
-      events.push({ kind: "text", text });
+      pushable.push({ kind: "text", text });
     },
   };
 
-  const invokeResult = await runInvocation({
-    request: guard.composed,
-    routingDecision: routing.routing_decision,
-    requestId: guard.requestId,
-    idempotencyKey: guard.idempotencyKey,
-    portResolver: resolveProviderPort,
-    sink: invocationSink,
-    partialUsage,
-    sleeper: async () => {},
-    signal: streamContext.signal,
-  });
-
-  if (!invokeResult.ok) {
-    const code = invokeResult.error.taxonomyCode;
-    const taxonomy = isTaxonomyCode(code) ? code : "provider_unavailable";
-    pushFailedTerminal(
-      sink,
-      streamContext.requestReference,
-      streamContext.traceId,
-      taxonomy,
-    );
-    await recordTerminalState(
-      guard.requestId,
-      "Failed",
-      taxonomy,
-      new Date().toISOString(),
-      runtimeEnv.DB,
-      manifest.interactionMode,
-    );
-    return undefined;
-  }
-
-  async function* replayEvents(): AsyncGenerator<InvocationStreamEvent> {
-    for (const event of events) {
-      if (streamContext.signal.aborted) {
-        return;
-      }
-      yield event;
-    }
-  }
-
+  let brokerTerminal: BrokerTerminalState | undefined;
+  let ignoreBrokerSettlement = false;
   const chunkSource = createChunkSourceFromInvocationEvents(
-    replayEvents(),
+    pushable.iterable,
     () => partialUsage.getPartialUsage?.(),
   );
+
+  const brokerSink: AdapterEventSink = {
+    push(event) {
+      if (
+        ignoreBrokerSettlement &&
+        (event.type === "cancelled" ||
+          event.type === "completed" ||
+          event.type === "failed" ||
+          event.type === "context_requested")
+      ) {
+        return;
+      }
+      sink.push(event);
+    },
+  };
 
   const broker = createStreamBroker({
     traceId: streamContext.traceId,
     requestId: guard.requestId,
     requestReference: streamContext.requestReference,
-    eventSink: sink,
+    eventSink: brokerSink,
     chunkSource,
     heartbeatTicker: createProductionHeartbeatTicker(),
     creditSink: (input) => {
+      if (ignoreBrokerSettlement) {
+        return;
+      }
       void creditUsage(
         {
           installationId: guard.principal.installationId,
@@ -578,6 +611,10 @@ async function runFreshEventSource(
       );
     },
     journalTerminalSink: (record) => {
+      if (ignoreBrokerSettlement) {
+        return;
+      }
+      brokerTerminal = record.state;
       void recordTerminalState(
         record.requestId,
         record.state === "completed"
@@ -593,8 +630,89 @@ async function runFreshEventSource(
     },
     guardThresholds: PRODUCTION_GUARD_THRESHOLDS,
   });
+  onBrokerReady(broker);
 
-  await broker.run();
+  const onAbort = (): void => {
+    broker.disconnect("client_close");
+  };
+  if (streamContext.signal.aborted) {
+    onAbort();
+  } else {
+    streamContext.signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  const brokerRun = broker.run();
+
+  const invokeResult = await runInvocation({
+    request: guard.composed,
+    routingDecision: routing.routing_decision,
+    requestId: guard.requestId,
+    idempotencyKey: guard.idempotencyKey,
+    portResolver: resolveProviderPort,
+    sink: invocationSink,
+    partialUsage,
+    sleeper: async () => {},
+    signal: streamContext.signal,
+  });
+  pushable.end();
+
+  if (!invokeResult.ok) {
+    const code = invokeResult.error.taxonomyCode;
+    if (code === "cancelled" || streamContext.signal.aborted) {
+      broker.disconnect("client_close");
+      await brokerRun;
+      if (brokerTerminal === undefined) {
+        const usage = partialUsage.getPartialUsage?.();
+        if (usage !== undefined) {
+          await creditUsage(
+            {
+              installationId: guard.principal.installationId,
+              requestId: guard.requestId,
+              requestReference: streamContext.requestReference,
+              usage,
+              partial: true,
+            },
+            { DO: runtimeEnv.DO },
+          );
+        }
+        await recordTerminalState(
+          guard.requestId,
+          "Cancelled",
+          undefined,
+          new Date().toISOString(),
+          runtimeEnv.DB,
+          manifest.interactionMode,
+        );
+      }
+      return;
+    }
+    const taxonomy = isTaxonomyCode(code) ? code : "provider_unavailable";
+    // Tear down the waiting broker without treating provider failure as cancel.
+    ignoreBrokerSettlement = true;
+    broker.disconnect("client_close");
+    await brokerRun;
+    pushFailedTerminal(
+      sink,
+      streamContext.requestReference,
+      streamContext.traceId,
+      taxonomy,
+    );
+    await recordTerminalState(
+      guard.requestId,
+      "Failed",
+      taxonomy,
+      new Date().toISOString(),
+      runtimeEnv.DB,
+      manifest.interactionMode,
+    );
+    return;
+  }
+
+  await brokerRun;
+
+  if (brokerTerminal !== "completed") {
+    return;
+  }
 
   await settleCompletedRequest(runtimeEnv, {
     requestId: guard.requestId,
@@ -607,11 +725,12 @@ async function runFreshEventSource(
     result: invokeResult.result,
     recordedAt: new Date().toISOString(),
   });
-
-  return broker;
 }
 
-function createProductionPreAccept(runtimeEnv: Env): PreAcceptGate {
+function createProductionPreAccept(
+  runtimeEnv: Env,
+  acceptContexts: AcceptContextStore,
+): PreAcceptGate {
   const verifier = new EnrolledKeyVerifier();
   const cache = new ConfigCache();
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
@@ -673,12 +792,18 @@ async function handleLivePostRequest(
   runtimeEnv: Env,
   executionCtx: ExecutionContext,
 ): Promise<Response> {
+  // Request-scoped handoff only — never a module-global per-request store (§4.3.10).
+  const acceptContexts: AcceptContextStore = new Map();
   const scheduleBackground = (promise: Promise<unknown>) => {
     executionCtx.waitUntil(promise);
   };
   return handleAdapterRequest(request, {
-    preAccept: createProductionPreAccept(runtimeEnv),
-    eventSource: createProductionEventSource(runtimeEnv, scheduleBackground),
+    preAccept: createProductionPreAccept(runtimeEnv, acceptContexts),
+    eventSource: createProductionEventSource(
+      runtimeEnv,
+      acceptContexts,
+      scheduleBackground,
+    ),
   });
 }
 

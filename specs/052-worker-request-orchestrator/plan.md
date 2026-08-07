@@ -106,7 +106,7 @@ Production wiring in `worker.ts` **composes** (does not modify) the frozen modul
 | File | FRs traced |
 | --- | --- |
 | `ai-platform/src/adapter.ts` | FR-001, FR-004, FR-006, FR-011 — §8 `preAccept` gate; deferred `accepted`; taxonomy HTTP on pre-accept failure; omitted gate = A6 harness path |
-| `ai-platform/src/worker.ts` | FR-001–FR-019 — supply production `preAccept` (`runGuard` through stage 9) + `eventSource` (route/invoke/broker/validate/terminal/settle); live `POST /v1/requests` composition; I/O budgets; idempotency; cancel; no per-request state; provider selection via routing policy; no F4 soft-threshold |
+| `ai-platform/src/worker.ts` | FR-001–FR-019 — supply production `preAccept` (`runGuard` through stage 9) + `eventSource` (concurrent route/invoke/broker/validate/terminal; settle credit+R2 only after `completed`); live `POST /v1/requests` composition; I/O budgets; idempotency; cancel via immediate broker disconnect; request-scoped accept handoff (no module-global per-request store); provider selection via routing policy; no F4 soft-threshold |
 | `ai-platform/test/worker-request-orchestrator.test.ts` | T1–T23 (FR-001–FR-020 coverage via Workers integration spy) |
 | `ai-platform/vitest.workers.config.ts` | Register I1 test file in the workers pool so `SELF.fetch` exercises production `worker.ts` |
 | `specs/052-worker-request-orchestrator/quickstart.md` | Documentation task (written after implementation/verification) |

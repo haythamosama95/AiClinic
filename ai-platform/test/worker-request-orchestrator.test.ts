@@ -764,11 +764,26 @@ describe("live_post_happy_path_accepted_stream_completed", () => {
 
 describe("ai_request_written_before_invoke", () => {
   it("T2 — one journal insert before provider work", async () => {
-    const token = await mintAat();
+    const fakeMod = await import("../src/provider/fake");
     const before = await countAiRequests();
-    const response = await SELF.fetch(buildPostRequest({ token }));
-    await parseSseEvents(response);
-    expect(await countAiRequests()).toBe(before + 1);
+    let journalAtInvoke = -1;
+    const original = fakeMod.FakeAdapter.prototype.invoke;
+    const invokeSpy = vi
+      .spyOn(fakeMod.FakeAdapter.prototype, "invoke")
+      .mockImplementation(async function (this: unknown, ...args) {
+        journalAtInvoke = await countAiRequests();
+        return original.apply(this, args as never);
+      });
+    try {
+      const token = await mintAat();
+      const response = await SELF.fetch(buildPostRequest({ token }));
+      await parseSseEvents(response);
+      expect(invokeSpy).toHaveBeenCalled();
+      expect(journalAtInvoke).toBe(before + 1);
+      expect(await countAiRequests()).toBe(before + 1);
+    } finally {
+      invokeSpy.mockRestore();
+    }
   });
 });
 
@@ -916,55 +931,193 @@ describe("exactly_one_terminal_event_on_every_live_path", () => {
 });
 
 describe("cancel_disconnect_aborts_cancelled_credits_partial", () => {
-  it("T16 — disconnect yields cancelled terminal", async () => {
-    const controller = new AbortController();
-    const token = await mintAat();
-    const request = buildPostRequest({ token, signal: controller.signal });
-    const fetchPromise = SELF.fetch(request);
-    controller.abort();
-    let response: Response;
+  it("T16 — disconnect aborts in-flight invoke; journal Cancelled; partial credit", async () => {
+    const fakeMod = await import("../src/provider/fake");
+    const creditMod = await import("../src/credit");
+    const creditSpy = vi.spyOn(creditMod, "creditUsage");
+    let invokeSawAbort = false;
+    let invokeEntered = false;
+    const invokeSpy = vi.spyOn(fakeMod, "FakeAdapter").mockImplementation(
+      () =>
+        ({
+          async invoke(
+            _request: unknown,
+            options?: { signal?: AbortSignal },
+          ) {
+            invokeEntered = true;
+            const signal = options?.signal;
+            await new Promise<void>((resolve, reject) => {
+              if (signal?.aborted) {
+                invokeSawAbort = true;
+                reject(
+                  new DOMException("The operation was aborted.", "AbortError"),
+                );
+                return;
+              }
+              const timer = setTimeout(() => resolve(), 5_000);
+              signal?.addEventListener(
+                "abort",
+                () => {
+                  invokeSawAbort = true;
+                  clearTimeout(timer);
+                  reject(
+                    new DOMException(
+                      "The operation was aborted.",
+                      "AbortError",
+                    ),
+                  );
+                },
+                { once: true },
+              );
+            });
+            return {
+              kind: "success" as const,
+              result: {
+                finalContent: {
+                  type: "text" as const,
+                  text: "should-not-complete",
+                },
+                usage: { input: 3, output: 7, cached: 0 },
+                providerModel: { provider: "fake", model: "fake-v1" },
+                finishReason: "stop" as const,
+                providerRequestId: "cancel-req",
+                timing: { queue_ms: 0, provider_ms: 1, total_ms: 1 },
+              },
+              chunks: [],
+            };
+          },
+        }) as never,
+    );
     try {
-      response = await fetchPromise;
-    } catch (error) {
-      expect(error).toBeInstanceOf(DOMException);
-      return;
-    }
-    if (response.status === 200) {
-      const events = await parseSseEvents(response);
-      const terminals = terminalEvents(events);
-      if (terminals.length > 0) {
-        expect(["cancelled", "failed", "completed"]).toContain(terminals[0]?.type);
+      const controller = new AbortController();
+      const token = await mintAat();
+      const fetchPromise = SELF.fetch(
+        buildPostRequest({ token, signal: controller.signal }),
+      );
+      for (let i = 0; i < 40 && !invokeEntered; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
       }
+      controller.abort();
+      try {
+        await fetchPromise;
+      } catch {
+        // Client abort may reject the fetch; journal/credit are the proof.
+      }
+      await flushBackgroundWork();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(invokeEntered).toBe(true);
+      expect(invokeSawAbort).toBe(true);
+      const row = await env.DB
+        .prepare(
+          "SELECT state FROM ai_request WHERE installation_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(FIXTURE_INSTALLATION_ID)
+        .first<{ state: string }>();
+      expect(row?.state).toBe("Cancelled");
+      // FR-018: credit partial when present; never settle as a completed full credit.
+      expect(
+        creditSpy.mock.calls.some((call) => call[0]?.partial === false),
+      ).toBe(false);
+      const envelopes = (await env.R2.list({ prefix: "request/" })).objects.filter(
+        (object) => object.key.endsWith("/envelope"),
+      );
+      expect(envelopes.length).toBe(0);
+    } finally {
+      invokeSpy.mockRestore();
+      creditSpy.mockRestore();
     }
   });
 });
 
 describe("no_per_request_server_side_state", () => {
-  it("T17 — no per-request DO beyond Quota installation object", async () => {
-    const token = await mintAat();
-    const response = await SELF.fetch(buildPostRequest({ token }));
-    await parseSseEvents(response);
-    expect(true).toBe(true);
+  it("T17 — Quota DO is installation-scoped only (no per-request DO name)", async () => {
+    const names: string[] = [];
+    const originalIdFromName = env.DO.idFromName.bind(env.DO);
+    const idSpy = vi.spyOn(env.DO, "idFromName").mockImplementation((name: string) => {
+      names.push(name);
+      return originalIdFromName(name);
+    });
+    try {
+      const token = await mintAat();
+      const response = await SELF.fetch(buildPostRequest({ token }));
+      await parseSseEvents(response);
+      await flushBackgroundWork();
+      expect(names.length).toBeGreaterThan(0);
+      expect(names.every((name) => name === FIXTURE_INSTALLATION_ID)).toBe(true);
+      expect(names.some((name) => name.includes("request"))).toBe(false);
+    } finally {
+      idSpy.mockRestore();
+    }
   });
 });
 
 describe("provider_selection_only_via_routing_policy", () => {
-  it("T18 — routing policy selects fake adapter", async () => {
+  it("T18 — routing-policy edit changes selection without orchestrator code change", async () => {
     const token = await mintAat();
-    const response = await SELF.fetch(buildPostRequest({ token }));
-    const events = await parseSseEvents(response);
-    expect(events.some((e) => e.type === "completed")).toBe(true);
+    const first = await SELF.fetch(buildPostRequest({ token }));
+    const firstEvents = await parseSseEvents(first);
+    expect(firstEvents.some((e) => e.type === "completed")).toBe(true);
+
+    await env.DB.prepare("DELETE FROM routing_policy").run();
+    await seedRoutingPolicy(env.DB, env.R2, {
+      schema_version: 1,
+      policy_id: FIXTURE_POLICY_ID,
+      policy_version: 1,
+      defaults: { cost_class: "standard", max_parallel_attempts: 1 },
+      rules: [
+        {
+          rule_id: "real-only",
+          match: {},
+          requires: {
+            structured_output: false,
+            min_context_window: 0,
+            languages: ["en"],
+          },
+          targets: [
+            {
+              provider_id: "nonexistent-provider",
+              model_id: "x",
+              features: {
+                structured_output: false,
+                min_context_window: 0,
+                languages: ["en"],
+                latency_class: "standard",
+                cost_class: "standard",
+              },
+              max_attempts: 1,
+              timeout_ms: 1000,
+            },
+          ],
+        },
+      ],
+      overrides: [],
+    });
+
+    const second = await SELF.fetch(
+      buildPostRequest({ token: await mintAat() }),
+    );
+    const secondEvents = await parseSseEvents(second);
+    const failed = terminalEvents(secondEvents).filter((e) => e.type === "failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.data.code).toBe("provider_unavailable");
   });
 });
 
 describe("guard_reject_installation_suspended_no_journal_no_provider", () => {
-  it("T19 — installation_suspended taxonomy HTTP", async () => {
+  it("T19 — installation_suspended taxonomy HTTP; no journal; no provider", async () => {
     await env.DB
       .prepare("UPDATE installation SET status = 'suspended' WHERE installation_id = ?")
       .bind(FIXTURE_INSTALLATION_ID)
       .run();
+    const before = await countAiRequests();
     const token = await mintAat();
     const response = await SELF.fetch(buildPostRequest({ token }));
     expect(response.status).toBe(liveHttpStatusForCode("installation_suspended"));
+    expect(((await response.json()) as { code: string }).code).toBe(
+      "installation_suspended",
+    );
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await countAiRequests()).toBe(before);
+    expect(await countAiAttempts()).toBe(0);
   });
 });

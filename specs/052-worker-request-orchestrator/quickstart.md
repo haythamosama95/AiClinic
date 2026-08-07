@@ -15,7 +15,7 @@ post-accept event source that composes the existing pipeline, stream broker, and
 ## 2. What was implemented
 
 - **`adapter.ts` (A6 §8):** Optional `preAccept` gate defers SSE + `accepted` until `{ ok: true }`; failures return taxonomy HTTP without opening a stream.
-- **`worker.ts`:** Production `preAccept` (`runGuard` through stage 9) and `eventSource` (routing → invocation → D4 broker → settle) on live `POST /v1/requests`; `ExecutionContext.waitUntil` drains background settlement.
+- **`worker.ts`:** Production `preAccept` (`runGuard` through stage 9) and `eventSource` (concurrent route/invoke → D4 broker relay → settle only on `completed`) on live `POST /v1/requests`; request-scoped accept handoff; `ExecutionContext.waitUntil` drains background work; disconnect reaches the broker immediately and skips completed-path credit/R2 after cancel.
 - **Tests:** `test/worker-request-orchestrator.test.ts` — 23 named cases (T1–T23) against production `worker.ts`.
 
 See `spec.md` for requirements and `plan.md` for file-level traceability.
