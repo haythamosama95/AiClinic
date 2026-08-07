@@ -28,6 +28,7 @@ export default defineConfig({
       "test/config-readers.test.ts",
       "test/load/**",
       "test/worker-request-orchestrator.test.ts",
+      "test/entitle-grant.test.ts",
     ],
     testTimeout: 120_000,
     fileParallelism: false,
