@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import lifecycleMigrationSql from "../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
@@ -116,13 +117,36 @@ async function seedGrant(): Promise<void> {
     .run();
 }
 
-async function seedKillSwitch(): Promise<void> {
+async function seedLifecycleOverlay(): Promise<void> {
+  await env.DB
+    .prepare(
+      `INSERT INTO capability_grant (
+        grant_id, scope, capability_id, capability_version,
+        granted_at, revoked_at, changed_at, changed_by,
+        lifecycle_state, successor_id, deprecated_at, retire_after
+      ) VALUES (?, 'global', ?, ?, ?, NULL, ?, 'operator-test', 'deprecated', NULL, ?, NULL)`,
+    )
+    .bind(
+      `overlay-${FIXTURE_CAPABILITY_ID}`,
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CAPABILITY_VERSION,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+      FIXTURE_NOW,
+    )
+    .run();
+}
+
+async function seedKillSwitch(
+  scope: string = "global",
+  target: string = "global",
+): Promise<void> {
   await env.DB
     .prepare(
       `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-       VALUES ('global', 'global', 1, ?, 'operator-test')`,
+       VALUES (?, ?, 1, ?, 'operator-test')`,
     )
-    .bind(FIXTURE_NOW)
+    .bind(scope, target, FIXTURE_NOW)
     .run();
 }
 
@@ -148,6 +172,7 @@ function createSpiedD1Reader(db: D1Database): D1Reader & { readCount: () => numb
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, lifecycleMigrationSql);
   await applyPlatformSchema(env.DB, tokenContractMigrationSql);
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
@@ -210,35 +235,82 @@ describe("T8 config_reader_presence_entitlements", () => {
 });
 
 describe("T9 config_reader_presence_grants_lifecycle_overlay", () => {
-  it("serves a present grant through the production D1 config reader", async () => {
+  it("serves present grant and global lifecycle overlay through the production D1 config reader", async () => {
     await seedInstallation();
     await seedGrant();
+    await seedLifecycleOverlay();
 
     const cache = new ConfigCache();
     const reader = createD1ConfigReader(env.DB);
-    const row = await loadConfig(
+    const grant = await loadConfig(
       cache,
       reader,
       "grants",
       `${FIXTURE_INSTALLATION_ID}/${FIXTURE_CAPABILITY_ID}`,
     );
 
-    expect(row.capability_id).toBe(FIXTURE_CAPABILITY_ID);
-    expect(row.capability_version).toBe(FIXTURE_CAPABILITY_VERSION);
+    expect(grant.capability_id).toBe(FIXTURE_CAPABILITY_ID);
+    expect(grant.capability_version).toBe(FIXTURE_CAPABILITY_VERSION);
+
+    const overlay = await loadConfig(
+      cache,
+      reader,
+      "grants",
+      `global/${FIXTURE_CAPABILITY_ID}/${FIXTURE_CAPABILITY_VERSION}`,
+    );
+
+    expect(overlay.scope).toBe("global");
+    expect(overlay.capability_id).toBe(FIXTURE_CAPABILITY_ID);
+    expect(overlay.lifecycle_state).toBe("deprecated");
   });
 });
 
 describe("T10 config_reader_presence_kill_switches", () => {
-  it("serves a present kill_switch row through the production D1 config reader", async () => {
-    await seedKillSwitch();
+  it("serves present kill_switch rows for global and {scope}:{target} cache keys", async () => {
+    await seedKillSwitch("global", "global");
+    await seedKillSwitch("capability", FIXTURE_CAPABILITY_ID);
+    await seedKillSwitch("installation", FIXTURE_INSTALLATION_ID);
+    await seedKillSwitch("provider", "deepseek");
 
     const cache = new ConfigCache();
     const reader = createD1ConfigReader(env.DB);
-    const row = await loadConfig(cache, reader, "kill_switches", "global");
 
-    expect(row.active).toBe(true);
-    expect(row.scope).toBe("global");
-    expect(row.target).toBe("global");
+    const globalRow = await loadConfig(cache, reader, "kill_switches", "global");
+    expect(globalRow.active).toBe(true);
+    expect(globalRow.scope).toBe("global");
+    expect(globalRow.target).toBe("global");
+
+    const capabilityKey = `capability:${FIXTURE_CAPABILITY_ID}`;
+    const capabilityRow = await loadConfig(
+      cache,
+      reader,
+      "kill_switches",
+      capabilityKey,
+    );
+    expect(capabilityRow.active).toBe(true);
+    expect(capabilityRow.scope).toBe("capability");
+    expect(capabilityRow.target).toBe(FIXTURE_CAPABILITY_ID);
+
+    const installationKey = `installation:${FIXTURE_INSTALLATION_ID}`;
+    const installationRow = await loadConfig(
+      cache,
+      reader,
+      "kill_switches",
+      installationKey,
+    );
+    expect(installationRow.active).toBe(true);
+    expect(installationRow.scope).toBe("installation");
+    expect(installationRow.target).toBe(FIXTURE_INSTALLATION_ID);
+
+    const providerRow = await loadConfig(
+      cache,
+      reader,
+      "kill_switches",
+      "provider:deepseek",
+    );
+    expect(providerRow.active).toBe(true);
+    expect(providerRow.scope).toBe("provider");
+    expect(providerRow.target).toBe("deepseek");
   });
 });
 

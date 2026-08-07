@@ -141,12 +141,12 @@ Layer: Workers integration (Delivery Plan §3.12.9 row I2). Named tests:
 | T2 | `discovery_http_etag_not_modified` | Workers integration | Matching `If-None-Match` yields not-modified; response carries `Cache-Control: private, must-revalidate` (§3.12.9 I2; §5.5) |
 | T3 | `discovery_http_changed_manifest_changes_etag` | Workers integration | Changed granted manifest changes response `ETag` (§3.12.9 I2; §5.5) |
 | T4 | `discovery_http_ineligible_plan_capability_absent` | Workers integration | Entitlement-gated capability absent for ineligible plan (§3.12.9 I2; §4.3.4; §5.5; C1 `Freezes`) |
-| T5 | `discovery_http_unauthenticated` | Workers integration | Missing/invalid AAT → taxonomy `unauthenticated` (§3.12.9 I2; §5.5; §4.3.2) |
+| T5 | `discovery_http_unauthenticated` | Workers integration | Missing/invalid/non-Bearer AAT → taxonomy `unauthenticated`; no journal row (§3.12.9 I2; §5.5; §4.3.2; §6.4) |
 | T6 | `config_reader_presence_installation` | Workers integration | Present installation row served through production D1 config reader (§3.12.9 I2; §4.3.2) |
 | T7 | `config_reader_presence_keys` | Workers integration | Present installation keys served through production D1 config reader (§3.12.9 I2; §4.3.2) |
 | T8 | `config_reader_presence_entitlements` | Workers integration | Present entitlement served through production D1 config reader (§3.12.9 I2; §4.3.2) |
-| T9 | `config_reader_presence_grants_lifecycle_overlay` | Workers integration | Present grants / lifecycle overlay served through production D1 config reader (§3.12.9 I2; §4.3.2; Done when) |
-| T10 | `config_reader_presence_kill_switches` | Workers integration | Present kill switches served through production D1 config reader (§3.12.9 I2; §4.3.2) |
+| T9 | `config_reader_presence_grants_lifecycle_overlay` | Workers integration | Present installation grant and global lifecycle overlay via production D1 config reader (§3.12.9 I2; §4.3.2; Done when) |
+| T10 | `config_reader_presence_kill_switches` | Workers integration | Present kill switches for `global` and `{scope}:{target}` cache keys (§3.12.9 I2; §4.3.2; §7.3) |
 | T11 | `config_reader_presence_active_routing_policy` | Workers integration | Present active routing policy served through production D1 config reader (§3.12.9 I2; §4.3.2) |
 | T12 | `config_reader_presence_token_contract` | Workers integration | Present global `token_contract` accepted-`ver` set served through production D1 config reader (§3.12.9 I2; §4.3.2; §13.4) |
 | T13 | `config_reader_cold_isolate_single_d1_read_pattern` | Workers integration | Cold isolate performs A5's single config read pattern (§3.12.9 I2; §4.3.2; A5 `Freezes`) |

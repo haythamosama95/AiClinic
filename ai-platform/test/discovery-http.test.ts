@@ -476,10 +476,14 @@ describe("T4 discovery_http_ineligible_plan_capability_absent", () => {
 });
 
 describe("T5 discovery_http_unauthenticated", () => {
-  it("returns taxonomy unauthenticated without a manifest body for missing or invalid AAT", async () => {
+  it("returns taxonomy unauthenticated without a manifest body or journal row for missing or invalid AAT", async () => {
     buildRegistry(
       validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION, "active"),
     );
+
+    const beforeCount = await env.DB
+      .prepare("SELECT COUNT(*) AS count FROM ai_request")
+      .first<{ count: number }>();
 
     const missing = await SELF.fetch(discoveryRequest());
     expect(missing.status).toBe(401);
@@ -492,5 +496,21 @@ describe("T5 discovery_http_unauthenticated", () => {
     const invalidBody = (await invalid.json()) as { code: string; manifests?: unknown };
     expect(invalidBody.code).toBe("unauthenticated");
     expect(invalidBody.manifests).toBeUndefined();
+
+    const nonBearer = await SELF.fetch(
+      discoveryRequest(undefined, { Authorization: "Basic not-an-aat" }),
+    );
+    expect(nonBearer.status).toBe(401);
+    const nonBearerBody = (await nonBearer.json()) as {
+      code: string;
+      manifests?: unknown;
+    };
+    expect(nonBearerBody.code).toBe("unauthenticated");
+    expect(nonBearerBody.manifests).toBeUndefined();
+
+    const afterCount = await env.DB
+      .prepare("SELECT COUNT(*) AS count FROM ai_request")
+      .first<{ count: number }>();
+    expect(afterCount?.count ?? -1).toBe(beforeCount?.count ?? 0);
   });
 });

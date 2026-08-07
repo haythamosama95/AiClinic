@@ -245,12 +245,12 @@ wraps `D1Reader.read` around `createD1ConfigReader`.
 | `discovery_http_etag_not_modified` | T2 | `test/discovery-http.test.ts` | Workers integration | FR-003 / SC-002 — matching `If-None-Match` → 304; `Cache-Control: private, must-revalidate`. |
 | `discovery_http_changed_manifest_changes_etag` | T3 | `test/discovery-http.test.ts` | Workers integration | FR-003 / SC-002 — changed granted set → different `ETag`. |
 | `discovery_http_ineligible_plan_capability_absent` | T4 | `test/discovery-http.test.ts` | Workers integration | FR-004 / SC-001 — entitlement-gated capability absent for ineligible plan (not an error code). |
-| `discovery_http_unauthenticated` | T5 | `test/discovery-http.test.ts` | Workers integration | FR-002, FR-005 / SC-003 — missing/invalid AAT → taxonomy `unauthenticated`; no manifest body. |
+| `discovery_http_unauthenticated` | T5 | `test/discovery-http.test.ts` | Workers integration | FR-002, FR-005 / SC-003 — missing/invalid/non-Bearer AAT → taxonomy `unauthenticated`; no manifest body; no journal row. |
 | `config_reader_presence_installation` | T6 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present installation row via production reader. |
 | `config_reader_presence_keys` | T7 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present keys row via production reader. |
 | `config_reader_presence_entitlements` | T8 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present entitlement via production reader. |
-| `config_reader_presence_grants_lifecycle_overlay` | T9 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present grants / lifecycle overlay via production reader. |
-| `config_reader_presence_kill_switches` | T10 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present kill_switch row via production reader. |
+| `config_reader_presence_grants_lifecycle_overlay` | T9 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present installation grant and global lifecycle overlay via production reader. |
+| `config_reader_presence_kill_switches` | T10 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present kill_switch rows for `global` and `{scope}:{target}` via production reader. |
 | `config_reader_presence_active_routing_policy` | T11 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present active routing policy via production reader. |
 | `config_reader_presence_token_contract` | T12 | `test/config-readers.test.ts` | Workers integration | FR-007 / SC-004 — present `token_contract` accepted-`ver` via production reader. |
 | `config_reader_cold_isolate_single_d1_read_pattern` | T13 | `test/config-readers.test.ts` | Workers integration | FR-008 / SC-005 — spy on `D1Reader.read` around `createD1ConfigReader`: cold load performs A5's single read pattern. |

@@ -48,14 +48,19 @@ Production D1 config-cache readers (I2's second Freezes entry) bind to A5's conf
 
 ### 3.1 Failure
 
-Missing `Authorization`, non-Bearer scheme, empty token, or verifier failure → taxonomy
-`unauthenticated`:
+Missing `Authorization`, non-Bearer scheme, empty token, or an AAT the enrolled-key verifier
+rejects as unauthenticated → taxonomy `unauthenticated`:
 
 | Field | Value |
 | --- | --- |
 | HTTP status | `liveHttpStatusForCode("unauthenticated")` (401) |
 | Body | Taxonomy error body (`buildErrorBody` with code `unauthenticated`) |
 | Discovery body | **Absent** — no `{ manifests: … }` |
+
+When the verifier returns a distinct taxonomy code (today: `installation_suspended` for a
+suspended installation), the handler forwards that code and its live HTTP status — the same
+mapping submit uses under FR-002 / §4.3.2. Discovery body remains absent; no journal row is
+written on any auth failure on this surface.
 
 ---
 
