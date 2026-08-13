@@ -1,5 +1,7 @@
 import type { AdapterSseEvent } from "../adapter";
 import { buildErrorBody, type TaxonomyCode } from "../errors";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 import {
   validateAndRepair,
   type BusinessRuleRegistry,
@@ -82,6 +84,7 @@ export interface StructuredStreamBrokerOptions {
   reask?: ReaskPort;
   repairJournalSink?: RepairJournalSink;
   repairCostSink?: RepairCostSink;
+  logger?: Logger;
 }
 
 export interface StreamBrokerController {
@@ -163,11 +166,11 @@ function tryParsePartialStructured(assembled: string): unknown | null {
   }
 }
 
-function safeCall(fn: () => void): void {
+function safeCall(fn: () => void, onError?: (error: unknown) => void): void {
   try {
     fn();
-  } catch {
-    // Sink throws must not suppress the one-terminal invariant.
+  } catch (error: unknown) {
+    onError?.(error);
   }
 }
 
@@ -175,6 +178,7 @@ export function createStructuredStreamBroker(
   options: StructuredStreamBrokerOptions,
 ): StreamBrokerController {
   const { outputMode } = options;
+  const logger = options.logger ?? noopLogger;
   const abortController = new AbortController();
   let disconnected = false;
   let terminalEmitted = false;
@@ -200,32 +204,54 @@ export function createStructuredStreamBroker(
     state: "cancelled" | "completed" | "failed",
     terminalErrorCode?: TaxonomyCode,
   ): void => {
-    safeCall(() => {
-      options.journalTerminalSink({
-        requestId: options.requestId,
-        state,
-        ...(terminalErrorCode !== undefined ? { terminalErrorCode } : {}),
-      });
-    });
+    safeCall(
+      () => {
+        options.journalTerminalSink({
+          requestId: options.requestId,
+          state,
+          ...(terminalErrorCode !== undefined ? { terminalErrorCode } : {}),
+        });
+      },
+      (error) => {
+        logger.error("Structured stream settlement journal write failed", {
+          request_id: options.requestId,
+          state,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
   };
 
   const creditPartialIfPresent = (): void => {
-    safeCall(() => {
-      const usage = options.chunkSource.getPartialUsage?.();
-      if (usage) {
-        options.creditSink({
-          requestId: options.requestId,
-          usage,
-          partial: true,
+    safeCall(
+      () => {
+        const usage = options.chunkSource.getPartialUsage?.();
+        if (usage) {
+          options.creditSink({
+            requestId: options.requestId,
+            usage,
+            partial: true,
+          });
+        }
+      },
+      (error) => {
+        logger.error("Structured stream settlement credit failed", {
+          request_id: options.requestId,
+          error: error instanceof Error ? error.message : String(error),
         });
-      }
-    });
+      },
+    );
   };
 
   const handleCancel = (): void => {
     if (terminalEmitted) {
       return;
     }
+
+    logger.info("Structured stream broker cancelled", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+    });
 
     // Terminal SSE first, then sinks — sink throws cannot suppress terminal.
     emitTerminalOnce({
@@ -241,6 +267,12 @@ export function createStructuredStreamBroker(
     if (terminalEmitted) {
       return;
     }
+
+    logger.info("Structured stream broker failed", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+      error_code: code,
+    });
 
     // Mirror adapter pushTerminalEvent("failed") — full §5.4 error body.
     const errorBody = buildErrorBody({
@@ -290,6 +322,12 @@ export function createStructuredStreamBroker(
 
     const validatedDocument = validation.validated;
 
+    logger.info("Structured stream broker completed", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+      output_mode: outputMode,
+    });
+
     emitTerminalOnce({
       type: "completed",
       data: {
@@ -309,6 +347,11 @@ export function createStructuredStreamBroker(
 
   const run = async (): Promise<void> => {
     const { traceId, chunkSource, heartbeatTicker } = options;
+    logger.info("Structured stream broker started", {
+      request_id: options.requestId,
+      trace_id: traceId,
+      output_mode: outputMode,
+    });
     let assembled = "";
     let sequence = 0;
     const emitPartials = outputMode === "structured";
@@ -411,10 +454,14 @@ export function createStructuredStreamBroker(
 
   return {
     run,
-    disconnect(_reason: "client_close" | "network_drop") {
+    disconnect(reason: "client_close" | "network_drop") {
       if (terminalEmitted) {
         return;
       }
+      logger.info("Structured stream broker disconnected", {
+        request_id: options.requestId,
+        reason,
+      });
       disconnected = true;
       abortController.abort();
       // Synchronous cancel so signal-ignoring sources cannot hang the terminal.

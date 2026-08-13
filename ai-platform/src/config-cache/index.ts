@@ -3,6 +3,8 @@
  * Short-TTL map per entity kind; D1 on miss; owns nothing — returns copies.
  */
 
+import { noopLogger, type Logger } from "../logger";
+
 export type ConfigEntityKind =
   | "installations"
   | "keys"
@@ -122,6 +124,7 @@ function parseCanaryIds(raw: unknown): string[] {
 async function loadRoutingPolicyDocument(
   row: D1Row,
   r2: R2Bucket | undefined,
+  logger: Logger,
 ): Promise<D1Row | "miss"> {
   if (!r2) {
     return row;
@@ -132,6 +135,7 @@ async function loadRoutingPolicyDocument(
   }
   const object = await r2.get(pointer);
   if (!object) {
+    logger.error("routing_policy_r2_miss", { content_pointer: pointer });
     return "miss";
   }
   const document = JSON.parse(await object.text()) as unknown;
@@ -144,7 +148,11 @@ async function loadRoutingPolicyDocument(
  * active_routing_policy (with optional R2 document load), and token_contracts.
  * Reader keys are `${kind}:${key}` (see loadConfig).
  */
-export function createD1ConfigReader(db: D1Database, r2?: R2Bucket): D1Reader {
+export function createD1ConfigReader(
+  db: D1Database,
+  r2?: R2Bucket,
+  logger: Logger = noopLogger,
+): D1Reader {
   return {
     async read(prefixedKey: string): Promise<D1Row | "miss"> {
       const separator = prefixedKey.indexOf(":");
@@ -292,7 +300,7 @@ export function createD1ConfigReader(db: D1Database, r2?: R2Bucket): D1Reader {
             for (const row of canaryRows.results ?? []) {
               const ids = parseCanaryIds(row.canary_installation_ids);
               if (ids.includes(installationId)) {
-                return loadRoutingPolicyDocument(row, r2);
+                return loadRoutingPolicyDocument(row, r2, logger);
               }
             }
           }
@@ -309,7 +317,7 @@ export function createD1ConfigReader(db: D1Database, r2?: R2Bucket): D1Reader {
           if (!activeRow) {
             return "miss";
           }
-          return loadRoutingPolicyDocument(activeRow, r2);
+          return loadRoutingPolicyDocument(activeRow, r2, logger);
         }
         default:
           return "miss";
@@ -323,12 +331,15 @@ export async function loadConfig(
   reader: D1Reader,
   kind: ConfigEntityKind,
   key: string,
+  logger: Logger = noopLogger,
 ): Promise<D1Row> {
   const now = Date.now();
   const cached = cache.consult(kind, key, now);
   if (cached !== undefined) {
     return cached;
   }
+
+  logger.debug("config_cache_miss", { kind, key });
 
   return cache.beginInflight(kind, key, async () => {
     // Reader keys are `${kind}:${key}` so one D1Reader serves every entity kind

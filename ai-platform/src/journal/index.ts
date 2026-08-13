@@ -1,4 +1,5 @@
 import { buildErrorBody, type TaxonomyCode } from "../errors";
+import { noopLogger, type Logger } from "../logger";
 import {
   EnrolledKeyVerifier,
   type Principal,
@@ -189,6 +190,7 @@ function isTransitionState(value: string): value is TransitionState {
 export async function createRequestRow(
   input: RequestRowInput,
   db: D1Database,
+  logger: Logger = noopLogger,
 ): Promise<CreateRequestRowResult> {
   const now = new Date().toISOString();
   const isSingleShot =
@@ -255,7 +257,13 @@ export async function createRequestRow(
       )
       .run();
     return { ok: true };
-  } catch {
+  } catch (error) {
+    logger.error("create_request_row_failed", {
+      request_id: input.requestId,
+      request_reference: input.requestReference,
+      trace_id: input.traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     const body = buildErrorBody({
       code: "internal_error",
       requestReference: input.requestReference,
@@ -405,11 +413,12 @@ async function persistPostResponseDetail(
 export function writePostResponseDetail(
   input: PostResponseInput,
   bindings: WritePostResponseBindings,
+  logger: Logger = noopLogger,
 ): void {
   bindings.ctx.waitUntil(
     persistPostResponseDetail(input, bindings.db, bindings.r2).catch(
       (err) => {
-        console.error("stage16_post_response_detail_failed", {
+        logger.error("stage16_post_response_detail_failed", {
           request_id: input.requestId,
           error: err instanceof Error ? err.message : String(err),
         });
@@ -511,14 +520,17 @@ export type AuthenticateGetRequestResult =
 export async function authenticateGetRequest(
   request: Request,
   env: { DB: D1Database },
+  logger: Logger = noopLogger,
 ): Promise<AuthenticateGetRequestResult> {
   const header = request.headers.get("Authorization");
   if (header === null || !header.startsWith("Bearer ")) {
+    logger.debug("get_request_auth_rejected", { code: "unauthenticated" });
     return { ok: false, code: "unauthenticated" };
   }
 
   const token = header.slice("Bearer ".length).trim();
   if (token.length === 0) {
+    logger.debug("get_request_auth_rejected", { code: "unauthenticated" });
     return { ok: false, code: "unauthenticated" };
   }
 
@@ -532,6 +544,7 @@ export async function authenticateGetRequest(
   });
 
   if (!result.ok) {
+    logger.debug("get_request_auth_rejected", { code: result.code });
     return { ok: false, code: result.code };
   }
 

@@ -1,3 +1,6 @@
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
+
 type CompositeKeyKind =
   | "installation"
   | "installation+actor"
@@ -111,10 +114,16 @@ function compositeKeyChecks(
 export async function checkRateLimit(
   input: RateLimitInput,
   bindings: RateLimitBindings,
+  logger: Logger = noopLogger,
 ): Promise<RateLimitResult> {
   for (const check of compositeKeyChecks(input, bindings)) {
     const outcome = await check.binding.limit({ key: check.key });
     if (!outcome.success) {
+      logger.info("Rate limit exceeded", {
+        installation_id: input.installationId,
+        composite_key: check.kind,
+        retry_after: DEFAULT_RETRY_AFTER_SECONDS,
+      });
       recordGuardRejection({
         error_code: "rate_limited",
         installation_id: input.installationId,
@@ -138,13 +147,21 @@ export async function checkRateLimit(
  */
 export async function flushRejectionCounters(
   bindings: Pick<RateLimitBindings, "DB">,
+  logger: Logger = noopLogger,
 ): Promise<void> {
   if (rejectionTally.size === 0) {
     return;
   }
 
   const snapshot = [...rejectionTally.entries()];
+  const totalRows = snapshot.length;
+  const totalRejections = snapshot.reduce((sum, [, count]) => sum + count, 0);
   rejectionTally.clear();
+
+  logger.info("Flushing guard rejection counters", {
+    bucket_count: totalRows,
+    rejection_count: totalRejections,
+  });
 
   for (const [mapKey, count] of snapshot) {
     const separator = mapKey.indexOf("\0");

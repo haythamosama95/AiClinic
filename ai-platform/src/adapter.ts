@@ -3,6 +3,7 @@ import {
   liveHttpStatusForCode,
   type TaxonomyCode,
 } from "./errors";
+import { noopLogger, type LoggerFactory } from "./logger";
 import { validateContextRequest } from "./context/context-request";
 import type { InteractionMode } from "./manifest";
 import { generateRequestReference } from "./reference";
@@ -84,6 +85,7 @@ export interface HandleAdapterRequestOptions {
   eventSource?: AdapterEventSourceFactory;
   preAccept?: PreAcceptGate;
   degradedNotice?: boolean;
+  makeLog?: LoggerFactory;
 }
 
 export interface AcceptedSseEventInput {
@@ -368,25 +370,41 @@ export async function handleAdapterRequest(
   request: Request,
   options: HandleAdapterRequestOptions = {},
 ): Promise<Response> {
+  const ingressLog = options.makeLog?.("adapter.ts") ?? noopLogger;
+
   const bodyResult = await readBodyWithinLimit(request);
   if (!bodyResult.ok) {
     if (bodyResult.reason === "too_large") {
+      ingressLog.info("ingress_body_too_large", {
+        limit_bytes: INGRESS_BODY_SIZE_LIMIT,
+      });
       return ingressTooLargeResponse();
     }
+    ingressLog.error("ingress_body_read_error");
     return adapterParseFailureResponse();
   }
 
   if (parseRequestBody(bodyResult.text) === null) {
+    ingressLog.error("ingress_body_parse_failed");
     return adapterParseFailureResponse();
   }
 
   const parsedHeaders = parseRequiredHeaders(request);
   if (!parsedHeaders) {
+    ingressLog.error("ingress_headers_invalid");
     return adapterParseFailureResponse();
   }
 
+  const log = options.makeLog?.("adapter.ts", {
+    trace_id: parsedHeaders.traceId,
+  }) ?? noopLogger;
+  log.debug("ingress_headers_parsed", {
+    capability_version: parsedHeaders.capabilityVersion,
+  });
+
   const parsedBody = parseRequestBody(bodyResult.text);
   if (parsedBody === null) {
+    log.error("ingress_body_parse_failed");
     return adapterParseFailureResponse();
   }
 
@@ -394,6 +412,7 @@ export async function handleAdapterRequest(
 
   if (options.preAccept) {
     requestReference = generateRequestReference();
+    log.debug("pre_accept_start", { request_reference: requestReference });
     const gate = await options.preAccept({
       request,
       bodyText: bodyResult.text,
@@ -402,16 +421,22 @@ export async function handleAdapterRequest(
       requestReference,
     });
     if (!gate.ok) {
+      log.info("pre_accept_rejected", {
+        code: gate.code,
+        request_reference: requestReference,
+      });
       return preAcceptFailureResponse(
         gate.code,
         requestReference,
         parsedHeaders.traceId,
       );
     }
+    log.debug("pre_accept_passed", { request_reference: requestReference });
   }
 
   const eventSource = options.eventSource;
   if (!eventSource) {
+    log.error("event_source_missing");
     return eventSourceRequiredResponse();
   }
 
@@ -446,6 +471,10 @@ export async function handleAdapterRequest(
       return;
     }
     disconnectNotified = true;
+    log.info("sse_client_disconnect", {
+      reason,
+      request_reference: requestReference,
+    });
     if (!disconnectController.signal.aborted) {
       disconnectController.abort();
     }
@@ -459,6 +488,10 @@ export async function handleAdapterRequest(
       }
       if (isTerminalEventType(event.type)) {
         terminalEmitted = true;
+        log.info("sse_terminal_event", {
+          event_type: event.type,
+          request_reference: requestReference,
+        });
       }
       streamController?.enqueue(new TextEncoder().encode(encodeSseEvent(event)));
       if (isTerminalEventType(event.type)) {
@@ -479,6 +512,10 @@ export async function handleAdapterRequest(
       controller.enqueue(
         new TextEncoder().encode(encodeSseEvent(acceptedEvent)),
       );
+      log.info("sse_accepted", {
+        request_reference: requestReference,
+        degraded_notice: options.degradedNotice ?? false,
+      });
 
       if (abortedAtEntry || request.signal.aborted) {
         markCancelledWithoutEnqueue();

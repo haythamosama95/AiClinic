@@ -9,6 +9,7 @@ import {
   loadConfig,
 } from "../config-cache";
 import type { Principal } from "../identity";
+import { noopLogger, type Logger } from "../logger";
 import { hashManifest, type Manifest } from "../manifest";
 
 export type CapabilityRegistry = Map<string, Manifest>;
@@ -16,13 +17,13 @@ export type CapabilityRegistry = Map<string, Manifest>;
 export type ResolveResult =
   | { ok: true; manifest: Manifest }
   | {
-      ok: false;
-      code:
-        | "capability_unknown"
-        | "capability_retired"
-        | "capability_disabled"
-        | "forbidden_capability";
-    };
+    ok: false;
+    code:
+    | "capability_unknown"
+    | "capability_retired"
+    | "capability_disabled"
+    | "forbidden_capability";
+  };
 
 export type DiscoveryResult = {
   manifests: Manifest[];
@@ -283,8 +284,8 @@ async function assertPlanAllowance(
 function providerIdsFromPolicyRow(policy: Record<string, unknown>): string[] {
   const document =
     policy.document !== null &&
-    typeof policy.document === "object" &&
-    !Array.isArray(policy.document)
+      typeof policy.document === "object" &&
+      !Array.isArray(policy.document)
       ? (policy.document as Record<string, unknown>)
       : policy;
   const rules = document.rules;
@@ -435,7 +436,10 @@ function unmodifiableRegistry(registry: Map<string, Manifest>): CapabilityRegist
           throw new TypeError("CapabilityRegistry is immutable");
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      if (prop === "size") {
+        return target.size;
+      }
+      const value = Reflect.get(target, prop, target);
       return typeof value === "function" ? (value as Function).bind(target) : value;
     },
   });
@@ -458,7 +462,7 @@ export function createCapabilityRegistry(manifests: Manifest[]): CapabilityRegis
 
 export function setCapabilityRegistry(
   registry: CapabilityRegistry,
-  options?: { replace?: boolean },
+  options?: { replace?: boolean; logger?: Logger },
 ): void {
   if (registryInstalled && options?.replace !== true) {
     throw new Error(
@@ -467,6 +471,11 @@ export function setCapabilityRegistry(
   }
   capabilityRegistry = registry;
   registryInstalled = true;
+  const logger = options?.logger ?? noopLogger;
+  logger.info("capability_registry_installed", {
+    capability_count: registry.size,
+    replace: options?.replace === true,
+  });
 }
 
 /** True when the in-memory registry contains this exact capability id + version. */
@@ -499,9 +508,15 @@ export async function resolve(
   version: string,
   cache: ConfigCache,
   reader: D1Reader,
+  logger: Logger = noopLogger,
 ): Promise<ResolveResult> {
   const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
   if (manifest === undefined) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: "capability_unknown",
+    });
     return { ok: false, code: "capability_unknown" };
   }
 
@@ -509,6 +524,11 @@ export async function resolve(
   const effective = effectiveLifecycle(manifest, overlay);
 
   if (effective.lifecycleState === "retired") {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: "capability_retired",
+    });
     return { ok: false, code: "capability_retired" };
   }
 
@@ -521,10 +541,22 @@ export async function resolve(
     reader,
   );
   if (!allowance.ok) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: allowance.code,
+      installation_id: principal.installationId,
+    });
     return allowance;
   }
 
   if (await isCapabilityDisabled(principal, capabilityId, manifest, cache, reader)) {
+    logger.debug("capability_resolve_rejected", {
+      capability_id: capabilityId,
+      version,
+      code: "capability_disabled",
+      installation_id: principal.installationId,
+    });
     return { ok: false, code: "capability_disabled" };
   }
 
@@ -544,6 +576,7 @@ export async function discover(
   principal: Principal,
   cache: ConfigCache,
   reader: D1Reader,
+  logger: Logger = noopLogger,
 ): Promise<DiscoveryResult> {
   const installationId = principal.installationId;
 
@@ -554,24 +587,43 @@ export async function discover(
       reader,
       "entitlements",
       installationId,
+      logger,
     );
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
       const manifests: Manifest[] = [];
-      return { manifests, etag: await computeDiscoveryEtag(manifests) };
+      const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+      logger.info("discover_complete", {
+        installation_id: installationId,
+        manifest_count: 0,
+        reason: "entitlement_miss",
+      });
+      return result;
     }
     throw error;
   }
 
   if (entitlement.status !== "active") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: await computeDiscoveryEtag(manifests) };
+    const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+    logger.info("discover_complete", {
+      installation_id: installationId,
+      manifest_count: 0,
+      reason: "entitlement_inactive",
+    });
+    return result;
   }
 
   const plan = entitlement.plan;
   if (typeof plan !== "string") {
     const manifests: Manifest[] = [];
-    return { manifests, etag: await computeDiscoveryEtag(manifests) };
+    const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+    logger.info("discover_complete", {
+      installation_id: installationId,
+      manifest_count: 0,
+      reason: "invalid_plan",
+    });
+    return result;
   }
 
   const allowedCapabilities = parseAllowedCapabilities(entitlement);
@@ -658,7 +710,13 @@ export async function discover(
 
   const manifests = evaluated.filter((entry): entry is Manifest => entry !== null);
   const sorted = sortManifests(manifests);
-  return { manifests: sorted, etag: await computeDiscoveryEtag(sorted) };
+  const result = { manifests: sorted, etag: await computeDiscoveryEtag(sorted) };
+  logger.info("discover_complete", {
+    installation_id: installationId,
+    manifest_count: sorted.length,
+    etag: result.etag,
+  });
+  return result;
 }
 
 export async function getGrantedCapabilityVersion(

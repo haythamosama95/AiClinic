@@ -9,6 +9,8 @@ import {
   type D1Reader,
   loadConfig,
 } from "../config-cache";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 export type RoutingTier = "standard" | "degraded";
 export type CostClass = "economy" | "standard" | "premium";
@@ -542,10 +544,12 @@ export function selectCandidateChain({
   cache,
   policyCacheKey,
   context,
+  logger = noopLogger,
 }: {
   cache: ConfigCache;
   policyCacheKey: string;
   context: RouterContext;
+  logger?: Logger;
 }): RouterOutcome {
   const installationPolicyKey = `${policyCacheKey}/${context.installationId}`;
   let row = cache.consult("active_routing_policy", installationPolicyKey);
@@ -604,6 +608,26 @@ export function selectCandidateChain({
     matchedRule.max_parallel_attempts ??
     document.defaults.max_parallel_attempts;
 
+  const excluded = [...overrideExcluded, ...filterExcluded];
+
+  logger.info("Routing decision resolved", {
+    installation_id: context.installationId,
+    capability_id: context.capabilityId,
+    policy_id: document.policy_id,
+    rule_id: matchedRule.rule_id,
+    routing_tier: context.routingTier,
+    effective_cost_class: effectiveCostClass,
+    chain_length: chain.length,
+  });
+
+  if (excluded.length > 0) {
+    logger.debug("Routing exclusions applied", {
+      installation_id: context.installationId,
+      excluded_count: excluded.length,
+      excluded,
+    });
+  }
+
   return {
     routing_decision: {
       policy_id: document.policy_id,
@@ -614,7 +638,7 @@ export function selectCandidateChain({
       routing_tier: context.routingTier,
       required_features: context.requirements,
       chain,
-      excluded: [...overrideExcluded, ...filterExcluded],
+      excluded,
       max_parallel_attempts: clampParallelAttempts(rawParallelAttempts),
     },
   };

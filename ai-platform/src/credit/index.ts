@@ -3,6 +3,7 @@ import {
   requeueGraceAdmission,
   type PendingGraceAdmission,
 } from "../admission";
+import { noopLogger, type Logger } from "../logger";
 import type {
   AdmissionResponse,
   PeriodCounters,
@@ -90,6 +91,7 @@ function journalGraceDrop(
   entry: TrackedGraceAdmission,
   reason: GraceDropReason,
   atMs: number,
+  logger: Logger,
 ): void {
   const record: DroppedGraceJournalEntry = {
     reason,
@@ -100,7 +102,9 @@ function journalGraceDrop(
     atMs,
   };
   droppedGraceJournal.push(record);
-  console.warn("grace_reconcile_dropped", record);
+  const level =
+    reason === "expired" || reason === "max_attempts" ? "error" : "info";
+  logger[level]("grace_reconcile_dropped", record);
 }
 
 function stampForRequeue(
@@ -232,9 +236,11 @@ export async function creditUsage(
 export async function reconcileGraceUsage(
   bindings: CreditBindings,
   ctx?: ReconcileGraceContext,
+  logger: Logger = noopLogger,
 ): Promise<ReconcileGraceResult> {
   const nowMs = ctx?.now ?? Date.now();
   const pending = drainPendingGraceAdmissions();
+  logger.info("grace_reconcile_batch_start", { pending_count: pending.length });
   let reconciled = 0;
 
   for (const raw of pending) {
@@ -246,11 +252,11 @@ export async function reconcileGraceUsage(
     };
 
     if (nowMs - entry.reconcileQueuedAtMs! > GRACE_RECONCILE_TTL_MS) {
-      journalGraceDrop(entry, "expired", nowMs);
+      journalGraceDrop(entry, "expired", nowMs, logger);
       continue;
     }
     if (entry.reconcileAttempts! >= GRACE_RECONCILE_MAX_ATTEMPTS) {
-      journalGraceDrop(entry, "max_attempts", nowMs);
+      journalGraceDrop(entry, "max_attempts", nowMs, logger);
       continue;
     }
 
@@ -267,11 +273,11 @@ export async function reconcileGraceUsage(
     }
 
     if (body.outcome === "idempotent") {
-      journalGraceDrop(entry, "settled_by_another_path_idempotent", nowMs);
+      journalGraceDrop(entry, "settled_by_another_path_idempotent", nowMs, logger);
       continue;
     }
     if (body.outcome === "replay") {
-      journalGraceDrop(entry, "settled_by_another_path_replay", nowMs);
+      journalGraceDrop(entry, "settled_by_another_path_replay", nowMs, logger);
       continue;
     }
     if (body.outcome !== "admitted") {
@@ -292,7 +298,7 @@ export async function reconcileGraceUsage(
 
     if (!credit.ok) {
       if (credit.reason === "unknown_request") {
-        journalGraceDrop(entry, "settled_by_another_path_unknown_request", nowMs);
+        journalGraceDrop(entry, "settled_by_another_path_unknown_request", nowMs, logger);
         continue;
       }
       requeueGraceAdmission(stampForRequeue(entry, nowMs));
@@ -302,5 +308,9 @@ export async function reconcileGraceUsage(
     reconciled += 1;
   }
 
+  logger.info("grace_reconcile_batch_end", {
+    pending_count: pending.length,
+    reconciled,
+  });
   return { reconciled };
 }

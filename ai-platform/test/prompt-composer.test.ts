@@ -14,6 +14,7 @@ import {
 } from "../src/contracts/canonical";
 import { buildErrorBody, getTaxonomyEntry } from "../src/errors";
 import type { Principal } from "../src/identity";
+import { createLogger } from "../src/logger";
 import { load } from "../src/manifest";
 import { VISIT_CHIEF_COMPLAINT_V1 } from "../src/context";
 import {
@@ -649,7 +650,12 @@ describe("T-D1-12 composer_failure_emits_internal_error", () => {
   });
 
   it("logs the trace id and error when composition throws", () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const capturedLines: string[] = [];
+    const logger = createLogger({
+      file: "prompt/composer.ts",
+      verbosity: 0,
+      sink: { write: (line) => capturedLines.push(line) },
+    });
     const throwingValue = {
       toJSON() {
         throw new Error("forced composition failure");
@@ -659,23 +665,26 @@ describe("T-D1-12 composer_failure_emits_internal_error", () => {
       [VISIT_CHIEF_COMPLAINT_V1]: throwingValue,
     });
 
-    const result = composeFixture({ filteredContext });
+    const result = composeRequest(
+      {
+        manifest: load(validManifest()),
+        filteredContext,
+        userIntent: FIXTURE_USER_INTENT,
+        principal: fixturePrincipal(),
+        requestReference: FIXTURE_REQUEST_REFERENCE,
+      },
+      logger,
+    );
 
     expect(result.ok).toBe(false);
     if (result.ok) {
-      errorSpy.mockRestore();
       return;
     }
     expect(result.code).toBe("internal_error");
-    expect(errorSpy).toHaveBeenCalled();
-    const callArgs = errorSpy.mock.calls[0] ?? [];
-    expect(callArgs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ trace_id: FIXTURE_TRACE_ID }),
-        expect.any(Error),
-      ]),
-    );
-
-    errorSpy.mockRestore();
+    expect(capturedLines.length).toBeGreaterThan(0);
+    const serialized = capturedLines.join("\n");
+    expect(serialized).toContain("compose_request_failed");
+    expect(serialized).toContain(FIXTURE_TRACE_ID);
+    expect(serialized).toContain("forced composition failure");
   });
 });

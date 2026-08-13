@@ -1,3 +1,6 @@
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
+
 export const EPHEMERAL_HORIZON_MS = 7_200_000;
 export const CONCURRENCY_LIMIT = 16;
 
@@ -330,6 +333,7 @@ export async function admissionRPC(
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   request: AdmissionRequest,
   now?: number,
+  logger: Logger = noopLogger,
 ): Promise<AdmissionResponse> {
   const timestamp = now ?? Date.now();
 
@@ -341,12 +345,21 @@ export async function admissionRPC(
     maybeResetPeriod(state, request.entitlement);
 
     if (state.jtiReplay[request.jti]) {
+      logger.info("Admission replay detected", {
+        installation_id: request.installationId,
+        jti: request.jti,
+      });
       await storage.put(STATE_KEY, state);
       return { kind: "admission", outcome: "replay" };
     }
 
     const existingIdempotency = state.idempotency[request.idempotencyKey];
     if (existingIdempotency) {
+      logger.info("Admission idempotent replay", {
+        installation_id: request.installationId,
+        request_id: existingIdempotency.requestId,
+        prior_state: existingIdempotency.state,
+      });
       await storage.put(STATE_KEY, state);
       return {
         kind: "admission",
@@ -360,6 +373,9 @@ export async function admissionRPC(
     }
 
     if (isQuotaExhausted(state.periodCounters, request.entitlement)) {
+      logger.info("Admission quota exhausted", {
+        installation_id: request.installationId,
+      });
       await storage.put(STATE_KEY, state);
       return {
         kind: "admission",
@@ -369,6 +385,10 @@ export async function admissionRPC(
     }
 
     if (state.periodCounters.inFlight >= CONCURRENCY_LIMIT) {
+      logger.info("Admission concurrency exhausted", {
+        installation_id: request.installationId,
+        in_flight: state.periodCounters.inFlight,
+      });
       await storage.put(STATE_KEY, state);
       return { kind: "admission", outcome: "concurrency_exhausted" };
     }
@@ -399,6 +419,11 @@ export async function admissionRPC(
     );
 
     await storage.put(STATE_KEY, state);
+    logger.info("Admission granted", {
+      installation_id: request.installationId,
+      request_id: requestId,
+      degraded,
+    });
     return {
       kind: "admission",
       outcome: "admitted",
@@ -413,6 +438,7 @@ export async function creditRPC(
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   request: CreditRequest,
   now?: number,
+  logger: Logger = noopLogger,
 ): Promise<CreditResponse> {
   const timestamp = now ?? Date.now();
 
@@ -423,6 +449,10 @@ export async function creditRPC(
       state.boundInstallationId !== undefined &&
       state.boundInstallationId !== request.installationId
     ) {
+      logger.info("Credit rejected — unknown request", {
+        installation_id: request.installationId,
+        request_id: request.requestId,
+      });
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
@@ -433,6 +463,10 @@ export async function creditRPC(
       state.creditedRequests[request.requestId]
     ) {
       await storage.put(STATE_KEY, state);
+      logger.info("Credit rejected — unknown request", {
+        installation_id: request.installationId,
+        request_id: request.requestId,
+      });
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
@@ -449,6 +483,14 @@ export async function creditRPC(
     markIdempotencyOnCredit(state, request.requestId, request.partial);
 
     await storage.put(STATE_KEY, state);
+
+    logger.info("Credit applied", {
+      installation_id: request.installationId,
+      request_id: request.requestId,
+      partial: request.partial,
+      tokens: request.usage.tokens,
+      cost: request.usage.cost,
+    });
 
     return {
       kind: "credit",
@@ -467,6 +509,7 @@ export async function releaseRPC(
   blockConcurrencyWhile: <T>(fn: () => Promise<T>) => Promise<T>,
   request: ReleaseRequest,
   now?: number,
+  logger: Logger = noopLogger,
 ): Promise<ReleaseResponse> {
   const timestamp = now ?? Date.now();
 
@@ -477,6 +520,10 @@ export async function releaseRPC(
       state.boundInstallationId !== undefined &&
       state.boundInstallationId !== request.installationId
     ) {
+      logger.info("Release rejected — unknown request", {
+        installation_id: request.installationId,
+        request_id: request.requestId,
+      });
       return { kind: "release", ok: false, code: "unknown_request" };
     }
 
@@ -485,6 +532,10 @@ export async function releaseRPC(
     const admitted = state.admittedRequests[request.requestId];
     if (!admitted) {
       await storage.put(STATE_KEY, state);
+      logger.info("Release rejected — unknown request", {
+        installation_id: request.installationId,
+        request_id: request.requestId,
+      });
       return { kind: "release", ok: false, code: "unknown_request" };
     }
 
@@ -499,6 +550,10 @@ export async function releaseRPC(
     delete state.jtiReplay[request.jti];
 
     await storage.put(STATE_KEY, state);
+    logger.info("Admission reservation released", {
+      installation_id: request.installationId,
+      request_id: request.requestId,
+    });
     return { kind: "release", ok: true };
   });
 }

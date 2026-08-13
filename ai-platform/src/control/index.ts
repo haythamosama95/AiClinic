@@ -62,6 +62,7 @@ import {
   handleTokenContractRetire,
 } from "./token-contract";
 import type { ControlBindings, OperatorAuth } from "./types";
+import { noopLogger, type Logger } from "../logger";
 
 const CONTROL_ACTION_PATTERN =
   /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge|entitle)$/;
@@ -95,8 +96,12 @@ export async function dispatchControlRequest(
   request: Request,
   bindings: ControlBindings,
   operatorAuth: OperatorAuth,
+  logger: Logger = noopLogger,
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname;
+  const action = pathname.split("/").pop() ?? pathname;
+
+  logger.debug("control_request_received", { pathname, action });
 
   if (SUPPORT_LOOKUP_PATTERN.test(pathname)) {
     return handleSupportLookup(request, bindings, operatorAuth);
@@ -152,9 +157,9 @@ export async function dispatchControlRequest(
     return reject(400, "invalid_route");
   }
 
-  const action = pathname.split("/").pop();
+  const installAction = pathname.split("/").pop();
 
-  switch (action) {
+  switch (installAction) {
     case "enroll":
       return handleEnroll(request, bindings, operatorAuth);
     case "rotate":
@@ -172,6 +177,7 @@ export async function dispatchControlRequest(
     case "entitle":
       return handleEntitle(request, bindings, operatorAuth);
     default:
+      logger.debug("control_route_not_found", { pathname });
       return new Response("Not Found", { status: 404 });
   }
 }

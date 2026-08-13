@@ -6,6 +6,7 @@ import {
   writePostResponseDetail,
   type PostResponseInput,
 } from "../src/journal";
+import { createLogger } from "../src/logger";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG_PATH = path.join(ROOT, "wrangler.toml");
@@ -168,54 +169,48 @@ describe("adapter malformed body rejection (T25)", () => {
 
 describe("structured log redaction (T27)", () => {
   it("never logs prompt text, context payload, or credentials on a forced stage-16 failure path", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const capturedLines: string[] = [];
+    const logger = createLogger({
+      file: "journal/index.ts",
+      verbosity: 0,
+      sink: { write: (line) => capturedLines.push(line) },
+    });
 
-    try {
-      const failingDb = {
-        prepare() {
-          throw new Error("injected stage-16 D1 failure");
-        },
-        async batch() {
-          throw new Error("injected stage-16 D1 failure");
-        },
-      } as unknown as D1Database;
+    const failingDb = {
+      prepare() {
+        throw new Error("injected stage-16 D1 failure");
+      },
+      async batch() {
+        throw new Error("injected stage-16 D1 failure");
+      },
+    } as unknown as D1Database;
 
-      const failingR2 = {
-        async put() {
-          throw new Error("injected stage-16 R2 failure");
-        },
-      } as unknown as R2Bucket;
+    const failingR2 = {
+      async put() {
+        throw new Error("injected stage-16 R2 failure");
+      },
+    } as unknown as R2Bucket;
 
-      const ctx = createFakeCtx();
-      writePostResponseDetail(buildSensitivePostResponseInput(), {
+    const ctx = createFakeCtx();
+    writePostResponseDetail(
+      buildSensitivePostResponseInput(),
+      {
         db: failingDb,
         r2: failingR2,
         ctx,
-      });
-      await ctx.drainWaitUntil();
+      },
+      logger,
+    );
+    await ctx.drainWaitUntil();
 
-      const serializedLogs = serializeConsoleCalls(
-        errorSpy,
-        warnSpy,
-        infoSpy,
-        logSpy,
-      );
+    const serializedLogs = capturedLines.join("\n");
 
-      // Canary: a real worker failure-path log site was captured (not wrangler noise).
-      expect(serializedLogs).toContain(STAGE16_FAILURE_CANARY);
-      expect(errorSpy.mock.calls.length).toBeGreaterThan(0);
+    // Canary: a real worker failure-path log site was captured (not wrangler noise).
+    expect(serializedLogs).toContain(STAGE16_FAILURE_CANARY);
+    expect(capturedLines.length).toBeGreaterThan(0);
 
-      expect(serializedLogs).not.toContain(SENSITIVE_PROMPT);
-      expect(serializedLogs).not.toContain(SENSITIVE_CONTEXT);
-      expect(serializedLogs).not.toContain(SENSITIVE_CREDENTIAL);
-    } finally {
-      errorSpy.mockRestore();
-      warnSpy.mockRestore();
-      infoSpy.mockRestore();
-      logSpy.mockRestore();
-    }
+    expect(serializedLogs).not.toContain(SENSITIVE_PROMPT);
+    expect(serializedLogs).not.toContain(SENSITIVE_CONTEXT);
+    expect(serializedLogs).not.toContain(SENSITIVE_CREDENTIAL);
   });
 });

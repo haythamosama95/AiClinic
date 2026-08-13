@@ -7,6 +7,7 @@ import { buildDiscoveryResponse, discover } from "../capability";
 import { ConfigCache, createD1ConfigReader } from "../config-cache";
 import { buildErrorBody, liveHttpStatusForCode } from "../errors";
 import { EnrolledKeyVerifier } from "../identity";
+import { noopLogger, type Logger } from "../logger";
 import { generateRequestReference } from "../reference";
 import { generateUlid } from "../trace";
 
@@ -30,14 +31,17 @@ function unauthenticatedResponse(): Response {
 export async function handleDiscoveryRequest(
   request: Request,
   env: DiscoveryEnv,
+  logger: Logger = noopLogger,
 ): Promise<Response> {
   const header = request.headers.get("Authorization");
   if (header === null || !header.startsWith("Bearer ")) {
+    logger.debug("discovery_auth_rejected", { code: "unauthenticated" });
     return unauthenticatedResponse();
   }
 
   const token = header.slice("Bearer ".length).trim();
   if (token.length === 0) {
+    logger.debug("discovery_auth_rejected", { code: "unauthenticated" });
     return unauthenticatedResponse();
   }
 
@@ -53,6 +57,7 @@ export async function handleDiscoveryRequest(
   });
 
   if (!verifyResult.ok) {
+    logger.debug("discovery_auth_rejected", { code: verifyResult.code });
     const status = liveHttpStatusForCode(verifyResult.code) ?? 401;
     return Response.json(
       buildErrorBody({
@@ -64,7 +69,17 @@ export async function handleDiscoveryRequest(
     );
   }
 
-  const discoveryResult = await discover(verifyResult.principal, cache, reader);
+  const discoveryResult = await discover(
+    verifyResult.principal,
+    cache,
+    reader,
+    logger,
+  );
+  logger.info("discovery_succeeded", {
+    installation_id: verifyResult.principal.installationId,
+    manifest_count: discoveryResult.manifests.length,
+    etag: discoveryResult.etag,
+  });
   return buildDiscoveryResponse(
     request,
     discoveryResult.manifests,

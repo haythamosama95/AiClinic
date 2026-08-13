@@ -1,3 +1,5 @@
+import { noopLogger, type Logger } from "../logger";
+
 export type ReconciliationReport = {
   window: { start: string; end: string };
   missingAttemptRows: Array<{ requestId: string; requestReference: string }>;
@@ -84,7 +86,13 @@ async function aggregateUsageEvents(
 
 export async function runRollup(
   bindings: RollupBindings,
+  logger: Logger = noopLogger,
 ): Promise<{ rollupsWritten: number }> {
+  logger.info("rollup_start", {
+    window_start: bindings.window?.start,
+    window_end: bindings.window?.end,
+  });
+
   const aggregates = await aggregateUsageEvents(bindings.db, bindings.window);
 
   let rollupsWritten = 0;
@@ -118,13 +126,20 @@ export async function runRollup(
     rollupsWritten += 1;
   }
 
+  logger.info("rollup_complete", { rollups_written: rollupsWritten });
   return { rollupsWritten };
 }
 
 export async function runReconciliation(
   bindings: RollupBindings,
+  logger: Logger = noopLogger,
 ): Promise<ReconciliationReport> {
   const window = bindings.window ?? defaultReconciliationWindow();
+
+  logger.info("reconcile_start", {
+    window_start: window.start,
+    window_end: window.end,
+  });
 
   const missingAttempts = await bindings.db
     .prepare(
@@ -150,7 +165,7 @@ export async function runReconciliation(
     .bind(window.start, window.end)
     .all<TerminalRequestRow>();
 
-  return {
+  const report: ReconciliationReport = {
     window,
     missingAttemptRows: (missingAttempts.results ?? []).map((row) => ({
       requestId: row.request_id,
@@ -161,29 +176,33 @@ export async function runReconciliation(
       requestReference: row.request_reference,
     })),
   };
+
+  logger.info("reconcile_complete", {
+    missing_attempt_rows: report.missingAttemptRows.length,
+    missing_usage_credit: report.missingUsageCredit.length,
+  });
+
+  return report;
 }
 
 export function logReconciliationReport(
   result: { rollupsWritten: number; report: ReconciliationReport },
-  log: (line: string) => void = console.log,
+  logger: Logger = noopLogger,
 ): void {
-  log(
-    JSON.stringify({
-      level: "info",
-      message: "usage_rollup_reconciliation",
-      rollups_written: result.rollupsWritten,
-      missing_attempt_rows: result.report.missingAttemptRows.length,
-      missing_usage_credit: result.report.missingUsageCredit.length,
-      window: result.report.window,
-      report: result.report,
-    }),
-  );
+  logger.info("usage_rollup_reconciliation", {
+    rollups_written: result.rollupsWritten,
+    missing_attempt_rows: result.report.missingAttemptRows.length,
+    missing_usage_credit: result.report.missingUsageCredit.length,
+    window: result.report.window,
+    report: result.report,
+  });
 }
 
 export async function runRollupAndReconciliation(
   bindings: RollupBindings,
+  logger: Logger = noopLogger,
 ): Promise<{ rollupsWritten: number; report: ReconciliationReport }> {
-  const rollup = await runRollup(bindings);
-  const report = await runReconciliation(bindings);
+  const rollup = await runRollup(bindings, logger);
+  const report = await runReconciliation(bindings, logger);
   return { rollupsWritten: rollup.rollupsWritten, report };
 }

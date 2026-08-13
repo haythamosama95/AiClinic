@@ -1,5 +1,6 @@
 import { load } from "../manifest";
 import type { Envelope } from "../journal";
+import { noopLogger, type Logger } from "../logger";
 /**
  * Bundled published manifests (eager static imports — Workers runtime has no
  * `import.meta.glob`). Add each new `manifests/published/*.json` here so
@@ -97,6 +98,7 @@ type RetentionBindings = {
   r2: R2Bucket;
   now?: Date;
   resolveRetentionClass?: RetentionClassResolver;
+  logger?: Logger;
 };
 
 type RequestRetentionRow = {
@@ -137,6 +139,7 @@ export async function runRetentionPurge(
   counterDeleted: number;
 }> {
   const now = bindings.now ?? new Date();
+  const logger = bindings.logger ?? noopLogger;
   const resolveRetentionClass =
     bindings.resolveRetentionClass ?? defaultRetentionClassResolver();
   const { db, r2 } = bindings;
@@ -267,6 +270,13 @@ export async function runRetentionPurge(
     .bind(counterCutoff)
     .run();
   const counterDeleted = counterResult.meta.changes ?? 0;
+
+  logger.info("retention_purge_complete", {
+    diagnostic_deleted: diagnosticDeleted,
+    journal_deleted: journalDeleted,
+    ledger_deleted: ledgerDeleted,
+    counter_deleted: counterDeleted,
+  });
 
   return { diagnosticDeleted, journalDeleted, ledgerDeleted, counterDeleted };
 }

@@ -14,7 +14,6 @@ const mockReconcileGraceUsage = vi.fn();
 const mockRunRetentionPurge = vi.fn();
 const mockCreateManifestRetentionClassResolver = vi.fn(() => vi.fn());
 const mockRunRollupAndReconciliation = vi.fn();
-const mockLogReconciliationReport = vi.fn();
 const mockAdmissionRPC = vi.fn();
 const mockCreditRPC = vi.fn();
 const mockLiveHttpStatusForCode = vi.fn(
@@ -85,8 +84,6 @@ vi.mock("../src/retention", () => ({
 }));
 
 vi.mock("../src/rollup", () => ({
-  logReconciliationReport: (...args: unknown[]) =>
-    mockLogReconciliationReport(...args),
   runRollupAndReconciliation: (...args: unknown[]) =>
     mockRunRollupAndReconciliation(...args),
 }));
@@ -140,7 +137,6 @@ beforeEach(async () => {
   mockRunRetentionPurge.mockReset();
   mockCreateManifestRetentionClassResolver.mockClear();
   mockRunRollupAndReconciliation.mockReset();
-  mockLogReconciliationReport.mockReset();
   mockAdmissionRPC.mockReset();
   mockCreditRPC.mockReset();
   mockLiveHttpStatusForCode.mockClear();
@@ -148,7 +144,14 @@ beforeEach(async () => {
   mockFlushRejectionCounters.mockResolvedValue(undefined);
   mockReconcileGraceUsage.mockResolvedValue(undefined);
   mockRunRetentionPurge.mockResolvedValue(undefined);
-  mockRunRollupAndReconciliation.mockResolvedValue({ ok: true });
+  mockRunRollupAndReconciliation.mockResolvedValue({
+    rollupsWritten: 0,
+    report: {
+      missingAttemptRows: [],
+      missingUsageCredit: [],
+      window: { start: "2026-01-01", end: "2026-01-02" },
+    },
+  });
   mockHandleAdapterRequest.mockResolvedValue(
     new Response("event source required", { status: 503 }),
   );
@@ -191,9 +194,11 @@ describe("POST /v1/requests production orchestrator wiring", () => {
     const options = mockHandleAdapterRequest.mock.calls[0]?.[1] as {
       preAccept?: unknown;
       eventSource?: unknown;
+      makeLog?: unknown;
     };
     expect(typeof options?.preAccept).toBe("function");
     expect(typeof options?.eventSource).toBe("function");
+    expect(typeof options?.makeLog).toBe("function");
   });
 });
 
@@ -351,7 +356,14 @@ describe("scheduled() cron dispatch", () => {
     });
     mockRunRollupAndReconciliation.mockImplementation(async () => {
       calls.push("rollup");
-      return { ok: true };
+      return {
+        rollupsWritten: 1,
+        report: {
+          missingAttemptRows: [],
+          missingUsageCredit: [],
+          window: { start: "2026-01-01", end: "2026-01-02" },
+        },
+      };
     });
     return calls;
   }
@@ -384,7 +396,7 @@ describe("scheduled() cron dispatch", () => {
 
     expect(calls).toEqual(["flush", "reconcile", "rollup"]);
     expect(mockRunRetentionPurge).not.toHaveBeenCalled();
-    expect(mockLogReconciliationReport).toHaveBeenCalled();
+    expect(mockRunRollupAndReconciliation).toHaveBeenCalled();
   });
 
   it("always flushes and reconciles even for unrecognized crons", async () => {
@@ -485,15 +497,12 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "internal_error" });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    const logged = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0]));
-    expect(logged).toMatchObject({
-      level: "error",
-      message: "gateway_object_rpc_failed",
-      kind: "admission",
-      error: "storage_put_failed",
-      installation: "inst-1",
-      request_reference: "ABCD-EFGH",
-      jti: "jti-1",
-    });
+    const logged = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    expect(logged).toMatch(/\[Error\] gateway_object_rpc_failed/);
+    expect(logged).toContain("admission");
+    expect(logged).toContain("storage_put_failed");
+    expect(logged).toContain("inst-1");
+    expect(logged).toContain("ABCD-EFGH");
+    expect(logged).toContain("jti-1");
   });
 });

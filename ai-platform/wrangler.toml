@@ -2,6 +2,10 @@ name = "ai-platform-gateway"
 main = "src/worker.ts"
 compatibility_date = "2026-05-03"
 
+[dev]
+ip = "127.0.0.1"
+port = 8787
+
 [triggers]
 crons = ["0 3 * * *", "0 4 * * *"]
 
@@ -20,6 +24,7 @@ name = "ai-platform-gateway-development"
 [env.development.vars]
 BUILD_SHA = "local"
 ENVIRONMENT = "development"
+LOG_VERBOSITY = "2"
 OPERATOR_ID = "platform-operator"
 
 [[env.development.d1_databases]]
@@ -56,6 +61,7 @@ name = "ai-platform-gateway-staging"
 [env.staging.vars]
 BUILD_SHA = "local"
 ENVIRONMENT = "staging"
+LOG_VERBOSITY = "1"
 OPERATOR_ID = "platform-operator"
 
 [[env.staging.d1_databases]]
@@ -92,6 +98,7 @@ name = "ai-platform-gateway-production"
 [env.production.vars]
 BUILD_SHA = "local"
 ENVIRONMENT = "production"
+LOG_VERBOSITY = "0"
 OPERATOR_ID = "platform-operator"
 
 [[env.production.d1_databases]]

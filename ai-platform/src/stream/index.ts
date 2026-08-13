@@ -1,5 +1,7 @@
 import type { AdapterSseEvent } from "../adapter";
 import { buildErrorBody, type TaxonomyCode } from "../errors";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 import {
   checkIncrementalGuards,
   runFullGuardSet,
@@ -103,6 +105,7 @@ export interface StreamBrokerOptions {
   creditSink: CreditSink;
   journalTerminalSink: JournalTerminalSink;
   guardThresholds: ProseGuardThresholds;
+  logger?: Logger;
 }
 
 export interface StreamBrokerController {
@@ -183,6 +186,7 @@ async function* abortableAsyncIterate<T>(
 export function createStreamBroker(
   options: StreamBrokerOptions,
 ): StreamBrokerController {
+  const logger = options.logger ?? noopLogger;
   const abortController = new AbortController();
   let disconnected = false;
   let terminalEmitted = false;
@@ -211,8 +215,11 @@ export function createStreamBroker(
         usage,
         partial: true,
       });
-    } catch {
-      // Settlement failure must not suppress the terminal SSE event (§5.5 rule 4).
+    } catch (error: unknown) {
+      logger.error("Stream settlement credit failed", {
+        request_id: options.requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -223,8 +230,12 @@ export function createStreamBroker(
   }): void => {
     try {
       options.journalTerminalSink(record);
-    } catch {
-      // Settlement failure must not suppress the terminal SSE event.
+    } catch (error: unknown) {
+      logger.error("Stream settlement journal write failed", {
+        request_id: options.requestId,
+        state: record.state,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -232,6 +243,11 @@ export function createStreamBroker(
     if (terminalEmitted) {
       return;
     }
+
+    logger.info("Stream broker cancelled", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+    });
 
     emitTerminalOnce({
       type: "cancelled",
@@ -254,6 +270,12 @@ export function createStreamBroker(
     if (terminalEmitted) {
       return;
     }
+
+    logger.info("Stream broker failed", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+      error_code: code,
+    });
 
     // Mirror adapter pushTerminalEvent("failed") — full §5.4 error body.
     const errorBody = buildErrorBody({
@@ -280,6 +302,12 @@ export function createStreamBroker(
       return;
     }
 
+    logger.info("Stream broker completed", {
+      request_id: options.requestId,
+      trace_id: options.traceId,
+      content_length: assembled.length,
+    });
+
     emitTerminalOnce({
       type: "completed",
       data: {
@@ -302,6 +330,10 @@ export function createStreamBroker(
 
   const runProse = async (): Promise<void> => {
     const { traceId, chunkSource, heartbeatTicker, guardThresholds } = options;
+    logger.info("Stream broker started", {
+      request_id: options.requestId,
+      trace_id: traceId,
+    });
     let assembled = "";
     let sequence = 0;
 
@@ -411,10 +443,14 @@ export function createStreamBroker(
 
   return {
     run: runProse,
-    disconnect(_reason: "client_close" | "network_drop") {
+    disconnect(reason: "client_close" | "network_drop") {
       if (terminalEmitted) {
         return;
       }
+      logger.info("Stream broker disconnected", {
+        request_id: options.requestId,
+        reason,
+      });
       disconnected = true;
       abortController.abort();
       // Emit cancelled synchronously so a signal-ignoring source cannot hang

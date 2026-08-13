@@ -10,6 +10,7 @@ import {
 } from "./index";
 import { buildErrorBody } from "../errors";
 import type { Principal } from "../identity";
+import { noopLogger, type Logger } from "../logger";
 import type { Manifest } from "../manifest";
 import {
   validateContextRequest,
@@ -400,20 +401,28 @@ export function validateContext(
   suppliedContext: Record<string, unknown>,
   principal: Principal,
   conversational?: ConversationalValidateOptions,
+  logger: Logger = noopLogger,
 ): ValidateResult {
   if (manifest.interactionMode === "conversational") {
     if (conversational === undefined) {
+      logger.info("context_validation_failed", { code: "context_invalid" });
       return { ok: false, code: "context_invalid" };
     }
-    return validateConversationalContext(
+    const result = validateConversationalContext(
       manifest,
       suppliedContext,
       conversational,
     );
+    if (!result.ok) {
+      const level = result.code === "internal_error" ? "error" : "info";
+      logger[level]("context_validation_failed", { code: result.code });
+    }
+    return result;
   }
 
   const contextRequirements = manifest["Context requirements"];
   if (!Array.isArray(contextRequirements)) {
+    logger.info("context_validation_failed", { code: "context_invalid" });
     return { ok: false, code: "context_invalid" };
   }
 
@@ -422,6 +431,7 @@ export function validateContext(
     const key = String(entry.key);
     if (typeof entry.required !== "boolean") {
       // Malformed required flag is a platform/manifest defect.
+      logger.error("context_validation_failed", { code: "internal_error" });
       return { ok: false, code: "internal_error" };
     }
     if (
@@ -433,6 +443,10 @@ export function validateContext(
   }
 
   if (missingKeys.length > 0) {
+    logger.info("context_validation_failed", {
+      code: "context_required",
+      missing_keys: missingKeys,
+    });
     return deepFreeze({
       ok: false as const,
       code: "context_required" as const,
@@ -447,6 +461,7 @@ export function validateContext(
     suppliedContext.org !== principal.organizationId ||
     suppliedContext.branch !== principal.branchId
   ) {
+    logger.info("context_validation_failed", { code: "context_invalid" });
     return { ok: false, code: "context_invalid" };
   }
 
@@ -463,17 +478,21 @@ export function validateContext(
         // Keys without a published shape pass the shape check (A5 owns publication).
       } else if (PLATFORM_KEY_FAILURE_CODES.has(payloadResult.code)) {
         // Manifest declared an unpublished/malformed key — platform defect.
+        logger.error("context_validation_failed", { code: "internal_error" });
         return { ok: false, code: "internal_error" };
       } else {
         // Client-remediable shape/field violation.
+        logger.info("context_validation_failed", { code: "context_invalid" });
         return { ok: false, code: "context_invalid" };
       }
     }
 
     if (!isFiniteNumber(entry.maxSize)) {
+      logger.error("context_validation_failed", { code: "internal_error" });
       return { ok: false, code: "internal_error" };
     }
     if (jsonByteLength(value) > entry.maxSize) {
+      logger.info("context_validation_failed", { code: "context_invalid" });
       return { ok: false, code: "context_invalid" };
     }
   }

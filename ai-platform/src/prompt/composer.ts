@@ -4,6 +4,7 @@ import {
   type CanonicalRequest,
 } from "../contracts/canonical";
 import type { Principal } from "../identity";
+import { noopLogger, type Logger } from "../logger";
 import type { Manifest } from "../manifest";
 import { CONTEXT_REQUEST_SCHEMA_ID } from "../context/context-request";
 import type { Transcript } from "../context/validator";
@@ -212,6 +213,7 @@ function deriveOutputFormatInstruction(
 
 export function composeRequest(
   input: ComposeRequestInput,
+  logger: Logger = noopLogger,
 ): ComposeRequestResult {
   try {
     if (
@@ -320,17 +322,24 @@ export function composeRequest(
 
     assertNoProviderShapedFieldNames(Object.keys(request));
 
+    const promptVersion = resolvePromptVersion(manifest);
+    logger.debug("compose_request_succeeded", {
+      trace_id: input.principal.jti,
+      prompt_version: promptVersion,
+      request_reference: input.requestReference,
+    });
+
     return {
       ok: true,
       request,
-      promptVersion: resolvePromptVersion(manifest),
+      promptVersion,
     };
   } catch (error) {
-    console.error(
-      "composeRequest failed",
-      { trace_id: input.principal.jti },
-      error,
-    );
+    logger.error("compose_request_failed", {
+      trace_id: input.principal.jti,
+      request_reference: input.requestReference,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { ok: false, code: "internal_error" };
   }
 }

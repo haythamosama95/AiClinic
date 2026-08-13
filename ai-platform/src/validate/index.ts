@@ -1,4 +1,5 @@
 import type { InteractionMode } from "../manifest";
+import { noopLogger, type Logger } from "../logger";
 import {
   runValidationPhases,
   type AssembledOutput,
@@ -58,6 +59,7 @@ export type ValidateAndRepairInput = {
   reask?: ReaskPort;
   repairJournalSink?: RepairJournalSink;
   repairCostSink?: RepairCostSink;
+  logger?: Logger;
 };
 
 export type ValidateAndRepairSuccess = { ok: true; validated: unknown };
@@ -85,6 +87,7 @@ function terminalFailure(
 export async function validateAndRepair(
   input: ValidateAndRepairInput,
 ): Promise<ValidateAndRepairResult> {
+  const logger = input.logger ?? noopLogger;
   let currentOutput = input.output;
   let attempt = 0;
 
@@ -107,14 +110,30 @@ export async function validateAndRepair(
     }
 
     if (!input.repairPolicy.allowed || attempt >= input.repairPolicy.maxAttempts) {
+      logger.error("validation_terminal_failure", {
+        phase: result.failure.phase,
+        message: result.failure.message,
+        attempt,
+      });
       return terminalFailure(result.failure);
     }
 
     if (!input.reask) {
+      logger.error("validation_terminal_failure", {
+        phase: result.failure.phase,
+        message: result.failure.message,
+        attempt,
+        reason: "no_reask_port",
+      });
       return terminalFailure(result.failure);
     }
 
     attempt += 1;
+    logger.info("validation_repair_attempt", {
+      attempt,
+      phase: result.failure.phase,
+      message: result.failure.message,
+    });
     input.repairJournalSink?.({
       attempt,
       errors: [result.failure],
@@ -123,7 +142,12 @@ export async function validateAndRepair(
     let reaskResult: ReaskResult;
     try {
       reaskResult = await input.reask([result.failure]);
-    } catch {
+    } catch (error) {
+      logger.error("validation_reask_failed", {
+        attempt,
+        phase: result.failure.phase,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return terminalFailure({
         phase: result.failure.phase,
         message: `reask failed: ${result.failure.message}`,

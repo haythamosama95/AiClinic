@@ -30,6 +30,8 @@ import {
   type RateLimitBindings,
 } from "../rate-limit";
 import { routingTierFromAdmission } from "../soft-threshold";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 import type {
   IdempotencyPriorState,
   ReleaseRequest,
@@ -77,6 +79,7 @@ export type GuardInput = {
   promptArtifactByteLength?: number;
   /** Stage 10 — production `composeRequest` (injected; avoids eager prompt-registry load). */
   composeRequest: ComposeRequestFn;
+  logger?: Logger;
 };
 
 export type GuardBindings = {
@@ -132,6 +135,7 @@ export type SettleHappyPathInput = {
   quotaWeight: number;
   recordedAt: string;
   usage?: { tokens: number; cost: number };
+  logger?: Logger;
 };
 
 export type SettleHappyPathBindings = {
@@ -152,12 +156,20 @@ function fail(
   stage: GuardStage,
   code: string,
   started: number,
+  logger: Logger,
 ): GuardFailure {
+  const guardLatencyMs = performance.now() - started;
+  const logData = { stage, code, guard_latency_ms: Math.round(guardLatencyMs) };
+  if (code === "internal_error") {
+    logger.error(`Guard failed at stage ${stage}`, logData);
+  } else {
+    logger.info(`Guard rejected at stage ${stage}`, logData);
+  }
   return {
     ok: false,
     code,
     stage,
-    guardLatencyMs: performance.now() - started,
+    guardLatencyMs,
   };
 }
 
@@ -247,17 +259,23 @@ export async function runGuard(
   bindings: GuardBindings,
 ): Promise<GuardResult> {
   const started = performance.now();
+  const logger = input.logger ?? noopLogger;
+  logger.info("Guard pipeline started", {
+    trace_id: input.traceId,
+    request_reference: input.requestReference,
+    capability_id: input.capabilityId,
+  });
   // Stage 8 / identity clock: seconds (JWT NumericDate), never Date.now() ms.
   const nowSeconds = input.now ?? Math.floor(Date.now() / 1000);
 
   // Stage 1 — ingress size + JSON shape
   const bodyBytes = new TextEncoder().encode(input.bodyText).byteLength;
   if (bodyBytes > INGRESS_BODY_SIZE_LIMIT) {
-    return fail(1, "request_too_large", started);
+    return fail(1, "request_too_large", started, logger);
   }
   const body = parseAdapterRequestBody(input.bodyText);
   if (body === null) {
-    return fail(1, "internal_error", started);
+    return fail(1, "internal_error", started, logger);
   }
 
   // Prefer wire body intent/context when present (Flutter CapabilityInvokeInput shape).
@@ -273,7 +291,7 @@ export async function runGuard(
     principal = input.principal;
   } else {
     if (input.token === undefined || input.verifier === undefined) {
-      return fail(2, "unauthenticated", started);
+      return fail(2, "unauthenticated", started, logger);
     }
     const verifyCtx: VerifyContext = {
       audience: input.verifyContext?.audience ?? "ai-platform",
@@ -284,7 +302,7 @@ export async function runGuard(
     };
     const verified = await input.verifier.verify(input.token, verifyCtx);
     if (!verified.ok) {
-      return fail(2, verified.code, started);
+      return fail(2, verified.code, started, logger);
     }
     principal = verified.principal;
   }
@@ -295,9 +313,10 @@ export async function runGuard(
     input.entitlement,
     input.cache,
     input.reader,
+    logger,
   );
   if (!entitlementResult.ok) {
-    return fail(3, entitlementResult.code, started);
+    return fail(3, entitlementResult.code, started, logger);
   }
 
   // Stage 4 — rate limit
@@ -308,9 +327,10 @@ export async function runGuard(
       capabilityId: input.capabilityId,
     },
     bindings.rateLimit,
+    logger,
   );
   if (!rateResult.ok) {
-    return fail(4, rateResult.code, started);
+    return fail(4, rateResult.code, started, logger);
   }
 
   // Stage 5 — capability resolve
@@ -320,9 +340,10 @@ export async function runGuard(
     input.capabilityVersion,
     input.cache,
     input.reader,
+    logger,
   );
   if (!resolved.ok) {
-    return fail(5, resolved.code, started);
+    return fail(5, resolved.code, started, logger);
   }
   const manifest = resolved.manifest;
 
@@ -336,9 +357,10 @@ export async function runGuard(
     suppliedContext,
     principal,
     conversationalOptions,
+    logger,
   );
   if (!contextResult.ok) {
-    return fail(6, contextResult.code, started);
+    return fail(6, contextResult.code, started, logger);
   }
   const filteredContext = contextResult.filteredContext as Record<string, unknown>;
   const validatedTranscript = contextResult.validatedTranscript;
@@ -353,9 +375,10 @@ export async function runGuard(
     manifest,
     serializedInput,
     input.promptArtifactByteLength ?? 0,
+    logger,
   );
   if (!preflight.ok) {
-    return fail(7, preflight.code, started);
+    return fail(7, preflight.code, started, logger);
   }
 
   // Stage 8 — admission (one Quota DO round trip)
@@ -366,16 +389,21 @@ export async function runGuard(
       requestReference: input.requestReference,
       cache: input.cache,
       reader: input.reader,
+      logger,
     },
     { DB: bindings.DB, DO: bindings.DO } satisfies AdmissionBindings,
     { now: nowSeconds },
   );
   if (!admission.ok) {
-    return fail(8, admission.code, started);
+    return fail(8, admission.code, started, logger);
   }
 
   // Idempotent replay — short-circuit stages 9–10; adapter replays from priorState.
   if (admission.outcome === "idempotent") {
+    logger.info("Guard idempotent replay", {
+      request_id: admission.priorState.requestId,
+      prior_state: admission.priorState.state,
+    });
     return {
       ok: true,
       outcome: "idempotent",
@@ -388,7 +416,7 @@ export async function runGuard(
   }
 
   if (admission.outcome !== "admitted" && admission.outcome !== "grace_admitted") {
-    return fail(8, "internal_error", started);
+    return fail(8, "internal_error", started, logger);
   }
   const { requestId } = admission;
 
@@ -411,6 +439,7 @@ export async function runGuard(
       routingTier,
     },
     bindings.DB,
+    logger,
   );
   if (!journalled.ok) {
     await releaseAdmissionReservation(bindings, principal.installationId, {
@@ -418,7 +447,7 @@ export async function runGuard(
       idempotencyKey: input.idempotencyKey,
       jti: principal.jti,
     });
-    return fail(9, journalled.code, started);
+    return fail(9, journalled.code, started, logger);
   }
 
   // Stage 10 — prompt composition
@@ -439,8 +468,14 @@ export async function runGuard(
       bindings.DB,
       manifest.interactionMode,
     );
-    return fail(10, composed.code, started);
+    return fail(10, composed.code, started, logger);
   }
+
+  logger.info("Guard passed", {
+    request_id: requestId,
+    routing_tier: routingTier,
+    guard_latency_ms: Math.round(performance.now() - started),
+  });
 
   return {
     ok: true,
@@ -482,9 +517,19 @@ export async function settleHappyPath(
   input: SettleHappyPathInput,
   bindings: SettleHappyPathBindings,
 ): Promise<SettleHappyPathResult> {
+  const logger = input.logger ?? noopLogger;
+  logger.info("Happy-path settlement started", {
+    request_id: input.requestId,
+    request_reference: input.requestReference,
+  });
+
   const adapter = new FakeAdapter(["success"]);
   const invokeResult = await adapter.invoke(input.composed);
   if (invokeResult.kind !== "success") {
+    logger.error("Happy-path settlement failed at provider invoke", {
+      request_id: input.requestId,
+      code: "provider_unavailable",
+    });
     return { ok: false, code: "provider_unavailable" };
   }
   const { result } = invokeResult;
@@ -514,6 +559,10 @@ export async function settleHappyPath(
     { DO: bindings.DO } satisfies CreditBindings,
   );
   if (!credited.ok) {
+    logger.error("Happy-path settlement failed at credit", {
+      request_id: input.requestId,
+      code: credited.code,
+    });
     return { ok: false, code: credited.code };
   }
 
@@ -537,6 +586,11 @@ export async function settleHappyPath(
     ctx: bindings.ctx,
   });
   await bindings.ctx.drainWaitUntil();
+
+  logger.info("Happy-path settlement completed", {
+    request_id: input.requestId,
+    tokens: usage.tokens,
+  });
 
   return { ok: true, result };
 }

@@ -9,6 +9,8 @@ import {
   loadConfig,
 } from "../config-cache";
 import type { Principal } from "../identity";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 import {
   coerceSoftThreshold,
   type AdmissionResponse,
@@ -31,6 +33,7 @@ export type AdmissionInput = {
   requestReference: string;
   cache: ConfigCache;
   reader: D1Reader;
+  logger?: Logger;
 };
 
 export type AdmissionBindings = {
@@ -300,12 +303,21 @@ export async function runAdmission(
   bindings: AdmissionBindings,
   ctx?: AdmissionContext,
 ): Promise<AdmissionResult> {
+  const logger = input.logger ?? noopLogger;
   // Principal.exp is a JWT NumericDate (seconds). Default must match.
   const now = ctx?.now ?? Math.floor(Date.now() / 1000);
   const { principal, idempotencyKey, requestReference, cache, reader } = input;
 
+  logger.info("Admission started", {
+    installation_id: principal.installationId,
+    request_reference: requestReference,
+  });
+
   // Defensive recheck for §6.2 harness / mis-ordered pipeline: align with B3 skew.
   if (now > principal.exp + ADMISSION_CLOCK_SKEW_SECONDS) {
+    logger.info("Admission rejected — token expired", {
+      installation_id: principal.installationId,
+    });
     recordGuardRejection({
       error_code: "unauthenticated",
       installation_id: principal.installationId,
@@ -350,8 +362,27 @@ export async function runAdmission(
 
   if (!transport.ok) {
     if (transport.reason === "unavailable") {
-      return admitUnderGrace(principal, idempotencyKey, requestReference, entitlement);
+      logger.info("Quota DO unavailable — admitting under grace", {
+        installation_id: principal.installationId,
+      });
+      const graceResult = admitUnderGrace(
+        principal,
+        idempotencyKey,
+        requestReference,
+        entitlement,
+      );
+      if (graceResult.ok && graceResult.outcome === "grace_admitted") {
+        logger.info("Grace admission granted", {
+          installation_id: principal.installationId,
+          request_id: graceResult.requestId,
+        });
+      }
+      return graceResult;
     }
+    logger.error("Admission DO transport failed", {
+      installation_id: principal.installationId,
+      reason: transport.reason,
+    });
     recordGuardRejection({
       error_code: "internal_error",
       installation_id: principal.installationId,
@@ -368,11 +399,26 @@ export async function runAdmission(
   }
 
   resetGraceCounterOnDoSuccess(principal.installationId);
-  return mapDoOutcome(
+  const result = mapDoOutcome(
     transport.body,
     principal.installationId,
     entitlement.period_bounds.period_end,
   );
+  if (result.ok) {
+    logger.info("Admission DO outcome", {
+      installation_id: principal.installationId,
+      outcome: result.outcome,
+      ...(result.outcome === "admitted" || result.outcome === "grace_admitted"
+        ? { request_id: result.requestId }
+        : {}),
+    });
+  } else {
+    logger.info("Admission rejected", {
+      installation_id: principal.installationId,
+      code: result.code,
+    });
+  }
+  return result;
 }
 
 /** Re-export B3 shared flush — admission no longer keeps a private tally. */

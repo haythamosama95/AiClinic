@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import {
   logReconciliationReport,
@@ -7,6 +7,7 @@ import {
   runRollup,
   runRollupAndReconciliation,
 } from "../src/rollup";
+import { createLogger } from "../src/logger";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -341,6 +342,30 @@ describe("rollup_rerun_idempotent", () => {
 });
 
 describe("log_reconciliation_report", () => {
+  function captureLogger() {
+    const lines: Array<{ message: string; data?: Record<string, unknown> }> = [];
+    const logger = createLogger({
+      file: "rollup/index.ts",
+      verbosity: 2,
+      sink: {
+        write(line) {
+          const match = /\[Info\] ([^{]+)/.exec(line);
+          if (!match) {
+            return;
+          }
+          const message = match[1]!.trim();
+          const jsonStart = line.indexOf("{");
+          const data =
+            jsonStart >= 0
+              ? (JSON.parse(line.slice(jsonStart)) as Record<string, unknown>)
+              : undefined;
+          lines.push({ message, data });
+        },
+      },
+    });
+    return { lines, logger };
+  }
+
   it("emits structured usage_rollup_reconciliation log from runRollupAndReconciliation result", async () => {
     await seedTerminalRequest("req-log", "REF-LOG001", true, true);
     const result = await runRollupAndReconciliation({
@@ -348,30 +373,26 @@ describe("log_reconciliation_report", () => {
       window: WINDOW,
     });
 
-    const lines: string[] = [];
-    logReconciliationReport(result, (line) => lines.push(line));
+    const { lines, logger } = captureLogger();
+    logReconciliationReport(result, logger);
 
     expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]!) as {
-      level: string;
-      message: string;
-      rollups_written: number;
-      missing_attempt_rows: number;
-      missing_usage_credit: number;
-      window: { start: string; end: string };
-      report: typeof result.report;
-    };
-    expect(parsed.level).toBe("info");
-    expect(parsed.message).toBe("usage_rollup_reconciliation");
-    expect(parsed.rollups_written).toBe(result.rollupsWritten);
-    expect(parsed.missing_attempt_rows).toBe(0);
-    expect(parsed.missing_usage_credit).toBe(0);
-    expect(parsed.window).toEqual(WINDOW);
-    expect(parsed.report).toEqual(result.report);
+    expect(lines[0]?.message).toBe("usage_rollup_reconciliation");
+    expect(lines[0]?.data?.rollups_written).toBe(result.rollupsWritten);
+    expect(lines[0]?.data?.missing_attempt_rows).toBe(0);
+    expect(lines[0]?.data?.missing_usage_credit).toBe(0);
+    expect(lines[0]?.data?.window).toEqual(WINDOW);
+    expect(lines[0]?.data?.report).toEqual(result.report);
   });
 
-  it("spies console.log when using the default logger", async () => {
-    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("uses noopLogger by default without emitting output", () => {
+    const emitted: string[] = [];
+    const logger = createLogger({
+      file: "rollup/index.ts",
+      verbosity: 2,
+      sink: { write: (line) => emitted.push(line) },
+    });
+
     logReconciliationReport({
       rollupsWritten: 2,
       report: {
@@ -380,13 +401,21 @@ describe("log_reconciliation_report", () => {
         missingUsageCredit: [],
       },
     });
-    expect(spy).toHaveBeenCalledOnce();
-    const payload = JSON.parse(spy.mock.calls[0]![0] as string) as {
-      message: string;
-      missing_attempt_rows: number;
-    };
-    expect(payload.message).toBe("usage_rollup_reconciliation");
-    expect(payload.missing_attempt_rows).toBe(1);
-    spy.mockRestore();
+    expect(emitted).toHaveLength(0);
+
+    logReconciliationReport(
+      {
+        rollupsWritten: 2,
+        report: {
+          window: WINDOW,
+          missingAttemptRows: [{ requestId: "r1", requestReference: "REF-1" }],
+          missingUsageCredit: [],
+        },
+      },
+      logger,
+    );
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toContain("usage_rollup_reconciliation");
+    expect(emitted[0]).toContain('"missing_attempt_rows":1');
   });
 });

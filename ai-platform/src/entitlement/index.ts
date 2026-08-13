@@ -9,6 +9,7 @@ import {
   loadConfig,
 } from "../config-cache";
 import type { Principal } from "../identity";
+import { noopLogger, type Logger } from "../logger";
 import { recordGuardRejection } from "../rate-limit";
 
 export type { Principal };
@@ -77,7 +78,13 @@ function planTierMeetsMinimum(plan: string, minimum: string): boolean {
 function rejectForbidden(
   path: EntitlementRejectionPath,
   installationId: string,
+  logger: Logger,
 ): EntitlementResult {
+  logger.debug("entitlement_rejected", {
+    path,
+    installation_id: installationId,
+    code: "forbidden_capability",
+  });
   recordGuardRejection({
     error_code: "forbidden_capability",
     installation_id: installationId,
@@ -88,7 +95,13 @@ function rejectForbidden(
 function rejectKillSwitch(
   path: EntitlementRejectionPath,
   installationId: string,
+  logger: Logger,
 ): EntitlementResult {
+  logger.debug("entitlement_rejected", {
+    path,
+    installation_id: installationId,
+    code: "capability_disabled",
+  });
   recordGuardRejection({
     error_code: "capability_disabled",
     installation_id: installationId,
@@ -151,6 +164,7 @@ export async function evaluateEntitlement(
   ctx: EntitlementContext,
   cache: ConfigCache,
   reader: D1Reader,
+  logger: Logger = noopLogger,
 ): Promise<EntitlementResult> {
   const installationId = principal.installationId;
 
@@ -159,24 +173,25 @@ export async function evaluateEntitlement(
     reader,
     "entitlements",
     installationId,
+    logger,
   );
 
   const entitlementStatus = entitlement.status;
   if (entitlementStatus !== "active") {
-    return rejectForbidden("ai_disabled", installationId);
+    return rejectForbidden("ai_disabled", installationId, logger);
   }
 
   const plan = entitlement.plan;
   if (typeof plan !== "string" || !planTierMeetsMinimum(plan, ctx.minimumPlanTier)) {
-    return rejectForbidden("plan_tier", installationId);
+    return rejectForbidden("plan_tier", installationId, logger);
   }
 
   const allowedCapabilities = parseAllowedCapabilities(entitlement);
   if (allowedCapabilities === null) {
-    return rejectForbidden("capability_not_granted", installationId);
+    return rejectForbidden("capability_not_granted", installationId, logger);
   }
   if (!allowedCapabilities.includes(ctx.capabilityId)) {
-    return rejectForbidden("capability_not_granted", installationId);
+    return rejectForbidden("capability_not_granted", installationId, logger);
   }
 
   // Grants at installation or plan scope (§7.3); capabilityVersion must match when present.
@@ -187,7 +202,7 @@ export async function evaluateEntitlement(
     ctx.capabilityVersion,
   );
   if (installationGrant === "revoked" || installationGrant === "version_mismatch") {
-    return rejectForbidden("capability_not_granted", installationId);
+    return rejectForbidden("capability_not_granted", installationId, logger);
   }
   if (installationGrant === "missing") {
     const planGrant = await loadMatchingGrant(
@@ -197,13 +212,13 @@ export async function evaluateEntitlement(
       ctx.capabilityVersion,
     );
     if (planGrant !== "granted") {
-      return rejectForbidden("capability_not_granted", installationId);
+      return rejectForbidden("capability_not_granted", installationId, logger);
     }
   }
 
   const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");
   if (isKillSwitchActive(globalSwitch)) {
-    return rejectKillSwitch("kill_switch_global", installationId);
+    return rejectKillSwitch("kill_switch_global", installationId, logger);
   }
 
   const capabilitySwitch = await loadKillSwitchOrInactive(
@@ -212,7 +227,7 @@ export async function evaluateEntitlement(
     `capability:${ctx.capabilityId}`,
   );
   if (isKillSwitchActive(capabilitySwitch)) {
-    return rejectKillSwitch("kill_switch_capability", installationId);
+    return rejectKillSwitch("kill_switch_capability", installationId, logger);
   }
 
   const installationSwitch = await loadKillSwitchOrInactive(
@@ -221,7 +236,7 @@ export async function evaluateEntitlement(
     `installation:${installationId}`,
   );
   if (isKillSwitchActive(installationSwitch)) {
-    return rejectKillSwitch("kill_switch_installation", installationId);
+    return rejectKillSwitch("kill_switch_installation", installationId, logger);
   }
 
   const providerSwitch = await loadKillSwitchOrInactive(
@@ -230,7 +245,7 @@ export async function evaluateEntitlement(
     `provider:${ctx.providerId}`,
   );
   if (isKillSwitchActive(providerSwitch)) {
-    return rejectKillSwitch("kill_switch_provider", installationId);
+    return rejectKillSwitch("kill_switch_provider", installationId, logger);
   }
 
   return { ok: true };

@@ -5,6 +5,8 @@ import type {
   CanonicalStreamChunk,
 } from "../contracts/canonical";
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 import { classifyFailure, setRetryabilityFromClassification } from "../provider/classify";
 import type { ProviderInvokeResult, ProviderPort } from "../provider/port";
 import type { RoutingDecision } from "../router";
@@ -71,6 +73,7 @@ export type InvocationInput = {
   signal?: AbortSignal;
   /** Out-param for live partial usage (ChunkSource.getPartialUsage). */
   partialUsage?: PartialUsageAccessor;
+  logger?: Logger;
 };
 
 export type InvocationResult =
@@ -417,11 +420,21 @@ export async function runInvocation(
     signal: callerSignal,
     partialUsage,
   } = input;
+  const logger = input.logger ?? noopLogger;
 
   const chain = routingDecision.chain;
   if (chain.length === 0) {
+    logger.error("Invocation failed — empty provider chain", {
+      request_id: requestId,
+    });
     return { ok: false, error: createProviderUnavailableError() };
   }
+
+  logger.info("Invocation started", {
+    request_id: requestId,
+    chain_length: chain.length,
+    policy_id: routingDecision.policy_id,
+  });
 
   const startedAtMs = Date.now();
   let attemptNo = 0;
@@ -476,6 +489,9 @@ export async function runInvocation(
 
   for (let chainIndex = 0; chainIndex < chain.length; chainIndex++) {
     if (callerSignal?.aborted) {
+      logger.info("Invocation cancelled by caller signal", {
+        request_id: requestId,
+      });
       return { ok: false, error: createCancelledError() };
     }
 
@@ -486,6 +502,9 @@ export async function runInvocation(
     );
     if (remainingAtTarget !== null && remainingAtTarget <= 0) {
       // Deadline exhausted — skip remaining targets.
+      logger.info("Invocation deadline exhausted — skipping remaining providers", {
+        request_id: requestId,
+      });
       break;
     }
 
@@ -501,6 +520,16 @@ export async function runInvocation(
         : prevExhaustedViaTimeout
           ? "fallback_after_timeout"
           : "fallback_after_retryable_error";
+
+    if (chainIndex > 0) {
+      logger.info("Falling back to next provider in chain", {
+        request_id: requestId,
+        chain_index: chainIndex,
+        provider_id: entry.provider_id,
+        model_id: entry.model_id,
+        reason: selectionReason,
+      });
+    }
 
     currentTargetHadPartialStream = false;
     pendingSameTargetRegenerating = false;
@@ -546,6 +575,13 @@ export async function runInvocation(
       attemptNo++;
       targetInvoked = true;
       const port = portResolver(entry.provider_id);
+      logger.debug("Provider attempt started", {
+        request_id: requestId,
+        attempt_no: attemptNo,
+        provider_id: entry.provider_id,
+        model_id: entry.model_id,
+        selection_reason: selectionReason,
+      });
       const invokeResult = await invokeWithTimeout(
         port,
         requestForAttempt,
@@ -571,12 +607,33 @@ export async function runInvocation(
       observingSink.recordAttempt(processed.record);
 
       if (processed.success) {
+        logger.info("Provider attempt succeeded", {
+          request_id: requestId,
+          attempt_no: attemptNo,
+          provider_id: entry.provider_id,
+          model_id: entry.model_id,
+          outcome: processed.record.outcome,
+        });
         return { ok: true, result: processed.success };
       }
 
       if (processed.terminalError) {
+        logger.info("Invocation ended with terminal provider error", {
+          request_id: requestId,
+          attempt_no: attemptNo,
+          provider_id: entry.provider_id,
+          error_code: processed.record.error_code,
+        });
         return { ok: false, error: processed.terminalError };
       }
+
+      logger.debug("Provider attempt finished without success", {
+        request_id: requestId,
+        attempt_no: attemptNo,
+        provider_id: entry.provider_id,
+        outcome: processed.record.outcome,
+        error_code: processed.record.error_code,
+      });
 
       lastFailureWasTimeout = processed.record.outcome === "timeout";
 
@@ -594,6 +651,13 @@ export async function runInvocation(
           retryAfterMs !== undefined
             ? Math.max(jittered, retryAfterMs)
             : jittered;
+
+        logger.info("Retrying provider after failure", {
+          request_id: requestId,
+          attempt_no: attemptNo,
+          provider_id: entry.provider_id,
+          delay_ms: delay,
+        });
 
         await sleepWithinDeadline(
           sleeper,
@@ -618,8 +682,15 @@ export async function runInvocation(
   }
 
   if (callerSignal?.aborted) {
+    logger.info("Invocation cancelled by caller signal", {
+      request_id: requestId,
+    });
     return { ok: false, error: createCancelledError() };
   }
 
+  logger.error("Invocation failed — all providers exhausted", {
+    request_id: requestId,
+    attempts: attemptNo,
+  });
   return { ok: false, error: createProviderUnavailableError() };
 }

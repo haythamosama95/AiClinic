@@ -55,10 +55,7 @@ import {
   createManifestRetentionClassResolver,
   runRetentionPurge,
 } from "./retention";
-import {
-  logReconciliationReport,
-  runRollupAndReconciliation,
-} from "./rollup";
+import { runRollupAndReconciliation } from "./rollup";
 import {
   preloadRoutingPolicyForInstallation,
   selectCandidateChain,
@@ -87,6 +84,12 @@ import {
   type StreamBrokerController,
 } from "./stream";
 import type { ProseGuardThresholds } from "./stream/prose-guards";
+import {
+  createLoggerFactory,
+  verbosityFromEnv,
+  type Logger,
+  type LoggerFactory,
+} from "./logger";
 
 interface Env {
   DB: D1Database;
@@ -94,11 +97,18 @@ interface Env {
   DO: DurableObjectNamespace;
   BUILD_SHA: string;
   ENVIRONMENT: string;
+  LOG_VERBOSITY?: string;
   OPERATOR_BEARER_TOKEN: string;
   OPERATOR_ID: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
   RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
   RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
+}
+
+function createWorkerLogFactory(runtimeEnv: Env): LoggerFactory {
+  return createLoggerFactory({
+    verbosity: verbosityFromEnv(runtimeEnv),
+  });
 }
 
 function assertRequiredBindings(runtimeEnv: Env): void {
@@ -365,6 +375,7 @@ async function settleCompletedRequest(
     result: CanonicalResult;
     recordedAt: string;
   },
+  logger: Logger,
 ): Promise<void> {
   const usage = {
     tokens: input.result.usage.input + input.result.usage.output,
@@ -396,7 +407,7 @@ async function settleCompletedRequest(
     db: runtimeEnv.DB,
     r2: runtimeEnv.R2,
     ctx,
-  });
+  }, logger);
   await ctx.drainWaitUntil();
 }
 
@@ -458,11 +469,17 @@ function createProductionEventSource(
   runtimeEnv: Env,
   acceptContexts: AcceptContextStore,
   scheduleBackground: (promise: Promise<unknown>) => void,
+  makeLog: LoggerFactory,
 ): AdapterEventSourceFactory {
   return (sink, streamContext) => {
+    const log = makeLog("worker.ts", {
+      trace_id: streamContext.traceId,
+      request_reference: streamContext.requestReference,
+    });
     const accept = acceptContexts.get(streamContext.requestReference);
     acceptContexts.delete(streamContext.requestReference);
     if (!accept) {
+      log.error("event_source_missing_accept_context");
       pushFailedTerminal(
         sink,
         streamContext.requestReference,
@@ -472,6 +489,7 @@ function createProductionEventSource(
       return;
     }
     if (accept.kind === "idempotent") {
+      log.info("event_source_idempotent_replay");
       replayIdempotentTerminal(
         sink,
         streamContext.traceId,
@@ -480,6 +498,7 @@ function createProductionEventSource(
       );
       return;
     }
+    log.info("event_source_fresh_start");
     let brokerController: StreamBrokerController | undefined;
     const freshGuard = accept.guard;
     scheduleBackground(
@@ -488,10 +507,14 @@ function createProductionEventSource(
         streamContext,
         freshGuard,
         runtimeEnv,
+        makeLog,
         (controller) => {
           brokerController = controller;
         },
-      ).catch(() => {
+      ).catch((error) => {
+        log.error("event_source_fresh_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         pushFailedTerminal(
           sink,
           streamContext.requestReference,
@@ -502,6 +525,7 @@ function createProductionEventSource(
     );
     return {
       disconnect(reason) {
+        log.info("event_source_disconnect", { reason });
         brokerController?.disconnect(reason);
       },
     };
@@ -517,8 +541,15 @@ async function runFreshEventSource(
   },
   guard: GuardFreshSuccess,
   runtimeEnv: Env,
+  makeLog: LoggerFactory,
   onBrokerReady: (controller: StreamBrokerController) => void,
 ): Promise<void> {
+  const log = makeLog("worker.ts", {
+    trace_id: streamContext.traceId,
+    request_reference: streamContext.requestReference,
+    request_id: guard.requestId,
+  });
+  log.info("invocation_start");
   const manifest = guard.manifest;
   const cache = new ConfigCache();
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
@@ -531,9 +562,9 @@ async function runFreshEventSource(
   );
   const requiredFeatures = manifest.Routing
     .requiredProviderFeatures as {
-    contextWindow: number;
-    language: string;
-  };
+      contextWindow: number;
+      language: string;
+    };
   const routing = selectCandidateChain({
     cache,
     policyCacheKey: policyRef,
@@ -550,6 +581,13 @@ async function runFreshEventSource(
       manifestCostClass: "standard",
       entitlementMaxCostClass: "premium",
     },
+    logger: makeLog("router/index.ts", {
+      trace_id: streamContext.traceId,
+      request_id: guard.requestId,
+    }),
+  });
+  log.debug("routing_resolved", {
+    provider: routing.routing_decision.chain[0]?.provider_id,
   });
 
   const pushable = createPushableInvocationEvents();
@@ -596,6 +634,10 @@ async function runFreshEventSource(
     eventSink: brokerSink,
     chunkSource,
     heartbeatTicker: createProductionHeartbeatTicker(),
+    logger: makeLog("stream/index.ts", {
+      trace_id: streamContext.traceId,
+      request_id: guard.requestId,
+    }),
     creditSink: (input) => {
       if (ignoreBrokerSettlement) {
         return;
@@ -652,14 +694,19 @@ async function runFreshEventSource(
     portResolver: resolveProviderPort,
     sink: invocationSink,
     partialUsage,
-    sleeper: async () => {},
+    sleeper: async () => { },
     signal: streamContext.signal,
+    logger: makeLog("invocation/index.ts", {
+      trace_id: streamContext.traceId,
+      request_id: guard.requestId,
+    }),
   });
   pushable.end();
 
   if (!invokeResult.ok) {
     const code = invokeResult.error.taxonomyCode;
     if (code === "cancelled" || streamContext.signal.aborted) {
+      log.info("invocation_cancelled");
       broker.disconnect("client_close");
       await brokerRun;
       if (brokerTerminal === undefined) {
@@ -688,6 +735,7 @@ async function runFreshEventSource(
       return;
     }
     const taxonomy = isTaxonomyCode(code) ? code : "provider_unavailable";
+    log.error("invocation_failed", { code: taxonomy });
     // Tear down the waiting broker without treating provider failure as cancel.
     ignoreBrokerSettlement = true;
     broker.disconnect("client_close");
@@ -712,9 +760,11 @@ async function runFreshEventSource(
   await brokerRun;
 
   if (brokerTerminal !== "completed") {
+    log.debug("invocation_broker_non_completed", { terminal: brokerTerminal });
     return;
   }
 
+  log.info("invocation_completed");
   await settleCompletedRequest(runtimeEnv, {
     requestId: guard.requestId,
     requestReference: streamContext.requestReference,
@@ -725,22 +775,35 @@ async function runFreshEventSource(
     attempts: attemptRecords.map(buildAttemptInput),
     result: invokeResult.result,
     recordedAt: new Date().toISOString(),
-  });
+  }, makeLog("journal/index.ts", {
+    trace_id: streamContext.traceId,
+    request_id: guard.requestId,
+  }));
 }
 
 function createProductionPreAccept(
   runtimeEnv: Env,
   acceptContexts: AcceptContextStore,
+  makeLog: LoggerFactory,
 ): PreAcceptGate {
   const verifier = new EnrolledKeyVerifier();
   const cache = new ConfigCache();
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
   return async (input) => {
+    const log = makeLog("worker.ts", {
+      trace_id: input.headers.traceId,
+      request_reference: input.requestReference,
+    });
     const { composeRequest } = await import("./prompt/composer");
     const capabilityId = extractCapabilityId(input.body);
     if (!capabilityId) {
+      log.error("pre_accept_missing_capability");
       return { ok: false, code: "internal_error" };
     }
+    const promptLog = makeLog("prompt/composer.ts", {
+      trace_id: input.headers.traceId,
+      request_reference: input.requestReference,
+    });
     const token = extractBearerToken(input.request);
     const guard = await runGuard(
       {
@@ -762,7 +825,11 @@ function createProductionPreAccept(
         traceId: input.headers.traceId,
         cache,
         reader,
-        composeRequest,
+        composeRequest: (params) => composeRequest(params, promptLog),
+        logger: makeLog("pipeline/index.ts", {
+          trace_id: input.headers.traceId,
+          request_reference: input.requestReference,
+        }),
       },
       {
         DB: runtimeEnv.DB,
@@ -771,17 +838,18 @@ function createProductionPreAccept(
       },
     );
     if (!guard.ok) {
-      return {
-        ok: false,
-        code: isTaxonomyCode(guard.code) ? guard.code : "internal_error",
-      };
+      const code = isTaxonomyCode(guard.code) ? guard.code : "internal_error";
+      log.info("guard_rejected", { code });
+      return { ok: false, code };
     }
     if (guard.outcome === "idempotent") {
+      log.info("guard_idempotent");
       acceptContexts.set(input.requestReference, {
         kind: "idempotent",
         guard,
       });
     } else {
+      log.info("guard_fresh");
       acceptContexts.set(input.requestReference, { kind: "fresh", guard });
     }
     return { ok: true };
@@ -793,17 +861,21 @@ async function handleLivePostRequest(
   runtimeEnv: Env,
   executionCtx: ExecutionContext,
 ): Promise<Response> {
+  const makeLog = createWorkerLogFactory(runtimeEnv);
+  makeLog("worker.ts").info("live_post_request_received");
   // Request-scoped handoff only — never a module-global per-request store (§4.3.10).
   const acceptContexts: AcceptContextStore = new Map();
   const scheduleBackground = (promise: Promise<unknown>) => {
     executionCtx.waitUntil(promise);
   };
   return handleAdapterRequest(request, {
-    preAccept: createProductionPreAccept(runtimeEnv, acceptContexts),
+    makeLog,
+    preAccept: createProductionPreAccept(runtimeEnv, acceptContexts, makeLog),
     eventSource: createProductionEventSource(
       runtimeEnv,
       acceptContexts,
       scheduleBackground,
+      makeLog,
     ),
   });
 }
@@ -871,6 +943,7 @@ function assertReleaseArgs(body: unknown): asserts body is ReleaseRequest {
 }
 
 function logGatewayRpcFailure(
+  log: Logger,
   kind: string | undefined,
   body: unknown,
   error: unknown,
@@ -880,25 +953,23 @@ function logGatewayRpcFailure(
     requestReference?: unknown;
     jti?: unknown;
   };
-  console.error(
-    JSON.stringify({
-      level: "error",
-      message: "gateway_object_rpc_failed",
-      kind: kind ?? "unknown",
-      error: error instanceof Error ? error.message : String(error),
-      installation:
-        typeof rpcBody.installationId === "string" ? rpcBody.installationId : "",
-      request_reference:
-        typeof rpcBody.requestReference === "string"
-          ? rpcBody.requestReference
-          : "",
-      jti: typeof rpcBody.jti === "string" ? rpcBody.jti : "",
-    }),
-  );
+  log.error("gateway_object_rpc_failed", {
+    kind: kind ?? "unknown",
+    error: error instanceof Error ? error.message : String(error),
+    installation:
+      typeof rpcBody.installationId === "string" ? rpcBody.installationId : "",
+    request_reference:
+      typeof rpcBody.requestReference === "string"
+        ? rpcBody.requestReference
+        : "",
+    jti: typeof rpcBody.jti === "string" ? rpcBody.jti : "",
+  });
 }
 
 export class GatewayObject extends DurableObject {
   async fetch(request: Request): Promise<Response> {
+    const makeLog = createWorkerLogFactory(this.env as Env);
+    const log = makeLog("worker.ts");
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
@@ -906,15 +977,23 @@ export class GatewayObject extends DurableObject {
     try {
       body = await request.json();
     } catch {
+      log.error("gateway_object_invalid_json");
       return Response.json({ error: "invalid_json" }, { status: 400 });
     }
     const kind = (body as { kind?: string }).kind;
+    log.debug("gateway_object_rpc_received", { kind: kind ?? "unknown" });
     const injectableNow = (body as { now?: unknown }).now;
     const now =
       typeof injectableNow === "number" && Number.isFinite(injectableNow)
         ? injectableNow
         : undefined;
     try {
+      const quotaLog = makeLog("quota-do/index.ts", {
+        installation_id:
+          typeof (body as { installationId?: string }).installationId === "string"
+            ? (body as { installationId: string }).installationId
+            : undefined,
+      });
       if (kind === "admission") {
         assertAdmissionArgs(body);
         const result = await admissionRPC(
@@ -922,6 +1001,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body,
           now,
+          quotaLog,
         );
         return Response.json(result);
       }
@@ -932,6 +1012,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body,
           now,
+          quotaLog,
         );
         return Response.json(result);
       }
@@ -942,6 +1023,7 @@ export class GatewayObject extends DurableObject {
           (fn) => this.ctx.blockConcurrencyWhile(fn),
           body,
           now,
+          quotaLog,
         );
         return Response.json(result);
       }
@@ -949,9 +1031,10 @@ export class GatewayObject extends DurableObject {
       if (isArgValidationError(error)) {
         return Response.json({ error: "bad_request" }, { status: 400 });
       }
-      logGatewayRpcFailure(kind, body, error);
+      logGatewayRpcFailure(log, kind, body, error);
       return Response.json({ error: "internal_error" }, { status: 500 });
     }
+    log.error("gateway_object_unknown_kind", { kind: kind ?? "unknown" });
     return Response.json({ error: "unknown_kind" }, { status: 400 });
   }
 }
@@ -962,10 +1045,12 @@ export default {
     _bindings: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const runtimeEnv = env as Env;
+    const makeLog = createWorkerLogFactory(runtimeEnv);
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      const runtimeEnv = env as Env;
+      makeLog("worker.ts").debug("health_check");
       return Response.json({
         build: runtimeEnv.BUILD_SHA,
         environment: runtimeEnv.ENVIRONMENT,
@@ -973,21 +1058,19 @@ export default {
     }
 
     if (url.pathname === "/v1/capabilities" && request.method === "GET") {
-      const runtimeEnv = env as Env;
       return handleDiscoveryRequest(request, {
         DB: runtimeEnv.DB,
         R2: runtimeEnv.R2,
-      });
+      }, makeLog("discovery/index.ts"));
     }
 
     if (url.pathname === "/v1/requests" && request.method === "POST") {
-      return handleLivePostRequest(request, env as Env, ctx);
+      return handleLivePostRequest(request, runtimeEnv, ctx);
     }
 
     if (request.method === "POST" && isControlRoute(url.pathname)) {
       // Installation lifecycle, capability deprecate/retire, cohort activate/promote,
       // routing-policy publish/canary/rollback, support lookup, purge.
-      const runtimeEnv = env as Env;
       const operatorAuth = createSecretOperatorAuth({
         bearerToken: runtimeEnv.OPERATOR_BEARER_TOKEN ?? "",
         operatorId: runtimeEnv.OPERATOR_ID ?? "",
@@ -999,6 +1082,7 @@ export default {
           R2: runtimeEnv.R2,
         },
         operatorAuth,
+        makeLog("control/index.ts"),
       );
     }
 
@@ -1010,11 +1094,11 @@ export default {
       if (!reference) {
         return new Response(null, { status: 404 });
       }
-      const runtimeEnv = env as Env;
+      const getLog = makeLog("journal/index.ts", { request_reference: reference });
 
       const auth = await authenticateGetRequest(request, {
         DB: runtimeEnv.DB,
-      });
+      }, getLog);
       if (!auth.ok) {
         // Prefer 401 for missing/invalid token; suspended maps to taxonomy HTTP status.
         const status = liveHttpStatusForCode(auth.code) ?? 401;
@@ -1032,8 +1116,11 @@ export default {
       );
 
       if (!result.found) {
+        getLog.debug("get_request_not_found");
         return new Response(null, { status: 404 });
       }
+
+      getLog.info("get_request_served", { state: result.state });
 
       if (result.state === "Completed") {
         if ("result" in result) {
@@ -1063,6 +1150,10 @@ export default {
       return Response.json({ state: "Cancelled" });
     }
 
+    makeLog("worker.ts").debug("route_not_found", {
+      method: request.method,
+      pathname: url.pathname,
+    });
     return new Response("Not Found", { status: 404 });
   },
 
@@ -1071,21 +1162,48 @@ export default {
     runtimeEnv: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
-    // FR-011 — flush in-isolate guard rejection tallies before other jobs.
-    await flushRejectionCounters({ DB: runtimeEnv.DB });
-    // FR-013 / §15 #3 — reconcile grace admissions once the Quota DO may be reachable.
-    await reconcileGraceUsage({ DO: runtimeEnv.DO });
-
+    const makeLog = createWorkerLogFactory(runtimeEnv);
+    const log = makeLog("worker.ts");
     const cron = controller.cron;
+    log.info("scheduled_cron_start", { cron });
+
+    // FR-011 — flush in-isolate guard rejection tallies before other jobs.
+    await flushRejectionCounters(
+      { DB: runtimeEnv.DB },
+      makeLog("rate-limit/index.ts"),
+    );
+    // FR-013 / §15 #3 — reconcile grace admissions once the Quota DO may be reachable.
+    await reconcileGraceUsage(
+      { DO: runtimeEnv.DO },
+      undefined,
+      makeLog("credit/index.ts"),
+    );
+
     if (cron === "0 3 * * *") {
+      log.info("scheduled_retention_purge_start");
       await runRetentionPurge({
         db: runtimeEnv.DB,
         r2: runtimeEnv.R2,
         resolveRetentionClass: createManifestRetentionClassResolver(),
+        logger: makeLog("retention/index.ts"),
       });
+      log.info("scheduled_retention_purge_complete");
     } else if (cron === "0 4 * * *") {
-      const result = await runRollupAndReconciliation({ db: runtimeEnv.DB });
-      logReconciliationReport(result);
+      log.info("scheduled_rollup_start");
+      const rollupLog = makeLog("rollup/index.ts");
+      const result = await runRollupAndReconciliation(
+        { db: runtimeEnv.DB },
+        rollupLog,
+      );
+      log.info("usage_rollup_reconciliation", {
+        rollups_written: result.rollupsWritten,
+        missing_attempt_rows: result.report.missingAttemptRows.length,
+        missing_usage_credit: result.report.missingUsageCredit.length,
+        window: result.report.window,
+      });
+      log.debug("usage_rollup_reconciliation_detail", { report: result.report });
     }
+
+    log.debug("scheduled_cron_complete", { cron });
   },
 };
