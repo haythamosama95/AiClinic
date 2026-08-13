@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import {
+  bootstrapDevCredentials,
+  type BootstrapCredentialsInput,
+} from "./bootstrap-credentials";
 import { handleOpsRun } from "./run";
 import type { OpsRunBody } from "./types";
 
@@ -50,6 +54,25 @@ export function createOpsMiddleware(opsRootDir: string): NextHandleFunction {
 
     if (req.method === "GET" && pathname === "/ops/health") {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/ops/bootstrap") {
+      void (async () => {
+        try {
+          const body = (await readJsonBody(req)) as BootstrapCredentialsInput;
+          const result = await bootstrapDevCredentials(repoRoot, body);
+          const status =
+            result.errors.length > 0 && !result.operatorBearer && !result.aat
+              ? 502
+              : 200;
+          sendJson(res, status, result);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Invalid JSON body";
+          sendJson(res, 400, { error: message });
+        }
+      })();
       return;
     }
 

@@ -149,10 +149,16 @@ export async function proxyBuiltRequest(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Upstream request failed";
+    const hint =
+      message === "fetch failed"
+        ? `Cannot reach ${url}. Set Platform URL to the origin shown when ai-platform starts (npm run dev), usually http://127.0.0.1:8787.`
+        : undefined;
     return {
       status: 502,
       contentType: "application/json",
-      bodyText: JSON.stringify({ error: message }),
+      bodyText: JSON.stringify(
+        hint ? { error: message, url, hint } : { error: message, url },
+      ),
       headers: { "content-type": "application/json" },
       durationMs: Date.now() - started,
     };

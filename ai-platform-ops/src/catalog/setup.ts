@@ -64,7 +64,7 @@ export const SETUP_STEPS: SetupStep[] = [
     title: "Reach the Worker",
     why: "Every later control call needs a live gateway and an operator bearer in the connection strip.",
     doThis:
-      "Set Platform URL and Operator bearer above, then run Health. You want a 200 with build + environment identity.",
+      "Set Platform URL, click **Bootstrap dev credentials** (admin/admin → operator bearer + AAT), then run Health. Restart ai-platform `npm run dev` if the Worker was already running when you bootstrapped.",
     entityIds: ["e2e.health"],
   },
   {

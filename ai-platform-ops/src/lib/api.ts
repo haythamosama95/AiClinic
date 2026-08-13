@@ -9,6 +9,28 @@ export type OpsRunResult = {
   durationMs: number;
 };
 
+export type BootstrapCredentialsResult = {
+  operatorBearer?: string;
+  aat?: string;
+  notes: string[];
+  errors: string[];
+};
+
+export async function bootstrapDevCredentials(): Promise<BootstrapCredentialsResult> {
+  const res = await fetch("/ops/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = (await res.json()) as BootstrapCredentialsResult & {
+    error?: string;
+  };
+  if (!res.ok && payload.error) {
+    throw new Error(payload.error);
+  }
+  return payload;
+}
+
 export async function runBuiltRequest(
   built: BuiltRequest,
   connection: ConnectionConfig,
