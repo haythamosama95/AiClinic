@@ -80,7 +80,7 @@ function conversationalManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -120,7 +120,6 @@ function singleShotManifest(): ManifestWire {
         required: true,
         shapeRef: PERMITTED_KEY_COMPLAINT,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -149,7 +148,7 @@ function singleShotManifest(): ManifestWire {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -203,6 +202,8 @@ function validTranscript(): Transcript {
       turn_ordinal: 4,
       kind: "context_resolved",
       context: {
+        org: FIXTURE_ORG_ID,
+        branch: FIXTURE_BRANCH_ID,
         [PERMITTED_KEY_COMPLAINT]: {
           visit_id: "550e8400-e29b-41d4-a716-446655440000",
           complaint: "Persistent headache for three days.",
@@ -212,10 +213,20 @@ function validTranscript(): Transcript {
   ];
 }
 
+function tenantBoundContext(
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    org: FIXTURE_ORG_ID,
+    branch: FIXTURE_BRANCH_ID,
+    ...extra,
+  };
+}
+
 function validateConversational(
   manifest: Manifest,
   transcript: unknown,
-  suppliedContext: Record<string, unknown> = {},
+  suppliedContext: Record<string, unknown> = tenantBoundContext(),
   legTurnOrdinal = 5,
 ): ValidateResult {
   return validateContext(manifest, suppliedContext, buildPrincipal(), {
@@ -238,7 +249,14 @@ describe("valid_transcript_passes", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.validatedTranscript).toEqual(transcript);
+      const expected = transcript.map((turn) => {
+        if (turn.kind !== "context_resolved") {
+          return turn;
+        }
+        const { org: _org, branch: _branch, ...permitted } = turn.context;
+        return { ...turn, context: permitted };
+      });
+      expect(result.validatedTranscript).toEqual(expected);
     }
   });
 });
@@ -274,7 +292,7 @@ describe("out_of_order_turn_ordinal_rejected_context_invalid", () => {
       { turn_ordinal: 5, kind: "user", text: "Hello" },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 5);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 5);
 
     expect(result).toEqual({ ok: false, code: "context_invalid" });
   });
@@ -465,7 +483,7 @@ describe("context_rounds_at_tail_breached_conversation_budget_exhausted", () => 
       },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 5);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 5);
 
     expect(result).toEqual({ ok: false, code: "conversation_budget_exhausted" });
   });
@@ -479,7 +497,7 @@ describe("oversized_transcript_request_too_large", () => {
       Economics: {
         maxInputTokens: 10,
         maxOutputTokens: 1_024,
-        perRequestCostCeiling: 20,
+        perRequestTokenCeiling: 20,
         quotaWeight: 1,
       },
     });
@@ -546,7 +564,7 @@ describe("trimmed_transcript_accepted_bounded_by_admission", () => {
       { turn_ordinal: 5, kind: "model", text: "After trim" },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 6);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 6);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -594,9 +612,9 @@ describe("conversational_context_shape_and_size_validated", () => {
       {
         turn_ordinal: 1,
         kind: "context_resolved",
-        context: {
+        context: tenantBoundContext({
           [PERMITTED_KEY_COMPLAINT]: { complaint: "missing visit_id" },
-        },
+        }),
       },
     ];
 
@@ -619,12 +637,12 @@ describe("conversational_context_shape_and_size_validated", () => {
       {
         turn_ordinal: 1,
         kind: "context_resolved",
-        context: {
+        context: tenantBoundContext({
           [PERMITTED_KEY_COMPLAINT]: {
             visit_id: "550e8400-e29b-41d4-a716-446655440000",
             complaint: "x".repeat(200),
           },
-        },
+        }),
       },
     ];
 
@@ -636,9 +654,13 @@ describe("conversational_context_shape_and_size_validated", () => {
 
   it("rejects mistyped ordinary supplied context with context_invalid", () => {
     const manifest = loadedConversationalManifest();
-    const result = validateConversational(manifest, [], {
-      [PERMITTED_KEY_COMPLAINT]: { complaint: "missing visit_id" },
-    });
+    const result = validateConversational(
+      manifest,
+      [],
+      tenantBoundContext({
+        [PERMITTED_KEY_COMPLAINT]: { complaint: "missing visit_id" },
+      }),
+    );
 
     expect(result).toEqual({ ok: false, code: "context_invalid" });
   });
@@ -647,7 +669,7 @@ describe("conversational_context_shape_and_size_validated", () => {
 describe("missing_transcript_field_rejected_context_invalid", () => {
   it("rejects conversational validation when transcript is omitted", () => {
     const manifest = loadedConversationalManifest();
-    const result = validateContext(manifest, {}, buildPrincipal(), {
+    const result = validateContext(manifest, tenantBoundContext(), buildPrincipal(), {
       legTurnOrdinal: 1,
     });
 
@@ -707,12 +729,12 @@ describe("context_rounds_mid_transcript_not_counted_against_tail_budget", () => 
       {
         turn_ordinal: 3,
         kind: "context_resolved",
-        context: {
+        context: tenantBoundContext({
           [PERMITTED_KEY_COMPLAINT]: {
             visit_id: "550e8400-e29b-41d4-a716-446655440000",
             complaint: "Headache",
           },
-        },
+        }),
       },
       {
         turn_ordinal: 4,
@@ -722,14 +744,14 @@ describe("context_rounds_mid_transcript_not_counted_against_tail_budget", () => 
       {
         turn_ordinal: 5,
         kind: "context_resolved",
-        context: {
+        context: tenantBoundContext({
           [PERMITTED_KEY_DEMOGRAPHICS]: { display_name: "Pat" },
-        },
+        }),
       },
       { turn_ordinal: 6, kind: "user", text: "Continue" },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 7);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 7);
     expect(result.ok).toBe(true);
   });
 });
@@ -746,20 +768,28 @@ describe("key_outside_permitted_set_dropped", () => {
       {
         turn_ordinal: 2,
         kind: "context_resolved",
-        context: {
+        context: tenantBoundContext({
           [PERMITTED_KEY_COMPLAINT]: {
             visit_id: "550e8400-e29b-41d4-a716-446655440000",
             complaint: "Headache",
           },
           [UNPERMITTED_KEY]: { drug: "Aspirin" },
-        },
+        }),
       },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 3);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 3);
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
+    }
+
+    const requestedTurn = result.validatedTranscript?.[0];
+    expect(requestedTurn?.kind).toBe("context_requested");
+    if (requestedTurn?.kind === "context_requested") {
+      expect(requestedTurn.requests.map((entry) => entry.key)).not.toContain(
+        UNPERMITTED_KEY,
+      );
     }
 
     const resolvedTurn = result.validatedTranscript?.[1];
@@ -769,9 +799,9 @@ describe("key_outside_permitted_set_dropped", () => {
       expect(resolvedTurn.context).toHaveProperty(PERMITTED_KEY_COMPLAINT);
     }
 
-    // Spec SC-006: unpermitted key must be absent from composer *data* input
-    // even when a prior model turn requested it (requests payload may still
-    // name the key — allowlist drops at resolution, not at request).
+    // Spec SC-006: unpermitted key must be absent from composer input even
+    // when a prior model turn requested it — allowlist drops out-of-set keys
+    // from both context_requested and context_resolved before rendering.
     const composed = composeRequest({
       manifest,
       filteredContext: result.filteredContext,
@@ -792,15 +822,110 @@ describe("key_outside_permitted_set_dropped", () => {
     expect(dataContents).toContain(PERMITTED_KEY_COMPLAINT);
   });
 
+  it("drops out-of-set keys from historical context_requested turns before rendering", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_requested" as const,
+        requests: [
+          { key: PERMITTED_KEY_COMPLAINT, arguments: { visit_id: "v1" } },
+          { key: UNPERMITTED_KEY, arguments: { drug: "Aspirin" } },
+        ],
+      },
+    ];
+
+    const result = validateConversational(
+      manifest,
+      transcript,
+      tenantBoundContext(),
+      2,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const requestedTurn = result.validatedTranscript?.[0];
+    expect(requestedTurn?.kind).toBe("context_requested");
+    if (requestedTurn?.kind !== "context_requested") {
+      return;
+    }
+    expect(requestedTurn.requests.map((entry) => entry.key)).toEqual([
+      PERMITTED_KEY_COMPLAINT,
+    ]);
+    expect(requestedTurn.requests.map((entry) => entry.key)).not.toContain(
+      UNPERMITTED_KEY,
+    );
+
+    const composed = composeRequest({
+      manifest,
+      filteredContext: result.filteredContext,
+      transcript: result.validatedTranscript,
+      userIntent: "Continue",
+      principal: buildPrincipal(),
+      requestReference: "H2QK-REQ-ALLOW",
+    });
+    expect(composed.ok).toBe(true);
+    if (!composed.ok) {
+      return;
+    }
+    expect(JSON.stringify(composed.request)).not.toContain(UNPERMITTED_KEY);
+    expect(JSON.stringify(composed.request)).toContain(PERMITTED_KEY_COMPLAINT);
+  });
+
+  it("keeps a context_requested turn with empty requests when every key is outside the permitted set", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_requested" as const,
+        requests: [{ key: UNPERMITTED_KEY, arguments: { drug: "Aspirin" } }],
+      },
+    ];
+
+    const result = validateConversational(
+      manifest,
+      transcript,
+      tenantBoundContext(),
+      2,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const requestedTurn = result.validatedTranscript?.[0];
+    expect(requestedTurn?.kind).toBe("context_requested");
+    if (requestedTurn?.kind !== "context_requested") {
+      return;
+    }
+    expect(requestedTurn.requests).toEqual([]);
+
+    const composed = composeRequest({
+      manifest,
+      filteredContext: result.filteredContext,
+      transcript: result.validatedTranscript,
+      userIntent: "Continue",
+      principal: buildPrincipal(),
+      requestReference: "H2QK-REQ-EMPTY",
+    });
+    expect(composed.ok).toBe(true);
+    if (!composed.ok) {
+      return;
+    }
+    expect(JSON.stringify(composed.request)).not.toContain(UNPERMITTED_KEY);
+  });
+
   it("drops unpermitted keys from ordinary supplied context before composer input", () => {
     const manifest = loadedConversationalManifest();
     const result = validateConversational(
       manifest,
       [],
-      {
+      tenantBoundContext({
         [PERMITTED_KEY_DEMOGRAPHICS]: { display_name: "Pat" },
         [UNPERMITTED_KEY]: { drug: "Aspirin" },
-      },
+      }),
       1,
     );
 
@@ -842,7 +967,7 @@ describe("budget_boundaries_exactly_at_limit_pass", () => {
       { turn_ordinal: 2, kind: "model", text: "Two" },
     ];
 
-    expect(validateConversational(manifest, transcript, {}, 3).ok).toBe(true);
+    expect(validateConversational(manifest, transcript, tenantBoundContext(), 3).ok).toBe(true);
   });
 
   it("accepts tail context rounds exactly equal to maxContextRoundsPerTurn", () => {
@@ -868,14 +993,14 @@ describe("budget_boundaries_exactly_at_limit_pass", () => {
       },
     ];
 
-    expect(validateConversational(manifest, transcript, {}, 4).ok).toBe(true);
+    expect(validateConversational(manifest, transcript, tenantBoundContext(), 4).ok).toBe(true);
   });
 
   it("rejects turn_ordinal strictly greater than the leg's own", () => {
     const manifest = loadedConversationalManifest();
     const transcript = [{ turn_ordinal: 6, kind: "user", text: "Hello" }];
 
-    expect(validateConversational(manifest, transcript, {}, 5)).toEqual({
+    expect(validateConversational(manifest, transcript, tenantBoundContext(), 5)).toEqual({
       ok: false,
       code: "context_invalid",
     });
@@ -905,8 +1030,100 @@ describe("shape_checked_before_rounds_budget", () => {
       },
     ];
 
-    const result = validateConversational(manifest, transcript, {}, 3);
+    const result = validateConversational(manifest, transcript, tenantBoundContext(), 3);
     expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+});
+
+describe("conversational_tenant_binding", () => {
+  it("rejects supplied context org/branch bound to another tenant as context_invalid", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateContext(
+      manifest,
+      { org: "org-other", branch: "branch-other" },
+      buildPrincipal(),
+      { transcript: [], legTurnOrdinal: 1 },
+    );
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+
+  it("rejects a context_resolved turn whose org/branch mismatch the principal", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_resolved" as const,
+        context: {
+          org: "org-other",
+          branch: "branch-other",
+          [PERMITTED_KEY_COMPLAINT]: {
+            visit_id: "550e8400-e29b-41d4-a716-446655440000",
+            complaint: "Headache",
+          },
+        },
+      },
+    ];
+
+    const result = validateContext(
+      manifest,
+      { org: FIXTURE_ORG_ID, branch: FIXTURE_BRANCH_ID },
+      buildPrincipal(),
+      { transcript, legTurnOrdinal: 2 },
+    );
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+
+  it("rejects absent org on supplied conversational context as context_invalid", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateConversational(
+      manifest,
+      [],
+      { branch: FIXTURE_BRANCH_ID },
+      1,
+    );
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+
+  it("rejects absent branch on supplied conversational context as context_invalid", () => {
+    const manifest = loadedConversationalManifest();
+    const result = validateConversational(
+      manifest,
+      [],
+      { org: FIXTURE_ORG_ID },
+      1,
+    );
+
+    expect(result).toEqual({ ok: false, code: "context_invalid" });
+  });
+
+  it("accepts matching org/branch on supplied context and context_resolved turns", () => {
+    const manifest = loadedConversationalManifest();
+    const transcript = [
+      {
+        turn_ordinal: 1,
+        kind: "context_resolved" as const,
+        context: {
+          org: FIXTURE_ORG_ID,
+          branch: FIXTURE_BRANCH_ID,
+          [PERMITTED_KEY_COMPLAINT]: {
+            visit_id: "550e8400-e29b-41d4-a716-446655440000",
+            complaint: "Headache",
+          },
+        },
+      },
+    ];
+
+    const result = validateConversational(
+      manifest,
+      transcript,
+      { org: FIXTURE_ORG_ID, branch: FIXTURE_BRANCH_ID },
+      2,
+    );
+
+    expect(result.ok).toBe(true);
   });
 });
 

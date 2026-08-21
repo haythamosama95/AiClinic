@@ -1,6 +1,7 @@
 import {
   buildErrorBody,
   liveHttpStatusForCode,
+  supplementaryFieldsForCode,
   type TaxonomyCode,
 } from "./errors";
 import { noopLogger, type LoggerFactory } from "./logger";
@@ -64,8 +65,8 @@ export type AdapterEventSourceFactory = (
 ) => AdapterEventSourceHandle | void;
 
 export type PreAcceptResult =
-  | { ok: true }
-  | { ok: false; code: TaxonomyCode };
+  | { ok: true; degradedNotice?: boolean }
+  | { ok: false; code: TaxonomyCode; retryAfter?: number };
 
 export interface PreAcceptInput {
   request: Request;
@@ -84,7 +85,6 @@ export type PreAcceptGate = (input: PreAcceptInput) => Promise<PreAcceptResult>;
 export interface HandleAdapterRequestOptions {
   eventSource?: AdapterEventSourceFactory;
   preAccept?: PreAcceptGate;
-  degradedNotice?: boolean;
   makeLog?: LoggerFactory;
 }
 
@@ -214,8 +214,12 @@ function preAcceptFailureResponse(
   code: TaxonomyCode,
   requestReference: string,
   traceId: string,
+  retryAfter?: number,
 ): Response {
-  const body = buildErrorBody({ code, requestReference, traceId });
+  const body = {
+    ...buildErrorBody({ code, requestReference, traceId }),
+    ...supplementaryFieldsForCode(code, { retryAfter }),
+  };
   const status = liveHttpStatusForCode(code);
   return new Response(JSON.stringify(body), {
     status: status ?? 500,
@@ -409,6 +413,7 @@ export async function handleAdapterRequest(
   }
 
   let requestReference: string | undefined;
+  let degradedNotice: boolean | undefined;
 
   if (options.preAccept) {
     requestReference = generateRequestReference();
@@ -429,8 +434,10 @@ export async function handleAdapterRequest(
         gate.code,
         requestReference,
         parsedHeaders.traceId,
+        gate.retryAfter,
       );
     }
+    degradedNotice = gate.degradedNotice;
     log.debug("pre_accept_passed", { request_reference: requestReference });
   }
 
@@ -507,14 +514,14 @@ export async function handleAdapterRequest(
       const acceptedEvent = buildAcceptedSseEvent({
         requestReference,
         traceId: context.traceId,
-        degradedNotice: options.degradedNotice,
+        degradedNotice,
       });
       controller.enqueue(
         new TextEncoder().encode(encodeSseEvent(acceptedEvent)),
       );
       log.info("sse_accepted", {
         request_reference: requestReference,
-        degraded_notice: options.degradedNotice ?? false,
+        degraded_notice: degradedNotice ?? false,
       });
 
       if (abortedAtEntry || request.signal.aborted) {

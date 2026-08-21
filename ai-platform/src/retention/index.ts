@@ -207,6 +207,9 @@ export async function runRetentionPurge(
     );
   }
 
+  // Keep ledger money rows while the journal is purged. Nulling request_id
+  // is why usage_event.request_id is nullable: aged usage permanently loses
+  // request-level joinability, so reconciliation coverage shrinks with age.
   await db
     .prepare(
       `UPDATE usage_event SET request_id = NULL

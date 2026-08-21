@@ -15,6 +15,7 @@ import {
 import { validateContext, type Transcript } from "../context/validator";
 import { creditUsage, type CreditBindings } from "../credit";
 import { evaluateEntitlement, type EntitlementContext } from "../entitlement";
+import type { EntitlementSnapshot } from "../quota-do/index";
 import type { Principal, TokenVerifier, VerifyContext } from "../identity";
 import {
   createRequestRow,
@@ -24,6 +25,7 @@ import {
   type PostResponseInput,
 } from "../journal";
 import type { Manifest } from "../manifest";
+import { ledgerUsageFromProvider } from "../pricing";
 import { FakeAdapter } from "../provider/fake";
 import {
   checkRateLimit,
@@ -50,7 +52,13 @@ export type ComposeRequestFn = (input: {
   deadline?: number | null;
   transcript?: Transcript;
 }) =>
-  | { ok: true; request: CanonicalRequest; promptVersion: string }
+  | {
+    ok: true;
+    request: CanonicalRequest;
+    promptVersion: string;
+    systemPromptLeakNeedle: string;
+    systemPromptLeakNeedles?: readonly string[];
+  }
   | { ok: false; code: "internal_error" };
 
 export type GuardInput = {
@@ -62,7 +70,7 @@ export type GuardInput = {
   principal?: Principal;
   verifier?: TokenVerifier;
   verifyContext?: Omit<VerifyContext, "cache" | "reader"> &
-    Partial<Pick<VerifyContext, "cache" | "reader">>;
+  Partial<Pick<VerifyContext, "cache" | "reader">>;
   capabilityId: string;
   capabilityVersion: string;
   entitlement: EntitlementContext;
@@ -77,6 +85,22 @@ export type GuardInput = {
   now?: number;
   /** Optional prompt-artifact UTF-8 byte length for stage 7. */
   promptArtifactByteLength?: number;
+  /**
+   * Composer-known UTF-8 byte length of the prompt scaffold (system instruction
+   * + rule fragments + template). Used at stage 7 when the numeric override is
+   * omitted. Production worker injects `promptScaffoldByteLength` from composer.
+   */
+  promptScaffoldByteLength?: (manifest: Manifest) => number;
+  /**
+   * Composer's `promptVersion` (content hash of resolved artifact bytes).
+   * Journaled into `ai_request.prompt_artifact_hash` at stage 9.
+   */
+  resolvePromptVersion?: (manifest: Manifest) => string;
+  /**
+   * Remaining-ms chain budget forwarded to compose (CanonicalRequest.deadline).
+   * Omitted → composer default (`null`, unbounded).
+   */
+  deadline?: number | null;
   /** Stage 10 — production `composeRequest` (injected; avoids eager prompt-registry load). */
   composeRequest: ComposeRequestFn;
   logger?: Logger;
@@ -97,10 +121,22 @@ export type GuardFreshSuccess = {
   filteredContext: Record<string, unknown>;
   composed: CanonicalRequest;
   promptVersion: string;
+  /** Distinctive substring of the composed system instruction for leak guards. */
+  systemPromptLeakNeedle: string;
+  /** Start, interior, and end slices; the guard matches any of them. */
+  systemPromptLeakNeedles?: readonly string[];
   guardLatencyMs: number;
   requestReference: string;
   idempotencyKey: string;
   transcript?: Transcript;
+  /** Provider ids with an active `provider:<id>` kill switch (guard stage 5). */
+  killedProviderIds?: readonly string[];
+  /** Soft-threshold / grace admission flag; drives `degraded_notice` and router tier. */
+  degraded?: boolean;
+  /** Journaled and routed tier, derived from admission (never client-supplied). */
+  routingTier?: "standard" | "degraded";
+  /** Admission-time entitlement snapshot — settlement period and DO credit reset. */
+  entitlementSnapshot: EntitlementSnapshot;
 };
 
 /** Idempotent replay — stages 9–10 skipped; adapter replays from priorState. */
@@ -121,6 +157,7 @@ export type GuardFailure = {
   code: string;
   stage: GuardStage;
   guardLatencyMs: number;
+  retryAfter?: number;
 };
 
 export type GuardResult = GuardSuccess | GuardFailure;
@@ -157,6 +194,7 @@ function fail(
   code: string,
   started: number,
   logger: Logger,
+  extras?: Pick<GuardFailure, "retryAfter">,
 ): GuardFailure {
   const guardLatencyMs = performance.now() - started;
   const logData = { stage, code, guard_latency_ms: Math.round(guardLatencyMs) };
@@ -170,6 +208,7 @@ function fail(
     code,
     stage,
     guardLatencyMs,
+    ...(extras?.retryAfter !== undefined ? { retryAfter: extras.retryAfter } : {}),
   };
 }
 
@@ -330,7 +369,9 @@ export async function runGuard(
     logger,
   );
   if (!rateResult.ok) {
-    return fail(4, rateResult.code, started, logger);
+    return fail(4, rateResult.code, started, logger, {
+      retryAfter: rateResult.retryAfter,
+    });
   }
 
   // Stage 5 — capability resolve
@@ -346,6 +387,7 @@ export async function runGuard(
     return fail(5, resolved.code, started, logger);
   }
   const manifest = resolved.manifest;
+  const killedProviderIds = resolved.killedProviderIds ?? [];
 
   // Stage 6 — context validate (H2 conversational options when interactionMode is conversational)
   const conversationalOptions =
@@ -371,10 +413,14 @@ export async function runGuard(
     userIntent,
     transcript: validatedTranscript,
   });
+  const promptArtifactBytes =
+    input.promptArtifactByteLength ??
+    input.promptScaffoldByteLength?.(manifest) ??
+    0;
   const preflight = runCostPreflight(
     manifest,
     serializedInput,
-    input.promptArtifactByteLength ?? 0,
+    promptArtifactBytes,
     logger,
   );
   if (!preflight.ok) {
@@ -395,7 +441,11 @@ export async function runGuard(
     { now: nowSeconds },
   );
   if (!admission.ok) {
-    return fail(8, admission.code, started, logger);
+    return fail(8, admission.code, started, logger, {
+      ...(admission.retryAfter !== undefined
+        ? { retryAfter: admission.retryAfter }
+        : {}),
+    });
   }
 
   // Idempotent replay — short-circuit stages 9–10; adapter replays from priorState.
@@ -418,12 +468,16 @@ export async function runGuard(
   if (admission.outcome !== "admitted" && admission.outcome !== "grace_admitted") {
     return fail(8, "internal_error", started, logger);
   }
-  const { requestId } = admission;
+  const { requestId, entitlement: entitlementSnapshot } = admission;
 
-  const routingTier =
-    admission.outcome === "grace_admitted"
-      ? "degraded"
-      : routingTierFromAdmission(admission);
+  const degraded =
+    admission.outcome === "grace_admitted" ||
+    (admission.outcome === "admitted" && admission.degraded === true);
+  const routingTier = routingTierFromAdmission({
+    outcome: "admitted",
+    requestId,
+    ...(degraded ? { degraded: true } : {}),
+  });
 
   // Stage 9 — journal request row (one D1 insert); conversational grouping from wire body
   const journalled = await createRequestRow(
@@ -437,6 +491,7 @@ export async function runGuard(
       conversationId: conversationId ?? null,
       turnOrdinal: turnOrdinal ?? null,
       routingTier,
+      promptArtifactHash: input.resolvePromptVersion?.(manifest),
     },
     bindings.DB,
     logger,
@@ -457,6 +512,8 @@ export async function runGuard(
     userIntent,
     principal,
     requestReference: input.requestReference,
+    streamFlag: true,
+    deadline: input.deadline ?? null,
     transcript: validatedTranscript,
   });
   if (!composed.ok) {
@@ -485,9 +542,17 @@ export async function runGuard(
     filteredContext,
     composed: composed.request,
     promptVersion: composed.promptVersion,
+    systemPromptLeakNeedle: composed.systemPromptLeakNeedle,
+    ...(composed.systemPromptLeakNeedles !== undefined
+      ? { systemPromptLeakNeedles: composed.systemPromptLeakNeedles }
+      : {}),
     guardLatencyMs: performance.now() - started,
     requestReference: input.requestReference,
     idempotencyKey: input.idempotencyKey,
+    killedProviderIds,
+    routingTier,
+    entitlementSnapshot,
+    ...(degraded ? { degraded: true } : {}),
     ...(validatedTranscript !== undefined
       ? { transcript: validatedTranscript }
       : {}),
@@ -495,6 +560,7 @@ export async function runGuard(
 }
 
 function buildAttempt(result: CanonicalResult): AttemptInput {
+  const priced = ledgerUsageFromProvider(result);
   return {
     attemptNo: 1,
     provider: result.providerModel.provider,
@@ -503,7 +569,7 @@ function buildAttempt(result: CanonicalResult): AttemptInput {
     latencyMs: result.timing.provider_ms,
     tokensIn: result.usage.input,
     tokensOut: result.usage.output,
-    cost: 0.001,
+    cost: priced.cost,
     providerRequestId: result.providerRequestId,
     rawBody: { completion: result.finalContent },
   };
@@ -534,10 +600,7 @@ export async function settleHappyPath(
   }
   const { result } = invokeResult;
 
-  const usage = input.usage ?? {
-    tokens: result.usage.input + result.usage.output,
-    cost: 0.001,
-  };
+  const usage = input.usage ?? ledgerUsageFromProvider(result);
 
   // Stage 15 — record terminal state, then credit usage (one DO round trip)
   await recordTerminalState(

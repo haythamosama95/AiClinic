@@ -199,7 +199,6 @@ function visitSummaryManifest(): Manifest {
         required: true,
         shapeRef: VISIT_CHIEF_COMPLAINT_V1,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -228,7 +227,7 @@ function visitSummaryManifest(): Manifest {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "pricing_id": "platform-default",
+  "pricing_version": 1,
+  "unit": "per_1k_tokens",
+  "models": {
+    "deepseek-v4-flash": {
+      "input_per_1k": 0.14,
+      "output_per_1k": 0.28
+    },
+    "gemini-3.5-flash": {
+      "input_per_1k": 0.075,
+      "output_per_1k": 0.3
+    },
+    "fake-v1": {
+      "input_per_1k": 0.1,
+      "output_per_1k": 0.2
+    }
+  },
+  "default": {
+    "input_per_1k": 0.1,
+    "output_per_1k": 0.2
+  }
+}

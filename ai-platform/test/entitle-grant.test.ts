@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import {
   ConfigCache,
   type ConfigEntityKind,
@@ -302,6 +303,7 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, uniqueEntitlementSql);
 });
 
 beforeEach(async () => {
@@ -471,6 +473,127 @@ describe("pending_enroll_fails_entitlement_until_activated", () => {
       reader,
     );
     expect(activeResult).toEqual({ ok: true });
+  });
+});
+
+describe("entitlement_installation_id_is_unique", () => {
+  it("rejects a second entitlement row for the same installation", async () => {
+    const handlers = await loadControlHandlers();
+    await enrollFixture(handlers);
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO entitlement (
+           entitlement_id, installation_id, plan, period_start, period_end,
+           request_quota, token_budget, cost_budget, allowed_capabilities,
+           soft_threshold, status
+         ) VALUES (?, ?, 'professional', ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
+      )
+        .bind(
+          crypto.randomUUID(),
+          FIXTURE_INSTALLATION_ID,
+          DEFAULT_ENTITLE_PAYLOAD.period_start,
+          DEFAULT_ENTITLE_PAYLOAD.period_end,
+        )
+        .run(),
+    ).rejects.toThrow();
+
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM entitlement WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
+  });
+});
+
+describe("entitle_rejects_invalid_period_bounds", () => {
+  async function readEntitlementPeriod(): Promise<{
+    status: string;
+    period_start: string;
+    period_end: string;
+  } | null> {
+    return env.DB.prepare(
+      "SELECT status, period_start, period_end FROM entitlement WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ status: string; period_start: string; period_end: string }>();
+  }
+
+  async function expectInvalidPeriodRejected(
+    handlers: ControlHandlers,
+    operatorAuth: OperatorAuth,
+    payload: EntitlePayload,
+  ): Promise<void> {
+    const before = await readEntitlementPeriod();
+    expect(before?.status).toBe("pending");
+
+    const response = await handlers.handleEntitle(
+      buildEntitleRequest(FIXTURE_INSTALLATION_ID, payload),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readEntitlementPeriod()).toEqual(before);
+  }
+
+  it("rejects a non-ISO period_start without mutating the pending row", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    await expectInvalidPeriodRejected(handlers, operatorAuth, {
+      ...DEFAULT_ENTITLE_PAYLOAD,
+      period_start: "not-an-iso-instant",
+    });
+  });
+
+  it("rejects a non-ISO period_end without mutating the pending row", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    await expectInvalidPeriodRejected(handlers, operatorAuth, {
+      ...DEFAULT_ENTITLE_PAYLOAD,
+      period_end: "tomorrow",
+    });
+  });
+
+  it("rejects a date-only period_start that is not an ISO instant", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    await expectInvalidPeriodRejected(handlers, operatorAuth, {
+      ...DEFAULT_ENTITLE_PAYLOAD,
+      period_start: "2026-08-01",
+    });
+  });
+
+  it("rejects period_start equal to period_end", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    await expectInvalidPeriodRejected(handlers, operatorAuth, {
+      ...DEFAULT_ENTITLE_PAYLOAD,
+      period_start: "2026-08-01T00:00:00.000Z",
+      period_end: "2026-08-01T00:00:00.000Z",
+    });
+  });
+
+  it("rejects period_start after period_end", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    await expectInvalidPeriodRejected(handlers, operatorAuth, {
+      ...DEFAULT_ENTITLE_PAYLOAD,
+      period_start: "2026-09-01T00:00:00.000Z",
+      period_end: "2026-08-01T00:00:00.000Z",
+    });
   });
 });
 

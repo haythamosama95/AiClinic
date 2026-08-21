@@ -21,12 +21,20 @@ import { createRequestRow } from "../src/journal";
 import { load, type Manifest } from "../src/manifest";
 import { selectCandidateChain } from "../src/router";
 import {
-  bodyHasClientRoutingInjection,
   CLIENT_ROUTING_INJECTION_KEYS,
   degradedNoticeFromAdmission,
   resolveRoutingTier,
   type AdmissionAllowResult,
 } from "../src/soft-threshold";
+
+/** Test helper: production ingress ignores these keys via empty ADAPTER_ROUTING_BODY_FIELDS. */
+function bodyHasClientRoutingInjection(
+  body: Record<string, unknown>,
+): boolean {
+  return CLIENT_ROUTING_INJECTION_KEYS.some((key) =>
+    Object.prototype.hasOwnProperty.call(body, key),
+  );
+}
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -85,8 +93,9 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "internal_error";
+  code: "unauthenticated" | "quota_exhausted" | "rate_limited" | "internal_error";
   periodReset?: string;
+  retryAfter?: number;
 };
 
 type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -508,7 +517,7 @@ function validManifestWire(): Record<string, unknown> {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -577,19 +586,19 @@ async function seedRequestsUsed(
 
 type PipelineOutcome =
   | {
-      kind: "accepted";
-      admission: AdmissionAllowResult;
-      routingTier: "standard" | "degraded";
-      ruleId: string;
-      providerId: string;
-      acceptedEvent: AdapterSseEvent;
-    }
+    kind: "accepted";
+    admission: AdmissionAllowResult;
+    routingTier: "standard" | "degraded";
+    ruleId: string;
+    providerId: string;
+    acceptedEvent: AdapterSseEvent;
+  }
   | {
-      kind: "refused";
-      code: string;
-      periodReset?: string;
-      errorBody: ReturnType<typeof buildErrorBody>;
-    };
+    kind: "refused";
+    code: string;
+    periodReset?: string;
+    errorBody: ReturnType<typeof buildErrorBody>;
+  };
 
 async function runSoftThresholdPipeline(options: {
   installationId: string;

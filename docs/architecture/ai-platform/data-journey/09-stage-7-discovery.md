@@ -38,6 +38,10 @@ No body. No extra required headers.
 | `grants`        | per capability     | Version grants                   |
 
 
+Discovery uses the same isolate-scoped `ConfigCache` as `POST /v1/requests` and
+`GET /v1/requests/{ref}`. A prior request in the isolate can warm these rows for 30 s.
+
+
 
 
 ## 4. Response shape (conceptual)

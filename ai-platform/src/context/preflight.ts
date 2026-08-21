@@ -73,7 +73,7 @@ export function runCostPreflight(
     return { ok: false, code: "request_too_large" };
   }
 
-  const { maxOutputTokens, maxInputTokens, perRequestCostCeiling } =
+  const { maxOutputTokens, maxInputTokens, perRequestTokenCeiling } =
     manifest.Economics;
 
   // Fail closed: non-numeric Economics disable both predicates under `>` —
@@ -81,7 +81,7 @@ export function runCostPreflight(
   if (
     !isFiniteNumber(maxOutputTokens) ||
     !isFiniteNumber(maxInputTokens) ||
-    !isFiniteNumber(perRequestCostCeiling)
+    !isFiniteNumber(perRequestTokenCeiling)
   ) {
     logger.info("preflight_rejected", { code: "request_too_large" });
     return { ok: false, code: "request_too_large" };
@@ -96,11 +96,11 @@ export function runCostPreflight(
     estimated_input_tokens: estimatedInputTokens,
     max_input_tokens: maxInputTokens,
     max_output_tokens: maxOutputTokens,
-    per_request_cost_ceiling: perRequestCostCeiling,
+    per_request_token_ceiling: perRequestTokenCeiling,
   });
 
   if (
-    estimatedInputTokens + maxOutputTokens > perRequestCostCeiling ||
+    estimatedInputTokens + maxOutputTokens > perRequestTokenCeiling ||
     estimatedInputTokens > maxInputTokens
   ) {
     logger.info("preflight_rejected", {

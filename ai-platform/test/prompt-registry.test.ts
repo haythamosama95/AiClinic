@@ -9,8 +9,11 @@ import {
   __setArtifactContentForTest,
   resolveArtifact,
   resolvePromptVersion,
+  stableContentHash,
   verifyBuildPins,
 } from "../src/prompt/registry";
+import businessRulesArtifact from "../prompts/clinic.visit_summary/rules-visit-summary.md?raw";
+import contextTemplateArtifact from "../prompts/clinic.visit_summary/template-visit-summary.md?raw";
 import systemInstructionArtifact from "../prompts/clinic.visit_summary/system.md?raw";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,7 +100,6 @@ function validManifest(): ManifestWire {
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -125,7 +127,7 @@ function validManifest(): ManifestWire {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -361,10 +363,35 @@ describe("T-D1-04 registry_no_prompt_text_in_any_d1_table", () => {
 });
 
 describe("T-D1-05 registry_prompt_version_surfaced_for_journal", () => {
-  it("resolvePromptVersion returns the pinned systemInstructionArtifactRef string", () => {
+  it("resolvePromptVersion is a content hash of resolved artifact bytes, not the ref", () => {
     const manifest = loadedManifest();
+    const expected = stableContentHash(
+      [
+        systemInstructionArtifact,
+        businessRulesArtifact,
+        contextTemplateArtifact,
+      ].join("\0"),
+    );
 
-    expect(resolvePromptVersion(manifest)).toBe(SYSTEM_INSTRUCTION_REF);
+    const version = resolvePromptVersion(manifest);
+    expect(version).not.toBe(SYSTEM_INSTRUCTION_REF);
+    expect(version).toBe(expected);
+    expect(version).toMatch(/^[0-9a-f]{8}$/);
+    assertRegistryNeverTouchesD1();
+  });
+
+  it("changing artifact bytes under the same pinned ref changes promptVersion", () => {
+    const manifest = loadedManifest();
+    const original = resolvePromptVersion(manifest);
+
+    __setArtifactContentForTest(
+      SYSTEM_INSTRUCTION_REF,
+      "silently changed system instruction under the same ref",
+    );
+
+    const after = resolvePromptVersion(manifest);
+    expect(after).not.toBe(original);
+    expect(after).not.toBe(SYSTEM_INSTRUCTION_REF);
     assertRegistryNeverTouchesD1();
   });
 });

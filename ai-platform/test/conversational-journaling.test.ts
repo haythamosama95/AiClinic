@@ -200,7 +200,6 @@ function conversationalManifest(
               required: true,
               shapeRef: "visit.chief_complaint@v1",
               maxSize: 4_096,
-              freshnessHint: "session",
             },
           ],
     "Prompt binding": {
@@ -228,7 +227,7 @@ function conversationalManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -419,6 +418,7 @@ function stubComposeRequest(): {
   ok: true;
   request: CanonicalRequest;
   promptVersion: string;
+  systemPromptLeakNeedle: string;
 } {
   return {
     ok: true,
@@ -437,6 +437,7 @@ function stubComposeRequest(): {
       },
     },
     promptVersion: "prompt/chat-assistant-system@v1",
+    systemPromptLeakNeedle: "You are a clinical documentation assistant.",
   };
 }
 
@@ -1091,7 +1092,10 @@ describe("run_guard_writes_conversational_grouping_from_body", () => {
 
     const conversationId = "conv-h3-runguard-001";
     const turnOrdinal = 1;
-    const suppliedContext: Record<string, unknown> = {};
+    const suppliedContext: Record<string, unknown> = {
+      org: FIXTURE_ORG_ID,
+      branch: "branch-h3-001",
+    };
     const userIntent = "What is the chief complaint?";
     const bodyText = JSON.stringify({
       capability_id: FIXTURE_CAPABILITY_ID,

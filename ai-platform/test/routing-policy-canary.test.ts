@@ -151,7 +151,6 @@ function minimalCapabilityManifest(version: string): Record<string, unknown> {
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -179,7 +178,7 @@ function minimalCapabilityManifest(version: string): Record<string, unknown> {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -338,6 +337,32 @@ function buildCohortPromoteRequest(
   );
 }
 
+async function publishAndPromoteVersion(
+  handlers: Pick<
+    RoutingControlHandlers,
+    "handleRoutingPolicyPublish" | "handleRoutingPolicyPromote"
+  >,
+  bindings: { DB: D1Database; R2?: R2Bucket },
+  operatorAuth: OperatorAuth,
+  version: number,
+  providerId: string,
+): Promise<void> {
+  const versionKey = String(version);
+  const publish = await handlers.handleRoutingPolicyPublish(
+    buildPublishRequest(versionKey, policyDocument(version, providerId)),
+    bindings,
+    operatorAuth,
+  );
+  expect(publish.ok).toBe(true);
+
+  const promote = await handlers.handleRoutingPolicyPromote(
+    buildPromoteRequest(versionKey),
+    bindings,
+    operatorAuth,
+  );
+  expect(promote.ok).toBe(true);
+}
+
 async function publishAndPromoteV1(
   handlers: Pick<
     RoutingControlHandlers,
@@ -346,19 +371,13 @@ async function publishAndPromoteV1(
   bindings: { DB: D1Database; R2?: R2Bucket },
   operatorAuth: OperatorAuth,
 ): Promise<void> {
-  const publish = await handlers.handleRoutingPolicyPublish(
-    buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+  await publishAndPromoteVersion(
+    handlers,
     bindings,
     operatorAuth,
+    1,
+    "deepseek",
   );
-  expect(publish.ok).toBe(true);
-
-  const promote = await handlers.handleRoutingPolicyPromote(
-    buildPromoteRequest(FIXTURE_VERSION_V1),
-    bindings,
-    operatorAuth,
-  );
-  expect(promote.ok).toBe(true);
 }
 
 async function routeForInstallation(
@@ -857,7 +876,7 @@ describe("routing_policy_canary_split", () => {
     const active = await env.DB.prepare(
       `SELECT version, status, active_from FROM routing_policy
        WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, version DESC LIMIT 1`,
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
     )
       .bind(FIXTURE_POLICY_ID)
       .first<{ version: string; status: string; active_from: string }>();
@@ -1179,5 +1198,277 @@ describe("routing_policy_canary_split", () => {
       ).ok,
     ).toBe(true);
     await assertExactlyOneActive(env.DB);
+  });
+});
+
+describe("routing_policy_publish_document_validation", () => {
+  it("rejects identity mismatch with 400 policy_identity_mismatch and does not persist", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+
+    const mismatchedId = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, {
+        ...policyDocument(1, "deepseek"),
+        policy_id: "platform-default",
+      }),
+      bindings,
+      operatorAuth,
+    );
+    expect(mismatchedId.status).toBe(400);
+    expect(await mismatchedId.json()).toEqual({
+      error: "policy_identity_mismatch",
+    });
+
+    const mismatchedVersion = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(2, "deepseek")),
+      bindings,
+      operatorAuth,
+    );
+    expect(mismatchedVersion.status).toBe(400);
+    expect(await mismatchedVersion.json()).toEqual({
+      error: "policy_identity_mismatch",
+    });
+
+    const stored = await env.DB
+      .prepare("SELECT COUNT(*) AS count FROM routing_policy")
+      .first<{ count: number }>();
+    expect(stored?.count ?? 0).toBe(0);
+    expect(
+      await env.R2.get(
+        `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}.json`,
+      ),
+    ).toBeNull();
+
+    const matching = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+      bindings,
+      operatorAuth,
+    );
+    expect(matching.status).toBe(200);
+  });
+
+  it("warns on publish when no target latency_class matches published visit-summary", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+
+    const unmatchedPublish = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+      bindings,
+      operatorAuth,
+    );
+    expect(unmatchedPublish.status).toBe(200);
+    const unmatchedBody = (await unmatchedPublish.json()) as {
+      warnings?: string[];
+    };
+    expect(unmatchedBody.warnings).toEqual(
+      expect.arrayContaining(["latency_class_mismatch"]),
+    );
+  });
+
+  it("does not warn when a target latency_class matches published visit-summary", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+
+    const aligned = policyDocument(1, "deepseek");
+    const alignedTargets = (
+      aligned.rules as Array<{
+        targets: Array<{ features: { latency_class: string } }>;
+      }>
+    )[0].targets;
+    for (const target of alignedTargets) {
+      target.features.latency_class = "standard";
+    }
+
+    const alignedPublish = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, aligned),
+      bindings,
+      operatorAuth,
+    );
+    expect(alignedPublish.status).toBe(200);
+    const alignedBody = (await alignedPublish.json()) as {
+      warnings?: string[];
+    };
+    expect(alignedBody.warnings ?? []).not.toContain("latency_class_mismatch");
+  });
+});
+
+describe("routing_policy_control_robustness", () => {
+  it("rejects duplicate publish of the same policy version with 409 already_published", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+    const document = policyDocument(1, "deepseek");
+
+    const first = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, document),
+      bindings,
+      operatorAuth,
+    );
+    expect(first.status).toBe(200);
+
+    const duplicate = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, document),
+      bindings,
+      operatorAuth,
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({ error: "already_published" });
+
+    const stored = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS count FROM routing_policy
+         WHERE policy_id = ? AND version = ?`,
+      )
+      .bind(FIXTURE_POLICY_ID, FIXTURE_VERSION_V1)
+      .first<{ count: number }>();
+    expect(stored?.count ?? 0).toBe(1);
+    expect(
+      await countControlAuditsForAction(env.DB, "routing_policy_publish"),
+    ).toBe(1);
+  });
+
+  it("does not overwrite the published R2 document on 409 already_published", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+    const original = policyDocument(1, "deepseek");
+    const conflicting = policyDocument(1, "gemini");
+
+    const first = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, original),
+      bindings,
+      operatorAuth,
+    );
+    expect(first.status).toBe(200);
+
+    const duplicate = await handleRoutingPolicyPublish(
+      buildPublishRequest(FIXTURE_VERSION_V1, conflicting),
+      bindings,
+      operatorAuth,
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({ error: "already_published" });
+
+    const stored = await env.R2.get(
+      `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}.json`,
+    );
+    expect(stored).not.toBeNull();
+    const published = JSON.parse(await stored!.text()) as {
+      rules: Array<{ targets: Array<{ provider_id: string }> }>;
+    };
+    expect(published.rules[0]?.targets[0]?.provider_id).toBe("deepseek");
+    expect(published.rules[0]?.targets[0]?.provider_id).not.toBe("gemini");
+  });
+
+  it("rollback resurrects later rowid when superseded versions share active_from", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyPromote,
+      handleRoutingPolicyRollback,
+    } = await loadRoutingControlHandlers();
+    const handlers = { handleRoutingPolicyPublish, handleRoutingPolicyPromote };
+
+    vi.setSystemTime(new Date("2026-08-03T12:00:00.000Z"));
+    await publishAndPromoteVersion(handlers, bindings, operatorAuth, 9, "deepseek");
+    await publishAndPromoteVersion(handlers, bindings, operatorAuth, 10, "gemini");
+
+    const tied = await env.DB
+      .prepare(
+        `SELECT version, active_from FROM routing_policy
+         WHERE policy_id = ? AND version IN ('9', '10')
+         ORDER BY rowid`,
+      )
+      .bind(FIXTURE_POLICY_ID)
+      .all<{ version: string; active_from: string }>();
+    expect(tied.results).toEqual([
+      { version: "9", active_from: "2026-08-03T12:00:00.000Z" },
+      { version: "10", active_from: "2026-08-03T12:00:00.000Z" },
+    ]);
+
+    vi.setSystemTime(new Date("2026-08-03T12:01:00.000Z"));
+    await publishAndPromoteVersion(handlers, bindings, operatorAuth, 11, "deepseek");
+
+    const rollback = await handleRoutingPolicyRollback(
+      buildRollbackRequest("11"),
+      bindings,
+      operatorAuth,
+    );
+    expect(rollback.status).toBe(200);
+
+    const active = await env.DB
+      .prepare(
+        `SELECT version FROM routing_policy
+         WHERE policy_id = ? AND status = 'active'`,
+      )
+      .bind(FIXTURE_POLICY_ID)
+      .first<{ version: string }>();
+    expect(active?.version).toBe("10");
+
+    const cache = new ConfigCache();
+    const reader = createD1ConfigReader(env.DB, env.R2);
+    const outcome = await routeForInstallation(
+      COHORT_INSTALLATION_ID,
+      cache,
+      reader,
+    );
+    expect(outcome.routing_decision.policy_version).toBe(10);
+  });
+
+  it("promote audit before_pointer uses later rowid when two actives share active_from", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish, handleRoutingPolicyPromote } =
+      await loadRoutingControlHandlers();
+    const sameFrom = "2026-08-03T12:00:00.000Z";
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO routing_policy (
+           policy_id, version, content_pointer, active_from, activated_by,
+           canary_installation_ids, status
+         ) VALUES (?, '9', 'control/routing-policy/standard/9.json', ?, ?, NULL, 'active')`,
+      ).bind(FIXTURE_POLICY_ID, sameFrom, FAKE_OPERATOR_ID),
+      env.DB.prepare(
+        `INSERT INTO routing_policy (
+           policy_id, version, content_pointer, active_from, activated_by,
+           canary_installation_ids, status
+         ) VALUES (?, '10', 'control/routing-policy/standard/10.json', ?, ?, NULL, 'active')`,
+      ).bind(FIXTURE_POLICY_ID, sameFrom, FAKE_OPERATOR_ID),
+    ]);
+
+    const publish = await handleRoutingPolicyPublish(
+      buildPublishRequest("11", policyDocument(11, "deepseek")),
+      bindings,
+      operatorAuth,
+    );
+    expect(publish.status).toBe(200);
+
+    const promote = await handleRoutingPolicyPromote(
+      buildPromoteRequest("11"),
+      bindings,
+      operatorAuth,
+    );
+    expect(promote.status).toBe(200);
+
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR_ID,
+      action: "routing_policy_promote",
+      target: `${FIXTURE_POLICY_ID}@11`,
+    });
+    const audit = await env.DB
+      .prepare(
+        `SELECT before_pointer FROM control_audit
+         WHERE action = 'routing_policy_promote'
+         ORDER BY recorded_at DESC LIMIT 1`,
+      )
+      .first<{ before_pointer: string | null }>();
+    expect(audit?.before_pointer).toBe(`${FIXTURE_POLICY_ID}@10`);
   });
 });

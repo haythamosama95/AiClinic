@@ -7,6 +7,7 @@ import {
 } from "../src/context";
 import type { Principal } from "../src/identity";
 import { load, type Manifest } from "../src/manifest";
+import type { Logger } from "../src/logger";
 import {
   buildContextRequiredResponse,
   validateContext,
@@ -65,21 +66,18 @@ function validManifest(overrides: Partial<ManifestWire> = {}): ManifestWire {
         required: true,
         shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
       {
         key: REQUIRED_KEY_VITALS,
         required: true,
         shapeRef: REQUIRED_KEY_VITALS,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
       {
         key: OPTIONAL_KEY_CHIEF_COMPLAINT,
         required: false,
         shapeRef: OPTIONAL_KEY_CHIEF_COMPLAINT,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -107,7 +105,7 @@ function validManifest(overrides: Partial<ManifestWire> = {}): ManifestWire {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -471,21 +469,18 @@ describe("T-C2-05 validator_rejects_oversize_key", () => {
           required: true,
           shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
           maxSize: 4_096,
-          freshnessHint: "session",
         },
         {
           key: REQUIRED_KEY_VITALS,
           required: true,
           shapeRef: REQUIRED_KEY_VITALS,
           maxSize: 4_096,
-          freshnessHint: "session",
         },
         {
           key: OPTIONAL_KEY_CHIEF_COMPLAINT,
           required: false,
           shapeRef: OPTIONAL_KEY_CHIEF_COMPLAINT,
           maxSize: 64,
-          freshnessHint: "session",
         },
       ],
     });
@@ -596,7 +591,7 @@ describe("T-C2-10 preflight_passes_under_ceiling", () => {
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens: 1_024,
-        perRequestCostCeiling: 9_024,
+        perRequestTokenCeiling: 9_024,
         quotaWeight: 1,
       },
     });
@@ -606,7 +601,7 @@ describe("T-C2-10 preflight_passes_under_ceiling", () => {
     expect(estimate).toBe(expectedEstimate(serializedInput));
     expect(estimate).toBeLessThanOrEqual(manifest.Economics.maxInputTokens);
     expect(estimate + manifest.Economics.maxOutputTokens).toBeLessThanOrEqual(
-      manifest.Economics.perRequestCostCeiling,
+      manifest.Economics.perRequestTokenCeiling,
     );
 
     const result = runPreflightGate(manifest, serializedInput);
@@ -623,14 +618,14 @@ describe("T-C2-11 preflight_rejects_over_ceiling", () => {
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens: 500,
-        perRequestCostCeiling: 100,
+        perRequestTokenCeiling: 100,
         quotaWeight: 1,
       },
     });
     const serializedInput = "x".repeat(400);
     const estimate = estimateInputTokens(serializedInput);
     expect(estimate + manifest.Economics.maxOutputTokens).toBeGreaterThan(
-      manifest.Economics.perRequestCostCeiling,
+      manifest.Economics.perRequestTokenCeiling,
     );
 
     const result = runPreflightGate(manifest, serializedInput);
@@ -646,15 +641,15 @@ describe("T-C2-12 preflight_estimate_includes_max_output_tokens", () => {
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens: 80,
-        perRequestCostCeiling: 100,
+        perRequestTokenCeiling: 100,
         quotaWeight: 1,
       },
     });
     const serializedInput = "x".repeat(120);
     const estimate = estimateInputTokens(serializedInput);
-    expect(estimate).toBeLessThanOrEqual(manifest.Economics.perRequestCostCeiling);
+    expect(estimate).toBeLessThanOrEqual(manifest.Economics.perRequestTokenCeiling);
     expect(estimate + manifest.Economics.maxOutputTokens).toBeGreaterThan(
-      manifest.Economics.perRequestCostCeiling,
+      manifest.Economics.perRequestTokenCeiling,
     );
 
     const result = runCostPreflight(manifest, serializedInput);
@@ -669,7 +664,7 @@ describe("T-C2-13 preflight_no_egress_on_rejection_spy", () => {
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens: 500,
-        perRequestCostCeiling: 100,
+        perRequestTokenCeiling: 100,
         quotaWeight: 1,
       },
     });
@@ -712,14 +707,14 @@ describe("T-C2-15 preflight_rejects_over_max_input_tokens", () => {
       Economics: {
         maxInputTokens: Math.floor(estimate),
         maxOutputTokens: 100,
-        perRequestCostCeiling: 10_000,
+        perRequestTokenCeiling: 10_000,
         quotaWeight: 1,
       },
     });
 
     expect(estimate).toBeGreaterThan(manifest.Economics.maxInputTokens);
     expect(estimate + manifest.Economics.maxOutputTokens).toBeLessThanOrEqual(
-      manifest.Economics.perRequestCostCeiling,
+      manifest.Economics.perRequestTokenCeiling,
     );
 
     const result = runCostPreflight(manifest, serializedInput);
@@ -736,7 +731,7 @@ describe("C2-R review resolution — fail-closed load paths", () => {
           Economics: {
             maxInputTokens: 8_000,
             maxOutputTokens: "1024",
-            perRequestCostCeiling: 9_024,
+            perRequestTokenCeiling: 9_024,
             quotaWeight: 1,
           },
         }),
@@ -751,7 +746,7 @@ describe("C2-R review resolution — fail-closed load paths", () => {
           Economics: {
             maxInputTokens: undefined,
             maxOutputTokens: 1_024,
-            perRequestCostCeiling: 9_024,
+            perRequestTokenCeiling: 9_024,
             quotaWeight: 1,
           },
         }),
@@ -759,7 +754,22 @@ describe("C2-R review resolution — fail-closed load paths", () => {
     ).toThrow(/Economics/);
   });
 
-  it("load rejects non-numeric Economics.perRequestCostCeiling", () => {
+  it("load rejects non-numeric Economics.perRequestTokenCeiling", () => {
+    expect(() =>
+      load(
+        validManifest({
+          Economics: {
+            maxInputTokens: 8_000,
+            maxOutputTokens: 1_024,
+            perRequestTokenCeiling: "9024",
+            quotaWeight: 1,
+          },
+        }),
+      ),
+    ).toThrow(/Economics/);
+  });
+
+  it("load rejects non-numeric legacy Economics.perRequestCostCeiling alias", () => {
     expect(() =>
       load(
         validManifest({
@@ -784,7 +794,6 @@ describe("C2-R review resolution — fail-closed load paths", () => {
               required: "yes",
               shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
               maxSize: 4_096,
-              freshnessHint: "session",
             },
           ],
         }),
@@ -802,7 +811,6 @@ describe("C2-R review resolution — fail-closed load paths", () => {
               required: true,
               shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
               maxSize: "4096",
-              freshnessHint: "session",
             },
           ],
         }),
@@ -820,7 +828,6 @@ describe("C2-R review resolution — fail-closed load paths", () => {
               required: true,
               shapeRef: "visit.vitals@v2",
               maxSize: 4_096,
-              freshnessHint: "session",
             },
           ],
         }),
@@ -839,7 +846,7 @@ describe("C2-R review resolution — exact boundaries", () => {
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens,
-        perRequestCostCeiling: estimate + maxOutputTokens,
+        perRequestTokenCeiling: estimate + maxOutputTokens,
         quotaWeight: 1,
       },
     });
@@ -855,7 +862,7 @@ describe("C2-R review resolution — exact boundaries", () => {
       Economics: {
         maxInputTokens: estimate,
         maxOutputTokens: 100,
-        perRequestCostCeiling: 10_000,
+        perRequestTokenCeiling: 10_000,
         quotaWeight: 1,
       },
     });
@@ -873,14 +880,12 @@ describe("C2-R review resolution — exact boundaries", () => {
           required: true,
           shapeRef: REQUIRED_KEY_DEMOGRAPHICS,
           maxSize: exactBytes,
-          freshnessHint: "session",
         },
         {
           key: REQUIRED_KEY_VITALS,
           required: true,
           shapeRef: REQUIRED_KEY_VITALS,
           maxSize: 4_096,
-          freshnessHint: "session",
         },
       ],
     });
@@ -1069,7 +1074,7 @@ describe("C2-R review resolution — estimator literals and artifact bytes", () 
       Economics: {
         maxInputTokens: 8_000,
         maxOutputTokens: 1,
-        perRequestCostCeiling: 2.2,
+        perRequestTokenCeiling: 2.2,
         quotaWeight: 1,
       },
     });
@@ -1091,5 +1096,108 @@ describe("C2-R review resolution — estimator literals and artifact bytes", () 
       ok: false,
       code: "request_too_large",
     });
+  });
+});
+
+describe("4.7 perRequestTokenCeiling token units, not currency", () => {
+  it("rejects when estimated tokens plus maxOutputTokens exceed the token ceiling", () => {
+    // 20 would be a tiny dollar budget that would still admit almost any
+    // request if the check were money. As tokens, 20 is a hard reject for a
+    // short payload plus 500 max output — proving the field name is tokens
+    // and the comparison stays estimatedInputTokens + maxOutputTokens.
+    const serializedInput = "x".repeat(40);
+    const estimate = estimateInputTokens(serializedInput);
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens: 500,
+        perRequestTokenCeiling: 20,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(estimate + manifest.Economics.maxOutputTokens).toBeGreaterThan(
+      manifest.Economics.perRequestTokenCeiling,
+    );
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({
+      ok: false,
+      code: "request_too_large",
+    });
+  });
+
+  it("passes the same comparison when estimated tokens plus maxOutputTokens fit the token ceiling", () => {
+    const serializedInput = "x".repeat(40);
+    const estimate = estimateInputTokens(serializedInput);
+    const maxOutputTokens = 10;
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens,
+        perRequestTokenCeiling: estimate + maxOutputTokens,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(estimate + maxOutputTokens).toBeLessThanOrEqual(
+      manifest.Economics.perRequestTokenCeiling,
+    );
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({ ok: true });
+  });
+
+  it("applies the token comparison after loading the legacy cost-named alias", () => {
+    const serializedInput = "x".repeat(40);
+    const estimate = estimateInputTokens(serializedInput);
+    const wire = validManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens: 500,
+        perRequestCostCeiling: 20,
+        quotaWeight: 1,
+      },
+    });
+    const manifest = load(wire);
+
+    expect(manifest.Economics.perRequestTokenCeiling).toBe(20);
+    expect(manifest.Economics).not.toHaveProperty("perRequestCostCeiling");
+    expect(estimate + 500).toBeGreaterThan(20);
+    expect(runCostPreflight(manifest, serializedInput)).toEqual({
+      ok: false,
+      code: "request_too_large",
+    });
+  });
+
+  it("logs the ceiling as per_request_token_ceiling, never a currency field", () => {
+    const debug = vi.fn();
+    const logger: Logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+      debug,
+      child: () => logger,
+    };
+    const serializedInput = "x".repeat(40);
+    const estimate = estimateInputTokens(serializedInput);
+    const manifest = loadedManifest({
+      Economics: {
+        maxInputTokens: 8_000,
+        maxOutputTokens: 10,
+        perRequestTokenCeiling: estimate + 10,
+        quotaWeight: 1,
+      },
+    });
+
+    expect(runCostPreflight(manifest, serializedInput, 0, logger)).toEqual({
+      ok: true,
+    });
+    expect(debug).toHaveBeenCalledWith(
+      "preflight_estimate",
+      expect.objectContaining({
+        estimated_input_tokens: estimate,
+        per_request_token_ceiling: estimate + 10,
+      }),
+    );
+    const payload = debug.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("per_request_cost_ceiling");
+    expect(payload).not.toHaveProperty("cost_usd");
+    expect(payload).not.toHaveProperty("price");
   });
 });

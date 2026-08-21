@@ -20,15 +20,6 @@ export const CLIENT_ROUTING_INJECTION_KEYS = [
 export type ClientRoutingInjectionKey =
   (typeof CLIENT_ROUTING_INJECTION_KEYS)[number];
 
-/** True when a parsed request body carries any prohibited routing injection key. */
-export function bodyHasClientRoutingInjection(
-  body: Record<string, unknown>,
-): boolean {
-  return CLIENT_ROUTING_INJECTION_KEYS.some((key) =>
-    Object.prototype.hasOwnProperty.call(body, key),
-  );
-}
-
 export function routingTierFromAdmission(
   admission: AdmissionAllowResult,
 ): RoutingTier {

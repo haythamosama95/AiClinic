@@ -39,6 +39,9 @@ export interface TokenVerifier {
   verify(token: string, ctx: VerifyContext): Promise<VerifyResult>;
 }
 
+/** Maximum AAT lifetime (`exp − iat`) in seconds. §5.6 "short lifetime, minutes". */
+export const MAX_AAT_LIFETIME_SECONDS = 600;
+
 /** Guard-metric bucket for failures before signature verification (§4.7). */
 const UNVERIFIED_INSTALLATION_BUCKET = "unverified";
 
@@ -284,6 +287,10 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       payload.iat - ctx.clockSkewSeconds > ctx.now ||
       ctx.now > payload.exp + ctx.clockSkewSeconds
     ) {
+      return rejectUnauthenticated();
+    }
+
+    if (payload.exp - payload.iat > MAX_AAT_LIFETIME_SECONDS) {
       return rejectUnauthenticated();
     }
 

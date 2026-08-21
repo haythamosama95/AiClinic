@@ -172,12 +172,23 @@ export interface SupplementaryFieldInput {
   periodReset?: string;
 }
 
+/** §4.3.3 simple limiter window when the rate-limit binding supplies no retry hint. */
+export const DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS = 60;
+
+/** Prefer a positive admission/binding retry hint; otherwise the simple-limiter window. */
+export function retryAfterSecondsForRateLimited(hint?: unknown): number {
+  if (typeof hint === "number" && Number.isFinite(hint) && hint > 0) {
+    return Math.ceil(hint);
+  }
+  return DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS;
+}
+
 export function supplementaryFieldsForCode(
   code: TaxonomyCode,
   input: SupplementaryFieldInput,
 ): Record<string, number | string> {
   if (code === "rate_limited") {
-    return { retry_after: input.retryAfter ?? 0 };
+    return { retry_after: retryAfterSecondsForRateLimited(input.retryAfter) };
   }
   if (code === "quota_exhausted") {
     // Omit empty admin-path values — concurrency-mapped refusals must populate

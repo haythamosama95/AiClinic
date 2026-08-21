@@ -997,6 +997,94 @@ describe("T-A6-R-disconnect event source notified on client abort (§2.3)", () =
   });
 });
 
+describe("pre_accept_rate_limited_retry_after_from_admission_hint", () => {
+  it("puts the preAccept retryAfter hint on the HTTP JSON body, not a hardcoded 60", async () => {
+    const hint = 15;
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({
+        ok: false,
+        code: "rate_limited",
+        retryAfter: hint,
+      }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+
+    expect(response.status).toBe(liveHttpStatusForCode("rate_limited"));
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const body = (await response.json()) as {
+      code?: string;
+      retry_after?: number;
+    };
+    expect(body.code).toBe("rate_limited");
+    expect(body.retry_after).toBe(hint);
+  });
+
+  it("falls back to 60 when rate_limited has no admission retry hint", async () => {
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({ ok: false, code: "rate_limited" }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+
+    expect(response.status).toBe(liveHttpStatusForCode("rate_limited"));
+    const body = (await response.json()) as { retry_after?: number };
+    expect(body.retry_after).toBe(60);
+  });
+});
+
+describe("accepted_degraded_notice_is_per_request_from_preAccept", () => {
+  it("emits degraded_notice on accepted when preAccept returns it for this request", async () => {
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({ ok: true, degradedNotice: true }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const events = await collectSseEvents(response);
+    expect(events[0]?.type).toBe("accepted");
+    expect(events[0]?.data.degraded_notice).toBe(true);
+  });
+
+  it("omits degraded_notice when preAccept succeeds without it", async () => {
+    const response = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({ ok: true }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const events = await collectSseEvents(response);
+    expect(events[0]?.type).toBe("accepted");
+    expect(events[0]?.data.degraded_notice).toBeUndefined();
+  });
+
+  it("does not reuse a static adapter option across requests", async () => {
+    const first = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({ ok: true, degradedNotice: true }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+    const second = await handleAdapterRequest(buildWellFormedRequest(), {
+      preAccept: async () => ({ ok: true }),
+      eventSource: createCannedStubEventSource((_sink, _context, controller) => {
+        controller.complete();
+      }),
+    });
+
+    const firstAccepted = (await collectSseEvents(first))[0];
+    const secondAccepted = (await collectSseEvents(second))[0];
+    expect(firstAccepted?.data.degraded_notice).toBe(true);
+    expect(secondAccepted?.data.degraded_notice).toBeUndefined();
+  });
+});
+
 describe("T-A6-T13 fail-fast without eventSource (T013a)", () => {
   it("returns HTTP 503 and opens no stream when eventSource is missing", async () => {
     const referenceSpy = vi.spyOn(referenceModule, "generateRequestReference");

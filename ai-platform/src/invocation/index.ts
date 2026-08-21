@@ -7,6 +7,10 @@ import type {
 import { getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
+import {
+  estimateUsageFromStreamedChars,
+  ledgerUsageFromProvider,
+} from "../pricing";
 import { classifyFailure, setRetryabilityFromClassification } from "../provider/classify";
 import type { ProviderInvokeResult, ProviderPort } from "../provider/port";
 import type { RoutingDecision } from "../router";
@@ -40,12 +44,15 @@ export type AttemptRecord = {
   tokens_out?: number;
   cost?: number;
   provider_request_id?: string;
+  rawBody?: unknown;
 };
 
 export interface InvocationSink {
   recordAttempt(record: AttemptRecord): void;
   emitRegenerating(): void;
   emitStreamText(text: string): void;
+  /** Provider finished because of an output-length limit — not a successful completion. */
+  emitTruncation(): void;
 }
 
 /** Live partial-usage snapshot for ChunkSource.getPartialUsage honesty. */
@@ -132,6 +139,19 @@ function createInternalError(message: string): CanonicalError {
   });
 }
 
+function createValidationFailedError(): CanonicalError {
+  const { consumesQuota } = getTaxonomyEntry("validation_failed");
+  return setRetryabilityFromClassification({
+    taxonomyCode: "validation_failed",
+    retryability: true,
+    providerNative: {
+      code: "OUTPUT_TRUNCATED",
+      message: "Provider output truncated before a complete result",
+    },
+    consumedBudget: consumesQuota !== "No",
+  });
+}
+
 /**
  * Exponential backoff with full-jitter, capped at {@link BACKOFF_CAP_MS}.
  * `retryIndex` is 0-based within the current target (first inter-retry sleep = 0).
@@ -179,12 +199,12 @@ function usageFieldsFromResult(
   AttemptRecord,
   "latency_ms" | "tokens_in" | "tokens_out" | "cost" | "provider_request_id"
 > {
+  const priced = ledgerUsageFromProvider(result);
   return {
     latency_ms: result.timing?.total_ms,
     tokens_in: result.usage.input,
     tokens_out: result.usage.output,
-    // Cost attribution lands when a pricing table is wired; carry a stable zero for now.
-    cost: 0,
+    cost: priced.cost,
     provider_request_id: result.providerRequestId,
   };
 }
@@ -253,6 +273,9 @@ function processInvokeResult(
     selection_reason: selectionReason,
     request_id: requestId,
     idempotency_key: idempotencyKey,
+    ...(invokeResult.rawBody !== undefined
+      ? { rawBody: invokeResult.rawBody }
+      : {}),
   };
 
   if (invokeResult.kind === "success") {
@@ -273,7 +296,6 @@ function processInvokeResult(
         outcome: "truncation",
         ...usageFieldsFromResult(invokeResult.result),
       },
-      success: invokeResult.result,
     };
   }
 
@@ -318,6 +340,7 @@ async function invokeWithTimeout(
   request: CanonicalRequest,
   timeoutMs: number,
   callerSignal?: AbortSignal,
+  onStreamChunk?: (chunk: CanonicalStreamChunk) => void,
 ): Promise<ProviderInvokeResult> {
   if (callerSignal?.aborted) {
     return { kind: "error", error: createCancelledError() };
@@ -349,7 +372,10 @@ async function invokeWithTimeout(
 
   try {
     const raced: Promise<ProviderInvokeResult>[] = [
-      port.invoke(request, { signal: controller.signal }).catch((cause: unknown) => {
+      port.invoke(request, {
+        signal: controller.signal,
+        onStreamChunk,
+      }).catch((cause: unknown) => {
         if (callerSignal?.aborted) {
           return { kind: "error" as const, error: createCancelledError() };
         }
@@ -447,14 +473,16 @@ export async function runInvocation(
   let accruedCost = 0;
   let hasAccruedUsage = false;
   let streamedChars = 0;
+  let pricingModelId = chain[0]?.model_id ?? "";
+  /** True when the last invoked target exhausted on a truncation outcome. */
+  let exhaustedViaTruncation = false;
 
   const readPartialUsage = (): PartialUsageSnapshot | undefined => {
     if (hasAccruedUsage) {
       return { tokens: accruedTokens, cost: accruedCost };
     }
     if (streamedChars > 0) {
-      // Best-effort live estimate when the provider has not yet returned usage.
-      return { tokens: streamedChars, cost: streamedChars * 0.001 };
+      return estimateUsageFromStreamedChars(streamedChars, pricingModelId);
     }
     return undefined;
   };
@@ -464,9 +492,10 @@ export async function runInvocation(
   }
 
   const noteUsageFromResult = (result: CanonicalResult): void => {
+    const priced = ledgerUsageFromProvider(result);
     hasAccruedUsage = true;
-    accruedTokens += result.usage.input + result.usage.output;
-    accruedCost += 0;
+    accruedTokens += priced.tokens;
+    accruedCost += priced.cost;
   };
 
   // Run-scoped observing sink — never mutate the caller-owned sink object.
@@ -485,8 +514,14 @@ export async function runInvocation(
       streamedChars += text.length;
       sink.emitStreamText(text);
     },
+    emitTruncation() {
+      sink.emitTruncation();
+    },
   };
 
+  // Sequential walk only — `max_parallel_attempts` was deleted from the
+  // routing decision. Parallel racing would multiply token spend, the
+  // dominant cost by one to two orders of magnitude (§13.6).
   for (let chainIndex = 0; chainIndex < chain.length; chainIndex++) {
     if (callerSignal?.aborted) {
       logger.info("Invocation cancelled by caller signal", {
@@ -514,6 +549,7 @@ export async function runInvocation(
     }
 
     const entry = chain[chainIndex];
+    pricingModelId = entry.model_id;
     const selectionReason: SelectionReason =
       chainIndex === 0
         ? "primary"
@@ -534,6 +570,7 @@ export async function runInvocation(
     currentTargetHadPartialStream = false;
     pendingSameTargetRegenerating = false;
     let lastFailureWasTimeout = false;
+    let lastFailureWasTruncation = false;
     let targetInvoked = false;
 
     for (
@@ -574,6 +611,7 @@ export async function runInvocation(
 
       attemptNo++;
       targetInvoked = true;
+      let liveRelayed = false;
       const port = portResolver(entry.provider_id);
       logger.debug("Provider attempt started", {
         request_id: requestId,
@@ -587,9 +625,25 @@ export async function runInvocation(
         requestForAttempt,
         attemptTimeoutMs,
         callerSignal,
+        (chunk) => {
+          if (chunk.kind !== "text_delta") {
+            return;
+          }
+          const text = textFromChunkPayload(chunk.payload);
+          if (text !== undefined && text.length > 0) {
+            liveRelayed = true;
+            observingSink.emitStreamText(text);
+          }
+        },
       );
 
-      relayTextDeltas(chunksFromResult(invokeResult), observingSink);
+      if (!liveRelayed) {
+        relayTextDeltas(chunksFromResult(invokeResult), observingSink);
+      }
+
+      if (invokeResult.kind === "truncation") {
+        observingSink.emitTruncation();
+      }
 
       const processed = processInvokeResult(
         invokeResult,
@@ -602,6 +656,8 @@ export async function runInvocation(
 
       if (processed.success) {
         noteUsageFromResult(processed.success);
+      } else if (invokeResult.kind === "truncation") {
+        noteUsageFromResult(invokeResult.result);
       }
 
       observingSink.recordAttempt(processed.record);
@@ -636,6 +692,7 @@ export async function runInvocation(
       });
 
       lastFailureWasTimeout = processed.record.outcome === "timeout";
+      lastFailureWasTruncation = processed.record.outcome === "truncation";
 
       if (attemptOnTarget < entry.max_attempts - 1) {
         if (currentTargetHadPartialStream) {
@@ -679,6 +736,7 @@ export async function runInvocation(
 
     prevExhaustedViaTimeout = lastFailureWasTimeout;
     prevTargetHadPartialStream = currentTargetHadPartialStream;
+    exhaustedViaTruncation = lastFailureWasTruncation;
   }
 
   if (callerSignal?.aborted) {
@@ -686,6 +744,14 @@ export async function runInvocation(
       request_id: requestId,
     });
     return { ok: false, error: createCancelledError() };
+  }
+
+  if (exhaustedViaTruncation) {
+    logger.info("Invocation failed — truncated output is not authoritative", {
+      request_id: requestId,
+      attempts: attemptNo,
+    });
+    return { ok: false, error: createValidationFailedError() };
   }
 
   logger.error("Invocation failed — all providers exhausted", {

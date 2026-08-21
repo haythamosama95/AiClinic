@@ -37,6 +37,8 @@ type PrincipalSeed = {
   installationId: string;
   plan?: string;
   allowedCapabilities?: string[];
+  scopes?: readonly string[];
+  role?: string;
 };
 
 type KillSwitchScope = "global" | "capability" | "installation" | "provider";
@@ -104,7 +106,6 @@ function validManifest(
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -132,7 +133,7 @@ function validManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -156,11 +157,12 @@ function buildPrincipal(seed: PrincipalSeed): Principal {
     organizationId: FIXTURE_ORG_ID,
     branchId: "branch-cap-001",
     actorId: "actor-cap-001",
-    role: "clinician",
+    role: seed.role ?? "clinician",
     scopes: Object.freeze(
-      (seed.allowedCapabilities ?? [FIXTURE_CAPABILITY_ID]).map(
-        (capabilityId) => `ai.${capabilityId}`,
-      ),
+      seed.scopes ??
+        (seed.allowedCapabilities ?? [FIXTURE_CAPABILITY_ID]).map(
+          (capabilityId) => `ai.${capabilityId}`,
+        ),
     ),
     jti: "jti-cap-001",
     iat: 1_700_000_000,
@@ -658,6 +660,7 @@ describe("T-C1-01 resolver_exact_pin_resolves", () => {
     );
     expect(exact).toEqual({
       ok: true,
+      killedProviderIds: [],
       manifest: expect.objectContaining({
         Identity: expect.objectContaining({ version: FIXTURE_CAPABILITY_VERSION }),
       }),
@@ -1092,6 +1095,242 @@ describe("resolver_plan_tier_forbidden", () => {
   });
 });
 
+describe("resolver_required_capability_scope", () => {
+  const requiredScope = `ai.${FIXTURE_CAPABILITY_ID}`;
+
+  function resolveWithPrincipal(principal: Principal) {
+    const cache = new ConfigCache();
+    const reader = makeReader(
+      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
+    );
+    return resolve(
+      principal,
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CAPABILITY_VERSION,
+      cache,
+      reader,
+    );
+  }
+
+  function registryWithRequiredScope(requiredCapabilityScope: unknown): void {
+    const loaded = load(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+    const access = { ...loaded.Access } as Record<string, unknown>;
+    if (requiredCapabilityScope === undefined) {
+      delete access.requiredCapabilityScope;
+    } else {
+      access.requiredCapabilityScope = requiredCapabilityScope;
+    }
+    const registry = createCapabilityRegistry([
+      { ...loaded, Access: access } as Manifest,
+    ]);
+    setCapabilityRegistry(registry, { replace: true });
+  }
+
+  it("returns forbidden_capability when principal.scopes is empty", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID, scopes: [] }),
+    );
+
+    expect(result).toEqual({ ok: false, code: "forbidden_capability" });
+  });
+
+  it("returns forbidden_capability when principal.scopes omits requiredCapabilityScope", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        scopes: ["ai.something_else"],
+      }),
+    );
+
+    expect(result).toEqual({ ok: false, code: "forbidden_capability" });
+  });
+
+  it("serves when principal.scopes includes requiredCapabilityScope", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        scopes: [requiredScope],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest.Identity.capabilityId).toBe(FIXTURE_CAPABILITY_ID);
+  });
+
+  it("does not reject on scope when requiredCapabilityScope is omitted", async () => {
+    registryWithRequiredScope(undefined);
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID, scopes: [] }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not reject on scope when requiredCapabilityScope is empty", async () => {
+    registryWithRequiredScope("");
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID, scopes: [] }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("resolver_allowed_staff_roles", () => {
+  function resolveWithPrincipal(principal: Principal) {
+    const cache = new ConfigCache();
+    const reader = makeReader(
+      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
+    );
+    return resolve(
+      principal,
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CAPABILITY_VERSION,
+      cache,
+      reader,
+    );
+  }
+
+  function registryWithAllowedStaffRoles(allowedStaffRoles: unknown): void {
+    const loaded = load(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+    const access = { ...loaded.Access } as Record<string, unknown>;
+    if (allowedStaffRoles === undefined) {
+      delete access.allowedStaffRoles;
+    } else {
+      access.allowedStaffRoles = allowedStaffRoles;
+    }
+    const registry = createCapabilityRegistry([
+      { ...loaded, Access: access } as Manifest,
+    ]);
+    setCapabilityRegistry(registry, { replace: true });
+  }
+
+  it("returns forbidden_capability when principal.role is outside allowedStaffRoles", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        role: "receptionist",
+      }),
+    );
+
+    expect(result).toEqual({ ok: false, code: "forbidden_capability" });
+  });
+
+  it("serves when principal.role is in allowedStaffRoles", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        role: "clinician",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest.Identity.capabilityId).toBe(FIXTURE_CAPABILITY_ID);
+  });
+
+  it("does not reject on role when allowedStaffRoles is empty", async () => {
+    registryWithAllowedStaffRoles([]);
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        role: "receptionist",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not reject on role when allowedStaffRoles is omitted", async () => {
+    registryWithAllowedStaffRoles(undefined);
+
+    const result = await resolveWithPrincipal(
+      buildPrincipal({
+        installationId: FIXTURE_INSTALLATION_ID,
+        role: "receptionist",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("resolver_manifest_kill_switch_flag", () => {
+  function resolveWithEntitledPrincipal() {
+    const cache = new ConfigCache();
+    const reader = makeReader(
+      makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID),
+    );
+    return resolve(
+      buildPrincipal({ installationId: FIXTURE_INSTALLATION_ID }),
+      FIXTURE_CAPABILITY_ID,
+      FIXTURE_CAPABILITY_VERSION,
+      cache,
+      reader,
+    );
+  }
+
+  function registryWithKillSwitchFlag(killSwitchFlag: unknown): void {
+    const loaded = load(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+    const access = { ...loaded.Access } as Record<string, unknown>;
+    if (killSwitchFlag === undefined) {
+      delete access.killSwitchFlag;
+    } else {
+      access.killSwitchFlag = killSwitchFlag;
+    }
+    const registry = createCapabilityRegistry([
+      { ...loaded, Access: access } as Manifest,
+    ]);
+    setCapabilityRegistry(registry, { replace: true });
+  }
+
+  it("returns capability_disabled when Access.killSwitchFlag is true", async () => {
+    registryWithKillSwitchFlag(true);
+
+    const result = await resolveWithEntitledPrincipal();
+
+    expect(result).toEqual({ ok: false, code: "capability_disabled" });
+  });
+
+  it("serves when Access.killSwitchFlag is false", async () => {
+    buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
+
+    const result = await resolveWithEntitledPrincipal();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest.Identity.capabilityId).toBe(FIXTURE_CAPABILITY_ID);
+  });
+
+  it("does not reject when Access.killSwitchFlag is omitted", async () => {
+    registryWithKillSwitchFlag(undefined);
+
+    const result = await resolveWithEntitledPrincipal();
+
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("resolver_kill_switch_global_active", () => {
   it("returns capability_disabled when the global kill switch is active", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
@@ -1147,7 +1386,7 @@ describe("resolver_kill_switch_installation_active", () => {
 });
 
 describe("resolver_kill_switch_provider_active", () => {
-  it("returns capability_disabled when the provider kill switch is active", async () => {
+  it("resolves successfully when a provider kill switch is active and returns the killed provider id", async () => {
     buildRegistry(validManifest(FIXTURE_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION));
 
     const rows = makeResolveFixtures(FIXTURE_INSTALLATION_ID, FIXTURE_CAPABILITY_ID);
@@ -1169,7 +1408,12 @@ describe("resolver_kill_switch_provider_active", () => {
       reader,
     );
 
-    expect(result).toEqual({ ok: false, code: "capability_disabled" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest.Identity.capabilityId).toBe(FIXTURE_CAPABILITY_ID);
+    expect(result.killedProviderIds).toEqual([FIXTURE_PROVIDER_ID]);
   });
 });
 
@@ -1203,6 +1447,7 @@ describe("resolver_provider_policy_miss_skips_provider_switch", () => {
       return;
     }
     expect(result.manifest.Identity.capabilityId).toBe(FIXTURE_CAPABILITY_ID);
+    expect(result.killedProviderIds ?? []).toEqual([]);
   });
 });
 

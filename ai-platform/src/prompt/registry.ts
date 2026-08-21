@@ -113,7 +113,35 @@ export function resolveArtifact(
 }
 
 export function resolvePromptVersion(manifest: Manifest): string {
-  return String(manifest["Prompt binding"].systemInstructionArtifactRef);
+  const promptBinding = manifest["Prompt binding"];
+  const parts: string[] = [];
+
+  const system = resolveContent(
+    String(promptBinding.systemInstructionArtifactRef),
+  );
+  if (system !== undefined) {
+    parts.push(system);
+  }
+
+  const fragments = promptBinding.businessRuleFragmentRefs;
+  if (Array.isArray(fragments)) {
+    for (const ref of fragments) {
+      const fragment = resolveContent(String(ref));
+      if (fragment !== undefined) {
+        parts.push(fragment);
+      }
+    }
+  }
+
+  const templateRef = promptBinding.contextRenderingTemplateRef;
+  if (templateRef != null && String(templateRef).length > 0) {
+    const template = resolveContent(String(templateRef));
+    if (template !== undefined) {
+      parts.push(template);
+    }
+  }
+
+  return stableContentHash(parts.join("\0"));
 }
 
 export function verifyBuildPins(manifest: Manifest): void {

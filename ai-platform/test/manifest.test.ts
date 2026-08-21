@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  ECONOMICS_TOKEN_CEILING_FIELD,
+  ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS,
+  ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE,
   hashManifest,
   load,
+  MANIFEST_FIELD_MANIFEST,
   verifyPublishedRegistry,
   type Manifest,
 } from "../src/manifest";
@@ -53,7 +57,6 @@ function validManifest(): ManifestWire {
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -81,7 +84,7 @@ function validManifest(): ManifestWire {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -486,5 +489,176 @@ describe("T-A4-23 registry_gate_runs_in_build", () => {
         join: path.join,
       }),
     ).rejects.toThrow(/hash mismatch|Published manifest/i);
+  });
+});
+
+describe("4.7 perRequestTokenCeiling is tokens, not currency", () => {
+  it("names the Economics ceiling in tokens, not cost", () => {
+    expect(MANIFEST_FIELD_MANIFEST.Economics).toEqual([
+      "maxInputTokens",
+      "maxOutputTokens",
+      "perRequestTokenCeiling",
+      "quotaWeight",
+    ]);
+    expect(MANIFEST_FIELD_MANIFEST.Economics).not.toContain(
+      "perRequestCostCeiling",
+    );
+    expect(ECONOMICS_TOKEN_CEILING_FIELD).toBe("perRequestTokenCeiling");
+    expect(ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS).toBe("perRequestCostCeiling");
+  });
+
+  it("documents the field rename as a schema-version note with token units", () => {
+    expect(ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE).toMatch(/perRequestTokenCeiling/);
+    expect(ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE).toMatch(/token/i);
+    expect(ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE).toMatch(
+      /perRequestCostCeiling/,
+    );
+    expect(ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE).toMatch(/alias/i);
+    expect(ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE).toMatch(
+      /token-denominated|never converts to currency|no currency/i,
+    );
+  });
+
+  it("load normalizes a canonical perRequestTokenCeiling wire document", () => {
+    const wire = validManifest();
+    const economics = {
+      ...(wire.Economics as Record<string, unknown>),
+    };
+    delete economics.perRequestCostCeiling;
+    economics.perRequestTokenCeiling = 9_024;
+    wire.Economics = economics;
+
+    const loaded = load(wire);
+    expect(loaded.Economics.perRequestTokenCeiling).toBe(9_024);
+    expect(loaded.Economics).not.toHaveProperty("perRequestCostCeiling");
+  });
+
+  it("load accepts legacy perRequestCostCeiling as a compatibility alias", () => {
+    const wire = validManifest();
+    const economics = {
+      ...(wire.Economics as Record<string, unknown>),
+    };
+    delete economics.perRequestTokenCeiling;
+    economics.perRequestCostCeiling = 9_024;
+    wire.Economics = economics;
+
+    const loaded = load(wire);
+    expect(loaded.Economics.perRequestTokenCeiling).toBe(9_024);
+    expect(loaded.Economics).not.toHaveProperty("perRequestCostCeiling");
+  });
+
+  it("load prefers perRequestTokenCeiling when both keys are present", () => {
+    const wire = validManifest();
+    wire.Economics = {
+      maxInputTokens: 8_000,
+      maxOutputTokens: 1_024,
+      perRequestTokenCeiling: 12_000,
+      perRequestCostCeiling: 9_024,
+      quotaWeight: 1,
+    };
+
+    const loaded = load(wire);
+    expect(loaded.Economics.perRequestTokenCeiling).toBe(12_000);
+    expect(loaded.Economics).not.toHaveProperty("perRequestCostCeiling");
+  });
+
+  it("load rejects Economics that omit both the canonical field and the alias", () => {
+    const wire = validManifest();
+    wire.Economics = {
+      maxInputTokens: 8_000,
+      maxOutputTokens: 1_024,
+      quotaWeight: 1,
+    };
+    expect(() => load(wire)).toThrow(/Economics/);
+  });
+
+  it("published visit-summary manifest uses the token ceiling name", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const published = JSON.parse(
+      await fs.readFile(
+        path.join(
+          path.dirname(new URL(import.meta.url).pathname),
+          "..",
+          "manifests",
+          "published",
+          "clinic.visit_summary@1.0.0.json",
+        ),
+        "utf8",
+      ),
+    ) as { Economics: Record<string, unknown> };
+
+    expect(published.Economics).toHaveProperty("perRequestTokenCeiling", 9024);
+    expect(published.Economics).not.toHaveProperty("perRequestCostCeiling");
+  });
+});
+
+describe("5.4 freshnessHint is not a context-requirement field", () => {
+  it("omits freshnessHint from the Context requirements schema keys", () => {
+    expect(MANIFEST_FIELD_MANIFEST["Context requirements"]).toEqual([
+      "key",
+      "required",
+      "shapeRef",
+      "maxSize",
+    ]);
+    expect(MANIFEST_FIELD_MANIFEST["Context requirements"]).not.toContain(
+      "freshnessHint",
+    );
+  });
+
+  it("load accepts a single-shot context entry without freshnessHint", () => {
+    const wire = validManifest();
+    const [first] = wire["Context requirements"] as Array<
+      Record<string, unknown>
+    >;
+    const { freshnessHint: _dropped, ...withoutHint } = first;
+    void _dropped;
+    wire["Context requirements"] = [withoutHint];
+
+    const loaded = load(wire);
+    const loadedEntries = loaded["Context requirements"] as Array<
+      Record<string, unknown>
+    >;
+    expect(loadedEntries[0]).not.toHaveProperty("freshnessHint");
+    expect(Object.keys(loadedEntries[0])).toEqual([
+      "key",
+      "required",
+      "shapeRef",
+      "maxSize",
+    ]);
+  });
+
+  it("load rejects a context entry that still carries freshnessHint", () => {
+    const wire = validManifest();
+    const [first] = wire["Context requirements"] as Array<
+      Record<string, unknown>
+    >;
+    wire["Context requirements"] = [{ ...first, freshnessHint: "session" }];
+
+    expect(() => load(wire)).toThrow(/Context requirements/);
+  });
+
+  it("published visit-summary manifest has no freshnessHint", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const published = JSON.parse(
+      await fs.readFile(
+        path.join(
+          path.dirname(new URL(import.meta.url).pathname),
+          "..",
+          "manifests",
+          "published",
+          "clinic.visit_summary@1.0.0.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      "Context requirements": Array<Record<string, unknown>>;
+    };
+
+    expect(published["Context requirements"].length).toBeGreaterThan(0);
+    for (const entry of published["Context requirements"]) {
+      expect(entry).not.toHaveProperty("freshnessHint");
+    }
   });
 });

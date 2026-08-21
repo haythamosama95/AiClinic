@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import {
   logReconciliationReport,
   runReconciliation,
@@ -145,6 +146,7 @@ async function clearTables(): Promise<void> {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, retentionIndexesSql);
 });
 
 beforeEach(async () => {
@@ -249,6 +251,20 @@ describe("reconciliation_missing_attempt_rows", () => {
       ]),
     );
   });
+
+  it("flags Failed requests missing ai_attempt rows as genuine anomalies", async () => {
+    await seedTerminalRequest("req-failed-no-attempt", "REF-FA001", false, true, {
+      state: "Failed",
+    });
+
+    const report = await runReconciliation({ db: env.DB, window: WINDOW });
+
+    expect(report.missingAttemptRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: "req-failed-no-attempt" }),
+      ]),
+    );
+  });
 });
 
 describe("reconciliation_missing_usage_credit", () => {
@@ -297,23 +313,68 @@ describe("reconciliation_negative_cases", () => {
     expect(report.missingUsageCredit).toEqual([]);
   });
 
-  it("treats AwaitingContext as terminal for reconciliation flags", async () => {
+  it("does not flag AwaitingContext — that state is not expected to have attempt or usage rows", async () => {
     await seedTerminalRequest("req-await", "REF-AW001", false, false, {
       state: "AwaitingContext",
     });
 
     const report = await runReconciliation({ db: env.DB, window: WINDOW });
 
-    expect(report.missingAttemptRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ requestId: "req-await" }),
-      ]),
-    );
+    expect(report.missingAttemptRows).toEqual([]);
+    expect(report.missingUsageCredit).toEqual([]);
+  });
+
+  it("does not flag Cancelled without attempt rows (abort before first provider attempt is expected)", async () => {
+    await seedTerminalRequest("req-cancel-no-attempt", "REF-CN001", false, true, {
+      state: "Cancelled",
+    });
+
+    const report = await runReconciliation({ db: env.DB, window: WINDOW });
+
+    expect(report.missingAttemptRows).toEqual([]);
+    expect(report.missingUsageCredit).toEqual([]);
+  });
+
+  it("flags Cancelled missing the usage_event row that settlement must write", async () => {
+    await seedTerminalRequest("req-cancel-no-usage", "REF-CN002", true, false, {
+      state: "Cancelled",
+    });
+
+    const report = await runReconciliation({ db: env.DB, window: WINDOW });
+
     expect(report.missingUsageCredit).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ requestId: "req-await" }),
+        expect.objectContaining({ requestId: "req-cancel-no-usage" }),
       ]),
     );
+  });
+
+  it("cannot match usage_event rows whose request_id was nulled by retention", async () => {
+    await seedTerminalRequest("req-nulled-usage", "REF-NL001", true, true);
+    await env.DB.prepare(
+      "UPDATE usage_event SET request_id = NULL WHERE request_id = ?",
+    )
+      .bind("req-nulled-usage")
+      .run();
+
+    const report = await runReconciliation({ db: env.DB, window: WINDOW });
+
+    expect(report.missingUsageCredit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: "req-nulled-usage" }),
+      ]),
+    );
+  });
+
+  it("does not flag Failed that has attempt and usage rows", async () => {
+    await seedTerminalRequest("req-failed-ok", "REF-FL001", true, true, {
+      state: "Failed",
+    });
+
+    const report = await runReconciliation({ db: env.DB, window: WINDOW });
+
+    expect(report.missingAttemptRows).toEqual([]);
+    expect(report.missingUsageCredit).toEqual([]);
   });
 });
 

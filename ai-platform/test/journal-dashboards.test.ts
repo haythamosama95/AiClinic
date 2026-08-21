@@ -212,6 +212,71 @@ async function seedDashboardData(): Promise<void> {
     .run();
 }
 
+async function insertRequest(args: {
+  requestId: string;
+  reference: string;
+  capabilityId: string;
+  state: string;
+  createdAt: string;
+  terminalErrorCode?: string | null;
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO ai_request (
+      request_id, request_reference, installation_id, actor_id, branch_id,
+      capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+      trace_id, state, created_at, updated_at, completed_at, terminal_error_code,
+      payload_pointer, conversation_id, turn_ordinal
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+  )
+    .bind(
+      args.requestId,
+      args.reference,
+      FIXTURE_INSTALLATION,
+      "actor-001",
+      "branch-001",
+      args.capabilityId,
+      "1.0.0",
+      "prompt/v1@v1",
+      `idem-${args.requestId}`,
+      `trace-${args.requestId}`,
+      args.state,
+      args.createdAt,
+      args.createdAt,
+      args.createdAt,
+      args.terminalErrorCode ?? null,
+    )
+    .run();
+}
+
+async function insertAttempt(args: {
+  attemptId: string;
+  requestId: string;
+  attemptNo: number;
+  outcome: string;
+  provider?: string;
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO ai_attempt (
+      attempt_id, request_id, attempt_no, provider, model, outcome,
+      latency_ms, tokens_in, tokens_out, cost, provider_request_id, error_code
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+  )
+    .bind(
+      args.attemptId,
+      args.requestId,
+      args.attemptNo,
+      args.provider ?? "deepseek",
+      "m1",
+      args.outcome,
+      80,
+      10,
+      5,
+      0.0,
+      `p-${args.attemptId}`,
+    )
+    .run();
+}
+
 async function clearTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM platform_counter"),
@@ -249,9 +314,106 @@ describe("dashboard_validation_failure_by_prompt_version", () => {
 });
 
 describe("dashboard_repair_rate_by_capability", () => {
-  it("returns empty until RepairJournalSink is persisted", async () => {
-    const result = await dashboardRepairRateByCapability(env.DB);
-    expect(result).toEqual({});
+  it("returns repair attempts / Completed+Failed requests by capability", async () => {
+    await insertAttempt({
+      attemptId: "att-repair-1",
+      requestId: "req-dash-2",
+      attemptNo: 4,
+      outcome: "repair",
+    });
+
+    const result = await dashboardRepairRateByCapability(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
+    // 1 repair attempt / 2 Completed+Failed (req-dash-1 Failed, req-dash-2 Completed)
+    expect(result["clinic.dash-a"]).toBeCloseTo(0.5, 5);
+  });
+
+  it("excludes Cancelled from the denominator and groups by capability", async () => {
+    await insertAttempt({
+      attemptId: "att-repair-1",
+      requestId: "req-dash-2",
+      attemptNo: 4,
+      outcome: "repair",
+    });
+    await insertRequest({
+      requestId: "req-dash-b",
+      reference: "REF-DB",
+      capabilityId: "clinic.dash-b",
+      state: "Completed",
+      createdAt: "2026-08-15T12:00:00.000Z",
+    });
+    await insertAttempt({
+      attemptId: "att-b1",
+      requestId: "req-dash-b",
+      attemptNo: 1,
+      outcome: "success",
+    });
+
+    const result = await dashboardRepairRateByCapability(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
+    // Cancelled req-dash-cancelled must not dilute clinic.dash-a (still 1/2)
+    expect(result["clinic.dash-a"]).toBeCloseTo(0.5, 5);
+    expect(result["clinic.dash-b"]).toBe(0);
+  });
+
+  it("counts multiple repair attempts on one request in the numerator", async () => {
+    await insertAttempt({
+      attemptId: "att-repair-1",
+      requestId: "req-dash-2",
+      attemptNo: 4,
+      outcome: "repair",
+    });
+    await insertAttempt({
+      attemptId: "att-repair-2",
+      requestId: "req-dash-2",
+      attemptNo: 5,
+      outcome: "repair",
+    });
+
+    const result = await dashboardRepairRateByCapability(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
+    // 2 repair attempts / 2 Completed+Failed
+    expect(result["clinic.dash-a"]).toBeCloseTo(1.0, 5);
+  });
+
+  it("bounds numerator and denominator to the journal retention window", async () => {
+    await insertAttempt({
+      attemptId: "att-repair-1",
+      requestId: "req-dash-2",
+      attemptNo: 4,
+      outcome: "repair",
+    });
+
+    const oldAt = new Date(
+      FIXTURE_DASHBOARD_NOW.getTime() -
+        (JOURNAL_HORIZON_DAYS + 5) * MS_PER_DAY,
+    ).toISOString();
+    await insertRequest({
+      requestId: "req-dash-old-repair",
+      reference: "REF-DOLD-R",
+      capabilityId: "clinic.dash-a",
+      state: "Completed",
+      createdAt: oldAt,
+    });
+    await insertAttempt({
+      attemptId: "att-old-repair",
+      requestId: "req-dash-old-repair",
+      attemptNo: 1,
+      outcome: "repair",
+    });
+
+    const result = await dashboardRepairRateByCapability(
+      env.DB,
+      FIXTURE_DASHBOARD_NOW,
+    );
+    // Out-of-window 1 repair + 1 Completed must not change in-window 1/2
+    expect(result["clinic.dash-a"]).toBeCloseTo(0.5, 5);
   });
 });
 

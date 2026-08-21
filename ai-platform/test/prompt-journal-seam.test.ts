@@ -1,11 +1,19 @@
 /**
- * D1-R7 — journal seam: resolvePromptVersion must equal the field C3 binds
- * into ai_request.prompt_artifact_hash (journal/index.ts createRequestRow).
- * Do not change journal.ts; this test only proves the single-answer property.
+ * D1-R7 — journal seam: resolvePromptVersion (content hash of resolved
+ * artifact bytes) is what createRequestRow binds into
+ * ai_request.prompt_artifact_hash via RequestRowInput.promptArtifactHash.
  */
 import { describe, expect, it } from "vitest";
 import { load, type Manifest } from "../src/manifest";
-import { resolvePromptVersion } from "../src/prompt/registry";
+import {
+  resolvePromptVersion,
+  stableContentHash,
+} from "../src/prompt/registry";
+import businessRulesArtifact from "../prompts/clinic.visit_summary/rules-visit-summary.md?raw";
+import contextTemplateArtifact from "../prompts/clinic.visit_summary/template-visit-summary.md?raw";
+import systemInstructionArtifact from "../prompts/clinic.visit_summary/system.md?raw";
+import journalSource from "../src/journal/index.ts?raw";
+import pipelineSource from "../src/pipeline/index.ts?raw";
 
 const SYSTEM_INSTRUCTION_REF = "clinic.visit_summary/system@v1";
 const RULES_FRAGMENT_REF = "clinic.visit_summary/rules-visit-summary@v1";
@@ -41,7 +49,6 @@ function fixtureManifest(): Manifest {
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -69,7 +76,7 @@ function fixtureManifest(): Manifest {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -81,21 +88,26 @@ function fixtureManifest(): Manifest {
 }
 
 describe("D1-R7 prompt journal seam", () => {
-  it("resolvePromptVersion equals Prompt binding.systemInstructionArtifactRef", () => {
+  it("resolvePromptVersion is the content hash of bound artifact bytes", () => {
     const manifest = fixtureManifest();
-    expect(resolvePromptVersion(manifest)).toBe(
+    const expected = stableContentHash(
+      [
+        systemInstructionArtifact,
+        businessRulesArtifact,
+        contextTemplateArtifact,
+      ].join("\0"),
+    );
+
+    expect(resolvePromptVersion(manifest)).toBe(expected);
+    expect(resolvePromptVersion(manifest)).not.toBe(
       manifest["Prompt binding"].systemInstructionArtifactRef,
     );
   });
 
-  it("equals the expression C3 binds into prompt_artifact_hash", () => {
-    const manifest = fixtureManifest();
-    // Exact field expression used by createRequestRow in src/journal/index.ts
-    // (bind slot for prompt_artifact_hash):
-    const c3JournalPromptBinding =
-      manifest["Prompt binding"].systemInstructionArtifactRef;
-
-    expect(resolvePromptVersion(manifest)).toBe(c3JournalPromptBinding);
-    expect(c3JournalPromptBinding).toBe(SYSTEM_INSTRUCTION_REF);
+  it("createRequestRow binds promptArtifactHash, and the pipeline supplies resolvePromptVersion", () => {
+    expect(journalSource).toMatch(/input\.promptArtifactHash/);
+    expect(pipelineSource).toMatch(
+      /promptArtifactHash:\s*input\.resolvePromptVersion\?\.\(manifest\)/,
+    );
   });
 });

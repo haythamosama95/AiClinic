@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import {
   ConfigCache,
   type ConfigEntityKind,
@@ -27,11 +28,9 @@ type D1Row = Record<string, unknown>;
 
 type IdempotencyRequestState =
   | "admitted"
-  | "in_progress"
   | "completed"
   | "failed"
-  | "cancelled"
-  | "awaiting_context";
+  | "cancelled";
 
 type IdempotencyPriorState = {
   requestReference: string;
@@ -63,8 +62,9 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  code: "unauthenticated" | "quota_exhausted" | "internal_error";
+  code: "unauthenticated" | "quota_exhausted" | "rate_limited" | "internal_error";
   periodReset?: string;
+  retryAfter?: number;
 };
 
 type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -79,6 +79,7 @@ type CreditInput = {
 
 type CreditBindings = {
   DO: DurableObjectNamespace;
+  DB?: D1Database;
 };
 
 type PeriodCounters = {
@@ -116,12 +117,18 @@ type AdmissionModule = {
     bindings: Pick<AdmissionBindings, "DB">,
   ) => Promise<void>;
   drainPendingGraceAdmissions: () => PendingGraceAdmission[];
-  peekPendingGraceAdmissions: () => readonly PendingGraceAdmission[];
+  peekPendingGraceAdmissions: (
+    db?: D1Database,
+  ) =>
+    | readonly PendingGraceAdmission[]
+    | Promise<readonly PendingGraceAdmission[]>;
   attachGraceUsage: (
-    graceRequestIdOrReference: string,
-    usage: { tokens: number; cost: number },
+    dbOrId: D1Database | string,
+    graceRequestIdOrReference?: string | { tokens: number; cost: number },
+    usage?: { tokens: number; cost: number } | boolean,
     partial?: boolean,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
+  resetGraceAdmissionCounter: (installationId: string) => void;
 };
 
 type GraceDropReason =
@@ -266,10 +273,29 @@ async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
 async function clearAdmissionTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM platform_counter"),
+    env.DB.prepare("DELETE FROM usage_event"),
+    env.DB.prepare("DELETE FROM grace_admission_queue"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
+}
+
+async function countPendingGraceRows(installationId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM grace_admission_queue
+     WHERE installation_id = ? AND status = 'pending'`,
+  )
+    .bind(installationId)
+    .first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
+async function peekPendingGrace(
+  admission: AdmissionModule,
+): Promise<readonly PendingGraceAdmission[]> {
+  return admission.peekPendingGraceAdmissions(env.DB);
 }
 
 async function seedInstallation(installationId: string): Promise<void> {
@@ -427,6 +453,7 @@ function assertAdmitted(
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, graceQueueMigrationSql);
 });
 
 beforeEach(async () => {
@@ -563,17 +590,277 @@ describe("quota_do_unavailable_capped_grace_then_rejection", () => {
       }
     }
 
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(GRACE_ADMISSION_CAP);
+    expect(await peekPendingGrace(admission)).toHaveLength(GRACE_ADMISSION_CAP);
 
     const rejected = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       bindings,
       { now: FIXTURE_NOW_MS },
     );
-    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+    expect(rejected).toEqual({
+      ok: false,
+      code: "rate_limited",
+      retryAfter: 60,
+    });
 
     // Cap exhaustion must not wipe prior grace queue entries.
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(GRACE_ADMISSION_CAP);
+    expect(await peekPendingGrace(admission)).toHaveLength(GRACE_ADMISSION_CAP);
+  });
+});
+
+describe("grace_cap_refusal_distinct_from_quota_exhausted", () => {
+  it("rejects at the grace cap with rate_limited while entitlement budget remains", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      requestQuota: 1_000,
+    });
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const bindings: AdmissionBindings = { DB: env.DB, DO: brokenDo };
+
+    for (let index = 0; index < GRACE_ADMISSION_CAP; index += 1) {
+      const result = await admission.runAdmission(
+        defaultAdmissionInput(installationId, cache, reader),
+        bindings,
+        { now: FIXTURE_NOW_MS },
+      );
+      expect(result.ok).toBe(true);
+    }
+
+    const rejected = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      bindings,
+      { now: FIXTURE_NOW_MS },
+    );
+
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) {
+      return;
+    }
+    expect(rejected.code).toBe("rate_limited");
+    expect(rejected.code).not.toBe("quota_exhausted");
+    expect(rejected.retryAfter).toBe(60);
+    expect(await countPendingGraceRows(installationId)).toBe(GRACE_ADMISSION_CAP);
+  });
+});
+
+describe("grace_durable_cap_across_isolate_maps", () => {
+  it("rejects a sixth grace admit after isolate maps are wiped because D1 pending count holds the cap", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const bindings: AdmissionBindings = { DB: env.DB, DO: brokenDo };
+
+    for (let index = 0; index < GRACE_ADMISSION_CAP; index += 1) {
+      const result = await admission.runAdmission(
+        defaultAdmissionInput(installationId, cache, reader),
+        bindings,
+        { now: FIXTURE_NOW_MS },
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.outcome).toBe("grace_admitted");
+      }
+    }
+
+    // Simulate a second isolate: in-process maps are empty, D1 is not.
+    admission.drainPendingGraceAdmissions();
+    admission.resetGraceAdmissionCounter(installationId);
+
+    const sixth = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      bindings,
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(sixth).toEqual({
+      ok: false,
+      code: "rate_limited",
+      retryAfter: 60,
+    });
+    expect(await countPendingGraceRows(installationId)).toBe(GRACE_ADMISSION_CAP);
+  });
+});
+
+describe("grace_idempotency_key_replay_during_do_outage", () => {
+  it("returns the same graceRequestId and keeps a single pending D1 row", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestReference,
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    expect(first.outcome).toBe("grace_admitted");
+    const firstRequestId = first.requestId;
+
+    const second = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, {
+        idempotencyKey,
+        requestReference: uniqueRequestReference(),
+        principal: { jti: uniqueJti() },
+      }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) {
+      return;
+    }
+    if (second.outcome === "grace_admitted") {
+      expect(second.requestId).toBe(firstRequestId);
+    } else {
+      expect(second.outcome).toBe("idempotent");
+      expect(second.priorState.requestId).toBe(firstRequestId);
+    }
+    expect(await countPendingGraceRows(installationId)).toBe(1);
+    expect(await peekPendingGrace(admission)).toHaveLength(1);
+  });
+});
+
+describe("grace_rejects_when_ledger_quota_exhausted", () => {
+  it("rejects quota_exhausted when request_quota is already 0 on the entitlement snapshot", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      requestQuota: 0,
+    });
+    const brokenDo = createThrowingDoNamespace(env.DO);
+
+    const result = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(result).toMatchObject({ ok: false, code: "quota_exhausted" });
+    expect(await countPendingGraceRows(installationId)).toBe(0);
+  });
+
+  it("rejects quota_exhausted when in-period ai_request count already meets request_quota", async () => {
+    const admission = await loadAdmissionModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      requestQuota: 1,
+    });
+    await env.DB.prepare(
+      `INSERT INTO ai_request (
+        request_id, request_reference, installation_id, actor_id, branch_id,
+        capability_id, capability_version, prompt_artifact_hash, idempotency_key,
+        state, created_at, updated_at, completed_at, terminal_error_code,
+        trace_id, payload_pointer, conversation_id, turn_ordinal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        uniqueRequestReference(),
+        installationId,
+        "actor-adm-001",
+        "branch-adm-001",
+        "clinic.visit_summary",
+        "1.0.0",
+        "prompt/grace-quota@v1",
+        uniqueIdempotencyKey(),
+        "Accepted",
+        "2026-08-15T00:00:00.000Z",
+        "2026-08-15T00:00:00.000Z",
+        "01GRACEQUOTATRACE00000001",
+      )
+      .run();
+
+    const result = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: createThrowingDoNamespace(env.DO) },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(result).toMatchObject({ ok: false, code: "quota_exhausted" });
+    expect(await countPendingGraceRows(installationId)).toBe(0);
+  });
+});
+
+describe("grace_usage_attached_from_creditUsage_then_reconciled", () => {
+  it("persists usage via creditUsage DB binding and reconciles those tokens, not zeros", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const brokenDo = createThrowingDoNamespace(env.DO);
+    const requestReference = uniqueRequestReference();
+
+    const graceResult = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, { requestReference }),
+      { DB: env.DB, DO: brokenDo },
+      { now: FIXTURE_NOW_MS },
+    );
+    expect(graceResult.ok).toBe(true);
+    if (!graceResult.ok) {
+      return;
+    }
+    expect(graceResult.outcome).toBe("grace_admitted");
+
+    const attachSpy = vi.spyOn(admission, "attachGraceUsage");
+    const settled = await credit.creditUsage(
+      {
+        installationId,
+        requestId: graceResult.requestId,
+        requestReference,
+        usage: { tokens: 10, cost: 0.01 },
+        partial: false,
+      },
+      { DO: brokenDo, DB: env.DB },
+    );
+    expect(settled.ok).toBe(false);
+    expect(attachSpy).toHaveBeenCalled();
+    attachSpy.mockRestore();
+
+    const stored = await env.DB.prepare(
+      `SELECT usage_tokens, usage_cost FROM grace_admission_queue
+       WHERE grace_request_id = ? OR request_reference = ?`,
+    )
+      .bind(graceResult.requestId, requestReference)
+      .first<{ usage_tokens: number; usage_cost: number }>();
+    expect(stored?.usage_tokens).toBe(10);
+
+    const creditSpy = createDoSpy(env.DO);
+    const reconcile = await credit.reconcileGraceUsage({
+      DO: creditSpy,
+      DB: env.DB,
+    });
+    expect(reconcile.reconciled).toBeGreaterThanOrEqual(1);
+
+    const probe = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(probe);
+    const probeCredit = await credit.creditUsage(
+      {
+        installationId,
+        requestId: probe.requestId,
+        requestReference: uniqueRequestReference(),
+        usage: { tokens: 1, cost: 0 },
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(probeCredit.ok).toBe(true);
+    if (probeCredit.ok) {
+      expect(probeCredit.periodCounters.tokensUsed).toBeGreaterThanOrEqual(11);
+      expect(probeCredit.periodCounters.requestsUsed).toBeGreaterThanOrEqual(2);
+    }
   });
 });
 
@@ -597,11 +884,16 @@ describe("grace_usage_reconciled_afterwards", () => {
     }
 
     expect(
-      admission.attachGraceUsage(requestReference, { tokens: 10, cost: 0.01 }, false),
+      await admission.attachGraceUsage(
+        env.DB,
+        requestReference,
+        { tokens: 10, cost: 0.01 },
+        false,
+      ),
     ).toBe(true);
 
     const creditSpy = createDoSpy(env.DO);
-    const reconcile = await credit.reconcileGraceUsage({ DO: creditSpy });
+    const reconcile = await credit.reconcileGraceUsage({ DO: creditSpy, DB: env.DB });
 
     // Re-admit + credit for the pending grace entry.
     expect(creditSpy.fetchCount()).toBe(2);
@@ -658,7 +950,12 @@ describe("grace_reconcile_settled_by_another_path", () => {
     }
 
     expect(
-      admission.attachGraceUsage(requestReference, { tokens: 99, cost: 9.9 }, false),
+      await admission.attachGraceUsage(
+        env.DB,
+        requestReference,
+        { tokens: 99, cost: 9.9 },
+        false,
+      ),
     ).toBe(true);
 
     // Client retry after DO recovery — same idempotency key, fresh jti so the
@@ -692,9 +989,9 @@ describe("grace_reconcile_settled_by_another_path", () => {
     const requestsAfterRetry = retryCredit.periodCounters.requestsUsed;
     const tokensAfterRetry = retryCredit.periodCounters.tokensUsed;
 
-    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO });
+    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO, DB: env.DB });
     expect(reconcile.reconciled).toBe(0);
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
 
     const drops = credit.peekDroppedGraceJournal();
     expect(drops).toHaveLength(1);
@@ -754,9 +1051,9 @@ describe("grace_reconcile_settled_by_another_path", () => {
     );
     assertAdmitted(retry);
 
-    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO });
+    const reconcile = await credit.reconcileGraceUsage({ DO: env.DO, DB: env.DB });
     expect(reconcile.reconciled).toBe(0);
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
     expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
       "settled_by_another_path_replay",
     ]);
@@ -777,7 +1074,12 @@ describe("grace_reconcile_settled_by_another_path", () => {
     );
     expect(graceResult.ok).toBe(true);
     expect(
-      admission.attachGraceUsage(requestReference, { tokens: 10, cost: 0.01 }, false),
+      await admission.attachGraceUsage(
+        env.DB,
+        requestReference,
+        { tokens: 10, cost: 0.01 },
+        false,
+      ),
     ).toBe(true);
 
     let fetchIndex = 0;
@@ -811,9 +1113,9 @@ describe("grace_reconcile_settled_by_another_path", () => {
       }),
     } as DurableObjectNamespace;
 
-    const reconcile = await credit.reconcileGraceUsage({ DO: scriptedDo });
+    const reconcile = await credit.reconcileGraceUsage({ DO: scriptedDo, DB: env.DB });
     expect(reconcile.reconciled).toBe(0);
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
     expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
       "settled_by_another_path_unknown_request",
     ]);
@@ -835,15 +1137,15 @@ describe("grace_reconcile_settled_by_another_path", () => {
     expect(graceResult.ok).toBe(true);
 
     for (let i = 0; i < credit.GRACE_RECONCILE_MAX_ATTEMPTS; i += 1) {
-      const result = await credit.reconcileGraceUsage({ DO: brokenDo });
+      const result = await credit.reconcileGraceUsage({ DO: brokenDo, DB: env.DB });
       expect(result.reconciled).toBe(0);
-      expect(admission.peekPendingGraceAdmissions()).toHaveLength(1);
+      expect(await peekPendingGrace(admission)).toHaveLength(1);
       expect(credit.peekDroppedGraceJournal()).toHaveLength(0);
     }
 
-    const final = await credit.reconcileGraceUsage({ DO: brokenDo });
+    const final = await credit.reconcileGraceUsage({ DO: brokenDo, DB: env.DB });
     expect(final.reconciled).toBe(0);
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
     expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
       "max_attempts",
     ]);
@@ -865,17 +1167,17 @@ describe("grace_reconcile_settled_by_another_path", () => {
 
     // First sighting stamps queuedAt; next pass past TTL drops.
     await credit.reconcileGraceUsage(
-      { DO: brokenDo },
+      { DO: brokenDo, DB: env.DB },
       { now: FIXTURE_NOW_MS },
     );
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(1);
+    expect(await peekPendingGrace(admission)).toHaveLength(1);
 
     const expired = await credit.reconcileGraceUsage(
-      { DO: env.DO },
+      { DO: env.DO, DB: env.DB },
       { now: FIXTURE_NOW_MS + credit.GRACE_RECONCILE_TTL_MS + 1 },
     );
     expect(expired.reconciled).toBe(0);
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
     expect(credit.peekDroppedGraceJournal().map((d) => d.reason)).toEqual([
       "expired",
     ]);
@@ -1017,7 +1319,7 @@ describe("admission_rejection_counted_not_journaled", () => {
     expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
   });
 
-  it("tallies grace-cap rejection as quota_exhausted", async () => {
+  it("tallies grace-cap rejection as rate_limited, not quota_exhausted", async () => {
     const admission = await loadAdmissionModule();
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
@@ -1037,17 +1339,30 @@ describe("admission_rejection_counted_not_journaled", () => {
       { DB: env.DB, DO: brokenDo },
       { now: FIXTURE_NOW_MS },
     );
-    expect(rejected).toEqual({ ok: false, code: "quota_exhausted" });
+    expect(rejected).toEqual({
+      ok: false,
+      code: "rate_limited",
+      retryAfter: 60,
+    });
 
     await admission.flushRejectionCounters({ DB: env.DB });
     const matching = (await readPlatformCounterRows()).filter((row) => {
+      const dimensions = parseDimensionSet(row.dimension_set);
+      return (
+        dimensions.error_code === "rate_limited" &&
+        dimensions.installation_id === installationId
+      );
+    });
+    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
+
+    const quotaTally = (await readPlatformCounterRows()).filter((row) => {
       const dimensions = parseDimensionSet(row.dimension_set);
       return (
         dimensions.error_code === "quota_exhausted" &&
         dimensions.installation_id === installationId
       );
     });
-    expect(matching.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThanOrEqual(1);
+    expect(quotaTally.reduce((sum, row) => sum + row.count, 0)).toBe(0);
   });
 });
 
@@ -1069,6 +1384,6 @@ describe("admission_missing_entitlement_fail_closed", () => {
     );
 
     expect(result).toEqual({ ok: false, code: "quota_exhausted" });
-    expect(admission.peekPendingGraceAdmissions()).toHaveLength(0);
+    expect(await peekPendingGrace(admission)).toHaveLength(0);
   });
 });

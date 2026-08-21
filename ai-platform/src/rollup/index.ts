@@ -24,8 +24,6 @@ type TerminalRequestRow = {
   request_reference: string;
 };
 
-const TERMINAL_STATES = `('Completed', 'Failed', 'Cancelled', 'AwaitingContext')`;
-
 /** Trailing window for reconciliation scan only (not used for rollup aggregation). */
 function defaultReconciliationWindow(): { start: string; end: string } {
   const end = new Date();
@@ -130,6 +128,9 @@ export async function runRollup(
   return { rollupsWritten };
 }
 
+/** Request-centric: LEFT JOIN usage_event ON request_id. Aged usage rows
+ *  with nulled request_id (journal retention) can never match, so coverage
+ *  shrinks with age by design. */
 export async function runReconciliation(
   bindings: RollupBindings,
   logger: Logger = noopLogger,
@@ -146,7 +147,7 @@ export async function runReconciliation(
       `SELECT r.request_id, r.request_reference
        FROM ai_request r
        LEFT JOIN ai_attempt a ON a.request_id = r.request_id
-       WHERE r.state IN ${TERMINAL_STATES}
+       WHERE r.state IN ('Completed', 'Failed')
          AND r.completed_at >= ? AND r.completed_at <= ?
          AND a.attempt_id IS NULL`,
     )
@@ -158,7 +159,7 @@ export async function runReconciliation(
       `SELECT r.request_id, r.request_reference
        FROM ai_request r
        LEFT JOIN usage_event u ON u.request_id = r.request_id
-       WHERE r.state IN ${TERMINAL_STATES}
+       WHERE r.state IN ('Completed', 'Failed', 'Cancelled')
          AND r.completed_at >= ? AND r.completed_at <= ?
          AND u.usage_event_id IS NULL`,
     )

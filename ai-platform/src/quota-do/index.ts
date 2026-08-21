@@ -12,13 +12,14 @@ export interface EphemeralEntry {
 
 export type JtiReplayEntry = EphemeralEntry;
 
-export type IdempotencyRequestState =
-  | "admitted"
-  | "in_progress"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "awaiting_context";
+export const IDEMPOTENCY_STATES = [
+  "admitted",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+
+export type IdempotencyRequestState = (typeof IDEMPOTENCY_STATES)[number];
 
 export interface IdempotencyEntry extends EphemeralEntry {
   requestReference: string;
@@ -55,7 +56,11 @@ export interface QuotaDoState {
   jtiReplay: Record<string, JtiReplayEntry>;
   idempotency: Record<string, IdempotencyEntry>;
   creditedRequests: Record<string, { expiresAt: number }>;
-  admittedRequests: Record<string, { requestReference: string; admittedAt: number }>;
+  admittedRequests: Record<string, {
+    requestReference: string;
+    admittedAt: number;
+    entitlement: EntitlementSnapshot;
+  }>;
   boundInstallationId?: string;
 }
 
@@ -115,6 +120,11 @@ export interface UsageActual {
   cost: number;
 }
 
+export type CreditIdempotencyState = Extract<
+  IdempotencyRequestState,
+  "completed" | "failed" | "cancelled"
+>;
+
 export interface CreditRequest {
   kind: "credit";
   installationId: string;
@@ -122,6 +132,8 @@ export interface CreditRequest {
   requestReference: string;
   usage: UsageActual;
   partial: boolean;
+  idempotencyState?: CreditIdempotencyState;
+  entitlement?: EntitlementSnapshot;
 }
 
 export interface CreditAcknowledged {
@@ -203,6 +215,17 @@ function sweepAbandonedAdmissions(state: QuotaDoState, now: number): void {
         0,
         state.periodCounters.inFlight - 1,
       );
+
+      for (const idempotency of Object.values(state.idempotency)) {
+        if (
+          idempotency.requestId === requestId &&
+          idempotency.state === "admitted"
+        ) {
+          idempotency.state = "failed";
+          idempotency.expiresAt = now + EPHEMERAL_HORIZON_MS;
+          break;
+        }
+      }
     }
   }
 }
@@ -213,6 +236,8 @@ function sweepEphemeral(state: QuotaDoState, now: number): void {
       delete state.jtiReplay[jti];
     }
   }
+
+  sweepAbandonedAdmissions(state, now);
 
   for (const [key, entry] of Object.entries(state.idempotency)) {
     if (entry.expiresAt <= now) {
@@ -225,8 +250,6 @@ function sweepEphemeral(state: QuotaDoState, now: number): void {
       delete state.creditedRequests[requestId];
     }
   }
-
-  sweepAbandonedAdmissions(state, now);
 }
 
 function maybeResetPeriod(state: QuotaDoState, entitlement: EntitlementSnapshot): void {
@@ -317,12 +340,16 @@ function markIdempotencyOnCredit(
   state: QuotaDoState,
   requestId: string,
   partial: boolean,
+  now: number,
+  idempotencyState?: CreditIdempotencyState,
 ): void {
-  const nextState: IdempotencyRequestState = partial ? "cancelled" : "completed";
+  const nextState: IdempotencyRequestState =
+    idempotencyState ?? (partial ? "cancelled" : "completed");
 
   for (const entry of Object.values(state.idempotency)) {
     if (entry.requestId === requestId) {
       entry.state = nextState;
+      entry.expiresAt = now + EPHEMERAL_HORIZON_MS;
       break;
     }
   }
@@ -410,6 +437,7 @@ export async function admissionRPC(
     state.admittedRequests[requestId] = {
       requestReference: request.requestReference,
       admittedAt: timestamp,
+      entitlement: request.entitlement,
     };
     state.periodCounters.inFlight += 1;
 
@@ -470,6 +498,12 @@ export async function creditRPC(
       return { kind: "credit", ok: false, code: "unknown_request" };
     }
 
+    const admitted = state.admittedRequests[request.requestId];
+    const entitlement = request.entitlement ?? admitted.entitlement;
+    if (entitlement) {
+      maybeResetPeriod(state, entitlement);
+    }
+
     state.periodCounters.tokensUsed += request.usage.tokens;
     state.periodCounters.costUsed += request.usage.cost;
     state.periodCounters.requestsUsed += 1;
@@ -480,7 +514,13 @@ export async function creditRPC(
       expiresAt: timestamp + EPHEMERAL_HORIZON_MS,
     };
 
-    markIdempotencyOnCredit(state, request.requestId, request.partial);
+    markIdempotencyOnCredit(
+      state,
+      request.requestId,
+      request.partial,
+      timestamp,
+      request.idempotencyState,
+    );
 
     await storage.put(STATE_KEY, state);
 

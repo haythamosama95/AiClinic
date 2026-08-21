@@ -6,10 +6,12 @@ import {
   CACHE_TTL_MS,
   ConfigCache,
   ConfigCacheMissError,
+  isolateConfigCache,
   loadConfig,
   type ConfigEntityKind,
   type D1Reader,
 } from "../src/config-cache";
+import { collectKilledProviderIds } from "../src/router";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRANGLER_PATH = path.join(ROOT, "wrangler.toml");
@@ -292,6 +294,7 @@ describe("T-A5-24 no_per_request_state_introduced", () => {
       "ConfigCache",
       "ConfigCacheMissError",
       "createD1ConfigReader",
+      "isolateConfigCache",
       "loadConfig",
     ].sort();
 
@@ -302,5 +305,69 @@ describe("T-A5-24 no_per_request_state_introduced", () => {
       expect(exportName.toLowerCase()).not.toMatch(/session/);
       expect(exportName.toLowerCase()).not.toMatch(/handle/);
     }
+  });
+});
+
+describe("T-5.5 config_cache_isolate_scoped_ttl", () => {
+  const isolateKey = "installation:isolate-ttl-5-5";
+  const killedProviderId = "isolate-killed-provider-5-5";
+
+  it("exports one ConfigCache instance per isolate, not a per-request constructor", () => {
+    expect(isolateConfigCache).toBeInstanceOf(ConfigCache);
+    expect(isolateConfigCache).toBe(isolateConfigCache);
+  });
+
+  it("dedupes D1 across sequential lookups on the isolate cache within the 30 s TTL", async () => {
+    const reader = makeReader(sampleRow("installations"));
+
+    await loadConfig(isolateConfigCache, reader, "installations", isolateKey);
+    expect(reader.readCount()).toBe(1);
+    reader.read.mockClear();
+
+    await loadConfig(isolateConfigCache, reader, "installations", isolateKey);
+    expect(reader.readCount()).toBe(0);
+  });
+
+  it("lets the router kill-switch consult hit warm isolate entries", () => {
+    isolateConfigCache.remember("kill_switches", `provider:${killedProviderId}`, {
+      active: true,
+      scope: "provider",
+      target: killedProviderId,
+    });
+
+    const killed = collectKilledProviderIds(isolateConfigCache, [
+      killedProviderId,
+      "gemini",
+    ]);
+    expect(killed).toEqual([killedProviderId]);
+  });
+
+  it("clear() drops warm entries so the next lookup refetches D1", async () => {
+    const reader = makeReader(sampleRow("installations"));
+    const key = "installation:isolate-clear-5-5";
+
+    await loadConfig(isolateConfigCache, reader, "installations", key);
+    expect(reader.readCount()).toBe(1);
+    reader.read.mockClear();
+
+    isolateConfigCache.clear();
+    await loadConfig(isolateConfigCache, reader, "installations", key);
+    expect(reader.readCount()).toBe(1);
+  });
+
+  it("does not construct a per-request ConfigCache on production POST, GET, invoke, or discovery paths", () => {
+    const worker = fs.readFileSync(path.join(ROOT, "src/worker.ts"), "utf8");
+    const journal = fs.readFileSync(path.join(ROOT, "src/journal/index.ts"), "utf8");
+    const discovery = fs.readFileSync(
+      path.join(ROOT, "src/discovery/index.ts"),
+      "utf8",
+    );
+
+    expect(worker).toContain("isolateConfigCache");
+    expect(worker).not.toMatch(/new ConfigCache\s*\(/);
+    expect(journal).toContain("isolateConfigCache");
+    expect(journal).not.toMatch(/new ConfigCache\s*\(/);
+    expect(discovery).toContain("isolateConfigCache");
+    expect(discovery).not.toMatch(/new ConfigCache\s*\(/);
   });
 });

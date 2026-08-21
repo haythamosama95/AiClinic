@@ -31,6 +31,7 @@ export default defineWorkersConfig({
     ],
     fileParallelism: false,
     testTimeout: 120_000,
+    setupFiles: ["./test/setup-isolate-config-cache.ts"],
     poolOptions: {
       workers: {
         main: "./src/worker.ts",

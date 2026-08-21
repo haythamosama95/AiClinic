@@ -444,6 +444,26 @@ describe("guard_rejection_counters_stages_2_3", () => {
   });
 });
 
+describe("platform_counter_is_isolate_local_lower_bound", () => {
+  it("does not write D1 until flush; unflushed isolate tallies are invisible to platform_counter", async () => {
+    const module = await loadRateLimitModule();
+    const { bindings } = createRateLimitBindings();
+
+    module.recordGuardRejection({
+      error_code: "quota_exhausted",
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+
+    expect(await readPlatformCounterRows()).toEqual([]);
+
+    await module.flushRejectionCounters(bindings);
+
+    const rows = await readPlatformCounterRows();
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
+    expect(total).toBe(1);
+  });
+});
+
 describe("flush_rejection_counters_snapshot_clears_before_write", () => {
   it("does not double-count when a subsequent flush follows a completed flush", async () => {
     const module = await loadRateLimitModule();
@@ -459,6 +479,44 @@ describe("flush_rejection_counters_snapshot_clears_before_write", () => {
     const rows = await readPlatformCounterRows();
     const total = rows.reduce((sum, row) => sum + row.count, 0);
     expect(total).toBe(1);
+  });
+});
+
+describe("rate_limit_prefers_admission_retry_hint", () => {
+  it("uses the binding limit() retryAfter hint instead of the hardcoded 60s default", async () => {
+    const module = await loadRateLimitModule();
+    const hint = 15;
+    const denyWithHint = {
+      async limit(_options: RateLimitOptions): Promise<RateLimitOutcome> {
+        return { success: false, retryAfter: hint } as RateLimitOutcome;
+      },
+    };
+    const bindings: RateLimitBindings = {
+      DB: env.DB,
+      RATE_LIMITER_INSTALLATION: denyWithHint,
+      RATE_LIMITER_INSTALLATION_ACTOR: denyWithHint,
+      RATE_LIMITER_INSTALLATION_CAPABILITY: denyWithHint,
+    };
+
+    const result = await module.checkRateLimit(defaultRateLimitInput(), bindings);
+    assertRateLimitedResult(result);
+    expect(result.retryAfter).toBe(hint);
+    expect(result.retryAfter).not.toBe(60);
+    expect(
+      supplementaryFieldsForCode(result.code, { retryAfter: result.retryAfter }),
+    ).toEqual({ retry_after: hint });
+  });
+
+  it("falls back to 60 seconds when the binding outcome has no retry hint", async () => {
+    const module = await loadRateLimitModule();
+    const { bindings, fixtures } = createRateLimitBindings({
+      installationLimit: 0,
+    });
+    fixtures.RATE_LIMITER_INSTALLATION.setLimit(0);
+
+    const result = await module.checkRateLimit(defaultRateLimitInput(), bindings);
+    assertRateLimitedResult(result);
+    expect(result.retryAfter).toBe(60);
   });
 });
 

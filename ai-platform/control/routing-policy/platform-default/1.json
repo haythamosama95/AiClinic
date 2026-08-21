@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "policy_id": "platform-default",
+  "policy_id": "standard",
   "policy_version": 1,
   "defaults": {
     "cost_class": "standard",
@@ -23,7 +23,7 @@
             "structured_output": true,
             "min_context_window": 128000,
             "languages": ["en"],
-            "latency_class": "interactive",
+            "latency_class": "standard",
             "cost_class": "standard"
           },
           "max_attempts": 2,
@@ -36,7 +36,7 @@
             "structured_output": true,
             "min_context_window": 128000,
             "languages": ["en"],
-            "latency_class": "interactive",
+            "latency_class": "standard",
             "cost_class": "standard"
           },
           "max_attempts": 2,

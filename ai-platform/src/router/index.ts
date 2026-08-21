@@ -75,7 +75,6 @@ export type RoutingDecision = {
   required_features: CapabilityRequirements;
   chain: ChainEntry[];
   excluded: ExcludedEntry[];
-  max_parallel_attempts: number;
 };
 
 export type RouterOutcome = {
@@ -134,6 +133,10 @@ type PolicyRule = {
   match: PolicyRuleMatch;
   requires: PolicyRuleRequires;
   targets: PolicyTarget[];
+  /**
+   * Schema-retained. Invocation walks the chain sequentially; racing
+   * multiplies token spend (§13.6). Not copied onto RoutingDecision.
+   */
   max_parallel_attempts?: number;
 };
 
@@ -154,6 +157,10 @@ type RoutingPolicyDocument = {
      * effective cost-class calculation (three-source minimum only).
      */
     cost_class: CostClass;
+    /**
+     * Schema-retained. Not read: invocation is strictly sequential
+     * (no parallel racing). Not copied onto RoutingDecision.
+     */
     max_parallel_attempts: number;
   };
   rules: PolicyRule[];
@@ -189,18 +196,21 @@ const COST_CLASS_ORDER: Record<CostClass, number> = {
   premium: 2,
 };
 
+function isKnownCostClass(value: unknown): value is CostClass {
+  return typeof value === "string" && Object.hasOwn(COST_CLASS_ORDER, value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 const SOURCE_PRIORITY: Record<CostClassSource, number> = {
   installation_override: 0,
   entitlement_cap: 1,
   manifest: 2,
 };
 
-const OUTGOING_CONNECTION_CAP = 6;
 const SUPPORTED_SCHEMA_VERSIONS = new Set([1]);
-
-function clampParallelAttempts(value: number): number {
-  return Math.min(OUTGOING_CONNECTION_CAP, Math.max(1, value));
-}
 
 function matchClause<T>(allowed: T[] | undefined, value: T): boolean {
   return !allowed || allowed.length === 0 || allowed.includes(value);
@@ -486,6 +496,16 @@ function filterTargets(
       continue;
     }
 
+    // Missing/unknown window fails closed. A declared finite window that is
+    // too small keeps the distinct `context_window_too_small` reason.
+    if (!isFiniteNumber(features.min_context_window)) {
+      excluded.push({
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+        reason_code: "feature_unsupported",
+      });
+      continue;
+    }
     if (features.min_context_window < requirements.min_context_window) {
       excluded.push({
         provider_id: target.provider_id,
@@ -495,6 +515,16 @@ function filterTargets(
       continue;
     }
 
+    // Missing/non-array languages fail closed (`feature_unsupported`) instead
+    // of throwing TypeError or treating a string as a language list.
+    if (!Array.isArray(features.languages)) {
+      excluded.push({
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+        reason_code: "feature_unsupported",
+      });
+      continue;
+    }
     if (
       !requirements.languages.every((language) =>
         features.languages.includes(language),
@@ -518,6 +548,16 @@ function filterTargets(
       continue;
     }
 
+    // Missing/unknown cost class fails closed. A known class above the
+    // effective ceiling keeps `cost_class_excluded`.
+    if (!isKnownCostClass(features.cost_class)) {
+      excluded.push({
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+        reason_code: "feature_unsupported",
+      });
+      continue;
+    }
     if (COST_CLASS_ORDER[features.cost_class] > COST_CLASS_ORDER[effectiveCostClass]) {
       excluded.push({
         provider_id: target.provider_id,
@@ -604,10 +644,6 @@ export function selectCandidateChain({
     killedProviderIds,
   );
 
-  const rawParallelAttempts =
-    matchedRule.max_parallel_attempts ??
-    document.defaults.max_parallel_attempts;
-
   const excluded = [...overrideExcluded, ...filterExcluded];
 
   logger.info("Routing decision resolved", {
@@ -639,7 +675,6 @@ export function selectCandidateChain({
       required_features: context.requirements,
       chain,
       excluded,
-      max_parallel_attempts: clampParallelAttempts(rawParallelAttempts),
     },
   };
 }

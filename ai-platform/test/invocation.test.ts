@@ -22,6 +22,11 @@ import {
   type InvocationSink,
 } from "../src/invocation";
 import {
+  estimateUsageFromStreamedChars,
+  ledgerUsageFromProvider,
+  priceUsage,
+} from "../src/pricing";
+import {
   type ChainEntry,
   type RoutingDecision,
 } from "../src/router";
@@ -54,7 +59,8 @@ const EXTRA_PROVIDER_ID = "fake-extra";
 type SinkEvent =
   | { kind: "attempt"; record: AttemptRecord }
   | { kind: "regenerating" }
-  | { kind: "stream_text"; text: string };
+  | { kind: "stream_text"; text: string }
+  | { kind: "truncation" };
 
 type AttemptSinkCollector = {
   sink: InvocationSink;
@@ -113,7 +119,6 @@ function routingDecisionFixture(chain: ChainEntry[]): RoutingDecision {
     required_features: defaultRequirements(),
     chain,
     excluded: [],
-    max_parallel_attempts: 1,
   };
 }
 
@@ -131,6 +136,9 @@ function createAttemptSink(): AttemptSinkCollector {
     },
     emitStreamText(text: string) {
       events.push({ kind: "stream_text", text });
+    },
+    emitTruncation() {
+      events.push({ kind: "truncation" });
     },
   };
 
@@ -312,6 +320,16 @@ describe("T-D3-08 first_attempt_success_no_fallback", () => {
       request_id: FIXTURE_REQUEST_ID,
       idempotency_key: FIXTURE_IDEMPOTENCY_KEY,
     });
+    expect(collector.attempts[0]?.tokens_in).toBe(10);
+    expect(collector.attempts[0]?.tokens_out).toBe(20);
+    expect(collector.attempts[0]?.cost).toBe(
+      priceUsage({
+        modelId: "fake-v1",
+        inputTokens: 10,
+        outputTokens: 20,
+      }),
+    );
+    expect(collector.attempts[0]?.cost).not.toBe(0);
     expect(
       collector.attempts.some((attempt) => attempt.provider_id === FALLBACK_PROVIDER_ID),
     ).toBe(false);
@@ -920,7 +938,7 @@ describe("T-D3-R-04 max_attempts_one_no_sleeper", () => {
 });
 
 describe("T-D3-R-05 truncation_outcome_distinct_from_success", () => {
-  it("journals truncation as outcome truncation and returns ok", async () => {
+  it("journals truncation as outcome truncation and returns validation_failed", async () => {
     const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1)];
     const collector = createAttemptSink();
     const adapters: AdapterRegistry = {
@@ -935,10 +953,45 @@ describe("T-D3-R-05 truncation_outcome_distinct_from_success", () => {
       }),
     );
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("validation_failed");
     expect(collector.attempts).toHaveLength(1);
     expect(collector.attempts[0].outcome).toBe("truncation");
     expect(collector.attempts[0].outcome).not.toBe("success");
+    expect(collector.events.some((event) => event.kind === "truncation")).toBe(
+      true,
+    );
+  });
+
+  it("retries then falls back after truncation rather than completing as success", async () => {
+    const chain = twoEntryChainFixture(1, 1);
+    const collector = createAttemptSink();
+    const invokeSpy: Record<string, number> = {};
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: scriptedAdapter(["truncation"]),
+      [FALLBACK_PROVIDER_ID]: scriptedAdapter(["success"]),
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+        invokeSpy,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(invokeSpy[PRIMARY_PROVIDER_ID]).toBe(1);
+    expect(invokeSpy[FALLBACK_PROVIDER_ID]).toBe(1);
+    expect(collector.attempts[0]?.outcome).toBe("truncation");
+    expect(collector.attempts[1]?.outcome).toBe("success");
+    expect(collector.attempts[1]?.selection_reason).toBe(
+      "fallback_after_retryable_error",
+    );
   });
 });
 
@@ -1276,15 +1329,77 @@ describe("T-D3-R-12 caller_abort_terminal_cancelled (§2.4)", () => {
     }
     expect(result.error.taxonomyCode).toBe("cancelled");
     expect(partialUsage.getPartialUsage).toBeTypeOf("function");
-    expect(partialUsage.getPartialUsage?.()).toEqual({
-      tokens: partialText.length,
-      cost: partialText.length * 0.001,
-    });
+    expect(partialUsage.getPartialUsage?.()).toEqual(
+      estimateUsageFromStreamedChars(partialText.length, "fake-v1"),
+    );
+    expect(partialUsage.getPartialUsage?.()?.cost).not.toBe(
+      partialText.length * 0.001,
+    );
     expect(
       collector.events.some(
         (e) => e.kind === "stream_text" && e.text === partialText,
       ),
     ).toBe(true);
+  });
+
+  it("prices cancel credits from provider-reported tokens via the shared helper", async () => {
+    const collector = createAttemptSink();
+    const controller = new AbortController();
+    const partialUsage: InvocationInput["partialUsage"] = {};
+    const truncationResult: CanonicalResult = {
+      finalContent: { type: "text", text: "Partial output…" },
+      usage: { input: 40, output: 80, cached: 0 },
+      providerModel: { provider: "fake", model: "fake-v1" },
+      finishReason: "length",
+      providerRequestId: "trunc-cancel-req",
+      timing: { queue_ms: 0, provider_ms: 1, total_ms: 1 },
+    };
+    const truncateThenHang: ProviderPort = {
+      async invoke() {
+        return {
+          kind: "truncation",
+          result: truncationResult,
+          chunks: [
+            {
+              kind: "text_delta",
+              payload: { text: "Partial output…" },
+              terminal: true,
+              sequenceNumber: 0,
+            },
+          ],
+        };
+      },
+    };
+
+    const result = await runInvocation(
+      buildInvocationInput({
+        chain: [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 2, 30_000)],
+        adapters: { [PRIMARY_PROVIDER_ID]: truncateThenHang },
+        sink: collector.sink,
+        signal: controller.signal,
+        partialUsage,
+        sleeper: async () => {
+          controller.abort();
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.taxonomyCode).toBe("cancelled");
+    expect(collector.attempts[0]?.cost).toBe(
+      priceUsage({
+        modelId: "fake-v1",
+        inputTokens: 40,
+        outputTokens: 80,
+      }),
+    );
+    expect(partialUsage.getPartialUsage?.()).toEqual(
+      ledgerUsageFromProvider(truncationResult),
+    );
+    expect(partialUsage.getPartialUsage?.()?.cost).not.toBe(0);
   });
 });
 
@@ -1445,5 +1560,134 @@ describe("T-D3-R-15 retry_after_ms_honored (§3.2.4)", () => {
     const jittered = computeJitteredBackoff(0, fixedRandom);
     expect(jittered).toBeLessThan(retryAfterMs);
     expect(recording.delays).toEqual([retryAfterMs]);
+  });
+});
+
+describe("live_stream_relay_concurrent_with_invoke", () => {
+  it("emits text deltas to the sink before port.invoke resolves", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1)];
+    const collector = createAttemptSink();
+    let releaseInvoke: (() => void) | undefined;
+    let invokeReleased = false;
+    const hold = new Promise<void>((resolve) => {
+      releaseInvoke = () => {
+        invokeReleased = true;
+        resolve();
+      };
+    });
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke(_request, options) {
+          options?.onStreamChunk?.({
+            sequenceNumber: 0,
+            kind: "text_delta",
+            payload: { text: "Hello" },
+            terminal: false,
+          });
+          await hold;
+          const result = {
+            finalContent: { type: "text" as const, text: "Hello world" },
+            usage: { input: 4, output: 2, cached: 0 },
+            providerModel: { provider: PRIMARY_PROVIDER_ID, model: "fake-v1" },
+            finishReason: "stop" as const,
+            providerRequestId: "live-stream-001",
+            timing: { queue_ms: 0, provider_ms: 5, total_ms: 5 },
+          };
+          return {
+            kind: "success" as const,
+            result,
+            chunks: [
+              {
+                sequenceNumber: 0,
+                kind: "text_delta" as const,
+                payload: { text: "Hello" },
+                terminal: false,
+              },
+              {
+                sequenceNumber: 1,
+                kind: "text_delta" as const,
+                payload: { text: " world" },
+                terminal: true,
+              },
+            ],
+          };
+        },
+      },
+    };
+
+    const runPromise = runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        collector.events.some(
+          (event) => event.kind === "stream_text" && event.text === "Hello",
+        ),
+      ).toBe(true);
+    });
+    expect(invokeReleased).toBe(false);
+
+    releaseInvoke?.();
+    const result = await runPromise;
+    expect(result.ok).toBe(true);
+    expect(
+      collector.events.filter((event) => event.kind === "stream_text"),
+    ).toEqual([{ kind: "stream_text", text: "Hello" }]);
+  });
+});
+
+describe("attempt_record_carries_raw_provider_body", () => {
+  it("copies adapter rawBody onto AttemptRecord instead of an empty object", async () => {
+    const chain = [chainEntry(0, PRIMARY_PROVIDER_ID, "fake-v1", 1)];
+    const collector = createAttemptSink();
+    const rawBody = {
+      payload: { id: "prov-raw-001", choices: [{ message: { content: "ok" } }] },
+      truncated: false,
+    };
+    const adapters: AdapterRegistry = {
+      [PRIMARY_PROVIDER_ID]: {
+        async invoke() {
+          const result: CanonicalResult = {
+            finalContent: { type: "text", text: "ok" },
+            usage: { input: 2, output: 2, cached: 0 },
+            providerModel: { provider: PRIMARY_PROVIDER_ID, model: "fake-v1" },
+            finishReason: "stop",
+            providerRequestId: "prov-raw-001",
+            timing: { queue_ms: 0, provider_ms: 1, total_ms: 1 },
+          };
+          return {
+            kind: "success",
+            result,
+            chunks: [
+              {
+                sequenceNumber: 0,
+                kind: "text_delta",
+                payload: { text: "ok" },
+                terminal: true,
+              },
+            ],
+            rawBody,
+          };
+        },
+      },
+    };
+
+    const outcome = await runInvocation(
+      buildInvocationInput({
+        chain,
+        adapters,
+        sink: collector.sink,
+      }),
+    );
+
+    expect(outcome.ok).toBe(true);
+    expect(collector.attempts).toHaveLength(1);
+    expect(collector.attempts[0]?.rawBody).toEqual(rawBody);
+    expect(collector.attempts[0]?.rawBody).not.toEqual({});
   });
 });

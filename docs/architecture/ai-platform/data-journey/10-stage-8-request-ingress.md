@@ -166,7 +166,7 @@ JSON object (`Content-Type: application/json`). Must parse to a **plain object**
 | Meaning        | **Natural-language instruction** from the staff member — what they want the model to do with the supplied context (e.g. "Summarize today's visit for the chart.") |
 | Guard stage 6  | Included in context validation inputs where the manifest expects intent-shaped content                                                                            |
 | Guard stage 7  | Serialized with `filteredContext` (and conversational `transcript` when present) for token/cost pre-flight estimation                                             |
-| Guard stage 10 | Woven into `CanonicalRequest.parts[]` by the prompt composer as the user-facing instruction block                                                                 |
+| Guard stage 10 | Woven into `CanonicalRequest.parts[]` by the prompt composer as the last `user` part, after `neutralizeText` (`</` → `\u003c/`) — the same delimiter-injection hygiene applied to context blocks and transcript turns |
 | Note           | Not a substitute for structured `context` keys — manifests still require their declared context fields                                                            |
 
 
@@ -226,7 +226,7 @@ JSON object (`Content-Type: application/json`). Must parse to a **plain object**
 | Type           | Array of turn objects (conversational only)                                                                                  |
 | Meaning        | **Prior dialogue history** for the thread — user/model turns and optional context-request/resolution legs                    |
 | Turn shapes    | `{ turn_ordinal, kind: "user" | "model", text }` or context handshake kinds `context_requested` / `context_resolved`         |
-| Guard stage 6  | Validated against conversational budgets and permitted keys; failures → `conversation_budget_exhausted` or `context_invalid` |
+| Guard stage 6  | Validated against conversational budgets and permitted keys; out-of-set keys are dropped from `context_resolved` payloads **and** historical `context_requested` `requests` (matching the supplied-context allowlist). Failures → `conversation_budget_exhausted` or `context_invalid` |
 | Guard stage 7  | Included in cost pre-flight so growing transcripts are priced before admission completes                                     |
 | Guard stage 10 | Feeds prompt compose for multi-turn capabilities                                                                             |
 | Single-shot    | Ignored — visit summary and similar capabilities do not read this field                                                      |
@@ -236,7 +236,7 @@ JSON object (`Content-Type: application/json`). Must parse to a **plain object**
 
 ### 4.7 Ignored body keys
 
-These keys are **never read** from the request body (`ADAPTER_ROUTING_BODY_FIELDS` is empty). Clients must not rely on them; the gateway sets routing/degraded state from Quota DO admission.
+These keys are **never read** from the request body. Ingress ignores them structurally: `ADAPTER_ROUTING_BODY_FIELDS = []` in `src/adapter.ts`, so `parseAdapterRequestBody` does not consult them (they may still appear on the parsed JSON object). There is no production request-path helper that scans the body for injection keys — `bodyHasClientRoutingInjection` lives only in `test/soft-threshold-routing.test.ts`. Clients must not rely on these keys; the gateway sets routing/degraded state from Quota DO admission (`routingTierFromAdmission` / `degradedNoticeFromAdmission`).
 
 
 | Key               | Why ignored                                                                                                                                          |
@@ -264,7 +264,9 @@ These keys are **never read** from the request body (`ADAPTER_ROUTING_BODY_FIELD
 
 1. Generate `request_reference` — format `XXXX-XXXX` (Crockford base32).
 2. Extract `capability_id` — missing → `internal_error` (no SSE).
-3. Run full guard ([The guard — Stage 9](11-stage-9-the-guard.md#1-plain-language)).
+3. Run full guard ([The guard — Stage 9](11-stage-9-the-guard.md#1-plain-language)) against the
+   isolate-scoped `ConfigCache` (one instance per Worker isolate, 30 s TTL) shared with
+   `GET /v1/requests/{ref}` and invoke-path routing.
 4. Store `AcceptContext` in request-scoped map for event source.
 
 

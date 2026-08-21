@@ -52,7 +52,7 @@ Stage 10 Prompt compose (CanonicalRequest)  ← skipped on idempotent replay
 | `bodyText` | plain object JSON | continues     | `internal_error`    |
 
 
-Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `transcript`.
+Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `transcript`. Body keys `routing_tier` / `degraded` / `degraded_notice` are **not** extracted — ingress ignores them via empty `ADAPTER_ROUTING_BODY_FIELDS` (see [Ignored body keys](10-stage-8-request-ingress.md#47-ignored-body-keys)).
 
 ## 5. Stage 2 — Identity
 
@@ -65,6 +65,7 @@ Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `tra
 | All payload claims present                  | see [§4 JWS structure](08-stage-6-minting-an-aat.md#4-jws-structure) | `unauthenticated`                     |
 | `aud === ai-platform`                       | payload `aud`                 | `unauthenticated`                     |
 | Clock skew ±60s                             | `iat`, `exp`                  | `unauthenticated`                     |
+| `exp − iat ≤ 600s` (`MAX_AAT_LIFETIME_SECONDS`) | payload `iat`, `exp`      | `unauthenticated`                     |
 | Installation exists                         | `iss` → D1 `installation`     | `unauthenticated`                     |
 | Key exists, not revoked, in validity window | `kid` → D1 `installation_key` | `unauthenticated`                     |
 | Key bound to installation                   | `key.installation_id === iss` | `unauthenticated`                     |
@@ -72,6 +73,15 @@ Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `tra
 | Installation active                         | `installation.status`         | `installation_suspended` if suspended |
 | Token contract accepted                     | `ver` → D1 `token_contract`   | `unauthenticated` if missing/retired  |
 
+
+`installation_key.valid_until` is written at enroll and rotate (`valid_from` + 365 days). Rotate
+stamps `revoked_at = now` on every currently unrevoked key for that installation in the same D1
+batch as the new-key insert — there is no platform dual-key overlap. Identity already rejects
+`now >= valid_until` and non-null `revoked_at`.
+
+Installation, key, and token-contract rows are loaded through the isolate-scoped `ConfigCache`
+(30 s TTL). A warm isolate does not re-read D1 for the same keys on the next POST or GET within
+that window.
 
 **Principal produced:**
 
@@ -88,11 +98,29 @@ See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grant
 ## 7. Stage 4 — Rate limit
 
 
-| Dimension               | Key                           | Failure                        |
-| ----------------------- | ----------------------------- | ------------------------------ |
-| installation            | `installationId`              | `rate_limited`, retry_after 60 |
-| installation+actor      | `installationId:actorId`      | same                           |
-| installation+capability | `installationId:capabilityId` | same                           |
+| Dimension               | Key                           | Failure                                                                 |
+| ----------------------- | ----------------------------- | ----------------------------------------------------------------------- |
+| installation            | `installationId`              | `rate_limited`; `retry_after` from the binding hint, else 60            |
+| installation+actor      | `installationId:actorId`      | same                                                                    |
+| installation+capability | `installationId:capabilityId` | same                                                                    |
+
+
+The Cloudflare Rate Limit `limit()` outcome is typed `{ success }`. When a
+positive `retryAfter` (seconds) is present on that admission result, the guard
+copies it onto `GuardFailure.retryAfter` and the pre-SSE HTTP JSON body
+(`retry_after`). When the binding supplies no hint, the simple-limiter window
+of 60s (`DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS`) is used.
+`preAcceptFailureResponse` attaches the field via `supplementaryFieldsForCode`.
+This is the only client-visible `rate_limited` — post-accept provider 429s are
+retried inside invocation and, if the chain exhausts, surface as
+`provider_unavailable`.
+
+
+Rejections from stages 2–4 (and admission) call `recordGuardRejection`, which increments an
+**in-isolate** tally. Cron `flushRejectionCounters` writes only the isolate that happens to run
+the tick; other isolates' maps are lost on eviction. `platform_counter` (and therefore
+`dashboardQuotaRejectionRate`) is a **lower bound**, not an exact count. An accurate count would
+flush tallies to D1 batched with the journal write at request end — not implemented.
 
 
 
@@ -100,12 +128,16 @@ See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grant
 ## 8. Stage 5 — Capability resolve
 
 
-| Check                  | Field                                  | Failure                                        |
-| ---------------------- | -------------------------------------- | ---------------------------------------------- |
-| Registry lookup        | `capability_id@x-capability-version`   | `capability_unknown`                           |
-| Lifecycle              | manifest overlay                       | `capability_retired`                           |
-| Plan allowance         | `entitlement.plan` vs manifest         | `forbidden_capability` / `capability_disabled` |
-| Provider kill switches | routing policy providers (if loadable) | `capability_disabled`                          |
+| Check                       | Field                                                        | Failure                                        |
+| --------------------------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| Registry lookup             | `capability_id@x-capability-version`                         | `capability_unknown`                           |
+| Lifecycle                   | manifest overlay                                             | `capability_retired`                           |
+| Plan allowance              | `entitlement.plan` vs `Access.minimumPlanTier`, grants       | `forbidden_capability`                         |
+| Required capability scope   | `Access.requiredCapabilityScope` ∈ `principal.scopes`        | `forbidden_capability` (unset/empty: skip)     |
+| Allowed staff roles         | `principal.role` ∈ `Access.allowedStaffRoles`                | `forbidden_capability` (unset/empty: skip)     |
+| Manifest kill switch        | `Access.killSwitchFlag === true`                             | `capability_disabled` (false/unset: skip)      |
+| D1 kill switches            | `kill_switch` global / capability / installation             | `capability_disabled`                          |
+| Provider kill switches      | routing policy providers (if loadable)                       | collected as `killedProviderIds` for the router; not `capability_disabled` |
 
 
 **Manifest fields consumed (visit summary):**
@@ -114,7 +146,7 @@ See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grant
 | Section                | Key fields                                     |
 | ---------------------- | ---------------------------------------------- |
 | `Identity`             | `capabilityId`, `version`, `lifecycleState`    |
-| `Access`               | `minimumPlanTier`, `requiredCapabilityScope`   |
+| `Access`               | `minimumPlanTier`, `requiredCapabilityScope`, `allowedStaffRoles`, `killSwitchFlag` |
 | `Interaction`          | `interactionMode` (`single_shot`)              |
 | `Context requirements` | required keys, shapes, maxSize                 |
 | `Prompt binding`       | artifact refs for compose                      |
@@ -136,10 +168,17 @@ See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grant
 | `context.branch === principal.branchId`    | body + AAT                      | `context_invalid`                   |
 | Shape + maxSize per key                    | manifest `Context requirements` | `context_invalid`                   |
 
+No freshness check: stale context is accepted by design (architecture §6.7.3). `freshnessHint` is not a Context-requirements field.
+
 
 **Output:** `filteredContext` — only permitted keys copied.
 
-**Conversational mode:** requires `turn_ordinal` + `transcript`; failures → `conversation_budget_exhausted` or `context_invalid`.
+**Conversational mode:**
+
+- Legs must carry `turn_ordinal` on the wire. The pipeline passes conversational options only when `manifest.interactionMode === "conversational"` **and** `turn_ordinal` is present; omitting `turn_ordinal` leaves options undefined and stage 6 fails `context_invalid`.
+- Requires `transcript` (omission → `context_invalid`; an explicit empty array is a valid first leg). Other transcript/budget failures → `conversation_budget_exhausted` or `context_invalid`.
+- Tenant binding (same comparison as single-shot): `context.org === principal.organizationId` and `context.branch === principal.branchId` on the supplied context **and** every `context_resolved` turn payload. Mismatch or absent `org`/`branch` → `context_invalid`.
+- Permitted-key allowlist (`applyPermittedKeyAllowlist`): keys outside `permittedKeySet` are **dropped** (not a rejection) from ordinary supplied context, from `context_resolved` payloads, and from historical `context_requested` `requests` entries. Remaining permitted resolved values still pass shape/size checks. An all-unpermitted `context_requested` turn is kept with an empty `requests` array so the transcript shape is unchanged.
 
 ## 10. Stage 7 — Cost pre-flight
 
@@ -147,13 +186,13 @@ See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grant
 | Input                      | Source                                                       | Check                        |
 | -------------------------- | ------------------------------------------------------------ | ---------------------------- |
 | `filteredContext`          | stage 6                                                      | serialized with `userIntent` |
-| `promptArtifactByteLength` | manifest artifact size                                       |                              |
-| `manifest.Economics`       | `maxInputTokens`, `maxOutputTokens`, `perRequestCostCeiling` |                              |
+| `promptArtifactByteLength` | composer `promptScaffoldByteLength(manifest)` — UTF-8 bytes of the bound prompt scaffold (system instruction + rule fragments + template), injected from the worker | counted into the byte estimate |
+| `manifest.Economics`       | `maxInputTokens`, `maxOutputTokens`, `perRequestTokenCeiling` |                              |
 
 
-Estimator: `ceil(utf8Bytes / 4) * 1.15` + prompt artifact bytes.
+Estimator (§13.6.2): `ceil((utf8(serializedContext+intent[+transcript]) + promptArtifactByteLength) / 4) * 1.15`. Prompt artifacts bound to the capability count at their known byte length. Units are **tokens throughout** — the preflight never reads the platform price table and never converts to currency. `perRequestTokenCeiling` is the canonical field name for that token comparison; the loader still accepts legacy `perRequestCostCeiling` as a compatibility alias and normalizes it.
 
-Failure: `request_too_large` if estimate exceeds ceilings.
+Failure: `request_too_large` if `estimatedInputTokens > maxInputTokens` or `estimatedInputTokens + maxOutputTokens > perRequestTokenCeiling`.
 
 ## 11. Stage 8 — Admission (Quota DO)
 
@@ -191,14 +230,14 @@ soft_threshold, status
 
 | outcome                 | Guard result           | Next stages    |
 | ----------------------- | ---------------------- | -------------- |
-| `admitted`              | ok + `requestId`       | 9, 10          |
+| `admitted`              | ok + `requestId`; optional `degraded: true` when usage ≥ `soft_threshold` | 9, 10          |
 | `idempotent`            | ok, prior state        | **skip 9, 10** |
 | `replay` (jti)          | `unauthenticated`      | —              |
 | `quota_exhausted`       | fail + `period_reset`  | —              |
 | `concurrency_exhausted` | fail `quota_exhausted` | —              |
 
 
-**Grace admission** (DO unavailable): local UUID `requestId`, `routing_tier=degraded`, queued for cron reconciliation. Cap: 5 grace per installation.
+**Grace admission** (DO unavailable): local UUID `requestId`, `routing_tier=degraded`, queued in D1 `grace_admission_queue` for cron reconciliation. Cap: 5 pending rows per installation (durable across isolates). Exceeding the cap returns `rate_limited` (retryable), not `quota_exhausted`.
 
 **Routing tier after admission:**
 
@@ -226,7 +265,7 @@ soft_threshold, status
 | `branch_id`                | `principal.branchId`                                   |
 | `capability_id`            | manifest `Identity.capabilityId`                       |
 | `capability_version`       | manifest `Identity.version`                            |
-| `prompt_artifact_hash`     | manifest `Prompt binding.systemInstructionArtifactRef` |
+| `prompt_artifact_hash`     | composer's `promptVersion` (`resolvePromptVersion`: FNV-1a content hash of resolved system instruction + rule fragments + template bytes). Detects silent artifact changes under a pinned ref. The ref itself is implied by capability + version and is not stored in this column. |
 | `idempotency_key`          | header                                                 |
 | `trace_id`                 | header or generated                                    |
 | `state`                    | `Accepted`                                             |
@@ -237,21 +276,28 @@ soft_threshold, status
 | `routing_tier`             | from admission                                         |
 | `conversation_id`          | `NULL` (single_shot) or wire                           |
 | `turn_ordinal`             | `NULL` (single_shot) or wire                           |
-| `routing_decision`         | **not written by current code**                        |
+| `routing_decision`         | `NULL` at INSERT — written at Stage 10 after routing   |
 
 
 **On D1 insert failure:** Quota DO `release` RPC + `internal_error`.
 
 ## 13. Stage 10 — Prompt compose
 
-Builds `CanonicalRequest` (see [§3 CanonicalRequest](12-stage-10-accept-route-invoke-stream.md#3-canonicalrequest-every-field)). On failure: D1 UPDATE `state=Failed` + guard `internal_error`.
+Builds `CanonicalRequest` (see [Stage 10 CanonicalRequest](12-stage-10-accept-route-invoke-stream.md#12-canonicalrequest-every-field)). Passes `streamFlag: true` and forwards `deadline` when the guard input supplies one. On failure: D1 UPDATE `state=Failed` + guard `internal_error`. `stopConditions` is always `[]` under A4 (no stop-sequences field).
+
+The composer runs the final `userIntent` part through the same `neutralizeText` escaping used for context blocks and transcript turns (`</` → `\u003c/`) before pushing it as the last `user` part. Conversational prior turns are the already-allowlisted `validatedTranscript` from stage 6.
+
+`promptVersion` on the guard success (and the value journaled at stage 9) is `resolvePromptVersion(manifest)` — the content hash of the resolved artifact bytes, not the artifact ref string. The ref stays implied by `capability_id` + `capability_version`; composed artifact text is in the CanonicalRequest (and therefore the R2 envelope `prompt` field).
 
 **Guard success output (**`GuardFreshSuccess`**):**
 
 ```
 requestId, principal, manifest, filteredContext, composed (CanonicalRequest),
-promptVersion, guardLatencyMs, requestReference, idempotencyKey, transcript?
+promptVersion, guardLatencyMs, requestReference, idempotencyKey, transcript?,
+killedProviderIds?, routingTier (`standard` | `degraded`), degraded?
 ```
+
+`routingTier` is derived solely from admission (`routingTierFromAdmission`): `grace_admitted` and `admitted` with `degraded: true` both yield `degraded`. The worker passes that same flag into SSE `accepted.degraded_notice` and into `selectCandidateChain`.
 
 ---
 

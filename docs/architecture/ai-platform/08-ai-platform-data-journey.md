@@ -1299,8 +1299,7 @@ Checked-in file: `ai-platform/manifests/published/clinic.visit_summary@1.0.0.jso
       "key": "visit.chief_complaint@v1",
       "required": true,
       "shapeRef": "visit.chief_complaint@v1",
-      "maxSize": 4096,
-      "freshnessHint": "session"
+      "maxSize": 4096
     }
   ],
   "Prompt binding": {
@@ -1397,7 +1396,8 @@ Entry fields (single-shot array items):
 | `required` | field required | `boolean` | Must appear in invoke `context` | not routing |
 | `shapeRef` | field required | `string` | Validator shape reference | not routing |
 | `maxSize` | field required | number | Max serialized bytes for key | not routing |
-| `freshnessHint` | field required | `string` | Freshness metadata for ops | not routing |
+
+**Schema note:** there is no `freshnessHint`. The loader rejects it as an extra key. Stale context is accepted by design (architecture §6.7.3); containment is the journal of exact context plus the advisory-output rule, not a per-key freshness gate.
 
 ##### `Prompt binding`
 

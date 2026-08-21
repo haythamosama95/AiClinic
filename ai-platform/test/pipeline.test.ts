@@ -21,6 +21,7 @@ import type { CanonicalRequest } from "../src/contracts/canonical";
 import type { Principal, TokenVerifier } from "../src/identity";
 import { INGRESS_BODY_SIZE_LIMIT } from "../src/adapter";
 import { load, type Manifest } from "../src/manifest";
+import { creditUsage } from "../src/credit";
 import {
   runGuard,
   type ComposeRequestFn,
@@ -29,6 +30,10 @@ import {
 } from "../src/pipeline";
 import type { RateLimitBindings } from "../src/rate-limit";
 import type { Transcript } from "../src/context/validator";
+import {
+  estimateInputTokens,
+  serializePreflightInput,
+} from "../src/context/preflight";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -119,7 +124,6 @@ function singleShotManifest(
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -147,7 +151,7 @@ function singleShotManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
       ...economicsOverrides,
     },
@@ -164,7 +168,7 @@ function conversationalManifest(
   overrides: {
     transcriptSizeLimit?: number;
     maxInputTokens?: number;
-    perRequestCostCeiling?: number;
+    perRequestTokenCeiling?: number;
   } = {},
 ): Manifest {
   const wire: ManifestWire = {
@@ -221,7 +225,7 @@ function conversationalManifest(
     Economics: {
       maxInputTokens: overrides.maxInputTokens ?? 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: overrides.perRequestCostCeiling ?? 9_024,
+      perRequestTokenCeiling: overrides.perRequestTokenCeiling ?? 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -327,6 +331,7 @@ async function seedEntitlement(
   overrides: {
     status?: string;
     requestQuota?: number;
+    softThreshold?: number;
     allowedCapabilities?: string[];
   } = {},
 ): Promise<void> {
@@ -352,7 +357,7 @@ async function seedEntitlement(
           FIXTURE_CHAT_CAPABILITY_ID,
         ],
       ),
-      0.8,
+      overrides.softThreshold ?? 0.8,
       overrides.status ?? "active",
     )
     .run();
@@ -386,6 +391,7 @@ async function prepareInstallation(
   options: {
     status?: string;
     requestQuota?: number;
+    softThreshold?: number;
     capabilities?: string[];
   } = {},
 ): Promise<{ cache: ConfigCache; reader: D1Reader }> {
@@ -393,6 +399,7 @@ async function prepareInstallation(
   await seedEntitlement(installationId, {
     status: options.status,
     requestQuota: options.requestQuota,
+    softThreshold: options.softThreshold,
     allowedCapabilities: options.capabilities,
   });
   const caps =
@@ -423,10 +430,18 @@ function createAlwaysAllowRateLimitBindings(db: D1Database): RateLimitBindings {
   };
 }
 
-function createDenyRateLimitBindings(db: D1Database): RateLimitBindings {
+function createDenyRateLimitBindings(
+  db: D1Database,
+  retryAfterHint?: number,
+): RateLimitBindings {
   const deny = {
     async limit(_options: { key: string }): Promise<{ success: boolean }> {
-      return { success: false };
+      return retryAfterHint === undefined
+        ? { success: false }
+        : ({ success: false, retryAfter: retryAfterHint } as {
+            success: boolean;
+            retryAfter: number;
+          });
     },
   };
   return {
@@ -530,6 +545,7 @@ function stubComposeSuccess(): ReturnType<ComposeRequestFn> {
       },
     } satisfies CanonicalRequest,
     promptVersion: "prompt/visit-summary@v1",
+    systemPromptLeakNeedle: "You are a clinical documentation assistant.",
   };
 }
 
@@ -745,6 +761,28 @@ describe("pipeline_stage_failures", () => {
     expect(await countAiRequests()).toBe(0);
   });
 
+  it("stage 4 — rate_limited GuardFailure carries the binding retryAfter hint", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId);
+    const hint = 15;
+
+    const result = await runGuard(
+      baseGuardInput(installationId, cache, reader),
+      {
+        DB: env.DB,
+        DO: env.DO,
+        rateLimit: createDenyRateLimitBindings(env.DB, hint),
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      stage: 4,
+      code: "rate_limited",
+      retryAfter: hint,
+    });
+  });
+
   it("stage 5 — unknown capability → capability_unknown; no DO / no journal", async () => {
     const unknownId = "clinic.does_not_exist";
     const installationId = env.DO.newUniqueId().toString();
@@ -814,7 +852,7 @@ describe("pipeline_stage_failures", () => {
       createCapabilityRegistry([
         singleShotManifest({
           maxInputTokens: 10,
-          perRequestCostCeiling: 20,
+          perRequestTokenCeiling: 20,
           maxOutputTokens: 5,
         }),
       ]),
@@ -841,6 +879,55 @@ describe("pipeline_stage_failures", () => {
     expect(await countAiRequests()).toBe(0);
   });
 
+  it("stage 7 — composer scaffold byte length is counted without numeric override", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId);
+    const doSpy = countingDo(env.DO);
+    const principal = makePrincipal(installationId);
+    const userIntent = "Summarize the visit.";
+    const filteredContext = {
+      "visit.chief_complaint@v1": fixtureContext(principal)[
+        "visit.chief_complaint@v1"
+      ],
+    };
+    const serialized = serializePreflightInput({ filteredContext, userIntent });
+    const withoutScaffold = estimateInputTokens(serialized);
+    const scaffoldBytes = 100_000;
+
+    setCapabilityRegistry(
+      createCapabilityRegistry([
+        singleShotManifest({
+          maxInputTokens: withoutScaffold,
+          perRequestTokenCeiling: 1_000_000,
+          maxOutputTokens: 1,
+        }),
+      ]),
+      { replace: true },
+    );
+
+    const result = await runGuard(
+      baseGuardInput(installationId, cache, reader, {
+        promptScaffoldByteLength: () => scaffoldBytes,
+      }),
+      {
+        DB: env.DB,
+        DO: doSpy.do,
+        rateLimit: createAlwaysAllowRateLimitBindings(env.DB),
+      },
+    );
+
+    expect(estimateInputTokens(serialized, scaffoldBytes)).toBeGreaterThan(
+      withoutScaffold,
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      stage: 7,
+      code: "request_too_large",
+    });
+    expect(doSpy.fetchCount()).toBe(0);
+    expect(await countAiRequests()).toBe(0);
+  });
+
   it("stage 7 — oversized transcript priced via serializePreflightInput → request_too_large", async () => {
     const installationId = env.DO.newUniqueId().toString();
     const { cache, reader } = await prepareInstallation(installationId);
@@ -850,7 +937,7 @@ describe("pipeline_stage_failures", () => {
         conversationalManifest({
           transcriptSizeLimit: 50_000,
           maxInputTokens: 50,
-          perRequestCostCeiling: 100,
+          perRequestTokenCeiling: 100,
         }),
       ]),
       { replace: true },
@@ -875,12 +962,12 @@ describe("pipeline_stage_failures", () => {
           capability_id: FIXTURE_CHAT_CAPABILITY_ID,
           capability_version: FIXTURE_CAPABILITY_VERSION,
           user_intent: "Continue.",
-          context: {},
+          context: fixtureContext(),
           conversation_id: "conv-pipe-oversized",
           turn_ordinal: 3,
           transcript,
         }),
-        suppliedContext: {},
+        suppliedContext: fixtureContext(),
         userIntent: "Continue.",
       }),
       {
@@ -963,6 +1050,37 @@ describe("pipeline_stage_failures", () => {
       },
     });
     expect(await countAiRequests()).toBe(1);
+  });
+
+  it("stage 9 — journals resolvePromptVersion into prompt_artifact_hash, not the artifact ref", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId);
+    const composerHash = "c0ffee00";
+
+    const result = await runGuard(
+      baseGuardInput(installationId, cache, reader, {
+        resolvePromptVersion: () => composerHash,
+      }),
+      {
+        DB: env.DB,
+        DO: env.DO,
+        rateLimit: createAlwaysAllowRateLimitBindings(env.DB),
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.outcome === "idempotent") {
+      expect.fail("guard should be a fresh success");
+    }
+
+    const row = await env.DB.prepare(
+      `SELECT prompt_artifact_hash FROM ai_request WHERE request_id = ?`,
+    )
+      .bind(result.requestId)
+      .first<{ prompt_artifact_hash: string }>();
+
+    expect(row?.prompt_artifact_hash).toBe(composerHash);
+    expect(row?.prompt_artifact_hash).not.toBe("prompt/visit-summary@v1");
   });
 
   it("stage 9 — D1 insert failure → internal_error + release; key reusable", async () => {
@@ -1061,12 +1179,12 @@ describe("pipeline_transcript_threading", () => {
           capability_id: FIXTURE_CHAT_CAPABILITY_ID,
           capability_version: FIXTURE_CAPABILITY_VERSION,
           user_intent: "Follow up.",
-          context: {},
+          context: fixtureContext(),
           conversation_id: "conv-pipe-thread",
           turn_ordinal: 3,
           transcript,
         }),
-        suppliedContext: {},
+        suppliedContext: fixtureContext(),
         userIntent: "Follow up.",
         composeRequest,
       }),
@@ -1083,5 +1201,109 @@ describe("pipeline_transcript_threading", () => {
     }
     expect(receivedTranscript).toEqual(transcript);
     expect(result.transcript).toEqual(transcript);
+  });
+});
+
+describe("pipeline_compose_stream_flag", () => {
+  it("passes streamFlag true and the request deadline into composeRequest", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId);
+    const requestDeadlineMs = 45_000;
+
+    let received:
+      | Parameters<ComposeRequestFn>[0]
+      | undefined;
+    const composeRequest: ComposeRequestFn = (input) => {
+      received = input;
+      const stub = stubComposeSuccess();
+      if (!stub.ok) {
+        return stub;
+      }
+      return {
+        ok: true,
+        request: {
+          ...stub.request,
+          stream: input.streamFlag ?? false,
+          deadline: input.deadline ?? null,
+        },
+        promptVersion: stub.promptVersion,
+        systemPromptLeakNeedle: stub.systemPromptLeakNeedle,
+      };
+    };
+
+    const result = await runGuard(
+      baseGuardInput(installationId, cache, reader, {
+        composeRequest,
+        deadline: requestDeadlineMs,
+      }),
+      {
+        DB: env.DB,
+        DO: env.DO,
+        rateLimit: createAlwaysAllowRateLimitBindings(env.DB),
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.outcome === "idempotent") {
+      expect.fail("expected fresh compose success");
+    }
+    expect(received?.streamFlag).toBe(true);
+    expect(received).toHaveProperty("deadline");
+    expect(received?.deadline).toBe(requestDeadlineMs);
+    expect(result.composed.stream).toBe(true);
+    expect(result.composed.deadline).toBe(requestDeadlineMs);
+  });
+});
+
+describe("pipeline_soft_threshold_exposes_degraded_routing_tier", () => {
+  it("returns routingTier degraded on GuardFreshSuccess after usage crosses soft_threshold", async () => {
+    const installationId = env.DO.newUniqueId().toString();
+    const { cache, reader } = await prepareInstallation(installationId, {
+      requestQuota: 2,
+      softThreshold: 0.5,
+    });
+    const rateLimit = createAlwaysAllowRateLimitBindings(env.DB);
+
+    const first = await runGuard(
+      baseGuardInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO, rateLimit },
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok || first.outcome === "idempotent") {
+      expect.fail("expected first fresh admission");
+    }
+    expect(first.routingTier).toBe("standard");
+    expect(first.degraded).toBeUndefined();
+
+    const credited = await creditUsage(
+      {
+        installationId,
+        requestId: first.requestId,
+        requestReference: first.requestReference,
+        usage: { tokens: 1, cost: 0.001 },
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(credited.ok).toBe(true);
+
+    const second = await runGuard(
+      baseGuardInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO, rateLimit },
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok || second.outcome === "idempotent") {
+      expect.fail("expected second fresh admission");
+    }
+    expect(second.degraded).toBe(true);
+    expect(second.routingTier).toBe("degraded");
+
+    const row = await env.DB
+      .prepare(
+        "SELECT routing_tier FROM ai_request WHERE request_id = ?",
+      )
+      .bind(second.requestId)
+      .first<{ routing_tier: string | null }>();
+    expect(row?.routing_tier).toBe("degraded");
   });
 });

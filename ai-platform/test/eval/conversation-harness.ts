@@ -181,10 +181,15 @@ function appendTurnToTranscript(
     return;
   }
 
+  const principal = fixturePrincipal();
   transcript.push({
     turn_ordinal: turnOrdinal,
     kind: "context_resolved",
-    context: turn.context,
+    context: {
+      org: principal.organizationId,
+      branch: principal.branchId,
+      ...turn.context,
+    },
   });
 }
 
@@ -351,11 +356,15 @@ function runCase(
     appendAssistantTurn(transcript, fixtureLeg.assistant_turn);
   }
 
+  const principal = fixturePrincipal();
   const legTurnOrdinal = transcript.length + 1;
   const validation = validateContext(
     manifest,
-    {},
-    fixturePrincipal(),
+    {
+      org: principal.organizationId,
+      branch: principal.branchId,
+    },
+    principal,
     { transcript, legTurnOrdinal },
   );
 

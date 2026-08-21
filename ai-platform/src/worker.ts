@@ -10,11 +10,12 @@ import {
   createCapabilityRegistry,
   setCapabilityRegistry,
 } from "./capability";
-import { ConfigCache, createD1ConfigReader } from "./config-cache";
+import { createD1ConfigReader, isolateConfigCache } from "./config-cache";
 import { creditUsage, reconcileGraceUsage } from "./credit";
 import type { CanonicalRequest, CanonicalResult } from "./contracts/canonical";
 import {
   buildErrorBody,
+  getTaxonomyEntry,
   isTaxonomyCode,
   liveHttpStatusForCode,
   type TaxonomyCode,
@@ -30,6 +31,7 @@ import {
   authenticateGetRequest,
   getRequest,
   getRequestAuthErrorBody,
+  persistRoutingDecision,
   recordTerminalState,
   writePostResponseDetail,
   type AttemptInput,
@@ -50,6 +52,7 @@ import {
   listWiredProviderIds,
   type WiredProviderId,
 } from "./provider/wiring";
+import { createFetchTransport } from "./provider/fetch-transport";
 import { flushRejectionCounters, type RateLimitBindings } from "./rate-limit";
 import {
   createManifestRetentionClassResolver,
@@ -59,7 +62,7 @@ import { runRollupAndReconciliation } from "./rollup";
 import {
   preloadRoutingPolicyForInstallation,
   selectCandidateChain,
-  type RoutingTier,
+  type RoutingDecision,
 } from "./router";
 import {
   runInvocation,
@@ -67,12 +70,21 @@ import {
   type InvocationSink,
   type PartialUsageAccessor,
 } from "./invocation";
+import { ledgerUsageFromProvider } from "./pricing";
+import { wallClockSleeper } from "./wall-clock-sleeper";
+import {
+  degradedNoticeFromAdmission,
+  routingTierFromAdmission,
+  type AdmissionAllowResult,
+} from "./soft-threshold";
 import {
   admissionRPC,
   creditRPC,
   releaseRPC,
   type AdmissionRequest,
+  type CreditIdempotencyState,
   type CreditRequest,
+  type EntitlementSnapshot,
   type ReleaseRequest,
 } from "./quota-do/index";
 import {
@@ -137,10 +149,17 @@ try {
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-const PRODUCTION_GUARD_THRESHOLDS: ProseGuardThresholds = {
+const PRODUCTION_GUARD_THRESHOLDS: Omit<
+  ProseGuardThresholds,
+  "systemPromptLeakNeedle"
+> = {
   maxLength: 128_000,
   stopSequences: ["<|end|>"],
-  systemPromptLeakNeedle: "SYSTEM_PROMPT_LEAK_TEST_NEEDLE",
+  refusalPrefixes: [
+    "I'm sorry, I can't help with that",
+    "I'm sorry, I can't assist",
+  ],
+  injectionEchoNeedle: "Ignore previous instructions",
 };
 
 type AcceptContext =
@@ -150,6 +169,14 @@ type AcceptContext =
 type AcceptContextStore = Map<string, AcceptContext>;
 
 type BrokerTerminalState = "completed" | "cancelled" | "failed";
+
+function admissionAllowFromGuard(guard: GuardFreshSuccess): AdmissionAllowResult {
+  return {
+    outcome: "admitted",
+    requestId: guard.requestId,
+    ...(guard.degraded ? { degraded: true } : {}),
+  };
+}
 
 /** Pushable async iterable so invoke and broker run concurrently (live relay). */
 function createPushableInvocationEvents(): {
@@ -308,7 +335,7 @@ function resolveProviderPort(providerId: string): ProviderPort {
   }
   if ((listWiredProviderIds() as readonly string[]).includes(providerId)) {
     return createProviderAdapter(providerId as WiredProviderId, {
-      transport: fetch as never,
+      transport: createFetchTransport(),
       secretStore: {
         getSecret(binding: string) {
           const value = (env as Record<string, unknown>)[binding];
@@ -332,7 +359,57 @@ function buildAttemptInput(record: AttemptRecord): AttemptInput {
     cost: record.cost ?? 0,
     providerRequestId: record.provider_request_id,
     errorCode: record.error_code,
-    rawBody: {},
+    rawBody: record.rawBody ?? {},
+  };
+}
+
+/**
+ * Failed settlement always persists at least one ai_attempt row so
+ * reconciliation (expected profile: Failed requires attempts + usage) is a
+ * signal, including empty-chain provider_unavailable.
+ */
+function attemptsForFailedSettlement(
+  records: AttemptRecord[],
+  routing: RoutingDecision,
+  taxonomy: TaxonomyCode,
+): AttemptInput[] {
+  if (records.length > 0) {
+    return records.map(buildAttemptInput);
+  }
+  const hint = routing.chain[0] ?? routing.excluded[0];
+  return [
+    {
+      attemptNo: 1,
+      provider: hint?.provider_id ?? "",
+      model: hint?.model_id ?? "",
+      outcome: "terminal_failure",
+      latencyMs: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      cost: 0,
+      errorCode: taxonomy,
+      rawBody: {
+        payload: {
+          reason: "no_provider_attempt",
+          excluded: routing.excluded,
+        },
+        truncated: false,
+      },
+    },
+  ];
+}
+
+function placeholderTerminalResult(
+  usage: { tokens: number; cost: number },
+  finishReason: string,
+): CanonicalResult {
+  return {
+    finalContent: { type: "text", text: "" },
+    usage: { input: usage.tokens, output: 0, cached: 0 },
+    providerModel: { provider: "", model: "" },
+    finishReason,
+    providerRequestId: "",
+    timing: { queue_ms: 0, provider_ms: 0, total_ms: 0 },
   };
 }
 
@@ -346,11 +423,12 @@ function buildPostResponseInput(
   validatedResult: CanonicalResult,
   recordedAt: string,
   usage: { tokens: number; cost: number },
+  periodStart: string,
 ): PostResponseInput {
   return {
     requestId,
     installationId,
-    period: periodFromIso(new Date().toISOString()),
+    period: periodFromIso(periodStart),
     quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
     totalTokens: usage.tokens,
     totalCost: usage.cost,
@@ -360,6 +438,97 @@ function buildPostResponseInput(
     validatedResult,
     recordedAt,
   };
+}
+
+type SettlementJournalInput = {
+  requestId: string;
+  installationId: string;
+  manifest: Manifest;
+  filteredContext: Record<string, unknown>;
+  composed: CanonicalRequest;
+  attempts: AttemptInput[];
+  result: CanonicalResult;
+  recordedAt: string;
+  usage: { tokens: number; cost: number };
+  periodStart: string;
+};
+
+async function writeSettlementJournal(
+  runtimeEnv: Env,
+  input: SettlementJournalInput,
+  logger: Logger,
+): Promise<void> {
+  const detail = buildPostResponseInput(
+    input.requestId,
+    input.installationId,
+    input.manifest,
+    input.filteredContext,
+    input.composed,
+    input.attempts,
+    input.result,
+    input.recordedAt,
+    input.usage,
+    input.periodStart,
+  );
+  const ctx = createWorkerExecutionContext();
+  writePostResponseDetail(detail, {
+    db: runtimeEnv.DB,
+    r2: runtimeEnv.R2,
+    ctx,
+  }, logger);
+  await ctx.drainWaitUntil();
+}
+
+async function settleTerminal(
+  runtimeEnv: Env,
+  input: {
+    installationId: string;
+    requestId: string;
+    requestReference: string;
+    usage?: { tokens: number; cost: number };
+    code: TaxonomyCode;
+    idempotencyState: Extract<CreditIdempotencyState, "failed" | "cancelled">;
+    manifest: Manifest;
+    filteredContext: Record<string, unknown>;
+    composed: CanonicalRequest;
+    attempts: AttemptInput[];
+    periodStart: string;
+    entitlement?: EntitlementSnapshot;
+    skipCredit?: boolean;
+  },
+  logger: Logger,
+): Promise<void> {
+  const usage = input.usage ?? { tokens: 0, cost: 0 };
+  if (!input.skipCredit) {
+    await creditUsage(
+      {
+        installationId: input.installationId,
+        requestId: input.requestId,
+        requestReference: input.requestReference,
+        usage,
+        partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
+        idempotencyState: input.idempotencyState,
+        entitlement: input.entitlement,
+      },
+      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
+    );
+  }
+  await writeSettlementJournal(
+    runtimeEnv,
+    {
+      requestId: input.requestId,
+      installationId: input.installationId,
+      manifest: input.manifest,
+      filteredContext: input.filteredContext,
+      composed: input.composed,
+      attempts: input.attempts,
+      result: placeholderTerminalResult(usage, input.code),
+      recordedAt: new Date().toISOString(),
+      usage,
+      periodStart: input.periodStart,
+    },
+    logger,
+  );
 }
 
 async function settleCompletedRequest(
@@ -374,13 +543,12 @@ async function settleCompletedRequest(
     attempts: AttemptInput[];
     result: CanonicalResult;
     recordedAt: string;
+    periodStart: string;
+    entitlement?: EntitlementSnapshot;
   },
   logger: Logger,
 ): Promise<void> {
-  const usage = {
-    tokens: input.result.usage.input + input.result.usage.output,
-    cost: 0.001,
-  };
+  const usage = ledgerUsageFromProvider(input.result);
   await creditUsage(
     {
       installationId: input.installationId,
@@ -388,27 +556,26 @@ async function settleCompletedRequest(
       requestReference: input.requestReference,
       usage,
       partial: false,
+      entitlement: input.entitlement,
     },
-    { DO: runtimeEnv.DO },
+    { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
   );
-  const detail = buildPostResponseInput(
-    input.requestId,
-    input.installationId,
-    input.manifest,
-    input.filteredContext,
-    input.composed,
-    input.attempts,
-    input.result,
-    input.recordedAt,
-    usage,
+  await writeSettlementJournal(
+    runtimeEnv,
+    {
+      requestId: input.requestId,
+      installationId: input.installationId,
+      manifest: input.manifest,
+      filteredContext: input.filteredContext,
+      composed: input.composed,
+      attempts: input.attempts,
+      result: input.result,
+      recordedAt: input.recordedAt,
+      usage,
+      periodStart: input.periodStart,
+    },
+    logger,
   );
-  const ctx = createWorkerExecutionContext();
-  writePostResponseDetail(detail, {
-    db: runtimeEnv.DB,
-    r2: runtimeEnv.R2,
-    ctx,
-  }, logger);
-  await ctx.drainWaitUntil();
 }
 
 function pushFailedTerminal(
@@ -442,11 +609,7 @@ function replayIdempotentTerminal(
     },
     signal: new AbortController().signal,
   };
-  if (
-    prior.state === "completed" ||
-    prior.state === "admitted" ||
-    prior.state === "in_progress"
-  ) {
+  if (prior.state === "completed" || prior.state === "admitted") {
     pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
       result: {
         finalContent: { text: "Prior request completed.", authoritative: true },
@@ -551,7 +714,7 @@ async function runFreshEventSource(
   });
   log.info("invocation_start");
   const manifest = guard.manifest;
-  const cache = new ConfigCache();
+  const cache = isolateConfigCache;
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
   const policyRef = String(manifest.Routing.routingPolicyRef);
   await preloadRoutingPolicyForInstallation(
@@ -571,7 +734,7 @@ async function runFreshEventSource(
     context: {
       installationId: guard.principal.installationId,
       capabilityId: manifest.Identity.capabilityId,
-      routingTier: "standard",
+      routingTier: routingTierFromAdmission(admissionAllowFromGuard(guard)),
       requirements: {
         structured_output_required: manifest.Output.mode !== "prose",
         min_context_window: requiredFeatures.contextWindow,
@@ -580,12 +743,18 @@ async function runFreshEventSource(
       },
       manifestCostClass: "standard",
       entitlementMaxCostClass: "premium",
+      killedProviderIds: guard.killedProviderIds ?? [],
     },
     logger: makeLog("router/index.ts", {
       trace_id: streamContext.traceId,
       request_id: guard.requestId,
     }),
   });
+  await persistRoutingDecision(
+    guard.requestId,
+    routing.routing_decision,
+    runtimeEnv.DB,
+  );
   log.debug("routing_resolved", {
     provider: routing.routing_decision.chain[0]?.provider_id,
   });
@@ -603,10 +772,14 @@ async function runFreshEventSource(
     emitStreamText(text) {
       pushable.push({ kind: "text", text });
     },
+    emitTruncation() {
+      pushable.push({ kind: "truncation" });
+    },
   };
 
   let brokerTerminal: BrokerTerminalState | undefined;
   let ignoreBrokerSettlement = false;
+  let brokerCredit: Promise<unknown> = Promise.resolve();
   const chunkSource = createChunkSourceFromInvocationEvents(
     pushable.iterable,
     () => partialUsage.getPartialUsage?.(),
@@ -642,15 +815,17 @@ async function runFreshEventSource(
       if (ignoreBrokerSettlement) {
         return;
       }
-      void creditUsage(
+      brokerCredit = creditUsage(
         {
           installationId: guard.principal.installationId,
           requestId: input.requestId,
           requestReference: streamContext.requestReference,
           usage: input.usage,
           partial: input.partial,
+          idempotencyState: input.idempotencyState,
+          entitlement: guard.entitlementSnapshot,
         },
-        { DO: runtimeEnv.DO },
+        { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
       );
     },
     journalTerminalSink: (record) => {
@@ -671,7 +846,13 @@ async function runFreshEventSource(
         manifest.interactionMode,
       );
     },
-    guardThresholds: PRODUCTION_GUARD_THRESHOLDS,
+    guardThresholds: {
+      ...PRODUCTION_GUARD_THRESHOLDS,
+      systemPromptLeakNeedle: guard.systemPromptLeakNeedle,
+      ...(guard.systemPromptLeakNeedles !== undefined
+        ? { systemPromptLeakNeedles: guard.systemPromptLeakNeedles }
+        : {}),
+    },
   });
   onBrokerReady(broker);
 
@@ -694,14 +875,40 @@ async function runFreshEventSource(
     portResolver: resolveProviderPort,
     sink: invocationSink,
     partialUsage,
-    sleeper: async () => { },
+    sleeper: wallClockSleeper,
     signal: streamContext.signal,
     logger: makeLog("invocation/index.ts", {
       trace_id: streamContext.traceId,
       request_id: guard.requestId,
     }),
   });
+  // Ignore broker settlement before ending the event stream so a concurrent
+  // wasTruncated/guard fail cannot double-credit against the 1.5 failed path.
+  if (
+    !invokeResult.ok &&
+    invokeResult.error.taxonomyCode !== "cancelled" &&
+    !streamContext.signal.aborted
+  ) {
+    ignoreBrokerSettlement = true;
+  }
   pushable.end();
+
+  const journalLog = makeLog("journal/index.ts", {
+    trace_id: streamContext.traceId,
+    request_id: guard.requestId,
+  });
+  const periodStart = guard.entitlementSnapshot.period_bounds.period_start;
+  const terminalBase = {
+    installationId: guard.principal.installationId,
+    requestId: guard.requestId,
+    requestReference: streamContext.requestReference,
+    manifest,
+    filteredContext: guard.filteredContext,
+    composed: guard.composed,
+    attempts: attemptRecords.map(buildAttemptInput),
+    periodStart,
+    entitlement: guard.entitlementSnapshot,
+  };
 
   if (!invokeResult.ok) {
     const code = invokeResult.error.taxonomyCode;
@@ -709,20 +916,14 @@ async function runFreshEventSource(
       log.info("invocation_cancelled");
       broker.disconnect("client_close");
       await brokerRun;
+      await brokerCredit;
       if (brokerTerminal === undefined) {
-        const usage = partialUsage.getPartialUsage?.();
-        if (usage !== undefined) {
-          await creditUsage(
-            {
-              installationId: guard.principal.installationId,
-              requestId: guard.requestId,
-              requestReference: streamContext.requestReference,
-              usage,
-              partial: true,
-            },
-            { DO: runtimeEnv.DO },
-          );
-        }
+        await settleTerminal(runtimeEnv, {
+          ...terminalBase,
+          usage: partialUsage.getPartialUsage?.(),
+          code: "cancelled",
+          idempotencyState: "cancelled",
+        }, journalLog);
         await recordTerminalState(
           guard.requestId,
           "Cancelled",
@@ -731,6 +932,14 @@ async function runFreshEventSource(
           runtimeEnv.DB,
           manifest.interactionMode,
         );
+      } else {
+        await settleTerminal(runtimeEnv, {
+          ...terminalBase,
+          usage: partialUsage.getPartialUsage?.(),
+          code: "cancelled",
+          idempotencyState: "cancelled",
+          skipCredit: true,
+        }, journalLog);
       }
       return;
     }
@@ -746,6 +955,17 @@ async function runFreshEventSource(
       streamContext.traceId,
       taxonomy,
     );
+    await settleTerminal(runtimeEnv, {
+      ...terminalBase,
+      attempts: attemptsForFailedSettlement(
+        attemptRecords,
+        routing.routing_decision,
+        taxonomy,
+      ),
+      usage: partialUsage.getPartialUsage?.(),
+      code: taxonomy,
+      idempotencyState: "failed",
+    }, journalLog);
     await recordTerminalState(
       guard.requestId,
       "Failed",
@@ -758,27 +978,38 @@ async function runFreshEventSource(
   }
 
   await brokerRun;
+  await brokerCredit;
 
   if (brokerTerminal !== "completed") {
     log.debug("invocation_broker_non_completed", { terminal: brokerTerminal });
+    const brokerCode: TaxonomyCode =
+      brokerTerminal === "cancelled" ? "cancelled" : "validation_failed";
+    await settleTerminal(runtimeEnv, {
+      ...terminalBase,
+      attempts:
+        brokerTerminal === "cancelled"
+          ? terminalBase.attempts
+          : attemptsForFailedSettlement(
+            attemptRecords,
+            routing.routing_decision,
+            brokerCode,
+          ),
+      usage: partialUsage.getPartialUsage?.() ??
+        ledgerUsageFromProvider(invokeResult.result),
+      code: brokerCode,
+      idempotencyState:
+        brokerTerminal === "cancelled" ? "cancelled" : "failed",
+      skipCredit: true,
+    }, journalLog);
     return;
   }
 
   log.info("invocation_completed");
   await settleCompletedRequest(runtimeEnv, {
-    requestId: guard.requestId,
-    requestReference: streamContext.requestReference,
-    installationId: guard.principal.installationId,
-    manifest,
-    filteredContext: guard.filteredContext,
-    composed: guard.composed,
-    attempts: attemptRecords.map(buildAttemptInput),
+    ...terminalBase,
     result: invokeResult.result,
     recordedAt: new Date().toISOString(),
-  }, makeLog("journal/index.ts", {
-    trace_id: streamContext.traceId,
-    request_id: guard.requestId,
-  }));
+  }, journalLog);
 }
 
 function createProductionPreAccept(
@@ -787,14 +1018,17 @@ function createProductionPreAccept(
   makeLog: LoggerFactory,
 ): PreAcceptGate {
   const verifier = new EnrolledKeyVerifier();
-  const cache = new ConfigCache();
+  const cache = isolateConfigCache;
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
   return async (input) => {
     const log = makeLog("worker.ts", {
       trace_id: input.headers.traceId,
       request_reference: input.requestReference,
     });
-    const { composeRequest } = await import("./prompt/composer");
+    const { composeRequest, promptScaffoldByteLength } = await import(
+      "./prompt/composer"
+    );
+    const { resolvePromptVersion } = await import("./prompt/registry");
     const capabilityId = extractCapabilityId(input.body);
     if (!capabilityId) {
       log.error("pre_accept_missing_capability");
@@ -826,6 +1060,8 @@ function createProductionPreAccept(
         cache,
         reader,
         composeRequest: (params) => composeRequest(params, promptLog),
+        promptScaffoldByteLength,
+        resolvePromptVersion,
         logger: makeLog("pipeline/index.ts", {
           trace_id: input.headers.traceId,
           request_reference: input.requestReference,
@@ -840,7 +1076,13 @@ function createProductionPreAccept(
     if (!guard.ok) {
       const code = isTaxonomyCode(guard.code) ? guard.code : "internal_error";
       log.info("guard_rejected", { code });
-      return { ok: false, code };
+      return {
+        ok: false,
+        code,
+        ...(typeof guard.retryAfter === "number"
+          ? { retryAfter: guard.retryAfter }
+          : {}),
+      };
     }
     if (guard.outcome === "idempotent") {
       log.info("guard_idempotent");
@@ -848,11 +1090,17 @@ function createProductionPreAccept(
         kind: "idempotent",
         guard,
       });
-    } else {
-      log.info("guard_fresh");
-      acceptContexts.set(input.requestReference, { kind: "fresh", guard });
+      return { ok: true };
     }
-    return { ok: true };
+    log.info("guard_fresh");
+    acceptContexts.set(input.requestReference, { kind: "fresh", guard });
+    const degradedNotice = degradedNoticeFromAdmission(
+      admissionAllowFromGuard(guard),
+    );
+    return {
+      ok: true,
+      ...(degradedNotice ? { degradedNotice: true } : {}),
+    };
   };
 }
 
@@ -925,6 +1173,25 @@ function assertCreditArgs(body: unknown): asserts body is CreditRequest {
     candidate.usage === null ||
     typeof candidate.usage !== "object" ||
     typeof candidate.partial !== "boolean"
+  ) {
+    throw new ArgValidationError("invalid_credit_args");
+  }
+  if (candidate.idempotencyState !== undefined) {
+    const allowed: CreditIdempotencyState[] = [
+      "failed",
+      "cancelled",
+      "completed",
+    ];
+    if (
+      !allowed.includes(candidate.idempotencyState as CreditIdempotencyState)
+    ) {
+      throw new ArgValidationError("invalid_credit_args");
+    }
+  }
+  if (
+    candidate.entitlement !== undefined &&
+    (candidate.entitlement === null ||
+      typeof candidate.entitlement !== "object")
   ) {
     throw new ArgValidationError("invalid_credit_args");
   }
@@ -1174,7 +1441,7 @@ export default {
     );
     // FR-013 / §15 #3 — reconcile grace admissions once the Quota DO may be reachable.
     await reconcileGraceUsage(
-      { DO: runtimeEnv.DO },
+      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
       undefined,
       makeLog("credit/index.ts"),
     );

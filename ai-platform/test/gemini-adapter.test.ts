@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CANONICAL_FIELD_MANIFEST,
   assertExactlyOneTerminal,
@@ -156,6 +156,29 @@ function createCapturingTransport(
     },
   };
   return { transport, captured };
+}
+
+function createPushableUtf8Stream(): {
+  stream: ReadableStream<Uint8Array>;
+  enqueue: (text: string) => void;
+  close: () => void;
+} {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  return {
+    stream,
+    enqueue(text) {
+      controller!.enqueue(encoder.encode(text));
+    },
+    close() {
+      controller!.close();
+    },
+  };
 }
 
 function createGeminiAdapter(
@@ -1134,6 +1157,31 @@ describe("wire_mapping_system_and_roles", () => {
   });
 });
 
+describe("a4_empty_stop_conditions_omit_stop_sequences", () => {
+  it("omits generationConfig.stopSequences when CanonicalRequest.stopConditions is empty (A4 always empty)", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport, captured } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody("stop-empty"),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    expect(requestFixture.stopConditions).toEqual([]);
+    await invokeThroughPort(adapter, requestFixture);
+
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    const body = wire.body as {
+      generationConfig?: { stopSequences?: unknown };
+    };
+    expect(body.generationConfig).not.toHaveProperty("stopSequences");
+  });
+});
+
 describe("wire_mapping_top_k_and_schema", () => {
   it("maps top_k and json schema into generationConfig", async () => {
     const secretStore = createRecordingSecretStore();
@@ -1339,5 +1387,212 @@ describe("provider_response_body_size_limit", () => {
     const outcome = await invokeThroughPort(adapter, requestFixture);
     const error = assertClassifiedError(outcome, "internal_error");
     expect(error.providerNative.code).toBe("response_too_large");
+  });
+});
+
+describe("incremental_sse_live_deltas", () => {
+  it("parses a ReadableStream body incrementally and emits text_delta before the stream closes", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const pushable = createPushableUtf8Stream();
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: pushable.stream,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const liveText: string[] = [];
+    let invokeSettled = false;
+    const invokePromise = invokeThroughPort(adapter, streamRequest, {
+      onStreamChunk(chunk) {
+        if (chunk.kind !== "text_delta") {
+          return;
+        }
+        const text =
+          typeof chunk.payload === "object" &&
+          chunk.payload !== null &&
+          "text" in chunk.payload
+            ? String((chunk.payload as { text: unknown }).text)
+            : "";
+        if (text.length > 0) {
+          liveText.push(text);
+        }
+      },
+    }).then((outcome) => {
+      invokeSettled = true;
+      return outcome;
+    });
+
+    await Promise.resolve();
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":null}]}\n\n',
+    );
+
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[{"text":" world"}],"role":"model"},"finishReason":null}]}\n\n',
+    );
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello", " world"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":4,"totalTokenCount":16}}\n\n',
+    );
+    pushable.close();
+
+    const outcome = await invokePromise;
+    expect(outcome.kind).toBe("success");
+    expect(invokeSettled).toBe(true);
+    if (outcome.kind !== "success") {
+      throw new Error("Expected success");
+    }
+    expect(outcome.result.finalContent.text).toBe("Hello world");
+  });
+});
+
+describe("incremental_sse_live_deltas", () => {
+  it("parses a ReadableStream body incrementally and emits text_delta before the stream closes", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const pushable = createPushableUtf8Stream();
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: pushable.stream,
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const liveText: string[] = [];
+    let invokeSettled = false;
+    const invokePromise = invokeThroughPort(adapter, streamRequest, {
+      onStreamChunk(chunk) {
+        if (chunk.kind !== "text_delta") {
+          return;
+        }
+        const text =
+          typeof chunk.payload === "object" &&
+          chunk.payload !== null &&
+          "text" in chunk.payload
+            ? String((chunk.payload as { text: unknown }).text)
+            : "";
+        if (text.length > 0) {
+          liveText.push(text);
+        }
+      },
+    }).then((outcome) => {
+      invokeSettled = true;
+      return outcome;
+    });
+
+    await Promise.resolve();
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":null}]}\n\n',
+    );
+
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[{"text":" world"}],"role":"model"},"finishReason":null}]}\n\n',
+    );
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello", " world"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":4,"totalTokenCount":16}}\n\n',
+    );
+    pushable.close();
+
+    const outcome = await invokePromise;
+    expect(outcome.kind).toBe("success");
+    expect(invokeSettled).toBe(true);
+    if (outcome.kind !== "success") {
+      throw new Error("Expected success");
+    }
+    expect(outcome.result.finalContent.text).toBe("Hello world");
+  });
+});
+
+describe("envelope_raw_provider_body_capture", () => {
+  it("attaches a size-capped rawBody from the provider JSON on success", async () => {
+    const canonicalRequest = loadFixture<CanonicalRequest>(
+      "usage",
+      "canonical-request.json",
+    );
+    const providerResponse = loadFixture<Record<string, unknown>>(
+      "usage",
+      "provider-response.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(providerResponse),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, canonicalRequest);
+    expect(outcome.kind).toBe("success");
+    expect(outcome).toHaveProperty("rawBody");
+    expect(outcome.rawBody).toEqual({
+      payload: providerResponse,
+      truncated: false,
+    });
+  });
+
+  it("sets truncated true when the raw provider body exceeds 16 KB", async () => {
+    const hugeText = "H".repeat(20_000);
+    const providerResponse = {
+      candidates: [
+        {
+          content: { parts: [{ text: hugeText }] },
+          finishReason: "STOP",
+        },
+      ],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    };
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(providerResponse),
+    }));
+    const adapter = createGeminiAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(outcome.kind).toBe("success");
+    expect(outcome.rawBody).toMatchObject({ truncated: true });
+    expect(typeof outcome.rawBody?.payload).toBe("string");
+    const encoded = new TextEncoder().encode(String(outcome.rawBody?.payload));
+    expect(encoded.byteLength).toBeLessThanOrEqual(16 * 1024);
   });
 });

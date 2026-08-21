@@ -22,8 +22,101 @@ export type ComposeRequestInput = {
 };
 
 export type ComposeRequestResult =
-  | { ok: true; request: CanonicalRequest; promptVersion: string }
+  | {
+    ok: true;
+    request: CanonicalRequest;
+    promptVersion: string;
+    systemPromptLeakNeedle: string;
+    systemPromptLeakNeedles: readonly string[];
+  }
   | { ok: false; code: "internal_error" };
+
+/** Distinctive contiguous slice used by prose leak guards (`text.includes`). */
+const SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH = 48;
+
+/**
+ * Derive leak needles from the composed system instruction so a model echo of
+ * the opening, an interior window, or the ending trips the guard. A hash is
+ * not used: leaked instruction text would not contain the hash.
+ */
+export function leakNeedlesFromSystemInstruction(
+  systemInstruction: string,
+): string[] {
+  const trimmed = systemInstruction.trim();
+  if (trimmed.length === 0) {
+    throw new Error("system instruction is empty; cannot derive leak needle");
+  }
+  if (trimmed.length <= SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH) {
+    return [trimmed];
+  }
+
+  const start = trimmed.slice(0, SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH);
+  const midStart = Math.max(
+    0,
+    Math.floor((trimmed.length - SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH) / 2),
+  );
+  const middle = trimmed.slice(
+    midStart,
+    midStart + SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH,
+  );
+  const end = trimmed.slice(-SYSTEM_PROMPT_LEAK_NEEDLE_LENGTH);
+
+  const unique: string[] = [];
+  for (const needle of [start, middle, end]) {
+    if (!unique.includes(needle)) {
+      unique.push(needle);
+    }
+  }
+  return unique;
+}
+
+/**
+ * Primary leak needle (the instruction's opening window). Prefer
+ * `leakNeedlesFromSystemInstruction` so later portions are also covered.
+ */
+export function leakNeedleFromSystemInstruction(
+  systemInstruction: string,
+): string {
+  return leakNeedlesFromSystemInstruction(systemInstruction)[0]!;
+}
+
+/**
+ * UTF-8 byte length of the composed prompt scaffold bound to the capability:
+ * system instruction + business-rule fragments + context-rendering template.
+ * Stage 7 counts these known bytes per §13.6.2.
+ */
+export function promptScaffoldByteLength(manifest: Manifest): number {
+  const encoder = new TextEncoder();
+  const promptBinding = manifest["Prompt binding"];
+  let total = 0;
+
+  const add = (content: string | undefined): void => {
+    if (content !== undefined) {
+      total += encoder.encode(content).byteLength;
+    }
+  };
+
+  add(
+    resolveArtifact(
+      String(promptBinding.systemInstructionArtifactRef),
+      manifest,
+    ),
+  );
+
+  const fragments = promptBinding.businessRuleFragmentRefs;
+  if (Array.isArray(fragments)) {
+    for (const ref of fragments) {
+      add(resolveArtifact(String(ref), manifest));
+    }
+  }
+
+  const templateRef = promptBinding.contextRenderingTemplateRef;
+  if (templateRef != null && String(templateRef).length > 0) {
+    add(resolveArtifact(String(templateRef), manifest));
+  }
+
+  return total;
+}
 
 /**
  * Forward stop conditions from the manifest. A4 §5.1 declares no stop-sequences
@@ -233,6 +326,9 @@ export function composeRequest(
     if (systemInstruction === undefined) {
       return { ok: false, code: "internal_error" };
     }
+    const systemPromptLeakNeedles =
+      leakNeedlesFromSystemInstruction(systemInstruction);
+    const systemPromptLeakNeedle = systemPromptLeakNeedles[0]!;
 
     const businessRuleFragments: string[] = [];
     for (const ref of promptBinding.businessRuleFragmentRefs as string[]) {
@@ -293,7 +389,7 @@ export function composeRequest(
       messageParts.push({ role: "data", content: contextPart });
     }
 
-    messageParts.push({ role: "user", content: userIntent });
+    messageParts.push({ role: "user", content: neutralizeText(userIntent) });
 
     const request: CanonicalRequest = {
       parts: messageParts,
@@ -333,6 +429,8 @@ export function composeRequest(
       ok: true,
       request,
       promptVersion,
+      systemPromptLeakNeedle,
+      systemPromptLeakNeedles,
     };
   } catch (error) {
     logger.error("compose_request_failed", {

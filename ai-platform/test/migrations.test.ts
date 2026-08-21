@@ -33,6 +33,7 @@ export const PLATFORM_ENTITIES = [
   "usage_rollup",
   "platform_counter",
   "control_audit",
+  "grace_admission_queue",
 ] as const;
 
 export type PlatformEntity = (typeof PLATFORM_ENTITIES)[number];
@@ -278,6 +279,61 @@ describe("T-A5-15b idempotency_key_not_uniquely_indexed_on_d1", () => {
         /idempotency/i.test(index.sql) && /UNIQUE/i.test(index.sql),
     );
     expect(idempotencyUniqueIndexes).toHaveLength(0);
+  });
+});
+
+describe("entitlement_installation_id_is_unique", () => {
+  it("has a unique index on entitlement.installation_id and rejects a second row", async () => {
+    await applyMigrations();
+
+    const indexes = await query<{ name: string; sql: string }>(
+      `SELECT name, sql
+       FROM sqlite_master
+       WHERE type = 'index'
+         AND tbl_name = 'entitlement'
+         AND sql IS NOT NULL`,
+    );
+
+    const uniqueInstallationIndexes = indexes.filter(
+      (index) =>
+        /installation_id/i.test(index.sql) && /UNIQUE/i.test(index.sql),
+    );
+    expect(uniqueInstallationIndexes.length).toBeGreaterThan(0);
+
+    await query(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (
+        'inst-entitlement-unique', 'org-entitlement-unique', 'Unique Entitlement Clinic',
+        'active', 'eeur', '2026-08-01T00:00:00.000Z'
+      )`,
+    );
+
+    await query(
+      `INSERT INTO entitlement (
+        entitlement_id, installation_id, plan, period_start, period_end,
+        request_quota, token_budget, cost_budget, allowed_capabilities,
+        soft_threshold, status
+      ) VALUES (
+        'ent-unique-1', 'inst-entitlement-unique', 'professional',
+        '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z',
+        0, 0, 0, '[]', 0, 'pending'
+      )`,
+    );
+
+    await expect(
+      query(
+        `INSERT INTO entitlement (
+          entitlement_id, installation_id, plan, period_start, period_end,
+          request_quota, token_budget, cost_budget, allowed_capabilities,
+          soft_threshold, status
+        ) VALUES (
+          'ent-unique-2', 'inst-entitlement-unique', 'professional',
+          '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z',
+          0, 0, 0, '[]', 0, 'pending'
+        )`,
+      ),
+    ).rejects.toThrow();
   });
 });
 

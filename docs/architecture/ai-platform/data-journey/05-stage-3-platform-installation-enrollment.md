@@ -13,6 +13,7 @@
 4. [Failure paths](#4-failure-paths)
 5. [Post-enroll runtime effect](#5-post-enroll-runtime-effect)
 6. [Happy path diagram](#6-happy-path-diagram)
+7. [Key rotation](#7-key-rotation)
 
 ---
 
@@ -32,7 +33,12 @@ The **passport office registers the airline** (installation) and files the **sta
 ## 3. API: `POST /control/installations/{installation_id}/enroll`
 
 **Auth:** `Authorization: Bearer <OPERATOR_BEARER_TOKEN>` — verified by `requireOperator` in
-`control/http.ts`; `operator_id` on audit rows comes from Worker env `OPERATOR_ID` (see [§3 in Stage 0](02-stage-0-platform-configuration-and-boot.md#3-wrangler-configuration-ai-platformwranglertoml)).
+`control/http.ts` via `createSecretOperatorAuth` (timing-safe compare against one configured
+secret). `operator_id` on audit rows is the single Worker env `OPERATOR_ID` (see [§3 in Stage 0](02-stage-0-platform-configuration-and-boot.md#3-wrangler-configuration-ai-platformwranglertoml)).
+This is a **single-operator** deployment: every control-plane action is attributed to that one id.
+`control_audit` cannot distinguish operators, and the bearer cannot be rotated or revoked
+per-operator. A future `control_operator` table (per-operator token hashes + ids) would be
+required for a wider ops team — not implemented.
 
 #### Path parameter
 
@@ -140,15 +146,15 @@ signal) rather than treating clinic-local `org_id` as globally unique.
 `**installation_key` INSERT:**
 
 
-| Column            | Value         |
-| ----------------- | ------------- |
-| `key_id`          | body `kid`    |
-| `installation_id` | path          |
-| `public_key`      | body          |
-| `algorithm`       | body          |
-| `valid_from`      | `enrolled_at` |
-| `valid_until`     | `NULL`        |
-| `revoked_at`      | `NULL`        |
+| Column            | Value                                                |
+| ----------------- | ---------------------------------------------------- |
+| `key_id`          | body `kid`                                           |
+| `installation_id` | path                                                 |
+| `public_key`      | body                                                 |
+| `algorithm`       | body                                                 |
+| `valid_from`      | `enrolled_at`                                        |
+| `valid_until`     | `valid_from` + 365 days (`INSTALLATION_KEY_TTL_DAYS`) |
+| `revoked_at`      | `NULL`                                               |
 
 
 `**entitlement` INSERT:**
@@ -157,7 +163,7 @@ signal) rather than treating clinic-local `org_id` as globally unique.
 | Column                 | Value         | Meaning                                     |
 | ---------------------- | ------------- | ------------------------------------------- |
 | `entitlement_id`       | new UUID      | PK                                          |
-| `installation_id`      | path          | FK                                          |
+| `installation_id`      | path          | FK; **UNIQUE** — one entitlement row per installation (`idx_entitlement_installation_id`). A second insert for the same installation fails the constraint; enroll already 409s on `already_enrolled` before this write. |
 | `plan`                 | body `plan`   | Tier for later checks                       |
 | `period_start`         | `enrolled_at` | Placeholder until entitle                   |
 | `period_end`           | `enrolled_at` | Placeholder until entitle                   |
@@ -234,3 +240,13 @@ Authorization: Bearer <OPERATOR_BEARER_TOKEN> + enroll JSON body
   → 200 { platform_base_url }  ← new URL(request.url).origin
   → Flutter sets ai.availability.enrolled=true, platform_base_url ([§4 in Stage 2](04-stage-2-clinic-keypair-enrollment.md#4-clinic-availability-flag-manual-step))
 ```
+
+## 7. Key rotation
+
+`POST /control/installations/{installation_id}/rotate` inserts a new `installation_key` with
+`valid_from = now`, `valid_until = valid_from + 365 days`, `revoked_at = NULL`. In the **same**
+D1 batch (`runControlBatch`), it stamps `revoked_at = now` on every currently unrevoked key for
+that installation (`WHERE installation_id = ? AND revoked_at IS NULL`), then inserts the new
+row. There is no dual-key overlap: in-flight AATs signed with the old `kid` fail identity as
+soon as rotate returns. Operators mint new AATs with the new `kid`. See
+[§1 in Alternative and failure journeys](15-alternative-and-failure-journeys.md#1-lifecycle-alternatives-control-plane).

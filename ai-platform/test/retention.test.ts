@@ -312,6 +312,23 @@ describe("retention_expiry_journal", () => {
     expect(attemptCount?.c).toBe(0);
     expect(usageEvent).toBeDefined();
     expect(usageEvent?.request_id).toBeNull();
+
+    const joined = await env.DB.prepare(
+      `SELECT r.request_id
+       FROM usage_event u
+       INNER JOIN ai_request r ON r.request_id = u.request_id
+       WHERE u.usage_event_id = ?`,
+    )
+      .bind("ue-journal-credited")
+      .first<{ request_id: string }>();
+    expect(joined).toBeNull();
+
+    const byRequestId = await env.DB.prepare(
+      "SELECT usage_event_id FROM usage_event WHERE request_id = ?",
+    )
+      .bind("req-journal-credited")
+      .first<{ usage_event_id: string }>();
+    expect(byRequestId).toBeNull();
   });
 
   it("deletes R2 envelope before dropping a journal-expired request row", async () => {
@@ -594,7 +611,19 @@ describe("retention_expiry_ephemeral", () => {
       admission,
       admittedAt + EPHEMERAL_HORIZON_MS + 1,
     );
-    expect(afterExpiry.outcome).toBe("admitted");
+    expect(afterExpiry.outcome).toBe("idempotent");
+    expect(afterExpiry).toMatchObject({
+      outcome: "idempotent",
+      priorState: { state: "failed", requestReference: "REF-EPH01" },
+    });
+
+    const jtiReuse = await admissionRPC(
+      storage,
+      blockConcurrencyWhile,
+      { ...admission, idempotencyKey: "idem-ephemeral-test-reuse" },
+      admittedAt + EPHEMERAL_HORIZON_MS + 1,
+    );
+    expect(jtiReuse.outcome).toBe("admitted");
 
     const d1CountBefore = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM ai_request",

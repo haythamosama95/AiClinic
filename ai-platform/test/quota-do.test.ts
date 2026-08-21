@@ -1,5 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IDEMPOTENCY_STATES } from "../src/quota-do/index";
+import quotaDoSource from "../src/quota-do/index.ts?raw";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -39,11 +41,9 @@ type AdmissionRequest = {
 
 type IdempotencyRequestState =
   | "admitted"
-  | "in_progress"
   | "completed"
   | "failed"
-  | "cancelled"
-  | "awaiting_context";
+  | "cancelled";
 
 type IdempotencyPriorState = {
   requestReference: string;
@@ -95,6 +95,8 @@ type CreditRequest = {
     cost: number;
   };
   partial: boolean;
+  idempotencyState?: "failed" | "cancelled" | "completed";
+  entitlement?: EntitlementSnapshot;
 };
 
 type PeriodCounters = {
@@ -490,6 +492,43 @@ describe("admission_concurrency_ceiling_rejected", () => {
   });
 });
 
+describe("credit_reruns_period_reset_before_applying_usage", () => {
+  it("applies credit to the entitlement period passed at credit time, not a stale DO period", async () => {
+    const installationId = freshInstallationId();
+    const periodA = {
+      period_start: "2026-08-01T00:00:00.000Z",
+      period_end: "2026-09-01T00:00:00.000Z",
+    };
+    const periodB = {
+      period_start: "2026-09-01T00:00:00.000Z",
+      period_end: "2026-10-01T00:00:00.000Z",
+    };
+    const entA = buildEntitlementSnapshot({
+      request_quota: 100,
+      period_bounds: periodA,
+    });
+    const entB = buildEntitlementSnapshot({
+      request_quota: 1,
+      period_bounds: periodB,
+    });
+
+    const admitted = await admitFresh(installationId, { entitlement: entA });
+    const credit = await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      usage: { tokens: 50, cost: 0.05 },
+      entitlement: entB,
+    });
+    expect(credit.body).toMatchObject({ kind: "credit", ok: true });
+
+    const next = await callAdmissionRPC(installationId, { entitlement: entB });
+    expect(next.body).toMatchObject({
+      kind: "admission",
+      outcome: "quota_exhausted",
+      period_end: periodB.period_end,
+    });
+  });
+});
+
 describe("credit_adjusts_counters_with_actual_usage", () => {
   it("reflects tokens, cost, and requestsUsed after credit", async () => {
     const installationId = freshInstallationId();
@@ -703,6 +742,120 @@ describe("abandoned_admission_swept_after_horizon", () => {
       outcome: "admitted",
     });
   });
+
+  it("replays a swept abandoned admission as failed, not admitted or completed", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+    const entitlement = buildEntitlementSnapshot({ request_quota: 10_000 });
+    const baseTime = new Date("2026-08-01T12:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+      entitlement,
+    });
+
+    for (let i = 1; i < CONCURRENCY_LIMIT; i += 1) {
+      await admitFresh(installationId, { entitlement });
+    }
+
+    const blocked = await callAdmissionRPC(installationId, { entitlement });
+    expect(blocked.body).toMatchObject({
+      kind: "admission",
+      outcome: "concurrency_exhausted",
+    });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1));
+
+    const recovered = await callAdmissionRPC(installationId, { entitlement });
+    expect(recovered.response.ok).toBe(true);
+    expect(recovered.body).toMatchObject({
+      kind: "admission",
+      outcome: "admitted",
+    });
+
+    const replay = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+      entitlement,
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference,
+        state: "failed",
+        requestId: admitted.requestId,
+      },
+    });
+  });
+});
+
+describe("credit_slides_idempotency_expires_at", () => {
+  it("keeps a credited key idempotent after the original admission horizon", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+    const baseTime = new Date("2026-08-01T12:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS - 1000));
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage: { tokens: 20, cost: 0.02 },
+      partial: false,
+    });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1000));
+
+    const replay = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference,
+        state: "completed",
+        requestId: admitted.requestId,
+      },
+    });
+  });
+});
+
+describe("idempotency_do_states_exclude_unused", () => {
+  it("does not include in_progress or awaiting_context on the Quota DO union", () => {
+    expect(IDEMPOTENCY_STATES).toEqual([
+      "admitted",
+      "completed",
+      "failed",
+      "cancelled",
+    ]);
+    expect(IDEMPOTENCY_STATES).not.toContain("in_progress");
+    expect(IDEMPOTENCY_STATES).not.toContain("awaiting_context");
+
+    const match = quotaDoSource.match(
+      /export type IdempotencyRequestState\s*=\s*([\s\S]*?);/,
+    );
+    expect(match).not.toBeNull();
+    const unionBody = match![1];
+    expect(unionBody).not.toMatch(/in_progress/);
+    expect(unionBody).not.toMatch(/awaiting_context/);
+  });
 });
 
 describe("credit_marks_idempotency_completed", () => {
@@ -769,6 +922,42 @@ describe("credit_partial_marks_idempotency_cancelled", () => {
       priorState: {
         requestReference,
         state: "cancelled",
+        requestId: admitted.requestId,
+      },
+    });
+  });
+});
+
+describe("credit_marks_idempotency_failed", () => {
+  it("marks the idempotency record failed when credit carries idempotencyState failed", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage: { tokens: 0, cost: 0 },
+      partial: false,
+      idempotencyState: "failed",
+    });
+
+    const replay = await callAdmissionRPC(installationId, {
+      jti: uniqueJti(),
+      idempotencyKey,
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "idempotent",
+      priorState: {
+        requestReference,
+        state: "failed",
         requestId: admitted.requestId,
       },
     });
@@ -870,12 +1059,24 @@ describe("ephemeral_entries_expire_in_place", () => {
   it("evicts expired idempotency keys so a repeat key admits fresh after the horizon", async () => {
     const installationId = freshInstallationId();
     const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
     const baseTime = new Date("2026-08-01T12:00:00.000Z");
 
     vi.setSystemTime(baseTime);
 
-    const first = await callAdmissionRPC(installationId, { idempotencyKey });
+    const first = await callAdmissionRPC(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
     expect(first.body).toMatchObject({ kind: "admission", outcome: "admitted" });
+    const admitted = first.body as AdmissionAdmitted;
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage: { tokens: 1, cost: 0.001 },
+      partial: false,
+    });
 
     vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1));
 

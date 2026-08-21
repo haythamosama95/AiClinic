@@ -35,6 +35,10 @@ The platform maintains a list of **accepted AAT versions** (`ver` claim). Today 
 
 ## 4. Control-plane token-contract rotation
 
+Same single-operator auth as every `/control/*` route: one `OPERATOR_BEARER_TOKEN` maps to one
+`OPERATOR_ID` on `token_contract.changed_by` / `control_audit`. The trail cannot distinguish
+operators (see [Stage 3 enroll auth](05-stage-3-platform-installation-enrollment.md#3-api-post-controlinstallationsinstallation_idenroll)).
+
 
 
 ### 4.1 `POST /control/token-contract/begin-rotation`

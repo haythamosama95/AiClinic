@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CANONICAL_FIELD_MANIFEST,
   assertExactlyOneTerminal,
@@ -155,6 +155,29 @@ function createCapturingTransport(
     },
   };
   return { transport, captured };
+}
+
+function createPushableUtf8Stream(): {
+  stream: ReadableStream<Uint8Array>;
+  enqueue: (text: string) => void;
+  close: () => void;
+} {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  return {
+    stream,
+    enqueue(text) {
+      controller!.enqueue(encoder.encode(text));
+    },
+    close() {
+      controller!.close();
+    },
+  };
 }
 
 function createDeepSeekAdapter(
@@ -312,6 +335,44 @@ function successJsonBody(content = "ok"): string {
   });
 }
 
+const OPENAI_CHAT_COMPLETION_ROLES = new Set([
+  "system",
+  "user",
+  "assistant",
+  "tool",
+]);
+
+function rejectNonOpenAiChatRoles(
+  request: CapturedWireRequest,
+): DeepSeekTransportResponse | null {
+  let body: { messages?: Array<{ role?: unknown; content?: unknown }> } = {};
+  try {
+    body = request.body ? JSON.parse(request.body) : {};
+  } catch {
+    body = {};
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const invalid = messages.some(
+    (message) =>
+      typeof message.role !== "string" ||
+      !OPENAI_CHAT_COMPLETION_ROLES.has(message.role),
+  );
+  if (!invalid) {
+    return null;
+  }
+  return {
+    status: 400,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      error: {
+        message: "Invalid message role",
+        type: "invalid_request_error",
+        code: "invalid_role",
+      },
+    }),
+  };
+}
+
 describe("T-D5-09 adapter_owns_no_retry_or_fallback", () => {
   it("DeepSeek adapter export surface exposes classification only — no retry or fallback API", async () => {
     const secretStore = createRecordingSecretStore();
@@ -377,6 +438,29 @@ describe("T-D5-11 credentials_from_secret_store_only", () => {
     const wire = normalizeCapturedRequest(captured[0]!);
     expect(wire.headers.authorization).toBe(`Bearer ${KNOWN_SECRET}`);
     expect(JSON.stringify(wire.body)).not.toContain(KNOWN_SECRET);
+  });
+});
+
+describe("a4_empty_stop_conditions_omit_wire_stop", () => {
+  it("omits DeepSeek wire.stop when CanonicalRequest.stopConditions is empty (A4 always empty)", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport, captured } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: successJsonBody("stop-empty"),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    expect(requestFixture.stopConditions).toEqual([]);
+    await invokeThroughPort(adapter, requestFixture);
+
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    const body = wire.body as { stop?: unknown };
+    expect(body).not.toHaveProperty("stop");
   });
 });
 
@@ -1232,5 +1316,192 @@ describe("provider_response_body_size_limit", () => {
     const outcome = await invokeThroughPort(adapter, requestFixture);
     const error = assertClassifiedError(outcome, "internal_error");
     expect(error.providerNative.code).toBe("response_too_large");
+  });
+});
+
+describe("wire_mapping_system_and_roles", () => {
+  it("maps data to user, keeps system distinct, and never emits data on the wire", async () => {
+    const secretStore = createRecordingSecretStore();
+    const { transport, captured } = createCapturingTransport((request) => {
+      const rejected = rejectNonOpenAiChatRoles(request);
+      if (rejected) {
+        return rejected;
+      }
+      return {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: successJsonBody("mapped"),
+      };
+    });
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const multiRoleRequest: CanonicalRequest = {
+      ...requestFixture,
+      parts: [
+        { role: "system", content: "You are a clinic assistant." },
+        { role: "user", content: "Summarise the visit." },
+        { role: "data", content: "vitals: 120/80" },
+        { role: "assistant", content: "Prior summary." },
+      ],
+    };
+
+    const outcome = await invokeThroughPort(adapter, multiRoleRequest);
+
+    expect(outcome.kind).toBe("success");
+    expect(captured).toHaveLength(1);
+    const wire = normalizeCapturedRequest(captured[0]!);
+    const body = wire.body as {
+      messages?: Array<{ role?: string; content?: string }>;
+    };
+    const messages = body.messages ?? [];
+    const roles = messages.map((message) => message.role);
+
+    expect(roles).not.toContain("data");
+    expect(roles).toEqual(["system", "user", "user", "assistant"]);
+    expect(messages.map((message) => message.content)).toEqual([
+      "You are a clinic assistant.",
+      "Summarise the visit.",
+      "vitals: 120/80",
+      "Prior summary.",
+    ]);
+  });
+});
+
+describe("incremental_sse_live_deltas", () => {
+  it("parses a ReadableStream body incrementally and emits text_delta before the stream closes", async () => {
+    const streamRequest = loadFixture<CanonicalRequest>(
+      "stream",
+      "canonical-request.json",
+    );
+    const pushable = createPushableUtf8Stream();
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: pushable.stream,
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const liveText: string[] = [];
+    let invokeSettled = false;
+    const invokePromise = invokeThroughPort(adapter, streamRequest, {
+      onStreamChunk(chunk) {
+        if (chunk.kind !== "text_delta") {
+          return;
+        }
+        const text =
+          typeof chunk.payload === "object" &&
+          chunk.payload !== null &&
+          "text" in chunk.payload
+            ? String((chunk.payload as { text: unknown }).text)
+            : "";
+        if (text.length > 0) {
+          liveText.push(text);
+        }
+      },
+    }).then((outcome) => {
+      invokeSettled = true;
+      return outcome;
+    });
+
+    await Promise.resolve();
+    pushable.enqueue(
+      'data: {"id":"ds-stream-001","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+    );
+
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"id":"ds-stream-001","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}\n\n',
+    );
+    await vi.waitFor(() => {
+      expect(liveText).toEqual(["Hello", " world"]);
+    });
+    expect(invokeSettled).toBe(false);
+
+    pushable.enqueue(
+      'data: {"id":"ds-stream-001","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":4,"total_tokens":16}}\n\n',
+    );
+    pushable.enqueue("data: [DONE]\n\n");
+    pushable.close();
+
+    const outcome = await invokePromise;
+    expect(outcome.kind).toBe("success");
+    expect(invokeSettled).toBe(true);
+    if (outcome.kind !== "success") {
+      throw new Error("Expected success");
+    }
+    expect(outcome.result.finalContent.text).toBe("Hello world");
+  });
+});
+
+describe("envelope_raw_provider_body_capture", () => {
+  it("attaches a size-capped rawBody from the provider JSON on success", async () => {
+    const canonicalRequest = loadFixture<CanonicalRequest>(
+      "usage",
+      "canonical-request.json",
+    );
+    const providerResponse = loadFixture<Record<string, unknown>>(
+      "usage",
+      "provider-response.json",
+    );
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(providerResponse),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, canonicalRequest);
+    expect(outcome.kind).toBe("success");
+    expect(outcome).toHaveProperty("rawBody");
+    expect(outcome.rawBody).toEqual({
+      payload: providerResponse,
+      truncated: false,
+    });
+  });
+
+  it("sets truncated true when the raw provider body exceeds 16 KB", async () => {
+    const hugeText = "H".repeat(20_000);
+    const providerResponse = {
+      id: "ds-huge",
+      choices: [
+        {
+          message: { content: hugeText },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    const secretStore = createRecordingSecretStore();
+    const { transport } = createCapturingTransport(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(providerResponse),
+    }));
+    const adapter = createDeepSeekAdapter({
+      transport,
+      secretStore: secretStore.store,
+    });
+
+    const outcome = await invokeThroughPort(adapter, requestFixture);
+    expect(outcome.kind).toBe("success");
+    expect(outcome.rawBody).toMatchObject({ truncated: true });
+    expect(typeof outcome.rawBody?.payload).toBe("string");
+    const encoded = new TextEncoder().encode(String(outcome.rawBody?.payload));
+    expect(encoded.byteLength).toBeLessThanOrEqual(16 * 1024);
   });
 });

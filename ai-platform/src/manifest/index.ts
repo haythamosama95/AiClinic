@@ -45,7 +45,6 @@ export const MANIFEST_FIELD_MANIFEST = {
     "required",
     "shapeRef",
     "maxSize",
-    "freshnessHint",
   ],
   "Prompt binding": [
     "systemInstructionArtifactRef",
@@ -68,11 +67,33 @@ export const MANIFEST_FIELD_MANIFEST = {
   Economics: [
     "maxInputTokens",
     "maxOutputTokens",
-    "perRequestCostCeiling",
+    "perRequestTokenCeiling",
     "quotaWeight",
   ],
   Governance: ["acceptanceMode", "retentionClass", "evalSuiteRef"],
 } as const;
+
+/** Canonical Economics ceiling: tokens, not currency (§13.6.2, audit 4.7). */
+export const ECONOMICS_TOKEN_CEILING_FIELD = "perRequestTokenCeiling" as const;
+
+/**
+ * Previously published manifests named the same token ceiling
+ * `perRequestCostCeiling`. The loader still accepts that key and normalizes
+ * it to `perRequestTokenCeiling`.
+ */
+export const ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS =
+  "perRequestCostCeiling" as const;
+
+/**
+ * Schema note (Economics field-name revision). Capability manifests do not
+ * carry a numeric `schema_version` header; this records the rename.
+ * `perRequestTokenCeiling` is the canonical token-denominated per-request
+ * ceiling (`estimatedInputTokens + maxOutputTokens`). The loader accepts
+ * legacy `perRequestCostCeiling` as a compatibility alias and normalizes it.
+ * Units are tokens; the preflight never converts to currency.
+ */
+export const ECONOMICS_TOKEN_CEILING_SCHEMA_NOTE =
+  "schema revision: Economics.perRequestTokenCeiling is the canonical token-denominated per-request ceiling (estimatedInputTokens + maxOutputTokens). The loader accepts legacy perRequestCostCeiling as a compatibility alias and normalizes it. Units are tokens; the preflight never converts to currency.";
 
 const CONVERSATIONAL_ONLY_INTERACTION_FIELDS = [
   "maxHistoryTurns",
@@ -294,6 +315,32 @@ function assertEconomicsTypes(economics: Record<string, unknown>): void {
       throw new Error("Malformed manifest group: Economics");
     }
   }
+}
+
+/**
+ * Accept `perRequestTokenCeiling` (canonical) or `perRequestCostCeiling`
+ * (legacy alias for previously published manifests). Always emit the
+ * canonical token-named field; never leave the cost-named key on the
+ * loaded group.
+ */
+function normalizeEconomicsGroup(
+  value: unknown,
+  groupName: ManifestFieldGroup,
+): Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    throw new Error(`Malformed manifest group: ${groupName}`);
+  }
+  const economics = { ...value };
+  if (
+    !(ECONOMICS_TOKEN_CEILING_FIELD in economics) &&
+    ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS in economics
+  ) {
+    economics[ECONOMICS_TOKEN_CEILING_FIELD] =
+      economics[ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS];
+  }
+  delete economics[ECONOMICS_TOKEN_CEILING_LEGACY_ALIAS];
+  assertExactKeys(economics, MANIFEST_FIELD_MANIFEST.Economics, groupName);
+  return economics;
 }
 
 function validateConversationalContextRequirements(
@@ -525,11 +572,7 @@ function validate(json: Record<string, unknown>): Manifest {
     "Routing",
     MANIFEST_FIELD_MANIFEST.Routing,
   );
-  const economics = validateObjectGroup(
-    json.Economics,
-    "Economics",
-    MANIFEST_FIELD_MANIFEST.Economics,
-  );
+  const economics = normalizeEconomicsGroup(json.Economics, "Economics");
   assertEconomicsTypes(economics);
   const governance = validateObjectGroup(
     json.Governance,

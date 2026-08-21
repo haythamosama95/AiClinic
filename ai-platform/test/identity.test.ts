@@ -4,6 +4,7 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
   EnrolledKeyVerifier,
+  MAX_AAT_LIFETIME_SECONDS,
   type Principal,
   type TokenVerifier,
   type VerifyContext,
@@ -65,7 +66,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   scopes: ["ai.access"],
   jti: FIXTURE_JTI,
   iat: NOW - 30,
-  exp: NOW + 600,
+  exp: NOW + 300,
   ver: "1",
 };
 
@@ -426,6 +427,61 @@ describe("identity_valid_token_accepted", () => {
       expectPrincipalFromClaims(result.principal, claims);
     }
   });
+
+  it("accepts a token whose lifetime equals MAX_AAT_LIFETIME_SECONDS", async () => {
+    const verifier = new EnrolledKeyVerifier();
+    const claims = {
+      ...DEFAULT_CLAIMS,
+      iat: NOW,
+      exp: NOW + MAX_AAT_LIFETIME_SECONDS,
+    };
+    const token = await mintToken(fixtureKeypair, claims);
+    const ctx = buildVerifyContext(makeIdentityReader(fixtureKeypair));
+
+    const result = await verifier.verify(token, ctx);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expectPrincipalFromClaims(result.principal, claims);
+    }
+  });
+});
+
+describe("identity_rejects_oversize_aat_lifetime", () => {
+  it("rejects a still-unexpired token whose exp - iat exceeds MAX_AAT_LIFETIME_SECONDS", async () => {
+    const spy = vi.spyOn(rateLimit, "recordGuardRejection");
+    const verifier = new EnrolledKeyVerifier();
+    const reader = makeIdentityReader(fixtureKeypair);
+    const claims = {
+      iat: NOW - 30,
+      exp: NOW - 30 + MAX_AAT_LIFETIME_SECONDS + 1,
+    };
+    const token = await mintToken(fixtureKeypair, claims);
+
+    const result = await verifier.verify(token, buildVerifyContext(reader));
+
+    expectRejected(result, "unauthenticated");
+    expect(reader.readCount()).toBe(0);
+    expect(spy).toHaveBeenCalledWith({
+      error_code: "unauthenticated",
+      installation_id: "unverified",
+    });
+    spy.mockRestore();
+  });
+
+  it("rejects a one-hour token whose now still sits inside [iat, exp]", async () => {
+    const verifier = new EnrolledKeyVerifier();
+    const reader = makeIdentityReader(fixtureKeypair);
+    const token = await mintToken(fixtureKeypair, {
+      iat: NOW,
+      exp: NOW + 3600,
+    });
+
+    const result = await verifier.verify(token, buildVerifyContext(reader));
+
+    expectRejected(result, "unauthenticated");
+    expect(reader.readCount()).toBe(0);
+  });
 });
 
 describe("identity token rejection cases", () => {
@@ -460,7 +516,7 @@ describe("identity token rejection cases", () => {
       name: "identity_rejects_expired_token",
       mutate: async (_token, keypair) =>
         mintToken(keypair, {
-          iat: NOW - 900,
+          iat: NOW - 300,
           exp: NOW - CLOCK_SKEW_SECONDS - 1,
         }),
     },
@@ -469,24 +525,24 @@ describe("identity token rejection cases", () => {
       mutate: async (_token, keypair) =>
         mintToken(keypair, {
           iat: NOW + CLOCK_SKEW_SECONDS - 5,
-          exp: NOW + 600,
+          exp: NOW + CLOCK_SKEW_SECONDS - 5 + 300,
         }),
       expectOk: true,
       expectedClaims: {
         iat: NOW + CLOCK_SKEW_SECONDS - 5,
-        exp: NOW + 600,
+        exp: NOW + CLOCK_SKEW_SECONDS - 5 + 300,
       },
     },
     {
       name: "identity_accepts_expired_inside_skew",
       mutate: async (_token, keypair) =>
         mintToken(keypair, {
-          iat: NOW - 900,
+          iat: NOW - 300,
           exp: NOW - CLOCK_SKEW_SECONDS + 1,
         }),
       expectOk: true,
       expectedClaims: {
-        iat: NOW - 900,
+        iat: NOW - 300,
         exp: NOW - CLOCK_SKEW_SECONDS + 1,
       },
     },
@@ -495,7 +551,7 @@ describe("identity token rejection cases", () => {
       mutate: async (_token, keypair) =>
         mintToken(keypair, {
           iat: NOW + CLOCK_SKEW_SECONDS + 120,
-          exp: NOW + 900,
+          exp: NOW + CLOCK_SKEW_SECONDS + 120 + 300,
         }),
     },
     {
@@ -636,7 +692,7 @@ describe("identity_preverification_tallies_unverified", () => {
 
     const expired = await mintToken(fixtureKeypair, {
       iss: forgedIss,
-      iat: NOW - 900,
+      iat: NOW - 300,
       exp: NOW - CLOCK_SKEW_SECONDS - 1,
     });
     await verifier.verify(

@@ -88,7 +88,7 @@ function conversationalManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -239,7 +239,7 @@ function goldenConversationalRequest(
           permittedKeySet,
         ),
       },
-      { role: "user", content: FIXTURE_USER_INTENT },
+      { role: "user", content: neutralizeText(FIXTURE_USER_INTENT) },
     ],
     formatDirective: {
       mode: manifest.Output.mode,

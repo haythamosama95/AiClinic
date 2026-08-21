@@ -282,6 +282,15 @@ describe("enroll_writes_all_four_tables", () => {
       algorithm: DEFAULT_ENROLL_PAYLOAD.algorithm,
     });
     expect(installationKey?.valid_from).toBeTruthy();
+    expect(installationKey?.revoked_at).toBeNull();
+    expect(installationKey?.valid_until).toBeTruthy();
+    expect(Date.parse(installationKey!.valid_until!)).toBeGreaterThan(
+      Date.parse(installationKey!.valid_from),
+    );
+    expect(
+      Date.parse(installationKey!.valid_until!) -
+        Date.parse(installationKey!.valid_from),
+    ).toBe(365 * 24 * 60 * 60 * 1000);
 
     const entitlement = await env.DB.prepare(
       `SELECT plan, period_start, period_end, request_quota, token_budget, cost_budget,
@@ -415,7 +424,7 @@ describe("lifecycle_resume_audit", () => {
 });
 
 describe("lifecycle_rotate_audit", () => {
-  it("adds a new key row and writes rotate audit", async () => {
+  it("adds a new key row, retires the enroll kid, and writes rotate audit", async () => {
     const handlers = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
 
@@ -441,14 +450,36 @@ describe("lifecycle_rotate_audit", () => {
     expect(afterCounts.control_audit).toBe(beforeCounts.control_audit + 1);
 
     const keys = await env.DB.prepare(
-      "SELECT key_id FROM installation_key WHERE installation_id = ? ORDER BY key_id",
+      `SELECT key_id, valid_from, valid_until, revoked_at
+       FROM installation_key WHERE installation_id = ? ORDER BY key_id`,
     )
       .bind(FIXTURE_INSTALLATION_ID)
-      .all<{ key_id: string }>();
-    expect(keys.results?.map((row) => row.key_id)).toEqual([
-      DEFAULT_ENROLL_PAYLOAD.kid,
-      rotateKid,
-    ]);
+      .all<{
+        key_id: string;
+        valid_from: string;
+        valid_until: string | null;
+        revoked_at: string | null;
+      }>();
+    const byKid = Object.fromEntries(
+      (keys.results ?? []).map((row) => [row.key_id, row]),
+    );
+    expect(Object.keys(byKid).sort()).toEqual(
+      [DEFAULT_ENROLL_PAYLOAD.kid, rotateKid].sort(),
+    );
+
+    const enrollKey = byKid[DEFAULT_ENROLL_PAYLOAD.kid];
+    expect(enrollKey.revoked_at).toBeTruthy();
+    expect(Number.isNaN(Date.parse(enrollKey.revoked_at!))).toBe(false);
+
+    const rotatedKey = byKid[rotateKid];
+    expect(rotatedKey.revoked_at).toBeNull();
+    expect(rotatedKey.valid_until).toBeTruthy();
+    expect(Date.parse(rotatedKey.valid_until!)).toBeGreaterThan(
+      Date.parse(rotatedKey.valid_from),
+    );
+    expect(
+      Date.parse(rotatedKey.valid_until!) - Date.parse(rotatedKey.valid_from),
+    ).toBe(365 * 24 * 60 * 60 * 1000);
 
     const audit = await env.DB.prepare(
       "SELECT operator_id, action FROM control_audit WHERE action = 'rotate'",
@@ -751,6 +782,29 @@ describe("secret_operator_auth_verifies_credential", () => {
     );
     expect(principal).toEqual({ operatorId: TEST_OPERATOR_ID });
     expect(principal?.operatorId).not.toBe(TEST_OPERATOR_BEARER);
+  });
+
+  it("attributes every successful control request to the single configured operatorId", async () => {
+    const { createSecretOperatorAuth } = await loadControlHandlers();
+    const auth = createSecretOperatorAuth({
+      bearerToken: TEST_OPERATOR_BEARER,
+      operatorId: TEST_OPERATOR_ID,
+    });
+
+    const enroll = auth.resolve(
+      new Request(`${GATEWAY_ORIGIN}/control/installations/a/enroll`, {
+        headers: { authorization: `Bearer ${TEST_OPERATOR_BEARER}` },
+      }),
+    );
+    const entitle = auth.resolve(
+      new Request(`${GATEWAY_ORIGIN}/control/installations/b/entitle`, {
+        headers: { authorization: `Bearer ${TEST_OPERATOR_BEARER}` },
+      }),
+    );
+
+    expect(enroll).toEqual({ operatorId: TEST_OPERATOR_ID });
+    expect(entitle).toEqual({ operatorId: TEST_OPERATOR_ID });
+    expect(enroll?.operatorId).toBe(entitle?.operatorId);
   });
 
   it("fails closed when configured secret or operator id is empty", async () => {

@@ -10,6 +10,7 @@ import {
   createRequestRow,
   getRequest,
   journalTransition,
+  persistRoutingDecision,
   recordTerminalState,
   writePostResponseDetail,
   type AttemptInput,
@@ -17,6 +18,7 @@ import {
   type RequestRowInput,
   type TransitionState,
 } from "../src/journal";
+import type { RoutingDecision } from "../src/router";
 import {
   flushRejectionCounters,
   recordGuardRejection,
@@ -79,6 +81,7 @@ type AiRequestRow = {
   completed_at: string | null;
   terminal_error_code: string | null;
   payload_pointer: string | null;
+  routing_decision: string | null;
 };
 
 type D1Spy = D1Database & {
@@ -158,7 +161,6 @@ function validManifest(
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -186,7 +188,7 @@ function validManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -363,7 +365,7 @@ async function readAiRequestCount(): Promise<number> {
 async function readAiRequestRow(requestId: string): Promise<AiRequestRow | null> {
   return env.DB.prepare(
     `SELECT request_id, request_reference, state, created_at, updated_at,
-            completed_at, terminal_error_code, payload_pointer
+            completed_at, terminal_error_code, payload_pointer, routing_decision
      FROM ai_request WHERE request_id = ?`,
   )
     .bind(requestId)
@@ -523,6 +525,42 @@ async function seedCompletedRequest(
   return { input, postInput };
 }
 
+function routingDecisionFixture(
+  overrides: Partial<RoutingDecision> = {},
+): RoutingDecision {
+  return {
+    policy_id: "policy-journal-fixture",
+    policy_version: 1,
+    rule_id: "catch-all",
+    effective_cost_class: "standard",
+    cost_class_source: "manifest",
+    routing_tier: "standard",
+    required_features: {
+      structured_output_required: false,
+      min_context_window: 32_000,
+      languages: ["en"],
+      latency_class: "standard",
+    },
+    chain: [
+      {
+        ordinal: 0,
+        provider_id: "deepseek",
+        model_id: "deepseek-v4-flash",
+        max_attempts: 2,
+        timeout_ms: 30_000,
+      },
+    ],
+    excluded: [
+      {
+        provider_id: "gemini",
+        model_id: "gemini-3.5-flash",
+        reason_code: "installation_excluded",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
 });
@@ -532,6 +570,28 @@ beforeEach(async () => {
   await seedInstallation();
   requestIdCounter = 0;
   idempotencyKeyCounter = 0;
+});
+
+describe("prompt_artifact_hash_journals_content_hash", () => {
+  it("stores the composer content hash, not the systemInstructionArtifactRef", async () => {
+    const composerHash = "c0ffee00";
+    const input = buildRequestRowInput({ promptArtifactHash: composerHash });
+    const ref = String(
+      input.manifest["Prompt binding"].systemInstructionArtifactRef,
+    );
+
+    const createResult = await createRequestRow(input, env.DB);
+    expect(createResult).toEqual({ ok: true });
+
+    const row = await env.DB.prepare(
+      `SELECT prompt_artifact_hash FROM ai_request WHERE request_id = ?`,
+    )
+      .bind(input.requestId)
+      .first<{ prompt_artifact_hash: string }>();
+
+    expect(row?.prompt_artifact_hash).toBe(composerHash);
+    expect(row?.prompt_artifact_hash).not.toBe(ref);
+  });
 });
 
 describe("T-C3-01 request_row_exists_before_provider_invoked", () => {
@@ -1432,5 +1492,70 @@ describe("awaiting_context_write_path_conversational_only", () => {
     expect(after?.state).toBe("AwaitingContext");
     expect(after?.completed_at).toBe(before?.completed_at);
     expect(after?.updated_at).toBe(before?.updated_at);
+  });
+});
+
+describe("persist_routing_decision_on_existing_row", () => {
+  it("leaves routing_decision NULL on stage-9 INSERT", async () => {
+    const input = await seedRequestRow();
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Accepted");
+    expect(row?.routing_decision).toBeNull();
+  });
+
+  it("writes selected rule, excluded targets, and override provenance as JSON", async () => {
+    const input = await seedRequestRow();
+    const decision = routingDecisionFixture({
+      cost_class_source: "installation_override",
+      effective_cost_class: "economy",
+    });
+
+    await persistRoutingDecision(input.requestId, decision, env.DB, FIXTURE_NOW);
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Accepted");
+    expect(row?.routing_decision).toBeTruthy();
+    const persisted = JSON.parse(row!.routing_decision!) as RoutingDecision & {
+      max_parallel_attempts?: number;
+    };
+    expect(persisted.rule_id).toBe("catch-all");
+    expect(persisted.policy_id).toBe("policy-journal-fixture");
+    expect(persisted.policy_version).toBe(1);
+    expect(persisted.chain).toEqual(decision.chain);
+    expect(persisted.excluded).toEqual([
+      {
+        provider_id: "gemini",
+        model_id: "gemini-3.5-flash",
+        reason_code: "installation_excluded",
+      },
+    ]);
+    expect(persisted.cost_class_source).toBe("installation_override");
+    expect(persisted.effective_cost_class).toBe("economy");
+    expect(persisted).not.toHaveProperty("max_parallel_attempts");
+  });
+
+  it("does not overwrite routing_decision after a terminal state", async () => {
+    const input = await seedRequestRow();
+    const first = routingDecisionFixture({ rule_id: "first-rule" });
+    await persistRoutingDecision(input.requestId, first, env.DB, FIXTURE_NOW);
+    await recordTerminalState(
+      input.requestId,
+      "Completed",
+      undefined,
+      FIXTURE_NOW,
+      env.DB,
+    );
+
+    await persistRoutingDecision(
+      input.requestId,
+      routingDecisionFixture({ rule_id: "should-not-land" }),
+      env.DB,
+      "2026-07-31T13:00:00.000Z",
+    );
+
+    const row = await readAiRequestRow(input.requestId);
+    expect(row?.state).toBe("Completed");
+    const persisted = JSON.parse(row!.routing_decision!) as RoutingDecision;
+    expect(persisted.rule_id).toBe("first-rule");
   });
 });

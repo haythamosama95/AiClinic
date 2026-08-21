@@ -62,14 +62,39 @@ export async function dashboardValidationFailureByPromptVersion(
 }
 
 /**
- * Repair rate by capability.
- * Unavailable until RepairJournalSink is persisted on the write path —
- * returns empty `{}` rather than querying a never-written `outcome='repair'`.
+ * Repair rate by capability over the journal retention window.
+ * Rate = repair attempts (`ai_attempt.outcome = 'repair'`) ÷ Completed+Failed
+ * requests, grouped by `capability_id`. Cancelled / in-flight requests are
+ * excluded from the denominator. Returns `{}` when no Completed/Failed
+ * requests fall in-window — not a stub.
  */
 export async function dashboardRepairRateByCapability(
-  _db: D1Database,
+  db: D1Database,
+  now: Date = new Date(),
 ): Promise<RateByDimension> {
-  return {};
+  const windowStart = new Date(
+    now.getTime() - JOURNAL_HORIZON_DAYS * MS_PER_DAY,
+  ).toISOString();
+
+  const result = await db
+    .prepare(
+      `SELECT r.capability_id,
+              CAST(SUM(CASE WHEN a.outcome = 'repair' THEN 1 ELSE 0 END) AS REAL)
+                / COUNT(DISTINCT r.request_id) AS rate
+       FROM ai_request r
+       LEFT JOIN ai_attempt a ON a.request_id = r.request_id
+       WHERE r.state IN ('Completed', 'Failed')
+         AND r.created_at >= ?
+       GROUP BY r.capability_id`,
+    )
+    .bind(windowStart)
+    .all<{ capability_id: string; rate: number }>();
+
+  const out: RateByDimension = {};
+  for (const row of result.results ?? []) {
+    out[row.capability_id] = row.rate;
+  }
+  return out;
 }
 
 /**
@@ -134,6 +159,9 @@ export async function dashboardCostPerCapabilityPerInstallation(
  * divided by COUNT(*) of journaled ai_request rows, both bounded to the
  * journal retention window so the numerator cannot outlive the denominator.
  * Returns 0 when there are no journaled requests in-window.
+ *
+ * The numerator is a **lower bound**: `platform_counter` is flushed only by the
+ * cron isolate, so unflushed tallies in other isolates never reach D1.
  */
 export async function dashboardQuotaRejectionRate(
   db: D1Database,

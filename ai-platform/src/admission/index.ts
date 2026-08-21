@@ -11,10 +11,12 @@ import {
 import type { Principal } from "../identity";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
+import { DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS } from "../errors";
 import {
   coerceSoftThreshold,
   type AdmissionResponse,
   type EntitlementSnapshot,
+  type IdempotencyPriorState,
 } from "../quota-do/index";
 import {
   flushRejectionCounters,
@@ -45,30 +47,32 @@ export type AdmissionContext = {
   now?: number;
 };
 
-type IdempotencyRequestState =
-  | "admitted"
-  | "in_progress"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "awaiting_context";
-
-type IdempotencyPriorState = {
-  requestReference: string;
-  state: IdempotencyRequestState;
-  requestId: string;
-};
-
 type AdmissionSuccess =
-  | { ok: true; outcome: "admitted"; requestId: string; degraded?: boolean }
-  | { ok: true; outcome: "grace_admitted"; requestId: string; requestReference: string }
+  | {
+    ok: true;
+    outcome: "admitted";
+    requestId: string;
+    degraded?: boolean;
+    entitlement: EntitlementSnapshot;
+  }
+  | {
+    ok: true;
+    outcome: "grace_admitted";
+    requestId: string;
+    requestReference: string;
+    entitlement: EntitlementSnapshot;
+  }
   | { ok: true; outcome: "idempotent"; priorState: IdempotencyPriorState };
 
 type AdmissionFailure = {
   ok: false;
-  /** Stage 8 owns only §5.4 codes named in §6.1: `unauthenticated` | `quota_exhausted`. */
-  code: "unauthenticated" | "quota_exhausted" | "internal_error";
+  /**
+   * Stage 8: `unauthenticated` | `quota_exhausted` | `rate_limited` | `internal_error`.
+   * `rate_limited` is grace-cap refusal (budget remains; retry when the queue drains).
+   */
+  code: "unauthenticated" | "quota_exhausted" | "rate_limited" | "internal_error";
   periodReset?: string;
+  retryAfter?: number;
 };
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -87,6 +91,32 @@ export type PendingGraceAdmission = {
   graceRequestId: string;
   usage?: { tokens: number; cost: number };
   partial?: boolean;
+  reconcileAttempts?: number;
+  reconcileQueuedAtMs?: number;
+};
+
+export type GraceQueueStatus = "pending" | "reconciled" | "dropped";
+
+type GraceQueueRow = {
+  grace_request_id: string;
+  installation_id: string;
+  idempotency_key: string;
+  jti: string;
+  request_reference: string;
+  entitlement_json: string;
+  usage_tokens: number | null;
+  usage_cost: number | null;
+  partial: number | null;
+  queued_at: string;
+  reconcile_attempts: number;
+  reconcile_first_seen_at_ms: number | null;
+  status: string;
+};
+
+type JournaledRequestRow = {
+  request_id: string;
+  request_reference: string;
+  state: string;
 };
 
 type AdmissionDoTransportResult =
@@ -94,10 +124,10 @@ type AdmissionDoTransportResult =
   | { ok: false; reason: "unavailable" }
   | { ok: false; reason: "client_error" };
 
-/** Grace admissions consumed per installation during a DO unavailability episode. */
-const graceAdmissionsUsed = new Map<string, number>();
-
-const graceReconciliationQueue: PendingGraceAdmission[] = [];
+const GRACE_QUEUE_SELECT = `SELECT grace_request_id, installation_id, idempotency_key, jti,
+  request_reference, entitlement_json, usage_tokens, usage_cost, partial, queued_at,
+  reconcile_attempts, reconcile_first_seen_at_ms, status
+ FROM grace_admission_queue`;
 
 function parseAllowedCapabilities(entitlement: D1Row): string[] {
   const raw = entitlement.allowed_capabilities;
@@ -134,55 +164,247 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
   };
 }
 
-function resetGraceCounterOnDoSuccess(installationId: string): void {
-  graceAdmissionsUsed.delete(installationId);
+function mapJournalState(state: string): IdempotencyPriorState["state"] {
+  switch (state) {
+    case "Completed":
+      return "completed";
+    case "Failed":
+      return "failed";
+    case "Cancelled":
+      return "cancelled";
+    default:
+      return "admitted";
+  }
 }
 
-function queueGraceAdmission(entry: PendingGraceAdmission): void {
-  graceReconciliationQueue.push(entry);
+function mapGraceQueueRow(row: GraceQueueRow): PendingGraceAdmission {
+  const entry: PendingGraceAdmission = {
+    installationId: row.installation_id,
+    requestReference: row.request_reference,
+    jti: row.jti,
+    idempotencyKey: row.idempotency_key,
+    entitlement: JSON.parse(row.entitlement_json) as EntitlementSnapshot,
+    graceRequestId: row.grace_request_id,
+    reconcileAttempts: Number(row.reconcile_attempts ?? 0),
+    reconcileQueuedAtMs: row.reconcile_first_seen_at_ms ?? undefined,
+  };
+  if (row.usage_tokens != null) {
+    entry.usage = {
+      tokens: Number(row.usage_tokens),
+      cost: Number(row.usage_cost ?? 0),
+    };
+  }
+  if (row.partial != null) {
+    entry.partial = Number(row.partial) === 1;
+  }
+  return entry;
 }
 
-/** Re-queues a pending grace entry after a failed reconcile attempt. */
-export function requeueGraceAdmission(entry: PendingGraceAdmission): void {
-  graceReconciliationQueue.push(entry);
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
 
-/** Drains pending grace admissions for stage-15 reconciliation (§15 #3). */
-export function drainPendingGraceAdmissions(): PendingGraceAdmission[] {
-  return graceReconciliationQueue.splice(0);
+function graceAdmittedResult(entry: {
+  graceRequestId: string;
+  requestReference: string;
+  entitlement: EntitlementSnapshot;
+}): AdmissionResult {
+  return {
+    ok: true,
+    outcome: "grace_admitted",
+    requestId: entry.graceRequestId,
+    requestReference: entry.requestReference,
+    entitlement: entry.entitlement,
+  };
 }
 
-/** Non-destructive view of the grace reconciliation queue (tests / diagnostics). */
-export function peekPendingGraceAdmissions(): readonly PendingGraceAdmission[] {
-  return graceReconciliationQueue.slice();
+function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
+  return {
+    ok: true,
+    outcome: "idempotent",
+    priorState: {
+      requestReference: row.request_reference,
+      state: mapJournalState(row.state),
+      requestId: row.request_id,
+    },
+  };
+}
+
+async function selectGraceByKey(
+  db: D1Database,
+  installationId: string,
+  idempotencyKey: string,
+): Promise<GraceQueueRow | null> {
+  const row = await db
+    .prepare(`${GRACE_QUEUE_SELECT} WHERE installation_id = ? AND idempotency_key = ?`)
+    .bind(installationId, idempotencyKey)
+    .first<GraceQueueRow>();
+  return row ?? null;
+}
+
+async function selectAiRequestByKey(
+  db: D1Database,
+  installationId: string,
+  idempotencyKey: string,
+): Promise<JournaledRequestRow | null> {
+  const row = await db
+    .prepare(
+      `SELECT request_id, request_reference, state
+       FROM ai_request
+       WHERE installation_id = ? AND idempotency_key = ?
+       ORDER BY created_at ASC
+       LIMIT 1`,
+    )
+    .bind(installationId, idempotencyKey)
+    .first<JournaledRequestRow>();
+  return row ?? null;
+}
+
+async function isLedgerQuotaExhausted(
+  db: D1Database,
+  installationId: string,
+  entitlement: EntitlementSnapshot,
+): Promise<boolean> {
+  const periodStart = entitlement.period_bounds.period_start;
+  const periodEnd = entitlement.period_bounds.period_end;
+
+  const requestRow = await db
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM ai_request
+       WHERE installation_id = ?
+         AND created_at >= ?
+         AND created_at < ?`,
+    )
+    .bind(installationId, periodStart, periodEnd)
+    .first<{ count: number }>();
+  if (Number(requestRow?.count ?? 0) >= entitlement.request_quota) {
+    return true;
+  }
+
+  const usageRow = await db
+    .prepare(
+      `SELECT COALESCE(SUM(tokens), 0) AS tokens, COALESCE(SUM(cost), 0) AS cost
+       FROM usage_event
+       WHERE installation_id = ?
+         AND recorded_at >= ?
+         AND recorded_at < ?`,
+    )
+    .bind(installationId, periodStart, periodEnd)
+    .first<{ tokens: number; cost: number }>();
+  const tokensUsed = Number(usageRow?.tokens ?? 0);
+  const costUsed = Number(usageRow?.cost ?? 0);
+  return (
+    tokensUsed >= entitlement.token_cost_budget.token_budget ||
+    costUsed >= entitlement.token_cost_budget.cost_budget
+  );
+}
+
+function existingGraceOutcome(row: GraceQueueRow): AdmissionResult {
+  if (row.status === "pending") {
+    return graceAdmittedResult({
+      graceRequestId: row.grace_request_id,
+      requestReference: row.request_reference,
+      entitlement: JSON.parse(row.entitlement_json) as EntitlementSnapshot,
+    });
+  }
+  return {
+    ok: true,
+    outcome: "idempotent",
+    priorState: {
+      requestReference: row.request_reference,
+      state: "completed",
+      requestId: row.grace_request_id,
+    },
+  };
+}
+
+/** Lists pending D1 grace rows for cron reconciliation (all isolates). */
+export async function listPendingGraceAdmissions(
+  db: D1Database,
+): Promise<PendingGraceAdmission[]> {
+  const result = await db
+    .prepare(`${GRACE_QUEUE_SELECT} WHERE status = 'pending' ORDER BY queued_at ASC`)
+    .all<GraceQueueRow>();
+  return (result.results ?? []).map(mapGraceQueueRow);
+}
+
+export async function markGraceAdmissionStatus(
+  db: D1Database,
+  graceRequestId: string,
+  status: Extract<GraceQueueStatus, "reconciled" | "dropped">,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE grace_admission_queue SET status = ? WHERE grace_request_id = ?`,
+    )
+    .bind(status, graceRequestId)
+    .run();
+}
+
+/** Persists a failed reconcile attempt so the row stays pending for the next cron. */
+export async function stampGraceReconcileRetry(
+  db: D1Database,
+  entry: PendingGraceAdmission,
+  nowMs: number,
+): Promise<void> {
+  const attempts = (entry.reconcileAttempts ?? 0) + 1;
+  const firstSeen = entry.reconcileQueuedAtMs ?? nowMs;
+  await db
+    .prepare(
+      `UPDATE grace_admission_queue
+       SET reconcile_attempts = ?, reconcile_first_seen_at_ms = ?
+       WHERE grace_request_id = ?`,
+    )
+    .bind(attempts, firstSeen, entry.graceRequestId)
+    .run();
 }
 
 /**
- * Attaches usage to a pending grace entry before reconcile (stage-15 path for
- * grace-admitted requests). Matches by `graceRequestId` or `requestReference`.
+ * Test helper — no longer drains isolate memory. Clearing D1
+ * `grace_admission_queue` is the durable reset.
  */
-export function attachGraceUsage(
+export function drainPendingGraceAdmissions(): PendingGraceAdmission[] {
+  return [];
+}
+
+/** Non-destructive view of pending D1 grace rows (tests / diagnostics). */
+export async function peekPendingGraceAdmissions(
+  db: D1Database,
+): Promise<readonly PendingGraceAdmission[]> {
+  return listPendingGraceAdmissions(db);
+}
+
+/**
+ * Persists usage onto a pending D1 grace row before reconcile.
+ * Matches by `graceRequestId` or `requestReference`.
+ */
+export async function attachGraceUsage(
+  db: D1Database,
   graceRequestIdOrReference: string,
   usage: { tokens: number; cost: number },
   partial = false,
-): boolean {
-  const entry = graceReconciliationQueue.find(
-    (candidate) =>
-      candidate.graceRequestId === graceRequestIdOrReference ||
-      candidate.requestReference === graceRequestIdOrReference,
-  );
-  if (!entry) {
-    return false;
-  }
-  entry.usage = usage;
-  entry.partial = partial;
-  return true;
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE grace_admission_queue
+       SET usage_tokens = ?, usage_cost = ?, partial = ?
+       WHERE status = 'pending'
+         AND (grace_request_id = ? OR request_reference = ?)`,
+    )
+    .bind(
+      usage.tokens,
+      usage.cost,
+      partial ? 1 : 0,
+      graceRequestIdOrReference,
+      graceRequestIdOrReference,
+    )
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
-/** Resets the in-isolate grace cap for an installation after reconciliation (Open Decision 3). */
-export function resetGraceAdmissionCounter(installationId: string): void {
-  graceAdmissionsUsed.delete(installationId);
-}
+/** No-op: the durable cap is `COUNT(*)` of pending D1 rows, not an isolate Map. */
+export function resetGraceAdmissionCounter(_installationId: string): void { }
 
 async function callAdmissionDo(
   bindings: AdmissionBindings,
@@ -216,7 +438,7 @@ async function callAdmissionDo(
 function mapDoOutcome(
   body: AdmissionResponse,
   installationId: string,
-  entitlementPeriodEnd: string,
+  entitlement: EntitlementSnapshot,
 ): AdmissionResult {
   switch (body.outcome) {
     case "admitted":
@@ -224,6 +446,7 @@ function mapDoOutcome(
         ok: true,
         outcome: "admitted",
         requestId: body.requestId,
+        entitlement,
         ...(body.degraded ? { degraded: true } : {}),
       };
     case "replay":
@@ -255,47 +478,99 @@ function mapDoOutcome(
       return {
         ok: false,
         code: "quota_exhausted",
-        periodReset: entitlementPeriodEnd,
+        periodReset: entitlement.period_bounds.period_end,
       };
     default:
       return { ok: false, code: "internal_error" };
   }
 }
 
-function admitUnderGrace(
+async function admitUnderGrace(
+  db: D1Database,
   principal: Principal,
   idempotencyKey: string,
   requestReference: string,
   entitlement: EntitlementSnapshot,
-): AdmissionResult {
+): Promise<AdmissionResult> {
   const installationId = principal.installationId;
-  const used = graceAdmissionsUsed.get(installationId) ?? 0;
-  if (used >= GRACE_ADMISSION_CAP) {
+
+  const journaled = await selectAiRequestByKey(db, installationId, idempotencyKey);
+  if (journaled) {
+    return idempotentFromJournal(journaled);
+  }
+
+  const existing = await selectGraceByKey(db, installationId, idempotencyKey);
+  if (existing) {
+    return existingGraceOutcome(existing);
+  }
+
+  if (await isLedgerQuotaExhausted(db, installationId, entitlement)) {
     recordGuardRejection({
       error_code: "quota_exhausted",
       installation_id: installationId,
     });
-    return { ok: false, code: "quota_exhausted" };
+    return {
+      ok: false,
+      code: "quota_exhausted",
+      periodReset: entitlement.period_bounds.period_end,
+    };
   }
 
-  graceAdmissionsUsed.set(installationId, used + 1);
   const graceRequestId = crypto.randomUUID();
+  const queuedAt = new Date().toISOString();
 
-  queueGraceAdmission({
-    installationId: principal.installationId,
-    requestReference,
-    jti: principal.jti,
-    idempotencyKey,
-    entitlement,
-    graceRequestId,
-  });
+  try {
+    const inserted = await db
+      .prepare(
+        `INSERT INTO grace_admission_queue (
+           grace_request_id, installation_id, idempotency_key, jti, request_reference,
+           entitlement_json, queued_at, reconcile_attempts, status
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, 0, 'pending'
+         WHERE (
+           SELECT COUNT(*) FROM grace_admission_queue
+           WHERE installation_id = ? AND status = 'pending'
+         ) < ?`,
+      )
+      .bind(
+        graceRequestId,
+        installationId,
+        idempotencyKey,
+        principal.jti,
+        requestReference,
+        JSON.stringify(entitlement),
+        queuedAt,
+        installationId,
+        GRACE_ADMISSION_CAP,
+      )
+      .run();
 
-  return {
-    ok: true,
-    outcome: "grace_admitted",
-    requestId: graceRequestId,
-    requestReference,
-  };
+    if ((inserted.meta.changes ?? 0) === 0) {
+      const raced = await selectGraceByKey(db, installationId, idempotencyKey);
+      if (raced) {
+        return existingGraceOutcome(raced);
+      }
+      recordGuardRejection({
+        error_code: "rate_limited",
+        installation_id: installationId,
+      });
+      return {
+        ok: false,
+        code: "rate_limited",
+        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+      };
+    }
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const raced = await selectGraceByKey(db, installationId, idempotencyKey);
+      if (raced) {
+        return existingGraceOutcome(raced);
+      }
+    }
+    throw error;
+  }
+
+  return graceAdmittedResult({ graceRequestId, requestReference, entitlement });
 }
 
 export async function runAdmission(
@@ -365,7 +640,8 @@ export async function runAdmission(
       logger.info("Quota DO unavailable — admitting under grace", {
         installation_id: principal.installationId,
       });
-      const graceResult = admitUnderGrace(
+      const graceResult = await admitUnderGrace(
+        bindings.DB,
         principal,
         idempotencyKey,
         requestReference,
@@ -398,11 +674,10 @@ export async function runAdmission(
     return { ok: false, code: "internal_error" };
   }
 
-  resetGraceCounterOnDoSuccess(principal.installationId);
   const result = mapDoOutcome(
     transport.body,
     principal.installationId,
-    entitlement.period_bounds.period_end,
+    entitlement,
   );
   if (result.ok) {
     logger.info("Admission DO outcome", {

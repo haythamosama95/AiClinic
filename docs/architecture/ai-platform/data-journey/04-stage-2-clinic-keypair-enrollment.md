@@ -52,10 +52,12 @@ The clinic prints its own **signing stamp** (private key) and sends a **stamp sp
 
 
 **About** `kid`**:** `installation_id` identifies *which clinic*; `kid` identifies *which signing key* for that
-clinic. Steady state is one active key; multiple keys exist only during **rotation overlap** — a new
-keypair gets a new `kid` while the old row remains so in-flight AATs (short-lived, ~5 min) still verify.
-The platform selects the public key by AAT header `kid` (with payload `iss`). After overlap, the old
-key is **revoked** and AATs bearing that `kid` are rejected regardless of `exp`.
+clinic. Steady state is one active key. Clinic keystore rotation mints a new `kid`; platform
+`POST …/rotate` then **immediately** stamps `revoked_at` on prior D1 keys in the same batch as the
+new-key insert ([§7 in Stage 3](05-stage-3-platform-installation-enrollment.md#7-key-rotation)).
+In-flight AATs signed with the old `kid` fail identity as soon as rotate returns — there is no
+platform dual-key overlap. Operators mint new AATs with the new `kid`. The platform selects the
+public key by AAT header `kid` (with payload `iss`). Revoked keys are rejected regardless of `exp`.
 
 **Postgres writes (**`ai_internal.installation_keys`**):**
 

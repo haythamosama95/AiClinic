@@ -1,11 +1,15 @@
 import {
-  drainPendingGraceAdmissions,
-  requeueGraceAdmission,
+  attachGraceUsage,
+  listPendingGraceAdmissions,
+  markGraceAdmissionStatus,
+  stampGraceReconcileRetry,
   type PendingGraceAdmission,
 } from "../admission";
 import { noopLogger, type Logger } from "../logger";
 import type {
   AdmissionResponse,
+  CreditIdempotencyState,
+  EntitlementSnapshot,
   PeriodCounters,
 } from "../quota-do/index";
 
@@ -23,10 +27,13 @@ export type CreditInput = {
   requestReference: string;
   usage: { tokens: number; cost: number };
   partial: boolean;
+  idempotencyState?: CreditIdempotencyState;
+  entitlement?: EntitlementSnapshot;
 };
 
 export type CreditBindings = {
   DO: DurableObjectNamespace;
+  DB?: D1Database;
 };
 
 export type CreditResult =
@@ -107,17 +114,6 @@ function journalGraceDrop(
   logger[level]("grace_reconcile_dropped", record);
 }
 
-function stampForRequeue(
-  entry: TrackedGraceAdmission,
-  nowMs: number,
-): TrackedGraceAdmission {
-  return {
-    ...entry,
-    reconcileAttempts: (entry.reconcileAttempts ?? 0) + 1,
-    reconcileQueuedAtMs: entry.reconcileQueuedAtMs ?? nowMs,
-  };
-}
-
 async function invokeAdmissionRpc(
   entry: PendingGraceAdmission,
   bindings: CreditBindings,
@@ -160,6 +156,8 @@ async function invokeCreditRpc(
   usage: { tokens: number; cost: number },
   partial: boolean,
   bindings: CreditBindings,
+  idempotencyState?: CreditIdempotencyState,
+  entitlement?: EntitlementSnapshot,
 ): Promise<CreditRpcOutcome> {
   const id = bindings.DO.idFromName(installationId);
   const stub = bindings.DO.get(id);
@@ -176,6 +174,8 @@ async function invokeCreditRpc(
         requestReference,
         usage,
         partial,
+        ...(idempotencyState !== undefined ? { idempotencyState } : {}),
+        ...(entitlement !== undefined ? { entitlement } : {}),
       }),
     });
   } catch {
@@ -201,6 +201,23 @@ export async function creditUsage(
   input: CreditInput,
   bindings: CreditBindings,
 ): Promise<CreditResult> {
+  if (bindings.DB) {
+    const attached = await attachGraceUsage(
+      bindings.DB,
+      input.requestId,
+      input.usage,
+      input.partial,
+    );
+    if (!attached) {
+      await attachGraceUsage(
+        bindings.DB,
+        input.requestReference,
+        input.usage,
+        input.partial,
+      );
+    }
+  }
+
   const outcome = await invokeCreditRpc(
     input.installationId,
     input.requestId,
@@ -208,6 +225,8 @@ export async function creditUsage(
     input.usage,
     input.partial,
     bindings,
+    input.idempotencyState,
+    input.entitlement,
   );
 
   if (outcome.ok) {
@@ -239,7 +258,11 @@ export async function reconcileGraceUsage(
   logger: Logger = noopLogger,
 ): Promise<ReconcileGraceResult> {
   const nowMs = ctx?.now ?? Date.now();
-  const pending = drainPendingGraceAdmissions();
+  if (!bindings.DB) {
+    logger.info("grace_reconcile_batch_start", { pending_count: 0 });
+    return { reconciled: 0 };
+  }
+  const pending = await listPendingGraceAdmissions(bindings.DB);
   logger.info("grace_reconcile_batch_start", { pending_count: pending.length });
   let reconciled = 0;
 
@@ -253,35 +276,39 @@ export async function reconcileGraceUsage(
 
     if (nowMs - entry.reconcileQueuedAtMs! > GRACE_RECONCILE_TTL_MS) {
       journalGraceDrop(entry, "expired", nowMs, logger);
+      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
       continue;
     }
     if (entry.reconcileAttempts! >= GRACE_RECONCILE_MAX_ATTEMPTS) {
       journalGraceDrop(entry, "max_attempts", nowMs, logger);
+      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
       continue;
     }
 
     const admission = await invokeAdmissionRpc(entry, bindings);
     if (!admission.ok) {
-      requeueGraceAdmission(stampForRequeue(entry, nowMs));
+      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
       continue;
     }
 
     const body = admission.body;
     if (body.kind !== "admission") {
-      requeueGraceAdmission(stampForRequeue(entry, nowMs));
+      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
       continue;
     }
 
     if (body.outcome === "idempotent") {
       journalGraceDrop(entry, "settled_by_another_path_idempotent", nowMs, logger);
+      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
       continue;
     }
     if (body.outcome === "replay") {
       journalGraceDrop(entry, "settled_by_another_path_replay", nowMs, logger);
+      await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
       continue;
     }
     if (body.outcome !== "admitted") {
-      requeueGraceAdmission(stampForRequeue(entry, nowMs));
+      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
       continue;
     }
 
@@ -294,17 +321,21 @@ export async function reconcileGraceUsage(
       entry.usage ?? { tokens: 0, cost: 0 },
       entry.partial ?? false,
       bindings,
+      undefined,
+      entry.entitlement,
     );
 
     if (!credit.ok) {
       if (credit.reason === "unknown_request") {
         journalGraceDrop(entry, "settled_by_another_path_unknown_request", nowMs, logger);
+        await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "dropped");
         continue;
       }
-      requeueGraceAdmission(stampForRequeue(entry, nowMs));
+      await stampGraceReconcileRetry(bindings.DB, entry, nowMs);
       continue;
     }
 
+    await markGraceAdmissionStatus(bindings.DB, entry.graceRequestId, "reconciled");
     reconciled += 1;
   }
 

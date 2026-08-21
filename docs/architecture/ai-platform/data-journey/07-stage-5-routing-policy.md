@@ -49,7 +49,7 @@
 
 Routing decides **which AI provider and model** handle a request. Three artifacts link together:
 
-1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard@v1`) plus request-side needs (languages, latency class, cost ceiling).
+1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard@v1`) plus request-side needs (languages, latency class, token ceiling).
 2. **D1 `routing_policy` row** — resolves that ref to an active version and an R2 `content_pointer`; tracks lifecycle (published, canary, active, superseded).
 3. **R2 routing policy document** — the full playbook at that pointer: ordered `rules[]` with `match` clauses and provider `targets`.
 
@@ -128,8 +128,7 @@ Checked-in file: `ai-platform/manifests/published/clinic.visit_summary@1.0.0.jso
       "key": "visit.chief_complaint@v1",
       "required": true,
       "shapeRef": "visit.chief_complaint@v1",
-      "maxSize": 4096,
-      "freshnessHint": "session"
+      "maxSize": 4096
     }
   ],
   "Prompt binding": {
@@ -157,7 +156,7 @@ Checked-in file: `ai-platform/manifests/published/clinic.visit_summary@1.0.0.jso
   "Economics": {
     "maxInputTokens": 8000,
     "maxOutputTokens": 1024,
-    "perRequestCostCeiling": 9024,
+    "perRequestTokenCeiling": 9024,
     "quotaWeight": 1
   },
   "Governance": {
@@ -186,10 +185,10 @@ All ten groups are **group required**. Keys marked **field required** must appea
 
 | Field | Presence | Type | Meaning | Routing |
 | ----- | -------- | ---- | ------- | ------- |
-| `requiredCapabilityScope` | field required | `string` | Staff scope token required on AAT | not routing (entitlement gate) |
+| `requiredCapabilityScope` | field required | `string` | Staff scope token required on AAT | not routing (enforced at capability resolve / guard stage 5) |
 | `minimumPlanTier` | field required | `string` | Lowest plan that may invoke | not routing (entitlement gate) |
-| `allowedStaffRoles` | field required | `string[]` | Roles permitted (informational/enforcement elsewhere) | not routing |
-| `killSwitchFlag` | field required | `boolean` | Capability-level kill hint | not routing |
+| `allowedStaffRoles` | field required | `string[]` | Roles permitted; enforced at capability resolve / guard stage 5 when non-empty | not routing |
+| `killSwitchFlag` | field required | `boolean` | Capability-level kill; `=== true` at capability resolve / guard stage 5 → `capability_disabled` | not routing |
 
 #### 3.4.3 `Interaction`
 
@@ -226,7 +225,8 @@ Entry fields (single-shot array items):
 | `required` | field required | `boolean` | Must appear in invoke `context` | not routing |
 | `shapeRef` | field required | `string` | Validator shape reference | not routing |
 | `maxSize` | field required | number | Max serialized bytes for key | not routing |
-| `freshnessHint` | field required | `string` | Freshness metadata for ops | not routing |
+
+**Schema note:** there is no `freshnessHint`. The loader rejects it as an extra key. Stale context is accepted by design (architecture §6.7.3); containment is the journal of exact context plus the advisory-output rule, not a per-key freshness gate.
 
 #### 3.4.6 `Prompt binding`
 
@@ -269,10 +269,12 @@ Nested **`requiredProviderFeatures`** (conventional keys; loader does not enforc
 
 | Field | Presence | Type | Meaning | Routing |
 | ----- | -------- | ---- | ------- | ------- |
-| `maxInputTokens` | field required | number | Token budget for input side | not routing (cost pre-flight) |
+| `maxInputTokens` | field required | number | Token budget for input side | not routing (token pre-flight) |
 | `maxOutputTokens` | field required | number | Token budget for output side | not routing |
-| `perRequestCostCeiling` | field required | number | Combined token ceiling per request | **routing: cost** (architectural; maps to cost class when wired) |
+| `perRequestTokenCeiling` | field required | number | Combined **token** ceiling per request: `estimatedInputTokens + maxOutputTokens` must not exceed it. Token-denominated; the preflight never converts to currency (§13.6.2). | **routing: cost** (architectural; maps to cost class when wired) |
 | `quotaWeight` | field required | number | Weight for quota/admission accounting | not routing |
+
+**Schema note:** the canonical Economics field is `perRequestTokenCeiling`. Previously published manifests used `perRequestCostCeiling` for the same token comparison. The loader (`ai-platform/src/manifest/index.ts`) still accepts that legacy key as a compatibility alias and normalizes it to `perRequestTokenCeiling`. Capability manifests do not carry a numeric `schema_version` header; this is a field-name revision of the Economics group. Public name going forward is tokens, not cost.
 
 #### 3.4.10 `Governance`
 
@@ -293,7 +295,7 @@ After rule selection, the router calls `mergeRequirementFloors(manifest requirem
 | `languages` | **Union** — rule can add languages, not remove manifest ones |
 | `latency_class` | From manifest only; compared to each target's `features.latency_class` |
 
-See [§4.4](#44-field-by-field-reference) `rules[].requires` and [§4.5](#45-hardcoded-ignored-and-wiring-gaps) for wiring gaps (`manifestCostClass`, `routingTier`, entitlement cap).
+See [§4.4](#44-field-by-field-reference) `rules[].requires` and [§4.5](#45-hardcoded-ignored-and-wiring-gaps) for remaining wiring gaps (`manifestCostClass`, entitlement cap). `routingTier` is live: invoke uses `routingTierFromAdmission` so `match.tiers` agrees with the journaled `ai_request.routing_tier`.
 
 ## 4. R2 document — every field
 
@@ -310,10 +312,13 @@ column stores this key. The config cache loads the JSON at preload time and atta
 
 ### 4.2 Complete document specimen
 
-The specimen below shows **every field the router understands**, including every optional key.
+The specimen below shows **every field the router understands**, including every optional key
+and schema-retained keys (`defaults.cost_class`, `defaults.max_parallel_attempts`,
+`rules[].max_parallel_attempts`) that existing R2 documents still carry but the router ignores.
 Placeholders in angle brackets must be replaced with real values. In production you normally use
 **one** override mechanism per installation (not all three at once); the specimen stacks them so
-nothing is hidden.
+nothing is hidden. `"interactive"` in `match.latency_classes` and target `features.latency_class`
+is an **illustrative** example, not the checked-in production fixture (that fixture uses `"standard"`).
 
 ```json
 {
@@ -432,7 +437,7 @@ nothing is hidden.
 | `policy_version` | always present |
 | `defaults` | always present |
 | `defaults.cost_class` | schema-retained |
-| `defaults.max_parallel_attempts` | always present |
+| `defaults.max_parallel_attempts` | schema-retained |
 | `rules` | always present (non-empty) |
 | `rules[].rule_id` | always present |
 | `rules[].match` | always present (may be `{}`) |
@@ -451,13 +456,13 @@ nothing is hidden.
 | `rules[].targets[].model_id` | always present |
 | `rules[].targets[].features` | always present |
 | `rules[].targets[].features.structured_output` | always present |
-| `rules[].targets[].features.min_context_window` | always present |
-| `rules[].targets[].features.languages` | always present |
+| `rules[].targets[].features.min_context_window` | always present in a well-formed document; missing/non-numeric at request time → `feature_unsupported` |
+| `rules[].targets[].features.languages` | always present in a well-formed document; missing/non-array at request time → `feature_unsupported` |
 | `rules[].targets[].features.latency_class` | always present |
-| `rules[].targets[].features.cost_class` | always present |
+| `rules[].targets[].features.cost_class` | always present in a well-formed document; missing/unknown at request time → `feature_unsupported` |
 | `rules[].targets[].max_attempts` | always present |
 | `rules[].targets[].timeout_ms` | always present |
-| `rules[].max_parallel_attempts` | optional key |
+| `rules[].max_parallel_attempts` | schema-retained |
 | `overrides` | always present (may be `[]`) |
 | `overrides[].installation_id` | always present on each override object |
 | `overrides[].exclude_providers` | optional key |
@@ -466,13 +471,22 @@ nothing is hidden.
 | `overrides[].pin_target.model_id` | required when `pin_target` is present |
 | `overrides[].force_cost_class` | optional key |
 
-> **`defaults.cost_class` — safe to remove.** The router never reads this field; deleting it from
-> the TypeScript type, test fixtures, ops seed, and docs would not change routing behavior. Existing
-> R2 objects that still include it need no migration (extra keys are ignored). A coordinated cleanup
-> is required — not a one-line router change.
+> **`defaults.cost_class` and `defaults.max_parallel_attempts` — safe to remove.** The router
+> never reads either field; deleting them from the TypeScript type, test fixtures, ops seed, and
+> docs would not change routing behavior. Existing R2 objects that still include them need no
+> migration (extra keys are ignored). A coordinated cleanup is required — not a one-line router
+> change. `max_parallel_attempts` is also omitted from `RoutingDecision` and is not persisted.
 
 Checked-in production fixture (catch-all only, no overrides):
 `ai-platform/control/routing-policy/platform-default/1.json`.
+On-disk directory name is historical; the document identity is `policy_id: "standard"` /
+`policy_version: 1`. Both targets advertise `latency_class: "standard"` so they match published
+`clinic.visit_summary@1.0.0` (`routingPolicyRef: "routing/standard@v1"`, `latencyClass: "standard"`).
+Publish writes R2 at `control/routing-policy/{policyId}/{version}.json` from the URL, not the repo path.
+
+Sibling platform config (not part of this R2 document, never client-visible): the versioned
+price table `ai-platform/control/pricing/platform-default/1.json` is bundled into the Worker and
+used only after the provider responds. Preflight stays token-only. See [Stage 11](13-stage-11-terminal-settlement.md).
 
 ### 4.3 Document overview — what each block is for
 
@@ -491,7 +505,7 @@ flowchart TD
 | Block | One-line responsibility | Router step |
 | ----- | ----------------------- | ----------- |
 | **Identity header** (`schema_version`, `policy_id`, `policy_version`) | Proves this JSON is the playbook the D1 row points at | `validatePolicyDocument` — reject wrong format or identity mismatch |
-| **`defaults`** | Policy-wide fallbacks when a rule omits its own parallelism cap | Used only for `max_parallel_attempts` fallback (then clamped 1–6) |
+| **`defaults`** | Schema-retained placeholders (`cost_class`, `max_parallel_attempts`) | **Ignored at runtime** — neither field is read |
 | **`rules[]`** | The routing logic: *when* (match) → *minimum needs* (requires) → *try these providers in order* (targets) | `.find()` first matching rule; last rule must be catch-all |
 | **`overrides[]`** | Per-clinic exceptions after a rule is chosen | Narrow the matched rule's target list; optionally cap cost class |
 
@@ -503,8 +517,8 @@ flowchart TD
 4. Compute **effective cost class** from manifest ceiling + entitlement cap + optional `force_cost_class` (not from `defaults.cost_class`).
 5. Walk `rules[]` in order; first rule whose `match` passes is selected.
 6. Apply installation override (`exclude_providers`, `pin_target`) to that rule's `targets`.
-7. Merge `requires` with manifest requirements; filter targets by features, kill switches, and cost class.
-8. Emit `routing_decision` with chain ordinals, exclusions, and `max_parallel_attempts`.
+7. Merge `requires` with manifest requirements; filter targets by features, kill switches, and cost class. Active `provider:<id>` kill switches arrive as `RouterContext.killedProviderIds` (collected at guard stage 5 from the policy's named providers). Those targets are excluded with `reason_code: kill_switch`; remaining targets stay in document order so traffic fails over. A provider kill switch does not 503 the capability.
+8. Emit `routing_decision` with chain ordinals and exclusions (no `max_parallel_attempts`). Persist that JSON onto the existing `ai_request` row (`persistRoutingDecision`) so support can answer "why did this request go to model X?" from the ledger.
 
 The manifest supplies the **request-side** inputs (`capabilityId`, `routingTier`, language, context
 window, latency class). The document supplies the **provider-side** chain. Neither names the other
@@ -527,7 +541,7 @@ Each field below states what it holds, how the router uses it, and how it fits t
 | Field | Type | Role in the large picture |
 | ----- | ---- | ------------------------- |
 | `defaults.cost_class` | `economy` \| `standard` \| `premium` | **Schema-retained only** — present for [§4.3.7](../01-ai-platform.md#437-provider-router-and-policy-engine) table parity. `resolveEffectiveCostClass` never reads it. See [§4.5](#45-hardcoded-ignored-and-wiring-gaps). |
-| `defaults.max_parallel_attempts` | `integer` (1–6) | Default cap on how many targets from one rule may run in parallel. Used when `rules[].max_parallel_attempts` is omitted. Clamped to `[1, 6]` (`OUTGOING_CONNECTION_CAP`). Feeds `routing_decision.max_parallel_attempts`. |
+| `defaults.max_parallel_attempts` | `integer` | **Schema-retained only** — ignored. Invocation walks `chain[]` sequentially; parallel racing is not implemented (token spend is the dominant cost, [§13.6](../01-ai-platform.md#136-cost-and-performance-budget)). Not copied onto `routing_decision`. |
 
 #### 4.4.3 `rules[]` — ordered routing rules
 
@@ -537,11 +551,11 @@ a catch-all (empty `match` or all match lists empty/absent) — enforced at rout
 
 | Field | Type | Role in the large picture |
 | ----- | ---- | ------------------------- |
-| `rules[].rule_id` | `string` | Stable ops label (e.g. `catch-all`). Copied to `routing_decision.rule_id` and the journal so support can answer "which rule fired?" Uniqueness is not enforced at runtime. |
+| `rules[].rule_id` | `string` | Stable ops label (e.g. `catch-all`). Copied to `routing_decision.rule_id` and persisted on `ai_request.routing_decision` so support can answer "which rule fired?" Uniqueness is not enforced at runtime. |
 | `rules[].match` | object | **When** this rule applies. See match clauses below. Empty object `{}` = wildcard (matches any request). |
 | `rules[].requires` | object | **Minimum capability floor** merged with manifest requirements before target filtering. See requires fields below. |
-| `rules[].targets` | array | **Ordered fallback chain** for this rule. Invocation walks ordinals until success or exhaustion. May be empty after filtering → `provider_unavailable`. |
-| `rules[].max_parallel_attempts` | `integer` (1–6), optional | Per-rule parallelism override. Omitted → `defaults.max_parallel_attempts`. |
+| `rules[].targets` | array | **Ordered fallback chain** for this rule. Invocation walks ordinals **sequentially** until success or exhaustion. May be empty after filtering → `provider_unavailable`. |
+| `rules[].max_parallel_attempts` | `integer`, optional | **Schema-retained only** — ignored. Omitted or present, the walk stays sequential. Not copied onto `routing_decision`. |
 
 ##### 4.4.3.1 `rules[].match` — request filters
 
@@ -553,7 +567,7 @@ that dimension. When a clause is **non-empty**, the request must satisfy it.
 | `match.capability_ids` | `string[]`, optional | Allow-list of capability ids (e.g. `clinic.visit_summary`). Request `capabilityId` must be in the list. Wildcard when omitted/`[]`. |
 | `match.installation_ids` | `string[]`, optional | Allow-list of clinic installation UUIDs. Request `installationId` must be in the list. Enables per-clinic routing rules without a separate document. |
 | `match.cost_classes` | `CostClass[]`, optional | Allow-list of **effective** cost classes (computed before rule matching). Lets you write different target chains for economy vs premium effective tiers. |
-| `match.tiers` | `"standard"` \| `"degraded"`[], optional | Allow-list of routing tiers. `degraded` is set server-side when quota soft threshold is crossed — never sent by the client. Enables separate degraded-tier chains (see soft-threshold tests). |
+| `match.tiers` | `"standard"` \| `"degraded"`[], optional | Allow-list of routing tiers. `degraded` is set server-side when quota soft threshold is crossed — never sent by the client (ingress ignores `routing_tier` / `degraded` / `degraded_notice` body keys via empty `ADAPTER_ROUTING_BODY_FIELDS`). Enables separate degraded-tier chains (see soft-threshold tests). |
 | `match.languages` | `string[]`, optional | Allow-list tested against manifest languages. Request must need **every** language in the rule's list (subset check via `matchAllLanguages`). |
 | `match.latency_classes` | `string[]`, optional | Allow-list of latency classes. Compared to manifest `Routing.latencyClass` (e.g. `"interactive"`). |
 
@@ -586,10 +600,12 @@ targets to resolve wired providers (`capability/index.ts`); other target fields 
 | Field | Type | Role in the large picture |
 | ----- | ---- | ------------------------- |
 | `features.structured_output` | `boolean` | Whether this model supports structured/JSON output. Excluded with `feature_unsupported` when merged requirements demand structured output. |
-| `features.min_context_window` | `integer` | Largest context window this model claims. Must be ≥ merged `min_context_window` or excluded (`context_window_too_small`). |
-| `features.languages` | `string[]` | Languages this target supports. Must include **every** merged required language. |
-| `features.latency_class` | `string` | Must **equal** manifest `latency_class` exactly. Mismatch → `feature_unsupported` (no distinct latency `reason_code` in the frozen enum). |
-| `features.cost_class` | `economy` \| `standard` \| `premium` | Target's price tier. Excluded with `cost_class_excluded` when tier is **higher** than `effective_cost_class`. Order: economy < standard < premium. |
+| `features.min_context_window` | `integer` | Largest context window this model claims. Must be a finite number ≥ merged `min_context_window` or excluded (`context_window_too_small`). Missing or non-numeric → `feature_unsupported` (fail closed). |
+| `features.languages` | `string[]` | Languages this target supports. Must be an array that includes **every** merged required language (`language_unsupported` if not). Missing or non-array → `feature_unsupported` (fail closed; does not throw). |
+| `features.latency_class` | `string` | Must **equal** manifest `latency_class` exactly. Mismatch or missing → `feature_unsupported` (no distinct latency `reason_code` in the frozen enum). |
+| `features.cost_class` | `economy` \| `standard` \| `premium` | Target's price tier. A known class **higher** than `effective_cost_class` is excluded (`cost_class_excluded`). Missing or unknown (e.g. typo `"standrd"`) → `feature_unsupported` (fail closed). Order: economy < standard < premium. |
+
+**Malformed target features fail closed.** Publish still does not fully validate target shape ([§4.5](#45-hardcoded-ignored-and-wiring-gaps)); `filterTargets` is the request-path defense. A missing or unknown `min_context_window`, `cost_class`, or `languages` excludes **that** target with `feature_unsupported`. A well-formed sibling stays in the chain. Declared-but-insufficient values keep their distinct codes (`context_window_too_small`, `language_unsupported`, `cost_class_excluded`). Latency already compared with exact `!==`.
 
 #### 4.4.4 `overrides[]` — per-installation exceptions
 
@@ -613,7 +629,7 @@ filtering. An override may **narrow** the chain but never widen it beyond the ma
 | ----- | ----- | ---- |
 | `defaults.cost_class` | **No** | Schema placeholder; see [§4.5](#45-hardcoded-ignored-and-wiring-gaps) |
 | `rules[].match.cost_classes` | **Yes** | Rule filter on effective cost class |
-| `targets[].features.cost_class` | **Yes** | Per-model tier; excluded if above effective ceiling |
+| `targets[].features.cost_class` | **Yes** | Per-model tier; a known class above the effective ceiling is `cost_class_excluded`; missing/unknown is `feature_unsupported` |
 
 Effective cost class = **minimum** of manifest ceiling, entitlement cap, and optional
 `force_cost_class`. Client never sends cost class ([§3.4](#34-field-by-field-reference-every-group) three seams).
@@ -630,17 +646,18 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | Item | Status | Why | Action needed |
 | ---- | ------ | --- | ------------- |
 | `defaults.cost_class` | **Ignored at runtime** | Retained for [§4.3.7](../01-ai-platform.md#437-provider-router-and-policy-engine) document-shape parity; `resolveEffectiveCostClass` reads only the three-source minimum | None — intentional. Do not rely on this field for routing. |
+| `defaults.max_parallel_attempts` / `rules[].max_parallel_attempts` | **Ignored at runtime** | Parallel racing is not implemented; `runInvocation` walks `chain[]` sequentially. The field is not on `RoutingDecision` and is not persisted | None — intentional. Do not rely on this field. |
 | `manifestCostClass` in `worker.ts` | **Hardcoded `"standard"`** | Manifest Routing group has a cost-class field in architecture ([§4.3.7](../01-ai-platform.md#437-provider-router-and-policy-engine)) but invoke path does not load it yet | **Yes** — wire from `manifest.Routing` cost class |
 | `entitlementMaxCostClass` in `worker.ts` | **Hardcoded `"premium"`** | Entitlement `max_cost_class` is architectural ([§4.3.7](../01-ai-platform.md#437-provider-router-and-policy-engine)) but not a D1 column today | **Yes** — load from entitlement row when column exists |
-| `routingTier` in `worker.ts` | **Hardcoded `"standard"`** | Degraded tier is set by quota check upstream; invoke preload path does not yet pass the real tier | **Yes** — pass `routing_tier` from request context after quota stage |
+| `routingTier` in `worker.ts` | **From admission** | `runFreshEventSource` passes `routingTierFromAdmission(...)` (soft threshold `degraded: true`, or grace) into `selectCandidateChain` — same value the guard journals as `ai_request.routing_tier` | None — closed |
 | `routing_decision.required_features` | **Request requirements only** | `selectCandidateChain` sets this to `context.requirements`, not the merged rule floor — filtering uses merged floor but journal shows manifest-only | Optional — journal accuracy improvement |
-| Latency mismatch `reason_code` | **Mapped to `feature_unsupported`** | Frozen enum has no `latency_unsupported` code (`router/index.ts` line 511) | None unless contract is extended |
-| `clampParallelAttempts` | **Silent clamp** | Values `< 1` → `1`; values `> 6` → `6` | None — platform cap by design |
-| Publish-time validation | **Minimal** | `handleRoutingPolicyPublish` only checks `document` is an object; no structural or identity validation | **Yes** — validate catch-all, identity match, and target shape at publish |
-| `policy_id` / `policy_version` vs URL at publish | **Not checked** | Mismatch caught only at router time (`policy_identity_mismatch`) | **Yes** — reject at publish when URL and document disagree |
+| Latency mismatch `reason_code` | **Mapped to `feature_unsupported`** | Frozen enum has no `latency_unsupported` code (`router/index.ts` `filterTargets`) | None unless contract is extended |
+| Malformed target feature fields | **Fail closed at `filterTargets`** | Missing/unknown `min_context_window`, `cost_class`, or `languages` → `feature_unsupported`; languages is `Array.isArray`-guarded so a missing array does not throw | None — request-path defense; publish-time target-shape check remains the in-depth layer |
+| Publish-time validation | **Identity + latency warning** | `handleRoutingPolicyPublish` rejects URL/document identity mismatch; warns (200 `warnings`) when no target `latency_class` matches a published capability that references this policy. Catch-all and target shape are still not checked. | **Partial** — catch-all and target shape still unvalidated |
+| `policy_id` / `policy_version` vs URL at publish | **Rejected (400)** | `document.policy_id` must equal URL `{policyId}`; `document.policy_version` (number) must equal URL `{version}` (string `"1"` matches `1`). Checked before R2.put / D1 insert. Code: `policy_identity_mismatch`. | None — closed |
 | Extra JSON keys | **Stored, ignored** | R2 body is written as-is; router reads only known fields | None — but avoid relying on unknown keys |
 | `rule_id` uniqueness | **Not enforced** | Duplicate ids make journal attribution ambiguous | Ops discipline — consider publish-time check |
-| Kill switches | **Not in R2 document** | Live in D1/config cache (`kill_switches` table); applied during `filterTargets` | None — intentional separation of volatile ops controls |
+| Kill switches | **Not in R2 document** | Live in D1 (`kill_switches`); guard stage 5 collects active `provider:<id>` rows as `killedProviderIds` and the router applies them in `filterTargets`. Capability-level kills (manifest flag, D1 `global` / `capability:` / `installation:`) 503 before routing. Invoke-path routing shares the isolate `ConfigCache`, so `collectKilledProviderIds` `consult` can hit kill-switch entries the guard already loaded (still merged with `RouterContext.killedProviderIds`) | None — isolate cache is a copy of D1, not a second source of truth |
 
 
 ## 5. D1 `routing_policy` row — every column
@@ -649,7 +666,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | Column                    | Example                                          | Meaning                         |
 | ------------------------- | ------------------------------------------------ | ------------------------------- |
 | `policy_id`               | `standard`                                       | PK part                         |
-| `version`                 | `1`                                              | PK part                         |
+| `version`                 | `1`                                              | PK part (TEXT). Latest-version reads do **not** `ORDER BY version` — TEXT sorts `"10"` before `"9"`. Control (canary/promote/rollback) and config-cache serving use `ORDER BY active_from DESC, rowid DESC`. |
 | `content_pointer`         | `control/routing-policy/standard/1.json`         | R2 key                          |
 | `active_from`             | ISO timestamp                                    | When published/activated        |
 | `activated_by`            | `platform-operator`                              | `OPERATOR_ID`                   |
@@ -671,9 +688,18 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 { "document": { /* RoutingPolicyDocument */ } }
 ```
 
-**Writes:** R2.put + D1 INSERT `status=published`.
+**Writes:** SELECT existing `(policy_id, version)` first. On a hit, return 409 `already_published` without touching R2 (a duplicate body must not overwrite the published object). Otherwise R2.put, then D1 INSERT `status=published`. The D1 insert + `control_audit` share one `DB.batch`; a UNIQUE/SQLITE_CONSTRAINT race (two concurrent first publishes) is still mapped to 409.
 
-> **Note:** Publish does not validate document structure or identity match — see [§4.5](#45-hardcoded-ignored-and-wiring-gaps).
+**Validation (before R2/D1 write) and D1 constraint mapping:**
+
+| Result | Body | Trigger |
+| ------ | ---- | ------- |
+| 400 | `{ "error": "policy_identity_mismatch" }` | `document.policy_id` ≠ URL `{policyId}`, or `document.policy_version` does not match URL `{version}` (`1` matches `"1"`) |
+| 409 | `{ "error": "already_published" }` | Same `(policy_id, version)` already exists in D1 (`PRIMARY KEY`); checked before R2.put so a rejected duplicate does not mutate the published object. Concurrent insert races still map UNIQUE/SQLITE_CONSTRAINT to 409. Other D1 errors → 500 `storage_error`. |
+| 200 | `{ "warnings": ["latency_class_mismatch"] }` | Identity matches, but no target `latency_class` equals `Routing.latencyClass` of a published capability whose `routingPolicyRef` is `routing/{policyId}@v{version}` |
+| 200 | `{}` | Identity matches and latency is aligned, or no published manifest references this policy version |
+
+Catch-all / target shape are still not validated at publish — see [§4.5](#45-hardcoded-ignored-and-wiring-gaps).
 
 ### 6.2 Canary: `POST …/canary`
 
@@ -702,11 +728,11 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 
 **Body:** none.
 
-**Writes:** Supersede other active/canary; target → `active`.
+**Writes:** Supersede other active/canary; target → `active`. The prior-active row used for `control_audit.before_pointer` is selected with `ORDER BY active_from DESC, rowid DESC` (not TEXT `version`) so a same-second `active_from` tie picks the later-inserted row — lexical `"9" > "10"` would otherwise win.
 
 ### 6.4 Rollback: `POST …/rollback`
 
-Reverts canary → published or active → previous superseded.
+Reverts canary → published or active → previous superseded. Prior active / prior superseded lookup uses the same `ORDER BY active_from DESC, rowid DESC` tie-break as promote (and as config-cache serving reads), so rollback of an active version resurrects the true latest superseded row when several share an `active_from` timestamp.
 
 ## 7. Router output (`RoutingDecision`) — every field
 
@@ -721,11 +747,13 @@ fields that are partially hardcoded in `worker.ts` today.
 | `rule_id`               | Matched rule                                                          |
 | `effective_cost_class`  | Min of manifest, entitlement cap, override                            |
 | `cost_class_source`     | Which input bound the cost (`manifest` / `entitlement_cap` / `installation_override`) |
-| `routing_tier`          | `standard` or `degraded` — from request context (`match.tiers` filter); invoke path currently hardcodes `standard` |
+| `routing_tier`          | `standard` or `degraded` — from request context (`match.tiers` filter); invoke path uses `routingTierFromAdmission` so this matches D1 `ai_request.routing_tier` |
 | `required_features`     | Manifest requirements only (not the merged rule floor used for filtering) |
 | `chain[]`               | `{ ordinal, provider_id, model_id, max_attempts, timeout_ms }`        |
 | `excluded[]`            | `{ provider_id, model_id, reason_code }`                              |
-| `max_parallel_attempts` | Clamped 1–6                                                           |
+
+
+`max_parallel_attempts` is **not** a `RoutingDecision` field. After `selectCandidateChain`, Stage 10 writes this object as JSON onto the existing D1 row (`ai_request.routing_decision`) via `persistRoutingDecision` — one UPDATE, no new tables. Override provenance is visible through `cost_class_source` (`installation_override` when `force_cost_class` binds) and `excluded[].reason_code` (`installation_excluded` for `exclude_providers` / `pin_target`). That JSON is how support answers "why did this request go to model X?" from the ledger.
 
 
 **Target exclusion** `reason_code` **values:** `kill_switch`, `feature_unsupported`, `context_window_too_small`, `language_unsupported`, `installation_excluded`, `cost_class_excluded`.
@@ -741,6 +769,8 @@ fields that are partially hardcoded in `worker.ts` today.
 | No matching rule              |                      | `no_matching_rule`         |
 | All targets excluded          | `failed`             | `provider_unavailable`     |
 
+
+Malformed `targets[].features` (missing/unknown `min_context_window`, `cost_class`, or `languages`) exclude that target with `feature_unsupported` rather than routing it or throwing. If that empties the chain, the terminal is `provider_unavailable` — not `internal_error`.
 
 ---
 

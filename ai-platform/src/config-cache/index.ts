@@ -1,6 +1,7 @@
 /**
  * In-isolate config cache (§4.3.2, §4.4, §9.15).
  * Short-TTL map per entity kind; D1 on miss; owns nothing — returns copies.
+ * Production uses one module-scope instance per isolate (`isolateConfigCache`).
  */
 
 import { noopLogger, type Logger } from "../logger";
@@ -104,7 +105,25 @@ export class ConfigCache {
     this.inflight.set(flightKey, promise);
     return promise.then(cloneRow);
   }
+
+  /**
+   * Drop every entry and in-flight load. Production relies on TTL expiry
+   * (isolate eviction is the other reset). Tests call this after mutating D1
+   * when the next consult must miss.
+   */
+  clear(): void {
+    this.stores.clear();
+    this.inflight.clear();
+  }
 }
+
+/**
+ * One ConfigCache per Worker isolate (§4.3.2, §4.4). Isolate-local memory, not
+ * a store. Production POST /v1/requests, GET /v1/requests/{ref}, invoke-path
+ * routing, and discovery share this instance so the 30 s TTL dedupes D1 across
+ * requests. Tests keep constructing their own `new ConfigCache()`.
+ */
+export const isolateConfigCache = new ConfigCache();
 
 function parseCanaryIds(raw: unknown): string[] {
   if (typeof raw !== "string" || raw.length === 0) {
@@ -292,7 +311,7 @@ export function createD1ConfigReader(
               .prepare(
                 `SELECT * FROM routing_policy
                  WHERE policy_id = ? AND status = 'canary'
-                 ORDER BY active_from DESC, version DESC`,
+                 ORDER BY active_from DESC, rowid DESC`,
               )
               .bind(policyId)
               .all<D1Row>();
@@ -309,7 +328,7 @@ export function createD1ConfigReader(
             .prepare(
               `SELECT * FROM routing_policy
                WHERE policy_id = ? AND status = 'active'
-               ORDER BY active_from DESC, version DESC LIMIT 1`,
+               ORDER BY active_from DESC, rowid DESC LIMIT 1`,
             )
             .bind(policyId)
             .first<D1Row>();

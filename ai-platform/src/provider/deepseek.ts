@@ -13,6 +13,8 @@ import type {
   ProviderInvokeResult,
   ProviderPort,
 } from "./port";
+import { readSseDataPayloads, readUtf8Body } from "./readable-body";
+import { withRawBody } from "./raw-body";
 
 export const DEEPSEEK_API_KEY_BINDING = "DEEPSEEK_API_KEY";
 
@@ -31,7 +33,7 @@ export const PROVIDER_RESPONSE_BODY_SIZE_LIMIT = 1_048_576;
 export type DeepSeekTransportResponse = {
   status: number;
   headers: Record<string, string>;
-  body: string;
+  body: string | ReadableStream<Uint8Array>;
 };
 
 export type DeepSeekTransportRequest = {
@@ -61,9 +63,11 @@ export type DeepSeekAdapterOptions = {
   modelId?: string;
 };
 
+type DeepSeekWireRole = "system" | "user" | "assistant" | "tool";
+
 type DeepSeekWireRequest = {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: DeepSeekWireRole; content: string }>;
   temperature?: number;
   max_tokens?: number;
   stop?: string[];
@@ -94,12 +98,6 @@ type DeepSeekResponse = {
     type?: string;
     code?: string;
   };
-};
-
-type ParseSseResult = {
-  events: DeepSeekResponse[];
-  sawDone: boolean;
-  hadMalformedLine: boolean;
 };
 
 function consumesBudget(code: TaxonomyCode): boolean {
@@ -171,20 +169,18 @@ function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).byteLength;
 }
 
-function isProviderBodyOverLimit(
-  body: string,
-  headers: Record<string, string>,
-): boolean {
+function isDeclaredBodyOverLimit(headers: Record<string, string>): boolean {
   const contentLength = headerValue(headers, "content-length");
-  if (contentLength !== undefined) {
-    const declared = Number(contentLength);
-    if (
-      Number.isFinite(declared) &&
-      declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
-    ) {
-      return true;
-    }
+  if (contentLength === undefined) {
+    return false;
   }
+  const declared = Number(contentLength);
+  return (
+    Number.isFinite(declared) && declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
+  );
+}
+
+function isStringBodyOverLimit(body: string): boolean {
   return utf8ByteLength(body) > PROVIDER_RESPONSE_BODY_SIZE_LIMIT;
 }
 
@@ -200,6 +196,16 @@ function resolveTimeoutMs(
   return options.timeoutMs ?? deadline ?? 30_000;
 }
 
+function mapRoleToDeepSeek(role: string): DeepSeekWireRole {
+  if (role === "system") {
+    return "system";
+  }
+  if (role === "assistant") {
+    return "assistant";
+  }
+  return "user";
+}
+
 function mapCanonicalToWire(
   request: CanonicalRequest,
   modelId: string,
@@ -211,7 +217,7 @@ function mapCanonicalToWire(
   const wire: DeepSeekWireRequest = {
     model: modelId,
     messages: request.parts.map((part) => ({
-      role: part.role,
+      role: mapRoleToDeepSeek(part.role),
       content: part.content,
     })),
     stream: Boolean(request.stream),
@@ -333,34 +339,6 @@ function classifyProviderErrorFrame(body: DeepSeekResponse): TaxonomyCode {
     return "rate_limited";
   }
   return "provider_rejected";
-}
-
-function parseSseEvents(body: string): ParseSseResult {
-  const events: DeepSeekResponse[] = [];
-  let sawDone = false;
-  let hadMalformedLine = false;
-
-  for (const line of body.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) {
-      continue;
-    }
-    const payload = trimmed.slice("data:".length).trim();
-    if (payload.length === 0) {
-      continue;
-    }
-    if (payload === "[DONE]") {
-      sawDone = true;
-      continue;
-    }
-    try {
-      events.push(JSON.parse(payload) as DeepSeekResponse);
-    } catch {
-      hadMalformedLine = true;
-    }
-  }
-
-  return { events, sawDone, hadMalformedLine };
 }
 
 function normalizeStreamChunks(
@@ -604,17 +582,21 @@ export class DeepSeekAdapter implements ProviderPort {
     try {
       const fetchResult = this.transport.fetch(DEEPSEEK_API_URL, fetchInit);
       const response = await awaitTransportResponse(fetchResult, guard);
-      const providerMs = Math.max(0, Date.now() - startedAt);
       if (response === null) {
         return guard.wasTimeout()
           ? createTimeoutOutcome()
           : createCancelledOutcome();
       }
-      return this.handleTransportResponse(
+      return await this.handleTransportResponse(
         response,
         request,
         wireBody.stream,
-        providerMs,
+        startedAt,
+        {
+          onStreamChunk: options?.onStreamChunk,
+          signal: guard.signal,
+          wasTimeout: guard.wasTimeout,
+        },
       );
     } catch {
       if (guard.signal.aborted) {
@@ -635,13 +617,31 @@ export class DeepSeekAdapter implements ProviderPort {
     }
   }
 
-  private handleTransportResponse(
+  private async handleTransportResponse(
     response: DeepSeekTransportResponse,
     _request: CanonicalRequest,
     isStream: boolean | undefined,
-    providerMs: number,
-  ): ProviderInvokeResult {
-    if (isProviderBodyOverLimit(response.body, response.headers)) {
+    startedAt: number,
+    streamOpts: {
+      onStreamChunk?: (chunk: CanonicalStreamChunk) => void;
+      signal: AbortSignal;
+      wasTimeout: () => boolean;
+    },
+  ): Promise<ProviderInvokeResult> {
+    if (isDeclaredBodyOverLimit(response.headers)) {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      };
+    }
+    if (
+      typeof response.body === "string" &&
+      isStringBodyOverLimit(response.body)
+    ) {
       return {
         kind: "error",
         error: createCanonicalError(
@@ -658,53 +658,102 @@ export class DeepSeekAdapter implements ProviderPort {
       "";
 
     if (response.status < 200 || response.status >= 300) {
+      const read = await readUtf8Body(response.body, {
+        byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+        signal: streamOpts.signal,
+      });
+      if (!read.ok) {
+        if (read.reason === "over_limit") {
+          return {
+            kind: "error",
+            error: createCanonicalError(
+              "internal_error",
+              "response_too_large",
+              "Provider response exceeded body size limit",
+            ),
+          };
+        }
+        return streamOpts.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
       let parsed: DeepSeekResponse = {};
       try {
-        parsed = JSON.parse(response.body) as DeepSeekResponse;
+        parsed = JSON.parse(read.text) as DeepSeekResponse;
       } catch {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
       const retryAfterMs = parseRetryAfterMs(response.headers);
-      return {
-        kind: "error",
-        error: createCanonicalError(
-          taxonomy,
-          String(parsed.error?.code ?? response.status),
-          parsed.error?.message ?? `HTTP ${response.status}`,
-          undefined,
-          retryAfterMs,
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "error",
+          error: createCanonicalError(
+            taxonomy,
+            String(parsed.error?.code ?? response.status),
+            parsed.error?.message ?? `HTTP ${response.status}`,
+            undefined,
+            retryAfterMs,
+          ),
+        },
+        read.text,
+      );
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
-      return this.handleStreamResponse(response.body, providerMs);
+      return this.handleStreamResponse(response.body, startedAt, streamOpts);
     }
 
+    const read = await readUtf8Body(response.body, {
+      byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+      signal: streamOpts.signal,
+    });
+    if (!read.ok) {
+      if (read.reason === "over_limit") {
+        return {
+          kind: "error",
+          error: createCanonicalError(
+            "internal_error",
+            "response_too_large",
+            "Provider response exceeded body size limit",
+          ),
+        };
+      }
+      return streamOpts.wasTimeout()
+        ? createTimeoutOutcome()
+        : createCancelledOutcome();
+    }
+
+    const providerMs = Math.max(0, Date.now() - startedAt);
     let parsed: DeepSeekResponse;
     try {
-      parsed = JSON.parse(response.body) as DeepSeekResponse;
+      parsed = JSON.parse(read.text) as DeepSeekResponse;
     } catch {
-      return {
-        kind: "malformed",
-        error: createCanonicalError(
-          "internal_error",
-          "malformed_response",
-          "Provider returned unparseable JSON",
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "malformed",
+          error: createCanonicalError(
+            "internal_error",
+            "malformed_response",
+            "Provider returned unparseable JSON",
+          ),
+        },
+        read.text,
+      );
     }
 
     if (isContentFiltered(parsed)) {
-      return {
-        kind: "error",
-        error: createCanonicalError(
-          "provider_rejected",
-          parsed.error?.code ?? "content_filter",
-          parsed.error?.message ?? "Content filtered by provider",
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "error",
+          error: createCanonicalError(
+            "provider_rejected",
+            parsed.error?.code ?? "content_filter",
+            parsed.error?.message ?? "Content filtered by provider",
+          ),
+        },
+        read.text,
+      );
     }
 
     const choice = parsed.choices?.[0];
@@ -713,7 +762,7 @@ export class DeepSeekAdapter implements ProviderPort {
 
     const finishError = finishReasonErrorOutcome(finishReason);
     if (finishError) {
-      return finishError;
+      return withRawBody(finishError, read.text);
     }
 
     const usageAbsent = parsed.usage === undefined;
@@ -727,40 +776,111 @@ export class DeepSeekAdapter implements ProviderPort {
     const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "length") {
-      return { kind: "truncation", result, chunks };
+      return withRawBody({ kind: "truncation", result, chunks }, read.text);
     }
 
-    return { kind: "success", result, chunks };
+    return withRawBody({ kind: "success", result, chunks }, read.text);
   }
 
-  private handleStreamResponse(
-    body: string,
-    providerMs: number,
-  ): ProviderInvokeResult {
-    const { events, sawDone, hadMalformedLine } = parseSseEvents(body);
+  private async handleStreamResponse(
+    body: string | ReadableStream<Uint8Array>,
+    startedAt: number,
+    streamOpts: {
+      onStreamChunk?: (chunk: CanonicalStreamChunk) => void;
+      signal: AbortSignal;
+      wasTimeout: () => boolean;
+    },
+  ): Promise<ProviderInvokeResult> {
+    const events: DeepSeekResponse[] = [];
+    let hadMalformedLine = false;
+    const rawPayloads: string[] = [];
+
+    let sse;
+    try {
+      sse = await readSseDataPayloads(body, {
+        byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+        signal: streamOpts.signal,
+        onPayload: (payload) => {
+          if (payload === "[DONE]") {
+            return;
+          }
+          rawPayloads.push(payload);
+          let event: DeepSeekResponse;
+          try {
+            event = JSON.parse(payload) as DeepSeekResponse;
+          } catch {
+            hadMalformedLine = true;
+            return;
+          }
+          events.push(event);
+          const delta = event.choices?.[0]?.delta?.content;
+          if (typeof delta === "string" && delta.length > 0) {
+            streamOpts.onStreamChunk?.({
+              sequenceNumber: events.length - 1,
+              kind: "text_delta",
+              payload: { text: delta },
+              terminal: false,
+            });
+          }
+        },
+      });
+    } catch {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "transport_failure",
+          "DeepSeek transport failed",
+        ),
+      };
+    }
+
+    const rawText = rawPayloads.join("\n");
+    const attach = (result: ProviderInvokeResult): ProviderInvokeResult =>
+      withRawBody(result, rawText.length > 0 ? rawText : undefined);
+
+    const providerMs = Math.max(0, Date.now() - startedAt);
+
+    if (sse.overLimit) {
+      return attach({
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      });
+    }
+    if (sse.aborted) {
+      return streamOpts.wasTimeout()
+        ? createTimeoutOutcome()
+        : createCancelledOutcome();
+    }
+
+    const { sawDone } = sse;
 
     if (hadMalformedLine) {
-      return {
+      return attach({
         kind: "malformed",
         error: createCanonicalError(
           "internal_error",
           "malformed_response",
           "Provider returned unparseable SSE data line",
         ),
-      };
+      });
     }
 
     for (const event of events) {
       if (event.error) {
         const taxonomy = classifyProviderErrorFrame(event);
-        return {
+        return attach({
           kind: "error",
           error: createCanonicalError(
             taxonomy,
             String(event.error.code ?? event.error.type ?? "provider_error"),
             event.error.message ?? "Provider stream error frame",
           ),
-        };
+        });
       }
     }
 
@@ -790,7 +910,7 @@ export class DeepSeekAdapter implements ProviderPort {
     if (hadFinishReason && finishReason) {
       const finishError = finishReasonErrorOutcome(finishReason);
       if (finishError) {
-        return finishError;
+        return attach(finishError);
       }
     }
 
@@ -811,13 +931,13 @@ export class DeepSeekAdapter implements ProviderPort {
     );
 
     if (!sawDone && !hadFinishReason) {
-      return { kind: "truncation", result, chunks };
+      return attach({ kind: "truncation", result, chunks });
     }
 
     if (finishReason === "length") {
-      return { kind: "truncation", result, chunks };
+      return attach({ kind: "truncation", result, chunks });
     }
 
-    return { kind: "success", result, chunks };
+    return attach({ kind: "success", result, chunks });
   }
 }

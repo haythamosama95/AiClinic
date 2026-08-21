@@ -47,8 +47,9 @@ You are building an **airport** before airlines arrive: runways (bindings), a pa
 
 | Cron        | Handler                      | Data effect                                           |
 | ----------- | ---------------------------- | ----------------------------------------------------- |
-| `0 3 * * *` | `runRetentionPurge`          | Deletes old R2 envelopes, purges aged D1 journal rows |
-| `0 4 * * *` | `runRollupAndReconciliation` | Upserts `usage_rollup`, reconciles grace admissions   |
+| every tick  | `flushRejectionCounters` then `reconcileGraceUsage` | Flushes **this isolate's** in-memory guard-rejection tally into `platform_counter`, then drains D1 `grace_admission_queue`. Other isolates' tallies are not drained and are lost on eviction, so `platform_counter` is a **lower bound**, not an exact count. |
+| `0 3 * * *` | `runRetentionPurge`          | Deletes old R2 envelopes; nulls `usage_event.request_id` then purges aged D1 journal rows. Aged usage keeps the money row but loses request joinability (reconciliation coverage shrinks with age). |
+| `0 4 * * *` | `runRollupAndReconciliation` | Upserts `usage_rollup`; `runReconciliation` LEFT JOINs `usage_event` on `request_id` (nulled aged rows can never match). |
 
 
 
@@ -64,7 +65,7 @@ Each of `development`, `staging`, `production` defines:
 | `BUILD_SHA`                            | var            | Git SHA shown on `/health`                         |
 | `ENVIRONMENT`                          | var            | `development` / `staging` / `production`           |
 | `LOG_VERBOSITY`                        | var            | `0` (minimal) / `1` / `2` (verbose)                |
-| `OPERATOR_ID`                          | var            | Stable operator principal id written to audit rows |
+| `OPERATOR_ID`                          | var            | Single shared operator principal id written to every `control_audit` row. One bearer + one id: the trail cannot distinguish operators. |
 | `DB`                                   | D1             | SQLite database binding                            |
 | `R2`                                   | R2 bucket      | Object storage binding                             |
 | `DO`                                   | Durable Object | `GatewayObject` class                              |
@@ -82,7 +83,7 @@ R2 `bucket_name` matches the same pattern.
 
 | Secret                  | Required when           | Read in                |
 | ----------------------- | ----------------------- | ---------------------- |
-| `OPERATOR_BEARER_TOKEN` | All `/control/*` routes | `control/auth.ts`      |
+| `OPERATOR_BEARER_TOKEN` | All `/control/*` routes | `control/auth.ts` (`createSecretOperatorAuth`: one shared bearer; timing-safe compare; all actions attributed to `OPERATOR_ID`) |
 | `DEEPSEEK_API_KEY`      | Live DeepSeek routing   | `provider/deepseek.ts` |
 | `GEMINI_API_KEY`        | Live Gemini routing     | `provider/gemini.ts`   |
 
@@ -93,7 +94,7 @@ Provider key resolution: `env[binding]` string lookup in `worker.ts` `secretStor
 
 **Command:** `npx wrangler d1 migrations apply ai-platform-<env> --env <env>`
 
-Creates 14 tables (see [§18 — Complete D1 column reference](16-complete-d1-column-reference.md#1-installation)). Migration order matters; snapshot at `ai-platform/schema.snap.sql`.
+Creates 14 tables (see [§18 — Complete D1 column reference](16-complete-d1-column-reference.md#1-installation)), including `grace_admission_queue` for durable grace admission while the Quota DO is down. `entitlement.installation_id` is UNIQUE (`idx_entitlement_installation_id`) so each installation has exactly one entitlement row. Migration order matters; snapshot at `ai-platform/schema.snap.sql`.
 
 **Only SQL seed row:**
 
@@ -111,6 +112,7 @@ VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed');
 | ---------------------------- | ------------------------------------------- | ---------------------------- |
 | `assertRequiredBindings`     | Throws if `DB`, `R2`, or `DO` missing       | Process won't serve          |
 | `setCapabilityRegistry(...)` | In-memory map: `clinic.visit_summary@1.0.0` | Guard stage 5, discovery     |
+| Platform price table         | Bundled `control/pricing/platform-default/1.json` via `src/pricing` | Post-response `ai_attempt.cost`, `usage_event.cost`, cancel credits |
 | Prompt artifacts             | **Not loaded** at boot                      | Lazy import on first compose |
 
 

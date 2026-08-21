@@ -27,14 +27,41 @@ const { resolveArtifactMock, resolvePromptVersionMock } = vi.hoisted(() => {
       '<key name="visit.chief_complaint@v1" shape="visit.chief_complaint@v1">\n{{visit.chief_complaint@v1}}\n</key>\n',
   };
 
+  function fnv1a(content: string): string {
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < content.length; index += 1) {
+      hash ^= content.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
   return {
     resolveArtifactMock(ref: string): string | undefined {
       return artifactByRef[ref];
     },
     resolvePromptVersionMock(manifest: {
-      "Prompt binding": { systemInstructionArtifactRef: unknown };
+      "Prompt binding": {
+        systemInstructionArtifactRef: unknown;
+        businessRuleFragmentRefs?: unknown;
+        contextRenderingTemplateRef?: unknown;
+      };
     }): string {
-      return String(manifest["Prompt binding"].systemInstructionArtifactRef);
+      const binding = manifest["Prompt binding"];
+      const refs = [
+        String(binding.systemInstructionArtifactRef),
+        ...(Array.isArray(binding.businessRuleFragmentRefs)
+          ? binding.businessRuleFragmentRefs.map(String)
+          : []),
+        ...(binding.contextRenderingTemplateRef != null &&
+        String(binding.contextRenderingTemplateRef).length > 0
+          ? [String(binding.contextRenderingTemplateRef)]
+          : []),
+      ];
+      const parts = refs
+        .map((ref) => artifactByRef[ref])
+        .filter((content): content is string => content !== undefined);
+      return fnv1a(parts.join("\0"));
     },
   };
 });
@@ -57,7 +84,8 @@ import {
 } from "../../src/capability";
 import type { Principal } from "../../src/identity";
 import { load, type Manifest } from "../../src/manifest";
-import { composeRequest } from "../../src/prompt/composer";
+import { composeRequest, promptScaffoldByteLength } from "../../src/prompt/composer";
+import { resolvePromptVersion } from "../../src/prompt/registry";
 import { runGuard, settleHappyPath } from "../../src/pipeline";
 import { CONCURRENCY_LIMIT } from "../../src/quota-do";
 import type { RateLimitBindings } from "../../src/rate-limit";
@@ -185,7 +213,6 @@ function visitSummaryManifest(): Manifest {
         required: true,
         shapeRef: VISIT_CHIEF_COMPLAINT_V1,
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -214,7 +241,7 @@ function visitSummaryManifest(): Manifest {
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -487,6 +514,8 @@ export async function runLoadHappyPath(
               reader,
               now: FIXTURE_NOW_MS,
               composeRequest,
+              promptScaffoldByteLength,
+              resolvePromptVersion,
             },
             {
               DB: bindings.db,

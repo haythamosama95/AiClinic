@@ -36,8 +36,8 @@ The **ticket office opens** — the airline gets a prepaid card (quotas) and per
 
 | Field                  | Type     | Validation    | D1 destination                                                       |
 | ---------------------- | -------- | ------------- | -------------------------------------------------------------------- |
-| `period_start`         | string   | non-empty ISO | `entitlement.period_start`                                           |
-| `period_end`           | string   | non-empty ISO | `entitlement.period_end`                                             |
+| `period_start`         | string   | ISO-8601 UTC instant (`YYYY-MM-DDTHH:mm:ss[.sss]Z`); must parse; must be `< period_end` | `entitlement.period_start`                                           |
+| `period_end`           | string   | ISO-8601 UTC instant; must parse; must be `> period_start` | `entitlement.period_end`                                             |
 | `request_quota`        | integer  | ≥ 0           | `entitlement.request_quota`                                          |
 | `token_budget`         | integer  | ≥ 0           | `entitlement.token_budget`                                           |
 | `cost_budget`          | number   | finite ≥ 0    | `entitlement.cost_budget`                                            |
@@ -75,8 +75,8 @@ not-yet-entitled row never downgrades routing).
 
 **Example:** `request_quota: 1000`, `soft_threshold: 0.8` (as in [§6 Example entitle payload](#6-example-entitle-payload-visit-summary)). After **800** requests have
 been credited in the period (`requestsUsed / 1000 ≥ 0.8`), the 801st request is still allowed but
-admission crosses the soft threshold — the platform may route it on the capability’s **degraded**
-chain (cheaper model / fallback per routing policy) instead of the standard tier. The same threshold
+admission crosses the soft threshold — the live path journals `routing_tier = degraded`, routes
+`match.tiers` degraded rules, and emits `degraded_notice: true` on SSE `accepted`. The same threshold
 can fire on tokens or cost instead: e.g. 400k of 500k tokens used (80%) triggers degrade even if only
 600 requests were credited. Below the threshold, routing stays on the standard tier.
 
@@ -105,7 +105,7 @@ can fire on tokens or cost instead: e.g. 400k of 500k tokens used (80%) triggers
 
 #### D1 writes
 
-1. **UPDATE** `entitlement` — all budget fields + `status='active'`
+1. **UPDATE** `entitlement` — all budget fields + `status='active'` (`WHERE installation_id = ?`). `UNIQUE (installation_id)` guarantees this touches exactly one row; a duplicate row set cannot silently multi-update.
 2. **INSERT** `capability_grant` per grant item
 3. **INSERT** `control_audit` — `action='entitle'`, `after_pointer` = JSON of `allowed_capabilities`
 
@@ -135,6 +135,8 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 2. A matching `capability_grant` row exists
 3. `plan` tier meets manifest minimum
 
+**AAT scope, staff role, and manifest `killSwitchFlag` are not this table.** Guard stage 3 (`evaluateEntitlement`) does not receive Access fields. When the resolved manifest's `Access.requiredCapabilityScope` is a non-empty string, capability resolve (guard stage 5) requires it in `principal.scopes` or returns `forbidden_capability`. Unset or empty `requiredCapabilityScope` is not rejected on scope. When `Access.allowedStaffRoles` is a non-empty array, capability resolve requires `principal.role` membership or returns `forbidden_capability`. Unset or empty `allowedStaffRoles` is not rejected on role. When `Access.killSwitchFlag === true`, capability resolve returns `capability_disabled` alongside the D1 `kill_switch` table; `false` or omitted does not disable.
+
 
 
 ## 5. Failure paths
@@ -145,7 +147,7 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 | 404  | `installation_not_found` | No `installation` row                    |
 | 404  | `entitlement_not_found`  | No `entitlement` row                     |
 | 409  | `not_pending`            | `status !== 'pending'`                   |
-| 400  | `invalid_payload`        | Bad numbers, empty `grants`, bad `scope` |
+| 400  | `invalid_payload`        | Bad numbers, empty `grants`, bad `scope`, non-ISO `period_start`/`period_end`, or `period_start >= period_end` |
 | 500  | `storage_error`          | D1 batch failure                         |
 
 

@@ -1,5 +1,5 @@
 import type { AdapterSseEvent } from "../adapter";
-import { buildErrorBody, type TaxonomyCode } from "../errors";
+import { buildErrorBody, getTaxonomyEntry, type TaxonomyCode } from "../errors";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import {
@@ -12,7 +12,8 @@ export type { ProseGuardThresholds, GuardViolationKind } from "./prose-guards";
 
 /**
  * Broker-facing chunk union. Aligns with D3 `InvocationSink` emissions:
- * `emitStreamText(text)` → string chunks; `emitRegenerating()` → regenerating.
+ * `emitStreamText(text)` → string chunks; `emitRegenerating()` → regenerating;
+ * `emitTruncation()` sets `wasTruncated` on the named adapter (not a yielded chunk).
  * See `createChunkSourceFromInvocationEvents` for the named adapter bridge.
  */
 export type StreamChunk = string | { kind: "regenerating" };
@@ -20,13 +21,14 @@ export type StreamChunk = string | { kind: "regenerating" };
 /** Event shape produced by an InvocationSink-compatible relay into the broker. */
 export type InvocationStreamEvent =
   | { kind: "text"; text: string }
-  | { kind: "regenerating" };
+  | { kind: "regenerating" }
+  | { kind: "truncation" };
 
 export interface ChunkSource {
   /**
-   * Live partial usage at cancel time. Called when cancel settles — must reflect
-   * tokens actually generated before the cancel point, not a constructor snapshot.
-   * Absent or undefined → credit sink is not called (FR-011).
+   * Live partial usage at cancel/fail time. Called when a non-completed
+   * terminal settles — must reflect tokens actually generated, not a
+   * constructor snapshot. Absent or undefined → credited as `{ tokens: 0, cost: 0 }`.
    */
   getPartialUsage?(): { tokens: number; cost: number } | undefined;
   /** True when the provider finished because of an output-length limit. */
@@ -43,8 +45,12 @@ export function createChunkSourceFromInvocationEvents(
   events: AsyncIterable<InvocationStreamEvent>,
   getPartialUsage?: () => { tokens: number; cost: number } | undefined,
 ): ChunkSource {
+  let truncated = false;
   return {
     getPartialUsage,
+    wasTruncated() {
+      return truncated;
+    },
     async *stream({
       signal,
     }: {
@@ -55,7 +61,11 @@ export function createChunkSourceFromInvocationEvents(
           return;
         }
         if (event.kind === "regenerating") {
+          // Regenerating discards prior assembled text, including truncated prose.
+          truncated = false;
           yield { kind: "regenerating" };
+        } else if (event.kind === "truncation") {
+          truncated = true;
         } else {
           yield event.text;
         }
@@ -83,6 +93,7 @@ export interface CreditSink {
     requestId: string;
     usage: { tokens: number; cost: number };
     partial: boolean;
+    idempotencyState?: "failed" | "cancelled" | "completed";
   }): void;
 }
 
@@ -208,12 +219,17 @@ export function createStreamBroker(
     options.eventSink.push(event);
   };
 
-  const safeCredit = (usage: { tokens: number; cost: number }): void => {
+  const safeCredit = (
+    usage: { tokens: number; cost: number },
+    partial: boolean,
+    idempotencyState: "failed" | "cancelled",
+  ): void => {
     try {
       options.creditSink({
         requestId: options.requestId,
         usage,
-        partial: true,
+        partial,
+        idempotencyState,
       });
     } catch (error: unknown) {
       logger.error("Stream settlement credit failed", {
@@ -255,10 +271,13 @@ export function createStreamBroker(
       trace_id: options.traceId,
     });
 
-    const usage = options.chunkSource.getPartialUsage?.();
-    if (usage !== undefined) {
-      safeCredit(usage);
-    }
+    const usage =
+      options.chunkSource.getPartialUsage?.() ?? { tokens: 0, cost: 0 };
+    safeCredit(
+      usage,
+      getTaxonomyEntry("cancelled").consumesQuota !== "Yes",
+      "cancelled",
+    );
 
     safeJournal({
       requestId: options.requestId,
@@ -289,6 +308,14 @@ export function createStreamBroker(
       data: { ...errorBody },
       trace_id: options.traceId,
     });
+
+    const usage =
+      options.chunkSource.getPartialUsage?.() ?? { tokens: 0, cost: 0 };
+    safeCredit(
+      usage,
+      getTaxonomyEntry(code).consumesQuota !== "Yes",
+      "failed",
+    );
 
     safeJournal({
       requestId: options.requestId,

@@ -7,6 +7,7 @@ import {
   createCapabilityRegistry,
   setCapabilityRegistry,
 } from "../src/capability";
+import { isolateConfigCache } from "../src/config-cache";
 import { load, type Manifest } from "../src/manifest";
 
 declare module "cloudflare:test" {
@@ -63,7 +64,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   scopes: ["ai.access"],
   jti: "jti-disc-001",
   iat: NOW_SECONDS - 30,
-  exp: NOW_SECONDS + 600,
+  exp: NOW_SECONDS + 300,
   ver: "1",
 };
 
@@ -102,7 +103,7 @@ async function mintToken(
   const payload: AatClaims = {
     ...DEFAULT_CLAIMS,
     iat: now - 30,
-    exp: now + 600,
+    exp: now + 300,
     ...claims,
   };
   const header = { alg: "EdDSA", kid: keypair.kid };
@@ -150,7 +151,6 @@ function validManifest(
         required: true,
         shapeRef: "visit.chief_complaint@v1",
         maxSize: 4_096,
-        freshnessHint: "session",
       },
     ],
     "Prompt binding": {
@@ -178,7 +178,7 @@ function validManifest(
     Economics: {
       maxInputTokens: 8_000,
       maxOutputTokens: 1_024,
-      perRequestCostCeiling: 9_024,
+      perRequestTokenCeiling: 9_024,
       quotaWeight: 1,
     },
     Governance: {
@@ -331,6 +331,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  isolateConfigCache.clear();
   await clearDiscoveryTables();
 });
 
@@ -434,6 +435,7 @@ describe("T3 discovery_http_changed_manifest_changes_etag", () => {
       .prepare("DELETE FROM capability_grant WHERE capability_id = ?")
       .bind("clinic.secondary")
       .run();
+    isolateConfigCache.clear();
 
     const second = await SELF.fetch(discoveryRequest(token));
     expect(second.status).toBe(200);

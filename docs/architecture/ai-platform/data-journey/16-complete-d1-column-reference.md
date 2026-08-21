@@ -15,6 +15,7 @@
 11. [11. `usage_rollup`](#11-usage_rollup)
 12. [12. `platform_counter`](#12-platform_counter)
 13. [13. `control_audit`](#13-control_audit)
+14. [14. `grace_admission_queue`](#14-grace_admission_queue)
 
 ---
 
@@ -45,7 +46,7 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `public_key`      | TEXT      | Ed25519 public (base64url) |
 | `algorithm`       | TEXT      | e.g. `EdDSA`               |
 | `valid_from`      | TEXT ISO  | Key valid from             |
-| `valid_until`     | TEXT NULL | Optional expiry            |
+| `valid_until`     | TEXT NULL | Hard expiry; enroll/rotate set `valid_from` + 365 days. Identity rejects `now >= valid_until` |
 | `revoked_at`      | TEXT NULL | Revocation timestamp       |
 
 
@@ -57,10 +58,10 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | Column                 | Type     | Meaning                      |
 | ---------------------- | -------- | ---------------------------- |
 | `entitlement_id`       | TEXT PK  | UUID                         |
-| `installation_id`      | TEXT FK  | One row per installation     |
+| `installation_id`      | TEXT FK UNIQUE | One row per installation (`idx_entitlement_installation_id`) |
 | `plan`                 | TEXT     | `starter`…`enterprise`       |
-| `period_start`         | TEXT ISO | Billing period start         |
-| `period_end`           | TEXT ISO | Billing period end           |
+| `period_start`         | TEXT ISO | Billing period start (entitle: ISO-8601 UTC instant, `< period_end`) |
+| `period_end`           | TEXT ISO | Billing period end (entitle: ISO-8601 UTC instant, `> period_start`) |
 | `request_quota`        | INTEGER  | Max requests per period      |
 | `token_budget`         | INTEGER  | Max tokens per period        |
 | `cost_budget`          | REAL     | Max cost per period          |
@@ -98,7 +99,7 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | Column                    | Type         | Meaning                                    |
 | ------------------------- | ------------ | ------------------------------------------ |
 | `policy_id`               | TEXT PK part | e.g. `standard`                            |
-| `version`                 | TEXT PK part | e.g. `1`                                   |
+| `version`                 | TEXT PK part | e.g. `1`. Latest-version selection is `active_from DESC, rowid DESC`, not lexical TEXT `version` |
 | `content_pointer`         | TEXT         | R2 key                                     |
 | `active_from`             | TEXT ISO     | Activation time                            |
 | `activated_by`            | TEXT         | Operator id                                |
@@ -147,7 +148,7 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `branch_id`            | TEXT NULL    | Branch scope                     |
 | `capability_id`        | TEXT         | Invoked capability               |
 | `capability_version`   | TEXT         | Invoked version                  |
-| `prompt_artifact_hash` | TEXT         | Manifest artifact ref at insert  |
+| `prompt_artifact_hash` | TEXT         | Composer `promptVersion`: content hash of resolved prompt-artifact bytes at insert |
 | `idempotency_key`      | TEXT         | Header value                     |
 | `state`                | TEXT         | `Accepted` → terminal states     |
 | `created_at`           | TEXT ISO     | Insert time                      |
@@ -157,7 +158,7 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `trace_id`             | TEXT         | Correlation id                   |
 | `payload_pointer`      | TEXT NULL    | R2 envelope key                  |
 | `routing_tier`         | TEXT NULL    | `standard` / `degraded`          |
-| `routing_decision`     | TEXT NULL    | Column exists; not written today |
+| `routing_decision`     | TEXT NULL    | JSON `RoutingDecision` written at Stage 10 after routing (selected rule, chain, excluded targets with reasons, override provenance). `NULL` at INSERT. |
 | `conversation_id`      | TEXT NULL    | Conversational only              |
 | `turn_ordinal`         | INTEGER NULL | Turn order                       |
 
@@ -174,11 +175,11 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `attempt_no`          | INTEGER   | 1-based sequence           |
 | `provider`            | TEXT      | `deepseek`/`gemini`/`fake` |
 | `model`               | TEXT      | Model id                   |
-| `outcome`             | TEXT      | Attempt label              |
+| `outcome`             | TEXT      | Attempt label (`success`, `truncation`, `retryable_failure`, `terminal_failure`, `timeout`, `repair`). `dashboardRepairRateByCapability` counts `repair` rows as the numerator. |
 | `latency_ms`          | INTEGER   | Round-trip ms              |
 | `tokens_in`           | INTEGER   | Input tokens               |
 | `tokens_out`          | INTEGER   | Output tokens              |
-| `cost`                | REAL      | Attempt cost               |
+| `cost`                | REAL      | Attempt cost from `priceUsage` (tokens × per-1K rates) |
 | `provider_request_id` | TEXT NULL | Provider-side id           |
 | `error_code`          | TEXT NULL | Taxonomy on failure        |
 
@@ -192,11 +193,11 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | ----------------- | ------------ | ------------------------- |
 | `usage_event_id`  | TEXT PK      | ULID                      |
 | `installation_id` | TEXT FK      | Billed installation       |
-| `period`          | TEXT         | `YYYY-MM`                 |
-| `request_id`      | TEXT NULL FK | SET NULL on journal purge |
+| `period`          | TEXT         | `YYYY-MM` from admission-time entitlement `period_start`, not wall-clock at credit |
+| `request_id`      | TEXT NULL FK | SET NULL on journal purge so ledger money rows survive. Aged usage permanently loses request-level joinability; reconciliation `LEFT JOIN` on `request_id` can never match those rows, so coverage shrinks with age. |
 | `quota_weight`    | INTEGER      | Manifest weight           |
 | `tokens`          | INTEGER      | Total tokens              |
-| `cost`            | REAL         | Total cost                |
+| `cost`            | REAL         | Total cost from the same helper as `ai_attempt.cost` |
 | `recorded_at`     | TEXT ISO     | Ledger time               |
 
 
@@ -218,13 +219,20 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 
 ## 12. `platform_counter`
 
+Guard-rejection tallies. `recordGuardRejection` increments an **in-isolate** map;
+`flushRejectionCounters` (every cron tick) writes only that isolate's snapshot.
+Tallies in other isolates are lost on eviction. **`count` is a lower bound, not an
+exact rejection count.** Dashboards that consume this table
+(`dashboardQuotaRejectionRate`) inherit the same lower-bound semantics. An accurate
+count would flush at request end batched with the journal write — not implemented.
+
 
 | Column          | Type    | Meaning                      |
 | --------------- | ------- | ---------------------------- |
 | `counter_id`    | TEXT PK | Hash of bucket + dimensions  |
 | `dimension_set` | TEXT    | JSON error/installation keys |
 | `time_bucket`   | TEXT    | Minute bucket ISO            |
-| `count`         | INTEGER | Rejection count              |
+| `count`         | INTEGER | Rejection **lower bound** (isolate-local flush; other isolates' tallies never reach D1) |
 
 
 
@@ -235,12 +243,34 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | Column           | Type      | Meaning                                            |
 | ---------------- | --------- | -------------------------------------------------- |
 | `audit_id`       | TEXT PK   | UUID                                               |
-| `operator_id`    | TEXT      | `OPERATOR_ID`                                      |
+| `operator_id`    | TEXT      | Single configured `OPERATOR_ID`. Every control action is attributed to this one identity; the trail cannot distinguish operators. |
 | `action`         | TEXT      | e.g. `enroll`, `entitle`, `routing_policy_publish` |
 | `target`         | TEXT      | Entity id                                          |
 | `before_pointer` | TEXT NULL | Prior state ref                                    |
 | `after_pointer`  | TEXT NULL | New state ref                                      |
 | `recorded_at`    | TEXT ISO  | Audit time                                         |
+
+
+## 14. `grace_admission_queue`
+
+Durable grace-admission queue (Quota DO unavailable). Cron drains `pending` rows; the healthy path does not read this table.
+
+
+| Column                       | Type         | Meaning                                              |
+| ---------------------------- | ------------ | ---------------------------------------------------- |
+| `grace_request_id`           | TEXT PK      | Worker UUID returned as `grace_admitted.requestId`   |
+| `installation_id`            | TEXT FK      | Owner; cap is `COUNT(*)` pending per installation    |
+| `idempotency_key`            | TEXT         | Client key; UNIQUE with `installation_id`            |
+| `jti`                        | TEXT         | AAT jti, presented again at reconcile                |
+| `request_reference`          | TEXT         | Original request reference                           |
+| `entitlement_json`           | TEXT         | Entitlement snapshot at grace admit                  |
+| `usage_tokens`               | INTEGER NULL | Attached at settlement; NULL until then              |
+| `usage_cost`                 | REAL NULL    | Attached at settlement                               |
+| `partial`                    | INTEGER NULL | `1` / `0` once usage is attached                     |
+| `queued_at`                  | TEXT ISO     | Insert time                                          |
+| `reconcile_attempts`         | INTEGER      | Failed cron presentations                            |
+| `reconcile_first_seen_at_ms` | INTEGER NULL | First cron sighting (TTL origin)                     |
+| `status`                     | TEXT         | `pending` / `reconciled` / `dropped`                 |
 
 
 ---

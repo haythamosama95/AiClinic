@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +12,6 @@ import { selectCandidateChain } from "../src/router";
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const AI_PLATFORM_ROOT = path.join(TEST_ROOT, "..");
-const REPO_ROOT = path.join(AI_PLATFORM_ROOT, "..");
 
 const POLICY_FILE = path.join(
   AI_PLATFORM_ROOT,
@@ -21,6 +19,13 @@ const POLICY_FILE = path.join(
   "routing-policy",
   "platform-default",
   "1.json",
+);
+
+const VISIT_SUMMARY_MANIFEST_FILE = path.join(
+  AI_PLATFORM_ROOT,
+  "manifests",
+  "published",
+  "clinic.visit_summary@1.0.0.json",
 );
 
 const D7_SLICE_ALLOWED_RELATIVE_PATHS = [
@@ -87,9 +92,29 @@ type RouterContext = {
   killedProviderIds?: readonly string[];
 };
 
+type VisitSummaryManifest = {
+  Routing: {
+    routingPolicyRef: string;
+    latencyClass: string;
+  };
+};
+
 function loadPlatformPolicyDocument(): RoutingPolicyDocument {
   const raw = readFileSync(POLICY_FILE, "utf8");
   return JSON.parse(raw) as RoutingPolicyDocument;
+}
+
+function loadVisitSummaryManifest(): VisitSummaryManifest {
+  const raw = readFileSync(VISIT_SUMMARY_MANIFEST_FILE, "utf8");
+  return JSON.parse(raw) as VisitSummaryManifest;
+}
+
+function parseRoutingPolicyRef(ref: string): { policyId: string; version: number } {
+  const match = /^routing\/([^/]+)@v(\d+)$/.exec(ref);
+  if (!match) {
+    throw new Error(`unparseable routingPolicyRef: ${ref}`);
+  }
+  return { policyId: match[1], version: Number(match[2]) };
 }
 
 function preloadPolicyCache(
@@ -117,7 +142,7 @@ function defaultContext(overrides: Partial<RouterContext> = {}): RouterContext {
       structured_output_required: false,
       min_context_window: 0,
       languages: ["en"],
-      latency_class: "interactive",
+      latency_class: "standard",
     },
     manifestCostClass: overrides.manifestCostClass ?? "standard",
     entitlementMaxCostClass: overrides.entitlementMaxCostClass ?? "premium",
@@ -139,22 +164,6 @@ function route(
 
 function chainProviderIds(outcome: ReturnType<typeof route>): string[] {
   return outcome.routing_decision.chain.map((entry) => entry.provider_id);
-}
-
-
-function changedPathsVersusAiMaster(): string[] {
-  try {
-    const output = execSync("git diff --name-only origin/ai/master...HEAD", {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    });
-    return output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  } catch {
-    return [];
-  }
 }
 
 describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
@@ -179,6 +188,9 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
       ).toBe(false);
     }
 
+    // Structural D7 claim: pipeline stages stay Gemini-agnostic. A merge-base
+    // path freeze vs origin/ai/master is not used — later slices edit
+    // invocation (live SSE relay, truncation) without naming Gemini.
     for (const pipelineModule of PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES) {
       const source = readFileSync(
         path.join(AI_PLATFORM_ROOT, pipelineModule),
@@ -188,20 +200,6 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
         source.includes("gemini") || source.includes("Gemini"),
         `pipeline module ${pipelineModule} must not reference Gemini`,
       ).toBe(false);
-    }
-
-    // D7 freeze vs later slices: only fail when listed pre-existing stage
-    // modules change. New modules (F5 `src/pipeline`, load harness, etc.) are
-    // outside T-D7-13's "second adapter by policy alone" claim.
-    const changed = changedPathsVersusAiMaster();
-    for (const filePath of changed) {
-      for (const pipelineModule of PIPELINE_MODULES_THAT_MUST_NOT_REQUIRE_CHANGES) {
-        const forbidden = `ai-platform/${pipelineModule}`;
-        expect(
-          filePath === forbidden,
-          `D7 freeze broken: stage module changed (${filePath})`,
-        ).toBe(false);
-      }
     }
   });
 
@@ -242,6 +240,28 @@ describe("T-D7-13 added_by_routing_policy_edit_no_pipeline_diff", () => {
   });
 });
 
+describe("router_platform_default_killed_provider_failover", () => {
+  it("starts the chain at gemini when deepseek is in killedProviderIds", () => {
+    const document = loadPlatformPolicyDocument();
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({ killedProviderIds: ["deepseek"] }),
+    );
+
+    expect(chainProviderIds(outcome)[0]).toBe("gemini");
+    expect(chainProviderIds(outcome)).not.toContain("deepseek");
+    expect(outcome.routing_decision.excluded).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider_id: "deepseek",
+          reason_code: "kill_switch",
+        }),
+      ]),
+    );
+  });
+});
+
 describe("T-D7-14 fallback_ordering_honoured", () => {
   it("places gemini after higher-priority targets with selection reason recorded and identical chains", () => {
     const document = loadPlatformPolicyDocument();
@@ -275,5 +295,37 @@ describe("T-D7-14 fallback_ordering_honoured", () => {
     expect(secondOutcome.routing_decision.excluded).toEqual(
       firstOutcome.routing_decision.excluded,
     );
+  });
+});
+
+describe("checked-in fixture vs published visit-summary", () => {
+  it("aligns policy identity, latency class, and candidate chain with clinic.visit_summary@1.0.0", () => {
+    const manifest = loadVisitSummaryManifest();
+    const document = loadPlatformPolicyDocument();
+    const parsed = parseRoutingPolicyRef(manifest.Routing.routingPolicyRef);
+
+    expect(document.policy_id).toBe(parsed.policyId);
+    expect(document.policy_version).toBe(parsed.version);
+
+    const targets = document.rules.flatMap((rule) => rule.targets);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      expect(target.features.latency_class).toBe(manifest.Routing.latencyClass);
+    }
+
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        requirements: {
+          structured_output_required: false,
+          min_context_window: 0,
+          languages: ["en"],
+          latency_class: manifest.Routing.latencyClass,
+        },
+      }),
+    );
+
+    expect(chainProviderIds(outcome)).toEqual(["deepseek", "gemini"]);
   });
 });

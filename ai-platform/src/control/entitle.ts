@@ -37,6 +37,32 @@ async function runControlBatch(
   }
 }
 
+const ISO8601_INSTANT_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+function parseIsoInstant(value: string): number | null {
+  if (!ISO8601_INSTANT_RE.test(value)) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    return null;
+  }
+  return ms;
+}
+
+function validatePeriodBounds(
+  periodStart: string,
+  periodEnd: string,
+): { period_start: string; period_end: string } | Response {
+  const startMs = parseIsoInstant(periodStart);
+  const endMs = parseIsoInstant(periodEnd);
+  if (startMs === null || endMs === null || startMs >= endMs) {
+    return reject(400, "invalid_payload");
+  }
+  return { period_start: periodStart, period_end: periodEnd };
+}
+
 function validateGrantInput(
   grant: EntitleGrantInput,
 ): EntitleGrantInput | Response {
@@ -61,11 +87,16 @@ function validateEntitlePayload(body: EntitlePayload): EntitlePayload | Response
     return reject(400, "invalid_payload");
   }
 
-  const period_start = requireNonEmptyString(body.period_start);
-  const period_end = requireNonEmptyString(body.period_end);
-  if (!period_start || !period_end) {
+  const periodStartRaw = requireNonEmptyString(body.period_start);
+  const periodEndRaw = requireNonEmptyString(body.period_end);
+  if (!periodStartRaw || !periodEndRaw) {
     return reject(400, "invalid_payload");
   }
+  const periodBounds = validatePeriodBounds(periodStartRaw, periodEndRaw);
+  if (periodBounds instanceof Response) {
+    return periodBounds;
+  }
+  const { period_start, period_end } = periodBounds;
 
   const request_quota = body.request_quota;
   const token_budget = body.token_budget;

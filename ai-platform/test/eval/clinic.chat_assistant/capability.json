@@ -57,7 +57,7 @@
     "Economics": {
       "maxInputTokens": 8000,
       "maxOutputTokens": 1024,
-      "perRequestCostCeiling": 9024,
+      "perRequestTokenCeiling": 9024,
       "quotaWeight": 1
     },
     "Governance": {

@@ -28,7 +28,7 @@ Full field list: [07-stage-5-routing-policy.md §4](07-stage-5-routing-policy.md
 | ----------- | ---------------------------------------------- |
 | Key pattern | `request/{request_id}/envelope`                |
 | D1 link     | `ai_request.payload_pointer`                   |
-| Written by  | `journal/index.ts` after successful completion |
+| Written by  | `journal/index.ts` on every terminal settlement (`Completed`, `Failed`, `Cancelled`) — one object per request |
 | Read by     | `getRequest`, support lookup                   |
 | Deleted by  | Retention purge (90d diagnostic horizon)       |
 

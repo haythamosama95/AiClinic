@@ -18,6 +18,16 @@ const INSTALLATION_ACTIVE_STATUS = "active";
 const INSTALLATION_SUSPENDED_STATUS = "suspended";
 const INSTALLATION_DELETED_STATUS = "deleted";
 
+/** Hard TTL for `installation_key.valid_until`, measured from `valid_from`. */
+export const INSTALLATION_KEY_TTL_DAYS = 365;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function installationKeyValidUntil(validFromIso: string): string {
+  return new Date(
+    Date.parse(validFromIso) + INSTALLATION_KEY_TTL_DAYS * MS_PER_DAY,
+  ).toISOString();
+}
+
 function parseInstallationId(request: Request): string | null {
   const match = new URL(request.url).pathname.match(
     /^\/control\/installations\/([^/]+)\/(?:enroll|rotate|revoke-key|suspend|resume|delete)$/,
@@ -173,6 +183,7 @@ export async function handleEnroll(
   }
 
   const enrolledAt = nowIso();
+  const validUntil = installationKeyValidUntil(enrolledAt);
   const entitlementId = newId();
   const auditId = newId();
   const platformBaseUrl = new URL(request.url).origin;
@@ -193,13 +204,14 @@ export async function handleEnroll(
     DB.prepare(
       `INSERT INTO installation_key
          (key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL)`,
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
     ).bind(
       body.kid,
       installationId,
       body.public_key,
       body.algorithm,
       enrolledAt,
+      validUntil,
     ),
     // soft_threshold = 0 is the enroll sentinel (never degrades; F4 contract §2 /
     // isSoftThresholdFraction allows 0). Future entitlement writes must keep
@@ -274,19 +286,26 @@ export async function handleRotate(
   }
 
   const validFrom = nowIso();
+  const validUntil = installationKeyValidUntil(validFrom);
   const auditId = newId();
 
   const batchError = await runControlBatch(DB, [
     DB.prepare(
+      `UPDATE installation_key
+          SET revoked_at = ?
+        WHERE installation_id = ? AND revoked_at IS NULL`,
+    ).bind(validFrom, installationId),
+    DB.prepare(
       `INSERT INTO installation_key
          (key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL)`,
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
     ).bind(
       body.kid,
       installationId,
       body.public_key,
       body.algorithm,
       validFrom,
+      validUntil,
     ),
     DB.prepare(
       `INSERT INTO control_audit

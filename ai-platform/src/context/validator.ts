@@ -254,14 +254,21 @@ function applyPermittedKeyAllowlist(
   const permitted = new Set(permittedKeySet);
 
   return transcript.map((turn) => {
-    if (turn.kind !== "context_resolved") {
-      return turn;
+    if (turn.kind === "context_resolved") {
+      return {
+        ...turn,
+        context: filterToPermittedKeys(turn.context, permitted),
+      };
     }
 
-    return {
-      ...turn,
-      context: filterToPermittedKeys(turn.context, permitted),
-    };
+    if (turn.kind === "context_requested") {
+      return {
+        ...turn,
+        requests: turn.requests.filter((entry) => permitted.has(entry.key)),
+      };
+    }
+
+    return turn;
   });
 }
 
@@ -309,9 +316,20 @@ function permittedKeySetFromManifest(
   return contextRequirements.permittedKeySet as readonly string[];
 }
 
+function contextMatchesPrincipal(
+  context: Record<string, unknown>,
+  principal: Principal,
+): boolean {
+  return (
+    context.org === principal.organizationId &&
+    context.branch === principal.branchId
+  );
+}
+
 function validateConversationalContext(
   manifest: Manifest,
   suppliedContext: Record<string, unknown>,
+  principal: Principal,
   options: ConversationalValidateOptions,
 ): ValidateResult {
   const permittedKeySet = permittedKeySetFromManifest(manifest);
@@ -331,6 +349,19 @@ function validateConversationalContext(
 
   if (!validateTranscriptOrdering(parsedTranscript, options.legTurnOrdinal)) {
     return { ok: false, code: "context_invalid" };
+  }
+
+  if (!contextMatchesPrincipal(suppliedContext, principal)) {
+    return { ok: false, code: "context_invalid" };
+  }
+
+  for (const turn of parsedTranscript) {
+    if (turn.kind !== "context_resolved") {
+      continue;
+    }
+    if (!contextMatchesPrincipal(turn.context, principal)) {
+      return { ok: false, code: "context_invalid" };
+    }
   }
 
   const maxHistoryTurns = manifest.Interaction.maxHistoryTurns;
@@ -411,6 +442,7 @@ export function validateContext(
     const result = validateConversationalContext(
       manifest,
       suppliedContext,
+      principal,
       conversational,
     );
     if (!result.ok) {
@@ -457,10 +489,7 @@ export function validateContext(
     });
   }
 
-  if (
-    suppliedContext.org !== principal.organizationId ||
-    suppliedContext.branch !== principal.branchId
-  ) {
+  if (!contextMatchesPrincipal(suppliedContext, principal)) {
     logger.info("context_validation_failed", { code: "context_invalid" });
     return { ok: false, code: "context_invalid" };
   }

@@ -15,7 +15,7 @@ import { hashManifest, type Manifest } from "../manifest";
 export type CapabilityRegistry = Map<string, Manifest>;
 
 export type ResolveResult =
-  | { ok: true; manifest: Manifest }
+  | { ok: true; manifest: Manifest; killedProviderIds?: readonly string[] }
   | {
     ok: false;
     code:
@@ -253,6 +253,24 @@ async function assertPlanAllowance(
     return forbidden;
   }
 
+  const requiredScope = manifest.Access.requiredCapabilityScope;
+  if (
+    typeof requiredScope === "string" &&
+    requiredScope.length > 0 &&
+    !principal.scopes.includes(requiredScope)
+  ) {
+    return forbidden;
+  }
+
+  const allowedStaffRoles = manifest.Access.allowedStaffRoles;
+  if (
+    Array.isArray(allowedStaffRoles) &&
+    allowedStaffRoles.length > 0 &&
+    !allowedStaffRoles.includes(principal.role)
+  ) {
+    return forbidden;
+  }
+
   const installationGrant = await loadMatchingGrant(
     cache,
     reader,
@@ -356,38 +374,68 @@ async function resolveProviderIds(
   }
 }
 
-async function isCapabilityDisabled(
-  principal: Principal,
-  capabilityId: string,
+/**
+ * Active `provider:<id>` kill switches for providers named in the routing
+ * policy. Policy miss → empty list (do not invent provider ids). These ids
+ * are for the router to exclude; they do not disable the capability.
+ */
+async function collectActiveProviderKillSwitches(
   manifest: Manifest,
   cache: ConfigCache,
   reader: D1Reader,
-): Promise<boolean> {
-  const installationId = principal.installationId;
-  const killSwitchKeys = [
-    "global",
-    `capability:${capabilityId}`,
-    `installation:${installationId}`,
-  ];
-
+  installationId: string,
+): Promise<readonly string[]> {
   const providerIds = await resolveProviderIds(
     manifest,
     cache,
     reader,
     installationId,
   );
+  const killed: string[] = [];
   for (const providerId of providerIds) {
-    killSwitchKeys.push(`provider:${providerId}`);
+    const row = await loadKillSwitch(cache, reader, `provider:${providerId}`);
+    if (isKillSwitchActive(row)) {
+      killed.push(providerId);
+    }
+  }
+  return killed;
+}
+
+async function evaluateCapabilityKillSwitches(
+  principal: Principal,
+  capabilityId: string,
+  manifest: Manifest,
+  cache: ConfigCache,
+  reader: D1Reader,
+): Promise<{
+  capabilityDisabled: boolean;
+  killedProviderIds: readonly string[];
+}> {
+  if (manifest.Access.killSwitchFlag === true) {
+    return { capabilityDisabled: true, killedProviderIds: [] };
   }
 
-  for (const key of killSwitchKeys) {
+  const installationId = principal.installationId;
+  const capabilityKeys = [
+    "global",
+    `capability:${capabilityId}`,
+    `installation:${installationId}`,
+  ];
+
+  for (const key of capabilityKeys) {
     const row = await loadKillSwitch(cache, reader, key);
     if (isKillSwitchActive(row)) {
-      return true;
+      return { capabilityDisabled: true, killedProviderIds: [] };
     }
   }
 
-  return false;
+  const killedProviderIds = await collectActiveProviderKillSwitches(
+    manifest,
+    cache,
+    reader,
+    installationId,
+  );
+  return { capabilityDisabled: false, killedProviderIds };
 }
 
 function manifestToHashInput(manifest: Manifest): Record<string, unknown> {
@@ -550,7 +598,14 @@ export async function resolve(
     return allowance;
   }
 
-  if (await isCapabilityDisabled(principal, capabilityId, manifest, cache, reader)) {
+  const killSwitches = await evaluateCapabilityKillSwitches(
+    principal,
+    capabilityId,
+    manifest,
+    cache,
+    reader,
+  );
+  if (killSwitches.capabilityDisabled) {
     logger.debug("capability_resolve_rejected", {
       capability_id: capabilityId,
       version,
@@ -560,7 +615,11 @@ export async function resolve(
     return { ok: false, code: "capability_disabled" };
   }
 
-  return { ok: true, manifest: manifestWithEffectiveIdentity(manifest, effective) };
+  return {
+    ok: true,
+    manifest: manifestWithEffectiveIdentity(manifest, effective),
+    killedProviderIds: killSwitches.killedProviderIds,
+  };
 }
 
 export async function computeDiscoveryEtag(

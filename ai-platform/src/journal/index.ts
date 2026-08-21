@@ -10,8 +10,13 @@ import {
   normalizeRequestReference,
 } from "../reference";
 import { generateUlid } from "../trace";
-import { ConfigCache, createD1ConfigReader } from "../config-cache";
+import {
+  isolateConfigCache,
+  createD1ConfigReader,
+  type ConfigCache,
+} from "../config-cache";
 import type { CanonicalResult } from "../contracts/canonical";
+import type { RoutingDecision } from "../router";
 
 export type TransitionState =
   | "Accepted"
@@ -35,6 +40,8 @@ export type RequestRowInput = {
   conversationId?: string | null;
   turnOrdinal?: number | null;
   routingTier?: "standard" | "degraded";
+  /** Composer's `promptVersion` — content hash of resolved artifact bytes. */
+  promptArtifactHash?: string;
 };
 
 export type AttemptInput = {
@@ -245,7 +252,8 @@ export async function createRequestRow(
         input.principal.branchId,
         input.manifest.Identity.capabilityId,
         input.manifest.Identity.version,
-        input.manifest["Prompt binding"].systemInstructionArtifactRef,
+        input.promptArtifactHash ??
+          String(input.manifest["Prompt binding"].systemInstructionArtifactRef),
         input.idempotencyKey,
         input.traceId,
         "Accepted",
@@ -276,6 +284,22 @@ export async function createRequestRow(
       trace_id: body.trace_id,
     };
   }
+}
+
+export async function persistRoutingDecision(
+  requestId: string,
+  decision: RoutingDecision,
+  db: D1Database,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE ai_request
+       SET routing_decision = ?, updated_at = ?
+       WHERE ${TERMINAL_IMMUTABLE_WHERE}`,
+    )
+    .bind(JSON.stringify(decision), now, requestId)
+    .run();
 }
 
 export async function journalTransition(
@@ -521,6 +545,7 @@ export async function authenticateGetRequest(
   request: Request,
   env: { DB: D1Database },
   logger: Logger = noopLogger,
+  cache: ConfigCache = isolateConfigCache,
 ): Promise<AuthenticateGetRequestResult> {
   const header = request.headers.get("Authorization");
   if (header === null || !header.startsWith("Bearer ")) {
@@ -539,7 +564,7 @@ export async function authenticateGetRequest(
     audience: "ai-platform",
     clockSkewSeconds: 60,
     now: Math.floor(Date.now() / 1000),
-    cache: new ConfigCache(),
+    cache,
     reader: createD1ConfigReader(env.DB),
   });
 

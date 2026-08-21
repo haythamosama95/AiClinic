@@ -116,7 +116,6 @@ type RoutingDecision = {
   required_features: CapabilityRequirements;
   chain: ChainEntry[];
   excluded: ExcludedEntry[];
-  max_parallel_attempts: number;
 };
 
 type RouterOutcome = {
@@ -151,6 +150,34 @@ function policyTarget(
     features: defaultTargetFeatures(features),
     max_attempts: attemptBounds.max_attempts ?? 2,
     timeout_ms: attemptBounds.timeout_ms ?? 30_000,
+  };
+}
+
+/** Bypass defaultTargetFeatures so omitted/unknown fields reach filterTargets as they would from R2. */
+function malformedPolicyTarget(
+  providerId: string,
+  modelId: string,
+  features: Record<string, unknown>,
+): PolicyTarget {
+  return {
+    provider_id: providerId,
+    model_id: modelId,
+    features: features as TargetFeatures,
+    max_attempts: 2,
+    timeout_ms: 30_000,
+  };
+}
+
+function wellFormedFeatureFields(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    structured_output: true,
+    min_context_window: 128_000,
+    languages: ["en"],
+    latency_class: "interactive",
+    cost_class: "standard",
+    ...overrides,
   };
 }
 
@@ -425,6 +452,174 @@ describe("T-D2-11 router_filter_latency_class", () => {
   });
 });
 
+describe("filterTargets fail-closed on malformed target features", () => {
+  const wellFormedSibling = policyTarget("google", "well-formed");
+
+  it("excludes a missing min_context_window with feature_unsupported instead of routing it", () => {
+    const missingWindow = { ...wellFormedFeatureFields() };
+    delete missingWindow.min_context_window;
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("malformed-window", [
+          malformedPolicyTarget("deepseek", "undeclared-window", missingWindow),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        requirements: defaultRequirements({ min_context_window: 32_000 }),
+      }),
+    );
+
+    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
+    expect(excludedReasons(outcome, "deepseek", "undeclared-window")).toEqual([
+      "feature_unsupported",
+    ]);
+  });
+
+  it("excludes a non-numeric min_context_window with feature_unsupported", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("unknown-window", [
+          malformedPolicyTarget(
+            "deepseek",
+            "string-window",
+            wellFormedFeatureFields({ min_context_window: "128000" }),
+          ),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        requirements: defaultRequirements({ min_context_window: 32_000 }),
+      }),
+    );
+
+    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
+    expect(excludedReasons(outcome, "deepseek", "string-window")).toEqual([
+      "feature_unsupported",
+    ]);
+  });
+
+  it("excludes an unknown cost_class typo with feature_unsupported instead of surviving the ceiling", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("malformed-cost", [
+          malformedPolicyTarget(
+            "deepseek",
+            "typo-cost",
+            wellFormedFeatureFields({ cost_class: "standrd" }),
+          ),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(
+      cache,
+      defaultContext({
+        manifestCostClass: "standard",
+        entitlementMaxCostClass: "premium",
+      }),
+    );
+
+    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
+    expect(excludedReasons(outcome, "deepseek", "typo-cost")).toEqual([
+      "feature_unsupported",
+    ]);
+  });
+
+  it("excludes a missing cost_class with feature_unsupported instead of surviving any ceiling", () => {
+    const missingCost = { ...wellFormedFeatureFields() };
+    delete missingCost.cost_class;
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("missing-cost", [
+          malformedPolicyTarget("deepseek", "undeclared-cost", missingCost),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+    const outcome = route(cache);
+
+    expect(chainKeys(outcome)).toEqual(["google/well-formed"]);
+    expect(excludedReasons(outcome, "deepseek", "undeclared-cost")).toEqual([
+      "feature_unsupported",
+    ]);
+  });
+
+  it("excludes missing languages with feature_unsupported and does not throw", () => {
+    const missingLanguages = { ...wellFormedFeatureFields() };
+    delete missingLanguages.languages;
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("missing-languages", [
+          malformedPolicyTarget(
+            "deepseek",
+            "undeclared-languages",
+            missingLanguages,
+          ),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+
+    let outcome: RouterOutcome | undefined;
+    expect(() => {
+      outcome = route(
+        cache,
+        defaultContext({
+          requirements: defaultRequirements({ languages: ["en"] }),
+        }),
+      );
+    }).not.toThrow();
+
+    expect(chainKeys(outcome!)).toEqual(["google/well-formed"]);
+    expect(
+      excludedReasons(outcome!, "deepseek", "undeclared-languages"),
+    ).toEqual(["feature_unsupported"]);
+  });
+
+  it("excludes a non-array languages field with feature_unsupported and does not throw", () => {
+    const document = buildPolicyDocument({
+      rules: [
+        catchAllRule("non-array-languages", [
+          malformedPolicyTarget(
+            "deepseek",
+            "string-languages",
+            wellFormedFeatureFields({ languages: "en" }),
+          ),
+          wellFormedSibling,
+        ]),
+      ],
+    });
+    const cache = preloadPolicyCache(document);
+
+    let outcome: RouterOutcome | undefined;
+    expect(() => {
+      outcome = route(
+        cache,
+        defaultContext({
+          requirements: defaultRequirements({ languages: ["en"] }),
+        }),
+      );
+    }).not.toThrow();
+
+    expect(chainKeys(outcome!)).toEqual(["google/well-formed"]);
+    expect(excludedReasons(outcome!, "deepseek", "string-languages")).toEqual([
+      "feature_unsupported",
+    ]);
+  });
+});
+
 describe("T-D2-12 router_installation_override_applied", () => {
   it("narrows or pins the chain and never widens beyond matched rule targets", () => {
     const ruleTargets = [
@@ -478,9 +673,8 @@ describe("T-D2-13 router_identical_inputs_identical_chain", () => {
     expect(second.routing_decision.excluded).toEqual(
       first.routing_decision.excluded,
     );
-    expect(second.routing_decision.max_parallel_attempts).toBe(
-      first.routing_decision.max_parallel_attempts,
-    );
+    expect(second.routing_decision).not.toHaveProperty("max_parallel_attempts");
+    expect(first.routing_decision).not.toHaveProperty("max_parallel_attempts");
   });
 });
 
@@ -540,7 +734,7 @@ describe("T-D2-14 router_selection_reason_recorded", () => {
       },
     ]);
     expect(decision.excluded).toEqual(expect.any(Array));
-    expect(decision.max_parallel_attempts).toBe(2);
+    expect(decision).not.toHaveProperty("max_parallel_attempts");
   });
 });
 
@@ -845,8 +1039,8 @@ describe("T-D2-19 routing_policy_is_versioned_data", () => {
   });
 });
 
-describe("T-D2-20 outgoing_connection_cap_bounds_parallelism", () => {
-  it("clamps policy-requested parallelism of 10 over default 12 to exactly 6", () => {
+describe("T-D2-20 routing_decision_omits_max_parallel_attempts", () => {
+  it("does not emit max_parallel_attempts even when the policy requests racing", () => {
     const document = buildPolicyDocument({
       defaults: {
         cost_class: "standard",
@@ -864,10 +1058,12 @@ describe("T-D2-20 outgoing_connection_cap_bounds_parallelism", () => {
     const cache = preloadPolicyCache(document);
     const outcome = route(cache);
 
-    expect(outcome.routing_decision.max_parallel_attempts).toBe(6);
+    expect(outcome.routing_decision).not.toHaveProperty("max_parallel_attempts");
+    expect(outcome.routing_decision.rule_id).toBe("parallel-cap");
+    expect(chainKeys(outcome)).toEqual(["deepseek/deepseek-chat"]);
   });
 
-  it("prefers rule max_parallel_attempts over defaults (rule=2, default=12 → 2)", () => {
+  it("ignores a per-rule max_parallel_attempts override rather than clamping it onto the decision", () => {
     const document = buildPolicyDocument({
       defaults: {
         cost_class: "standard",
@@ -885,7 +1081,8 @@ describe("T-D2-20 outgoing_connection_cap_bounds_parallelism", () => {
     const cache = preloadPolicyCache(document);
     const outcome = route(cache);
 
-    expect(outcome.routing_decision.max_parallel_attempts).toBe(2);
+    expect(outcome.routing_decision).not.toHaveProperty("max_parallel_attempts");
+    expect(outcome.routing_decision.rule_id).toBe("rule-wins");
   });
 });
 

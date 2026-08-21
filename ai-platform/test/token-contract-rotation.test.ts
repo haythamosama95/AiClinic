@@ -57,7 +57,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   scopes: ["ai.access"],
   jti: FIXTURE_JTI,
   iat: NOW - 30,
-  exp: NOW + 600,
+  exp: NOW + 300,
   ver: "1",
 };
 

@@ -16,6 +16,12 @@ function timingSafeEqualString(left: string, right: string): boolean {
 /**
  * Production operator auth: verify `Authorization: Bearer` against a Workers secret
  * and return the configured stable operator id — never the credential itself.
+ *
+ * Single-operator deployment: one shared bearer maps every control-plane action
+ * to one configured `operatorId`. `control_audit` cannot distinguish operators,
+ * and the token cannot be rotated or revoked per-operator. A future
+ * `control_operator` table (per-operator token hashes + ids) would be required
+ * for multi-operator access — not implemented.
  */
 export function createSecretOperatorAuth(options: {
   bearerToken: string;

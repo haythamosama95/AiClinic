@@ -98,12 +98,18 @@ export class FakeAdapter implements ProviderPort {
       };
     }
 
+    const rawBody = {
+      payload: { fake: true, outcome },
+      truncated: false as const,
+    };
+
     if (outcome === "success") {
       const result = createSuccessResult();
       return {
         kind: "success",
         result,
         chunks: minimalTerminalChunks(textFromResult(result)),
+        rawBody,
       };
     }
 
@@ -113,6 +119,7 @@ export class FakeAdapter implements ProviderPort {
         kind: "truncation",
         result,
         chunks: minimalTerminalChunks(textFromResult(result)),
+        rawBody,
       };
     }
 
@@ -120,6 +127,7 @@ export class FakeAdapter implements ProviderPort {
       return {
         kind: "malformed",
         error: createCanonicalError("internal_error"),
+        rawBody,
       };
     }
 
@@ -128,6 +136,7 @@ export class FakeAdapter implements ProviderPort {
       return {
         kind: "error",
         error: createCanonicalError(code ?? "internal_error"),
+        rawBody,
       };
     }
 
@@ -136,12 +145,14 @@ export class FakeAdapter implements ProviderPort {
       return {
         kind: "error",
         error: createCanonicalError(code ?? "internal_error"),
+        rawBody,
       };
     }
 
     return {
       kind: "error",
       error: createCanonicalError("internal_error"),
+      rawBody,
     };
   }
 }

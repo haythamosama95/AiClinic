@@ -1,3 +1,4 @@
+import { retryAfterSecondsForRateLimited } from "../errors";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 
@@ -33,9 +34,6 @@ export type GuardRejectionDimensions = {
   installation_id: string;
   composite_key?: CompositeKeyKind;
 };
-
-/** Default retry-after when the binding does not supply one (§4.3.3 simple limiter window). */
-const DEFAULT_RETRY_AFTER_SECONDS = 60;
 
 /** In-isolate rejection tally keyed by time bucket + dimension set (§4.3.12). */
 const rejectionTally = new Map<string, number>();
@@ -88,6 +86,12 @@ async function counterIdFor(
     .join("");
 }
 
+function retryAfterSecondsFromAdmission(outcome: RateLimitOutcome): number {
+  return retryAfterSecondsForRateLimited(
+    (outcome as RateLimitOutcome & { retryAfter?: unknown }).retryAfter,
+  );
+}
+
 function compositeKeyChecks(
   input: RateLimitInput,
   bindings: RateLimitBindings,
@@ -119,10 +123,11 @@ export async function checkRateLimit(
   for (const check of compositeKeyChecks(input, bindings)) {
     const outcome = await check.binding.limit({ key: check.key });
     if (!outcome.success) {
+      const retryAfter = retryAfterSecondsFromAdmission(outcome);
       logger.info("Rate limit exceeded", {
         installation_id: input.installationId,
         composite_key: check.kind,
-        retry_after: DEFAULT_RETRY_AFTER_SECONDS,
+        retry_after: retryAfter,
       });
       recordGuardRejection({
         error_code: "rate_limited",
@@ -132,7 +137,7 @@ export async function checkRateLimit(
       return {
         ok: false,
         code: "rate_limited",
-        retryAfter: DEFAULT_RETRY_AFTER_SECONDS,
+        retryAfter,
       };
     }
   }
@@ -141,9 +146,15 @@ export async function checkRateLimit(
 }
 
 /**
- * Flushes the in-isolate tally to bucketed `platform_counter` rows.
+ * Flushes this isolate's in-memory tally to bucketed `platform_counter` rows.
  * Snapshot-and-clear before writing so a mid-flush D1 failure cannot double-count
  * on the next flush (under-count on failure is preferred to double-apply).
+ *
+ * Only the isolate that happens to run cron drains its map. Tallies in other
+ * isolates are lost on eviction, so `platform_counter.count` is a **lower bound**,
+ * not an exact rejection count. An accurate count would flush at request end
+ * batched with the journal write — not implemented; document the lower bound
+ * wherever the counter is consumed.
  */
 export async function flushRejectionCounters(
   bindings: Pick<RateLimitBindings, "DB">,

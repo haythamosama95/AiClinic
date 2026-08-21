@@ -19,6 +19,7 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "manifests/published/**/*.json"
+    "manifests/published/**/*.json",
+    "control/pricing/**/*.json"
   ]
 }

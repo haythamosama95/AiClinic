@@ -19,7 +19,7 @@
 
 ## 1. Plain language
 
-A staff member with AI permissions requests a short-lived signed token. Supabase signs it with the clinic private key. The platform never sees the private key — only verifies with the enrolled public key.
+A staff member with AI permissions requests a short-lived signed token. Supabase signs it with the clinic private key. The platform never sees the private key — only verifies with the enrolled public key. The issuer MUST mint minutes-scale lifetime (`exp = iat + lifetime_minutes * 60`). The platform independently rejects any token whose `exp − iat` exceeds 600 seconds (`MAX_AAT_LIFETIME_SECONDS`).
 
 ## 2. Metaphor
 
@@ -64,7 +64,7 @@ A **boarding pass** — short-lived, tied to one passenger (staff), one airline 
 | `scopes` | string[] | RBAC `ai.*` permissions                   | `scopes`                              | Scopes — which AI permissions this token grants (from RBAC `ai.*`)      |
 | `jti`    | string   | `gen_random_uuid()`                       | `jti` — replay protection in Quota DO | JWT ID — unique id for audit trail and one-time-use replay protection   |
 | `iat`    | number   | Unix seconds now                          | `iat`                                 | Issued at — when the token was minted (Unix timestamp in seconds)       |
-| `exp`    | number   | `iat + lifetime_minutes * 60`             | `exp`                                 | Expires at — when the token stops being valid (Unix timestamp)          |
+| `exp`    | number   | `iat + lifetime_minutes * 60`             | `exp`                                 | Expires at — Unix timestamp. Issuer mints short-lived (minutes). Platform rejects `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`) as `unauthenticated`. |
 | `ver`    | string   | `ai.aat.ver` (default `1`)                | `ver` → token_contract lookup         | Version — token contract version; selects validation rules on platform  |
 
 
@@ -88,5 +88,7 @@ One row per `jti` for audit.
 
 
 ## 6. Platform verification summary
+
+The issuer mints a short-lived AAT. Independently, `EnrolledKeyVerifier` rejects `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`) as `unauthenticated` in the cheap claim-check region before any D1 or config-cache load.
 
 See [§5 Stage 2 — Identity](11-stage-9-the-guard.md#5-stage-2-identity) for every check and failure.

@@ -13,6 +13,8 @@ import type {
   ProviderInvokeResult,
   ProviderPort,
 } from "./port";
+import { readSseDataPayloads, readUtf8Body } from "./readable-body";
+import { withRawBody } from "./raw-body";
 
 export const GEMINI_API_KEY_BINDING = "GEMINI_API_KEY";
 
@@ -32,7 +34,7 @@ export const PROVIDER_RESPONSE_BODY_SIZE_LIMIT = 1_048_576;
 export type GeminiTransportResponse = {
   status: number;
   headers: Record<string, string>;
-  body: string;
+  body: string | ReadableStream<Uint8Array>;
 };
 
 export type GeminiTransportRequest = {
@@ -109,11 +111,6 @@ type GeminiResponse = {
   };
 };
 
-type ParseSseResult = {
-  events: GeminiResponse[];
-  hadMalformedLine: boolean;
-};
-
 function consumesBudget(code: TaxonomyCode): boolean {
   const { consumesQuota } = getTaxonomyEntry(code);
   return consumesQuota !== "No";
@@ -183,20 +180,18 @@ function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).byteLength;
 }
 
-function isProviderBodyOverLimit(
-  body: string,
-  headers: Record<string, string>,
-): boolean {
+function isDeclaredBodyOverLimit(headers: Record<string, string>): boolean {
   const contentLength = headerValue(headers, "content-length");
-  if (contentLength !== undefined) {
-    const declared = Number(contentLength);
-    if (
-      Number.isFinite(declared) &&
-      declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
-    ) {
-      return true;
-    }
+  if (contentLength === undefined) {
+    return false;
   }
+  const declared = Number(contentLength);
+  return (
+    Number.isFinite(declared) && declared > PROVIDER_RESPONSE_BODY_SIZE_LIMIT
+  );
+}
+
+function isStringBodyOverLimit(body: string): boolean {
   return utf8ByteLength(body) > PROVIDER_RESPONSE_BODY_SIZE_LIMIT;
 }
 
@@ -434,29 +429,6 @@ function classifyProviderErrorFrame(body: GeminiResponse): TaxonomyCode {
     return "provider_rejected";
   }
   return "provider_rejected";
-}
-
-function parseSseEvents(body: string): ParseSseResult {
-  const events: GeminiResponse[] = [];
-  let hadMalformedLine = false;
-
-  for (const line of body.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) {
-      continue;
-    }
-    const payload = trimmed.slice("data:".length).trim();
-    if (payload.length === 0) {
-      continue;
-    }
-    try {
-      events.push(JSON.parse(payload) as GeminiResponse);
-    } catch {
-      hadMalformedLine = true;
-    }
-  }
-
-  return { events, hadMalformedLine };
 }
 
 function normalizeStreamChunks(
@@ -701,17 +673,21 @@ export class GeminiAdapter implements ProviderPort {
     try {
       const fetchResult = this.transport.fetch(apiUrl, fetchInit);
       const response = await awaitTransportResponse(fetchResult, guard);
-      const providerMs = Math.max(0, Date.now() - startedAt);
       if (response === null) {
         return guard.wasTimeout()
           ? createTimeoutOutcome()
           : createCancelledOutcome();
       }
-      return this.handleTransportResponse(
+      return await this.handleTransportResponse(
         response,
         request,
         isStream,
-        providerMs,
+        startedAt,
+        {
+          onStreamChunk: options?.onStreamChunk,
+          signal: guard.signal,
+          wasTimeout: guard.wasTimeout,
+        },
       );
     } catch {
       if (guard.signal.aborted) {
@@ -732,13 +708,31 @@ export class GeminiAdapter implements ProviderPort {
     }
   }
 
-  private handleTransportResponse(
+  private async handleTransportResponse(
     response: GeminiTransportResponse,
     _request: CanonicalRequest,
     isStream: boolean,
-    providerMs: number,
-  ): ProviderInvokeResult {
-    if (isProviderBodyOverLimit(response.body, response.headers)) {
+    startedAt: number,
+    streamOpts: {
+      onStreamChunk?: (chunk: CanonicalStreamChunk) => void;
+      signal: AbortSignal;
+      wasTimeout: () => boolean;
+    },
+  ): Promise<ProviderInvokeResult> {
+    if (isDeclaredBodyOverLimit(response.headers)) {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      };
+    }
+    if (
+      typeof response.body === "string" &&
+      isStringBodyOverLimit(response.body)
+    ) {
       return {
         kind: "error",
         error: createCanonicalError(
@@ -755,55 +749,104 @@ export class GeminiAdapter implements ProviderPort {
       "";
 
     if (response.status < 200 || response.status >= 300) {
+      const read = await readUtf8Body(response.body, {
+        byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+        signal: streamOpts.signal,
+      });
+      if (!read.ok) {
+        if (read.reason === "over_limit") {
+          return {
+            kind: "error",
+            error: createCanonicalError(
+              "internal_error",
+              "response_too_large",
+              "Provider response exceeded body size limit",
+            ),
+          };
+        }
+        return streamOpts.wasTimeout()
+          ? createTimeoutOutcome()
+          : createCancelledOutcome();
+      }
       let parsed: GeminiResponse = {};
       try {
-        parsed = JSON.parse(response.body) as GeminiResponse;
+        parsed = JSON.parse(read.text) as GeminiResponse;
       } catch {
         parsed = {};
       }
       const taxonomy = classifyHttpFailure(response.status, parsed);
       const retryAfterMs = parseRetryAfterMs(response.headers);
-      return {
-        kind: "error",
-        error: createCanonicalError(
-          taxonomy,
-          String(parsed.error?.status ?? parsed.error?.code ?? response.status),
-          parsed.error?.message ?? `HTTP ${response.status}`,
-          undefined,
-          retryAfterMs,
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "error",
+          error: createCanonicalError(
+            taxonomy,
+            String(parsed.error?.status ?? parsed.error?.code ?? response.status),
+            parsed.error?.message ?? `HTTP ${response.status}`,
+            undefined,
+            retryAfterMs,
+          ),
+        },
+        read.text,
+      );
     }
 
     if (isStream || contentType.includes("text/event-stream")) {
-      return this.handleStreamResponse(response.body, providerMs);
+      return this.handleStreamResponse(response.body, startedAt, streamOpts);
     }
 
+    const read = await readUtf8Body(response.body, {
+      byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+      signal: streamOpts.signal,
+    });
+    if (!read.ok) {
+      if (read.reason === "over_limit") {
+        return {
+          kind: "error",
+          error: createCanonicalError(
+            "internal_error",
+            "response_too_large",
+            "Provider response exceeded body size limit",
+          ),
+        };
+      }
+      return streamOpts.wasTimeout()
+        ? createTimeoutOutcome()
+        : createCancelledOutcome();
+    }
+
+    const providerMs = Math.max(0, Date.now() - startedAt);
     let parsed: GeminiResponse;
     try {
-      parsed = JSON.parse(response.body) as GeminiResponse;
+      parsed = JSON.parse(read.text) as GeminiResponse;
     } catch {
-      return {
-        kind: "malformed",
-        error: createCanonicalError(
-          "internal_error",
-          "malformed_response",
-          "Provider returned unparseable JSON",
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "malformed",
+          error: createCanonicalError(
+            "internal_error",
+            "malformed_response",
+            "Provider returned unparseable JSON",
+          ),
+        },
+        read.text,
+      );
     }
 
     if (isContentFiltered(parsed)) {
-      return {
-        kind: "error",
-        error: createCanonicalError(
-          "provider_rejected",
-          parsed.candidates?.[0]?.finishReason ??
-            parsed.promptFeedback?.blockReason ??
-            "SAFETY",
-          "Content filtered by provider",
-        ),
-      };
+      return withRawBody(
+        {
+          kind: "error",
+          error: createCanonicalError(
+            "provider_rejected",
+            parsed.candidates?.[0]?.finishReason ??
+              parsed.promptFeedback?.blockReason ??
+              "SAFETY",
+            "Content filtered by provider",
+          ),
+        },
+        read.text,
+      );
     }
 
     const candidate = parsed.candidates?.[0];
@@ -812,7 +855,7 @@ export class GeminiAdapter implements ProviderPort {
 
     const finishError = finishReasonErrorOutcome(finishReason);
     if (finishError) {
-      return finishError;
+      return withRawBody(finishError, read.text);
     }
 
     const usageAbsent = parsed.usageMetadata === undefined;
@@ -826,46 +869,115 @@ export class GeminiAdapter implements ProviderPort {
     const chunks = minimalTerminalChunks(content, usageAbsent);
 
     if (finishReason === "MAX_TOKENS") {
-      return { kind: "truncation", result, chunks };
+      return withRawBody({ kind: "truncation", result, chunks }, read.text);
     }
 
-    return { kind: "success", result, chunks };
+    return withRawBody({ kind: "success", result, chunks }, read.text);
   }
 
-  private handleStreamResponse(
-    body: string,
-    providerMs: number,
-  ): ProviderInvokeResult {
-    const { events, hadMalformedLine } = parseSseEvents(body);
+  private async handleStreamResponse(
+    body: string | ReadableStream<Uint8Array>,
+    startedAt: number,
+    streamOpts: {
+      onStreamChunk?: (chunk: CanonicalStreamChunk) => void;
+      signal: AbortSignal;
+      wasTimeout: () => boolean;
+    },
+  ): Promise<ProviderInvokeResult> {
+    const events: GeminiResponse[] = [];
+    let hadMalformedLine = false;
+    const rawPayloads: string[] = [];
+
+    let sse;
+    try {
+      sse = await readSseDataPayloads(body, {
+        byteLimit: PROVIDER_RESPONSE_BODY_SIZE_LIMIT,
+        signal: streamOpts.signal,
+        onPayload: (payload) => {
+          if (payload === "[DONE]") {
+            return;
+          }
+          rawPayloads.push(payload);
+          let event: GeminiResponse;
+          try {
+            event = JSON.parse(payload) as GeminiResponse;
+          } catch {
+            hadMalformedLine = true;
+            return;
+          }
+          events.push(event);
+          const delta = extractCandidateText(event.candidates?.[0]);
+          if (delta.length > 0) {
+            streamOpts.onStreamChunk?.({
+              sequenceNumber: events.length - 1,
+              kind: "text_delta",
+              payload: { text: delta },
+              terminal: false,
+            });
+          }
+        },
+      });
+    } catch {
+      return {
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "transport_failure",
+          "Gemini transport failed",
+        ),
+      };
+    }
+
+    const rawText = rawPayloads.join("\n");
+    const attach = (result: ProviderInvokeResult): ProviderInvokeResult =>
+      withRawBody(result, rawText.length > 0 ? rawText : undefined);
+
+    const providerMs = Math.max(0, Date.now() - startedAt);
+
+    if (sse.overLimit) {
+      return attach({
+        kind: "error",
+        error: createCanonicalError(
+          "internal_error",
+          "response_too_large",
+          "Provider response exceeded body size limit",
+        ),
+      });
+    }
+    if (sse.aborted) {
+      return streamOpts.wasTimeout()
+        ? createTimeoutOutcome()
+        : createCancelledOutcome();
+    }
 
     if (hadMalformedLine) {
-      return {
+      return attach({
         kind: "malformed",
         error: createCanonicalError(
           "internal_error",
           "malformed_response",
           "Provider returned unparseable SSE data line",
         ),
-      };
+      });
     }
 
     for (const event of events) {
       if (event.error) {
         const taxonomy = classifyProviderErrorFrame(event);
-        return {
+        return attach({
           kind: "error",
           error: createCanonicalError(
             taxonomy,
             String(event.error.status ?? event.error.code ?? "provider_error"),
             event.error.message ?? "Provider stream error frame",
           ),
-        };
+        });
       }
     }
 
     for (const event of events) {
       if (isContentFiltered(event)) {
-        return {
+        return attach({
           kind: "error",
           error: createCanonicalError(
             "provider_rejected",
@@ -874,7 +986,7 @@ export class GeminiAdapter implements ProviderPort {
               "SAFETY",
             "Content filtered by provider",
           ),
-        };
+        });
       }
     }
 
@@ -901,7 +1013,7 @@ export class GeminiAdapter implements ProviderPort {
     if (hadFinishReason && finishReason) {
       const finishError = finishReasonErrorOutcome(finishReason);
       if (finishError) {
-        return finishError;
+        return attach(finishError);
       }
     }
 
@@ -923,13 +1035,13 @@ export class GeminiAdapter implements ProviderPort {
     );
 
     if (!hadFinishReason) {
-      return { kind: "truncation", result, chunks };
+      return attach({ kind: "truncation", result, chunks });
     }
 
     if (finishReason === "MAX_TOKENS") {
-      return { kind: "truncation", result, chunks };
+      return attach({ kind: "truncation", result, chunks });
     }
 
-    return { kind: "success", result, chunks };
+    return attach({ kind: "success", result, chunks });
   }
 }

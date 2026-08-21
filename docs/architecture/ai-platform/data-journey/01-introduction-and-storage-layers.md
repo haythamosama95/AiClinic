@@ -89,6 +89,7 @@ Read this once. The rest of the document unpacks every box.
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ CONTROL PLANE — `/control/*` (Bearer OPERATOR_BEARER_TOKEN)                 │
+│  Single shared bearer + OPERATOR_ID: control_audit cannot distinguish ops   │
 │  POST …/enroll  → D1: installation, installation_key, entitlement(pending)  │
 │  POST …/entitle → D1: entitlement(active), capability_grant, control_audit  │
 │  POST …/routing-policies/…/publish → R2: policy JSON + D1: routing_policy    │
@@ -167,13 +168,21 @@ Deployed with the Worker:
 | ----------------------------------------------------- | ----------------------------------- |
 | `manifests/published/clinic.visit_summary@1.0.0.json` | Capability manifest                 |
 | `prompts/clinic.visit_summary/*.md`                   | System, rules, template prompt text |
+| `control/pricing/platform-default/1.json`             | Post-response model price table (input/output per 1K tokens). Bundled, never client-visible. Money is applied only at settlement from provider-reported tokens (§13.6.2). |
 
 
 
 
 ### 3.5 Config cache — 30-second reading glasses
 
-Before most D1 reads, `config-cache` may return a cached copy (TTL `30_000` ms). Cache keys:
+Before most D1 reads, `config-cache` may return a cached copy (TTL `30_000` ms). Production uses
+**one `ConfigCache` instance per Worker isolate** (`isolateConfigCache`) — isolate-local memory,
+not a store. `createProductionPreAccept` (`POST /v1/requests`), `authenticateGetRequest`
+(`GET /v1/requests/{ref}`), invoke-path routing, and discovery share that instance, so the TTL
+dedupes installation, key, entitlement, grant, kill-switch, token-contract, and policy reads
+**across requests** in a warm isolate. Tests inject `new ConfigCache()` so they stay isolated.
+D1 updates become visible after TTL expiry (≤30 s); there is no flush API. Cache keys:
+
 
 
 | Kind                    | Key pattern                                                          | D1 table              |
@@ -184,7 +193,7 @@ Before most D1 reads, `config-cache` may return a cached copy (TTL `30_000` ms).
 | `grants`                | `{installation_id}/{capability_id}` or `plan:{plan}/{capability_id}` | `capability_grant`    |
 | `kill_switches`         | `global` or `{scope}:{target}`                                       | `kill_switch`         |
 | `token_contracts`       | `{ver}`                                                              | `token_contract`      |
-| `active_routing_policy` | `{policyRef}` or `{policyRef}/{installationId}`                      | `routing_policy` + R2 |
+| `active_routing_policy` | `{policyRef}` or `{policyRef}/{installationId}`                      | `routing_policy` + R2; canary-then-active, `ORDER BY active_from DESC, rowid DESC` |
 
 
 ---

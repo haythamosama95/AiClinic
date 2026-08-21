@@ -13,6 +13,7 @@ import type {
   PublishPayload,
   RoutingPolicyRoute,
 } from "./types";
+import visitSummaryPublished from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 
 type RoutingPolicyRow = {
   policy_id: string;
@@ -21,6 +22,100 @@ type RoutingPolicyRow = {
   canary_installation_ids: string | null;
   active_from: string;
 };
+
+type PublishedCapabilityManifest = {
+  Routing?: {
+    routingPolicyRef?: unknown;
+    latencyClass?: unknown;
+  };
+};
+
+const PUBLISHED_CAPABILITY_MANIFESTS: readonly PublishedCapabilityManifest[] = [
+  visitSummaryPublished,
+];
+
+function parseRoutingPolicyRef(
+  ref: unknown,
+): { policyId: string; version: string } | null {
+  if (typeof ref !== "string") {
+    return null;
+  }
+  const match = /^routing\/([^/]+)@v(\d+)$/.exec(ref);
+  if (!match) {
+    return null;
+  }
+  return { policyId: match[1], version: match[2] };
+}
+
+function collectTargetLatencyClasses(
+  document: Record<string, unknown>,
+): Set<string> {
+  const classes = new Set<string>();
+  if (!Array.isArray(document.rules)) {
+    return classes;
+  }
+  for (const rule of document.rules) {
+    if (rule === null || typeof rule !== "object" || Array.isArray(rule)) {
+      continue;
+    }
+    const targets = (rule as { targets?: unknown }).targets;
+    if (!Array.isArray(targets)) {
+      continue;
+    }
+    for (const target of targets) {
+      if (target === null || typeof target !== "object" || Array.isArray(target)) {
+        continue;
+      }
+      const features = (target as { features?: unknown }).features;
+      if (
+        features === null ||
+        typeof features !== "object" ||
+        Array.isArray(features)
+      ) {
+        continue;
+      }
+      const latencyClass = (features as { latency_class?: unknown }).latency_class;
+      if (typeof latencyClass === "string") {
+        classes.add(latencyClass);
+      }
+    }
+  }
+  return classes;
+}
+
+function isUniqueConstraint(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /UNIQUE constraint failed|SQLITE_CONSTRAINT/i.test(message);
+}
+
+function latencyMismatchWarnings(
+  document: Record<string, unknown>,
+  route: RoutingPolicyRoute,
+): string[] {
+  const referenced = PUBLISHED_CAPABILITY_MANIFESTS.filter((manifest) => {
+    const parsed = parseRoutingPolicyRef(manifest.Routing?.routingPolicyRef);
+    return (
+      parsed !== null &&
+      parsed.policyId === route.policyId &&
+      parsed.version === route.version
+    );
+  });
+  if (referenced.length === 0) {
+    return [];
+  }
+
+  const targetClasses = collectTargetLatencyClasses(document);
+  for (const manifest of referenced) {
+    const latencyClass = manifest.Routing?.latencyClass;
+    if (typeof latencyClass !== "string" || latencyClass.length === 0) {
+      continue;
+    }
+    if (!targetClasses.has(latencyClass)) {
+      return ["latency_class_mismatch"];
+    }
+  }
+  return [];
+}
 
 async function assertInstallationsExist(
   db: D1Database,
@@ -84,36 +179,61 @@ export async function handleRoutingPolicyPublish(
     return reject(400, "missing_document");
   }
 
+  const document = body.document as Record<string, unknown>;
+  if (
+    document.policy_id !== route.policyId ||
+    String(document.policy_version) !== route.version
+  ) {
+    return reject(400, "policy_identity_mismatch");
+  }
+
   const { DB, R2 } = bindings;
   const recordedAt = nowIso();
   const contentPointer = `control/routing-policy/${route.policyId}/${route.version}.json`;
   const target = `${route.policyId}@${route.version}`;
 
-  await R2.put(contentPointer, JSON.stringify(body.document), {
+  const alreadyPublished = await DB.prepare(
+    `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
+  )
+    .bind(route.policyId, route.version)
+    .first();
+  if (alreadyPublished) {
+    return reject(409, "already_published");
+  }
+
+  await R2.put(contentPointer, JSON.stringify(document), {
     httpMetadata: { contentType: "application/json" },
   });
 
-  await DB.batch([
-    DB.prepare(
-      `INSERT INTO routing_policy (
-         policy_id, version, content_pointer, active_from, activated_by,
-         canary_installation_ids, status
-       ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
-    ).bind(
-      route.policyId,
-      route.version,
-      contentPointer,
-      recordedAt,
-      auth.operatorId,
-    ),
-    DB.prepare(
-      `INSERT INTO control_audit
-         (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
-       VALUES (?, ?, 'routing_policy_publish', ?, NULL, ?, ?)`,
-    ).bind(newId(), auth.operatorId, target, contentPointer, recordedAt),
-  ]);
+  try {
+    await DB.batch([
+      DB.prepare(
+        `INSERT INTO routing_policy (
+           policy_id, version, content_pointer, active_from, activated_by,
+           canary_installation_ids, status
+         ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
+      ).bind(
+        route.policyId,
+        route.version,
+        contentPointer,
+        recordedAt,
+        auth.operatorId,
+      ),
+      DB.prepare(
+        `INSERT INTO control_audit
+           (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
+         VALUES (?, ?, 'routing_policy_publish', ?, NULL, ?, ?)`,
+      ).bind(newId(), auth.operatorId, target, contentPointer, recordedAt),
+    ]);
+  } catch (err) {
+    if (isUniqueConstraint(err)) {
+      return reject(409, "already_published");
+    }
+    return reject(500, "storage_error");
+  }
 
-  return ok();
+  const warnings = latencyMismatchWarnings(document, route);
+  return warnings.length > 0 ? ok({ warnings }) : ok();
 }
 
 export async function handleRoutingPolicyCanary(
@@ -170,7 +290,7 @@ export async function handleRoutingPolicyCanary(
   const priorCanary = await DB.prepare(
     `SELECT canary_installation_ids FROM routing_policy
      WHERE policy_id = ? AND status = 'canary'
-     ORDER BY active_from DESC, version DESC LIMIT 1`,
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
   )
     .bind(route.policyId)
     .first<{ canary_installation_ids: string | null }>();
@@ -234,7 +354,7 @@ export async function handleRoutingPolicyPromote(
   const priorActive = await DB.prepare(
     `SELECT version FROM routing_policy
      WHERE policy_id = ? AND status = 'active'
-     ORDER BY active_from DESC, version DESC LIMIT 1`,
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
   )
     .bind(route.policyId)
     .first<{ version: string }>();
@@ -315,7 +435,7 @@ export async function handleRoutingPolicyRollback(
     const active = await DB.prepare(
       `SELECT version FROM routing_policy
        WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, version DESC LIMIT 1`,
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
     )
       .bind(route.policyId)
       .first<{ version: string }>();
@@ -334,7 +454,7 @@ export async function handleRoutingPolicyRollback(
     const prior = await DB.prepare(
       `SELECT version FROM routing_policy
        WHERE policy_id = ? AND status = 'superseded'
-       ORDER BY active_from DESC, version DESC LIMIT 1`,
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
     )
       .bind(route.policyId)
       .first<{ version: string }>();
@@ -366,7 +486,7 @@ export async function handleRoutingPolicyRollback(
     const active = await DB.prepare(
       `SELECT version FROM routing_policy
        WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, version DESC LIMIT 1`,
+       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
     )
       .bind(route.policyId)
       .first<{ version: string }>();
