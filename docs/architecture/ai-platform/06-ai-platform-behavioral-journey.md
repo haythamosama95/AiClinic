@@ -3,7 +3,7 @@
 - Purpose: Walk through the AI platform as it actually behaves in `ai-platform/` today — from first configuration through an installation becoming usable, then through a live request until a terminal response.
 - Read this when: you are learning the platform, operating it for the first time, debugging a request, or comparing architecture intent with runtime behavior.
 - Canonical for: nothing. This is a **behavioral tour of the current implementation**. Architecture decisions remain in `01-ai-platform.md`. Operator recipes remain in `04-ai-platform-operator-runbook.md`.
-- Source of truth for this document: `ai-platform/src/**`, `ai-platform/migrations/**`, `ai-platform/manifests/**`, `ai-platform/wrangler.toml`, `ai-platform/test/**`, and `ai-platform-ops/`. Architecture was used to name intended behavior and to call out where code diverges.
+- Source of truth for this document: `ai-platform/src/**`, `ai-platform/migrations/**`, `ai-platform/manifests/**`, `ai-platform/wrangler.toml`, and `ai-platform/test/**`. Architecture was used to name intended behavior and to call out where code diverges.
 - Not used as structure: `03-ai-platform-delivery-plan.md` (a build-order document, not a runtime story).
 
 ---
@@ -29,7 +29,6 @@
 17. [Control-plane alternative journeys](#17-control-plane-alternative-journeys)
 18. [Conversational and context-negotiation paths](#18-conversational-and-context-negotiation-paths)
 19. [Architecture vs implementation](#19-architecture-vs-implementation)
-20. [Ops console map](#20-ops-console-map)
 
 ---
 
@@ -100,7 +99,6 @@ Each later section is one stage in the journey above. For every stage you should
 - what leaves it, and who consumes that
 - the happy path and the meaningful invalid / alternative paths
 - which `ai-platform/` files implement it
-- how `ai-platform-ops` exercises it
 - how to verify it
 
 Error codes named below are the closed taxonomy in `ai-platform/src/errors.ts` unless a control-plane `{ "error": "..." }` body is specified.
@@ -173,12 +171,6 @@ Worker isolate starts
 
 Unknown Durable Object `kind` → 400 `{ error: "unknown_kind" }`. Invalid JSON to the DO → 400 `{ error: "invalid_json" }`. Argument validation failures stay 400 so admission maps them to `client_error` rather than grace.
 
-### 3.6 Mapping to `ai-platform-ops`
-
-- Setup step `setup.reach`: set Platform URL, bootstrap credentials, run Health.
-- Entities: `e2e.health`, `clinic.health`.
-- Bootstrap writes `OPERATOR_BEARER_TOKEN` into `ai-platform/.dev.vars.development` and optionally mints an AAT from local Supabase. Restart `npm run dev` after bootstrap so the Worker sees the secret.
-
 ### 3.7 Source files
 
 - `ai-platform/src/worker.ts` — boot, `fetch`, `scheduled`, `GatewayObject`
@@ -195,7 +187,7 @@ Unknown Durable Object `kind` → 400 `{ error: "unknown_kind" }`. Invalid JSON 
 - `ai-platform/test/env-deploys.test.ts`
 - `ai-platform/test/migrations.test.ts`
 - `ai-platform/test/manifest-registry-gate.test.ts` / `prompt-registry-gate.test.ts`
-- Ops: Health entity, or `curl http://127.0.0.1:8787/health`
+- Manual: Health entity, or `curl http://127.0.0.1:8787/health`
 
 ---
 
@@ -232,21 +224,16 @@ POST /control/...
   └─ auth ok → dispatch by path
 ```
 
-### 4.6 Mapping to `ai-platform-ops`
-
-Connection strip field **Operator bearer**. Bootstrap generates one. Every Control tab entity uses `auth: "operator"`.
-
 ### 4.7 Source files
 
 - `ai-platform/src/control/auth.ts`
 - `ai-platform/src/control/http.ts` (`requireOperator`)
 - `ai-platform/src/control/index.ts` (`isControlRoute`, `dispatchControlRequest`)
-- `ai-platform-ops/server/bootstrap-credentials.ts`
 
 ### 4.8 How to test / verify
 
 - `ai-platform/test/control.test.ts` (unauthorized / authorized dispatch)
-- Ops: any Control entity with a wrong bearer should return 401
+- Manual: any Control entity with a wrong bearer should return 401
 
 ---
 
@@ -284,10 +271,6 @@ Operator retire
   ├─ last remaining ver → 409
   └─ otherwise → retired_at stamped
 ```
-
-### 5.6 Mapping to `ai-platform-ops`
-
-Setup step `setup.token-contract` (skip unless rotating). Entities `control.token-begin-rotation`, `control.token-retire`.
 
 ### 5.7 Source files
 
@@ -354,10 +337,6 @@ enroll
   └─ ok → 200 { platform_base_url }
 ```
 
-### 6.6 Mapping to `ai-platform-ops`
-
-Setup step `setup.enroll`. Entity `control.enroll`. The Setup UI can **Generate keypair & enroll** (local Supabase admin → clinic keypair → this POST).
-
 ### 6.7 Source files
 
 - `ai-platform/src/control/lifecycle.ts` (`handleEnroll`)
@@ -367,7 +346,7 @@ Setup step `setup.enroll`. Entity `control.enroll`. The Setup UI can **Generate 
 
 - `ai-platform/test/control.test.ts`
 - D1: `SELECT * FROM installation; SELECT * FROM entitlement;`
-- Ops: enroll form, then a submit should still fail entitlement (`forbidden_capability`) until stage 7
+- Manual: enroll form, then a submit should still fail entitlement (`forbidden_capability`) until stage 7
 
 ---
 
@@ -419,10 +398,6 @@ entitle
 
 Entitle does **not** change `entitlement.plan` (that stays from enroll) and does **not** check installation lifecycle — a deleted installation can still be entitled if the rows exist. Architecture §8.1 said a pending entitlement should look like quota exhaustion; the live path returns **`forbidden_capability`** (`path: ai_disabled`) at stage 3 instead.
 
-### 7.6 Mapping to `ai-platform-ops`
-
-Setup step `setup.entitle` with field seeds for `clinic.visit_summary@1.0.0`. Entity `control.entitle`. Optional later: `control.cohort-activate`, `control.cohort-promote`.
-
 ### 7.7 Source files
 
 - `ai-platform/src/control/entitle.ts`
@@ -433,7 +408,7 @@ Setup step `setup.entitle` with field seeds for `clinic.visit_summary@1.0.0`. En
 
 - `ai-platform/test/entitle-grant.test.ts`
 - `ai-platform/test/entitlement.test.ts`
-- Ops: entitle once, entitle again → 409; discovery should now list visit summary
+- Manual: entitle once, entitle again → 409; discovery should now list visit summary
 
 ---
 
@@ -501,10 +476,6 @@ empty chain after filters → invocation provider_unavailable
 unknown provider_id → FakeAdapter terminal provider_unavailable
 ```
 
-### 8.6 Mapping to `ai-platform-ops`
-
-Setup steps `setup.routing-publish`, `setup.routing-canary`, `setup.routing-promote`. Entities `control.routing-publish|canary|promote|rollback`. A bundled sample lives at `ai-platform/control/routing-policy/platform-default/1.json` (`policy_id: platform-default`, DeepSeek `deepseek-v4-flash` then Gemini `gemini-3.5-flash`). Visit summary’s manifest ref is `routing/standard@v1`, which the cache reader strips to policy id **`standard`** — publish that id, not `platform-default`, unless you change the manifest. Ops Setup seeds `standard` and a DeepSeek-only sample (`deepseek-chat`); edit `model_id` to match the adapter pin.
-
 ### 8.7 Source files
 
 - `ai-platform/src/control/routing-policy.ts`
@@ -517,7 +488,7 @@ Setup steps `setup.routing-publish`, `setup.routing-canary`, `setup.routing-prom
 - `ai-platform/test/routing-policy-canary.test.ts`
 - `ai-platform/test/router.test.ts`
 - `ai-platform/test/second-provider-policy.test.ts`
-- Ops: submit without promote → `accepted` + `failed`/`internal_error`; promote then submit again
+- Manual: submit without promote → `accepted` + `failed`/`internal_error`; promote then submit again
 
 ---
 
@@ -546,7 +517,7 @@ A compact JWS. Identity expects:
 
 The Worker verifies the signature against the enrolled public key, then trusts the claims. Context in the request body is never trusted as identity. `iss` must own the `kid`. Installation status must be `active` (suspended is a distinct 403).
 
-Clinic minting is implemented outside this package (`public.issue_ai_token` in Supabase; Flutter `supabase_aat_mint_port.dart` / `ai_client_sdk.dart`). Ops can also generate the keypair and proxy enroll via `ai-platform-ops/server/clinic-enrollment.ts`.
+Clinic minting is implemented outside this package (`public.issue_ai_token` in Supabase; Flutter `supabase_aat_mint_port.dart` / `ai_client_sdk.dart`).
 
 Ops bootstrap tries to mint via `public.issue_ai_token` as `admin`/`admin` against local Supabase. If clinic org/branch/keypair are missing, bootstrap records an error and you paste an AAT by hand.
 
@@ -554,20 +525,15 @@ Ops bootstrap tries to mint via `public.issue_ai_token` as `admin`/`admin` again
 
 Outside the Worker: mint RPC can refuse by RBAC. Inside the Worker, every malformed/expired/wrong-aud/wrong-kid token is `unauthenticated` (401). Suspended installation is `installation_suspended` (403).
 
-### 9.6 Mapping to `ai-platform-ops`
-
-Connection strip **AAT**. Bootstrap “Bootstrap dev credentials.” Clinic entity `clinic.decode-aat` (local payload decode, **does not verify**).
-
 ### 9.7 Source files
 
 - `ai-platform/src/identity/index.ts` (`EnrolledKeyVerifier`)
-- `ai-platform-ops/server/bootstrap-credentials.ts`
 - Clinic Supabase RPCs (outside this package)
 
 ### 9.8 How to test / verify
 
 - `ai-platform/test/identity.test.ts`
-- Ops: Decode AAT, then Health vs Discovery (discovery requires a valid signature)
+- Manual: Decode AAT, then Health vs Discovery (discovery requires a valid signature)
 
 ---
 
@@ -605,10 +571,6 @@ GET /v1/capabilities
   └─ 200 manifests + ETag
 ```
 
-### 10.6 Mapping to `ai-platform-ops`
-
-Setup closeout. Entity `clinic.discovery`.
-
 ### 10.7 Source files
 
 - `ai-platform/src/discovery/index.ts`
@@ -618,7 +580,7 @@ Setup closeout. Entity `clinic.discovery`.
 
 - `ai-platform/test/discovery-http.test.ts`
 - `ai-platform/test/capability.test.ts`
-- Ops: Discovery before entitle → `[]`; after entitle → visit summary
+- Manual: Discovery before entitle → `[]`; after entitle → visit summary
 
 ---
 
@@ -680,10 +642,6 @@ POST /v1/requests
   └─ 200 SSE accepted → stage 13
 ```
 
-### 11.6 Mapping to `ai-platform-ops`
-
-Entity `clinic.submit` (SSE proxy). Debug entities compose/validate locally without this HTTP path.
-
 ### 11.7 Source files
 
 - `ai-platform/src/adapter.ts`
@@ -695,7 +653,7 @@ Entity `clinic.submit` (SSE proxy). Debug entities compose/validate locally with
 - `ai-platform/test/adapter.test.ts`
 - `ai-platform/test/error-body.test.ts`
 - `ai-platform/test/worker-request-orchestrator.test.ts`
-- Ops: Submit with missing `x-idempotency-key` → 422; oversized body → 413
+- Manual: Submit with missing `x-idempotency-key` → 422; oversized body → 413
 
 ---
 
@@ -1022,10 +980,6 @@ eventSource
 
 External services contacted: DeepSeek and/or Gemini only when those ids appear in the selected chain **and** secrets exist. FakeAdapter contacts nobody. D1 and the Quota DO are platform-internal.
 
-### 13.6 Mapping to `ai-platform-ops`
-
-`clinic.submit` is the live path. `debug.route-dry-run` exercises `selectCandidateChain` locally without HTTP. `e2e.live-smoke` needs provider keys. `e2e.golden-suite` / `e2e.conversation-suite` score fixtures, not this Worker. Debug `debug.compose` stops before routing.
-
 ### 13.7 Source files
 
 - `ai-platform/src/worker.ts` (`createProductionEventSource`, `runFreshEventSource`, `resolveProviderPort`)
@@ -1042,7 +996,7 @@ External services contacted: DeepSeek and/or Gemini only when those ids appear i
 - `stream-broker.test.ts`, `structured-modes.test.ts`
 - `soft-threshold-routing.test.ts` (library; production routing tier still hardcoded)
 - `test/eval/live-smoke.test.ts`, `golden.test.ts`
-- Ops: point routing at `fake` for a no-network completed event; point at `deepseek` without a key → `provider_rejected`
+- Manual: point routing at `fake` for a no-network completed event; point at `deepseek` without a key → `provider_rejected`
 
 ---
 
@@ -1087,10 +1041,6 @@ terminal
   └─ stage-16 error → log only; SSE already closed
 ```
 
-### 14.6 Mapping to `ai-platform-ops`
-
-After Submit, use `clinic.get-request` with the `request_reference` from `accepted`. Operator `control.support-lookup` / `e2e.support-lookup` returns request + attempts + envelope.
-
 ### 14.7 Source files
 
 - `ai-platform/src/journal/index.ts` (`recordTerminalState`, `writePostResponseDetail`)
@@ -1101,7 +1051,7 @@ After Submit, use `clinic.get-request` with the `request_reference` from `accept
 
 - `journal.test.ts`, `admission-credit.test.ts`
 - `load/happy-path.ts` (FakeAdapter settle)
-- Ops: GET the reference; D1 `SELECT state, payload_pointer FROM ai_request`
+- Manual: GET the reference; D1 `SELECT state, payload_pointer FROM ai_request`
 
 ---
 
@@ -1142,10 +1092,6 @@ GET is scoped by `auth.principal.installationId`. During flight the row stays `A
 
 Dashboards (`src/dashboards/index.ts`) are query helpers with **no HTTP route**. There is no `/v1/usage` summary for the client.
 
-### 15.5 Mapping to `ai-platform-ops`
-
-`clinic.get-request`, `control.support-lookup`, `e2e.support-lookup`.
-
 ### 15.6 Source files / tests
 
 - `journal/index.ts` (`getRequest`, `authenticateGetRequest`)
@@ -1166,10 +1112,6 @@ Every scheduled tick: flush rejection counters; reconcile grace admissions.
 ### 16.2 Inputs / outputs
 
 D1/R2/DO as above. Operators can also `POST /control/installations/{id}/purge` (dangerous) to purge one installation immediately.
-
-### 16.3 Mapping to `ai-platform-ops`
-
-`control.purge` (dangerous). No cron-trigger entity; Wrangler scheduled invocations in tests: `rollup-reconciliation.test.ts`, `retention.test.ts`.
 
 ### 16.4 Source files
 
@@ -1309,64 +1251,7 @@ Grouped by journey stage. “Deferred” items from architecture §12.5 are omit
 
 - `arch-vs-source-gap-analysis.md` still describes an unwired `POST /v1/requests` 503 path.
 - `04-ai-platform-operator-runbook.md` still says discovery has no HTTP route and inference is library-only. Both are wired.
-
----
-
-## 20. Ops console map
-
-`ai-platform-ops` is a local console that **proxies** the Worker (or runs local/subprocess helpers). It never modifies `ai-platform/src`.
-
-### 20.1 Guided Setup tab (the intended first-time operator path)
-
-| Order | Step | Platform stage |
-| --- | --- | --- |
-| 1 | Reach the Worker / Health | §3 |
-| 2 | Token contract (usually skip) | §5 |
-| 3 | Enroll | §6 |
-| 4 | Entitle | §7 |
-| 5–6 | Cohort activate/promote (optional) | §17.4 |
-| 7–9 | Routing publish → canary → promote | §8 |
-| 10 | Discovery, decode AAT, GET, Submit | §9–§15 |
-
-### 20.2 Entity → stage
-
-| Entity id | Stage |
-| --- | --- |
-| `e2e.health` / `clinic.health` | Boot |
-| `control.enroll` … `delete` / `purge` | Lifecycle |
-| `control.entitle` | Spend rights |
-| `control.routing-*` | Routing |
-| `control.deprecate` / `retire` / `cohort-*` / `token-*` | Alternative control |
-| `control.support-lookup` | §15 |
-| `clinic.discovery` | §10 |
-| `clinic.submit` | §11–§14 |
-| `clinic.get-request` | §15 |
-| `clinic.decode-aat` | §9 (local, unverified) |
-| `debug.compose` | §12.10 local |
-| `debug.context-validate` | §12.6 local |
-| `debug.route-dry-run` | §13 routing, no HTTP |
-| `debug.taxonomy` / `debug.reference` / `debug.canonical-lint` | Error codes, request refs, canonical shape |
-| `e2e.verify-manifests` / golden / conversation / live-smoke | Artifact + eval gates |
-
-### 20.3 Suggested first live walk
-
-1. `ai-platform`: `npm run dev` (port 8787). `ai-platform-ops`: `npm run dev` (port 5174).
-2. Bootstrap credentials; restart the Worker if it was already running.
-3. Setup: enroll → entitle → publish routing (use `provider_id: "fake"` if you have no provider keys) → canary the enrolled id → promote if you want global active.
-4. Paste AAT; run Discovery; run Submit with `clinic.visit_summary` / `1.0.0` and context:
-
-```json
-{
-  "visit.chief_complaint@v1": {
-    "visit_id": "00000000-0000-0000-0000-000000000001",
-    "complaint": "Headache for two days."
-  }
-}
-```
-5. Expect SSE `accepted` then `completed` (fake) or provider text (DeepSeek/Gemini).
-6. Copy `request_reference` into Get request / Support lookup.
-
-Invalid walks worth doing once: submit before entitle; submit before routing promote; omit chief complaint; reuse idempotency key; suspend then submit; retire the capability.
+t; retire the capability.
 
 ---
 
