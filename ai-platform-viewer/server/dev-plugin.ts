@@ -119,7 +119,7 @@ async function resetLocalClinicAiInternal(): Promise<string> {
     )
   }
 
-  return 'Reset ai_internal.app_settings to defaults (ai.aat.ver=1) and cleared ai_token_issuance'
+  return 'Reset Supabase ai_internal: cleared installation_keys and ai_token_issuance; restored app_settings defaults (ai.aat.ver=1, ai.availability enrolled=false)'
 }
 
 async function resetLocalPlatform(): Promise<{ steps: string[] }> {

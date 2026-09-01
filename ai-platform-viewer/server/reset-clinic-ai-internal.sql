@@ -1,5 +1,8 @@
--- Restore ai_internal app_settings to B1 / availability migration defaults.
--- Keeps installation_keys intact so the clinic keypair survives a lab reset.
+-- Reset ai_internal operational state to migration defaults.
+-- Matches data-journey Stage 2 probe §8.3.1 (empty keystore + default availability).
+
+DELETE FROM ai_internal.ai_token_issuance;
+DELETE FROM ai_internal.installation_keys;
 
 INSERT INTO ai_internal.app_settings (key, value_json, is_deleted)
 VALUES
@@ -20,5 +23,3 @@ ON CONFLICT (key) DO UPDATE SET
   is_deleted = false,
   deleted_at = NULL,
   deleted_by = NULL;
-
-DELETE FROM ai_internal.ai_token_issuance;

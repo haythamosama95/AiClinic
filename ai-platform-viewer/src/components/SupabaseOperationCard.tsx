@@ -11,25 +11,32 @@ interface SupabaseOperationCardProps {
 
 export function SupabaseOperationCard({ operation }: SupabaseOperationCardProps) {
   const { supabaseAdminUsername, supabaseAdminPassword } = useSession()
+  const [paramValue, setParamValue] = useState('')
   const [exchange, setExchange] = useState<HttpExchange | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
+  const usesParam = operation.paramName !== undefined
   const authReady = Boolean(supabaseAdminUsername && supabaseAdminPassword)
+  const sendDisabled = busy || !authReady || (usesParam && !paramValue.trim())
 
   async function handleSend() {
-    if (!authReady) {
+    if (sendDisabled) {
       return
     }
 
     setSendError(null)
     setBusy(true)
     try {
-      const result = await sendStage2SupabaseRequest(operation.id, {
-        username: supabaseAdminUsername,
-        password: supabaseAdminPassword,
-      })
+      const result = await sendStage2SupabaseRequest(
+        operation.id,
+        {
+          username: supabaseAdminUsername,
+          password: supabaseAdminPassword,
+        },
+        usesParam ? { [operation.paramName!]: paramValue.trim() } : undefined,
+      )
       setExchange(result)
       setOpen(true)
     } catch (error) {
@@ -54,19 +61,43 @@ export function SupabaseOperationCard({ operation }: SupabaseOperationCardProps)
       </div>
 
       <div className="operation-card__controls">
-        <p className="operation-card__auth-hint">
-          {operation.authHint}
-          {authReady ? '' : ' — load admin credentials in Secrets first'}
-        </p>
+        {usesParam ? (
+          <label className="operation-card__field">
+            <span>{operation.paramName}</span>
+            <input
+              type="text"
+              value={paramValue}
+              onChange={(event) => setParamValue(event.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </label>
+        ) : (
+          <p className="operation-card__auth-hint">
+            {operation.authHint}
+            {authReady ? '' : ' — load admin credentials in Secrets first'}
+          </p>
+        )}
         <button
           type="button"
           className="clinic-button"
           onClick={() => void handleSend()}
-          disabled={busy || !authReady}
+          disabled={sendDisabled}
         >
           {busy ? 'Sending…' : 'Send'}
         </button>
       </div>
+
+      {usesParam ? (
+        <p className="operation-card__auth-hint">
+          {operation.authHint}
+          {authReady ? '' : ' — load admin credentials in Secrets first'}
+        </p>
+      ) : null}
+
+      {operation.paramHint ? (
+        <p className="operation-card__hint">{operation.paramHint}</p>
+      ) : null}
 
       <p className="operation-card__hint">{operation.successNote}</p>
 

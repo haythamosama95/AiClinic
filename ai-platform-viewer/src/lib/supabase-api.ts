@@ -108,6 +108,8 @@ function stage2FieldMeaning(name: string): string | undefined {
       return 'Clinic-local switch — Flutter hides or shows AI UI from this flag'
     case 'platform_base_url':
       return 'Gateway base URL written after platform enroll (manual today)'
+    case 'revoked_at':
+      return 'Timestamp when revocation took effect'
     default:
       return undefined
   }
@@ -115,12 +117,48 @@ function stage2FieldMeaning(name: string): string | undefined {
 
 const RPC_BY_OPERATION: Record<Stage2OperationId, string> = {
   'enroll-keypair': 'enroll_installation_keypair',
+  'rotate-installation-key': 'rotate_installation_key',
+  'revoke-installation-key': 'revoke_installation_key',
   'get-availability': 'get_ai_availability',
+}
+
+function rpcBodyForOperation(
+  operationId: Stage2OperationId,
+  params?: Record<string, string>,
+): Record<string, unknown> {
+  if (operationId === 'revoke-installation-key') {
+    return { p_kid: params?.p_kid ?? '' }
+  }
+  return {}
+}
+
+function requestBodyFields(
+  operationId: Stage2OperationId,
+  params?: Record<string, string>,
+): FieldRow[] {
+  if (operationId === 'revoke-installation-key') {
+    return [
+      {
+        name: 'p_kid',
+        value: params?.p_kid ?? '',
+        meaning: 'installation_keys.kid to revoke',
+      },
+    ]
+  }
+
+  return [
+    {
+      name: '(body)',
+      value: '{}',
+      meaning: 'No RPC arguments for this call',
+    },
+  ]
 }
 
 export async function sendStage2SupabaseRequest(
   operationId: Stage2OperationId,
   adminCredentials: SupabaseAdminCredentials,
+  params?: Record<string, string>,
 ): Promise<HttpExchange> {
   const config = await resolveSupabaseConfig(adminCredentials)
   const accessToken = await signInToSupabase(config)
@@ -128,11 +166,13 @@ export async function sendStage2SupabaseRequest(
   const path = `/rest/v1/rpc/${rpcName}`
   const url = `${config.supabaseUrl}${path}`
   const sentAt = new Date().toISOString()
+  const rpcBody = rpcBodyForOperation(operationId, params)
 
   const { response, payload, rawBody } = await callSupabaseRpc(
     config,
     accessToken,
     rpcName,
+    rpcBody,
   )
 
   const requestHeaders: Record<string, string> = {
@@ -165,14 +205,8 @@ export async function sendStage2SupabaseRequest(
           meaning: 'PostgREST RPC call',
         },
       ],
-      body: [
-        {
-          name: '(body)',
-          value: '{}',
-          meaning: 'No RPC arguments for this call',
-        },
-      ],
-      raw: buildRawRequest('POST', url, requestHeaders, {}),
+      body: requestBodyFields(operationId, params),
+      raw: buildRawRequest('POST', url, requestHeaders, rpcBody),
     },
     response: {
       status: response.status,

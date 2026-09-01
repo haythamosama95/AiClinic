@@ -82,7 +82,7 @@ export function HeaderBar() {
       <ConfirmDialog
         open={resetOpen}
         title="Reset local ai-platform?"
-        description="This clears local D1 rows, deletes local R2 objects, wipes Durable Object state, re-seeds token_contract ver=1, and restores Supabase ai_internal.app_settings (including ai.aat.ver=1)."
+        description="This clears local D1 rows, deletes local R2 objects, wipes Durable Object state, re-seeds token_contract ver=1, and resets Supabase ai_internal (installation_keys, ai_token_issuance, app_settings defaults including ai.aat.ver=1 and ai.availability enrolled=false)."
         confirmLabel="Reset platform"
         busy={busyAction === 'reset'}
         onConfirm={() => {

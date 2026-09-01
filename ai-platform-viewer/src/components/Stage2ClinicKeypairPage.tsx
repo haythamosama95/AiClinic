@@ -13,8 +13,12 @@ export function Stage2ClinicKeypairPage() {
           The clinic mints its Ed25519 keypair inside Supabase. The private key
           never leaves the database — only the <code>kid</code>,{' '}
           <code>installation_id</code>, and <code>public_jwk.x</code> travel to
-          the platform enroll call in Stage 3. These RPCs run against local
-          PostgREST, not the Cloudflare gateway.
+          the platform enroll call in Stage 3. After the first enroll, operators
+          rotate keys with <code>rotate_installation_key()</code> and revoke old
+          keys with <code>revoke_installation_key(kid)</code>.{' '}
+          <code>get_ai_availability()</code> is the read-only clinic switch for
+          Flutter. These RPCs run against local PostgREST, not the Cloudflare
+          gateway.
         </p>
       </header>
 
