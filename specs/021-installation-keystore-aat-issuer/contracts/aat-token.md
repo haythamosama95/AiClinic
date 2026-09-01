@@ -268,6 +268,20 @@ in §§2–5.
 established `public.rpc_result` envelope (`rpc_success` / `rpc_error`). Success data for enroll and
 rotate includes `kid`, `installation_id`, and `public_jwk` (§7).
 
+A key is **active** when `is_deleted = false` AND `revoked_at IS NULL`. Second-call semantics for
+`enroll_installation_keypair`: when at least one active key exists, enroll MUST return
+`rpc_error` with code `ALREADY_ENROLLED` (test T11). When all keys are revoked, re-enrollment is
+permitted as a recovery path and reuses the clinic singleton `installation_id`. Additive key
+rotation remains `rotate_installation_key`, not a second enroll.
+
+| Code | Routine | When |
+| --- | --- | --- |
+| `ALREADY_ENROLLED` | `enroll_installation_keypair` | At least one active key row exists in `ai_internal.installation_keys` |
+| `FORBIDDEN` | enroll / rotate / revoke | Caller is not owner or administrator |
+| `INVALID_INPUT` | `revoke_installation_key` | Empty or null `p_kid` |
+| `KEY_NOT_FOUND` | `revoke_installation_key` | No row matches `p_kid` |
+| `INSTALLATION_NOT_ENROLLED` | `rotate_installation_key` | No active key exists to rotate |
+
 ### 9.2 Issuer RPC (bare exception codes)
 
 `auth_internal.issue_ai_token` / `public.issue_ai_token` keep bare `RAISE EXCEPTION '<CODE>'`

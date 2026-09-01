@@ -187,7 +187,7 @@ pattern already used by `auth_security_extensions.sql` and `dev_reset_clinic_ins
 `ai_keystore_rls.sql` ends with `ROLLBACK`; `ai_token_issuer.sql` restores rate-limit settings it
 mutates.
 
-Numbering is **per suite** (keystore T01–T10; issuer T07–T16) — the labels overlap intentionally.
+Numbering is **per suite** (keystore T01–T11; issuer T07–T16) — the labels overlap intentionally.
 
 | Test | File | Layer | Construction |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ Numbering is **per suite** (keystore T01–T10; issuer T07–T16) — the labels
 | T06 revoked key rejected | `ai_keystore_rls.sql` | SQL/RLS | Mint, revoke, `verify_aat` false. |
 | T07 keystore admin FORBIDDEN | `ai_keystore_rls.sql` | SQL/RLS | Non-admin enroll/rotate/revoke → `FORBIDDEN` via `rpc_result`. |
 | T08–T10 revoke/rotate errors | `ai_keystore_rls.sql` | SQL/RLS | Empty kid → `INVALID_INPUT`; unknown kid → `KEY_NOT_FOUND`; rotate-before-enroll → `INSTALLATION_NOT_ENROLLED`. |
+| T11 enroll `ALREADY_ENROLLED` + re-enroll recovery | `ai_keystore_rls.sql` | SQL/RLS | Active key exists → second enroll returns `ALREADY_ENROLLED`; revoke all keys → re-enroll succeeds (same `installation_id`). |
 | T07 / T07b claims + header | `ai_token_issuer.sql` | SQL/RLS | Mint; assert claim correctness + header `alg: EdDSA` / non-null `kid`. |
 | T08 / T08b scopes + omissions | `ai_token_issuer.sql` | SQL/RLS | Caller-supplied scopes ignored; deliberate-omission keys absent. |
 | T09 session codes | `ai_token_issuer.sql` | SQL/RLS | Absent → `UNAUTHENTICATED`; expired → `SESSION_EXPIRED` (after enrollment). |

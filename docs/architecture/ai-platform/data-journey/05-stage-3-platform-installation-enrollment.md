@@ -13,7 +13,13 @@
 4. [Failure paths](#4-failure-paths)
 5. [Post-enroll runtime effect](#5-post-enroll-runtime-effect)
 6. [Happy path diagram](#6-happy-path-diagram)
-7. [Key rotation](#7-key-rotation)
+7. [Post-enroll lifecycle APIs](#7-post-enroll-lifecycle-apis)
+   - [7. API: rotate](#7-api-post-controlinstallationsinstallation_idrotate)
+   - [7.1 revoke-key](#71-api-post-controlinstallationsinstallation_idrevoke-key)
+   - [7.2 suspend](#72-api-post-controlinstallationsinstallation_idsuspend)
+   - [7.3 resume](#73-api-post-controlinstallationsinstallation_idresume)
+   - [7.4 delete](#74-api-post-controlinstallationsinstallation_iddelete)
+   - [7.5 purge](#75-api-post-controlinstallationsinstallation_idpurge)
 8. [Behavioral verification](#8-behavioral-verification)
    - [8.1 Setup](#81-setup)
    - [8.2 Coverage](#82-coverage)
@@ -27,6 +33,10 @@
      - [8.3.7 Duplicate kid](#837-duplicate-kid)
      - [8.3.8 Post-enroll effect and what this stage does not do](#838-post-enroll-effect-and-what-this-stage-does-not-do)
      - [8.3.9 Key rotation](#839-key-rotation)
+     - [8.3.10 revoke-key](#8310-revoke-key)
+     - [8.3.11 suspend / resume](#8311-suspend--resume)
+     - [8.3.12 delete](#8312-delete)
+     - [8.3.13 purge](#8313-purge)
 
 ---
 
@@ -254,21 +264,289 @@ Authorization: Bearer <OPERATOR_BEARER_TOKEN> + enroll JSON body
   → Flutter sets ai.availability.enrolled=true, platform_base_url ([§4 in Stage 2](04-stage-2-clinic-keypair-enrollment.md#4-clinic-availability-flag-manual-step))
 ```
 
-## 7. Key rotation
+## 7. Post-enroll lifecycle APIs
 
-`POST /control/installations/{installation_id}/rotate` inserts a new `installation_key` with
-`valid_from = now`, `valid_until = valid_from + 365 days`, `revoked_at = NULL`. In the **same**
-D1 batch (`runControlBatch`), it stamps `revoked_at = now` on every currently unrevoked key for
-that installation (`WHERE installation_id = ? AND revoked_at IS NULL`), then inserts the new
-row. There is no dual-key overlap: in-flight AATs signed with the old `kid` fail identity as
-soon as rotate returns. Operators mint new AATs with the new `kid`. See
-[§1 in Alternative and failure journeys](15-alternative-and-failure-journeys.md#1-lifecycle-alternatives-control-plane).
+After enroll, the operator can rotate keys, revoke a single key, suspend or resume the installation,
+mark it deleted, or purge all platform data. Every route is `POST`, uses the same operator Bearer
+as enroll (`requireOperator` in `control/http.ts`), and writes a `control_audit` row. Clinic staff
+AATs are never accepted on `/control`.
+
+### 7. API: `POST /control/installations/{installation_id}/rotate`
+
+**Plain language:** The clinic mints a new signing key; the operator tells the platform to trust it
+and retire every previously active platform key for that installation in one atomic batch.
+
+**Auth:** `Authorization: Bearer <OPERATOR_BEARER_TOKEN>` — same `requireOperator` / `createSecretOperatorAuth` as [§3](#3-api-post-controlinstallationsinstallation_idenroll). `operator_id` on audit rows is `OPERATOR_ID`.
+
+#### Path parameter
+
+
+| Field             | Source                                         | Meaning                                      |
+| ----------------- | ---------------------------------------------- | -------------------------------------------- |
+| `installation_id` | **URL path** — same UUID as enroll and AAT `iss` | Must already exist in D1 from a prior enroll |
+
+
+#### Request body — every field
+
+
+| Field        | Required | Source                                                                 | D1 destination                    |
+| ------------ | -------- | ---------------------------------------------------------------------- | --------------------------------- |
+| `kid`        | yes      | Clinic `public.rotate_installation_key()` → `data.kid` (new UUID)      | `installation_key.key_id` (new row) |
+| `public_key` | yes      | Clinic rotate RPC → `data.public_jwk.x` (base64url Ed25519 public bytes) | `installation_key.public_key` |
+| `algorithm`  | yes      | `"EdDSA"` (fixed by clinic keystore)                                   | `installation_key.algorithm`      |
+
+
+**Clinic first, platform second:** call `public.rotate_installation_key()` on the throwaway clinic
+(owner or administrator). That RPC is **additive** — it inserts a new `installation_keys` row and
+returns `kid`, `installation_id`, and `public_jwk` without removing the previous clinic row. Copy the
+new `kid` and `public_jwk.x` into this POST. Do **not** call `enroll_installation_keypair()` for
+rotation — a second enroll while an active key exists fails with `ALREADY_ENROLLED` ([§3 in Stage 2](04-stage-2-clinic-keypair-enrollment.md#3-api-publicenroll_installation_keypair)).
+
+#### Success response (200)
+
+```json
+{}
+```
+
+Empty object. No `platform_base_url` echo on lifecycle mutations after enroll.
+
+#### D1 writes (atomic batch)
+
+In one `runControlBatch` (`control/lifecycle.ts`):
+
+1. **`installation_key` UPDATE** — `revoked_at = now` on every row for this `installation_id` where `revoked_at IS NULL` (retires all prior platform keys; no dual-key overlap).
+2. **`installation_key` INSERT** — new row: body `kid` / `public_key` / `algorithm`, `valid_from = now`, `valid_until = valid_from + 365 days` (`INSTALLATION_KEY_TTL_DAYS`), `revoked_at = NULL`.
+3. **`control_audit` INSERT** — `action = rotate`, `target = installation_id`, `before_pointer` / `after_pointer` NULL.
+
+`installation` and `entitlement` rows are unchanged. Rotate does not entitle or change quotas.
+
+#### Failure paths
+
+
+| HTTP | `error`                       | Triggering input                                                          |
+| ---- | ----------------------------- | ------------------------------------------------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer                                           |
+| 400  | `invalid_json`                | Body not JSON                                                             |
+| 400  | `invalid_payload`             | Any required body field empty                                             |
+| 400  | `invalid_route`               | Path does not match `/control/installations/{id}/rotate`                  |
+| 404  | `installation_not_found`      | No `installation` row for path `installation_id`                          |
+| 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                                           |
+| 409  | `duplicate_kid`               | `kid` already present in `installation_key` (globally unique `key_id`)  |
+| 500  | `storage_error`               | D1 batch failure                                                          |
+
+
+See also [§1 in Alternative and failure journeys](15-alternative-and-failure-journeys.md#1-lifecycle-alternatives-control-plane).
+
+### 7.1 API: `POST /control/installations/{installation_id}/revoke-key`
+
+**Plain language:** Retire one platform key by `kid` without adding a successor. AATs signed with that `kid` fail identity immediately.
+
+**Auth:** Operator Bearer (same as [§7](#7-api-post-controlinstallationsinstallation_idrotate)).
+
+#### Path parameter
+
+Same `installation_id` path param as rotate.
+
+#### Request body — every field
+
+
+| Field | Required | Source                    | D1 effect                          |
+| ----- | -------- | ------------------------- | ---------------------------------- |
+| `kid` | yes      | `installation_key.key_id` to revoke | `installation_key.revoked_at = now` for that row |
+
+
+#### Success response (200)
+
+```json
+{}
+```
+
+#### D1 writes (atomic batch)
+
+1. **`installation_key` UPDATE** — `revoked_at = now` where `key_id = kid` AND `installation_id = path` AND `revoked_at IS NULL`.
+2. **`control_audit` INSERT** — `action = revoke-key`, `target = installation_id`, `after_pointer = kid`.
+
+Unlike rotate, other keys for the installation are untouched. If every key ends up revoked, no `kid` verifies until a later rotate.
+
+#### Failure paths
+
+
+| HTTP | `error`                       | Triggering input                                         |
+| ---- | ----------------------------- | -------------------------------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer                          |
+| 400  | `invalid_json`                | Body not JSON                                            |
+| 400  | `invalid_payload`             | `kid` missing or empty                                   |
+| 400  | `invalid_route`               | Malformed path                                           |
+| 404  | `installation_not_found`      | Unknown `installation_id`                                |
+| 404  | `key_not_found`               | No `installation_key` row for this `kid` + installation    |
+| 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                          |
+| 409  | `key_already_revoked`         | `revoked_at` already set on that key                     |
+| 500  | `storage_error`               | D1 batch failure                                         |
+
+
+### 7.2 API: `POST /control/installations/{installation_id}/suspend`
+
+**Plain language:** Freeze the installation. Valid AATs are rejected at guard stage 2 with `installation_suspended`.
+
+**Auth:** Operator Bearer.
+
+#### Path parameter
+
+Same `installation_id` as enroll.
+
+#### Request body
+
+Empty JSON object `{}` (no fields). `Content-Type: application/json` recommended.
+
+#### Success response (200)
+
+```json
+{}
+```
+
+#### D1 writes (atomic batch)
+
+1. **`installation` UPDATE** — `status = suspended` (only from `active`; not from `suspended` or `deleted`).
+2. **`control_audit` INSERT** — `action = suspend`, `target = installation_id`.
+
+`entitlement.status` is **not** changed by suspend in B2.
+
+#### Failure paths
+
+
+| HTTP | `error`                       | Triggering input                                              |
+| ---- | ----------------------------- | ------------------------------------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer                               |
+| 400  | `invalid_route`               | Malformed path                                                |
+| 404  | `installation_not_found`      | Unknown `installation_id`                                     |
+| 409  | `illegal_lifecycle_transition`| Already `suspended` or `deleted`                              |
+| 500  | `storage_error`               | D1 batch failure                                              |
+
+
+### 7.3 API: `POST /control/installations/{installation_id}/resume`
+
+**Plain language:** Unfreeze a suspended installation. `installation.status` returns to `active`.
+
+**Auth:** Operator Bearer.
+
+#### Path parameter
+
+Same `installation_id` as enroll.
+
+#### Request body
+
+`{}`
+
+#### Success response (200)
+
+```json
+{}
+```
+
+#### D1 writes (atomic batch)
+
+1. **`installation` UPDATE** — `status = active` (only when current status is `suspended`).
+2. **`control_audit` INSERT** — `action = resume`, `target = installation_id`.
+
+#### Failure paths
+
+
+| HTTP | `error`                       | Triggering input                                              |
+| ---- | ----------------------------- | ------------------------------------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer                               |
+| 400  | `invalid_route`               | Malformed path                                                |
+| 404  | `installation_not_found`      | Unknown `installation_id`                                     |
+| 409  | `illegal_lifecycle_transition`| Status is not `suspended` (e.g. already `active` or `deleted`) |
+| 500  | `storage_error`               | D1 batch failure                                              |
+
+
+### 7.4 API: `POST /control/installations/{installation_id}/delete`
+
+**Plain language:** Mark the installation lifecycle-terminal (`status = deleted`). AATs fail identity (`unauthenticated`). Rows remain in D1 until purge.
+
+**Auth:** Operator Bearer.
+
+#### Path parameter
+
+Same `installation_id` as enroll.
+
+#### Request body
+
+`{}`
+
+#### Success response (200)
+
+```json
+{}
+```
+
+#### D1 writes (atomic batch)
+
+1. **`installation` UPDATE** — `status = deleted`.
+2. **`control_audit` INSERT** — `action = delete`, `target = installation_id`.
+
+Does not delete `installation_key`, `entitlement`, journal, or R2 objects. Rotate, revoke-key, suspend, resume, and delete on a `deleted` installation → `409 illegal_lifecycle_transition`.
+
+#### Failure paths
+
+
+| HTTP | `error`                       | Triggering input                         |
+| ---- | ----------------------------- | ---------------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer          |
+| 400  | `invalid_route`               | Malformed path                           |
+| 404  | `installation_not_found`      | Unknown `installation_id`                |
+| 409  | `illegal_lifecycle_transition`| Already `deleted`                        |
+| 500  | `storage_error`               | D1 batch failure                         |
+
+
+### 7.5 API: `POST /control/installations/{installation_id}/purge`
+
+**Plain language:** Irreversibly remove this installation's platform footprint — D1 identity, entitlement, grants, journal, ledger rows, counters, and R2 envelopes. Use after `delete` when support agrees data must go.
+
+**Auth:** Operator Bearer.
+
+**Binding:** Requires Worker `R2` binding. If absent → `500 missing_r2_binding` before any delete.
+
+#### Path parameter
+
+Same `installation_id` as enroll.
+
+#### Request body
+
+`{}`
+
+#### Success response (200)
+
+```json
+{}
+```
+
+#### D1 and R2 writes
+
+Handler: `handleInstallationPurge` (`control/support-purge.ts`).
+
+1. **`control_audit` INSERT** — `action = purge_installation`, `target = installation_id` (intent row **before** deletes).
+2. **R2 DELETE** — every `request/{request_id}/envelope` for `ai_request` rows with this `installation_id` (derived key; NULL `payload_pointer` still deleted).
+3. **D1 batch DELETE** (order in `purgeByInstallationId`, `retention/index.ts`): `ai_attempt` (for this installation's requests) → `usage_event` → `ai_request` → `usage_rollup` / `platform_counter` (JSON dimension match) → `capability_grant` (`scope = installation:{id}`) → `installation_key` → `entitlement` → `installation`.
+4. **`control_audit` INSERT** — second `purge_installation` row via `writePurgeAudit` after the batch completes.
+
+Purge does **not** check `installation.status`; it deletes whatever exists for the id. It does **not** clear `grace_admission_queue` — delete those rows manually if needed before probing locally. Clinic Supabase keys are untouched.
+
+#### Failure paths
+
+
+| HTTP | `error`              | Triggering input                    |
+| ---- | -------------------- | ----------------------------------- |
+| 401  | `unauthorized`       | Missing/invalid operator Bearer     |
+| 400  | `invalid_route`      | Malformed path                      |
+| 500  | `missing_r2_binding` | Worker env has no R2 bucket       |
+| 500  | `storage_error`    | D1/R2 failure during purge          |
 
 ## 8. Behavioral verification
 
 Live probes against a local Worker (`npm run dev`) and the throwaway clinic that minted the Stage 2 keypair. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§8.3](#83-ordered-probes) top to bottom**. If every probe matches, this stage is working.
 
-`handleEnroll` / `handleRotate` gate on `requireOperator`: only `Authorization: Bearer` equal to the configured `OPERATOR_BEARER_TOKEN` is accepted (`createSecretOperatorAuth`, timing-safe compare). Staff AATs, missing headers, and wrong secrets all return **401** `{ "error": "unauthorized" }` — there is no control-plane 403. Enroll itself never returns taxonomy codes; `/v1/*` after a successful enroll still fails entitlement with **403** `forbidden_capability` (path `ai_disabled`) until Stage 4 entitle.
+`handleEnroll` and all post-enroll lifecycle handlers (`handleRotate`, `handleRevokeKey`, `handleSuspend`, `handleResume`, `handleDelete`, `handleInstallationPurge`) gate on `requireOperator`: only `Authorization: Bearer` equal to the configured `OPERATOR_BEARER_TOKEN` is accepted (`createSecretOperatorAuth`, timing-safe compare). Staff AATs, missing headers, and wrong secrets all return **401** `{ "error": "unauthorized" }` — there is no control-plane 403. Enroll itself never returns taxonomy codes; `/v1/*` after a successful enroll still fails entitlement with **403** `forbidden_capability` (path `ai_disabled`) until Stage 4 entitle.
 
 ### 8.1 Setup
 
@@ -342,6 +620,11 @@ Every happy and failure claim in this file maps to a probe. Carry them all out. 
 | Rotate stamps `revoked_at` on prior keys in the same batch; new key `revoked_at` NULL, TTL 365 days | [§8.3.9](#839-key-rotation) |
 | No dual-key overlap: exactly one unrevoked key after rotate | [§8.3.9](#839-key-rotation) |
 | In-flight AAT with the old `kid` fails identity after rotate | [§8.3.9](#839-key-rotation) |
+| Clinic `rotate_installation_key()` then operator `POST …/rotate` with new `kid` + `public_key` | [§8.3.9](#839-key-rotation) |
+| `POST …/revoke-key` stamps one key; repeat → `key_already_revoked`; unknown `kid` → `key_not_found` | [§8.3.10](#8310-revoke-key) |
+| `POST …/suspend` → `installation_suspended`; `POST …/resume` restores; illegal transitions → 409 | [§8.3.11](#8311-suspend--resume) |
+| `POST …/delete` → `status = deleted`; AAT → `unauthenticated`; repeat delete → 409 | [§8.3.12](#8312-delete) |
+| `POST …/purge` removes installation D1 + R2; irreversible | [§8.3.13](#8313-purge) |
 
 
 ### 8.3 Ordered probes
@@ -386,7 +669,7 @@ Enroll needs clinic-minted `installation_id`, `kid`, and `public_jwk.x`. The pla
 SELECT public.enroll_installation_keypair();
 ```
 
-If a single active row already exists, read it instead of minting a second `kid`. Save:
+If a single active row already exists, read it instead of calling enroll again — a second enroll fails with `ALREADY_ENROLLED`. Save:
 
 - `installation_id` → **I0** (`INSTALLATION_ID`)
 - `kid` → **K0** (`KID`)
@@ -405,7 +688,7 @@ export PUBLIC_KEY='<X0>'
 - Header `kid` = **K0** (the key you will enroll)
 - Payload `iss` = **I0**
 
-If the header `kid` is not **K0**, stop and enroll *that* `kid` instead — or go back to a one-key clinic. Do **not** call `enroll_installation_keypair()` again until [§8.3.9](#839-key-rotation).
+If the header `kid` is not **K0**, stop and enroll *that* `kid` instead — or go back to a one-key clinic. Do **not** call `rotate_installation_key()` until [§8.3.9](#839-key-rotation) (rotation is a separate probe after first enroll).
 
 **Do:** inspect D1 for **I0**:
 
@@ -625,25 +908,25 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$(uuidgen)/enroll" \
 
 #### 8.3.9 Key rotation
 
-Mint a **new** clinic key for the same **I0**. Do **not** enroll it with `POST …/enroll`.
+Mint a **new** clinic key for the same **I0** with the rotation RPC — not enroll.
 
 **Do:** as owner or administrator:
 
 ```sql
-SELECT public.enroll_installation_keypair();
+SELECT public.rotate_installation_key();
 ```
 
-**Expect:** `success = true`. New `kid` **K1** ≠ **K0**. Same `installation_id` **I0**. New `public_jwk.x` → **X1**. Save **K1** and **X1**. **AAT0** remains signed with **K0**.
+**Expect:** `success = true`. New `kid` **K1** ≠ **K0**. Same `installation_id` **I0**. New `public_jwk.x` → **X1**. Save **K1** and **X1**. Clinic keystore now has two rows (additive); issuer will sign new AATs with **K1**. **AAT0** remains signed with **K0**.
 
-**Do:** as operator:
+**Do:** as operator, register **K1** on the platform:
 
 ```bash
 curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"kid\": \"<K1>\",
-    \"public_key\": \"<X1>\",
+    \"kid\": \"$K1\",
+    \"public_key\": \"$X1\",
     \"algorithm\": \"EdDSA\"
   }"
 ```
@@ -666,8 +949,99 @@ The isolate `ConfigCache` TTL is 30 s. If [§8.3.8](#838-post-enroll-effect-and-
 
 **Do:** `post_v1 "$AAT0"` (old `kid`).
 
-**Expect:** HTTP 401, `code = unauthenticated`. In-flight AATs signed with the old `kid` fail identity as soon as rotate is visible to identity ([§7](#7-key-rotation)). Revoked keys are rejected regardless of `exp`.
+**Expect:** HTTP 401, `code = unauthenticated`. In-flight AATs signed with the old `kid` fail identity as soon as rotate is visible to identity ([§7](#7-api-post-controlinstallationsinstallation_idrotate)). Revoked keys are rejected regardless of `exp`.
 
 **Do:** as doctor, `SELECT public.issue_ai_token();` Save as **AAT1**. Header `kid` should be **K1**. `post_v1 "$AAT1"`.
 
 **Expect:** identity can pass (new specimen is on file) but entitlement still fails `forbidden_capability` / `ai_disabled`. Operators mint new AATs with the new `kid`; this stage still does not grant spend rights.
+
+#### 8.3.10 revoke-key
+
+With **K1** the sole active platform key from [§8.3.9](#839-key-rotation):
+
+**Do:** as operator:
+
+```bash
+curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"kid\": \"$K1\"}"
+```
+
+**Expect:** HTTP 200, `{}`. D1: **K1** `revoked_at` set. `control_audit` row `action = revoke-key`, `after_pointer = K1`.
+
+**Do:** wait 31 s (or restart Worker). `post_v1 "$AAT1"`.
+
+**Expect:** HTTP 401 `unauthenticated`.
+
+**Do:** repeat the same revoke-key POST.
+
+**Expect:** HTTP 409, `{ "error": "key_already_revoked" }`.
+
+**Do:** revoke unknown kid:
+
+```bash
+curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kid": "00000000-0000-0000-0000-000000000099"}'
+```
+
+**Expect:** HTTP 404, `{ "error": "key_not_found" }`.
+
+**Do:** clinic `rotate_installation_key()` again → **K2** / **X2**; `POST …/rotate` with **K2** so later probes have a live platform key. Update `KID` / `PUBLIC_KEY` exports if you continue past this stage doc.
+
+#### 8.3.11 suspend / resume
+
+Assume **K2** is the current active platform key and a fresh AAT **AAT2** verifies at identity (entitlement may still be `pending`).
+
+**Do:** `POST …/suspend` with operator Bearer and body `{}`.
+
+**Expect:** HTTP 200. D1 `installation.status = suspended`. `control_audit.action = suspend`.
+
+**Do:** wait 31 s. `post_v1` with a newly minted AAT.
+
+**Expect:** HTTP 403, `code = installation_suspended` (guard stage 2).
+
+**Do:** repeat suspend.
+
+**Expect:** HTTP 409, `{ "error": "illegal_lifecycle_transition" }`.
+
+**Do:** `POST …/resume` with `{}`.
+
+**Expect:** HTTP 200. `status = active`. Audit `action = resume`. Identity no longer returns `installation_suspended` (entitlement may still block with `forbidden_capability`).
+
+**Do:** resume again while active.
+
+**Expect:** HTTP 409, `illegal_lifecycle_transition`.
+
+#### 8.3.12 delete
+
+**Do:** `POST …/delete` with operator Bearer and `{}`.
+
+**Expect:** HTTP 200. D1 `installation.status = deleted`. Rows still present (not purged).
+
+**Do:** wait 31 s. Fresh AAT. `post_v1`.
+
+**Expect:** HTTP 401 `unauthenticated` (`installation.status !== active` and not the suspended branch).
+
+**Do:** repeat delete, then `POST …/resume`.
+
+**Expect:** both HTTP 409 `illegal_lifecycle_transition`.
+
+#### 8.3.13 purge
+
+Purge is destructive — run last on a throwaway installation. Clear grace queue rows the purge batch does not touch:
+
+```bash
+npx wrangler d1 execute ai-platform-development --local --env development --command \
+  "DELETE FROM grace_admission_queue WHERE installation_id = '$INSTALLATION_ID'"
+```
+
+**Do:** `POST …/purge` with operator Bearer and `{}`.
+
+**Expect:** HTTP 200, `{}`. D1: no `installation`, `installation_key`, or `entitlement` row for **I0**; journal/ledger/grant rows for this installation gone. R2 envelopes for its `ai_request` ids gone. At least one `control_audit` row with `action = purge_installation`.
+
+**Do:** `post_v1` with any prior AAT.
+
+**Expect:** HTTP 401 `unauthenticated` (installation file removed). Re-registering requires a new enroll POST (new or same clinic key per your probe plan), not an undo of purge.

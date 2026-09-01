@@ -303,7 +303,7 @@ Wait 31 s.
 
 **Expect:** HTTP 200. `status=active`. Invoke is no longer `installation_suspended` (it may still fail later in this sequence because no routing policy is published — identity has been restored). Resume while already active → 409 `illegal_lifecycle_transition`.
 
-**Do:** as clinic admin, `SELECT public.enroll_installation_keypair();` again. Save new `kid` **K1** and `public_jwk.x`. 
+**Do:** as clinic admin, `SELECT public.rotate_installation_key();`. Save new `kid` **K1** and `public_jwk.x`.
 
 ```bash
 curl -sS -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
@@ -316,9 +316,9 @@ Wait 31 s. Invoke with an AAT whose header `kid` is **K0**, then mint a new AAT 
 
 **Expect:** rotate HTTP 200. D1: **K1** row `valid_until` ≈ `valid_from` + 365 days (`INSTALLATION_KEY_TTL_DAYS`); **K0** `revoked_at` is now (same batch — no dual-key overlap). K0 AAT → HTTP 401 `unauthenticated`. New AAT with **K1** verifies at identity.
 
-**Do:** `POST …/revoke-key` with `{"kid":"<K1>"}`. Wait 31 s. Invoke with the K1 AAT. Then clinic-enroll **K2** and `POST …/rotate` to **K2** so later probes have a live key.
+**Do:** `POST …/revoke-key` with `{"kid":"<K1>"}`. Wait 31 s. Invoke with the K1 AAT. Then as clinic admin, `SELECT public.rotate_installation_key();` — save new `kid` **K2** and `public_jwk.x`. Platform `POST …/rotate` with `{"kid":"<K2>","public_key":"<K2 public_jwk.x>","algorithm":"EdDSA"}`. Wait 31 s.
 
-**Expect:** revoke HTTP 200. K1 `revoked_at` set. K1 AAT → 401 `unauthenticated`. Repeat revoke → 409 `key_already_revoked`. After rotate to **K2**, a freshly minted AAT verifies. Save **K2** as the live `kid`.
+**Expect:** revoke HTTP 200. K1 `revoked_at` set. K1 AAT → 401 `unauthenticated`. Repeat revoke → 409 `key_already_revoked`. Clinic `rotate_installation_key` → `success = true` with new **K2** (same `installation_id` **I0**). Platform rotate HTTP 200; prior unrevoked D1 keys get `revoked_at` in the same batch. Freshly minted AAT with **K2** verifies. Save **K2** as the live `kid`.
 
 #### 11.3.3 Zero quotas after entitle
 

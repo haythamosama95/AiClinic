@@ -172,7 +172,7 @@ path and every inherited prohibition the slice can emit).
 
 Named tests (numbering is per suite):
 
-*Keystore suite* (`ai_keystore_rls.sql` — T01–T10):
+*Keystore suite* (`ai_keystore_rls.sql` — T01–T11):
 
 - `T01 keystore anon read denied` — layer: SQL / RLS
 - `T02 keystore authenticated read denied` — layer: SQL / RLS
@@ -187,6 +187,7 @@ Named tests (numbering is per suite):
 - `T08 revoke empty kid → INVALID_INPUT` — layer: SQL / RLS
 - `T09 revoke unknown kid → KEY_NOT_FOUND` — layer: SQL / RLS
 - `T10 rotate before enroll → INSTALLATION_NOT_ENROLLED` — layer: SQL / RLS
+- `T11 enroll with active key → ALREADY_ENROLLED; re-enroll after all keys revoked succeeds` — layer: SQL / RLS
 
 *Issuer suite* (`ai_token_issuer.sql` — T07–T16):
 
@@ -253,6 +254,11 @@ leak across runs.
   `installation_id`, ordered by `valid_from DESC, kid DESC`, with inserts stamped by
   `clock_timestamp()`; a second distinct `installation_id` MUST be rejected
   (`enforce_single_installation`).
+- **FR-002c**: `enroll_installation_keypair` MUST reject with `ALREADY_ENROLLED` when any
+  active key exists in `ai_internal.installation_keys` (active = `is_deleted = false` AND
+  `revoked_at IS NULL`). Re-enrollment MUST be permitted when no active key remains (all keys
+  revoked; recovery path reusing `installation_id`). Rotation remains
+  `rotate_installation_key`.
 - **FR-003**: A revoked signing key MUST be rejected during AAT verification (§3.11.2
   B1 row). `verify_aat` MUST return `false` (not throw) on malformed signatures and MUST
   bind payload `iss` to the key row's `installation_id`.
@@ -413,7 +419,8 @@ Prohibitions copied from delivery plan §6.4 that this slice must not violate:
 - **SC-012**: Automated tests prove the remaining issuer bare codes (`STAFF_NOT_FOUND`,
   `BRANCH_NOT_FOUND`, `INSTALLATION_NOT_ENROLLED`, `AI_ACCESS_DENIED`) and keypair
   admin/error paths (`FORBIDDEN`, `INVALID_INPUT`, `KEY_NOT_FOUND`,
-  `INSTALLATION_NOT_ENROLLED` on rotate-before-enroll).
+  `INSTALLATION_NOT_ENROLLED` on rotate-before-enroll, `ALREADY_ENROLLED` on
+  enroll-with-active-key and re-enroll-after-revoke recovery).
 
 ## Assumptions
 

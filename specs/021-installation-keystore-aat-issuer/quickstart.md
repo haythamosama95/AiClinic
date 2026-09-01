@@ -32,7 +32,7 @@ This slice implements delivery-plan row **B1** (*Installation keystore and AAT i
 
 The **spec** freezes the keystore shape, the issuer RPC contract, the §5.6 claim set, and the rule
 that `scopes` are never client-supplied. The **plan** scopes four Supabase migrations (three
-originals + review overlay), two SQL/RLS test suites (keystore T01–T10; issuer T07–T16), and a
+originals + review overlay), two SQL/RLS test suites (keystore T01–T11; issuer T07–T16), and a
 dedicated runner — `backend/` only; no Worker or Flutter changes.
 
 ## 2. What was implemented
@@ -44,8 +44,10 @@ dedicated runner — `backend/` only; no Worker or Flutter changes.
   audience, contract version, and issuer rate-limit window/ceiling.
 - **`auth_internal` keypair routines** — `enroll_installation_keypair`, `rotate_installation_key`,
   and `revoke_installation_key` (`SECURITY DEFINER`, `pgsodium.crypto_sign_new_keypair`,
-  `clock_timestamp` stamps); enroll/rotate return `rpc_success` with `kid`, `installation_id`,
-  and `public_jwk` (`OKP`/`Ed25519`/`x`/`kid`) for the §8.1 operator handoff. Thin `public`
+  `clock_timestamp` stamps); enroll rejects `ALREADY_ENROLLED` when an active key exists and
+  permits re-enroll after all keys are revoked; enroll/rotate return `rpc_success` with `kid`,
+  `installation_id`, and `public_jwk` (`OKP`/`Ed25519`/`x`/`kid`) for the §8.1 operator handoff.
+  Thin `public`
   `SECURITY DEFINER` wrappers, operator-gated via `assert_owner_or_administrator()`;
   `REVOKE EXECUTE` from `PUBLIC`/`anon`/`authenticated` on internal functions.
 - **`auth_internal.issue_ai_token` issuer RPC** — verifies session (`UNAUTHENTICATED` /
@@ -67,7 +69,7 @@ dedicated runner — `backend/` only; no Worker or Flutter changes.
 | `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | Enroll / rotate / revoke keypair routines + `public` wrappers (`public_jwk` return) |
 | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` | `issue_ai_token` issuer, `verify_aat` self-test helper, `public.issue_ai_token` wrapper |
 | `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` | Review-resolution overlay (idempotent with updated originals) |
-| `backend/tests/ai_keystore_rls.sql` | T01–T10: keystore access, `public_jwk`, rotation, verify/`iss`/malformed, admin/error paths |
+| `backend/tests/ai_keystore_rls.sql` | T01–T11: keystore access, `public_jwk`, rotation, verify/`iss`/malformed, admin/error paths, enroll guard |
 | `backend/tests/ai_token_issuer.sql` | T07–T16: §5.6 claims, header `alg`, omissions, exact error codes, per-actor rate limit, `exp` |
 
 ## 4. Prerequisites
@@ -85,7 +87,7 @@ From the repository root:
 bash backend/tests/run_ai_platform_trust_tests.sh
 ```
 
-Expected: both suites green — `ai_keystore_rls.sql` (T01–T10, including T05b–d) and
+Expected: both suites green — `ai_keystore_rls.sql` (T01–T11, including T05b–d) and
 `ai_token_issuer.sql` (T07–T16, including T07b/T08b). The runner prints `AI platform trust suite:
 all checks passed.` on success.
 
