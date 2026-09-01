@@ -6,6 +6,7 @@
 2. [Metaphor](#2-metaphor)
 3. [Boundary with Stage 9 (the guard)](#3-boundary-with-stage-9-the-guard)
 4. [HTTP response shape](#4-http-response-shape)
+  - [4.1 SSE response contract (consolidated)](#41-sse-response-contract-consolidated)
 5. [Runtime flow — fresh path](#5-runtime-flow-fresh-path)
 6. [Phase A — SSE `accepted`](#6-phase-a-sse-accepted)
 7. [Phase B — Dispatch (fresh vs idempotent)](#7-phase-b-dispatch-fresh-vs-idempotent)
@@ -118,6 +119,27 @@ data: <json object>
 ```
 
 Every `data` object includes `trace_id` (same value as header `x-trace-id` when the client supplied one, otherwise the server ULID from ingress).
+
+### 4.1 SSE response contract (consolidated)
+
+Wire encoding: `event: <type>` then `data: <json>` (`encodeSseEvent` in `src/adapter.ts`). Terminal kinds are defined in `TERMINAL_EVENT_KINDS` — after one terminal event, no further frames are sent on that connection.
+
+
+| `event` | Terminal? | `data` shape (JSON keys) | Notes |
+| ------- | --------- | ------------------------ | ----- |
+| `accepted` | no | `request_reference` (Crockford `XXXX-XXXX`), `trace_id`, optional `degraded_notice` (boolean `true`) | First frame; emitted before routing/provider I/O ([§6](#6-phase-a-sse-accepted)) |
+| `heartbeat` | no | `trace_id` | Every **15 s** without `text_delta` / `regenerating` ([§11.2](#112-heartbeat)) |
+| `regenerating` | no | `trace_id` | Client discards provisional `text_delta` since last `regenerating` or `accepted` ([§11.3](#113-regenerating)) |
+| `text_delta` | no | `text` (string), `sequence` (number, monotonic per leg), `provisional` (always `true`) | **Platform today:** `data` often omits `trace_id` — wrapper carries it but `encodeSseEvent` serializes only `event.data` ([§19.3.5](#1935-happy-fresh-path-end-to-end)) |
+| `completed` | **yes** | `result.finalContent.text` (string), `result.finalContent.authoritative` (always `true`), `trace_id` | Authoritative prose; replaces all provisional deltas ([§11.5](#115-completed)) |
+| `failed` | **yes** | `code` (taxonomy string), `request_reference`, `trace_id`, `retry_safe` (boolean) | Same JSON shape as pre-accept HTTP error bodies ([§11.6](#116-failed)) |
+| `cancelled` | **yes** | `trace_id` only | Client disconnect / abort ([§11.7](#117-cancelled)) |
+| `context_requested` | **yes** | `context_request` (array of `{ key, arguments }` per `platform.context_request@v1`), `trace_id` | **Conversational capabilities only** — `pushTerminalEvent` throws for `single_shot` ([§11.8](#118-context_requested)) |
+
+
+**`context_request` entry shape** (`src/context/context-request.ts`): each element is `{ "key": "<context key>", "arguments": { … } }` — plain object arguments; validated by `validateContextRequest` before emit.
+
+**Verification:** [§19.3.5](#1935-happy-fresh-path-end-to-end) exercises `accepted` → `text_delta` → `completed` field-by-field on the fake provider path. [§19.3.12](#19312-client-disconnect-and-cancelled-replay) replays `cancelled`. [§19.3.8](#1938-idempotent-replay-of-completed) and [§19.3.13](#19313-idempotent-replay-of-failed) cover terminal replay shapes. `context_requested` is unprobeable on visit summary — see [§19.3.15](#19315-what-this-stage-does-not-do).
 
 ## 5. Runtime flow — fresh path
 
@@ -711,6 +733,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Idempotent replay skips journal INSERT, compose, routing, and provider ([§3](#3-boundary-with-stage-9-the-guard), [§7](#7-phase-b--dispatch-fresh-vs-idempotent), [§15](#15-idempotent-replay-path-no-provider-call)) | [§19.3.8](#1938-idempotent-replay-of-completed) |
 | Two different trace ids: SSE/D1 `x-trace-id` vs CanonicalRequest `correlationIds.trace_id` = AAT `jti` ([§3](#3-boundary-with-stage-9-the-guard), [§12.1](#121-top-level-fields)) | [§19.3.7](#1937-two-trace-identifiers-and-ignored-injection-keys) |
 | HTTP 200, `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`; frames are `event:` + `data:` JSON ([§4](#4-http-response-shape)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| Consolidated SSE contract — event types and `data` shapes ([§4.1](#41-sse-response-contract-consolidated)) | [§19.3.5](#1935-happy-fresh-path-end-to-end), [§19.3.8](#1938-idempotent-replay-of-completed), [§19.3.12](#19312-client-disconnect-and-cancelled-replay), [§19.3.13](#19313-idempotent-replay-of-failed) |
 | `accepted` is first frame; fields `request_reference`, `trace_id`; optional `degraded_notice` ([§6](#6-phase-a--sse-accepted), [§11.1](#111-accepted), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.5](#1935-happy-fresh-path-end-to-end), [§19.3.14](#19314-degraded-notice-and-canary-preference) |
 | Fresh path: `text_delta` then exactly one terminal `completed` ([§5](#5-runtime-flow--fresh-path), [§10](#10-phase-e--stream-relay-and-output-guards), [§11.4](#114-text_delta), [§11.5](#115-completed)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
 | `text_delta` fields `text`, `sequence` (monotonic from 0), `provisional: true`; `completed.result.finalContent.{text,authoritative}` ([§11.4](#114-text_delta), [§11.5](#115-completed)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |

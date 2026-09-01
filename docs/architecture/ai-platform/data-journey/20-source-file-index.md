@@ -42,9 +42,13 @@
 | Wrangler config        | `ai-platform/wrangler.toml`                                                       |
 | D1 migrations          | `ai-platform/migrations/*.sql` (`idx_entitlement_installation_id` UNIQUE on `entitlement.installation_id`) |
 | Visit summary manifest | `ai-platform/manifests/published/clinic.visit_summary@1.0.0.json`                 |
-| Clinic keypair RPC     | `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` |
-| AAT issuer RPC         | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql`              |
-| AAT contract spec      | `specs/021-installation-keystore-aat-issuer/contracts/aat-token.md`               |
+| Clinic keypair RPC | `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` |
+| AAT issuer RPC | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` |
+| Context provider RPC | `backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql` |
+| Acceptance recording RPC | `backend/supabase/migrations/20260802150000_ai_acceptance_recording.sql` |
+| AI availability read RPC | `backend/supabase/migrations/20260802140000_ai_availability_flag.sql` |
+| AAT contract spec | `specs/021-installation-keystore-aat-issuer/contracts/aat-token.md` |
+| Discovery HTTP | `ai-platform/src/discovery/index.ts` |
 
 
 ---
@@ -57,8 +61,8 @@
    - [1.1 Setup](#11-setup)
    - [1.2 Coverage](#12-coverage)
    - [1.3 Ordered probes](#13-ordered-probes)
-     - [1.3.1 Paths and Worker boot](#131-paths-and-worker-boot)
-     - [1.3.2 Clinic keypair, AAT issuer, and contract](#132-clinic-keypair-aat-issuer-and-contract)
+     - [1.3.1 Paths, Worker boot, and HTTP route probe index](#131-paths-worker-boot-and-http-route-probe-index)
+     - [1.3.2 Clinic RPCs (all seven public surfaces)](#132-clinic-rpcs-all-seven-public-surfaces)
      - [1.3.3 Control auth, enroll, entitle, uniqueness, token contract](#133-control-auth-enroll-entitle-uniqueness-token-contract)
      - [1.3.4 Duplicate routing publish checks D1 first](#134-duplicate-routing-publish-checks-d1-first)
      - [1.3.5 Identity, entitlement, discovery, and Quota DO](#135-identity-entitlement-discovery-and-quota-do)
@@ -83,7 +87,7 @@
 
 ## 1. Behavioral verification
 
-Live probes of the parenthetical claims in the index table — not a “file exists” checklist (the path check in [§1.3.1](#131-paths-and-worker-boot) is only the first Do). Each probe is an operator action against a throwaway local Worker and clinic, and the outcome you should see. Run **[§1.3](#13-ordered-probes) top to bottom**. If every probe matches, the indexed modules are behaving as claimed.
+Live probes of the parenthetical claims in the index table — not a “file exists” checklist (the path check in [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index) is only the first Do). Each probe is an operator action against a throwaway local Worker and clinic, and the outcome you should see. Run **[§1.3](#13-ordered-probes) top to bottom**. If every probe matches, the indexed modules are behaving as claimed.
 
 There is no dashboard HTTP route and no first-class Wrangler dump of Quota DO storage. Those claims are probed with `wrangler d1` / `wrangler r2` / scheduled triggers, not invented endpoints.
 
@@ -139,7 +143,7 @@ Every index row and parenthetical claim maps to a probe. Carry them all out.
 
 | Area / claim | Probe |
 | ------------ | ----- |
-| Worker entry (`worker.ts` routes + scheduled) | [§1.3.1](#131-paths-and-worker-boot) |
+| Worker entry (`worker.ts` routes + scheduled) | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index) |
 | Ingress: `preAcceptFailureResponse` attaches `retry_after` on `rate_limited` | [§1.3.7](#137-rate-limit-retry_after-and-stage-4) |
 | Ingress: `ADAPTER_ROUTING_BODY_FIELDS = []` — never reads `routing_tier` / `degraded` / `degraded_notice` from the body | [§1.3.6](#136-adapter-ignores-routing-injection) |
 | Guard: `GuardFailure.retryAfter` from stage 4 rate-limit | [§1.3.7](#137-rate-limit-retry_after-and-stage-4) |
@@ -153,7 +157,7 @@ Every index row and parenthetical claim maps to a probe. Carry them all out.
 | Composer: `neutralizeText` / `neutralizeJson` on context, transcript turns, `userIntent` | [§1.3.11](#1311-prompt-compose-neutralize-version-leaks-empty-stops) |
 | Composer: `stopConditionsFromManifest` always `[]` under A4 | [§1.3.11](#1311-prompt-compose-neutralize-version-leaks-empty-stops) |
 | Registry: `resolvePromptVersion` = content hash of bound artifacts | [§1.3.11](#1311-prompt-compose-neutralize-version-leaks-empty-stops) |
-| Identity / AAT | [§1.3.2](#132-clinic-keypair-aat-issuer-and-contract), [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
+| Identity / AAT | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces), [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
 | Entitlement | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
 | Admission: grace-cap refusal is `rate_limited`, not `quota_exhausted` | [§1.3.8](#138-grace-cap-is-rate_limited) |
 | Soft-threshold: `routingTierFromAdmission` / `degradedNoticeFromAdmission` | [§1.3.6](#136-adapter-ignores-routing-injection) |
@@ -187,12 +191,17 @@ Every index row and parenthetical claim maps to a probe. Carry them all out.
 | Routing policy: duplicate publish D1 existence check before `R2.put` | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
 | Token contract | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
 | Errors: `retryAfterSecondsForRateLimited` — hint else 60 | [§1.3.7](#137-rate-limit-retry_after-and-stage-4) |
-| Wrangler config | [§1.3.1](#131-paths-and-worker-boot), [§1.3.7](#137-rate-limit-retry_after-and-stage-4) |
+| Wrangler config | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index), [§1.3.7](#137-rate-limit-retry_after-and-stage-4) |
 | D1: `idx_entitlement_installation_id` UNIQUE on `entitlement.installation_id` | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
-| Visit summary manifest | [§1.3.1](#131-paths-and-worker-boot), [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
-| Clinic keypair RPC | [§1.3.2](#132-clinic-keypair-aat-issuer-and-contract) |
-| AAT issuer RPC | [§1.3.2](#132-clinic-keypair-aat-issuer-and-contract) |
-| AAT contract spec | [§1.3.2](#132-clinic-keypair-aat-issuer-and-contract) |
+| Visit summary manifest | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index), [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
+| Clinic keypair RPC | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| AAT issuer RPC | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| AAT contract spec | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| Context provider RPC | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| Acceptance recording RPC | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| AI availability RPC | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) |
+| Worker HTTP routes (probe index) | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index) |
+| Discovery HTTP (`GET /v1/capabilities`, 304) | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index), [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) |
 
 
 **Unprobeable live on the default local stack** (still have a coverage pointer):
@@ -205,7 +214,7 @@ Every index row and parenthetical claim maps to a probe. Carry them all out.
 
 ### 1.3 Ordered probes
 
-#### 1.3.1 Paths and Worker boot
+#### 1.3.1 Paths, Worker boot, and HTTP route probe index
 
 **Do:** from the repo root, confirm every index path exists:
 
@@ -250,8 +259,11 @@ for p in \
   ai-platform/src/errors.ts \
   ai-platform/wrangler.toml \
   ai-platform/manifests/published/clinic.visit_summary@1.0.0.json \
+  ai-platform/src/discovery/index.ts \
   backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql \
   backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql \
+  backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql \
+  backend/supabase/migrations/20260802150000_ai_acceptance_recording.sql \
   specs/021-installation-keystore-aat-issuer/contracts/aat-token.md
  do test -f "$p" || echo "MISSING $p"; done
 ls ai-platform/migrations/*.sql >/dev/null
@@ -263,6 +275,39 @@ ls ai-platform/migrations/*.sql >/dev/null
 
 **Expect:** JSON `{ "build": "local", "environment": "development" }` from `wrangler.toml` `[env.development.vars]`. `GET /v1/no-such-route` → `404 Not Found`. `POST /v1/requests` without headers → adapter `422` (not a taxonomy JSON).
 
+**HTTP route probe index** — live Worker routes exercised across this index and the stage docs:
+
+
+| Route | Method | Auth | Probe in this file / stage |
+| ----- | ------ | ---- | -------------------------- |
+| `/health` | GET | none | [§1.3.1](#131-paths-worker-boot-and-http-route-probe-index) (above) |
+| `/v1/capabilities` | GET | Bearer AAT | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do); [Stage 7 §6.3.5](09-stage-7-discovery.md#635-entitled-happy-path-every-response-field) |
+| `/v1/capabilities` | GET + `If-None-Match` | Bearer AAT | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do) (304); [Stage 7 §6.3.6](09-stage-7-discovery.md#636-conditional-get-304-not-modified) |
+| `/v1/requests` | POST | Bearer AAT + idempotency headers | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do), [§1.3.15](#1315-invoke-stream-providers-sleeper-transports) |
+| `/v1/requests/{ref}` | GET | Bearer AAT | [§1.3.12](#1312-journal-routing_decision-and-get-cache); [Stage 12 §5.3.2](14-stage-12-lookup-and-support.md#532-get-happy-path-every-field) |
+| `/control/installations/{id}/enroll` | POST | operator bearer | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
+| `/control/installations/{id}/entitle` | POST | operator bearer | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
+| `/control/installations/{id}/rotate` | POST | operator bearer | [Stage 3 §7](05-stage-3-platform-installation-enrollment.md#7-api-post-controlinstallationsinstallation_idrotate) |
+| `/control/installations/{id}/revoke-key` | POST | operator bearer | [Stage 3 §7.1](05-stage-3-platform-installation-enrollment.md#71-api-post-controlinstallationsinstallation_idrevoke-key) |
+| `/control/installations/{id}/suspend` | POST | operator bearer | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do); [Stage 3 §7.2](05-stage-3-platform-installation-enrollment.md#72-api-post-controlinstallationsinstallation_idsuspend) |
+| `/control/installations/{id}/resume` | POST | operator bearer | [§1.3.5](#135-identity-entitlement-discovery-and-quota-do); [Stage 3 §7.3](05-stage-3-platform-installation-enrollment.md#73-api-post-controlinstallationsinstallation_idresume) |
+| `/control/installations/{id}/delete` | POST | operator bearer | [Stage 3 §7.4](05-stage-3-platform-installation-enrollment.md#74-api-post-controlinstallationsinstallation_iddelete) |
+| `/control/installations/{id}/purge` | POST | operator bearer | [Stage 3 §7.5](05-stage-3-platform-installation-enrollment.md#75-api-post-controlinstallationsinstallation_idpurge) |
+| `/control/capabilities/{id}/versions/{v}/activate` | POST | operator bearer | [Stage 4 §7](06-stage-4-entitlement-and-capability-grants.md#7-api-post-controlcapabilitiescapability_idversionsversionactivate) |
+| `/control/capabilities/{id}/versions/{v}/promote` | POST | operator bearer | [Stage 4 §8](06-stage-4-entitlement-and-capability-grants.md#8-api-post-controlcapabilitiescapability_idversionsversionpromote) |
+| `/control/capabilities/{id}/versions/{v}/deprecate` | POST | operator bearer | [Stage 4 §9](06-stage-4-entitlement-and-capability-grants.md#9-api-post-controlcapabilitiescapability_idversionsversiondeprecate) |
+| `/control/capabilities/{id}/versions/{v}/retire` | POST | operator bearer | [Stage 4 §10](06-stage-4-entitlement-and-capability-grants.md#10-api-post-controlcapabilitiescapability_idversionsversionretire) |
+| `/control/routing-policies/{id}/versions/{v}/publish` | POST | operator bearer | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
+| `/control/routing-policies/{id}/versions/{v}/promote` | POST | operator bearer | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
+| `/control/routing-policies/{id}/versions/{v}/canary` | POST | operator bearer | [Stage 5 §6.2](07-stage-5-routing-policy.md#62-api-post-controlrouting-policiespolicy_idversionsversioncanary) |
+| `/control/routing-policies/{id}/versions/{v}/rollback` | POST | operator bearer | [Stage 5 §6.4](07-stage-5-routing-policy.md#64-api-post-controlrouting-policiespolicy_idversionsversionrollback) |
+| `/control/support/lookup` | POST | operator bearer | [§1.3.12](#1312-journal-routing_decision-and-get-cache) (GET poll); [Stage 12 §5.3.3](14-stage-12-lookup-and-support.md#533-support-lookup-happy-path-every-field) |
+| `/control/token-contract/begin-rotation` | POST | operator bearer | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
+| `/control/token-contract/retire` | POST | operator bearer | [§1.3.3](#133-control-auth-enroll-entitle-uniqueness-token-contract) |
+| `/cdn-cgi/handler/scheduled` | GET | dev `--test-scheduled` only | [§1.3.19](#1319-platform_counter-lower-bound-and-dashboards), [§1.3.20](#1320-retention-then-rollup-joinability) |
+
+No dashboard HTTP route exists (`src/dashboards/index.ts` is SQL-only). Quota DO state has no Wrangler dump — admit/idempotency is probed via [§1.3.5](#135-identity-entitlement-discovery-and-quota-do).
+
 **Do:** `grep -n 'crons\|RATE_LIMITER_INSTALLATION_ACTOR' ai-platform/wrangler.toml`
 
 **Expect:** crons `0 3 * * *` and `0 4 * * *`; development actor limiter `simple = { limit = 120, period = 60 }`. Those are the numbers [§1.3.7](#137-rate-limit-retry_after-and-stage-4) and [§1.3.20](#1320-retention-then-rollup-joinability) burn.
@@ -271,15 +316,49 @@ ls ai-platform/migrations/*.sql >/dev/null
 
 **Expect:** `clinic.visit_summary`, `1.0.0`, `routing/standard@v1`, `8000`, `visit.chief_complaint@v1`.
 
-#### 1.3.2 Clinic keypair, AAT issuer, and contract
+#### 1.3.2 Clinic RPCs (all seven public surfaces)
+
+Every `public.*` clinic RPC granted to `authenticated` for the AI journey. Keystore and acceptance RPCs return `public.rpc_result` (`success`, `data`, `error_code`, `error_message`). `issue_ai_token` returns a compact JWS `text`. `get_ai_availability` returns plain `jsonb`.
+
+
+| RPC | Returns | Role | Probe |
+| --- | ------- | ---- | ----- |
+| `public.enroll_installation_keypair()` | `rpc_result` | Owner/admin mints installation id + Ed25519 keypair | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below) |
+| `public.rotate_installation_key()` | `rpc_result` | Owner/admin rotates clinic signing key (same `installation_id`) | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below); [Stage 15 §11.3.2](15-alternative-and-failure-journeys.md#1132-lifecycle-alternatives-control-plane) |
+| `public.revoke_installation_key(p_kid text)` | `rpc_result` | Owner/admin revokes a `kid` in clinic keystore | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below) |
+| `public.issue_ai_token(p_scopes text[] DEFAULT NULL)` | **text** (compact JWS) | Staff with `ai.*` mints an AAT | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below) |
+| `public.get_ai_availability()` | **`jsonb`** (not `rpc_result`) | Any staff reads `{ enrolled, platform_base_url }` flag | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below); [Stage 2 §3.3](04-stage-2-clinic-keypair-enrollment.md#33-api-publicget_ai_availability) |
+| `public.get_visit_chief_complaint(p_visit_id uuid)` | `rpc_result` | Visit clinical read → `visit.chief_complaint@v1` shape | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below); [Stage 8 §7.1](10-stage-8-request-ingress.md#71-api-publicget_visit_chief_complaint) |
+| `public.record_ai_acceptance(p_request_reference, p_target_key, p_target_args)` | `rpc_result` | Human accept → delegated domain write + provenance | [§1.3.2](#132-clinic-rpcs-all-seven-public-surfaces) (below); [Stage 12 §3](14-stage-12-lookup-and-support.md#3-publicrecord_ai_acceptance) |
+
 
 **Do:** as administrator, `SELECT public.enroll_installation_keypair();`
 
-**Expect:** `success = true`. `data.installation_id` UUID text, `data.kid`, `data.public_jwk.kty = "OKP"`, `crv = "Ed25519"`, `x` non-empty. No `secret_key` in `data`. This is the clinic keypair RPC in the index.
+**Expect:** `success = true`. `data.installation_id` UUID text, `data.kid`, `data.public_jwk.kty = "OKP"`, `crv = "Ed25519"`, `x` non-empty. No `secret_key` in `data`.
+
+**Do:** as administrator, `SELECT public.rotate_installation_key();`
+
+**Expect:** `success = true`. New `data.kid` ≠ prior kid. **Same** `data.installation_id`. Two rows in `ai_internal.installation_keys` for that installation.
+
+**Do:** as administrator, `SELECT public.revoke_installation_key('<kid>');` for a live kid.
+
+**Expect:** `success = true`. `data.kid` and `data.revoked_at` set. Repeat on same kid → idempotent success with existing `revoked_at`.
 
 **Do:** as staff with `ai.*`, `SELECT public.issue_ai_token();` Decode the three JWS segments (base64url, no padding).
 
-**Expect:** header exactly `alg = "EdDSA"` and `kid` matching a live keystore row. Payload has `iss`, `aud`, `sub`, `org`, `branch`, `role`, `scopes`, `jti`, `iat`, `exp`, `ver` — no patient ids, no quota, no `routing_tier`. `aud` is the AI platform audience (`ai-platform`). `exp - iat` is minutes-scale (platform cap 600s). `scopes` were not in the RPC arguments. This is the issuer RPC plus the AAT contract spec.
+**Expect:** header exactly `alg = "EdDSA"` and `kid` matching a live keystore row. Payload has `iss`, `aud`, `sub`, `org`, `branch`, `role`, `scopes`, `jti`, `iat`, `exp`, `ver` — no patient ids, no quota, no `routing_tier`. `aud` is `ai-platform`. `exp - iat` is minutes-scale (platform cap 600s). This is the issuer RPC plus the AAT contract spec (`specs/021-installation-keystore-aat-issuer/contracts/aat-token.md`).
+
+**Do:** as any authenticated staff, `SELECT public.get_ai_availability();`
+
+**Expect:** plain JSON object `{ "enrolled": boolean, "platform_base_url": string | null }` — not an `rpc_result` envelope. No write RPC exists — flag is manual or future Flutter.
+
+**Do:** as clinician with visit clinical access, `SELECT public.get_visit_chief_complaint('<visit_id>'::uuid);`
+
+**Expect:** `success = true`. `data.visit_id` echoed; optional `complaint` and `recorded_at`. Unknown visit → `NOT_FOUND`. Staff without clinical read → `FORBIDDEN`.
+
+**Do:** with a valid Crockford request reference and `visits.edit_soap`, `SELECT public.record_ai_acceptance('<REF>', 'visit_clinical_notes', jsonb_build_object('p_visit_id', '<visit_id>', 'p_complaint', 'text'));`
+
+**Expect:** `success = true` with `acceptance_id`, `table_name`, `record_id`, `audit_log_id` merged into `data`. Malformed ref → `INVALID_INPUT`. Unregistered target → `INVALID_INPUT`. Delegated domain failure → pass-through `error_code`. Duplicate ref → `INVALID_INPUT` before write.
 
 **Do:** `POST /v1/requests` with `Authorization: Bearer <clinic session JWT>` (not the AAT).
 
@@ -359,6 +438,18 @@ cp /tmp/policy-v1.json /tmp/policy-v1.before.json
 **Do:** mint or use an AAT whose `role` is `clinician` or `nurse` and whose `scopes` include `ai.visit_summary`. `GET /v1/capabilities`. Then `POST /v1/requests` **omitting** `visit.chief_complaint@v1`.
 
 **Expect:** discovery includes `clinic.visit_summary` `1.0.0`. Missing key → `422` `context_required` with `missing_keys` containing `visit.chief_complaint@v1`. Manifest required key is enforced.
+
+**Do:** entitled `GET /v1/capabilities` — save `ETag` header, then:
+
+```bash
+curl -sS -D /tmp/cap-304-hdr -o /tmp/cap-304-body \
+  -H "Authorization: Bearer $AAT" \
+  -H "If-None-Match: <ETag from first response>" \
+  "$GATEWAY/v1/capabilities"
+wc -c /tmp/cap-304-body
+```
+
+**Expect:** HTTP **304**, empty body, same `ETag` and `Cache-Control: private, must-revalidate` (`buildDiscoveryResponse` in `src/discovery/index.ts` → `src/capability/index.ts`). See [Stage 7 §4.2](09-stage-7-discovery.md#42-conditional-get--http-304-not-modified).
 
 **Do:** full POST from [§1.1](#11-setup). Then D1:
 

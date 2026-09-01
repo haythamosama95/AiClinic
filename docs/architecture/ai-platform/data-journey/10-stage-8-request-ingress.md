@@ -21,6 +21,7 @@
 5. [Ingress validation (before guard)](#5-ingress-validation-before-guard)
 6. [Pre-accept (](#6-pre-accept-createproductionpreaccept)`createProductionPreAccept`[)](#6-pre-accept-createproductionpreaccept)
 7. [Visit summary example body](#7-visit-summary-example-body)
+  - [7.1 API: `public.get_visit_chief_complaint()`](#71-api-publicget_visit_chief_complaint)
 8. [Behavioral verification](#8-behavioral-verification)
    - [8.1 Setup](#81-setup)
    - [8.2 Coverage](#82-coverage)
@@ -37,6 +38,7 @@
      - [8.3.10 Mint an AAT and visit summary through ingress](#8310-mint-an-aat-and-visit-summary-through-ingress)
      - [8.3.11 Listed wrong values after ingress](#8311-listed-wrong-values-after-ingress)
      - [8.3.12 What this stage does not do](#8312-what-this-stage-does-not-do)
+     - [8.3.13 Chief complaint context provider RPC](#8313-chief-complaint-context-provider-rpc)
 
 ---
 
@@ -309,6 +311,67 @@ These keys are **never read** from the request body. Ingress ignores them struct
 | `visit.chief_complaint@v1` | true     | 4096 bytes |
 
 
+### 7.1 API: `public.get_visit_chief_complaint()`
+
+Clinic-side context provider for the ingress key `visit.chief_complaint@v1` ([§4.3](#43-context), [§7](#7-visit-summary-example-body)). The Flutter Context Resolver calls this RPC and places the resolved `complaint` string (or omits the key when absent) into `context` before `POST /v1/requests`. The gateway never calls clinic Postgres — only the desktop client does.
+
+**Source:** `backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql` (E3); contract `specs/037-context-resolver-registry/contracts/context-provider-rpc.md`.
+
+
+| Item         | Value                                      |
+| ------------ | ------------------------------------------ |
+| Method       | RPC (PostgREST `POST /rest/v1/rpc/get_visit_chief_complaint`) |
+| Auth         | Authenticated staff session (`GRANT … TO authenticated`) |
+| Wrapper      | `public.get_visit_chief_complaint` — `SECURITY INVOKER` → `auth_internal.get_visit_chief_complaint` (`SECURITY DEFINER`) |
+| Request body | `{ "p_visit_id": "<uuid>" }`               |
+
+
+**`rpc_result` envelope** (same as other clinic RPCs):
+
+
+| Field           | Type    | Meaning                                      |
+| --------------- | ------- | -------------------------------------------- |
+| `success`       | boolean | `true` on happy path                         |
+| `data`          | object  | Payload below when `success = true`          |
+| `error_code`    | text    | Machine code when `success = false`          |
+| `error_message` | text    | Human-readable detail when `success = false` |
+
+
+**Success `data` object — every field:**
+
+
+| Field         | Type   | Required on wire | Meaning                                                                 |
+| ------------- | ------ | --------------- | ----------------------------------------------------------------------- |
+| `visit_id`    | string | always          | Echo of `p_visit_id` (UUID text)                                        |
+| `complaint`   | string | optional        | Chief complaint from `visit_clinical_notes.complaint` when present      |
+| `recorded_at` | string | optional        | ISO-8601 UTC instant from note `created_at` when a note row exists      |
+
+
+When no non-deleted `visit_clinical_notes` row exists, or the note has no `complaint`, success still returns `{ "visit_id": "…" }` only. The resolver may then omit `visit.chief_complaint@v1` from the ingress body — guard stage 6 responds `context_required` if the manifest marks the key required.
+
+**Context key mapping:**
+
+
+| Platform context key           | RPC field source                         | Ingress validation ([Stage 9](11-stage-9-the-guard.md))      |
+| ------------------------------ | ---------------------------------------- | ------------------------------------------------------------ |
+| `visit.chief_complaint@v1`     | `data.complaint` (string placed by client) | Required for visit summary; max **4096 bytes** on the wire body |
+
+
+A5 published shape allows `complaint` up to 10 000 characters in clinic storage; the manifest `maxSize` on the ingress path is still 4096 bytes.
+
+
+**Failure paths:**
+
+
+| Condition                                      | `error_code` | `error_message` (representative)                                      |
+| ---------------------------------------------- | ------------ | --------------------------------------------------------------------- |
+| Visit not in caller branch scope / not found   | `NOT_FOUND`  | `Visit was not found.`                                                |
+| Staff lacks visit clinical read permission     | `FORBIDDEN`  | `You do not have permission to view this visit clinical data.`        |
+
+
+No AI-specific parameters (capability id, request reference, provider). The RPC is an ordinary clinic read under existing visit RLS.
+
+
 ## 8. Behavioral verification
 
 Live probes against a local Worker (`POST /v1/requests`). Each probe is an operator action and the outcome you should see — not a unit test. Run **[§8.3](#83-ordered-probes) top to bottom**. If every probe matches, this stage is working.
@@ -378,6 +441,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `context.org` / `context.branch` must match AAT `org` / `branch` → `context_invalid` | [§8.3.11](#8311-listed-wrong-values-after-ingress) |
 | `visit.chief_complaint@v1` required, max 4096 bytes | [§8.3.11](#8311-listed-wrong-values-after-ingress) |
 | Non-object `context` is not ingress 422; extractors fall back to `{}` | [§8.3.11](#8311-listed-wrong-values-after-ingress) |
+| `public.get_visit_chief_complaint` supplies `visit.chief_complaint@v1` ([§7.1](#71-api-publicget_visit_chief_complaint)) | [§8.3.13](#8313-chief-complaint-context-provider-rpc) |
 | Invalid JSON never reaches the guard (would have been 500 with a reference) | [§8.3.3](#833-json-parse-never-reaches-the-guard), [§8.3.12](#8312-what-this-stage-does-not-do) |
 | `installation_suspended` (the other `Authorization` failure this file names) | [§8.3.12](#8312-what-this-stage-does-not-do) |
 | This stage does not entitle, mint AATs, or run the invoke stream past `accepted` | [§8.3.12](#8312-what-this-stage-does-not-do) |
@@ -1105,6 +1169,65 @@ python3 -m json.tool < /tmp/stage8-body
 ```
 
 **Expect:** HTTP 403 `installation_suspended`, taxonomy JSON, no SSE. The other `Authorization` failure [§3.1](#31-authorization) names. Resume via Stage 3 if you still need this installation.
+
+#### 8.3.13 Chief complaint context provider RPC
+
+This probe exercises the clinic RPC in [§7.1](#71-api-publicget_visit_chief_complaint) — not the Worker. It proves the context key visit summary ingress expects can be resolved from clinic Postgres before `POST /v1/requests`.
+
+**Do:** as clinician/nurse with visit clinical read access, pick a visit id **V0** in the caller's branch. Upsert a note if needed:
+
+```sql
+-- optional: ensure a complaint exists for the probe
+INSERT INTO public.visit_clinical_notes (visit_id, complaint, created_by)
+VALUES ('<V0>', 'Patient reports headache for 3 days.', auth.uid())
+ON CONFLICT (visit_id) DO UPDATE
+  SET complaint = EXCLUDED.complaint, updated_at = now();
+```
+
+Call the RPC (SQL or PostgREST):
+
+```sql
+SELECT public.get_visit_chief_complaint('<V0>'::uuid);
+```
+
+**Expect:** `success = true`. `data.visit_id` = **V0**. `data.complaint` is the stored text. `data.recorded_at` is present when the note row has `created_at` (ISO-8601 UTC with `Z` suffix).
+
+**Do:** repeat with a random UUID not in scope:
+
+```sql
+SELECT public.get_visit_chief_complaint('00000000-0000-4000-8000-000000000099'::uuid);
+```
+
+**Expect:** `success = false`, `error_code = 'NOT_FOUND'`, `error_message = 'Visit was not found.'`
+
+**Do:** impersonate staff **without** visit clinical read (or use a role blocked by `staff_has_visit_clinical_access()`), then call with a valid **V0**:
+
+```sql
+SELECT public.get_visit_chief_complaint('<V0>'::uuid);
+```
+
+**Expect:** `success = false`, `error_code = 'FORBIDDEN'`, message about permission to view visit clinical data.
+
+**Do:** build ingress `context` from the happy RPC result and POST through [§8.3.10](#8310-mint-an-aat-and-visit-summary-through-ingress) (replace inline complaint with resolver output):
+
+```bash
+curl -sS -N --max-time 8 -D /tmp/stage8-hdr -o /tmp/stage8-body \
+  -X POST "$GATEWAY/v1/requests" \
+  -H "Authorization: Bearer $AAT" \
+  -H "Content-Type: application/json" \
+  -H "x-idempotency-key: probe-stage8-rpc-cc" \
+  -H "x-capability-version: $CAP_VER" \
+  -d "{
+    \"capability_id\": \"clinic.visit_summary\",
+    \"context\": {
+      \"org\": \"$ORG\",
+      \"branch\": \"$BRANCH\",
+      \"visit.chief_complaint@v1\": \"Patient reports headache for 3 days.\"
+    }
+  }"
+```
+
+**Expect:** not `context_required` for a missing chief-complaint key — the resolver-shaped string satisfies guard stage 6. Same class of outcome as [§8.3.10](#8310-mint-an-aat-and-visit-summary-through-ingress) (`accepted` when entitled, or an earlier guard code). This stage does not call the RPC; the client does before ingress.
 
 This stage also does **not**: mint AATs (Stage 6); register the installation (Stage 3); set routing/degraded state from the body ([§4.7](#47-ignored-body-keys)); dump the rest of the Stage 9 failure matrix.
 

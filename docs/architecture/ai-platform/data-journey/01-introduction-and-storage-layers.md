@@ -101,8 +101,10 @@ Read this once. The rest of the document unpacks every box.
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ CLINIC TRUST (Supabase PostgreSQL)                                          │
-│  enroll_installation_keypair → installation_keys (secret + public, kid)     │
-│  app_settings ai.availability → { enrolled, platform_base_url }             │
+│  enroll / rotate / revoke_installation_keypair → installation_keys          │
+│  get_ai_availability → { enrolled, platform_base_url }                      │
+│  get_visit_chief_complaint → context for visit.chief_complaint@v1           │
+│  record_ai_acceptance → human accept + provenance row                       │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │ public_jwk.x, kid, installation_id
                                     ▼
@@ -110,9 +112,12 @@ Read this once. The rest of the document unpacks every box.
 │ CONTROL PLANE — `/control/*` (Bearer OPERATOR_BEARER_TOKEN)                 │
 │  Single shared bearer + OPERATOR_ID: control_audit cannot distinguish ops   │
 │  POST …/enroll  → D1: installation, installation_key, entitlement(pending)  │
+│  POST …/rotate / revoke-key / suspend / resume / delete / purge             │
 │  POST …/entitle → D1: entitlement(active), capability_grant, control_audit  │
-│  POST …/routing-policies/…/publish → R2: policy JSON + D1: routing_policy    │
-│  POST …/canary / promote → D1: routing_policy status transitions            │
+│  POST …/capabilities/…/activate / promote / deprecate / retire                │
+│  POST …/routing-policies/…/publish / canary / promote / rollback            │
+│  POST …/token-contract/begin-rotation / retire                              │
+│  POST …/support/lookup                                                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
