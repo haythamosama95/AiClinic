@@ -32,6 +32,25 @@
 16. [Failure paths after `accepted`](#16-failure-paths-after-accepted)
 17. [Settlement handoff (Stage 11)](#17-settlement-handoff-stage-11)
 18. [Spec vs platform behavior today](#18-spec-vs-platform-behavior-today)
+19. [Behavioral verification](#19-behavioral-verification)
+   - [19.1 Setup](#191-setup)
+   - [19.2 Coverage](#192-coverage)
+   - [19.3 Ordered probes](#193-ordered-probes)
+     - [19.3.1 Prerequisites and a reusable invoke](#1931-prerequisites-and-a-reusable-invoke)
+     - [19.3.2 Missing routing policy after accepted](#1932-missing-routing-policy-after-accepted)
+     - [19.3.3 Guard boundary without SSE](#1933-guard-boundary-without-sse)
+     - [19.3.4 Publish and promote a fake-provider policy](#1934-publish-and-promote-a-fake-provider-policy)
+     - [19.3.5 Happy fresh path end to end](#1935-happy-fresh-path-end-to-end)
+     - [19.3.6 Canonical request, routing decision, and settlement](#1936-canonical-request-routing-decision-and-settlement)
+     - [19.3.7 Two trace identifiers and ignored injection keys](#1937-two-trace-identifiers-and-ignored-injection-keys)
+     - [19.3.8 Idempotent replay of completed](#1938-idempotent-replay-of-completed)
+     - [19.3.9 Default provider chain without API keys](#1939-default-provider-chain-without-api-keys)
+     - [19.3.10 Retry, fallback, and chain exhaustion](#19310-retry-fallback-and-chain-exhaustion)
+     - [19.3.11 Empty chain, fail-closed filters, and kill-switch failover](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover)
+     - [19.3.12 Client disconnect and cancelled replay](#19312-client-disconnect-and-cancelled-replay)
+     - [19.3.13 Idempotent replay of failed](#19313-idempotent-replay-of-failed)
+     - [19.3.14 Degraded notice and canary preference](#19314-degraded-notice-and-canary-preference)
+     - [19.3.15 What this stage does not do](#19315-what-this-stage-does-not-do)
 
 ---
 
@@ -603,6 +622,422 @@ These items are part of the **intended** data journey but behave differently on 
 When any row above is fixed, update this table and the affected sections (§6, §8, §11.1, §12.1, §15).
 
 Provider HTTPS streaming is live on the visit-summary path: compose sets `stream: true`, adapters parse SSE incrementally from the response body stream, and invocation relays `text_delta` to the broker while the provider call is still open. See §9–§10 and §12.1.
+
+## 19. Behavioral verification
+
+Live probes against a local Worker (`npm run dev` on `http://127.0.0.1:8787`) and a throwaway enrolled clinic. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§19.3](#193-ordered-probes) top to bottom**. If every probe matches, this stage is working.
+
+**Fake provider.** Local happy-path invokes use `provider_id: "fake"` / model `fake-v1`. The Worker constructs `new FakeAdapter(["success"])` for that id (`src/worker.ts` `resolveProviderPort`) so you do **not** need `DEEPSEEK_API_KEY` or `GEMINI_API_KEY`. The checked-in playbook `control/routing-policy/platform-default/1.json` targets DeepSeek then Gemini; without secrets those adapters fail **before** HTTPS with `provider_rejected` and do **not** fall through ([§19.3.9](#1939-default-provider-chain-without-api-keys)). Unknown `provider_id` values get `FakeAdapter(["terminal:provider_unavailable"])` — taxonomy `provider_unavailable` is retryable, which is how [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) forces retry/fallback without API keys.
+
+The isolate `ConfigCache` TTL is 30 s. After every D1/R2 policy, kill-switch, or entitlement write in these probes, **restart** `npm run dev` so the next POST is not served from a stale isolate.
+
+### 19.1 Setup
+
+- Local Worker with D1 migrations applied (`npx wrangler d1 migrations apply ai-platform-development --local --env development`), `OPERATOR_BEARER_TOKEN` set, and `GET /health` returning 200.
+- Clinic already through Stages 2–4 and 6: installation enrolled on this Worker, entitlement **active** with grant `clinic.visit_summary@1.0.0`, and a staff AAT from `public.issue_ai_token()`. Decode the JWS:
+  - Payload `iss` = this installation
+  - `aud` = `ai-platform`
+  - `scopes` includes `ai.visit_summary`
+  - `role` is `clinician` or `nurse` (visit-summary `Access.allowedStaffRoles`). A clinic `doctor` role is a **Stage 9** `forbidden_capability` — HTTP JSON, no SSE ([§19.3.3](#1933-guard-boundary-without-sse)).
+- SQL as `postgres` only for clinic AAT minting. Platform inspection is Wrangler local D1/R2.
+- No DeepSeek/Gemini keys required except the negative in [§19.3.9](#1939-default-provider-chain-without-api-keys) (keys must be **absent** there).
+
+Export once:
+
+```bash
+export GATEWAY='http://127.0.0.1:8787'
+export OPERATOR_BEARER_TOKEN='…'
+export AAT='…'                    # compact JWS from issue_ai_token
+export INSTALLATION_ID='…'        # AAT iss
+```
+
+Visit-summary body (org/branch must match the AAT):
+
+```bash
+export VISIT_BODY='{
+  "capability_id": "clinic.visit_summary",
+  "user_intent": "Summarize today'\''s visit for the chart.",
+  "context": {
+    "org": "<AAT org>",
+    "branch": "<AAT branch>",
+    "visit.chief_complaint@v1": "Patient reports headache for 3 days."
+  }
+}'
+```
+
+Reusable SSE invoke (`curl -N` keeps the stream open). Headers go to `/tmp/sse-headers.txt`, frames to `/tmp/sse-body.txt`:
+
+```bash
+invoke_sse() {
+  local idem="$1"
+  local trace="${2:-verify-$(date +%s%N)}"
+  curl -N -sS -D /tmp/sse-headers.txt -o /tmp/sse-body.txt \
+    -X POST "$GATEWAY/v1/requests" \
+    -H "Authorization: Bearer $AAT" \
+    -H "Content-Type: application/json" \
+    -H "x-idempotency-key: $idem" \
+    -H "x-capability-version: 1.0.0" \
+    -H "x-trace-id: $trace" \
+    -d "$VISIT_BODY"
+  echo "HTTP $(head -n1 /tmp/sse-headers.txt)"
+  cat /tmp/sse-body.txt
+}
+```
+
+Inspect D1 / R2 after the stream ends. Settlement R2 PUT runs on `waitUntil` — wait ~2 s:
+
+```bash
+cd ai-platform
+sleep 2
+npx wrangler d1 execute ai-platform-development --local --env development --command \
+  "SELECT request_id, request_reference, state, routing_tier, routing_decision, payload_pointer, terminal_error_code, trace_id
+   FROM ai_request ORDER BY created_at DESC LIMIT 5"
+```
+
+```bash
+npx wrangler r2 object get ai-platform-development \
+  "request/<request_id>/envelope" --file /tmp/envelope.json --local --env development
+```
+
+### 19.2 Coverage
+
+Every happy and failure claim in this file maps to a probe. Carry them all out.
+
+
+| Claim | Probe |
+| ----- | ----- |
+| Guard finishes before SSE; guard failures are HTTP JSON, never `accepted` ([§3](#3-boundary-with-stage-9-the-guard), [§16](#16-failure-paths-after-accepted)) | [§19.3.3](#1933-guard-boundary-without-sse) |
+| Fresh path has `request_id`, `request_reference`, composed CanonicalRequest, D1 `ai_request` `Accepted` then terminal; `routing_decision` filled in Phase C ([§3](#3-boundary-with-stage-9-the-guard), [§6](#6-phase-a--sse-accepted), [§8](#8-phase-c--routing-d1--r2)) | [§19.3.5](#1935-happy-fresh-path-end-to-end), [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
+| Idempotent replay skips journal INSERT, compose, routing, and provider ([§3](#3-boundary-with-stage-9-the-guard), [§7](#7-phase-b--dispatch-fresh-vs-idempotent), [§15](#15-idempotent-replay-path-no-provider-call)) | [§19.3.8](#1938-idempotent-replay-of-completed) |
+| Two different trace ids: SSE/D1 `x-trace-id` vs CanonicalRequest `correlationIds.trace_id` = AAT `jti` ([§3](#3-boundary-with-stage-9-the-guard), [§12.1](#121-top-level-fields)) | [§19.3.7](#1937-two-trace-identifiers-and-ignored-injection-keys) |
+| HTTP 200, `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`; frames are `event:` + `data:` JSON ([§4](#4-http-response-shape)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| `accepted` is first frame; fields `request_reference`, `trace_id`; optional `degraded_notice` ([§6](#6-phase-a--sse-accepted), [§11.1](#111-accepted), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.5](#1935-happy-fresh-path-end-to-end), [§19.3.14](#19314-degraded-notice-and-canary-preference) |
+| Fresh path: `text_delta` then exactly one terminal `completed` ([§5](#5-runtime-flow--fresh-path), [§10](#10-phase-e--stream-relay-and-output-guards), [§11.4](#114-text_delta), [§11.5](#115-completed)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| `text_delta` fields `text`, `sequence` (monotonic from 0), `provisional: true`; `completed.result.finalContent.{text,authoritative}` ([§11.4](#114-text_delta), [§11.5](#115-completed)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| Visit summary never emits `context_requested` ([§11.8](#118-context_requested)) | [§19.3.5](#1935-happy-fresh-path-end-to-end), [§19.3.15](#19315-what-this-stage-does-not-do) |
+| `heartbeat` only after 15 s silence; fake success is sub-second so the event is absent ([§11.2](#112-heartbeat)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| Body keys `routing_tier` / `degraded` / `degraded_notice` do not set the notice ([§3](#3-boundary-with-stage-9-the-guard) via Stage 8) | [§19.3.7](#1937-two-trace-identifiers-and-ignored-injection-keys) |
+| Missing active/canary policy → SSE `failed` `internal_error` after `accepted` ([§7](#7-phase-b--dispatch-fresh-vs-idempotent) unexpected error, Stage 5 §8) | [§19.3.2](#1932-missing-routing-policy-after-accepted) |
+| Routing decision JSON persisted on `ai_request` before invoke; `max_parallel_attempts` not a decision field ([§8](#8-phase-c--routing-d1--r2)) | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
+| Canary row for this installation beats `active` ([§8](#8-phase-c--routing-d1--r2)) | [§19.3.14](#19314-degraded-notice-and-canary-preference) |
+| Fail-closed malformed `languages` / undersized window / latency mismatch / cost class; empty chain → `provider_unavailable` ([§8](#8-phase-c--routing-d1--r2), [§16](#16-failure-paths-after-accepted)) | [§19.3.11](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover) |
+| `provider:<id>` kill switch excludes with `kill_switch` and fails over; capability-level kills 503 before SSE ([§8](#8-phase-c--routing-d1--r2), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.11](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover), [§19.3.3](#1933-guard-boundary-without-sse) |
+| Sequential chain; unknown provider retries then falls back; DeepSeek missing key is terminal `provider_rejected` with no Gemini attempt ([§9](#9-phase-d--provider-invocation), [§14](#14-invocation-retry-and-fallback-logic)) | [§19.3.9](#1939-default-provider-chain-without-api-keys), [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) |
+| Chain exhausted → `failed` `provider_unavailable`; `retry_safe: true` ([§9](#9-phase-d--provider-invocation), [§11.6](#116-failed), [§16](#16-failure-paths-after-accepted)) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) |
+| Wall-clock backoff between same-target retries ([§14](#14-invocation-retry-and-fallback-logic)) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) |
+| `ai_attempt.selection_reason` claimed in [§14](#14-invocation-retry-and-fallback-logic) — **not a D1 column today** (invocation-only; dashboard uses provider-switch heuristic) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) |
+| CanonicalRequest every field in R2 `envelope.prompt`; never on the SSE ([§12](#12-canonicalrequest--every-field)) | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
+| Fake adapter raw body in `envelope.attempts[]`; DeepSeek/Gemini wire map needs API keys | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement), [§19.3.15](#19315-what-this-stage-does-not-do) |
+| Idempotent `completed` / `admitted` replay uses placeholder `"Prior request completed."` ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.8](#1938-idempotent-replay-of-completed) |
+| Idempotent `failed` → SSE `failed` `internal_error`; `cancelled` → SSE `cancelled` ([§15](#15-idempotent-replay-path-no-provider-call)) | [§19.3.12](#19312-client-disconnect-and-cancelled-replay), [§19.3.13](#19313-idempotent-replay-of-failed) |
+| Client disconnect: D1 `Cancelled`, Quota DO `credit` `partial: true`; original connection may not deliver `event: cancelled` ([§5](#5-runtime-flow--fresh-path), [§11.7](#117-cancelled), [§16](#16-failure-paths-after-accepted)) | [§19.3.12](#19312-client-disconnect-and-cancelled-replay) |
+| Completed settlement handoff: DO credit, D1 `Completed`, `ai_attempt`, `usage_event`, R2 envelope, `payload_pointer` ([§17](#17-settlement-handoff-stage-11)) | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
+| Failed/cancelled still credit and write the same Stage 11 writers; Failed always has ≥1 `ai_attempt`; Cancelled always has `usage_event` ([§17](#17-settlement-handoff-stage-11)) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion), [§19.3.12](#19312-client-disconnect-and-cancelled-replay) |
+| Invoke-time cost ceiling is hardcoded `premium` / manifest `standard`, not the entitlement row ([§18](#18-spec-vs-platform-behavior-today)) | [§19.3.11](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover) |
+| `text_delta` `data` JSON omits `trace_id` today (wrapper field is not serialized); other events include it in `data` ([§4](#4-http-response-shape), [§11.4](#114-text_delta)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| Missing guard handoff; `regenerating`; truncation; live output-guard trips; DeepSeek/Gemini HTTPS bodies | [§19.3.15](#19315-what-this-stage-does-not-do) (unprobeable on this fake path) |
+| What this stage does not do (guard matrix, lookup, entitle, conversational `context_requested`) | [§19.3.15](#19315-what-this-stage-does-not-do) |
+
+
+### 19.3 Ordered probes
+
+#### 19.3.1 Prerequisites and a reusable invoke
+
+**Do:** `curl -s "$GATEWAY/health"`. Confirm `issue_ai_token` yields a JWS and decode header/payload (`alg=EdDSA`, `kid`, `iss`, `jti`, `role` ∈ {`clinician`,`nurse`}, `ai.visit_summary` in `scopes`).
+
+**Expect:** Worker 200. AAT is usable for `POST /v1/requests`. Save `jti` as **JTI0**.
+
+**Do:** as operator, list routing policies:
+
+```bash
+cd ai-platform
+npx wrangler d1 execute ai-platform-development --local --env development --command \
+  "SELECT policy_id, version, status, canary_installation_ids FROM routing_policy"
+```
+
+**Expect:** on a throwaway local D1 this is often empty. If an `active` row already exists, skip [§19.3.2](#1932-missing-routing-policy-after-accepted) (you cannot observe “no policy” without deleting ops data). If entitlement is still `pending`, entitle first ([Stage 4 example payload](06-stage-4-entitlement-and-capability-grants.md#6-example-entitle-payload-visit-summary)) — that is Stage 4, not this stage.
+
+#### 19.3.2 Missing routing policy after accepted
+
+Skip if `routing_policy` already has `status='active'` or a canary for this installation.
+
+**Do:** `invoke_sse "idem-no-policy-1" "trace-no-policy-1"`
+
+**Expect:** HTTP 200, `content-type: text/event-stream`. First frame `event: accepted` with `request_reference` (Crockford `XXXX-XXXX`) and `trace_id: "trace-no-policy-1"`. Then `event: failed` whose `data` is the taxonomy body: `code: "internal_error"`, same `request_reference`, `trace_id`, `retry_safe: true`. No `text_delta`. Guard passed (you saw `accepted`); routing/provider never ran. D1 `ai_request.state` becomes `Failed`, `terminal_error_code = internal_error`. This is [§16](#16-failure-paths-after-accepted) unexpected platform error — not a guard failure.
+
+#### 19.3.3 Guard boundary without SSE
+
+Do **not** re-run the Stage 9 matrix. Only the boundary this document asserts.
+
+**Do:** `POST /v1/requests` with a clearly bad Bearer (`Authorization: Bearer not-a-jws`) and otherwise valid headers/body.
+
+**Expect:** HTTP JSON `unauthenticated` (typically 401). **No** `Content-Type: text/event-stream`, **no** `event: accepted`. Failures before the guard completes never open this stage.
+
+**Do:** if you have a second AAT whose `role` is `doctor` (not in `allowedStaffRoles`), POST the visit-summary body with that token.
+
+**Expect:** HTTP JSON `forbidden_capability`. Still no SSE. Capability-level / entitlement kills (`global`, `capability:clinic.visit_summary`, `installation:<id>`, or `provider:fake` — the entitlement check hardcodes `providerId: "fake"`) likewise 503 `capability_disabled` **before** SSE. Provider kill switches on DeepSeek/Gemini are the ones that survive to Stage 10 ([§19.3.11](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover)).
+
+#### 19.3.4 Publish and promote a fake-provider policy
+
+Manifest `Routing.routingPolicyRef` is `routing/standard@v1`. Config-cache strips `@v1` and serves the **active** (or matching **canary**) row for `policy_id = standard`, so a later version is fine.
+
+**Do:** publish version `91` (or any unused version), then promote. `max_parallel_attempts: 99` is deliberate — invocation must ignore it.
+
+```bash
+curl -s -X POST "$GATEWAY/control/routing-policies/standard/versions/91/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document": {
+      "schema_version": 1,
+      "policy_id": "standard",
+      "policy_version": 91,
+      "defaults": { "cost_class": "standard", "max_parallel_attempts": 1 },
+      "rules": [{
+        "rule_id": "verify-fake",
+        "match": {},
+        "requires": { "structured_output": false, "min_context_window": 0, "languages": [] },
+        "targets": [{
+          "provider_id": "fake",
+          "model_id": "fake-v1",
+          "features": {
+            "structured_output": true,
+            "min_context_window": 128000,
+            "languages": ["en"],
+            "latency_class": "standard",
+            "cost_class": "standard"
+          },
+          "max_attempts": 1,
+          "timeout_ms": 30000
+        }],
+        "max_parallel_attempts": 99
+      }],
+      "overrides": []
+    }
+  }'
+
+curl -s -X POST "$GATEWAY/control/routing-policies/standard/versions/91/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+```
+
+Restart the Worker.
+
+**Expect:** publish 200, promote 200. D1 row `policy_id=standard`, `version=91`, `status=active`, `content_pointer=control/routing-policy/standard/91.json`. R2 object exists at that key.
+
+#### 19.3.5 Happy fresh path end to end
+
+**Do:**
+
+```bash
+invoke_sse "idem-happy-1" "trace-happy-1"
+```
+
+Inspect headers and frames. Save `request_reference` from `accepted` as **REF0**.
+
+**Expect — HTTP ([§4](#4-http-response-shape)):** status 200. Headers include `content-type: text/event-stream`, `cache-control: no-cache`, `connection: keep-alive`.
+
+**Expect — SSE order and fields:**
+
+1. `event: accepted` first. `data` has `request_reference` (`XXXX-XXXX`), `trace_id: "trace-happy-1"`, and **no** `degraded_notice` (first credits are below a default 0.8 soft threshold).
+2. `event: text_delta`. `data.text` is `"Fake adapter summary."` (the fake adapter’s fixed prose). `data.sequence` is `0`. `data.provisional` is `true`. **Platform today:** `data` does **not** include `trace_id` — the broker puts `trace_id` on the event wrapper, and `encodeSseEvent` serializes only `event.data`. [§4](#4-http-response-shape) / [§11.4](#114-text_delta) say every `data` object includes `trace_id`; Expect the wire (omit), and treat that as the same class of gap [§18](#18-spec-vs-platform-behavior-today) lists for other topics.
+3. `event: completed`. `data.result.finalContent.text` equals the assembled deltas (`"Fake adapter summary."`). `data.result.finalContent.authoritative` is `true`. `data.trace_id` is `"trace-happy-1"`.
+4. **No** further events after that terminal. **No** `heartbeat` (invoke finished in milliseconds; the 15 s silence timer never fires). **No** `regenerating`. **No** `context_requested` (visit summary is `single_shot`). **No** second terminal.
+
+Exactly one `completed`. Fake path does not wait for a real model — you still see `accepted` → `text_delta` → `completed`, which is this stage’s happy path.
+
+#### 19.3.6 Canonical request, routing decision, and settlement
+
+**Do:** after [§19.3.5](#1935-happy-fresh-path-end-to-end), wait ~2 s, then D1:
+
+```sql
+SELECT request_id, state, routing_tier, routing_decision, payload_pointer, trace_id, terminal_error_code
+FROM ai_request WHERE request_reference = '<REF0>';
+```
+
+Fetch the envelope at `payload_pointer`. Count `ai_attempt` and `usage_event` for that `request_id`.
+
+**Expect — journal (fresh path, [§3](#3-boundary-with-stage-9-the-guard) / [§8](#8-phase-c--routing-d1--r2) / [§17](#17-settlement-handoff-stage-11)):**
+
+- Exactly **one** new `ai_request` row (this HTTP connection). `trace_id = trace-happy-1`. `routing_tier = standard`. `state = Completed`, `completed_at` set, `terminal_error_code` null.
+- `routing_decision` is JSON (not NULL). It includes `policy_id: "standard"`, `policy_version: 91`, `rule_id: "verify-fake"`, `effective_cost_class`, `cost_class_source` (`manifest` on this path), `routing_tier: "standard"`, `chain[]` with one entry `{ provider_id: "fake", model_id: "fake-v1", max_attempts: 1, timeout_ms: 30000 }`, `excluded: []`. It does **not** contain `max_parallel_attempts` (the document’s `99` was dropped).
+- `payload_pointer = request/<request_id>/envelope`.
+
+**Expect — CanonicalRequest in `envelope.prompt` ([§12](#12-canonicalrequest--every-field)) — every field.** The object is **not** in any SSE frame.
+
+| Field | Expect |
+| ----- | ------ |
+| `parts[]` | Visit-summary order: `system` (instruction), `system` (business rules), `system` (output-format instruction), `data` (rendered `<key name="visit.chief_complaint@v1">…`), `user` (`user_intent` after `neutralizeText`) |
+| `parts[].role` / `content` | Roles as above; user/data strings have `</` as `\u003c/` if you put that substring in intent/context |
+| `formatDirective.mode` | `"prose"` |
+| `formatDirective.outputSchemaRef` | `null` |
+| `samplingConstraints.allowedLanguages` | `["en"]` |
+| `samplingConstraints.temperature` | omitted (not populated for visit summary) |
+| `maxOutputTokens` | `1024` |
+| `stopConditions` | `[]` |
+| `toolDeclarations` | `[]` |
+| `stream` | `true` |
+| `deadline` | `null` (unbounded unless the guard forwarded one) |
+| `correlationIds.request_reference` | **REF0** |
+| `correlationIds.trace_id` | **JTI0** (AAT `jti`), **not** `trace-happy-1` |
+
+**Expect — envelope attempts / result:** `attempts[0].payload` includes `{ "fake": true, "outcome": "success" }` (fake adapter raw body, not a DeepSeek messages array). `result` carries fake usage (`input: 10`, `output: 20`), `providerModel.provider = "fake"`, `model = "fake-v1"`, `finishReason = "stop"`, `providerRequestId = "fake-req-001"`.
+
+**Expect — Stage 10 → 11 handoff (positives this doc asserts; column-level R2 keys live in Stage 11):** one `ai_attempt` (`provider=fake`, `model=fake-v1`, `outcome=success`, `tokens_in=10`, `tokens_out=20`, `provider_request_id=fake-req-001`). One `usage_event` for this `request_id` with `quota_weight=1` and tokens = 30. Quota DO `inFlight` released (a second **new** idempotency key still admits). Stage 10 emitted the terminal SSE and then reused Stage 11 writers; it does not implement lookup ([§19.3.15](#19315-what-this-stage-does-not-do)).
+
+#### 19.3.7 Two trace identifiers and ignored injection keys
+
+**Do:** POST with `x-trace-id: client-trace-7` and a body that **also** includes `"routing_tier":"degraded","degraded":true,"degraded_notice":true` plus the visit-summary fields. New idempotency key.
+
+**Expect:** `accepted.data.trace_id` and D1 `ai_request.trace_id` are `client-trace-7`. Envelope `prompt.correlationIds.trace_id` is still **JTI0** (or the new AAT’s `jti` if you reminted) — not `client-trace-7`. `accepted` has **no** `degraded_notice`. Ingress ignores those body keys; degraded comes only from admission ([§18](#18-spec-vs-platform-behavior-today) invoke-time tier).
+
+#### 19.3.8 Idempotent replay of completed
+
+**Do:** `invoke_sse "idem-happy-1" "trace-replay-1"` — **same** `x-idempotency-key` as [§19.3.5](#1935-happy-fresh-path-end-to-end), new trace.
+
+Count D1 `ai_request` rows and `ai_attempt` rows before vs after. Note `routing_decision` on **REF0**.
+
+**Expect:** HTTP 200 SSE. `event: accepted` then `event: completed` with `result.finalContent.text = "Prior request completed."` and `authoritative: true` — **not** `"Fake adapter summary."` and **not** an R2 replay ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)). No `text_delta` (no provider). No new `ai_request` INSERT (still one row for **REF0**). `routing_decision` unchanged. `ai_attempt` count unchanged. Envelope object not rewritten (same `payload_pointer`). DO prior state `completed` (or `admitted` if you raced an in-flight job) maps to this placeholder; you are not charged a second provider call.
+
+#### 19.3.9 Default provider chain without API keys
+
+**Do:** publish+promote version `92` whose `targets` copy `ai-platform/control/routing-policy/platform-default/1.json` (DeepSeek `deepseek-v4-flash` `max_attempts: 2`, then Gemini `gemini-3.5-flash`). Restart. Confirm Worker env has **no** `DEEPSEEK_API_KEY` / `GEMINI_API_KEY`. `invoke_sse "idem-ds-1" "trace-ds-1"`. Then promote `91` again (or continue with later versions in the next probes) and restart so later probes use fake.
+
+**Expect:** `accepted`, then `failed` with `code: "provider_rejected"`, `retry_safe: false` (taxonomy `retryable: "No"`). **No** Gemini `ai_attempt` row — missing DeepSeek secret is a **terminal** class ([§14](#14-invocation-retry-and-fallback-logic)); the loop does not walk the rest of the chain. D1 `state=Failed`, `terminal_error_code=provider_rejected`. At least one `ai_attempt` (`provider=deepseek`, outcome `terminal_failure`). Quota DO still `credit`s (failed path). This is why local happy-path probes must pin `fake`.
+
+#### 19.3.10 Retry, fallback, and chain exhaustion
+
+**Do:** publish+promote version `93`: catch-all with two targets that both advertise visit-summary features (`en`, `standard` latency, window ≥ 32000). First: `provider_id: "bogus-primary"`, `model_id: "bogus-v1"`, `max_attempts: 2`. Second: `fake` / `fake-v1`, `max_attempts: 1`. Restart. Time a successful invoke:
+
+```bash
+time invoke_sse "idem-fb-1" "trace-fb-1"
+```
+
+**Expect:** `accepted`, then `text_delta` from fake (`"Fake adapter summary."`), then `completed`. **No** `regenerating` — bogus failures do not stream text, so there is no partial to discard. Wall-clock `time` is **≥ ~100 ms** (jittered 100 ms × 2^0 backoff between the two bogus attempts; production uses `wallClockSleeper`). D1 `routing_decision.chain` lists bogus then fake. `ai_attempt`: two rows `provider=bogus-primary` `outcome=retryable_failure` `error_code=provider_unavailable`, then one `provider=fake` `outcome=success`. **Platform today:** there is **no** `ai_attempt.selection_reason` column ([§14](#14-invocation-retry-and-fallback-logic) names `primary` / `fallback_after_retryable_error` / `fallback_after_timeout` on the in-memory `AttemptRecord` only). Expect the second provider to differ from the first — that is the live fallback signal.
+
+**Do:** publish+promote version `94`: **only** `bogus-primary` with `max_attempts: 2` (no fake). Restart. `invoke_sse "idem-ex-1" "trace-ex-1"`.
+
+**Expect:** `accepted`, then `failed` `code: "provider_unavailable"`, `retry_safe: true`, same `request_reference` as this connection’s `accepted`. D1 `Failed`. `ai_attempt` count ≥ 1 (exhausted retries). Envelope exists. This is [§16](#16-failure-paths-after-accepted) “all providers exhausted”.
+
+#### 19.3.11 Empty chain, fail-closed filters, and kill-switch failover
+
+Restore a usable fake chain after each promote (version `95+`) or the later cancel probes will fail.
+
+**Empty chain / undersized window.** **Do:** publish+promote a catch-all whose only target has `features.min_context_window: 1000` (visit summary needs 32000) and `provider_id: "fake"`. Restart. Invoke.
+
+**Expect:** `accepted`, then `failed` `provider_unavailable`. `routing_decision.chain` is `[]`. `excluded[]` has `reason_code: "context_window_too_small"`. Failed settlement still writes ≥1 diagnostic `ai_attempt` and one R2 envelope (`payload` may include `reason: "no_provider_attempt"`).
+
+**Fail-closed malformed `languages`.** **Do:** two targets: first `fake` with `"languages": "en"` (string, not array); second `fake` / `fake-v1` with a proper `languages: ["en"]` array (use `provider_id: "bogus-malformed"` on the first so you can tell them apart). Restart. Invoke.
+
+**Expect:** completed via the well-formed fake target. `excluded[]` includes `reason_code: "feature_unsupported"` for the malformed advertisement — not `internal_error`, and the Worker does not throw.
+
+**Latency / cost class.** **Do:** a lone target with `latency_class: "interactive"` (manifest is `"standard"`) → `feature_unsupported` → empty chain → `provider_unavailable`. A lone target with `cost_class: "premium"` while effective class is `standard` (hardcoded manifest `"standard"` in `worker.ts`) → `cost_class_excluded`. Changing D1 entitlement does **not** raise the ceiling: `entitlementMaxCostClass` is hardcoded `"premium"` ([§18](#18-spec-vs-platform-behavior-today)); the effective min is still `standard` from the manifest constant. An `overrides[].force_cost_class: "economy"` **does** bind (`cost_class_source: "installation_override"`) — that is the live third source.
+
+**Kill-switch failover.** **Do:** publish+promote chain `[deepseek, fake]` (both feature-valid). Insert a provider kill (not a capability kill):
+
+```bash
+npx wrangler d1 execute ai-platform-development --local --env development --command \
+  "INSERT OR REPLACE INTO kill_switch (scope, target, active, changed_at, changed_by)
+   VALUES ('provider', 'deepseek', 1, datetime('now'), 'verify-stage-10')"
+```
+
+Restart. Invoke. Then set `active=0` (or delete the row) and restart so later probes are clean.
+
+**Expect:** `accepted` then fake `completed` — **not** HTTP 503. `routing_decision.excluded` contains `{ provider_id: "deepseek", reason_code: "kill_switch" }`. `chain[0].provider_id` is `fake`. Killing `provider:fake` is **Stage 9** (entitlement `providerId: "fake"`) and never reaches `accepted` ([§19.3.3](#1933-guard-boundary-without-sse)).
+
+**Installation override.** **Do:** `overrides: [{ "installation_id": "<I0>", "exclude_providers": ["fake"] }]` on a fake-only rule.
+
+**Expect:** empty chain, `excluded[].reason_code = "installation_excluded"`, SSE `provider_unavailable`.
+
+#### 19.3.12 Client disconnect and cancelled replay
+
+Need a window longer than a successful fake invoke. Use the version `93` retry chain (bogus `max_attempts: 2` then fake) so the Worker sleeps ~100–150 ms before fake runs.
+
+**Do:**
+
+```bash
+curl -N -sS -D /tmp/cancel-headers.txt -o /tmp/cancel-body.txt \
+  --max-time 0.08 \
+  -X POST "$GATEWAY/v1/requests" \
+  -H "Authorization: Bearer $AAT" \
+  -H "Content-Type: application/json" \
+  -H "x-idempotency-key: idem-cancel-1" \
+  -H "x-capability-version: 1.0.0" \
+  -H "x-trace-id: trace-cancel-1" \
+  -d "$VISIT_BODY" || true
+sleep 2
+```
+
+**Expect:** curl exits on timeout (connection drop). `/tmp/cancel-body.txt` may contain `accepted` and **no** terminal — the adapter’s `cancel()` path does not enqueue `event: cancelled` because the client is already gone. D1 `ai_request.state = Cancelled` for this `request_reference`. One `usage_event` (zero tokens allowed). `ai_attempt` may be empty if abort happened before the first provider call, or may list the bogus attempt(s) if abort was mid-retry — both match [§17](#17-settlement-handoff-stage-11) (Cancelled always has `usage_event`; attempts only when invocation recorded them). Quota DO credited `partial: true` (next probe proves the idempotency state).
+
+**Do — observe SSE `cancelled` via replay ([§11.7](#117-cancelled), [§15](#15-idempotent-replay-path-no-provider-call)):**
+
+```bash
+invoke_sse "idem-cancel-1" "trace-cancel-replay"
+```
+
+**Expect:** `accepted`, then `event: cancelled` with `data: { "trace_id": "trace-cancel-replay" }` only (no `code`, no `request_reference` on this event). No provider `text_delta`. No new journal row. This is how you read the cancelled terminal on the wire after a drop.
+
+#### 19.3.13 Idempotent replay of failed
+
+**Do:** reuse `idem-ex-1` from the exhausted-chain failure ([§19.3.10](#19310-retry-fallback-and-chain-exhaustion)):
+
+```bash
+invoke_sse "idem-ex-1" "trace-fail-replay"
+```
+
+**Expect:** `accepted`, then `failed` `code: "internal_error"` — **not** `provider_unavailable` again. [§15](#15-idempotent-replay-path-no-provider-call) maps DO `failed` to placeholder `internal_error`. No new `ai_attempt`. `retry_safe: true` on that taxonomy body.
+
+#### 19.3.14 Degraded notice and canary preference
+
+**Degraded `accepted`.** **Do:** lower the soft threshold on the already-entitled row (entitle is one-shot; this is a throwaway D1 UPDATE), restart, then a **new** idempotency key:
+
+```bash
+npx wrangler d1 execute ai-platform-development --local --env development --command \
+  "UPDATE entitlement SET soft_threshold = 0.001 WHERE installation_id = '$INSTALLATION_ID'"
+```
+
+Restart. `invoke_sse "idem-deg-1" "trace-deg-1"`.
+
+**Expect:** `accepted.data.degraded_notice === true` (boolean present, not a body-injected flag). D1 `routing_tier = degraded`. `routing_decision.routing_tier = "degraded"` — journaled tier and invoke-time `match.tiers` agree ([§18](#18-spec-vs-platform-behavior-today)). If you add a rule `match.tiers: ["degraded"]` with a distinctive `rule_id`, that rule is the one persisted.
+
+**Canary.** **Do:** publish version `96` with `rule_id: "verify-canary-fake"` (fake target). Canary **only** this installation; leave `91`/`95` as `active` for everyone else:
+
+```bash
+curl -s -X POST "$GATEWAY/control/routing-policies/standard/versions/96/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\": [\"$INSTALLATION_ID\"]}"
+```
+
+Restart. Invoke with a new key.
+
+**Expect:** `routing_decision.policy_version = 96` and `rule_id = "verify-canary-fake"` for this installation. Config-cache prefers `status='canary'` whose `canary_installation_ids` contains this id, else `active`, both `ORDER BY active_from DESC, rowid DESC`.
+
+#### 19.3.15 What this stage does not do
+
+**Do:** `GET $GATEWAY/v1/requests/<REF0>` with the AAT (Stage 12 lookup). Confirm it returns the completed result from the envelope. Then confirm none of the following happened *as this stage’s job*.
+
+**Expect:**
+
+- This stage does **not** run the guard (identity, entitlement, quota admit, journal INSERT, compose). Those are Stages 8–9; this stage starts at SSE `accepted`.
+- This stage does **not** mint AATs, enroll, or entitle.
+- This stage does **not** implement support lookup, retention, or dashboards (Stage 12 / crons). It only hands a terminal to Stage 11 writers.
+- Visit summary does **not** emit `context_requested`; that terminal is conversational-only. The `context_request` schema is therefore not exercised here.
+- CanonicalRequest is **not** sent to the clinic client.
+- Routing is **stateless**: a failed bogus provider on one request does not change the next request’s `chain[]` unless you change policy, kills, or overrides.
+
+**Unprobeable on the local fake path (do not fake a pass):**
+
+| Claim | Why it cannot be probed here |
+| ----- | ---------------------------- |
+| Missing guard handoff → SSE `failed` `internal_error` ([§7](#7-phase-b--dispatch-fresh-vs-idempotent), [§16](#16-failure-paths-after-accepted)) | `acceptContexts` is request-scoped; there is no client header that drops it |
+| Live `heartbeat` frame ([§11.2](#112-heartbeat)) | FakeAdapter returns in milliseconds; 15 s silence never happens. Absence on [§19.3.5](#1935-happy-fresh-path-end-to-end) is the live check of the interval rule |
+| `regenerating` after partial stream ([§11.3](#113-regenerating), [§9](#9-phase-d--provider-invocation)) | Production fake always `success`; unknown-provider errors emit no `text_delta` first |
+| Truncation → `validation_failed` rather than authoritative `completed` ([§9](#9-phase-d--provider-invocation), [§10](#10-phase-e--stream-relay-and-output-guards)) | Production `FakeAdapter(["success"])` uses `finishReason: "stop"`, not `length` |
+| Output-guard trips: 128_000 chars, stop sequence from [§10](#10-phase-e--stream-relay-and-output-guards), 48-char system-instruction leak needles, refusal prefixes, injection-echo needle | Fake prose is `"Fake adapter summary."` — none of those markers. Happy path only proves they do **not** false-positive on that string |
+| DeepSeek `messages[]` role map / Gemini `systemInstruction` / `stream_options.include_usage` / `:streamGenerateContent?alt=sse` ([§13](#13-provider-wire-transformation)) | Missing secrets fail before fetch ([§19.3.9](#1939-default-provider-chain-without-api-keys)). Inspect CanonicalRequest in R2 instead |
+| Retry-After honored as `max(jittered, retryAfterMs)` against a real 429 | Needs a live adapter that parses Retry-After |
+| Catching `routing_decision IS NULL` in the instant after `accepted` ([§6](#6-phase-a--sse-accepted)) | Phase C runs in-process before you can query D1; after the stream ends it is always populated on the fresh path |
 
 ---
 

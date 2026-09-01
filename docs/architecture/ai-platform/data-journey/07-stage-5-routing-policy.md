@@ -42,6 +42,31 @@
    - [Rollback: `POST …/rollback`](#64-rollback-post-rollback)
 7. [Router output (`RoutingDecision`) — every field](#7-router-output-routingdecision-every-field)
 8. [Routing failure paths (post-accept)](#8-routing-failure-paths-post-accept)
+9. [Behavioral verification](#9-behavioral-verification)
+   - [9.1 Setup](#91-setup)
+   - [9.2 Coverage](#92-coverage)
+   - [9.3 Ordered probes](#93-ordered-probes)
+     - [9.3.1 Reset to a known policy state](#931-reset-to-a-known-policy-state)
+     - [9.3.2 Who may call control APIs](#932-who-may-call-control-apis)
+     - [9.3.3 Publish failure paths](#933-publish-failure-paths)
+     - [9.3.4 First publish and storage inspection](#934-first-publish-and-storage-inspection)
+     - [9.3.5 Duplicate publish leaves R2 unchanged](#935-duplicate-publish-leaves-r2-unchanged)
+     - [9.3.6 Latency warning and unreferenced policy](#936-latency-warning-and-unreferenced-policy)
+     - [9.3.7 Published policy is not served](#937-published-policy-is-not-served)
+     - [9.3.8 Canary failure paths](#938-canary-failure-paths)
+     - [9.3.9 Canary success and serving split](#939-canary-success-and-serving-split)
+     - [9.3.10 Promote to active](#9310-promote-to-active)
+     - [9.3.11 Rollback and version tie-break](#9311-rollback-and-version-tie-break)
+     - [9.3.12 Manifest link and independent switches](#9312-manifest-link-and-independent-switches)
+     - [9.3.13 Missing R2 document](#9313-missing-r2-document)
+     - [9.3.14 Router identity schema and catch-all](#9314-router-identity-schema-and-catch-all)
+     - [9.3.15 RoutingDecision on a routed request](#9315-routingdecision-on-a-routed-request)
+     - [9.3.16 Match clauses and requirement floors](#9316-match-clauses-and-requirement-floors)
+     - [9.3.17 Overrides and cost class](#9317-overrides-and-cost-class)
+     - [9.3.18 Target exclusions and empty chain](#9318-target-exclusions-and-empty-chain)
+     - [9.3.19 Provider kill switch failover](#9319-provider-kill-switch-failover)
+     - [9.3.20 What this stage does not do](#9320-what-this-stage-does-not-do)
+     - [9.3.21 Unreachable and operator-hostile paths](#9321-unreachable-and-operator-hostile-paths)
 
 ---
 
@@ -773,4 +798,1222 @@ fields that are partially hardcoded in `worker.ts` today.
 Malformed `targets[].features` (missing/unknown `min_context_window`, `cost_class`, or `languages`) exclude that target with `feature_unsupported` rather than routing it or throwing. If that empties the chain, the terminal is `provider_unavailable` — not `internal_error`.
 
 ---
+
+## 9. Behavioral verification
+
+Live probes against a local Worker (`npm run dev`) plus D1/R2 inspection. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§9.3](#93-ordered-probes) top to bottom** on a throwaway local platform. If every probe matches, this stage is working.
+
+Control routes are operator-only (`requireOperator` → Bearer `OPERATOR_BEARER_TOKEN`). The router runs only after Stages 8–9 accept a request; missing policy then is an SSE `failed` on the already-accepted stream, not an HTTP JSON reject. After any D1/R2 mutation that invoke should see, wait **31 s** (or restart `npm run dev`) so `isolateConfigCache`’s 30 s TTL expires.
+
+### 9.1 Setup
+
+- Local Worker from `ai-platform/` (`npm run dev` → `http://127.0.0.1:8787`) with `OPERATOR_BEARER_TOKEN` and `OPERATOR_ID=platform-operator` ([Stage 0](02-stage-0-platform-configuration-and-boot.md)). Prefer a D1/R2 you can wipe; several probes delete `routing_policy` rows and overwrite R2 keys.
+- One enrolled installation **I0** ([Stage 3](05-stage-3-platform-installation-enrollment.md)) whose entitlement is **active** for `clinic.visit_summary@1.0.0` ([Stage 4](06-stage-4-entitlement-and-capability-grants.md) — without this, probes from [§9.3.7](#937-published-policy-is-not-served) never reach routing). Save `org` / `branch` claims from a staff AAT ([Stage 6](08-stage-6-minting-an-aat.md)).
+- A second enrolled installation **I1** (or any other `installation.installation_id`) for canary split and `installation_not_found` contrast.
+- `jq` (or Python) to pretty-print JSON. D1/R2 commands below use `--local --env development`.
+
+```bash
+cd ai-platform
+export GATEWAY='http://127.0.0.1:8787'
+export OPERATOR_BEARER_TOKEN='…'
+export INSTALLATION_ID='<I0>'
+export OTHER_INSTALLATION_ID='<I1>'
+export AAT='<staff AAT JWS>'
+export ORG_ID='<AAT org claim>'
+export BRANCH_ID='<AAT branch claim>'
+
+d1() {
+  npx wrangler d1 execute ai-platform-development --local --env development --command "$1"
+}
+
+r2get() {
+  npx wrangler r2 object get ai-platform-development "$1" \
+    --file "$2" --local --env development
+}
+
+r2put() {
+  npx wrangler r2 object put ai-platform-development "$1" \
+    --file "$2" --local --env development
+}
+
+r2del() {
+  npx wrangler r2 object delete ai-platform-development "$1" \
+    --local --env development
+}
+
+publish() {
+  local policy_id="$1" version="$2" file="$3"
+  curl -sS -D - -o /tmp/rp-http-body.json \
+    -X POST "$GATEWAY/control/routing-policies/${policy_id}/versions/${version}/publish" \
+    -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-binary @"$file"
+  echo
+  cat /tmp/rp-http-body.json; echo
+}
+
+invoke() {
+  local key="${1:-rp-$(date +%s%N)}"
+  curl -sN -X POST "$GATEWAY/v1/requests" \
+    -H "Authorization: Bearer $AAT" \
+    -H "Content-Type: application/json" \
+    -H "x-idempotency-key: $key" \
+    -H "x-capability-version: 1.0.0" \
+    -d "{
+      \"capability_id\": \"clinic.visit_summary\",
+      \"user_intent\": \"Summarize today's visit for the chart.\",
+      \"context\": {
+        \"org\": \"$ORG_ID\",
+        \"branch\": \"$BRANCH_ID\",
+        \"visit.chief_complaint@v1\": \"Patient reports headache for 3 days.\",
+        \"routing_tier\": \"degraded\",
+        \"degraded\": true,
+        \"degraded_notice\": true
+      }
+    }"
+}
+```
+
+Inspect the latest journal row after an invoke:
+
+```bash
+d1 "SELECT request_id, state, routing_tier, terminal_error_code, routing_decision
+    FROM ai_request ORDER BY created_at DESC LIMIT 1"
+```
+
+SSE frames look like `event: accepted` then later `event: failed` / `event: completed` with `data: { "code": "…", … }`.
+
+### 9.2 Coverage
+
+Every happy and failure claim in this file maps to a probe. Carry them all out.
+
+
+| Claim | Probe |
+| ----- | ----- |
+| Manifest is bundled Worker JSON, not stored in D1 or R2 | [§9.3.12](#9312-manifest-link-and-independent-switches) |
+| `Identity.capabilityId` feeds `match.capability_ids` | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `Identity` `version` / `title` / `lifecycleState` / `successorId` are not routing | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Access.*` is not routing (entitlement / capability resolve / guard) | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Interaction.*` is not routing | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Input.*` is not routing (including `allowedLanguages` ≠ routing language) | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Context requirements` is not routing; no `freshnessHint` in the live specimen | [§9.3.12](#9312-manifest-link-and-independent-switches) |
+| `Prompt binding.*` is not routing | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Output.mode` (not `requiredProviderFeatures.structuredOutput`) sets `structured_output_required` | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Output` `outputSchemaRef` / `businessValidationRuleRefs` / `repairPolicy` are not routing | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Routing.routingPolicyRef` format `routing/{id}@v{n}` selects playbook id `standard` | [§9.3.12](#9312-manifest-link-and-independent-switches), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| D1 status (active/canary), not the `@vN` suffix, picks which version is served | [§9.3.9](#939-canary-success-and-serving-split), [§9.3.10](#9310-promote-to-active) |
+| `Routing.requiredProviderFeatures.contextWindow` → `min_context_window` floor | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `Routing.requiredProviderFeatures.language` → `requirements.languages` | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `Routing.latencyClass` → `match.latency_classes` and target `features.latency_class` | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| `Routing.degradedTierPolicy` is schema-only today | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Economics.*` is not live routing; `manifestCostClass` is hardcoded `"standard"` | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.20](#9320-what-this-stage-does-not-do) |
+| `Governance.*` is not routing | [§9.3.20](#9320-what-this-stage-does-not-do) |
+| Merge: `structured_output_required` is OR of `Output.mode` and rule `requires` | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| Merge: `min_context_window` is `Math.max` | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| Merge: languages are a union (rule can add, not remove) | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| Merge: `latency_class` stays manifest-only | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `routingTier` comes from admission (`routingTierFromAdmission`), matches `ai_request.routing_tier` | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| Client `routing_tier` / `degraded` / `degraded_notice` body keys are ignored | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| R2 key is `control/routing-policy/{policy_id}/{version}.json` | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| Publish writes that key from the URL, not the repo path `platform-default/` | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy) |
+| Router does not read R2 on the hot path (config cache `row.document`) | [§9.3.13](#9313-missing-r2-document) |
+| `schema_version` always present; only `1` accepted | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| `policy_id` / `policy_version` always present; must match D1 row | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| `defaults` always present; `defaults.cost_class` schema-retained / ignored | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `defaults.max_parallel_attempts` schema-retained / ignored | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `rules` always present (non-empty); last rule must be catch-all | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| `rules[].rule_id` copied onto `routing_decision.rule_id`; uniqueness not enforced | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+| `rules[].match` may be `{}` (wildcard) | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `match.capability_ids` optional; non-empty is an allow-list | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `match.installation_ids` optional; non-empty is an allow-list | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `match.cost_classes` optional; filters on **effective** cost class | [§9.3.17](#9317-overrides-and-cost-class) |
+| `match.tiers` optional; `degraded` is server-side only | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `match.languages` optional; subset check (`matchAllLanguages`) | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `match.latency_classes` optional; compared to manifest latency | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `requires.structured_output` always present; OR-merged | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `requires.min_context_window` always present; `0` adds no extra floor | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `requires.languages` always present; `[]` adds none | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `targets[].provider_id` / `model_id` always present; model is pinned | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `targets[].features.structured_output` always present | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `targets[].features.min_context_window` missing/non-numeric → `feature_unsupported` | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Declared window too small → `context_window_too_small` | [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `targets[].features.languages` missing/non-array → `feature_unsupported` | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Declared languages missing a required one → `language_unsupported` | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| `features.latency_class` mismatch/missing → `feature_unsupported` (no `latency_unsupported`) | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Missing/unknown `features.cost_class` → `feature_unsupported` | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Known `cost_class` above effective ceiling → `cost_class_excluded` | [§9.3.17](#9317-overrides-and-cost-class) |
+| `targets[].max_attempts` / `timeout_ms` copied onto `chain[]` | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `rules[].max_parallel_attempts` schema-retained; not on `RoutingDecision` | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `overrides` always present (may be `[]`) | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy) |
+| First matching `overrides[].installation_id` wins (`.find()`) | [§9.3.17](#9317-overrides-and-cost-class) |
+| `exclude_providers` → `installation_excluded` | [§9.3.17](#9317-overrides-and-cost-class) |
+| `pin_target` keeps one pair; pin absent from the rule → empty chain | [§9.3.17](#9317-overrides-and-cost-class) |
+| `force_cost_class` binds as `cost_class_source: installation_override` | [§9.3.17](#9317-overrides-and-cost-class) |
+| Override may narrow, never widen beyond the matched rule | [§9.3.17](#9317-overrides-and-cost-class) |
+| Effective cost class = min of hardcoded manifest `"standard"`, entitlement cap `"premium"`, optional override | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.17](#9317-overrides-and-cost-class) |
+| Extra JSON keys are stored and ignored | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| Sibling price table is not this R2 document | [§9.3.12](#9312-manifest-link-and-independent-switches) |
+| Checked-in fixture identity is `policy_id: "standard"` / `policy_version: 1` | [§9.3.6](#936-latency-warning-and-unreferenced-policy) |
+| D1 `policy_id` + `version` are the PK; `version` is TEXT | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.11](#9311-rollback-and-version-tie-break) |
+| Latest-version reads do **not** `ORDER BY version` (TEXT would sort `"10"` before `"9"`) | [§9.3.11](#9311-rollback-and-version-tie-break) |
+| Control + config-cache serving use `ORDER BY active_from DESC, rowid DESC` | [§9.3.10](#9310-promote-to-active), [§9.3.11](#9311-rollback-and-version-tie-break) |
+| D1 `content_pointer` equals the R2 key | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| D1 `active_from` is an ISO timestamp written at publish/activate | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| D1 `activated_by` is `OPERATOR_ID` (`platform-operator`) | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| D1 `canary_installation_ids` is `NULL` or a JSON array | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.9](#939-canary-success-and-serving-split) |
+| D1 `status` is `published` / `canary` / `active` / `superseded` | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.9](#939-canary-success-and-serving-split), [§9.3.10](#9310-promote-to-active), [§9.3.11](#9311-rollback-and-version-tie-break) |
+| There is no GET control endpoint for routing policies | [§9.3.2](#932-who-may-call-control-apis) |
+| Operator Bearer may call publish/canary/promote/rollback | [§9.3.2](#932-who-may-call-control-apis) |
+| Missing/wrong Bearer, or a staff AAT, → 401 `unauthorized` | [§9.3.2](#932-who-may-call-control-apis) |
+| Publish body is `{ "document": { … } }`; missing document → 400 `missing_document` | [§9.3.3](#933-publish-failure-paths) |
+| Invalid JSON body → 400 `invalid_json` | [§9.3.3](#933-publish-failure-paths) |
+| URL/document identity mismatch → 400 `policy_identity_mismatch`; no R2.put / no D1 insert | [§9.3.3](#933-publish-failure-paths) |
+| First publish: D1 existence check, then R2.put, then D1 INSERT `status=published` | [§9.3.4](#934-first-publish-and-storage-inspection) |
+| First publish 200 `{}` when identity matches and latency is aligned, or no capability references this version | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy) |
+| First publish 200 `{ "warnings": ["latency_class_mismatch"] }` when no target latency matches visit-summary | [§9.3.6](#936-latency-warning-and-unreferenced-policy) |
+| Duplicate `(policy_id, version)` → 409 `already_published` without touching R2 | [§9.3.5](#935-duplicate-publish-leaves-r2-unchanged) |
+| Concurrent UNIQUE/SQLITE_CONSTRAINT also maps to 409 | [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+| Other D1 errors → 500 `storage_error` | [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+| Publish does not validate catch-all or target shape | [§9.3.14](#9314-router-identity-schema-and-catch-all), [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Canary body `installation_ids` empty → 400 `missing_installation_ids` | [§9.3.8](#938-canary-failure-paths) |
+| Canary id not in `installation` → 404 `installation_not_found` | [§9.3.8](#938-canary-failure-paths) |
+| Canary/promote/rollback on unknown version → 404 `policy_version_not_found` | [§9.3.8](#938-canary-failure-paths) |
+| Canary on already-active → 409 `illegal_policy_transition` | [§9.3.10](#9310-promote-to-active) |
+| Canary success: `status=canary`, `canary_installation_ids` written; `cohort_name` is not a D1 column | [§9.3.9](#939-canary-success-and-serving-split) |
+| Canary cohort is served that document; others keep the active version | [§9.3.9](#939-canary-success-and-serving-split) |
+| Promote body is none; supersedes other active/canary; target → `active` | [§9.3.10](#9310-promote-to-active) |
+| Promote `control_audit.before_pointer` uses `ORDER BY active_from DESC, rowid DESC` | [§9.3.11](#9311-rollback-and-version-tie-break) |
+| Rollback canary → `published` (clears canary ids) | [§9.3.11](#9311-rollback-and-version-tie-break) |
+| Rollback active → prior superseded (same ORDER BY); no prior superseded → 409 `illegal_policy_transition` | [§9.3.11](#9311-rollback-and-version-tie-break) |
+| `RoutingDecision.policy_id` / `policy_version` from the served document | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `RoutingDecision.rule_id` is the matched rule | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `effective_cost_class` / `cost_class_source` | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.17](#9317-overrides-and-cost-class) |
+| `routing_tier` on the decision equals D1 `ai_request.routing_tier` | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `required_features` is manifest requirements only (not the merged floor) | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors) |
+| `chain[]` is `{ ordinal, provider_id, model_id, max_attempts, timeout_ms }` | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `excluded[]` is `{ provider_id, model_id, reason_code }` | [§9.3.17](#9317-overrides-and-cost-class), [§9.3.18](#9318-target-exclusions-and-empty-chain), [§9.3.19](#9319-provider-kill-switch-failover) |
+| `max_parallel_attempts` is not a decision field and is not persisted | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| Stage 10 persists the object onto the existing `ai_request` row (`persistRoutingDecision`) | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| Persist happens only after `selectCandidateChain` returns — throws leave `routing_decision` NULL | [§9.3.7](#937-published-policy-is-not-served), [§9.3.13](#9313-missing-r2-document), [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| No active/canary policy → SSE `failed` `internal_error` | [§9.3.7](#937-published-policy-is-not-served) |
+| R2 document missing → SSE `failed` `internal_error` | [§9.3.13](#9313-missing-r2-document) |
+| Policy id/version mismatch → `RoutingPolicyError` `policy_identity_mismatch` (live SSE wraps as `internal_error`) | [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| `unsupported_schema_version` / `missing_catch_all` same wrap | [§9.3.14](#9314-router-identity-schema-and-catch-all) |
+| `no_matching_rule` is unreachable once a catch-all last rule exists | [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+| All targets excluded → SSE `failed` `provider_unavailable` with a persisted decision | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| Malformed target features fail closed (`feature_unsupported`); empty chain is not `internal_error` | [§9.3.18](#9318-target-exclusions-and-empty-chain) |
+| `reason_code` `kill_switch` excludes that provider; remaining targets stay in order; no 503 of the capability | [§9.3.19](#9319-provider-kill-switch-failover) |
+| Capability-level kills 503 before routing; kill switches are D1, not the R2 document | [§9.3.19](#9319-provider-kill-switch-failover), [§9.3.20](#9320-what-this-stage-does-not-do) |
+| This stage does not entitle, enroll, mint AATs, or call providers | [§9.3.12](#9312-manifest-link-and-independent-switches), [§9.3.20](#9320-what-this-stage-does-not-do) |
+| Publish/canary/promote/rollback leave `entitlement` unchanged | [§9.3.12](#9312-manifest-link-and-independent-switches) |
+| `entitlementMaxCostClass` hardcoded `"premium"` (not a D1 column today) | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.20](#9320-what-this-stage-does-not-do) |
+| Invocation walks `chain[]` sequentially (no parallel racing) | [§9.3.15](#9315-routingdecision-on-a-routed-request) |
+| `missing_r2_binding` is not inducible on a configured Worker | [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+
+
+### 9.3 Ordered probes
+
+#### 9.3.1 Reset to a known policy state
+
+**Do:** wipe routing-policy index rows and the R2 keys this file uses. Do **not** delete `installation` / `entitlement` / `token_contract`.
+
+```bash
+d1 "DELETE FROM routing_policy"
+d1 "DELETE FROM control_audit WHERE action LIKE 'routing_policy_%'"
+d1 "DELETE FROM kill_switch WHERE scope = 'provider'"
+
+for key in \
+  control/routing-policy/probe/1.json \
+  control/routing-policy/standard/1.json \
+  control/routing-policy/standard/2.json \
+  control/routing-policy/standard/3.json \
+  control/routing-policy/standard/9.json \
+  control/routing-policy/standard/10.json \
+  control/routing-policy/standard/11.json
+do
+  r2del "$key" || true
+done
+```
+
+**Expect:** `SELECT COUNT(*) FROM routing_policy` is `0`. Later probes start from an empty playbook index. Entitlement for **I0** is still `active`.
+
+#### 9.3.2 Who may call control APIs
+
+There is no GET of a routing policy. Inspection is D1 + R2 ([§5](#5-d1-routing_policy-row-every-column), [§4.1](#41-r2-object-key)).
+
+**Do:**
+
+```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X GET \
+  "$GATEWAY/control/routing-policies/standard/versions/1"
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"standard","policy_version":1}}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer not-the-operator-token" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"standard","policy_version":1}}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $AAT" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"standard","policy_version":1}}'
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+**Expect:** GET of the collection path is **404** (pattern requires `…/publish|canary|promote|rollback`). The three POSTs are **401** `{ "error": "unauthorized" }`. Clinic staff (AAT) are not operators. Repeat a canary/promote/rollback URL without a Bearer — same 401. `routing_policy` is still empty.
+
+#### 9.3.3 Publish failure paths
+
+**Do:** as operator, identity mismatches and missing body (before any successful write):
+
+```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d 'not-json'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"document":null}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"other","policy_version":1,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"standard","policy_version":2,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+**Expect:** `not-json` → **400** `{ "error": "invalid_json" }`. `{}` and `{"document":null}` → **400** `{ "error": "missing_document" }`. `policy_id` ≠ URL or `policy_version` ≠ URL (`2` vs `"1"`) → **400** `{ "error": "policy_identity_mismatch" }`. `string "1"` matching number `1` is the passing equality (`String(document.policy_version) === route.version`).
+
+**Do:**
+
+```bash
+d1 "SELECT COUNT(*) AS n FROM routing_policy"
+r2get "control/routing-policy/standard/1.json" /tmp/rp-should-miss.json || true
+```
+
+**Expect:** still zero D1 rows. R2 get fails / empty — identity mismatch is checked **before** R2.put.
+
+#### 9.3.4 First publish and storage inspection
+
+Use a policy id **no bundled capability references**, so latency warning stays off ([§6.1](#61-publish-post-controlrouting-policiespolicyidversionsversionpublish) empty `{}` branch). The document below includes every router-understood key plus schema-retained defaults, an extra unknown key, and a catch-all.
+
+**Do:**
+
+```bash
+cat > /tmp/rp-probe-v1.json <<'EOF'
+{
+  "document": {
+    "schema_version": 1,
+    "policy_id": "probe",
+    "policy_version": 1,
+    "defaults": { "cost_class": "premium", "max_parallel_attempts": 9 },
+    "ops_note": "extra key must be stored and ignored",
+    "rules": [
+      {
+        "rule_id": "visit-summary-standard",
+        "match": {
+          "capability_ids": ["clinic.visit_summary"],
+          "installation_ids": [],
+          "cost_classes": ["standard", "premium"],
+          "tiers": ["standard", "degraded"],
+          "languages": ["en"],
+          "latency_classes": ["standard"]
+        },
+        "requires": {
+          "structured_output": false,
+          "min_context_window": 0,
+          "languages": []
+        },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ],
+        "max_parallel_attempts": 4
+      },
+      {
+        "rule_id": "catch-all",
+        "match": {},
+        "requires": {
+          "structured_output": false,
+          "min_context_window": 0,
+          "languages": []
+        },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          },
+          {
+            "provider_id": "gemini",
+            "model_id": "gemini-3.5-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      }
+    ],
+    "overrides": []
+  }
+}
+EOF
+
+publish probe 1 /tmp/rp-probe-v1.json
+```
+
+**Expect:** HTTP **200** and body `{}` (no `warnings`). No published capability has `routingPolicyRef: "routing/probe@v1"`.
+
+**Do:** inspect R2 (every written field) and D1 (every column):
+
+```bash
+r2get "control/routing-policy/probe/1.json" /tmp/rp-probe-stored.json
+python3 - <<'PY'
+import json
+d=json.load(open("/tmp/rp-probe-stored.json"))
+assert d["schema_version"]==1
+assert d["policy_id"]=="probe" and d["policy_version"]==1
+assert d["defaults"]["cost_class"]=="premium"
+assert d["defaults"]["max_parallel_attempts"]==9
+assert d["ops_note"].startswith("extra key")
+assert d["rules"][0]["rule_id"]=="visit-summary-standard"
+assert d["rules"][0]["max_parallel_attempts"]==4
+assert d["rules"][0]["targets"][0]["model_id"]=="deepseek-v4-flash"
+assert d["rules"][-1]["rule_id"]=="catch-all" and d["rules"][-1]["match"]=={}
+assert d["overrides"]==[]
+print("r2 ok", list(d))
+PY
+
+d1 "SELECT policy_id, version, content_pointer, active_from, activated_by,
+           canary_installation_ids, status
+    FROM routing_policy WHERE policy_id = 'probe'"
+
+d1 "SELECT action, target, before_pointer, after_pointer, operator_id
+    FROM control_audit WHERE action = 'routing_policy_publish'
+    ORDER BY recorded_at DESC LIMIT 1"
+```
+
+**Expect:** R2 object is the document **as posted** (extra `ops_note` kept; schema-retained defaults kept). D1 row: `policy_id=probe`, `version=1` (TEXT), `content_pointer=control/routing-policy/probe/1.json`, `active_from` ISO now, `activated_by=platform-operator`, `canary_installation_ids` NULL, `status=published`. Audit `action=routing_policy_publish`, `target=probe@1`, `before_pointer` NULL, `after_pointer` equals the R2 key, `operator_id=platform-operator`. Publish used the **URL** to build the key, not `ai-platform/control/routing-policy/platform-default/`.
+
+`status=published` is **not** served ([§9.3.7](#937-published-policy-is-not-served)).
+
+#### 9.3.5 Duplicate publish leaves R2 unchanged
+
+**Do:** post a different body for the same `(probe, 1)`:
+
+```bash
+python3 - <<'PY'
+import json
+doc=json.load(open("/tmp/rp-probe-v1.json"))
+doc["document"]["rules"][0]["targets"][0]["provider_id"]="gemini"
+json.dump(doc, open("/tmp/rp-probe-v1-conflict.json","w"))
+PY
+publish probe 1 /tmp/rp-probe-v1-conflict.json
+r2get "control/routing-policy/probe/1.json" /tmp/rp-probe-after-409.json
+python3 - <<'PY'
+import json
+d=json.load(open("/tmp/rp-probe-after-409.json"))
+assert d["rules"][0]["targets"][0]["provider_id"]=="deepseek"
+print("r2 unchanged")
+PY
+d1 "SELECT COUNT(*) AS n FROM routing_policy WHERE policy_id='probe' AND version='1'"
+d1 "SELECT COUNT(*) AS n FROM control_audit WHERE action='routing_policy_publish' AND target='probe@1'"
+```
+
+**Expect:** HTTP **409** `{ "error": "already_published" }`. R2 still names `deepseek` on the first target (existence check runs **before** R2.put). Still one D1 row and one publish audit — the duplicate did not insert.
+
+#### 9.3.6 Latency warning and unreferenced policy
+
+Visit summary’s bundled ref is `routing/standard@v1` with `latencyClass: "standard"`. Publishing `standard@1` with only `"interactive"` targets must warn; publishing a copy of the checked-in fixture (catch-all, `latency_class: "standard"`, `overrides: []`) must not.
+
+**Do:** mismatched `standard@1`, then replace it (delete is allowed on a throwaway DB; publish itself cannot overwrite):
+
+```bash
+python3 - <<'PY'
+import json
+doc=json.load(open("/tmp/rp-probe-v1.json"))
+doc["document"]["policy_id"]="standard"
+doc["document"]["policy_version"]=1
+for rule in doc["document"]["rules"]:
+    for t in rule["targets"]:
+        t["features"]["latency_class"]="interactive"
+json.dump(doc, open("/tmp/rp-standard-mismatch.json","w"))
+PY
+publish standard 1 /tmp/rp-standard-mismatch.json
+```
+
+**Expect:** HTTP **200** `{ "warnings": ["latency_class_mismatch"] }`. Identity matched; no target `latency_class` equals visit-summary `"standard"`.
+
+**Do:** delete that version and publish the aligned production shape (on-disk directory `platform-default` is historical; identity is `standard` / `1`):
+
+```bash
+d1 "DELETE FROM routing_policy WHERE policy_id='standard' AND version='1'"
+r2del "control/routing-policy/standard/1.json"
+cat > /tmp/rp-standard-v1.json <<'EOF'
+{
+  "document": {
+    "schema_version": 1,
+    "policy_id": "standard",
+    "policy_version": 1,
+    "defaults": { "cost_class": "standard", "max_parallel_attempts": 1 },
+    "rules": [
+      {
+        "rule_id": "platform-default-fallback",
+        "match": {},
+        "requires": { "structured_output": false, "min_context_window": 0, "languages": [] },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          },
+          {
+            "provider_id": "gemini",
+            "model_id": "gemini-3.5-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      }
+    ],
+    "overrides": []
+  }
+}
+EOF
+publish standard 1 /tmp/rp-standard-v1.json
+r2get "control/routing-policy/standard/1.json" /tmp/rp-standard-stored.json
+```
+
+**Expect:** HTTP **200** `{}`. R2 key is `control/routing-policy/standard/1.json` (URL), `policy_id` is `"standard"`, both targets advertise `latency_class: "standard"`, `overrides` is `[]`. D1 `status=published`.
+
+#### 9.3.7 Published policy is not served
+
+Config-cache serving reads `status='canary'` (cohort) else `status='active'` — never `published`.
+
+**Do:** wait 31 s if this Worker already cached a miss, then:
+
+```bash
+invoke missing-policy-1
+d1 "SELECT state, terminal_error_code, routing_decision FROM ai_request
+    ORDER BY created_at DESC LIMIT 1"
+d1 "SELECT status FROM routing_policy WHERE policy_id='standard' AND version='1'"
+```
+
+**Expect:** SSE `event: accepted` then `event: failed` with `data.code = "internal_error"` ([§8](#8-routing-failure-paths-post-accept) “no active/canary policy”). Journal `routing_decision` is **NULL** — `selectCandidateChain` threw `ConfigCacheMissError` before `persistRoutingDecision`. Entitlement is still active; this is a routing miss, not `forbidden_capability`. `status` remains `published`.
+
+#### 9.3.8 Canary failure paths
+
+**Do:**
+
+```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"installation_ids":[]}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"installation_ids":["00000000-0000-4000-8000-000000000000"]}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/does-not-exist/versions/1/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"]}"
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/99/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"]}"
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/99/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/99/rollback" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+**Expect:** empty `installation_ids` → **400** `{ "error": "missing_installation_ids" }`. Unknown installation → **404** `{ "error": "installation_not_found" }`. Unknown policy id or version → **404** `{ "error": "policy_version_not_found" }` on canary, promote, and rollback. `standard@1` is still `published`.
+
+#### 9.3.9 Canary success and serving split
+
+Publish a distinct v2 (gemini-first) so the cohort’s chain differs from v1, then canary v2 onto **I0**.
+
+**Do:**
+
+```bash
+python3 - <<'PY'
+import json
+doc=json.load(open("/tmp/rp-standard-v1.json"))
+doc["document"]["policy_version"]=2
+doc["document"]["rules"][0]["rule_id"]="canary-gemini-first"
+doc["document"]["rules"][0]["targets"].reverse()
+json.dump(doc, open("/tmp/rp-standard-v2.json","w"))
+PY
+publish standard 2 /tmp/rp-standard-v2.json
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"],\"cohort_name\":\"verify-cohort\"}"
+echo; cat /tmp/rp-http-body.json; echo
+
+d1 "SELECT version, status, canary_installation_ids FROM routing_policy
+    WHERE policy_id='standard' ORDER BY version"
+```
+
+**Expect:** publish 200, canary 200 `{}`. v2 `status=canary`, `canary_installation_ids` is the JSON array `[I0]` (string ids). `cohort_name` is accepted and **not** stored — there is no such column. v1 remains `published` (still not globally served).
+
+v2 is not globally active yet, so a non-cohort installation has **no** active row. Promote v1 first so others have a fallback, then keep v2 as canary:
+
+```bash
+curl -sS -o /tmp/rp-http-body.json -D - -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -o /tmp/rp-http-body.json -D - -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"]}"
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+Promote of v1 supersedes other canary/active on this `policy_id`, so the second canary call puts v2 back on the cohort. Wait 31 s.
+
+**Do:** `invoke canary-i0-1` as **I0**.
+
+**Expect:** `routing_decision.policy_version = 2`, `chain[0].provider_id = "gemini"` (canary document). `rule_id = "canary-gemini-first"`.
+
+If you can mint an AAT for **I1** and invoke: `policy_version = 1`, `chain[0].provider_id = "deepseek"`. D1 picks **which version**; the bundled ref stays `routing/standard@v1` on both.
+
+#### 9.3.10 Promote to active
+
+**Do:** promote the canary (v2). Body is empty.
+
+```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+
+d1 "SELECT version, status, canary_installation_ids FROM routing_policy
+    WHERE policy_id='standard' ORDER BY rowid"
+
+d1 "SELECT before_pointer, after_pointer FROM control_audit
+    WHERE action='routing_policy_promote' ORDER BY recorded_at DESC LIMIT 1"
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"]}"
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+**Expect:** promote 200 `{}`. v2 `status=active`, `canary_installation_ids` NULL. v1 `status=superseded`, canary ids NULL. Audit `after_pointer=standard@2`, `before_pointer=standard@1`. Canary on already-active v2 → **409** `{ "error": "illegal_policy_transition" }`.
+
+Wait 31 s, `invoke after-promote-v2`. **Expect:** `policy_version = 2` for **I0** even though the manifest ref is still `@v1`. Manifest picks the playbook **id**; D1 active/canary picks the **version**.
+
+#### 9.3.11 Rollback and version tie-break
+
+**Do:** rollback the active v2 (prior superseded is v1):
+
+```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/rollback" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+d1 "SELECT version, status FROM routing_policy WHERE policy_id='standard'"
+```
+
+**Expect:** 200. v2 `superseded`, v1 `active`.
+
+**Do:** rollback of active with **no** superseded row:
+
+```bash
+d1 "UPDATE routing_policy SET status='published' WHERE policy_id='standard' AND version='2'"
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/rollback" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+```
+
+**Expect:** **409** `{ "error": "illegal_policy_transition" }` (no `status='superseded'` row to resurrect). Restore v2 to superseded:
+
+```bash
+d1 "UPDATE routing_policy SET status='superseded' WHERE policy_id='standard' AND version='2'"
+```
+
+**Do:** canary v2 again, then rollback the **canary** (not the active):
+
+```bash
+curl -sS -o /dev/null -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"installation_ids\":[\"$INSTALLATION_ID\"]}"
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/2/rollback" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+d1 "SELECT version, status, canary_installation_ids FROM routing_policy WHERE policy_id='standard'"
+```
+
+**Expect:** v2 returns to `published`, `canary_installation_ids` NULL. v1 stays `active`.
+
+**Do:** TEXT sort vs `rowid` tie-break. Insert versions `"9"` and `"10"` with the **same** `active_from`, `"10"` later (higher `rowid`), both `superseded`; promote a new v11; rollback v11.
+
+```bash
+python3 - <<'PY'
+import json
+doc=json.load(open("/tmp/rp-standard-v1.json"))
+for ver, first in [(9,"deepseek"),(10,"gemini"),(11,"deepseek")]:
+    d=json.loads(json.dumps(doc))
+    d["document"]["policy_version"]=ver
+    d["document"]["rules"][0]["targets"][0]["provider_id"]=first
+    json.dump(d, open(f"/tmp/rp-standard-v{ver}.json","w"))
+PY
+publish standard 9 /tmp/rp-standard-v9.json
+publish standard 10 /tmp/rp-standard-v10.json
+publish standard 11 /tmp/rp-standard-v11.json
+
+d1 "UPDATE routing_policy SET status='superseded', active_from='2026-08-03T12:00:00.000Z'
+    WHERE policy_id='standard' AND version IN ('9','10')"
+d1 "UPDATE routing_policy SET status='active', active_from='2026-08-03T12:01:00.000Z'
+    WHERE policy_id='standard' AND version='11'"
+# Ensure rowid order: 9 then 10. Re-insert 10 last if needed by deleting/re-adding 10 only.
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/11/rollback" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+echo; cat /tmp/rp-http-body.json; echo
+
+d1 "SELECT version, status FROM routing_policy WHERE policy_id='standard' AND status='active'"
+d1 "SELECT before_pointer, after_pointer FROM control_audit
+    WHERE action='routing_policy_rollback' ORDER BY recorded_at DESC LIMIT 1"
+```
+
+**Expect:** active version is **`10`**, not `9`. Lexical TEXT `"9" > "10"` would have picked 9; `ORDER BY active_from DESC, rowid DESC` picks the later-inserted same-timestamp superseded row. Restore a clean active v1 before continuing:
+
+```bash
+d1 "UPDATE routing_policy SET status='superseded', canary_installation_ids=NULL
+    WHERE policy_id='standard'"
+d1 "UPDATE routing_policy SET status='active' WHERE policy_id='standard' AND version='1'"
+```
+
+Wait 31 s.
+
+#### 9.3.12 Manifest link and independent switches
+
+**Do:** prove the capability manifest is not in D1/R2, and that routing control did not entitle or enroll.
+
+```bash
+python3 - <<'PY'
+import json
+m=json.load(open("manifests/published/clinic.visit_summary@1.0.0.json"))
+assert m["Routing"]["routingPolicyRef"]=="routing/standard@v1"
+assert m["Routing"]["latencyClass"]=="standard"
+assert m["Routing"]["requiredProviderFeatures"]["language"]=="en"
+assert m["Routing"]["requiredProviderFeatures"]["contextWindow"]==32000
+assert m["Output"]["mode"]=="prose"
+assert "freshnessHint" not in json.dumps(m["Context requirements"])
+print("manifest ok")
+PY
+
+d1 "SELECT COUNT(*) AS n FROM routing_policy WHERE content_pointer LIKE '%visit_summary%'"
+d1 "SELECT status, request_quota, allowed_capabilities FROM entitlement
+    WHERE installation_id = '$INSTALLATION_ID'"
+d1 "SELECT installation_id, status FROM installation WHERE installation_id = '$INSTALLATION_ID'"
+```
+
+**Expect:** checked-in JSON has the ten groups and `routingPolicyRef` `routing/standard@v1` (`standard`, `1`). No D1 pointer names the manifest file. Entitlement still `active` with the quotas you set in Stage 4 — publish/canary/promote/rollback did not rewrite it. `installation.status` unchanged.
+
+**Do:** `r2get "control/pricing/platform-default/1.json" /tmp/price.json` (may miss locally unless you uploaded it).
+
+**Expect:** that object is **not** the routing document. Routing R2 lives only under `control/routing-policy/…`. Pricing is bundled for settlement ([Stage 11](13-stage-11-terminal-settlement.md)), never client-visible on this path.
+
+#### 9.3.13 Missing R2 document
+
+**Do:** keep the active D1 row, delete the object, wait 31 s, invoke:
+
+```bash
+r2del "control/routing-policy/standard/1.json"
+invoke missing-r2-1
+d1 "SELECT state, terminal_error_code, routing_decision FROM ai_request
+    ORDER BY created_at DESC LIMIT 1"
+```
+
+**Expect:** SSE `failed` `internal_error` ([§8](#8-routing-failure-paths-post-accept) “R2 document missing”). `routing_decision` NULL. Restore the object from the file you published:
+
+```bash
+python3 - <<'PY'
+import json
+json.dump(json.load(open("/tmp/rp-standard-v1.json"))["document"],
+          open("/tmp/rp-standard-v1-body.json","w"))
+PY
+r2put "control/routing-policy/standard/1.json" /tmp/rp-standard-v1-body.json
+```
+
+Wait 31 s.
+
+#### 9.3.14 Router identity schema and catch-all
+
+Publish does not check catch-all or `schema_version` beyond URL identity. Overwrite R2 in place (D1 still says `standard` / `1`).
+
+**Do:** identity mismatch in the **document** vs D1 row:
+
+```bash
+python3 - <<'PY'
+import json
+d=json.load(open("/tmp/rp-standard-v1-body.json"))
+d["policy_id"]="other"
+json.dump(d, open("/tmp/rp-bad-identity.json","w"))
+PY
+r2put "control/routing-policy/standard/1.json" /tmp/rp-bad-identity.json
+```
+
+Wait 31 s, `invoke bad-identity-1`.
+
+**Expect:** SSE `failed` `internal_error`. The router threw `RoutingPolicyError` `policy_identity_mismatch`; `runFreshEventSource`’s catch maps unexpected throws to taxonomy `internal_error`. `routing_decision` stays NULL (throw is before persist). Worker logs name the mismatch.
+
+**Do:** `schema_version: 99`, then a document whose last rule is **not** a catch-all:
+
+```bash
+python3 - <<'PY'
+import json
+d=json.load(open("/tmp/rp-standard-v1-body.json"))
+d["schema_version"]=99
+json.dump(d, open("/tmp/rp-bad-schema.json","w"))
+d=json.load(open("/tmp/rp-standard-v1-body.json"))
+d["rules"][0]["match"]={"capability_ids":["clinic.other"]}
+json.dump(d, open("/tmp/rp-no-catchall.json","w"))
+PY
+r2put "control/routing-policy/standard/1.json" /tmp/rp-bad-schema.json
+```
+
+Wait 31 s, `invoke bad-schema-1`. Then put `/tmp/rp-no-catchall.json`, wait 31 s, `invoke no-catchall-1`.
+
+**Expect:** both SSE `failed` `internal_error` (`unsupported_schema_version`, `missing_catch_all`). Restore the aligned body and wait 31 s:
+
+```bash
+r2put "control/routing-policy/standard/1.json" /tmp/rp-standard-v1-body.json
+```
+
+#### 9.3.15 RoutingDecision on a routed request
+
+**Do:** `invoke happy-decision-1` and inspect the journal JSON (every [§7](#7-router-output-routingdecision-every-field) field):
+
+```bash
+d1 "SELECT routing_tier, routing_decision FROM ai_request ORDER BY created_at DESC LIMIT 1"
+```
+
+**Expect:** `routing_decision` is non-null JSON on the **existing** `ai_request` row (one UPDATE, no new table). Fields:
+
+- `policy_id = "standard"`, `policy_version = 1`
+- `rule_id = "platform-default-fallback"` (the catch-all `match: {}`)
+- `effective_cost_class = "standard"`
+- `cost_class_source = "manifest"` (hardcoded `manifestCostClass: "standard"` is stricter than hardcoded `entitlementMaxCostClass: "premium"`; `defaults.cost_class` is **not** this value — the published default may be `"standard"` too, but [§9.3.4](#934-first-publish-and-storage-inspection) stored `"premium"` on `probe` and that never became the effective class)
+- `routing_tier = "standard"` and equals column `ai_request.routing_tier` — **not** `"degraded"`, even though the body sent `routing_tier` / `degraded` / `degraded_notice`
+- `required_features.structured_output_required = false` (`Output.mode` is `prose`)
+- `required_features.min_context_window = 32000` (manifest `contextWindow`, not the rule’s `0`)
+- `required_features.languages = ["en"]`
+- `required_features.latency_class = "standard"`
+- `chain` length 2: ordinal `0` `deepseek` / `deepseek-v4-flash` `max_attempts=2` `timeout_ms=30000`, then ordinal `1` `gemini` / `gemini-3.5-flash` same bounds
+- `excluded` is `[]`
+- **No** `max_parallel_attempts` key on the JSON
+
+The request may later `completed` or `failed` at the provider; the decision is already on the row **before** invoke. Sequential walk: `ai_attempt` rows (if any) follow chain order, one target at a time.
+
+#### 9.3.16 Match clauses and requirement floors
+
+Publish `standard@3` with a specific first rule plus catch-all, promote it, wait 31 s.
+
+**Do:**
+
+```bash
+cat > /tmp/rp-standard-v3.json <<EOF
+{
+  "document": {
+    "schema_version": 1,
+    "policy_id": "standard",
+    "policy_version": 3,
+    "defaults": { "cost_class": "standard", "max_parallel_attempts": 1 },
+    "rules": [
+      {
+        "rule_id": "visit-en-standard",
+        "match": {
+          "capability_ids": ["clinic.visit_summary"],
+          "installation_ids": ["$INSTALLATION_ID"],
+          "cost_classes": ["standard"],
+          "tiers": ["standard"],
+          "languages": ["en"],
+          "latency_classes": ["standard"]
+        },
+        "requires": {
+          "structured_output": true,
+          "min_context_window": 64000,
+          "languages": ["en", "ar"]
+        },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": false,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          },
+          {
+            "provider_id": "gemini",
+            "model_id": "gemini-3.5-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en", "ar"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      },
+      {
+        "rule_id": "catch-all",
+        "match": {},
+        "requires": { "structured_output": false, "min_context_window": 0, "languages": [] },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      }
+    ],
+    "overrides": []
+  }
+}
+EOF
+publish standard 3 /tmp/rp-standard-v3.json
+curl -sS -o /dev/null -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/3/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+```
+
+Wait 31 s, `invoke match-floors-1`.
+
+**Expect:** `rule_id = "visit-en-standard"` (first match wins: capability, installation, effective cost `standard`, tier `standard`, language `en`, latency `standard`). Merged floor: structured **true** (rule OR; manifest prose is false), `min_context_window = 64000` (`Math.max(32000, 64000)`), languages **union** `en`+`ar`. `required_features` on the journal still shows **manifest-only** (`structured_output_required: false`, `min_context_window: 32000`, `languages: ["en"]`) — filtering used the merged floor. DeepSeek is `excluded` `feature_unsupported` (`structured_output: false`). Gemini stays in `chain[0]`.
+
+**Do:** a first rule that **fails** `match.languages` (rule list `["ar"]` vs request `en`) by publishing v3-style with `languages:["ar"]` only on the first rule (or temporarily put that R2 and wait). Simpler: first rule `installation_ids: ["$OTHER_INSTALLATION_ID"]` only.
+
+Put a document whose first `match.installation_ids` is **I1** only, promote, wait, invoke as **I0**.
+
+**Expect:** `rule_id = "catch-all"` (first rule skipped; empty match wins).
+
+**Do:** degraded tier. Soft-threshold is Stage 4’s switch, consumed here as `match.tiers`. After [§9.3.15](#9315-routingdecision-on-a-routed-request) at least one request has been journaled; force the next admission over the line on this throwaway DB:
+
+```bash
+d1 "UPDATE entitlement SET soft_threshold = 0.0001
+    WHERE installation_id = '$INSTALLATION_ID'"
+```
+
+Wait 31 s, `invoke degraded-tier-1`.
+
+**Expect:** SSE `accepted` includes `degraded_notice: true`. `ai_request.routing_tier = "degraded"` **and** `routing_decision.routing_tier = "degraded"`. The first rule’s `match.tiers` is only `["standard"]`, so this request skips it and takes `rule_id = "catch-all"`. Client still cannot force this by sending `routing_tier` in the body ([§9.3.15](#9315-routingdecision-on-a-routed-request)). Restore a sane threshold afterwards (`UPDATE … SET soft_threshold = 0.8` or whatever Stage 4 wrote).
+
+#### 9.3.17 Overrides and cost class
+
+**Do:** publish/promote `standard@4` with two catch-all targets (`economy` DeepSeek, `premium` Gemini) and three stacked override keys for **I0** (narrowing only):
+
+```bash
+cat > /tmp/rp-standard-v4.json <<EOF
+{
+  "document": {
+    "schema_version": 1,
+    "policy_id": "standard",
+    "policy_version": 4,
+    "defaults": { "cost_class": "premium", "max_parallel_attempts": 1 },
+    "rules": [
+      {
+        "rule_id": "catch-all",
+        "match": {},
+        "requires": { "structured_output": false, "min_context_window": 0, "languages": [] },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "economy"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          },
+          {
+            "provider_id": "gemini",
+            "model_id": "gemini-3.5-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "premium"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      }
+    ],
+    "overrides": [
+      {
+        "installation_id": "$INSTALLATION_ID",
+        "exclude_providers": ["gemini"],
+        "force_cost_class": "economy"
+      },
+      {
+        "installation_id": "$INSTALLATION_ID",
+        "pin_target": { "provider_id": "gemini", "model_id": "gemini-3.5-flash" }
+      }
+    ]
+  }
+}
+EOF
+publish standard 4 /tmp/rp-standard-v4.json
+curl -sS -o /dev/null -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/4/promote" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
+```
+
+Wait 31 s, `invoke override-1`.
+
+**Expect:** first override wins (`.find()`). `cost_class_source = "installation_override"`, `effective_cost_class = "economy"` (min of standard, premium, economy). Gemini is `installation_excluded` (`exclude_providers`) — the second override never runs, so `pin_target` does not resurrect Gemini (overrides cannot widen). Premium would also have been `cost_class_excluded` if it had survived exclude. DeepSeek remains. `defaults.cost_class: "premium"` did **not** become the effective class.
+
+**Do:** publish a variant whose only override is `pin_target` to `{ "provider_id": "missing", "model_id": "nope" }`, promote, invoke.
+
+**Expect:** `chain = []`, both real targets `installation_excluded`, SSE `failed` `provider_unavailable`, **persisted** `routing_decision` (empty-chain is not a throw).
+
+#### 9.3.18 Target exclusions and empty chain
+
+**Do:** publish/promote a catch-all whose first target is malformed and whose second is well-formed but language-insufficient; include a third well-formed `en` target so the chain is not empty yet:
+
+```bash
+cat > /tmp/rp-standard-v5.json <<'EOF'
+{
+  "document": {
+    "schema_version": 1,
+    "policy_id": "standard",
+    "policy_version": 5,
+    "defaults": { "cost_class": "standard", "max_parallel_attempts": 1 },
+    "rules": [
+      {
+        "rule_id": "catch-all",
+        "match": {},
+        "requires": { "structured_output": false, "min_context_window": 0, "languages": [] },
+        "targets": [
+          {
+            "provider_id": "deepseek",
+            "model_id": "deepseek-v4-flash",
+            "features": {
+              "structured_output": true,
+              "languages": ["en"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          },
+          {
+            "provider_id": "gemini",
+            "model_id": "gemini-3.5-flash",
+            "features": {
+              "structured_output": true,
+              "min_context_window": 128000,
+              "languages": ["fr"],
+              "latency_class": "standard",
+              "cost_class": "standard"
+            },
+            "max_attempts": 2,
+            "timeout_ms": 30000
+          }
+        ]
+      }
+    ],
+    "overrides": []
+  }
+}
+EOF
+```
+
+The first target **omits** `min_context_window` (publish still accepts it). Promote v5, wait 31 s, `invoke malformed-1`.
+
+**Expect:** DeepSeek `excluded.reason_code = "feature_unsupported"` (missing window). Gemini `language_unsupported` (declared list, missing `en`). `chain = []`, SSE `failed` `provider_unavailable`, **not** `internal_error`. Decision is persisted.
+
+**Do:** add targets that isolate the other fail-closed codes (put R2, wait 31 s, invoke each time, or combine siblings):
+
+- `cost_class: "standrd"` (typo) → `feature_unsupported`; a sibling `"premium"` with effective `standard` → `cost_class_excluded`
+- `languages` as a string `"en"` (non-array) → `feature_unsupported` (does not throw)
+- `latency_class: "interactive"` vs manifest `"standard"` → `feature_unsupported` (no `latency_unsupported`)
+- `min_context_window: 1000` (declared but too small vs merged 32000) → `context_window_too_small`
+
+**Expect:** each distinct code as above. A well-formed sibling stays in `chain`. Publish-time target-shape check remains absent — this is the request-path defense.
+
+#### 9.3.19 Provider kill switch failover
+
+Restore aligned `standard@1` as active (or publish v6 = production fixture), wait 31 s.
+
+**Do:**
+
+```bash
+d1 "INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+    VALUES ('provider', 'deepseek', 1, datetime('now'), 'verify')"
+```
+
+Wait 31 s, `invoke kill-deepseek-1`.
+
+**Expect:** SSE does **not** 503 `capability_disabled`. `excluded` contains DeepSeek with `reason_code = "kill_switch"`. `chain[0]` is Gemini (document order, failover). Provider kills are D1 `kill_switch`, not an R2 field.
+
+**Do:**
+
+```bash
+d1 "DELETE FROM kill_switch WHERE scope='provider' AND target='deepseek'"
+d1 "INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
+    VALUES ('global', 'global', 1, datetime('now'), 'verify')"
+invoke kill-global-1
+d1 "DELETE FROM kill_switch WHERE scope='global'"
+```
+
+**Expect:** HTTP JSON **503** `capability_disabled` **before** SSE — capability-level kill never reaches `selectCandidateChain`. No new `routing_decision`.
+
+#### 9.3.20 What this stage does not do
+
+**Do:** confirm the non-routing groups never appear on `routing_decision`, and that control did not mint tokens or call a provider by itself.
+
+```bash
+d1 "SELECT routing_decision FROM ai_request ORDER BY created_at DESC LIMIT 1"
+```
+
+**Expect:** JSON has only [§7](#7-router-output-routingdecision-every-field) keys — no Access, Prompt binding, Economics, Governance, Interaction, Input, or Context requirements. `required_features.structured_output_required` follows `Output.mode`, not `Routing.requiredProviderFeatures.structuredOutput` (visit summary declares `structuredOutput: false` and `mode: "prose"`; [§9.3.16](#9316-match-clauses-and-requirement-floors) already forced structured via **rule** `requires`). `degradedTierPolicy` is not a decision field. Economics `perRequestTokenCeiling` did not become `effective_cost_class` (hardcoded `"standard"` / `"premium"`).
+
+**Do:** `POST /control/routing-policies/…/publish` does not insert `ai_request` or `ai_attempt`.
+
+**Expect:** those tables only grow on `POST /v1/requests`. This stage writes `routing_policy`, R2 `control/routing-policy/…`, and `control_audit`. It does not enroll, entitle, or mint an AAT.
+
+#### 9.3.21 Unreachable and operator-hostile paths
+
+These claims are in the file and in code; a healthy local Worker cannot induce them as a stable live probe.
+
+- **Metaphor** ([§2](#2-metaphor)) is not an HTTP/storage assertion.
+- **`no_matching_rule`:** `validatePolicyDocument` requires a catch-all last rule, and a catch-all matches every request, so `selectCandidateChain` cannot throw `no_matching_rule` after validation. [§9.3.14](#9314-router-identity-schema-and-catch-all) already shows the missing-catch-all wrap.
+- **`rule_id` uniqueness** is not enforced: publishing two rules with the same `rule_id` still 200s; journal attribution would be ambiguous. Ops discipline only.
+- **Concurrent first publish** UNIQUE race: both winners map to 409 `already_published`. Two-curl timing is not a reliable probe; the sequential duplicate in [§9.3.5](#935-duplicate-publish-leaves-r2-unchanged) is the operator-visible 409.
+- **`storage_error`:** any D1 failure other than UNIQUE. Do not sabotage the database.
+- **`missing_r2_binding`:** Worker started without an R2 binding. This environment has one.
+- **Bundled-manifest extra keys** (`freshnessHint`): rejected at Worker **build/load**, not via control publish. Changing `clinic.visit_summary@1.0.0.json` and rebuilding is out of band for this stage.
+
+---
+
 
