@@ -340,9 +340,9 @@ Every `public.*` clinic RPC granted to `authenticated` for the AI journey. Keyst
 
 **Expect:** `success = true`. New `data.kid` ≠ prior kid. **Same** `data.installation_id`. Two rows in `ai_internal.installation_keys` for that installation.
 
-**Do:** as administrator, `SELECT public.revoke_installation_key('<kid>');` for a live kid.
+**Do:** as administrator, `SELECT public.revoke_installation_key('<kid>');` for a live kid when at least one other active key remains (or for any already-revoked kid).
 
-**Expect:** `success = true`. `data.kid` and `data.revoked_at` set. Repeat on same kid → idempotent success with existing `revoked_at`.
+**Expect:** `success = true`. `data.kid` and `data.revoked_at` set. Repeat on same kid → idempotent success with existing `revoked_at`. Revoking the sole remaining active key → `CANNOT_REVOKE_LAST_ACTIVE_KEY` (rotate first).
 
 **Do:** as staff with `ai.*`, `SELECT public.issue_ai_token();` Decode the three JWS segments (base64url, no padding).
 

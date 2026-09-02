@@ -172,7 +172,7 @@ path and every inherited prohibition the slice can emit).
 
 Named tests (numbering is per suite):
 
-*Keystore suite* (`ai_keystore_rls.sql` — T01–T11):
+*Keystore suite* (`ai_keystore_rls.sql` — T01–T13):
 
 - `T01 keystore anon read denied` — layer: SQL / RLS
 - `T02 keystore authenticated read denied` — layer: SQL / RLS
@@ -187,7 +187,9 @@ Named tests (numbering is per suite):
 - `T08 revoke empty kid → INVALID_INPUT` — layer: SQL / RLS
 - `T09 revoke unknown kid → KEY_NOT_FOUND` — layer: SQL / RLS
 - `T10 rotate before enroll → INSTALLATION_NOT_ENROLLED` — layer: SQL / RLS
-- `T11 enroll with active key → ALREADY_ENROLLED; re-enroll after all keys revoked succeeds` — layer: SQL / RLS
+- `T11 enroll with active key → ALREADY_ENROLLED` — layer: SQL / RLS
+- `T12 revoke sole active key → CANNOT_REVOKE_LAST_ACTIVE_KEY` — layer: SQL / RLS
+- `T13 re-enroll after legacy all-revoked state (postgres) reuses installation_id` — layer: SQL / RLS
 
 *Issuer suite* (`ai_token_issuer.sql` — T07–T16):
 
@@ -256,12 +258,18 @@ leak across runs.
   (`enforce_single_installation`).
 - **FR-002c**: `enroll_installation_keypair` MUST reject with `ALREADY_ENROLLED` when any
   active key exists in `ai_internal.installation_keys` (active = `is_deleted = false` AND
-  `revoked_at IS NULL`). Re-enrollment MUST be permitted when no active key remains (all keys
-  revoked; recovery path reusing `installation_id`). Rotation remains
-  `rotate_installation_key`.
+  `revoked_at IS NULL`). Re-enrollment MUST be permitted when no active key remains (recovery
+  path reusing `installation_id`; typically postgres/admin — not by revoking every key through
+  `revoke_installation_key`). Rotation remains `rotate_installation_key`.
 - **FR-003**: A revoked signing key MUST be rejected during AAT verification (§3.11.2
   B1 row). `verify_aat` MUST return `false` (not throw) on malformed signatures and MUST
   bind payload `iss` to the key row's `installation_id`.
+- **FR-003a**: `revoke_installation_key` MUST reject with `CANNOT_REVOKE_LAST_ACTIVE_KEY`
+  when revoking would leave zero active keys (`is_deleted = false` AND `revoked_at IS NULL`).
+  Idempotent revoke of an already-revoked key MUST still succeed. Recovery re-enroll when no
+  active key remains stays on `enroll_installation_keypair` but is not reachable by revoking
+  every key through the revoke RPC — only via rotate-then-revoke for normal ops or
+  postgres/admin for disaster recovery.
 - **FR-004**: The AI token issuer RPC MUST verify the caller's session and reject an
   absent or expired session with `UNAUTHENTICATED` / `SESSION_EXPIRED` (§4.2 "AI token
   issuer RPC" row; §8.1 trust bootstrap).
@@ -419,8 +427,9 @@ Prohibitions copied from delivery plan §6.4 that this slice must not violate:
 - **SC-012**: Automated tests prove the remaining issuer bare codes (`STAFF_NOT_FOUND`,
   `BRANCH_NOT_FOUND`, `INSTALLATION_NOT_ENROLLED`, `AI_ACCESS_DENIED`) and keypair
   admin/error paths (`FORBIDDEN`, `INVALID_INPUT`, `KEY_NOT_FOUND`,
-  `INSTALLATION_NOT_ENROLLED` on rotate-before-enroll, `ALREADY_ENROLLED` on
-  enroll-with-active-key and re-enroll-after-revoke recovery).
+  `CANNOT_REVOKE_LAST_ACTIVE_KEY` on last-active revoke, `INSTALLATION_NOT_ENROLLED` on
+  rotate-before-enroll, `ALREADY_ENROLLED` on enroll-with-active-key and re-enroll-after-revoke
+  recovery via postgres simulation).
 
 ## Assumptions
 

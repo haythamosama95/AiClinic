@@ -171,7 +171,7 @@ timestamp; each is idempotent and re-runnable, matching the existing migration c
 | `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` | FR-001, FR-002 / FR-002a (`rotate`/`enroll` return `public_jwk` + `kid` + `installation_id`; additive insert with `clock_timestamp()`), FR-003 (`revoke` sets `revoked_at`). Public `SECURITY DEFINER` wrappers; `REVOKE EXECUTE … FROM PUBLIC/anon/authenticated` on `auth_internal` B1 functions. |
 | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql` | FR-004–FR-013a: session gates, RBAC claims, EdDSA mint, issuance ledger, per-actor `pg_advisory_xact_lock` + rate limit, bare issuer exception codes; `verify_aat` returns `false` on malformed/`iss` mismatch and does not check `exp`. |
 | `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` | Same FRs as the three originals — applies review fixes on DBs that already ran `20260801120000`–`20260801120200` (idempotent `CREATE OR REPLACE` / grant overlay). |
-| `backend/tests/ai_keystore_rls.sql` | T01–T10 (keystore access, `public_jwk`, rotation, previous-key verify, post-rotate mint kid, malformed/`iss` verify, revoked-key, admin FORBIDDEN, revoke/rotate errors). Suite ends in `ROLLBACK`. |
+| `backend/tests/ai_keystore_rls.sql` | T01–T13 (keystore access, `public_jwk`, rotation, previous-key verify, post-rotate mint kid, malformed/`iss` verify, revoked-key, admin FORBIDDEN, revoke/rotate errors, last-active revoke guard, legacy recovery re-enroll). Suite ends in `ROLLBACK`. |
 | `backend/tests/ai_token_issuer.sql` | T07–T16 (claim correctness, header `alg`, omissions, session codes, issuance row, per-actor rate limit, `exp`, remaining issuer codes). Restores rate-limit settings after mutation. |
 | `backend/tests/run_ai_platform_trust_tests.sh` | Verification mechanics — runs the two SQL suites against the local stack, mirroring `run_auth_backend_tests.sh`. Also appended to that script's `sql_tests` array. |
 | `specs/021-installation-keystore-aat-issuer/contracts/aat-token.md` | Freezes — the AAT JWS contract (header `{alg:"EdDSA", kid}`, §5.6 claim set, JWK `OKP`/`Ed25519` public-key format from §4.2.1, issuer error codes §9). Pinned by T07/T12 and keystore T05/T06. |
@@ -199,10 +199,12 @@ Numbering is **per suite** (keystore T01–T11; issuer T07–T16) — the labels
 | T05b post-rotation mint uses new `kid` | `ai_keystore_rls.sql` | SQL/RLS | After rotate in same txn (`clock_timestamp` ordering), new mint header `kid` equals rotate result. |
 | T05c malformed sig → false | `ai_keystore_rls.sql` | SQL/RLS | Tampered signature segment; `verify_aat` returns false, no throw. |
 | T05d `iss` mismatch → false | `ai_keystore_rls.sql` | SQL/RLS | Payload `iss` ≠ key row `installation_id`; `verify_aat` false. |
-| T06 revoked key rejected | `ai_keystore_rls.sql` | SQL/RLS | Mint, revoke, `verify_aat` false. |
+| T06 revoked key rejected | `ai_keystore_rls.sql` | SQL/RLS | Mint, rotate, revoke old `kid`, `verify_aat` false. |
 | T07 keystore admin FORBIDDEN | `ai_keystore_rls.sql` | SQL/RLS | Non-admin enroll/rotate/revoke → `FORBIDDEN` via `rpc_result`. |
 | T08–T10 revoke/rotate errors | `ai_keystore_rls.sql` | SQL/RLS | Empty kid → `INVALID_INPUT`; unknown kid → `KEY_NOT_FOUND`; rotate-before-enroll → `INSTALLATION_NOT_ENROLLED`. |
-| T11 enroll `ALREADY_ENROLLED` + re-enroll recovery | `ai_keystore_rls.sql` | SQL/RLS | Active key exists → second enroll returns `ALREADY_ENROLLED`; revoke all keys → re-enroll succeeds (same `installation_id`). |
+| T11 enroll `ALREADY_ENROLLED` | `ai_keystore_rls.sql` | SQL/RLS | Active key exists → second enroll returns `ALREADY_ENROLLED`. |
+| T12 last-active revoke rejected | `ai_keystore_rls.sql` | SQL/RLS | Sole active key → `CANNOT_REVOKE_LAST_ACTIVE_KEY`. |
+| T13 legacy recovery re-enroll | `ai_keystore_rls.sql` | SQL/RLS | Postgres sets all keys revoked → re-enroll succeeds (same `installation_id`). |
 | T07 / T07b claims + header | `ai_token_issuer.sql` | SQL/RLS | Mint; assert claim correctness + header `alg: EdDSA` / non-null `kid`. |
 | T08 / T08b scopes + omissions | `ai_token_issuer.sql` | SQL/RLS | Caller-supplied scopes ignored; deliberate-omission keys absent. |
 | T09 session codes | `ai_token_issuer.sql` | SQL/RLS | Absent → `UNAUTHENTICATED`; expired → `SESSION_EXPIRED` (after enrollment). |

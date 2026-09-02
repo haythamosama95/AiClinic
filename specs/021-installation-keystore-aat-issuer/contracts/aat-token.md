@@ -243,7 +243,9 @@ The platform accepts multiple active public keys per installation, selected by `
 `auth_internal.revoke_installation_key(p_kid)` sets `revoked_at` on the named key row. Verification
 MUST reject any AAT whose header `kid` references a revoked key, regardless of `exp` (contract test
 T06). Revocation is distinct from rotation: rotation adds a successor key; revocation terminates
-trust in a specific key.
+trust in a specific key. The RPC MUST reject revoking the last active key (`is_deleted = false` AND
+`revoked_at IS NULL`) with `CANNOT_REVOKE_LAST_ACTIVE_KEY` — operators rotate a replacement first.
+Idempotent revoke of an already-revoked key still succeeds.
 
 ### 8.3 Key selection rule
 
@@ -271,8 +273,10 @@ rotate includes `kid`, `installation_id`, and `public_jwk` (§7).
 A key is **active** when `is_deleted = false` AND `revoked_at IS NULL`. Second-call semantics for
 `enroll_installation_keypair`: when at least one active key exists, enroll MUST return
 `rpc_error` with code `ALREADY_ENROLLED` (test T11). When all keys are revoked, re-enrollment is
-permitted as a recovery path and reuses the clinic singleton `installation_id`. Additive key
-rotation remains `rotate_installation_key`, not a second enroll.
+permitted as a recovery path and reuses the clinic singleton `installation_id`. That zero-active
+state is not reachable by revoking every key through `revoke_installation_key` (last-active
+revoke returns `CANNOT_REVOKE_LAST_ACTIVE_KEY`). Additive key rotation remains
+`rotate_installation_key`, not a second enroll.
 
 | Code | Routine | When |
 | --- | --- | --- |
@@ -280,6 +284,7 @@ rotation remains `rotate_installation_key`, not a second enroll.
 | `FORBIDDEN` | enroll / rotate / revoke | Caller is not owner or administrator |
 | `INVALID_INPUT` | `revoke_installation_key` | Empty or null `p_kid` |
 | `KEY_NOT_FOUND` | `revoke_installation_key` | No row matches `p_kid` |
+| `CANNOT_REVOKE_LAST_ACTIVE_KEY` | `revoke_installation_key` | Revoke would leave zero active keys — rotate a replacement first |
 | `INSTALLATION_NOT_ENROLLED` | `rotate_installation_key` | No active key exists to rotate |
 
 ### 9.2 Issuer RPC (bare exception codes)

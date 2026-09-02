@@ -67,7 +67,7 @@ export const STAGE2_OPERATIONS: Stage2OperationDefinition[] = [
     rpcName: 'revoke_installation_key',
     path: '/rest/v1/rpc/revoke_installation_key',
     summary:
-      'Marks one key row as revoked by kid. Tokens signed with that kid must not verify afterward. Idempotent when the key is already revoked.',
+      'Marks one key row as revoked by kid. Tokens signed with that kid must not verify afterward. Idempotent when the key is already revoked. Cannot revoke the last active key — rotate a replacement first.',
     authHint: 'Owner or administrator session — admin credentials from Secrets',
     paramName: 'p_kid',
     paramHint: 'installation_keys.kid from a prior enroll or rotate response',
@@ -77,6 +77,11 @@ export const STAGE2_OPERATIONS: Stage2OperationDefinition[] = [
       { status: 200, error: 'FORBIDDEN', trigger: 'Caller is not owner or administrator' },
       { status: 200, error: 'INVALID_INPUT', trigger: 'p_kid is null or blank after trim' },
       { status: 200, error: 'KEY_NOT_FOUND', trigger: 'No non-deleted row with that kid' },
+      {
+        status: 200,
+        error: 'CANNOT_REVOKE_LAST_ACTIVE_KEY',
+        trigger: 'Revoke would leave zero active keys — rotate a replacement first',
+      },
     ],
   },
   {

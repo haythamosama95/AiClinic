@@ -34,7 +34,8 @@
      - [8.3.11 Platform does not know the clinic yet](#8311-platform-does-not-know-the-clinic-yet)
      - [8.3.12 Stage 3 enroll using this RPC’s output (happy path §6)](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6)
      - [8.3.13 Availability flag after the key exists](#8313-availability-flag-after-the-key-exists)
-     - [8.3.14 Recovery re-enroll after all keys revoked](#8314-recovery-re-enroll-after-all-keys-revoked)
+     - [8.3.14 Cannot revoke last active key](#8314-cannot-revoke-last-active-key)
+     - [8.3.15 Recovery re-enroll after all keys revoked (postgres simulation)](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation)
 
 ---
 
@@ -45,7 +46,7 @@
 
 The clinic generates an Ed25519 keypair **inside Supabase**. The private key never leaves the clinic database. The public key and `kid` are later copied to the platform enroll call.
 
-After the first enroll, operators **rotate** keys with `rotate_installation_key()` (adds a new signing key, keeps the same `installation_id`) and **revoke** old keys with `revoke_installation_key(kid)` when a key should no longer verify tokens.
+After the first enroll, operators **rotate** keys with `rotate_installation_key()` (adds a new signing key, keeps the same `installation_id`) and **revoke** old keys with `revoke_installation_key(kid)` when overlap ends. Revoke cannot remove the **last** active key (`is_deleted = false` and `revoked_at IS NULL`) — rotate a replacement first, then revoke the old `kid`. Normal ops never reach zero active keys via the revoke API; recovery re-enroll when every key is revoked remains on `enroll_installation_keypair` but is reachable only via postgres/admin simulation or disaster recovery, not by revoking every key through the RPC.
 
 ## 2. Metaphor
 
@@ -75,7 +76,7 @@ The clinic prints its own **signing stamp** (private key) and sends a **stamp sp
 
 
 **About** `kid`**:** `installation_id` identifies *which clinic*; `kid` identifies *which signing key* for that
-clinic. Steady state is one active key. Production rotation uses `rotate_installation_key()` ([§3.1](#31-api-publicrotate_installation_key)). A second `enroll_installation_keypair()` while an active key exists (`is_deleted = false` and `revoked_at IS NULL`) fails with `ALREADY_ENROLLED`. Re-enroll is allowed only when every non-deleted key row is revoked (recovery path): the RPC reuses `installation_id` from existing non-deleted rows and mints a new `kid`.
+clinic. Steady state is one active key. Production rotation uses `rotate_installation_key()` ([§3.1](#31-api-publicrotate_installation_key)). A second `enroll_installation_keypair()` while an active key exists (`is_deleted = false` and `revoked_at IS NULL`) fails with `ALREADY_ENROLLED`. Re-enroll is allowed only when **no** active key remains (recovery path): the RPC reuses `installation_id` from existing non-deleted rows and mints a new `kid`. That zero-active state cannot be produced by revoking every key through `revoke_installation_key` — the RPC rejects the last active key with `CANNOT_REVOKE_LAST_ACTIVE_KEY` ([§8.3.14](#8314-cannot-revoke-last-active-key)).
 
 Clinic keystore rotation is **additive**: old keys stay until revoked ([§3.2](#32-api-publicrevoke_installation_keyp_kid-text)). On the platform, `POST …/rotate` stamps `revoked_at` on prior D1 keys in the same batch as the new-key insert ([§7 in Stage 3](05-stage-3-platform-installation-enrollment.md#7-api-post-controlinstallationsinstallation_idrotate)). In-flight AATs signed with an old `kid` fail identity on the platform as soon as rotate returns — there is no platform dual-key overlap. Operators mint new AATs with the new `kid`. The platform selects the public key by AAT header `kid` (with payload `iss`). Revoked keys are rejected regardless of `exp`.
 
@@ -159,14 +160,17 @@ Marks one key row as revoked. Tokens signed with that `kid` must not verify afte
 
 If the key was already revoked, the RPC returns success with the **existing** `revoked_at` (idempotent).
 
+Revoking the **last** active key (`is_deleted = false` and `revoked_at IS NULL`) is rejected — operators must `rotate_installation_key()` first, then revoke the superseded `kid`. Idempotent revoke of an already-revoked key still succeeds even when it is the only key row left.
+
 **Errors:**
 
 
-| Code            | When                                      |
-| --------------- | ----------------------------------------- |
-| `FORBIDDEN`     | Caller is not owner or administrator      |
-| `INVALID_INPUT` | `p_kid` is null or blank after trim     |
-| `KEY_NOT_FOUND` | No non-deleted row with that `kid`        |
+| Code                            | When                                                                 |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `FORBIDDEN`                     | Caller is not owner or administrator                                 |
+| `INVALID_INPUT`                 | `p_kid` is null or blank after trim                                  |
+| `KEY_NOT_FOUND`                 | No non-deleted row with that `kid`                                   |
+| `CANNOT_REVOKE_LAST_ACTIVE_KEY` | Revoke would leave zero active keys — rotate a replacement first     |
 
 
 ### 3.3 API: `public.get_ai_availability()`
@@ -249,6 +253,7 @@ is separate.
 | `revoke_installation_key`         | Non-admin caller                  | `FORBIDDEN`                     | Session role                   |
 | `revoke_installation_key`         | Blank `p_kid`                     | `INVALID_INPUT`                 | Parameter                      |
 | `revoke_installation_key`         | Unknown or soft-deleted `kid`     | `KEY_NOT_FOUND`                 | Parameter                      |
+| `revoke_installation_key`         | Last active key for installation  | `CANNOT_REVOKE_LAST_ACTIVE_KEY` | Rotate replacement first       |
 | `get_ai_availability`             | `anon` / unauthenticated          | PostgREST denied                | No `GRANT` to `anon`           |
 
 
@@ -268,7 +273,7 @@ Later key changes:
 ```
 Owner/admin session
   → rotate_installation_key()     # new kid + public_jwk, same installation_id
-  → revoke_installation_key(kid)  # retire an old kid when overlap ends
+  → revoke_installation_key(kid)  # retire an old kid when overlap ends (not the last active key)
 ```
 
 
@@ -331,7 +336,7 @@ The platform does **not** assign `installation_id`. The clinic mints it:
 
 | Step         | Where                                           | What happens                                                                                                                                                       |
 | ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mint         | Clinic Postgres (`enroll_installation_keypair`) | On first enroll, `installation_id := gen_random_uuid()` when no active key row exists; reused on `rotate_installation_key` and on recovery re-enroll when all keys are revoked                       |
+| Mint         | Clinic Postgres (`enroll_installation_keypair`) | On first enroll, `installation_id := gen_random_uuid()` when no active key row exists; reused on `rotate_installation_key` and on recovery re-enroll when no active key remains (typically postgres/admin — not via revoke API) |
 | Carry        | Flutter (client)                                | Reads `installation_id` from the RPC response                                                                                                                      |
 | Register     | AI platform D1                                  | Flutter passes the same value as the **path parameter** on `POST /control/installations/{installation_id}/enroll`; D1 `installation.installation_id` is that value |
 | Verify later | Every AAT                                       | Payload claim `iss` must equal the enrolled `installation_id`; header `kid` selects the public key row                                                             |
@@ -418,6 +423,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `revoke_installation_key(kid)` returns `{ kid, revoked_at }`; idempotent on second call | [§8.3.7](#837-revoke-installation-key-happy-path) |
 | Revoked `kid` fails `verify_aat`; unrevoked sibling `kid` still verifies | [§8.3.7](#837-revoke-installation-key-happy-path) |
 | Blank / unknown `p_kid` on revoke → `INVALID_INPUT` / `KEY_NOT_FOUND` | [§8.3.7](#837-revoke-installation-key-happy-path) |
+| Revoke last active key → `CANNOT_REVOKE_LAST_ACTIVE_KEY`; K1 stays unrevoked | [§8.3.7](#837-revoke-installation-key-happy-path), [§8.3.14](#8314-cannot-revoke-last-active-key) |
 | Second distinct `installation_id` → `SINGLE_INSTALLATION_VIOLATION` | [§8.3.9](#839-single-installation-trigger-failure-path) |
 | AAT `iss` = `installation_id`; header `kid` selects this key | [§8.3.10](#8310-mint-an-aat-from-this-key-happy-path-for-the-handoff-fields) |
 | Clinic enroll does not register D1; capability POST fails identity | [§8.3.11](#8311-platform-does-not-know-the-clinic-yet) |
@@ -426,7 +432,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Re-enroll same installation/org → 409 `already_enrolled` ([§7.4](#74-duplicate-installation_id-across-clinics)) | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
 | Enroll leaves entitlement `pending` / zero quota ([§7.5](#75-what-this-stage-does-not-do)) | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
 | Manual `UPDATE` flips the flag; no `set_ai_availability` RPC; flag does not grant quotas | [§8.3.13](#8313-availability-flag-after-the-key-exists) |
-| Recovery re-enroll after all keys revoked reuses `installation_id`, mints new `kid` | [§8.3.14](#8314-recovery-re-enroll-after-all-keys-revoked) |
+| Recovery re-enroll when no active key remains reuses `installation_id`, mints new `kid` (postgres simulation) | [§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation) |
 
 
 ### 8.3 Ordered probes
@@ -570,6 +576,14 @@ SELECT public.revoke_installation_key('K0');
 
 **Do:** mint an AAT as doctor. Decode header `kid`. If it is **K0**, `SELECT auth_internal.verify_aat('<token>');` must be `false`. Mint again (or use a token with **K1**) — `verify_aat` is `true` while K1 remains unrevoked.
 
+**Do:** as **owner**, attempt to revoke the last active key:
+
+```sql
+SELECT public.revoke_installation_key('K1');
+```
+
+**Expect:** `success = false`, `error_code = 'CANNOT_REVOKE_LAST_ACTIVE_KEY'`, message *Cannot revoke the last active installation key. Rotate a replacement key first.* As `postgres`, **K1** still has `revoked_at IS NULL`. Normal rotation retires old keys only after a successor exists ([§8.3.14](#8314-cannot-revoke-last-active-key)).
+
 #### 8.3.8 Rotate before enroll fails (`INSTALLATION_NOT_ENROLLED`)
 
 Empty-keystore guard for `rotate_installation_key()`. **Performed in [§8.3.3](#833-enroll-failure-paths)** before first enroll so the probe sequence stays top-to-bottom without a mid-run reset.
@@ -688,11 +702,25 @@ SELECT public.get_ai_availability();
 
 **Expect:** still not entitled. The availability flag does not grant quotas.
 
-#### 8.3.14 Recovery re-enroll after all keys revoked
+#### 8.3.14 Cannot revoke last active key
 
-**Do:** as **owner**, revoke every still-active `kid` (e.g. **K1** from [§8.3.7](#837-revoke-installation-key-happy-path) if not already revoked). As `postgres`:
+The revoke API enforces at least one active key per installation. After [§8.3.7](#837-revoke-installation-key-happy-path) revokes **K0**, **K1** is the sole active key — `revoke_installation_key('K1')` must fail with `CANNOT_REVOKE_LAST_ACTIVE_KEY` (probe performed there).
+
+**Do:** as **owner**, with only **K1** still active, call `revoke_installation_key('K1')` again if needed.
+
+**Expect:** same failure. Operators rotate first (`rotate_installation_key()` → **K2**), revoke **K1**, and may revoke **K0** if still present — never the last unrevoked key via RPC.
+
+#### 8.3.15 Recovery re-enroll after all keys revoked (postgres simulation)
+
+Recovery re-enroll (`enroll_installation_keypair` when no active key remains) is **not** reachable by revoking every key through the API ([§8.3.14](#8314-cannot-revoke-last-active-key)). Simulate disaster recovery as `postgres`:
+
+**Do:** stamp `revoked_at` on every non-deleted row (including **K1**):
 
 ```sql
+UPDATE ai_internal.installation_keys
+SET revoked_at = clock_timestamp()
+WHERE is_deleted = false AND revoked_at IS NULL;
+
 SELECT count(*) FROM ai_internal.installation_keys
 WHERE is_deleted = false AND revoked_at IS NULL;
 ```
@@ -705,4 +733,4 @@ WHERE is_deleted = false AND revoked_at IS NULL;
 SELECT public.enroll_installation_keypair();
 ```
 
-**Expect:** `success = true`. **Same** `installation_id` **I0**. New `kid` (**Kx** ≠ **K0**, **K1**). As `postgres`, exactly one active row (`revoked_at IS NULL`). This is the recovery path when every prior key has been revoked.
+**Expect:** `success = true`. **Same** `installation_id` **I0**. New `kid` (**Kx** ≠ **K0**, **K1**). As `postgres`, exactly one active row (`revoked_at IS NULL`). This is the recovery path when every prior key has been revoked outside normal revoke RPC flow.

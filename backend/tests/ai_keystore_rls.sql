@@ -1,4 +1,4 @@
--- Installation keystore RLS and rotation tests (B1 slice T01–T12).
+-- Installation keystore RLS and rotation tests (B1 slice T01–T13).
 -- Run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/ai_keystore_rls.sql
 
 BEGIN;
@@ -758,8 +758,16 @@ BEGIN
   BEGIN
     v_result := public.enroll_installation_keypair();
     v_kid := v_result.data ->> 'kid';
+    IF NOT v_result.success THEN
+      RAISE EXCEPTION '%', COALESCE(v_result.error_code, 'enroll failed');
+    END IF;
 
     v_token := public.issue_ai_token();
+
+    v_result := public.rotate_installation_key();
+    IF NOT v_result.success THEN
+      RAISE EXCEPTION '%', COALESCE(v_result.error_code, 'rotate failed');
+    END IF;
 
     v_result := public.revoke_installation_key(v_kid);
 
@@ -1070,7 +1078,57 @@ BEGIN
 END;
 $$;
 
--- T12: revoke the only key, then enroll → succeeds; installation_id reused.
+-- T12: revoke sole active key → CANNOT_REVOKE_LAST_ACTIVE_KEY.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_bootstrap_staff uuid := 'b0000000-0000-4000-8000-000000000001';
+  v_result public.rpc_result;
+  v_org_id uuid;
+  v_kid1 text;
+  v_passed boolean;
+  v_detail text;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
+  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+  IF to_regclass('ai_internal.ai_token_issuance') IS NOT NULL THEN
+    DELETE FROM ai_internal.ai_token_issuance WHERE true;
+  END IF;
+  IF to_regclass('ai_internal.installation_keys') IS NOT NULL THEN
+    DELETE FROM ai_internal.installation_keys WHERE true;
+  END IF;
+
+  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
+  v_result := public.bootstrap_create_organization('AI LastKey Clinic', '{}'::jsonb, NULL, 'EGP', 'UTC');
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+  PERFORM public.bootstrap_create_branch(v_org_id, 'LastKey Branch', NULL, NULL, 'LKB1', NULL);
+
+  v_result := public.enroll_installation_keypair();
+  v_kid1 := v_result.data ->> 'kid';
+
+  v_result := public.revoke_installation_key(v_kid1);
+
+  v_passed := NOT v_result.success
+    AND v_result.error_code = 'CANNOT_REVOKE_LAST_ACTIVE_KEY'
+    AND v_kid1 IS NOT NULL;
+  v_detail := 'success=' || v_result.success::text
+    || ' error_code=' || COALESCE(v_result.error_code, '<null>')
+    || ' kid=' || COALESCE(v_kid1, '<null>');
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_keystore_rls_results VALUES (
+    'T12_cannot_revoke_last_active_key',
+    v_passed,
+    v_detail
+  );
+END;
+$$;
+
+-- T13: legacy all-revoked state, then enroll → succeeds; installation_id reused.
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -1106,11 +1164,13 @@ BEGIN
   v_kid1 := v_result.data ->> 'kid';
   v_installation_id := (v_result.data ->> 'installation_id')::uuid;
 
-  v_result := public.revoke_installation_key(v_kid1);
-  IF NOT v_result.success THEN
-    RAISE EXCEPTION 'fixture revoke failed: %', COALESCE(v_result.error_code, '<null>');
-  END IF;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE ai_internal.installation_keys
+  SET revoked_at = clock_timestamp()
+  WHERE is_deleted = false
+    AND revoked_at IS NULL;
 
+  PERFORM pg_temp.set_authenticated_session(v_bootstrap_user);
   v_result := public.enroll_installation_keypair();
   v_kid2 := v_result.data ->> 'kid';
 
@@ -1132,8 +1192,9 @@ BEGIN
     || ' kids=' || COALESCE(v_kid1, '<null>') || ',' || COALESCE(v_kid2, '<null>')
     || ' active=' || v_active_count::text;
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO ai_keystore_rls_results VALUES (
-    'T12_reenroll_after_revoke_reuses_installation_id',
+    'T13_reenroll_after_legacy_all_revoked_reuses_installation_id',
     v_passed,
     v_detail
   );
