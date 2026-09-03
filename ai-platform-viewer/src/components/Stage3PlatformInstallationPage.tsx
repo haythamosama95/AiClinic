@@ -1,7 +1,20 @@
 import { useState } from 'react'
+import type { Stage3OperationId } from '@/catalog/stage-3-platform-installation'
 import { STAGE3_OPERATIONS } from '@/catalog/stage-3-platform-installation'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { PlatformOperationCard } from '@/components/PlatformOperationCard'
+import {
+  CommandCard,
+  CommandDeck,
+  StagePage,
+  StagePageIntro,
+  StagePageSeed,
+  stage3CommandTone,
+} from '@/components/containers'
+import {
+  Stage3CommandPanel,
+  stage3AuthLabel,
+  stage3PathDisplay,
+} from '@/components/Stage3CommandPanel'
 import { useClinicEnrollmentMaterial } from '@/hooks/useClinicEnrollmentMaterial'
 import { resetInstallations } from '@/lib/dev-api'
 
@@ -16,6 +29,16 @@ export function Stage3PlatformInstallationPage() {
   const [busy, setBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [selectedCommand, setSelectedCommand] = useState<Stage3OperationId | null>(
+    null,
+  )
+
+  const selectedOperation =
+    STAGE3_OPERATIONS.find((operation) => operation.id === selectedCommand) ?? null
+
+  function selectCommand(id: Stage3OperationId) {
+    setSelectedCommand((current) => (current === id ? null : id))
+  }
 
   async function handleResetInstallations() {
     setBusy(true)
@@ -36,15 +59,107 @@ export function Stage3PlatformInstallationPage() {
   }
 
   return (
-    <section className="stage-page stage-page--platform">
-      <header className="stage-page__intro">
-        <div className="stage-page__intro-row">
-          <div>
-            <p className="stage-page__eyebrow stage-page__eyebrow--platform">
-              Stage 3 · Platform installation enrollment
-            </p>
-            <h2>Passport office registers the airline</h2>
-          </div>
+    <StagePage accentClass="stage-page--platform">
+      <StagePageIntro
+        eyebrow="Stage 3 · Platform installation enrollment"
+        eyebrowClass="stage-page__eyebrow--platform"
+        title="Passport office registers the airline"
+        lede={
+          <>
+            The control-plane caller files the clinic&apos;s public key specimen on
+            Cloudflare D1. <code>installation_id</code> comes from Stage 2 — the
+            platform never mints or discovers it. Enroll returns only{' '}
+            <code>platform_base_url</code>; entitlement stays{' '}
+            <code>pending</code> with zero quotas until Stage 4. After enroll,
+            operators can rotate, revoke-key, suspend, resume, delete, or purge.
+            Staff AATs are never accepted on <code>/control/*</code>.
+          </>
+        }
+        details={
+          <>
+            <StagePageSeed label="Clinic defaults (Supabase)" variant="platform">
+              {clinicMaterialStatus === 'loading' ? (
+                <p className="operation-card__hint">Loading installation key from Postgres…</p>
+              ) : clinicMaterialError ? (
+                <p className="operation-card__hint" role="alert">
+                  {clinicMaterialError}
+                </p>
+              ) : clinicMaterial ? (
+                <dl className="stage-page__seed-grid">
+                  <div>
+                    <dt>installation_id</dt>
+                    <dd>
+                      <code>{clinicMaterial.installation_id}</code>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>kid</dt>
+                    <dd>
+                      <code>{clinicMaterial.kid}</code>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>org_id</dt>
+                    <dd>
+                      <code>{clinicMaterial.org_id}</code>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>display_name</dt>
+                    <dd>{clinicMaterial.display_name}</dd>
+                  </div>
+                  <div>
+                    <dt>public_key</dt>
+                    <dd>
+                      <code>{clinicMaterial.public_key}</code>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>ai.aat.ver</dt>
+                    <dd>
+                      <code>{clinicMaterial.aat_ver}</code>
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="operation-card__hint">
+                  No active clinic key in Supabase — run Stage 2{' '}
+                  <code>enroll_installation_keypair</code> first.
+                </p>
+              )}
+            </StagePageSeed>
+
+            <StagePageSeed label="D1 state after first enroll" variant="platform">
+              <dl className="stage-page__seed-grid">
+                <div>
+                  <dt>installation.status</dt>
+                  <dd>active</dd>
+                </div>
+                <div>
+                  <dt>entitlement.status</dt>
+                  <dd>pending</dd>
+                </div>
+                <div>
+                  <dt>request_quota</dt>
+                  <dd>0</dd>
+                </div>
+                <div>
+                  <dt>allowed_capabilities</dt>
+                  <dd>[]</dd>
+                </div>
+                <div>
+                  <dt>control_audit.action</dt>
+                  <dd>enroll</dd>
+                </div>
+                <div>
+                  <dt>R2 writes</dt>
+                  <dd>none</dd>
+                </div>
+              </dl>
+            </StagePageSeed>
+          </>
+        }
+        action={
           <button
             type="button"
             className="danger-button danger-button--compact"
@@ -53,17 +168,8 @@ export function Stage3PlatformInstallationPage() {
           >
             Reset installations
           </button>
-        </div>
-        <p className="stage-page__lede">
-          The control-plane caller files the clinic&apos;s public key specimen on
-          Cloudflare D1. <code>installation_id</code> comes from Stage 2 — the
-          platform never mints or discovers it. Enroll returns only{' '}
-          <code>platform_base_url</code>; entitlement stays{' '}
-          <code>pending</code> with zero quotas until Stage 4. After enroll,
-          operators can rotate, revoke-key, suspend, resume, delete, or purge.
-          Staff AATs are never accepted on <code>/control/*</code>.
-        </p>
-      </header>
+        }
+      />
 
       {statusMessage ? (
         <div className="status-banner status-banner--ok" role="status">
@@ -76,103 +182,41 @@ export function Stage3PlatformInstallationPage() {
         </div>
       ) : null}
 
-      <div className="stage-page__seed stage-page__seed--platform">
-        <p className="stage-page__seed-label">Clinic defaults (Supabase)</p>
-        {clinicMaterialStatus === 'loading' ? (
-          <p className="operation-card__hint">Loading installation key from Postgres…</p>
-        ) : clinicMaterialError ? (
-          <p className="operation-card__hint" role="alert">
-            {clinicMaterialError}
-          </p>
-        ) : clinicMaterial ? (
-          <dl className="stage-page__seed-grid">
-            <div>
-              <dt>installation_id</dt>
-              <dd>
-                <code>{clinicMaterial.installation_id}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>kid</dt>
-              <dd>
-                <code>{clinicMaterial.kid}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>org_id</dt>
-              <dd>
-                <code>{clinicMaterial.org_id}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>display_name</dt>
-              <dd>{clinicMaterial.display_name}</dd>
-            </div>
-            <div>
-              <dt>public_key</dt>
-              <dd>
-                <code>{clinicMaterial.public_key}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>ai.aat.ver</dt>
-              <dd>
-                <code>{clinicMaterial.aat_ver}</code>
-              </dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="operation-card__hint">
-            No active clinic key in Supabase — run Stage 2{' '}
-            <code>enroll_installation_keypair</code> first.
-          </p>
-        )}
-      </div>
-
-      <div className="stage-page__seed stage-page__seed--platform">
-        <p className="stage-page__seed-label">D1 state after first enroll</p>
-        <dl className="stage-page__seed-grid">
-          <div>
-            <dt>installation.status</dt>
-            <dd>active</dd>
-          </div>
-          <div>
-            <dt>entitlement.status</dt>
-            <dd>pending</dd>
-          </div>
-          <div>
-            <dt>request_quota</dt>
-            <dd>0</dd>
-          </div>
-          <div>
-            <dt>allowed_capabilities</dt>
-            <dd>[]</dd>
-          </div>
-          <div>
-            <dt>control_audit.action</dt>
-            <dd>enroll</dd>
-          </div>
-          <div>
-            <dt>R2 writes</dt>
-            <dd>none</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div className="stage-page__operations">
+      <CommandDeck
+        eyebrow="Control commands"
+        lede="Pick a command card — its request manifest opens in the panel below."
+        ariaLabel="Control plane commands"
+        panel={
+          selectedOperation ? (
+            <Stage3CommandPanel
+              key={selectedOperation.id}
+              operation={selectedOperation}
+              clinicMaterial={clinicMaterial}
+              clinicMaterialLoading={clinicMaterialStatus === 'loading'}
+              clinicMaterialError={clinicMaterialError}
+              onReloadClinicDefaults={() => {
+                void reloadClinicMaterial()
+              }}
+              onClose={() => setSelectedCommand(null)}
+            />
+          ) : null
+        }
+      >
         {STAGE3_OPERATIONS.map((operation) => (
-          <PlatformOperationCard
+          <CommandCard
             key={operation.id}
-            operation={operation}
-            clinicMaterial={clinicMaterial}
-            clinicMaterialLoading={clinicMaterialStatus === 'loading'}
-            clinicMaterialError={clinicMaterialError}
-            onReloadClinicDefaults={() => {
-              void reloadClinicMaterial()
-            }}
+            method={operation.method}
+            title={operation.title}
+            path={stage3PathDisplay(operation)}
+            authLabel={stage3AuthLabel(operation)}
+            fieldCount={operation.fields.length}
+            tone={stage3CommandTone(operation)}
+            destructive={operation.destructive}
+            selected={selectedCommand === operation.id}
+            onSelect={() => selectCommand(operation.id)}
           />
         ))}
-      </div>
+      </CommandDeck>
 
       <ConfirmDialog
         open={resetOpen}
@@ -185,6 +229,6 @@ export function Stage3PlatformInstallationPage() {
         }}
         onCancel={() => setResetOpen(false)}
       />
-    </section>
+    </StagePage>
   )
 }

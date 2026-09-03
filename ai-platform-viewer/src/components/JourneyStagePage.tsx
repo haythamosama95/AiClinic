@@ -1,7 +1,20 @@
 import { useState, type ReactNode } from 'react'
 import type { JourneyOperationDefinition, JourneyStageMeta } from '@/catalog/journey-types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { JourneyOperationCard } from '@/components/JourneyOperationCard'
+import {
+  CommandCard,
+  CommandDeck,
+  CommandDeckSection,
+  journeyAuthLabel,
+  journeyCommandTone,
+  StagePage,
+  StagePageIntro,
+} from '@/components/containers'
+import {
+  JourneyCommandPanel,
+  journeyCommandFieldCount,
+  journeyCommandPath,
+} from '@/components/JourneyCommandPanel'
 import { useClinicEnrollmentMaterial } from '@/hooks/useClinicEnrollmentMaterial'
 
 interface SyncAction {
@@ -17,6 +30,8 @@ interface JourneyStagePageProps {
   operations: JourneyOperationDefinition[]
   seedPanels?: ReactNode
   syncAction?: SyncAction
+  deckEyebrow?: string
+  deckLede?: string
 }
 
 export function JourneyStagePage({
@@ -24,6 +39,8 @@ export function JourneyStagePage({
   operations,
   seedPanels,
   syncAction,
+  deckEyebrow = 'Commands',
+  deckLede = 'Pick a command card — its request manifest opens in the panel below.',
 }: JourneyStagePageProps) {
   const {
     material: clinicMaterial,
@@ -35,8 +52,15 @@ export function JourneyStagePage({
   const [busy, setBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [selectedCommand, setSelectedCommand] = useState<string | null>(null)
 
   const sections = [...new Set(operations.map((operation) => operation.section))]
+  const selectedOperation =
+    operations.find((operation) => operation.id === selectedCommand) ?? null
+
+  function selectCommand(id: string) {
+    setSelectedCommand((current) => (current === id ? null : id))
+  }
 
   async function handleSync() {
     if (!syncAction) {
@@ -58,14 +82,15 @@ export function JourneyStagePage({
   }
 
   return (
-    <section className={`stage-page ${meta.accentClass}`}>
-      <header className="stage-page__intro">
-        <div className="stage-page__intro-row">
-          <div>
-            <p className={`stage-page__eyebrow ${meta.accentClass}`}>{meta.eyebrow}</p>
-            <h2>{meta.title}</h2>
-          </div>
-          {syncAction ? (
+    <StagePage accentClass={meta.accentClass}>
+      <StagePageIntro
+        eyebrow={meta.eyebrow}
+        eyebrowClass={meta.accentClass}
+        title={meta.title}
+        lede={meta.lede}
+        details={seedPanels}
+        action={
+          syncAction ? (
             <button
               type="button"
               className="danger-button danger-button--compact"
@@ -74,10 +99,9 @@ export function JourneyStagePage({
             >
               {syncAction.label}
             </button>
-          ) : null}
-        </div>
-        <p className="stage-page__lede">{meta.lede}</p>
-      </header>
+          ) : undefined
+        }
+      />
 
       {statusMessage ? (
         <div className="status-banner status-banner--ok" role="status">
@@ -90,33 +114,48 @@ export function JourneyStagePage({
         </div>
       ) : null}
 
-      {seedPanels}
-
       {sections.length > 0 ? (
-        sections.map((section) => (
-          <div key={section} className="stage-page__section">
-            <h3 className="stage-page__section-title">{section}</h3>
-            <div className="stage-page__operations">
-              {operations
-                .filter((operation) => operation.section === section)
-                .map((operation) => (
-                  <JourneyOperationCard
-                    key={operation.id}
-                    operation={operation}
-                    clinicMaterial={clinicMaterial}
-                    clinicMaterialLoading={clinicMaterialStatus === 'loading'}
-                    clinicMaterialError={clinicMaterialError}
-                    onReloadClinicDefaults={() => {
-                      void reloadClinicMaterial()
-                    }}
-                    accentClass={meta.accentClass}
-                    cardClass={meta.cardClass}
-                    buttonClass={meta.buttonClass}
-                  />
-                ))}
-            </div>
-          </div>
-        ))
+        <CommandDeck
+          eyebrow={deckEyebrow}
+          lede={deckLede}
+          ariaLabel={`${meta.title} commands`}
+          panel={
+            selectedOperation ? (
+              <JourneyCommandPanel
+                key={selectedOperation.id}
+                operation={selectedOperation}
+                clinicMaterial={clinicMaterial}
+                clinicMaterialLoading={clinicMaterialStatus === 'loading'}
+                clinicMaterialError={clinicMaterialError}
+                onReloadClinicDefaults={() => {
+                  void reloadClinicMaterial()
+                }}
+                onClose={() => setSelectedCommand(null)}
+                buttonClass={meta.buttonClass}
+              />
+            ) : null
+          }
+        >
+          {sections.flatMap((section) => [
+            <CommandDeckSection key={`${section}-label`} title={section} />,
+            ...operations
+              .filter((operation) => operation.section === section)
+              .map((operation) => (
+                <CommandCard
+                  key={operation.id}
+                  method={operation.method === 'RPC' ? 'RPC' : operation.method}
+                  title={operation.title}
+                  path={journeyCommandPath(operation)}
+                  authLabel={journeyAuthLabel(operation.auth)}
+                  fieldCount={journeyCommandFieldCount(operation)}
+                  tone={journeyCommandTone(operation)}
+                  destructive={operation.destructive}
+                  selected={selectedCommand === operation.id}
+                  onSelect={() => selectCommand(operation.id)}
+                />
+              )),
+          ])}
+        </CommandDeck>
       ) : (
         <p className="operation-card__hint">
           Operations for this stage are not wired in the viewer yet.
@@ -136,6 +175,6 @@ export function JourneyStagePage({
           onCancel={() => setSyncOpen(false)}
         />
       ) : null}
-    </section>
+    </StagePage>
   )
 }

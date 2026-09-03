@@ -10,101 +10,101 @@ const NAV_ITEMS: Array<{
   note: string
   accentClass?: string
 }> = [
-  {
-    id: 'stage-0',
-    label: 'Stage 0',
-    short: '0',
-    note: 'Platform configuration and boot',
-    accentClass: 'side-nav__item--boot',
-  },
-  {
-    id: 'stage-1',
-    label: 'Stage 1',
-    short: '1',
-    note: 'Token contract baseline',
-  },
-  {
-    id: 'stage-2',
-    label: 'Stage 2',
-    short: '2',
-    note: 'Clinic keypair enrollment',
-    accentClass: 'side-nav__item--clinic',
-  },
-  {
-    id: 'stage-3',
-    label: 'Stage 3',
-    short: '3',
-    note: 'Platform installation enrollment',
-    accentClass: 'side-nav__item--platform',
-  },
-  {
-    id: 'stage-4',
-    label: 'Stage 4',
-    short: '4',
-    note: 'Entitlement and capability grants',
-    accentClass: 'side-nav__item--entitlement',
-  },
-  {
-    id: 'stage-5',
-    label: 'Stage 5',
-    short: '5',
-    note: 'Routing policy',
-    accentClass: 'side-nav__item--routing',
-  },
-  {
-    id: 'stage-6',
-    label: 'Stage 6',
-    short: '6',
-    note: 'Minting an AAT',
-    accentClass: 'side-nav__item--mint',
-  },
-  {
-    id: 'stage-7',
-    label: 'Stage 7',
-    short: '7',
-    note: 'Discovery',
-    accentClass: 'side-nav__item--discovery',
-  },
-  {
-    id: 'stage-8',
-    label: 'Stage 8',
-    short: '8',
-    note: 'Request ingress',
-    accentClass: 'side-nav__item--ingress',
-  },
-  {
-    id: 'stage-9',
-    label: 'Stage 9',
-    short: '9',
-    note: 'The guard',
-    accentClass: 'side-nav__item--guard',
-  },
-  {
-    id: 'stage-10',
-    label: 'Stage 10',
-    short: '10',
-    note: 'Accept, route, invoke, stream',
-    accentClass: 'side-nav__item--stream',
-  },
-  {
-    id: 'stage-11',
-    label: 'Stage 11',
-    short: '11',
-    note: 'Terminal settlement',
-    accentClass: 'side-nav__item--settlement',
-  },
-  {
-    id: 'stage-12',
-    label: 'Stage 12',
-    short: '12',
-    note: 'Lookup and support',
-    accentClass: 'side-nav__item--lookup',
-  },
-]
+    {
+      id: 'stage-0',
+      label: 'Stage 0',
+      short: '0',
+      note: 'Platform configuration and boot',
+      accentClass: 'side-nav__item--boot',
+    },
+    {
+      id: 'stage-1',
+      label: 'Stage 1',
+      short: '1',
+      note: 'Token contract baseline',
+    },
+    {
+      id: 'stage-2',
+      label: 'Stage 2',
+      short: '2',
+      note: 'Clinic keypair enrollment',
+      accentClass: 'side-nav__item--clinic',
+    },
+    {
+      id: 'stage-3',
+      label: 'Stage 3',
+      short: '3',
+      note: 'Platform installation enrollment',
+      accentClass: 'side-nav__item--platform',
+    },
+    {
+      id: 'stage-4',
+      label: 'Stage 4',
+      short: '4',
+      note: 'Entitlement and capability grants',
+      accentClass: 'side-nav__item--entitlement',
+    },
+    {
+      id: 'stage-5',
+      label: 'Stage 5',
+      short: '5',
+      note: 'Routing policy',
+      accentClass: 'side-nav__item--routing',
+    },
+    {
+      id: 'stage-6',
+      label: 'Stage 6',
+      short: '6',
+      note: 'Minting an AAT',
+      accentClass: 'side-nav__item--mint',
+    },
+    {
+      id: 'stage-7',
+      label: 'Stage 7',
+      short: '7',
+      note: 'Discovery',
+      accentClass: 'side-nav__item--discovery',
+    },
+    {
+      id: 'stage-8',
+      label: 'Stage 8',
+      short: '8',
+      note: 'Request ingress',
+      accentClass: 'side-nav__item--ingress',
+    },
+    {
+      id: 'stage-9',
+      label: 'Stage 9',
+      short: '9',
+      note: 'The guard',
+      accentClass: 'side-nav__item--guard',
+    },
+    {
+      id: 'stage-10',
+      label: 'Stage 10',
+      short: '10',
+      note: 'Accept, route, invoke, stream',
+      accentClass: 'side-nav__item--stream',
+    },
+    {
+      id: 'stage-11',
+      label: 'Stage 11',
+      short: '11',
+      note: 'Terminal settlement',
+      accentClass: 'side-nav__item--settlement',
+    },
+    {
+      id: 'stage-12',
+      label: 'Stage 12',
+      short: '12',
+      note: 'Lookup and support',
+      accentClass: 'side-nav__item--lookup',
+    },
+  ]
 
 export function SideNav() {
   const { activeSection, setActiveSection } = useSession()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   return (
     <nav
