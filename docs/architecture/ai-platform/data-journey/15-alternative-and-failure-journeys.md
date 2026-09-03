@@ -41,7 +41,7 @@ All of these routes share one `OPERATOR_BEARER_TOKEN` mapped to one `OPERATOR_ID
 | `POST …/suspend`    | `installation.status=suspended`                                                                                                 | AAT → `installation_suspended`                               |
 | `POST …/resume`     | `status=active`                                                                                                                 | Restores                                                     |
 | `POST …/delete`     | `status=deleted`                                                                                                                | `unauthenticated`                                            |
-| `POST …/rotate`     | New `installation_key` (`valid_until` = now + 365 days); `revoked_at = now` on prior unrevoked keys in the same batch           | Old `kid` fails identity immediately; new `kid` verifies     |
+| `POST …/rotate`     | New `installation_key` (`valid_until` = now + 365 days); prior unrevoked keys keep `revoked_at` NULL (additive; dual-key overlap) | Both old and new `kid` AATs verify until `revoke-key`      |
 | `POST …/revoke-key` | `revoked_at` on key                                                                                                             | AAT with that `kid` fails                                    |
 | `POST …/purge`      | Deletes installation data + R2 envelopes                                                                                        | Irreversible cleanup                                         |
 
@@ -194,7 +194,7 @@ Every claim in this file maps to a probe, including every [§8](#8-complete-pre-
 | One `OPERATOR_BEARER_TOKEN` / `OPERATOR_ID`; `control_audit` cannot distinguish operators | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
 | `POST …/suspend` → `installation.status=suspended` → AAT `installation_suspended` | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
 | `POST …/resume` → `status=active` → restores | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/rotate` → new key `valid_until` = now + 365 days; prior unrevoked keys `revoked_at=now`; old `kid` fails identity; new `kid` verifies | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
+| `POST …/rotate` → new key `valid_until` = now + 365 days; prior keys keep `revoked_at` NULL (dual-key overlap); old and new `kid` AATs verify until `revoke-key` | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
 | `POST …/revoke-key` → `revoked_at` on that key; AAT with that `kid` fails identity | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
 | `POST …/delete` → `status=deleted` → `unauthenticated` | [§11.3.10](#11310-retention-counters-delete-and-purge) |
 | `POST …/purge` deletes installation data + R2 envelopes (irreversible) | [§11.3.10](#11310-retention-counters-delete-and-purge) |
@@ -314,11 +314,11 @@ curl -sS -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
 
 Wait 31 s. Invoke with an AAT whose header `kid` is **K0**, then mint a new AAT (issuer picks the latest active clinic key) and invoke again.
 
-**Expect:** rotate HTTP 200. D1: **K1** row `valid_until` ≈ `valid_from` + 365 days (`INSTALLATION_KEY_TTL_DAYS`); **K0** `revoked_at` is now (same batch — no dual-key overlap). K0 AAT → HTTP 401 `unauthenticated`. New AAT with **K1** verifies at identity.
+**Expect:** rotate HTTP 200. D1: **K1** row `valid_until` ≈ `valid_from` + 365 days (`INSTALLATION_KEY_TTL_DAYS`); **K0** `revoked_at` stays NULL (additive rotate — dual-key overlap). K0 AAT still invokes successfully. New AAT with **K1** also verifies at identity.
 
-**Do:** `POST …/revoke-key` with `{"kid":"<K1>"}`. Wait 31 s. Invoke with the K1 AAT. Then as clinic admin, `SELECT public.rotate_installation_key();` — save new `kid` **K2** and `public_jwk.x`. Platform `POST …/rotate` with `{"kid":"<K2>","public_key":"<K2 public_jwk.x>","algorithm":"EdDSA"}`. Wait 31 s.
+**Do:** `POST …/revoke-key` with `{"kid":"<K0>"}`. Wait 31 s. Invoke with the K0 AAT (expect 401). Then `POST …/revoke-key` with `{"kid":"<K1>"}` (expect 409 `cannot_revoke_last_active_key`). As clinic admin, `SELECT public.rotate_installation_key();` — save new `kid` **K2** and `public_jwk.x`. Platform `POST …/rotate` with `{"kid":"<K2>","public_key":"<K2 public_jwk.x>","algorithm":"EdDSA"}`. Wait 31 s.
 
-**Expect:** revoke HTTP 200. K1 `revoked_at` set. K1 AAT → 401 `unauthenticated`. Repeat revoke → 409 `key_already_revoked`. Clinic `rotate_installation_key` → `success = true` with new **K2** (same `installation_id` **I0**). Platform rotate HTTP 200; prior unrevoked D1 keys get `revoked_at` in the same batch. Freshly minted AAT with **K2** verifies. Save **K2** as the live `kid`.
+**Expect:** revoke K0 HTTP 200; K0 `revoked_at` set. K0 AAT → 401 `unauthenticated`. Repeat revoke K0 → 409 `key_already_revoked`. Revoke K1 (last active key) → 409 `cannot_revoke_last_active_key`. Clinic `rotate_installation_key` → `success = true` with new **K2** (same `installation_id` **I0**). Platform rotate HTTP 200; **K1** `revoked_at` stays NULL (dual-key overlap with **K2**). Freshly minted AAT with **K2** verifies. Save **K2** as the live `kid`.
 
 #### 11.3.3 Zero quotas after entitle
 

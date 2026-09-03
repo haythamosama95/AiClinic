@@ -94,9 +94,9 @@ Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `tra
 
 
 `installation_key.valid_until` is written at enroll and rotate (`valid_from` + 365 days). Rotate
-stamps `revoked_at = now` on every currently unrevoked key for that installation in the same D1
-batch as the new-key insert — there is no platform dual-key overlap. Identity already rejects
-`now >= valid_until` and non-null `revoked_at`.
+is **additive**: it INSERTs the replacement key and leaves prior unrevoked keys' `revoked_at`
+NULL until an explicit `POST …/revoke-key` — dual-key overlap is intended (stage 3 §8.3). Identity
+already rejects `now >= valid_until` and non-null `revoked_at`.
 
 Installation, key, and token-contract rows are loaded through the isolate-scoped `ConfigCache`
 (30 s TTL). A warm isolate does not re-read D1 for the same keys on the next POST or GET within
@@ -485,7 +485,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Identity: non-active non-suspended status → `unauthenticated` | [§14.3.4](#1434-stage-2-d1-identity-suspend-and-token-contract) |
 | Identity: token contract missing or `retired_at` set → `unauthenticated` | [§14.3.4](#1434-stage-2-d1-identity-suspend-and-token-contract) |
 | `valid_until` = `valid_from` + 365 days at enroll/rotate | [§14.3.1](#1431-reset-to-a-known-clinic-and-platform-state), [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
-| Rotate stamps `revoked_at` on prior keys; no dual-key overlap | [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
+| Rotate INSERTs replacement key; prior keys stay live until `revoke-key` (dual-key overlap) | [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
 | `ConfigCache` 30 s TTL; warm isolate does not re-read D1 | [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
 | Principal fields: `installationId`, `organizationId`, `branchId`, `actorId`, `role`, `scopes`, `jti`, `iat`, `exp`, `ver` | [§14.3.10](#14310-happy-path-through-prompt-compose) |
 | Stage 3: `entitlement.status !== active` → `forbidden_capability` (`ai_disabled`) | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) |
@@ -1169,7 +1169,7 @@ sleep 31
 
 **Expect:** the immediate POST may still **pass identity** (cached `status=active`, 30 s TTL). The POST after 31 s is 403 `installation_suspended`. Warm isolate does not re-read D1 for the same key inside the window.
 
-**Do:** rotate (throwaway key), prove no dual-key overlap, restore `K0`:
+**Do:** rotate (throwaway key), prove dual-key overlap, then `revoke-key` cuts the old kid, restore `K0`:
 
 ```bash
 curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
@@ -1179,12 +1179,18 @@ curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
 d1 "SELECT key_id, revoked_at, valid_from, valid_until FROM installation_key
     WHERE installation_id = '$INSTALLATION_ID'"
 invoke "$CLINICIAN_AAT" rot-1 -d "{\"capability_id\":\"$CAP\"}"
+curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"kid\":\"$KID\"}"
+sleep 31
+invoke "$CLINICIAN_AAT" rot-2 -d "{\"capability_id\":\"$CAP\"}"
 d1 "UPDATE installation_key SET revoked_at = NULL WHERE key_id = '$KID'"
 d1 "DELETE FROM installation_key WHERE key_id = 'rotate-temp-kid'"
 sleep 31
 ```
 
-**Expect:** after rotate, exactly one row with `revoked_at` NULL (the new kid); `K0.revoked_at` set in the same batch. `valid_until` on the new row ≈ `valid_from` + 365 days. Old `CLINICIAN_AAT` (header `kid=K0`) → 401 `unauthenticated` regardless of `exp`. Restore `K0` before continuing.
+**Expect:** after rotate, **two** rows with `revoked_at` NULL (`K0` and `rotate-temp-kid`); `K0.revoked_at` stays NULL. `valid_until` on the new row ≈ `valid_from` + 365 days. Old `CLINICIAN_AAT` (header `kid=K0`) still invokes successfully (dual-key overlap). After `revoke-key` on `K0`, that AAT → 401 `unauthenticated` regardless of `exp`. Restore `K0` before continuing.
 
 **Do:**
 
