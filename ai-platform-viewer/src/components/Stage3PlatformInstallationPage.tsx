@@ -16,6 +16,7 @@ import {
   stage3PathDisplay,
 } from '@/components/Stage3CommandPanel'
 import { useClinicEnrollmentMaterial } from '@/hooks/useClinicEnrollmentMaterial'
+import { useSession } from '@/context/SessionContext'
 import { resetInstallations } from '@/lib/dev-api'
 
 export function Stage3PlatformInstallationPage() {
@@ -25,10 +26,9 @@ export function Stage3PlatformInstallationPage() {
     error: clinicMaterialError,
     reload: reloadClinicMaterial,
   } = useClinicEnrollmentMaterial()
+  const { notifySuccess, notifyError } = useSession()
   const [resetOpen, setResetOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedCommand, setSelectedCommand] = useState<Stage3OperationId | null>(
     null,
   )
@@ -42,14 +42,12 @@ export function Stage3PlatformInstallationPage() {
 
   async function handleResetInstallations() {
     setBusy(true)
-    setStatusMessage(null)
-    setErrorMessage(null)
     try {
       const result = await resetInstallations()
       await reloadClinicMaterial()
-      setStatusMessage(result.steps.join(' · '))
+      notifySuccess(result.steps.join(' · '))
     } catch (error) {
-      setErrorMessage(
+      notifyError(
         error instanceof Error ? error.message : 'Installation reset failed',
       )
     } finally {
@@ -171,20 +169,9 @@ export function Stage3PlatformInstallationPage() {
         }
       />
 
-      {statusMessage ? (
-        <div className="status-banner status-banner--ok" role="status">
-          {statusMessage}
-        </div>
-      ) : null}
-      {errorMessage ? (
-        <div className="status-banner status-banner--error" role="alert">
-          {errorMessage}
-        </div>
-      ) : null}
-
       <CommandDeck
         eyebrow="Control commands"
-        lede="Pick a command card — its request manifest opens in the panel below."
+        lede="Pick a command on the left — its request panel opens on the right."
         ariaLabel="Control plane commands"
         panel={
           selectedOperation ? (

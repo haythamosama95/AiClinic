@@ -1,4 +1,5 @@
 import type { JourneyOperationDefinition, JourneyStageMeta } from '@/catalog/journey-types'
+import { visitSummaryPostFields } from '@/catalog/visit-summary-probe-fields'
 
 export const STAGE4_META: JourneyStageMeta = {
   id: 'stage-4',
@@ -118,42 +119,7 @@ export const STAGE4_OPERATIONS: JourneyOperationDefinition[] = [
     path: '/v1/requests',
     auth: 'aat',
     bodyKind: 'json',
-    fields: [
-      {
-        name: 'capability_id',
-        scope: 'body',
-        defaultValue: 'clinic.visit_summary',
-        hint: 'Capability to invoke',
-      },
-      {
-        name: 'user_intent',
-        scope: 'body',
-        defaultValue: "Summarize today's visit for the chart.",
-        hint: 'User intent string',
-      },
-      {
-        name: 'context',
-        scope: 'body',
-        json: true,
-        defaultValue:
-          '{"org":"probe","branch":"probe","visit.chief_complaint@v1":"Patient reports headache for 3 days."}',
-        hint: 'JSON object — visit.chief_complaint@v1 required for visit summary',
-        wide: true,
-      },
-      {
-        name: 'x-idempotency-key',
-        scope: 'header',
-        defaultValue: '',
-        hint: 'Leave blank to generate a UUID on send',
-        wide: true,
-      },
-      {
-        name: 'x-capability-version',
-        scope: 'header',
-        defaultValue: '1.0.0',
-        hint: 'Required by adapter',
-      },
-    ],
+    fields: visitSummaryPostFields(),
     summary:
       'Probe guard stage 3 via runtime ingress. While entitlement is pending: 403 forbidden_capability (ai_disabled). After entitle with active status: passes stage 3 (may still fail later on Access role/scope).',
     successNote:

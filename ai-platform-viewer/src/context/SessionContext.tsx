@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import type { ToastItem } from '@/components/ToastStack'
 import { loadDevConfig, resetPlatform } from '@/lib/dev-api'
 import { resolveSupabaseAdminFromDevConfig } from '@/lib/supabase-admin'
 import {
@@ -40,13 +41,14 @@ interface SessionContextValue {
   aatRevealed: boolean
   setOperatorRevealed: (revealed: boolean) => void
   setAatRevealed: (revealed: boolean) => void
-  statusMessage: string | null
-  errorMessage: string | null
+  toasts: ToastItem[]
+  dismissToast: (id: string) => void
+  notifySuccess: (message: string) => void
+  notifyError: (message: string) => void
   busyAction: 'reset' | 'mint' | null
   mintAat: () => Promise<void>
   storeClinicAat: (token: string) => void
   resetAll: () => Promise<void>
-  clearMessages: () => void
   textScaleLevel: number
   increaseTextSize: () => void
   decreaseTextSize: () => void
@@ -55,6 +57,10 @@ interface SessionContextValue {
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
+
+function createToastId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [activeSection, setActiveSectionState] = useState<NavSection>(() =>
@@ -72,11 +78,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [aat, setAat] = useState('')
   const [operatorRevealed, setOperatorRevealed] = useState(false)
   const [aatRevealed, setAatRevealed] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [toasts, setToasts] = useState<ToastItem[]>([])
   const [busyAction, setBusyAction] = useState<'reset' | 'mint' | null>(null)
   const [textScaleLevel, setTextScaleLevel] = useState(TEXT_SCALE_DEFAULT_LEVEL)
   const startupMintDone = useRef(false)
+  const operationLock = useRef(false)
 
   const setActiveSection = useCallback((section: NavSection) => {
     const path = pathForSection(section)
@@ -131,20 +137,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSupabaseAdminSource(admin.source)
       })
       .catch((error: Error) => {
-        setErrorMessage(error.message)
+        setToasts((current) => [
+          ...current,
+          { id: createToastId(), message: error.message, variant: 'error' },
+        ])
       })
   }, [])
 
-  const clearMessages = useCallback(() => {
-    setStatusMessage(null)
-    setErrorMessage(null)
+  const dismissToast = useCallback((id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id))
+  }, [])
+
+  const notifySuccess = useCallback((message: string) => {
+    setToasts((current) => [
+      ...current,
+      { id: createToastId(), message, variant: 'ok' },
+    ])
+  }, [])
+
+  const notifyError = useCallback((message: string) => {
+    setToasts((current) => [
+      ...current,
+      { id: createToastId(), message, variant: 'error' },
+    ])
   }, [])
 
   const runMint = useCallback(
-    async (source: 'manual' | 'auto' | 'reset'): Promise<boolean> => {
+    async (
+      source: 'manual' | 'auto' | 'reset',
+      options?: { manageBusy?: boolean },
+    ): Promise<boolean> => {
+      const manageBusy = options?.manageBusy ?? true
+
       if (!operatorBearer) {
         if (source === 'manual') {
-          setErrorMessage(
+          notifyError(
             'Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.',
           )
         }
@@ -153,14 +180,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (!supabaseAdminUsername || !supabaseAdminPassword) {
         if (source === 'manual') {
-          setErrorMessage(
+          notifyError(
             'Supabase admin credentials not loaded. Open Secrets or set VITE_BOOTSTRAP_ADMIN_* in .env.local.',
           )
         }
         return false
       }
 
-      setBusyAction('mint')
+      if (manageBusy) {
+        if (operationLock.current) {
+          if (source === 'manual') {
+            notifyError('Another operation is already in progress.')
+          }
+          return false
+        }
+        operationLock.current = true
+        setBusyAction('mint')
+      }
+
       try {
         const { token, aatVer } = await mintAatFromSupabase(operatorBearer, {
           username: supabaseAdminUsername,
@@ -169,30 +206,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setAat(token)
         setAatRevealed(true)
         if (source === 'manual') {
-          setStatusMessage(
+          notifySuccess(
             `Minted AAT (ver=${aatVer}) and synced platform enrollment + token_contract.`,
           )
         } else if (source === 'auto') {
-          setStatusMessage(`Minted clinic AAT (ver=${aatVer}).`)
+          notifySuccess(`Minted clinic AAT (ver=${aatVer}).`)
         }
         return true
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Mint failed'
         if (source !== 'reset') {
-          setErrorMessage(message)
+          notifyError(message)
         }
         return false
       } finally {
-        setBusyAction(null)
+        if (manageBusy) {
+          operationLock.current = false
+          setBusyAction(null)
+        }
       }
     },
-    [operatorBearer, supabaseAdminUsername, supabaseAdminPassword],
+    [operatorBearer, supabaseAdminUsername, supabaseAdminPassword, notifyError, notifySuccess],
   )
 
   const mintAat = useCallback(async () => {
-    clearMessages()
     await runMint('manual')
-  }, [clearMessages, runMint])
+  }, [runMint])
 
   const storeClinicAat = useCallback((token: string) => {
     setAat(token)
@@ -200,28 +239,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetAll = useCallback(async () => {
-    clearMessages()
+    if (operationLock.current) {
+      notifyError('Another operation is already in progress.')
+      return
+    }
+
+    operationLock.current = true
     setBusyAction('reset')
     try {
       const result = await resetPlatform()
       setAat('')
-      const minted = await runMint('reset')
+      const minted = await runMint('reset', { manageBusy: false })
       if (minted) {
-        setStatusMessage(
+        notifySuccess(
           `${result.steps.join(' · ')} · Minted fresh clinic AAT after reset.`,
         )
       } else {
-        setErrorMessage(
+        notifyError(
           'Platform reset completed, but clinic AAT mint failed. Use Secrets to retry.',
         )
-        setStatusMessage(result.steps.join(' · '))
+        notifySuccess(result.steps.join(' · '))
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Reset failed')
+      notifyError(error instanceof Error ? error.message : 'Reset failed')
     } finally {
+      operationLock.current = false
       setBusyAction(null)
     }
-  }, [clearMessages, runMint])
+  }, [notifyError, notifySuccess, runMint])
 
   useEffect(() => {
     if (
@@ -255,13 +300,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       aatRevealed,
       setOperatorRevealed,
       setAatRevealed,
-      statusMessage,
-      errorMessage,
+      toasts,
+      dismissToast,
+      notifySuccess,
+      notifyError,
       busyAction,
       mintAat,
       storeClinicAat,
       resetAll,
-      clearMessages,
       textScaleLevel,
       increaseTextSize,
       decreaseTextSize,
@@ -280,13 +326,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       aat,
       operatorRevealed,
       aatRevealed,
-      statusMessage,
-      errorMessage,
+      toasts,
       busyAction,
       mintAat,
       storeClinicAat,
       resetAll,
-      clearMessages,
+      dismissToast,
+      notifySuccess,
+      notifyError,
       textScaleLevel,
       increaseTextSize,
       decreaseTextSize,

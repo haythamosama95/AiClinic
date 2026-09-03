@@ -1,4 +1,3 @@
-import { HeaderBar } from '@/components/HeaderBar'
 import { SecretsPage } from '@/components/SecretsPage'
 import { SideNav } from '@/components/SideNav'
 import { Stage0PlatformBootPage } from '@/components/Stage0PlatformBootPage'
@@ -13,7 +12,9 @@ import { Stage8IngressPage } from '@/components/Stage8IngressPage'
 import { Stage9GuardPage } from '@/components/Stage9GuardPage'
 import { Stage10StreamPage } from '@/components/Stage10StreamPage'
 import { Stage11SettlementPage } from '@/components/Stage11SettlementPage'
+import { GuardPipelinePage } from '@/components/GuardPipelinePage'
 import { Stage12LookupSupportPage } from '@/components/Stage12LookupSupportPage'
+import { ToastStack } from '@/components/ToastStack'
 import { useSession } from '@/context/SessionContext'
 import type { NavSection } from '@/types'
 import type { ReactNode } from 'react'
@@ -32,16 +33,14 @@ const STAGE_PAGES: Record<Exclude<NavSection, 'secrets'>, ReactNode> = {
   'stage-10': <Stage10StreamPage />,
   'stage-11': <Stage11SettlementPage />,
   'stage-12': <Stage12LookupSupportPage />,
+  'guard-pipeline': <GuardPipelinePage />,
 }
 
 export function AppShell() {
-  const { activeSection } = useSession()
+  const { activeSection, toasts, dismissToast } = useSession()
 
   return (
     <div className="app-shell">
-      <div className="app-shell__chrome">
-        <HeaderBar />
-      </div>
       <div className="app-shell__body">
         <SideNav />
         <main className="app-shell__main">
@@ -50,6 +49,7 @@ export function AppShell() {
             : STAGE_PAGES[activeSection]}
         </main>
       </div>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

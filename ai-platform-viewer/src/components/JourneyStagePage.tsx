@@ -16,6 +16,7 @@ import {
   journeyCommandPath,
 } from '@/components/JourneyCommandPanel'
 import { useClinicEnrollmentMaterial } from '@/hooks/useClinicEnrollmentMaterial'
+import { useSession } from '@/context/SessionContext'
 
 interface SyncAction {
   label: string
@@ -40,7 +41,7 @@ export function JourneyStagePage({
   seedPanels,
   syncAction,
   deckEyebrow = 'Commands',
-  deckLede = 'Pick a command card — its request manifest opens in the panel below.',
+  deckLede = 'Pick a command on the left — its request panel opens on the right.',
 }: JourneyStagePageProps) {
   const {
     material: clinicMaterial,
@@ -48,10 +49,9 @@ export function JourneyStagePage({
     error: clinicMaterialError,
     reload: reloadClinicMaterial,
   } = useClinicEnrollmentMaterial()
+  const { notifySuccess, notifyError } = useSession()
   const [syncOpen, setSyncOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null)
 
   const sections = [...new Set(operations.map((operation) => operation.section))]
@@ -67,14 +67,14 @@ export function JourneyStagePage({
       return
     }
     setBusy(true)
-    setStatusMessage(null)
-    setErrorMessage(null)
     try {
       const message = await syncAction.onConfirm()
       await reloadClinicMaterial()
-      setStatusMessage(message)
+      if (message) {
+        notifySuccess(message)
+      }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Sync action failed')
+      notifyError(error instanceof Error ? error.message : 'Sync action failed')
     } finally {
       setBusy(false)
       setSyncOpen(false)
@@ -102,17 +102,6 @@ export function JourneyStagePage({
           ) : undefined
         }
       />
-
-      {statusMessage ? (
-        <div className="status-banner status-banner--ok" role="status">
-          {statusMessage}
-        </div>
-      ) : null}
-      {errorMessage ? (
-        <div className="status-banner status-banner--error" role="alert">
-          {errorMessage}
-        </div>
-      ) : null}
 
       {sections.length > 0 ? (
         <CommandDeck

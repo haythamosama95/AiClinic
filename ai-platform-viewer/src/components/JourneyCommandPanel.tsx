@@ -54,11 +54,14 @@ export function JourneyCommandPanel({
   const [sendError, setSendError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (clinicMaterialLoading) {
+      return
+    }
     setParams(buildJourneyDefaultParams(operation.fields, clinicMaterial))
     setExchange(null)
     setInspectorOpen(false)
     setSendError(null)
-  }, [operation.id, clinicMaterial, materialFingerprint])
+  }, [operation.id, operation.fields, clinicMaterial, materialFingerprint, clinicMaterialLoading])
 
   const authReady = (() => {
     switch (operation.auth) {
@@ -172,6 +175,7 @@ export function JourneyCommandPanel({
                 hint={field.hint}
                 wide={field.wide}
                 json={field.json}
+                jsonRows={field.jsonRows}
                 value={params[field.name] ?? ''}
                 placeholder={field.defaultValue || field.hint || ''}
                 disabled={needsClinicMaterial && clinicMaterialLoading}

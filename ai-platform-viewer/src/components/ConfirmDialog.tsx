@@ -20,7 +20,11 @@ export function ConfirmDialog({
   if (!open) return null
 
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onCancel}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={busy ? undefined : onCancel}
+    >
       <div
         className="dialog"
         role="dialog"
@@ -31,7 +35,12 @@ export function ConfirmDialog({
         <h2 id="confirm-title">{title}</h2>
         <p>{description}</p>
         <div className="dialog__actions">
-          <button type="button" className="ghost-button" onClick={onCancel}>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </button>
           <button

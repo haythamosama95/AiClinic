@@ -154,7 +154,7 @@ export function JourneyOperationCard({
             {operation.fields.map((field) => (
               <label
                 key={field.name}
-                className={`operation-card__field${field.wide ? ' operation-card__field--wide' : ''}`}
+                className={`operation-card__field${field.wide ? ' operation-card__field--wide' : ''}${field.json ? ' operation-card__field--json' : ''}`}
               >
                 <span className="operation-card__field-label">
                   <code>{field.name}</code>
@@ -165,7 +165,12 @@ export function JourneyOperationCard({
                     value={params[field.name] ?? ''}
                     onChange={(event) => updateParam(field.name, event.target.value)}
                     spellCheck={false}
-                    rows={4}
+                    rows={
+                      field.jsonRows ??
+                      (field.wide
+                        ? Math.max(4, (params[field.name] ?? '').split('\n').length)
+                        : 4)
+                    }
                     disabled={needsClinicMaterial && clinicMaterialLoading}
                   />
                 ) : (

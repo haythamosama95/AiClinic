@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { HttpExchange } from '@/types'
-import { FieldTable } from '@/components/FieldTable'
+import { InspectorPane } from '@/components/InspectorPane'
 import { RawPanel } from '@/components/RawPanel'
 
 interface RequestInspectorProps {
@@ -38,17 +38,17 @@ export function RequestInspector({ exchange }: RequestInspectorProps) {
           {showRaw ? (
             <RawPanel title="Request" value={request.raw} />
           ) : (
-            <FieldTable
+            <InspectorPane
               title="Request"
-              rows={[
+              metadataRows={[
                 { name: 'method', value: request.method, meaning: 'HTTP verb' },
                 { name: 'url', value: request.url, meaning: 'Gateway control route' },
                 ...request.headers,
-                ...request.body.map((row) => ({
-                  ...row,
-                  name: `body.${row.name}`,
-                })),
               ]}
+              platformRows={request.body.map((row) => ({
+                ...row,
+                name: `body.${row.name}`,
+              }))}
             />
           )}
         </section>
@@ -57,20 +57,20 @@ export function RequestInspector({ exchange }: RequestInspectorProps) {
           {showRaw ? (
             <RawPanel title="Response" value={response.raw} />
           ) : (
-            <FieldTable
+            <InspectorPane
               title="Response"
-              rows={[
+              metadataRows={response.headers}
+              pinnedRows={[
                 {
                   name: 'status',
                   value: String(response.status),
                   meaning: response.statusText,
                 },
-                ...response.headers,
-                ...response.body.map((row) => ({
-                  ...row,
-                  name: row.name === 'body' ? row.name : `body.${row.name}`,
-                })),
               ]}
+              platformRows={response.body.map((row) => ({
+                ...row,
+                name: row.name === 'body' ? row.name : `body.${row.name}`,
+              }))}
             />
           )}
         </section>

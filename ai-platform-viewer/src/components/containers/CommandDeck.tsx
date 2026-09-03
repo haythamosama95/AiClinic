@@ -22,9 +22,16 @@ export function CommandDeck({
         {lede ? <p className="cmd-deck__lede">{lede}</p> : null}
       </header>
 
-      <div className="cmd-deck__grid">{children}</div>
-
-      {panel}
+      <div className="cmd-deck__layout">
+        <aside className="cmd-deck__rail" aria-label="Command list">
+          {children}
+        </aside>
+        <div className="cmd-deck__detail">
+          {panel ?? (
+            <p className="cmd-deck__detail-empty">Select a command to open its request panel.</p>
+          )}
+        </div>
+      </div>
     </section>
   )
 }

@@ -1,5 +1,28 @@
 import type { FieldRow } from '@/types'
 
+interface FieldListProps {
+  rows: FieldRow[]
+  keyPrefix?: string
+}
+
+export function FieldList({ rows, keyPrefix = 'field' }: FieldListProps) {
+  return (
+    <dl className="field-table__list">
+      {rows.map((row) => (
+        <div key={`${keyPrefix}-${row.name}`} className="field-table__row">
+          <dt>{row.name}</dt>
+          <dd>
+            <code>{row.value}</code>
+            {row.meaning ? (
+              <span className="field-table__meaning">{row.meaning}</span>
+            ) : null}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 interface FieldTableProps {
   title: string
   rows: FieldRow[]
@@ -13,19 +36,7 @@ export function FieldTable({ title, rows, emptyLabel = 'No fields' }: FieldTable
       {rows.length === 0 ? (
         <p className="field-table__empty">{emptyLabel}</p>
       ) : (
-        <dl className="field-table__list">
-          {rows.map((row) => (
-            <div key={`${title}-${row.name}`} className="field-table__row">
-              <dt>{row.name}</dt>
-              <dd>
-                <code>{row.value}</code>
-                {row.meaning ? (
-                  <span className="field-table__meaning">{row.meaning}</span>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <FieldList rows={rows} keyPrefix={title} />
       )}
     </div>
   )

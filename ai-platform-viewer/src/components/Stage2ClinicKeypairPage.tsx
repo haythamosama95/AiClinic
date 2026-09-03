@@ -66,7 +66,7 @@ export function Stage2ClinicKeypairPage() {
 
       <CommandDeck
         eyebrow="Clinic RPC commands"
-        lede="Pick a command card — its request manifest opens in the panel below."
+        lede="Pick a command on the left — its request panel opens on the right."
         ariaLabel="Clinic keypair commands"
         panel={
           selectedOperation ? (

@@ -17,7 +17,7 @@ export function Stage4EntitlementPage() {
         label: 'Sync installation from Supabase',
         title: 'Reload installation_id from clinic Postgres?',
         description:
-          'Re-fetches the active installation_id from ai_internal.installation_keys in local Supabase and reapplies it to every entitle and cohort field on this page that uses clinic defaults. Does not change D1 entitlement rows — only viewer form prefill.',
+          'Re-fetches clinic enrollment material from ai_internal.installation_keys in local Supabase and reapplies it to every field on this page that uses clinic defaults (installation_id, installation_ids, runtime probe context org/branch). Does not change D1 entitlement rows — only viewer form prefill.',
         confirmLabel: 'Sync defaults',
         onConfirm: async () => {
           if (!clinicMaterial?.installation_id) {
@@ -87,6 +87,18 @@ export function Stage4EntitlementPage() {
                   <dt>installation_id</dt>
                   <dd>
                     <code>{clinicMaterial.installation_id}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>org_id</dt>
+                  <dd>
+                    <code>{clinicMaterial.org_id}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>branch_id</dt>
+                  <dd>
+                    <code>{clinicMaterial.branch_id}</code>
                   </dd>
                 </div>
                 <div>

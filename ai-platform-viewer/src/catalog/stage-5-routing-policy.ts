@@ -43,6 +43,7 @@ export const STAGE5_OPERATIONS: JourneyOperationDefinition[] = [
         defaultValue: DEFAULT_ROUTING_POLICY_DOCUMENT,
         hint: 'RoutingPolicyDocument JSON — default is platform-default/1.json',
         wide: true,
+        jsonRows: 53,
       },
     ],
     summary:

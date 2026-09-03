@@ -17,6 +17,7 @@ export interface JourneyParamField {
   clinicKey?: ClinicMaterialKey
   required?: boolean
   json?: boolean
+  jsonRows?: number
 }
 
 export interface JourneyOperationDefinition {

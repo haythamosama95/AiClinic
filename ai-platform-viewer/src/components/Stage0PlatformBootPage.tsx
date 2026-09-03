@@ -1,8 +1,10 @@
 import { STAGE0_META, STAGE0_OPERATIONS } from '@/catalog/stage-0-platform-boot'
 import { JourneyStagePage } from '@/components/JourneyStagePage'
-import { resetPlatform } from '@/lib/dev-api'
+import { useSession } from '@/context/SessionContext'
 
 export function Stage0PlatformBootPage() {
+  const { resetAll } = useSession()
+
   return (
     <JourneyStagePage
       meta={STAGE0_META}
@@ -59,6 +61,12 @@ export function Stage0PlatformBootPage() {
                   <code>0 3 * * *</code>, <code>0 4 * * *</code>
                 </dd>
               </div>
+              <div>
+                <dt>CONFIG_CACHE_TTL_MS</dt>
+                <dd>
+                  <code>30000</code> (wrangler <code>[vars]</code>)
+                </dd>
+              </div>
             </dl>
           </div>
           <div className="stage-page__seed stage-page__seed--boot">
@@ -79,8 +87,8 @@ export function Stage0PlatformBootPage() {
           'Wipes D1 business rows, restores the token_contract seed, clears R2 envelopes, and re-mints a clinic AAT. Same as the header Reset — not an HTTP route on the gateway.',
         confirmLabel: 'Reset platform',
         onConfirm: async () => {
-          const result = await resetPlatform()
-          return result.steps.join(' · ')
+          await resetAll()
+          return ''
         },
       }}
     />

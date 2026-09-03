@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { CommandFailure, CommandTone } from '@/components/containers/command-tone'
 import { panelToneClass } from '@/components/containers/command-tone'
 
@@ -35,6 +35,21 @@ export function CommandPanel({
   manifest,
   inspector,
 }: CommandPanelProps) {
+  const hasInspector = Boolean(inspector)
+  const hasManifest = Boolean(manifest)
+  const showViewToggle = hasInspector && hasManifest
+  const [bodyView, setBodyView] = useState<'inputs' | 'response'>('inputs')
+
+  useEffect(() => {
+    if (hasInspector) {
+      setBodyView('response')
+    } else {
+      setBodyView('inputs')
+    }
+  }, [hasInspector, title])
+
+  const showBody = hasManifest || hasInspector
+
   return (
     <article className={`cmd-panel ${panelToneClass(tone)}`} aria-label={title}>
       <header className="cmd-panel__head">
@@ -46,7 +61,30 @@ export function CommandPanel({
           </div>
         </div>
         <div className="cmd-panel__head-actions">
+          {showViewToggle ? (
+            <div className="cmd-panel__view-toggle" role="tablist" aria-label="Panel view">
+              <button
+                type="button"
+                role="tab"
+                className="cmd-panel__view-btn"
+                aria-selected={bodyView === 'inputs'}
+                onClick={() => setBodyView('inputs')}
+              >
+                Inputs
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className="cmd-panel__view-btn"
+                aria-selected={bodyView === 'response'}
+                onClick={() => setBodyView('response')}
+              >
+                Request / response
+              </button>
+            </div>
+          ) : null}
           <CommandPanelResponses failures={failures} responseId={responseId} />
+          <div className="cmd-panel__action-buttons">{actions}</div>
           <button
             type="button"
             className="ghost-button ghost-button--compact cmd-panel__close"
@@ -62,21 +100,24 @@ export function CommandPanel({
         <p className="cmd-panel__success-note">{successNote}</p>
       </div>
 
-      {manifest ? (
-        <div className="cmd-panel__manifest">
-          <p className="cmd-panel__section-label">Request manifest</p>
-          {manifest}
+      <p className="cmd-panel__auth-line">{authLine}</p>
+
+      {showBody ? (
+        <div className="cmd-panel__body">
+          {bodyView === 'inputs' && hasManifest ? (
+            <div className="cmd-panel__manifest">
+              <p className="cmd-panel__section-label">Request manifest</p>
+              {manifest}
+            </div>
+          ) : null}
+
+          {bodyView === 'response' && hasInspector ? (
+            <div className="cmd-panel__inspector">{inspector}</div>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="cmd-panel__actions">
-        <p className="cmd-panel__auth-line">{authLine}</p>
-        <div className="cmd-panel__action-buttons">{actions}</div>
-      </div>
-
       {prefill ? <p className="cmd-panel__prefill">{prefill}</p> : null}
-
-      {inspector ? <div className="cmd-panel__inspector">{inspector}</div> : null}
     </article>
   )
 }
@@ -155,6 +196,7 @@ interface CommandPanelFieldProps {
   hint?: string
   wide?: boolean
   json?: boolean
+  jsonRows?: number
   value: string
   placeholder?: string
   disabled?: boolean
@@ -167,6 +209,7 @@ export function CommandPanelField({
   hint,
   wide,
   json,
+  jsonRows,
   value,
   placeholder,
   disabled,
@@ -174,7 +217,7 @@ export function CommandPanelField({
 }: CommandPanelFieldProps) {
   return (
     <label
-      className={`cmd-panel__field${wide ? ' cmd-panel__field--wide' : ''}`}
+      className={`cmd-panel__field${wide ? ' cmd-panel__field--wide' : ''}${json ? ' cmd-panel__field--json' : ''}`}
     >
       <span className="cmd-panel__field-head">
         <code>{name}</code>
@@ -185,7 +228,10 @@ export function CommandPanelField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           spellCheck={false}
-          rows={4}
+          rows={
+            jsonRows ??
+            (wide ? Math.max(4, value.split('\n').length) : 4)
+          }
           disabled={disabled}
         />
       ) : (

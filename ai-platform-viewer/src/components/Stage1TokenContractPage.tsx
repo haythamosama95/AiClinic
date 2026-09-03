@@ -64,7 +64,7 @@ export function Stage1TokenContractPage() {
 
       <CommandDeck
         eyebrow="Token contract commands"
-        lede="Pick a command card — its request manifest opens in the panel below."
+        lede="Pick a command on the left — its request panel opens on the right."
         ariaLabel="Token contract commands"
         panel={
           selectedOperation ? (

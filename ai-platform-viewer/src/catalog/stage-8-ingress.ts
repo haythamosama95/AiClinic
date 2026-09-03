@@ -4,13 +4,23 @@ export const VISIT_SUMMARY_CAPABILITY = 'clinic.visit_summary'
 export const VISIT_SUMMARY_VERSION = '1.0.0'
 export const VISIT_SUMMARY_INTENT = "Summarize today's visit for the chart."
 export const VISIT_SUMMARY_COMPLAINT = 'Patient reports headache for 3 days.'
+export const VISIT_SUMMARY_VISIT_ID = '550e8400-e29b-41d4-a716-446655440000'
+export const VISIT_SUMMARY_RECORDED_AT = '2026-07-31T12:00:00.000Z'
+
+export function buildVisitSummaryChiefComplaint(): Record<string, string> {
+  return {
+    visit_id: VISIT_SUMMARY_VISIT_ID,
+    complaint: VISIT_SUMMARY_COMPLAINT,
+    recorded_at: VISIT_SUMMARY_RECORDED_AT,
+  }
+}
 
 export function buildVisitSummaryContextJson(orgId: string, branchId: string): string {
   return JSON.stringify(
     {
       org: orgId,
       branch: branchId,
-      'visit.chief_complaint@v1': VISIT_SUMMARY_COMPLAINT,
+      'visit.chief_complaint@v1': buildVisitSummaryChiefComplaint(),
     },
     null,
     2,

@@ -16,6 +16,7 @@ const SECTION_PATHS: Record<NavSection, string> = {
   'stage-10': '/stage-10',
   'stage-11': '/stage-11',
   'stage-12': '/stage-12',
+  'guard-pipeline': '/guard-pipeline',
   secrets: '/secrets',
 }
 

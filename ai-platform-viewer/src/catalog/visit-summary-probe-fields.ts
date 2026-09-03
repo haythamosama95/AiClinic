@@ -21,6 +21,7 @@ export function visitSummaryIngressHeaders(
       defaultValue: overrides['x-idempotency-key'] ?? '',
       hint: 'Leave blank to generate a UUID on send',
       wide: true,
+      required: false,
     },
     {
       name: 'x-capability-version',
@@ -34,6 +35,7 @@ export function visitSummaryIngressHeaders(
       defaultValue: overrides['x-trace-id'] ?? '',
       hint: 'Optional ULID; blank lets the server mint one',
       wide: true,
+      required: false,
     },
   ]
 }
@@ -61,8 +63,9 @@ export function visitSummaryBodyFields(
       scope: 'body',
       json: true,
       defaultValue: overrides.context ?? VISIT_SUMMARY_CONTEXT_JSON,
-      hint: 'context.org and context.branch must match the AAT principal',
+      hint: 'context.org and context.branch must match the AAT principal — synced from clinic Postgres',
       wide: true,
+      clinicKey: 'org_id',
     },
   ]
 }

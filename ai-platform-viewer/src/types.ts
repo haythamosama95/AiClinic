@@ -12,6 +12,7 @@ export type NavSection =
   | 'stage-10'
   | 'stage-11'
   | 'stage-12'
+  | 'guard-pipeline'
   | 'secrets'
 
 export interface DevConfig {
