@@ -28,6 +28,7 @@ export default defineWorkersConfig({
       "test/load/load-and-cost.test.ts",
       "test/worker-request-orchestrator.test.ts",
       "test/entitle-grant.test.ts",
+      "test/system/**/*.system.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 120_000,
@@ -43,6 +44,17 @@ export default defineWorkersConfig({
           compatibilityDate: "2026-05-03",
           d1Databases: ["DB"],
           r2Buckets: ["R2"],
+          ratelimits: {
+            RATE_LIMITER_INSTALLATION: {
+              simple: { limit: 600, period: 60 },
+            },
+            RATE_LIMITER_INSTALLATION_ACTOR: {
+              simple: { limit: 120, period: 60 },
+            },
+            RATE_LIMITER_INSTALLATION_CAPABILITY: {
+              simple: { limit: 300, period: 60 },
+            },
+          },
           bindings: {
             OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
             OPERATOR_ID: "operator-test-principal",
