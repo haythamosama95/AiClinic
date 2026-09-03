@@ -542,7 +542,7 @@ Restart the local Worker so Quota DO maps and `ConfigCache` are empty.
 
 **Do:** as `postgres`, confirm the Stage 2 key exists (`installation_keys` non-empty). Save `I0`, `K0`, `ORG_ID`, `BRANCH_ID`, `ACTOR_ID`.
 
-**Do:** enroll the platform if D1 has no row (plan **must** be `standard` so stage 3 plan-tier can pass — not `verify`):
+**Do:** enroll the platform if D1 has no row (plan **must** be `standard` or higher so stage 3 plan-tier can pass):
 
 ```bash
 cd ai-platform

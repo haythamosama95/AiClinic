@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useSession } from '@/context/SessionContext'
+import { pathForSection } from '@/lib/routes'
 
 export function HeaderBar() {
   const {
@@ -47,14 +48,26 @@ export function HeaderBar() {
               A+
             </button>
           </div>
-          <button
-            type="button"
+          <a
+            href={pathForSection('secrets')}
             className={`ghost-button ghost-button--compact${onSecrets ? ' ghost-button--active' : ''}`}
             aria-current={onSecrets ? 'page' : undefined}
-            onClick={() => setActiveSection('secrets')}
+            onClick={(event) => {
+              if (
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0
+              ) {
+                return
+              }
+              event.preventDefault()
+              setActiveSection('secrets')
+            }}
           >
             Secrets
-          </button>
+          </a>
           <button
             type="button"
             className="danger-button danger-button--compact"
@@ -82,7 +95,7 @@ export function HeaderBar() {
       <ConfirmDialog
         open={resetOpen}
         title="Reset local ai-platform?"
-        description="This clears local D1 rows, deletes local R2 objects, wipes Durable Object state, re-seeds token_contract ver=1, and resets Supabase ai_internal (installation_keys, ai_token_issuance, app_settings defaults including ai.aat.ver=1 and ai.availability enrolled=false)."
+        description="This clears local D1 rows, deletes local R2 objects, wipes Durable Object state, re-seeds token_contract ver=1, and resets Supabase ai_internal (installation_keys, ai_token_issuance, app_settings defaults including ai.aat.lifetime_minutes=5, ai.aat.ver=1, and ai.availability enrolled=false)."
         confirmLabel="Reset platform"
         busy={busyAction === 'reset'}
         onConfirm={() => {

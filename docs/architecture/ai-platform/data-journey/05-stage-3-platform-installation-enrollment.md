@@ -104,15 +104,16 @@ See also [§7.3 in Stage 2](04-stage-2-clinic-keypair-enrollment.md#73-how-the-p
 #### Request body — every field
 
 
-| Field          | Required | Source (enroll request body)                                                                                                                 | D1 destination                                        |
-| -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `org_id`       | yes      | Clinic `organizations.id` — Flutter auth session (`organizationId`); validated non-empty in `validateEnrollPayload` (`control/lifecycle.ts`) | `installation.org_id` — metadata only; see note below |
-| `display_name` | yes      | Clinic org `name` — Flutter session / `organizations` row                                                                                    | `installation.display_name`                           |
-| `region`       | yes      | Caller-supplied string (product/billing config); no Worker default — must be non-empty                                                       | `installation.region`                                 |
-| `plan`         | yes      | Caller-supplied string (purchase / subscription tier); stored on entitlement, not interpreted at enroll                                      | `entitlement.plan` (not changed on entitle)           |
-| `public_key`   | yes      | Stage 2 RPC `public_jwk.x` (base64url Ed25519 public bytes)                                                                                  | `installation_key.public_key`                         |
-| `algorithm`    | yes      | `"EdDSA"` (fixed by clinic keystore)                                                                                                         | `installation_key.algorithm`                          |
-| `kid`          | yes      | Stage 2 RPC `kid`                                                                                                                            | `installation_key.key_id`                             |
+| Field             | Required   | Source (enroll request)                                                                 | D1 destination                |
+| ----------------- | ---------- | --------------------------------------------------------------------------------------- | ----------------------------- |
+| `installation_id` | yes (path) | Canonical UUID from Stage 2 — platform never mints this                                   | `installation.installation_id` |
+| `org_id`          | yes        | Canonical UUID — clinic `organizations.id`                                              | `installation.org_id`         |
+| `display_name`    | yes        | Clinic org `name`                                                                       | `installation.display_name`   |
+| `region`          | yes        | Caller-supplied billing region                                                          | `installation.region`         |
+| `plan`            | yes        | Closed tier: `starter`, `standard`, `professional`, or `enterprise`                     | `entitlement.plan`            |
+| `public_key`      | yes        | Base64url of exactly 32 Ed25519 public-key bytes (Stage 2 `public_jwk.x`)               | `installation_key.public_key` |
+| `algorithm`       | yes        | Must be `EdDSA`                                                                         | `installation_key.algorithm`  |
+| `kid`             | yes        | Canonical UUID — Stage 2 `kid`                                                          | `installation_key.key_id`     |
 
 
 **About** `org_id` **vs** `installation_id` **(needs review):** these are **not** the same id and do not
@@ -237,7 +238,7 @@ Until self-service enrollment ships ([01-ai-platform.md §12.5](../01-ai-platfor
 | HTTP | `error`            | Triggering input                                            |
 | ---- | ------------------ | ----------------------------------------------------------- |
 | 401  | `unauthorized`     | Missing/invalid `OPERATOR_BEARER_TOKEN` (`requireOperator`) |
-| 400  | `invalid_payload`  | Any required body field empty                               |
+| 400  | `invalid_payload`  | Required field empty; unknown `plan`; `algorithm` ≠ `EdDSA`; path/body id not a canonical UUID; `public_key` not importable Ed25519 |
 | 400  | `invalid_json`     | Body not JSON                                               |
 | 409  | `already_enrolled` | `installation_id` or `org_id` already exists                |
 | 409  | `duplicate_kid`    | `kid` UNIQUE violation                                      |
@@ -274,7 +275,7 @@ AATs are never accepted on `/control`.
 ### 7. API: `POST /control/installations/{installation_id}/rotate`
 
 **Plain language:** The clinic mints a new signing key; the operator tells the platform to trust it
-and retire every previously active platform key for that installation in one atomic batch.
+without retiring prior platform keys. Revocation is a separate `revoke-key` mutation.
 
 **Auth:** `Authorization: Bearer <OPERATOR_BEARER_TOKEN>` — same `requireOperator` / `createSecretOperatorAuth` as [§3](#3-api-post-controlinstallationsinstallation_idenroll). `operator_id` on audit rows is `OPERATOR_ID`.
 
@@ -314,9 +315,8 @@ Empty object. No `platform_base_url` echo on lifecycle mutations after enroll.
 
 In one `runControlBatch` (`control/lifecycle.ts`):
 
-1. **`installation_key` UPDATE** — `revoked_at = now` on every row for this `installation_id` where `revoked_at IS NULL` (retires all prior platform keys; no dual-key overlap).
-2. **`installation_key` INSERT** — new row: body `kid` / `public_key` / `algorithm`, `valid_from = now`, `valid_until = valid_from + 365 days` (`INSTALLATION_KEY_TTL_DAYS`), `revoked_at = NULL`.
-3. **`control_audit` INSERT** — `action = rotate`, `target = installation_id`, `before_pointer` / `after_pointer` NULL.
+1. **`installation_key` INSERT** — new row: body `kid` / `public_key` / `algorithm`, `valid_from = now`, `valid_until = valid_from + 365 days` (`INSTALLATION_KEY_TTL_DAYS`), `revoked_at = NULL`. Prior rows are untouched (additive rotation, matching clinic `rotate_installation_key()`).
+2. **`control_audit` INSERT** — `action = rotate`, `target = installation_id`, `before_pointer` / `after_pointer` NULL.
 
 `installation` and `entitlement` rows are unchanged. Rotate does not entitle or change quotas.
 
@@ -327,7 +327,7 @@ In one `runControlBatch` (`control/lifecycle.ts`):
 | ---- | ----------------------------- | ------------------------------------------------------------------------- |
 | 401  | `unauthorized`                | Missing/invalid operator Bearer                                           |
 | 400  | `invalid_json`                | Body not JSON                                                             |
-| 400  | `invalid_payload`             | Any required body field empty                                             |
+| 400  | `invalid_payload`             | Required body field empty or `algorithm` ≠ `EdDSA`                      |
 | 400  | `invalid_route`               | Path does not match `/control/installations/{id}/rotate`                  |
 | 404  | `installation_not_found`      | No `installation` row for path `installation_id`                          |
 | 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                                           |
@@ -339,7 +339,7 @@ See also [§1 in Alternative and failure journeys](15-alternative-and-failure-jo
 
 ### 7.1 API: `POST /control/installations/{installation_id}/revoke-key`
 
-**Plain language:** Retire one platform key by `kid` without adding a successor. AATs signed with that `kid` fail identity immediately.
+**Plain language:** Retire one platform key by `kid` without adding a successor. AATs signed with that `kid` fail identity immediately. Cannot revoke the last active key for the installation — rotate a replacement first (matches clinic `revoke_installation_key`).
 
 **Auth:** Operator Bearer (same as [§7](#7-api-post-controlinstallationsinstallation_idrotate)).
 
@@ -366,7 +366,7 @@ Same `installation_id` path param as rotate.
 1. **`installation_key` UPDATE** — `revoked_at = now` where `key_id = kid` AND `installation_id = path` AND `revoked_at IS NULL`.
 2. **`control_audit` INSERT** — `action = revoke-key`, `target = installation_id`, `after_pointer = kid`.
 
-Unlike rotate, other keys for the installation are untouched. If every key ends up revoked, no `kid` verifies until a later rotate.
+Unlike rotate, `revoke-key` stamps `revoked_at` on one row. Rotate a successor before revoking the sole remaining active key.
 
 #### Failure paths
 
@@ -381,6 +381,7 @@ Unlike rotate, other keys for the installation are untouched. If every key ends 
 | 404  | `key_not_found`               | No `installation_key` row for this `kid` + installation    |
 | 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                          |
 | 409  | `key_already_revoked`         | `revoked_at` already set on that key                     |
+| 409  | `cannot_revoke_last_active_key` | Revoke would leave zero active keys — rotate a replacement first |
 | 500  | `storage_error`               | D1 batch failure                                         |
 
 
@@ -598,6 +599,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out. 
 | Operator bearer is the only accepted caller | [§8.3.3](#833-who-may-not-call-enroll), [§8.3.5](#835-first-enroll-happy-path) |
 | Body not JSON → 400 `invalid_json` | [§8.3.4](#834-validation-failure-paths) |
 | Any required body field empty → 400 `invalid_payload` | [§8.3.4](#834-validation-failure-paths) |
+| Unknown `plan` or `algorithm` ≠ `EdDSA` → 400 `invalid_payload` | [§8.3.4](#834-validation-failure-paths) |
+| Non-UUID `installation_id` / `org_id` / `kid` or invalid `public_key` → 400 `invalid_payload` | [§8.3.4](#834-validation-failure-paths) |
 | Platform does not generate `installation_id`; D1 empty until this POST | [§8.3.2](#832-obtain-the-stage-2-handoff-fields) |
 | AAT before enroll → identity `unauthenticated` (no D1 file for this passport) | [§8.3.2](#832-obtain-the-stage-2-handoff-fields) |
 | Clinic `get_ai_availability()` still `{ enrolled: false, platform_base_url: null }` before enroll | [§8.3.2](#832-obtain-the-stage-2-handoff-fields) |
@@ -617,11 +620,12 @@ Every happy and failure claim in this file maps to a probe. Carry them all out. 
 | `installation.status = active` ≠ AI enabled; entitlement stays `pending` / zero quota | [§8.3.8](#838-post-enroll-effect-and-what-this-stage-does-not-do) |
 | Valid AAT `/v1/requests` before entitle → `forbidden_capability` (path `ai_disabled`) | [§8.3.8](#838-post-enroll-effect-and-what-this-stage-does-not-do) |
 | This stage does not entitle, grant capabilities, mint AATs, or route/invoke | [§8.3.5](#835-first-enroll-happy-path), [§8.3.8](#838-post-enroll-effect-and-what-this-stage-does-not-do) |
-| Rotate stamps `revoked_at` on prior keys in the same batch; new key `revoked_at` NULL, TTL 365 days | [§8.3.9](#839-key-rotation) |
-| No dual-key overlap: exactly one unrevoked key after rotate | [§8.3.9](#839-key-rotation) |
-| In-flight AAT with the old `kid` fails identity after rotate | [§8.3.9](#839-key-rotation) |
+| Rotate adds a new key row; prior keys keep `revoked_at` NULL until `revoke-key` | [§8.3.9](#839-key-rotation) |
+| Dual-key overlap: two unrevoked keys after rotate until operator revokes the old `kid` | [§8.3.9](#839-key-rotation) |
+| In-flight AAT with the old `kid` still passes identity after rotate until `revoke-key` | [§8.3.9](#839-key-rotation) |
 | Clinic `rotate_installation_key()` then operator `POST …/rotate` with new `kid` + `public_key` | [§8.3.9](#839-key-rotation) |
-| `POST …/revoke-key` stamps one key; repeat → `key_already_revoked`; unknown `kid` → `key_not_found` | [§8.3.10](#8310-revoke-key) |
+| `POST …/revoke-key` stamps one key when another remains active; sole active key → `cannot_revoke_last_active_key` | [§8.3.10](#8310-revoke-key) |
+| `POST …/revoke-key` repeat → `key_already_revoked`; unknown `kid` → `key_not_found` | [§8.3.10](#8310-revoke-key) |
 | `POST …/suspend` → `installation_suspended`; `POST …/resume` restores; illegal transitions → 409 | [§8.3.11](#8311-suspend--resume) |
 | `POST …/delete` → `status = deleted`; AAT → `unauthenticated`; repeat delete → 409 | [§8.3.12](#8312-delete) |
 | `POST …/purge` removes installation D1 + R2; irreversible | [§8.3.13](#8313-purge) |
@@ -717,7 +721,7 @@ ENROLL_JSON=$(cat <<EOF
   "org_id": "$ORG_ID",
   "display_name": "Verify Clinic",
   "region": "local",
-  "plan": "verify",
+  "plan": "standard",
   "public_key": "$PUBLIC_KEY",
   "algorithm": "EdDSA",
   "kid": "$KID"
@@ -767,13 +771,48 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
     \"org_id\": \"$ORG_ID\",
     \"display_name\": \"Verify Clinic\",
     \"region\": \"local\",
-    \"plan\": \"verify\",
+    \"plan\": \"standard\",
     \"public_key\": \"$PUBLIC_KEY\",
     \"algorithm\": \"EdDSA\"
   }"
 ```
 
 **Expect:** HTTP 400, `{ "error": "invalid_payload" }` (`validateEnrollPayload` / `requireNonEmptyString`). D1 still empty. `[]` or `null` JSON also yields `invalid_payload`.
+
+**Do:** as operator, send JSON with an unknown plan (for example `"plan": "verify"`):
+
+```bash
+curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"org_id\": \"$ORG_ID\",
+    \"display_name\": \"Verify Clinic\",
+    \"region\": \"local\",
+    \"plan\": \"verify\",
+    \"public_key\": \"$PUBLIC_KEY\",
+    \"algorithm\": \"EdDSA\",
+    \"kid\": \"$KID\"
+  }"
+```
+
+**Expect:** HTTP 400, `{ "error": "invalid_payload" }` (`isKnownPlanTier`). D1 still empty.
+
+**Do:** repeat with `"algorithm": "RS256"` and a valid plan such as `"standard"`.
+
+**Expect:** HTTP 400, `{ "error": "invalid_payload" }` (`isSupportedInstallationKeyAlgorithm`). D1 still empty.
+
+**Do:** as operator, send JSON with `"installation_id": "not-a-uuid"` in the path (use `curl …/control/installations/not-a-uuid/enroll`).
+
+**Expect:** HTTP 400, `{ "error": "invalid_payload" }` (`isCanonicalUuid` on path). D1 still empty.
+
+**Do:** repeat with `"org_id": "x"` or `"kid": "x"` (other fields valid).
+
+**Expect:** HTTP 400, `{ "error": "invalid_payload" }`. D1 still empty.
+
+**Do:** repeat with `"public_key": "c2hvcnQ"` (valid base64url but not 32 bytes).
+
+**Expect:** HTTP 400, `{ "error": "invalid_payload" }` (`isEd25519PublicKeyByteLength` / `isImportableEd25519PublicKeyBase64url`). D1 still empty.
 
 #### 8.3.5 First enroll (happy path)
 
@@ -787,7 +826,7 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
     \"org_id\": \"$ORG_ID\",
     \"display_name\": \"Verify Clinic\",
     \"region\": \"local\",
-    \"plan\": \"verify\",
+    \"plan\": \"standard\",
     \"public_key\": \"$PUBLIC_KEY\",
     \"algorithm\": \"EdDSA\",
     \"kid\": \"$KID\"
@@ -823,7 +862,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 - `installation`: `installation_id = I0`, `org_id = $ORG_ID`, `display_name = Verify Clinic`, `status = active`, `region = local`, `enrolled_at` ISO now.
 - `installation_key`: exactly one row. `key_id = K0`, `public_key = X0`, `algorithm = EdDSA`, `valid_from = enrolled_at`, `revoked_at` NULL, `valid_until` ≈ `valid_from` + 365 days (`INSTALLATION_KEY_TTL_DAYS`).
-- `entitlement`: exactly one row. `plan = verify`, `request_quota = 0`, `token_budget = 0`, `cost_budget = 0`, `allowed_capabilities = []`, `soft_threshold = 0`, `status = pending`, `period_start` and `period_end` equal `enrolled_at` (placeholders until Stage 4).
+- `entitlement`: exactly one row. `plan = standard`, `request_quota = 0`, `token_budget = 0`, `cost_budget = 0`, `allowed_capabilities = []`, `soft_threshold = 0`, `status = pending`, `period_start` and `period_end` equal `enrolled_at` (placeholders until Stage 4).
 - `control_audit`: `action = enroll`, `target = I0`, `operator_id = platform-operator` (the env `OPERATOR_ID`, never the bearer secret).
 - `control_operator`: no table. Single-operator secret; `control_audit` cannot distinguish operators.
 
@@ -862,7 +901,7 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$NEW_INSTALLATION_ID/enroll
     \"org_id\": \"$ORG_ID\",
     \"display_name\": \"Verify Clinic 2\",
     \"region\": \"local\",
-    \"plan\": \"verify\",
+    \"plan\": \"standard\",
     \"public_key\": \"$PUBLIC_KEY\",
     \"algorithm\": \"EdDSA\",
     \"kid\": \"$(uuidgen)\"
@@ -883,7 +922,7 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$(uuidgen)/enroll" \
     \"org_id\": \"$(uuidgen)\",
     \"display_name\": \"Other Clinic\",
     \"region\": \"local\",
-    \"plan\": \"verify\",
+    \"plan\": \"standard\",
     \"public_key\": \"$PUBLIC_KEY\",
     \"algorithm\": \"EdDSA\",
     \"kid\": \"$KID\"
@@ -943,13 +982,11 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
    ORDER BY valid_from"
 ```
 
-**Expect:** two rows. **K0** has `revoked_at` set (stamped in the same `runControlBatch` as the insert). **K1** has `revoked_at` NULL, `valid_until` ≈ `valid_from` + 365 days. `COUNT(*) WHERE installation_id = I0 AND revoked_at IS NULL` is **1**. There is no dual-key overlap. Entitlement is still `pending` / zero quota — rotate does not entitle.
-
-The isolate `ConfigCache` TTL is 30 s. If [§8.3.8](#838-post-enroll-effect-and-what-this-stage-does-not-do) already loaded **K0**, restart `npm run dev` (or wait 30 s) so the next `/v1/requests` reads D1 `revoked_at`, not a warm copy.
+**Expect:** two rows. **K0** and **K1** both have `revoked_at` NULL (`valid_until` ≈ `valid_from` + 365 days for each). `COUNT(*) WHERE installation_id = I0 AND revoked_at IS NULL` is **2** — dual-key overlap until the operator calls `revoke-key`. Entitlement is still `pending` / zero quota — rotate does not entitle.
 
 **Do:** `post_v1 "$AAT0"` (old `kid`).
 
-**Expect:** HTTP 401, `code = unauthenticated`. In-flight AATs signed with the old `kid` fail identity as soon as rotate is visible to identity ([§7](#7-api-post-controlinstallationsinstallation_idrotate)). Revoked keys are rejected regardless of `exp`.
+**Expect:** identity passes (old specimen is still on file). Entitlement still fails `forbidden_capability` / `ai_disabled` — rotate does not entitle.
 
 **Do:** as doctor, `SELECT public.issue_ai_token();` Save as **AAT1**. Header `kid` should be **K1**. `post_v1 "$AAT1"`.
 
@@ -957,9 +994,28 @@ The isolate `ConfigCache` TTL is 30 s. If [§8.3.8](#838-post-enroll-effect-and-
 
 #### 8.3.10 revoke-key
 
-With **K1** the sole active platform key from [§8.3.9](#839-key-rotation):
+With **K0** and **K1** both active from [§8.3.9](#839-key-rotation):
 
-**Do:** as operator:
+**Do:** as operator, retire the enroll key **K0**:
+
+```bash
+curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"kid\": \"$K0\"}"
+```
+
+**Expect:** HTTP 200, `{}`. D1: **K0** `revoked_at` set; **K1** still active. `control_audit` row `action = revoke-key`, `after_pointer = K0`.
+
+**Do:** wait 31 s (or restart Worker). `post_v1 "$AAT0"`.
+
+**Expect:** HTTP 401 `unauthenticated` — **K0** is revoked.
+
+**Do:** `post_v1 "$AAT1"`.
+
+**Expect:** identity still passes (**K1** is still active).
+
+**Do:** attempt to revoke **K1** while it is the sole active platform key:
 
 ```bash
 curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
@@ -968,13 +1024,26 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key
   -d "{\"kid\": \"$K1\"}"
 ```
 
-**Expect:** HTTP 200, `{}`. D1: **K1** `revoked_at` set. `control_audit` row `action = revoke-key`, `after_pointer = K1`.
+**Expect:** HTTP 409, `{ "error": "cannot_revoke_last_active_key" }`. **K1** stays active — matches clinic `revoke_installation_key` (`CANNOT_REVOKE_LAST_ACTIVE_KEY`). Rotate a replacement before revoking the last active key.
+
+**Do:** clinic `rotate_installation_key()` again → **K2** / **X2**; `POST …/rotate` with **K2** so **K1** is no longer the sole active key.
+
+**Do:** revoke **K1** ( **K2** remains active):
+
+```bash
+curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"kid\": \"$K1\"}"
+```
+
+**Expect:** HTTP 200, `{}`. D1: **K1** `revoked_at` set; **K2** still active. `control_audit` row `action = revoke-key`, `after_pointer = K1`.
 
 **Do:** wait 31 s (or restart Worker). `post_v1 "$AAT1"`.
 
-**Expect:** HTTP 401 `unauthenticated`.
+**Expect:** HTTP 401 `unauthenticated` — **K1** is revoked.
 
-**Do:** repeat the same revoke-key POST.
+**Do:** repeat the same revoke-key POST for **K1**.
 
 **Expect:** HTTP 409, `{ "error": "key_already_revoked" }`.
 
@@ -989,7 +1058,7 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/revoke-key
 
 **Expect:** HTTP 404, `{ "error": "key_not_found" }`.
 
-**Do:** clinic `rotate_installation_key()` again → **K2** / **X2**; `POST …/rotate` with **K2** so later probes have a live platform key. Update `KID` / `PUBLIC_KEY` exports if you continue past this stage doc.
+**Do:** update `KID` / `PUBLIC_KEY` exports to **K2** / **X2** if you continue past this stage doc.
 
 #### 8.3.11 suspend / resume
 

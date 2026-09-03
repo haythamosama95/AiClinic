@@ -480,7 +480,7 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
     \"org_id\": \"$ORG_ID\",
     \"display_name\": \"Verify Clinic\",
     \"region\": \"local\",
-    \"plan\": \"verify\",
+    \"plan\": \"standard\",
     \"public_key\": \"$PUBLIC_KEY\",
     \"algorithm\": \"EdDSA\",
     \"kid\": \"$KID\"

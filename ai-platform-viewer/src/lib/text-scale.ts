@@ -2,6 +2,7 @@ export const TEXT_SCALE_BASE_PX = 16
 export const TEXT_SCALE_STEP_PX = 1
 export const TEXT_SCALE_MIN_LEVEL = -2
 export const TEXT_SCALE_MAX_LEVEL = 4
+export const TEXT_SCALE_DEFAULT_LEVEL = 2
 
 export function rootFontSizePx(level: number): string {
   const clamped = Math.min(

@@ -8,6 +8,14 @@ export async function loadDevConfig(): Promise<DevConfig> {
   return response.json() as Promise<DevConfig>
 }
 
+export async function ensureViewerAatLifetime(): Promise<void> {
+  const response = await fetch('/api/dev/ensure-aat-lifetime', { method: 'POST' })
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string }
+    throw new Error(payload.error ?? 'Could not set clinic AAT lifetime for viewer mint')
+  }
+}
+
 export async function fetchClinicEnrollmentMaterial(): Promise<ClinicEnrollmentMaterial | null> {
   const response = await fetch('/api/dev/clinic-enrollment-material')
   if (response.status === 404) {
@@ -25,6 +33,15 @@ export async function resetPlatform(): Promise<ResetResult> {
   const payload = (await response.json()) as ResetResult & { error?: string }
   if (!response.ok) {
     throw new Error(payload.error ?? 'Platform reset failed')
+  }
+  return payload
+}
+
+export async function resetInstallations(): Promise<ResetResult> {
+  const response = await fetch('/api/dev/reset-installations', { method: 'POST' })
+  const payload = (await response.json()) as ResetResult & { error?: string }
+  if (!response.ok) {
+    throw new Error(payload.error ?? 'Installation reset failed')
   }
   return payload
 }

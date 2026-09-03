@@ -1,4 +1,6 @@
+import type { JourneyParamField } from '@/catalog/journey-types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
+import { STAGE2_OPERATIONS } from '@/catalog/stage-2-clinic-keypair'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import {
   callSupabaseRpc,
@@ -19,7 +21,21 @@ function maskApiKey(key: string): string {
   return `${key.slice(0, 6)}…${key.slice(-4)}`
 }
 
-function flattenResponseBody(payload: unknown): FieldRow[] {
+function flattenRpcResponseBody(payload: unknown, rpcName: string): FieldRow[] {
+  if (rpcName === 'issue_ai_token') {
+    if (typeof payload === 'string') {
+      const segments = payload.split('.')
+      return [
+        { name: 'token', value: payload, meaning: 'Compact JWS — use as Bearer AAT' },
+        {
+          name: 'segments',
+          value: String(segments.length),
+          meaning: 'header.payload.signature',
+        },
+      ]
+    }
+  }
+
   if (payload === null || payload === undefined) {
     return [{ name: '(empty)', value: '—' }]
   }
@@ -39,22 +55,6 @@ function flattenResponseBody(payload: unknown): FieldRow[] {
       for (const [dataName, dataValue] of Object.entries(
         value as Record<string, unknown>,
       )) {
-        if (dataName === 'public_jwk' && dataValue && typeof dataValue === 'object') {
-          for (const [jwkName, jwkValue] of Object.entries(
-            dataValue as Record<string, unknown>,
-          )) {
-            rows.push({
-              name: `data.public_jwk.${jwkName}`,
-              value:
-                jwkValue === null || jwkValue === undefined
-                  ? 'null'
-                  : String(jwkValue),
-              meaning: stage2FieldMeaning(`public_jwk.${jwkName}`),
-            })
-          }
-          continue
-        }
-
         rows.push({
           name: `data.${dataName}`,
           value:
@@ -63,7 +63,7 @@ function flattenResponseBody(payload: unknown): FieldRow[] {
               : typeof dataValue === 'object'
                 ? JSON.stringify(dataValue)
                 : String(dataValue),
-          meaning: stage2FieldMeaning(dataName),
+          meaning: rpcFieldMeaning(dataName),
         })
       }
       continue
@@ -77,14 +77,14 @@ function flattenResponseBody(payload: unknown): FieldRow[] {
           : typeof value === 'object'
             ? JSON.stringify(value)
             : String(value),
-      meaning: stage2FieldMeaning(name),
+      meaning: rpcFieldMeaning(name),
     })
   }
 
   return rows.length > 0 ? rows : [{ name: '(empty)', value: '—' }]
 }
 
-function stage2FieldMeaning(name: string): string | undefined {
+function rpcFieldMeaning(name: string): string | undefined {
   switch (name) {
     case 'success':
       return 'PostgREST rpc_result success flag'
@@ -94,16 +94,16 @@ function stage2FieldMeaning(name: string): string | undefined {
       return 'Platform installation id; becomes AAT iss and enroll path parameter'
     case 'public_jwk.x':
       return 'Base64url raw public key — becomes platform enroll public_key'
-    case 'public_jwk.kty':
-      return 'JWK key type (OKP)'
-    case 'public_jwk.crv':
-      return 'Curve (Ed25519)'
-    case 'public_jwk.kid':
-      return 'JWK kid mirror of top-level kid'
     case 'error_code':
       return 'Machine-readable failure from rpc_result'
     case 'error_message':
       return 'Human-readable failure from rpc_result'
+    case 'visit_id':
+      return 'Echo of p_visit_id'
+    case 'complaint':
+      return 'Chief complaint for visit.chief_complaint@v1 context key'
+    case 'recorded_at':
+      return 'ISO-8601 UTC instant from note created_at'
     case 'enrolled':
       return 'Clinic-local switch — Flutter hides or shows AI UI from this flag'
     case 'platform_base_url':
@@ -115,58 +115,77 @@ function stage2FieldMeaning(name: string): string | undefined {
   }
 }
 
-const RPC_BY_OPERATION: Record<Stage2OperationId, string> = {
-  'enroll-keypair': 'enroll_installation_keypair',
-  'rotate-installation-key': 'rotate_installation_key',
-  'revoke-installation-key': 'revoke_installation_key',
-  'get-availability': 'get_ai_availability',
-}
-
-function rpcBodyForOperation(
-  operationId: Stage2OperationId,
-  params?: Record<string, string>,
+function buildRpcBody(
+  fields: JourneyParamField[],
+  params: Record<string, string>,
 ): Record<string, unknown> {
-  if (operationId === 'revoke-installation-key') {
-    return { p_kid: params?.p_kid ?? '' }
+  const body: Record<string, unknown> = {}
+
+  for (const field of fields) {
+    if (field.scope !== 'body') {
+      continue
+    }
+
+    const raw = params[field.name]?.trim() ?? ''
+    if (!raw && field.required === false) {
+      continue
+    }
+
+    if (field.json) {
+      const parsed = JSON.parse(raw) as unknown
+      if (field.name === 'p_scopes' && Array.isArray(parsed) && parsed.length === 0) {
+        continue
+      }
+      body[field.name] = parsed
+    } else if (field.name === 'p_visit_id') {
+      body[field.name] = raw
+    } else {
+      body[field.name] = raw
+    }
   }
-  return {}
+
+  return body
 }
 
-function requestBodyFields(
-  operationId: Stage2OperationId,
-  params?: Record<string, string>,
+function rpcRequestBodyFields(
+  fields: JourneyParamField[],
+  params: Record<string, string>,
+  rpcBody: Record<string, unknown>,
 ): FieldRow[] {
-  if (operationId === 'revoke-installation-key') {
-    return [
-      {
-        name: 'p_kid',
-        value: params?.p_kid ?? '',
-        meaning: 'installation_keys.kid to revoke',
-      },
-    ]
+  const bodyFields = fields.filter((field) => field.scope === 'body')
+  if (bodyFields.length === 0) {
+    return [{ name: '(body)', value: '{}', meaning: 'No RPC arguments for this call' }]
   }
 
-  return [
-    {
-      name: '(body)',
-      value: '{}',
-      meaning: 'No RPC arguments for this call',
-    },
-  ]
+  return bodyFields.map((field) => ({
+    name: field.name,
+    value:
+      rpcBody[field.name] !== undefined
+        ? field.json
+          ? JSON.stringify(rpcBody[field.name])
+          : String(rpcBody[field.name])
+        : params[field.name] ?? '',
+    meaning: field.hint,
+  }))
 }
 
-export async function sendStage2SupabaseRequest(
-  operationId: Stage2OperationId,
+export interface SupabaseRpcRequest {
+  rpcName: string
+  fields: JourneyParamField[]
+  params?: Record<string, string>
+}
+
+export async function sendSupabaseRpcRequest(
+  request: SupabaseRpcRequest,
   adminCredentials: SupabaseAdminCredentials,
-  params?: Record<string, string>,
 ): Promise<HttpExchange> {
   const config = await resolveSupabaseConfig(adminCredentials)
   const accessToken = await signInToSupabase(config)
-  const rpcName = RPC_BY_OPERATION[operationId]
+  const { rpcName, fields, params } = request
   const path = `/rest/v1/rpc/${rpcName}`
   const url = `${config.supabaseUrl}${path}`
   const sentAt = new Date().toISOString()
-  const rpcBody = rpcBodyForOperation(operationId, params)
+  const rpcBody = buildRpcBody(fields, params ?? {})
 
   const { response, payload, rawBody } = await callSupabaseRpc(
     config,
@@ -205,7 +224,7 @@ export async function sendStage2SupabaseRequest(
           meaning: 'PostgREST RPC call',
         },
       ],
-      body: requestBodyFields(operationId, params),
+      body: rpcRequestBodyFields(fields, params ?? {}, rpcBody),
       raw: buildRawRequest('POST', url, requestHeaders, rpcBody),
     },
     response: {
@@ -215,7 +234,7 @@ export async function sendStage2SupabaseRequest(
         name,
         value,
       })),
-      body: flattenResponseBody(payload),
+      body: flattenRpcResponseBody(payload, rpcName),
       rawBody,
       raw: buildRawResponse(
         response.status,
@@ -226,4 +245,35 @@ export async function sendStage2SupabaseRequest(
     },
     sentAt,
   }
+}
+
+export async function sendStage2SupabaseRequest(
+  operationId: Stage2OperationId,
+  adminCredentials: SupabaseAdminCredentials,
+  params?: Record<string, string>,
+): Promise<HttpExchange> {
+  const operation = STAGE2_OPERATIONS.find((item) => item.id === operationId)
+  if (!operation) {
+    throw new Error(`Unknown Stage 2 operation: ${operationId}`)
+  }
+
+  const fields: JourneyParamField[] =
+    operation.paramName !== undefined
+      ? [
+          {
+            name: operation.paramName,
+            scope: 'body',
+            hint: operation.paramHint,
+          },
+        ]
+      : []
+
+  return sendSupabaseRpcRequest(
+    {
+      rpcName: operation.rpcName,
+      fields,
+      params,
+    },
+    adminCredentials,
+  )
 }

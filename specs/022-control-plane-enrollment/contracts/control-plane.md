@@ -48,13 +48,14 @@ All routes are `POST` only. The Worker dispatches matching paths to `dispatchCon
 
 | Field | Required | Purpose |
 | --- | --- | --- |
-| `org_id` | yes | Clinic organisation identifier (one-time enrollment key) |
+| `installation_id` | yes (path) | Canonical UUID — same value as clinic `installation_id` / AAT `iss` |
+| `org_id` | yes | Canonical UUID — clinic `organizations.id` |
 | `display_name` | yes | Human-readable installation label |
 | `region` | yes | Deployment region |
-| `plan` | yes | Plan name recorded on the initial `entitlement` row |
-| `public_key` | yes | Clinic Ed25519 public key (from operator routine, §8.1) |
-| `algorithm` | yes | Key algorithm (e.g. `EdDSA`) |
-| `kid` | yes | Key identifier for the initial `installation_key` row |
+| `plan` | yes | Closed tier: `starter`, `standard`, `professional`, or `enterprise` |
+| `public_key` | yes | Base64url encoding of a 32-byte Ed25519 public key (Stage 2 `public_jwk.x`) |
+| `algorithm` | yes | Must be `EdDSA` |
+| `kid` | yes | Canonical UUID — Stage 2 `kid` → `installation_key.key_id` |
 
 ### 2.2 Enroll success response
 
@@ -73,7 +74,7 @@ confirmed + platform base URL"). The same Worker serves `/control` and `/v1/requ
 | --- | --- | --- |
 | `kid` | yes | New key identifier |
 | `public_key` | yes | New clinic public key |
-| `algorithm` | yes | Key algorithm |
+| `algorithm` | yes | Key algorithm — must be `EdDSA` |
 
 Suspend, resume, and delete accept an empty JSON object `{}`.
 
@@ -86,7 +87,7 @@ JSON `{"error": "<reason>"}` with a terminal HTTP status:
 | --- | --- | --- |
 | Missing or invalid operator credentials | `401` | `unauthorized` |
 | Malformed JSON body | `400` | `invalid_json` |
-| Required enroll/rotate field missing or empty | `400` | `invalid_payload` |
+| Required enroll/rotate field missing or empty, unknown `plan`, unsupported `algorithm`, non-UUID `installation_id`/`org_id`/`kid`, or invalid `public_key` | `400` | `invalid_payload` |
 | Route does not match expected pattern | `400` | `invalid_route` |
 | Duplicate enroll (existing `installation_id` or `org_id`) | `409` | `already_enrolled` |
 | Illegal lifecycle transition (e.g. mutate `deleted`, resume non-`suspended`, re-suspend) | `409` | `illegal_lifecycle_transition` |

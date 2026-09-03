@@ -1,0 +1,10 @@
+DELETE FROM ai_attempt;
+DELETE FROM usage_event;
+DELETE FROM ai_request;
+DELETE FROM entitlement;
+DELETE FROM installation_key;
+DELETE FROM installation;
+DELETE FROM capability_grant;
+DELETE FROM control_audit;
+DELETE FROM platform_counter;
+DELETE FROM usage_rollup;

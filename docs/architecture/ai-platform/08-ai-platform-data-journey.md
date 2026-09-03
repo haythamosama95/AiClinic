@@ -3,7 +3,7 @@
 - Purpose: Trace **every field** of data as it moves through the AI platform — from first configuration through enrollment, entitlements, contracts, routing, live AI requests, and settlement in D1, R2, and the Quota Durable Object.
 - Read this when: you are learning the platform and want to understand **what each value means, where it came from, and why a path succeeded or failed** — not just which HTTP endpoint to call.
 - Canonical for: nothing. This is a **data-field companion** derived from `ai-platform/src/`**, `ai-platform/migrations/`**, `backend/supabase/migrations/**`, and `ai-platform/manifests/**`.
-- Related docs: [06-ai-platform-behavioral-journey.md](06-ai-platform-behavioral-journey.md) (stage behavior), [07-ai-platform-d1-r2-storage.md](07-ai-platform-d1-r2-storage.md) (storage tables), [01-ai-platform.md](01-ai-platform.md) (architecture decisions).
+- Related docs: [09-ai-platform-request-response-flow.md](09-ai-platform-request-response-flow.md) (canonical request/response call hierarchy), [06-ai-platform-behavioral-journey.md](06-ai-platform-behavioral-journey.md) (stage behavior), [07-ai-platform-d1-r2-storage.md](07-ai-platform-d1-r2-storage.md) (storage tables), [01-ai-platform.md](01-ai-platform.md) (architecture decisions).
 
 ---
 

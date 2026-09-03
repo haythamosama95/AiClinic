@@ -398,6 +398,8 @@ SELECT set_config(
 
 Reset `role` to `postgres` before inspecting `ai_internal`.
 
+---
+
 ### 8.2 Coverage
 
 Every happy and failure claim in this file maps to a probe. Carry them all out.
@@ -434,6 +436,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Manual `UPDATE` flips the flag; no `set_ai_availability` RPC; flag does not grant quotas | [§8.3.13](#8313-availability-flag-after-the-key-exists) |
 | Recovery re-enroll when no active key remains reuses `installation_id`, mints new `kid` (postgres simulation) | [§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation) |
 
+---
 
 ### 8.3 Ordered probes
 
@@ -452,6 +455,8 @@ WHERE key = 'ai.availability';
 
 **Expect:** `installation_keys` is empty. `get_ai_availability()` (next probe) can see the seeded default.
 
+---
+
 #### 8.3.2 Before any key exists
 
 **Do:** as **doctor**, `SELECT public.get_ai_availability();`
@@ -465,6 +470,8 @@ WHERE key = 'ai.availability';
 **Do:** as doctor (or any staff with `ai.*`), `SELECT public.issue_ai_token();`
 
 **Expect:** `success = false`, `error_code = 'INSTALLATION_NOT_ENROLLED'`. This stage’s keypair is a prerequisite for Stage 6; this RPC does not mint AATs.
+
+---
 
 #### 8.3.3 Enroll failure paths
 
@@ -483,6 +490,8 @@ WHERE key = 'ai.availability';
 **Do:** as `anon` (no JWT), `POST /rest/v1/rpc/enroll_installation_keypair`.
 
 **Expect:** PostgREST 401 / permission denied. `GRANT EXECUTE` is to `authenticated` only. The AI platform has no inbound path to this RPC either — there is nothing to call from the Worker.
+
+---
 
 #### 8.3.4 First enroll (happy path)
 
@@ -532,6 +541,8 @@ WHERE is_deleted = false;
 
 **Expect:** still `{ "enrolled": false, "platform_base_url": null }`. `enroll_installation_keypair` does not touch `app_settings`.
 
+---
+
 #### 8.3.5 Second enroll while active key exists
 
 **Do:** as **owner**, with **K0** still active from [§8.3.4](#834-first-enroll-happy-path):
@@ -542,6 +553,8 @@ SELECT public.enroll_installation_keypair();
 
 **Expect:** `success = false`, `error_code = 'ALREADY_ENROLLED'`. As `postgres`, still exactly one non-deleted row with `kid = K0` and `revoked_at IS NULL`. Use `rotate_installation_key()` for a new signing key while any active key remains.
 
+---
+
 #### 8.3.6 Key rotation via `rotate_installation_key` (happy path)
 
 **Do:** as **administrator** (different `auth_user_id` from the owner):
@@ -551,6 +564,8 @@ SELECT public.rotate_installation_key();
 ```
 
 **Expect:** `success = true`. New `kid` (**K1** ≠ **K0**). **Same** `installation_id` **I0**. `data` matches [§3.1](#31-api-publicrotate_installation_key) (`kid`, `installation_id`, `public_jwk` with `kty`, `crv`, `x`, `kid`). Two rows in `installation_keys`, both with `revoked_at IS NULL`. This is the production rotation path — do **not** call `enroll_installation_keypair()` while an active key exists ([§8.3.5](#835-second-enroll-while-active-key-exists)).
+
+---
 
 #### 8.3.7 Revoke installation key (happy path)
 
@@ -584,9 +599,13 @@ SELECT public.revoke_installation_key('K1');
 
 **Expect:** `success = false`, `error_code = 'CANNOT_REVOKE_LAST_ACTIVE_KEY'`, message *Cannot revoke the last active installation key. Rotate a replacement key first.* As `postgres`, **K1** still has `revoked_at IS NULL`. Normal rotation retires old keys only after a successor exists ([§8.3.14](#8314-cannot-revoke-last-active-key)).
 
+---
+
 #### 8.3.8 Rotate before enroll fails (`INSTALLATION_NOT_ENROLLED`)
 
 Empty-keystore guard for `rotate_installation_key()`. **Performed in [§8.3.3](#833-enroll-failure-paths)** before first enroll so the probe sequence stays top-to-bottom without a mid-run reset.
+
+---
 
 #### 8.3.9 Single-installation trigger (failure path)
 
@@ -606,6 +625,8 @@ INSERT INTO ai_internal.installation_keys (
 
 **Expect:** `SINGLE_INSTALLATION_VIOLATION` (`P0001`). Active rows still share one `installation_id` (**I0**).
 
+---
+
 #### 8.3.10 Mint an AAT from this key (happy path for the handoff fields)
 
 **Do:** as doctor with `ai.*`, `SELECT public.issue_ai_token();`
@@ -617,6 +638,8 @@ INSERT INTO ai_internal.installation_keys (
 - Payload `iss` = **I0**
 
 This is Stage 6 using the key this stage minted. `enroll_installation_keypair` itself still does not return a token.
+
+---
 
 #### 8.3.11 Platform does not know the clinic yet
 
@@ -636,6 +659,8 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** identity failure (`unauthenticated`). Same shape as retiring a token-contract version then invoking: the border guard has no file for this passport.
 
+---
+
 #### 8.3.12 Stage 3 enroll using this RPC’s output (happy path §6)
 
 **Do:** copy **I0**, **K0**, and `public_jwk.x` from the **first** enroll (do not invent a platform id). Local Worker up:
@@ -652,7 +677,7 @@ curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
     "org_id": "<clinic organizations.id>",
     "display_name": "Verify Clinic",
     "region": "local",
-    "plan": "verify",
+    "plan": "standard",
     "public_key": "<public_jwk.x from first enroll>",
     "algorithm": "EdDSA",
     "kid": "<K0>"
@@ -672,6 +697,8 @@ curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
 **Do:** `POST /v1/requests` again with a valid AAT (do **not** entitle).
 
 **Expect:** identity can pass (key is on the platform) but entitlement/quota fails (`forbidden_capability` / `ai_disabled` while pending). This stage does not grant quotas ([§7.5](#75-what-this-stage-does-not-do)).
+
+---
 
 #### 8.3.13 Availability flag after the key exists
 
@@ -702,6 +729,8 @@ SELECT public.get_ai_availability();
 
 **Expect:** still not entitled. The availability flag does not grant quotas.
 
+---
+
 #### 8.3.14 Cannot revoke last active key
 
 The revoke API enforces at least one active key per installation. After [§8.3.7](#837-revoke-installation-key-happy-path) revokes **K0**, **K1** is the sole active key — `revoke_installation_key('K1')` must fail with `CANNOT_REVOKE_LAST_ACTIVE_KEY` (probe performed there).
@@ -709,6 +738,8 @@ The revoke API enforces at least one active key per installation. After [§8.3.7
 **Do:** as **owner**, with only **K1** still active, call `revoke_installation_key('K1')` again if needed.
 
 **Expect:** same failure. Operators rotate first (`rotate_installation_key()` → **K2**), revoke **K1**, and may revoke **K0** if still present — never the last unrevoked key via RPC.
+
+---
 
 #### 8.3.15 Recovery re-enroll after all keys revoked (postgres simulation)
 

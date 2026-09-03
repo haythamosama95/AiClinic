@@ -108,7 +108,11 @@ export function SecretsPage() {
           <CredentialField
             id="clinic-aat"
             label="Signed token"
-            hint={aat ? 'Minted from Supabase' : 'Auto-mints on load and after reset'}
+            hint={
+              aat
+                ? 'Minted from Supabase (5-minute lifetime)'
+                : 'Auto-mints on load and after reset (5-minute lifetime)'
+            }
             value={aat}
             revealed={aatRevealed}
             onToggleReveal={() => setAatRevealed(!aatRevealed)}

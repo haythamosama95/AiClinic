@@ -161,7 +161,7 @@ The live gate is `EnrolledKeyVerifier` plus `discover()`. Any staff who can mint
 - Local Worker (`cd ai-platform && npm run dev`) at `http://127.0.0.1:8787`. Local D1 migrations applied (`npx wrangler d1 migrations apply ai-platform-development --local --env development`).
 - Clinic already through Stages 2–3: keypair in clinic Postgres, installation row in D1, a staff session that can `issue_ai_token` (at least one `ai.*` RBAC permission).
 - `OPERATOR_BEARER_TOKEN` for Stage 4 entitle only. Clinic `installation_id` from enroll (call it **I0**).
-- Published registry on this Worker is `clinic.visit_summary@1.0.0`. Its `Access.minimumPlanTier` is `standard`, so D1 `entitlement.plan` must be `standard`, `professional`, or `enterprise`. Entitle does **not** change `plan`. If Stage 3 used `plan: "verify"`, patch it in [§6.3.1](#631-reset-to-a-known-pending-installation).
+- Published registry on this Worker is `clinic.visit_summary@1.0.0`. Its `Access.minimumPlanTier` is `standard`, so D1 `entitlement.plan` must be `standard`, `professional`, or `enterprise` at enroll time. If an installation was enrolled before plan validation shipped, patch D1 or re-enroll in [§6.3.1](#631-reset-to-a-known-pending-installation).
 - After D1 writes that do not go through this isolate’s cache (`POST /control/…/entitle`, `wrangler d1 execute`), either wait **31 s** or restart `npm run dev` before treating discovery as fresh. The isolate `ConfigCache` TTL is 30 s (`CACHE_TTL_MS`); entitle does not invalidate it.
 
 ```bash

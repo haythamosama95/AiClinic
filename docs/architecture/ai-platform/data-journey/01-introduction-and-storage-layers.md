@@ -3,7 +3,7 @@
 - Purpose: Trace **every field** of data as it moves through the AI platform — from first configuration through enrollment, entitlements, contracts, routing, live AI requests, and settlement in D1, R2, and the Quota Durable Object.
 - Read this when: you are learning the platform and want to understand **what each value means, where it came from, and why a path succeeded or failed** — not just which HTTP endpoint to call.
 - Canonical for: nothing. This is a **data-field companion** derived from `ai-platform/src/`**, `ai-platform/migrations/`**, `backend/supabase/migrations/**`, and `ai-platform/manifests/**`.
-- Related docs: [06-ai-platform-behavioral-journey.md](../06-ai-platform-behavioral-journey.md) (stage behavior), [07-ai-platform-d1-r2-storage.md](../07-ai-platform-d1-r2-storage.md) (storage tables), [01-ai-platform.md](../01-ai-platform.md) (architecture decisions).
+- Related docs: [09-ai-platform-request-response-flow.md](../09-ai-platform-request-response-flow.md) (canonical request/response call hierarchy), [06-ai-platform-behavioral-journey.md](../06-ai-platform-behavioral-journey.md) (stage behavior), [07-ai-platform-d1-r2-storage.md](../07-ai-platform-d1-r2-storage.md) (storage tables), [01-ai-platform.md](../01-ai-platform.md) (architecture decisions).
 
 ---
 
@@ -232,7 +232,7 @@ Wording in this file vs the wire:
 - Pending entitlement is path `ai_disabled` in Worker logs; the client sees taxonomy **`forbidden_capability`**.
 - JTI replay is Quota DO outcome `replay`, mapped to **`unauthenticated`**.
 - Missing active/canary routing after `accepted` throws `ConfigCacheMissError` on preload; the SSE terminal is **`failed` / `internal_error`** (not a dedicated routing code).
-- Enroll `plan` must be a known tier (`starter` / `standard` / `professional` / `enterprise`). Visit summary’s `minimumPlanTier` is `standard` — use **`standard`**, not an invented plan id.
+- Enroll `plan` must be a known tier (`starter` / `standard` / `professional` / `enterprise`); unknown values are rejected at enroll with `400 invalid_payload`. Visit summary’s `minimumPlanTier` is `standard` — use **`standard`**, not an invented plan id.
 - `OPERATOR_ID` in `wrangler.toml` is `platform-operator`. D1 grant `scope` is `installation:{id}` or `plan:{plan}`; the cache key for an installation grant is `{installation_id}/{capability_id}`.
 
 ### 4.1 Setup

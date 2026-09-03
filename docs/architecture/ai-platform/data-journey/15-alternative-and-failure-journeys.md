@@ -244,7 +244,7 @@ Every claim in this file maps to a probe, including every [§8](#8-complete-pre-
 
 #### 11.3.1 Reset to a known platform state
 
-**Do:** as clinic owner, mint a keypair if none exists (`SELECT public.enroll_installation_keypair();`). Save `installation_id` **I0**, `kid` **K0**, `public_jwk.x`. Start the Worker with `--test-scheduled`. Enroll with `plan: "standard"` (not `starter` / `verify`):
+**Do:** as clinic owner, mint a keypair if none exists (`SELECT public.enroll_installation_keypair();`). Save `installation_id` **I0**, `kid` **K0**, `public_jwk.x`. Start the Worker with `--test-scheduled`. Enroll with `plan: "standard"` (not `starter` for visit-summary minimum tier):
 
 ```bash
 curl -sS -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
@@ -543,7 +543,7 @@ Wait 31 s. `invoke`. Then delete those global overlay grant rows and wait 31 s s
 
 **Expect:** compose succeeds. `composeRequest` `internal_error` (missing system instruction / rule fragment / omitted `requestReference`) is **unprobeable** without breaking the bundled registry. The post-accept preload miss in [§11.3.4](#1134-missing-routing-policy) is **not** this row — that is after SSE `accepted`.
 
-**Provider kill switch (not pre-SSE).** **Do:** restore visit_summary. Publish/promote a policy whose chain is `deepseek` then `fake` (complete features). 
+**Provider kill switch (not pre-SSE).** **Do:** restore visit_summary. Publish/promote a policy whose chain is `deepseek` then `fake` (complete features).
 
 ```bash
 d1 "INSERT INTO kill_switch (scope, target, active, changed_at, changed_by) VALUES ('provider', 'deepseek', 1, datetime('now'), 'verify')"

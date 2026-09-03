@@ -14,8 +14,13 @@ import {
   canDecreaseTextScale,
   canIncreaseTextScale,
   rootFontSizePx,
+  TEXT_SCALE_DEFAULT_LEVEL,
 } from '@/lib/text-scale'
 import { mintAatFromSupabase } from '@/lib/mint-aat'
+import {
+  pathForSection,
+  sectionFromPath,
+} from '@/lib/routes'
 import type { NavSection } from '@/types'
 
 interface SessionContextValue {
@@ -39,6 +44,7 @@ interface SessionContextValue {
   errorMessage: string | null
   busyAction: 'reset' | 'mint' | null
   mintAat: () => Promise<void>
+  storeClinicAat: (token: string) => void
   resetAll: () => Promise<void>
   clearMessages: () => void
   textScaleLevel: number
@@ -51,7 +57,9 @@ interface SessionContextValue {
 const SessionContext = createContext<SessionContextValue | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [activeSection, setActiveSection] = useState<NavSection>('stage-1')
+  const [activeSection, setActiveSectionState] = useState<NavSection>(() =>
+    sectionFromPath(window.location.pathname),
+  )
   const [operatorBearer, setOperatorBearer] = useState('')
   const [operatorSource, setOperatorSource] = useState('')
   const [supabaseAdminUsername, setSupabaseAdminUsername] = useState('')
@@ -67,8 +75,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<'reset' | 'mint' | null>(null)
-  const [textScaleLevel, setTextScaleLevel] = useState(0)
+  const [textScaleLevel, setTextScaleLevel] = useState(TEXT_SCALE_DEFAULT_LEVEL)
   const startupMintDone = useRef(false)
+
+  const setActiveSection = useCallback((section: NavSection) => {
+    const path = pathForSection(section)
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path)
+    }
+    setActiveSectionState(section)
+  }, [])
+
+  useEffect(() => {
+    const expectedPath = pathForSection(
+      sectionFromPath(window.location.pathname),
+    )
+    if (window.location.pathname !== expectedPath) {
+      window.history.replaceState(null, '', expectedPath)
+      setActiveSectionState(sectionFromPath(expectedPath))
+    }
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActiveSectionState(sectionFromPath(window.location.pathname))
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   useEffect(() => {
     document.documentElement.style.fontSize = rootFontSizePx(textScaleLevel)
@@ -160,6 +194,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await runMint('manual')
   }, [clearMessages, runMint])
 
+  const storeClinicAat = useCallback((token: string) => {
+    setAat(token)
+    setAatRevealed(true)
+  }, [])
+
   const resetAll = useCallback(async () => {
     clearMessages()
     setBusyAction('reset')
@@ -220,6 +259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       errorMessage,
       busyAction,
       mintAat,
+      storeClinicAat,
       resetAll,
       clearMessages,
       textScaleLevel,
@@ -244,6 +284,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       errorMessage,
       busyAction,
       mintAat,
+      storeClinicAat,
       resetAll,
       clearMessages,
       textScaleLevel,

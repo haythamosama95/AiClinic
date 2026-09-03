@@ -4,6 +4,7 @@ import {
   signInToSupabase,
   type SupabaseSessionConfig,
 } from '@/lib/supabase-session'
+import { ensureViewerAatLifetime } from '@/lib/dev-api'
 import { ensurePlatformEnrollment } from '@/lib/platform-enroll'
 import type { SupabaseAdminCredentials } from '@/types'
 
@@ -95,6 +96,7 @@ export async function mintAatFromSupabase(
   adminCredentials: SupabaseAdminCredentials,
 ): Promise<MintAatResult> {
   const config = await resolveSupabaseConfig(adminCredentials)
+  await ensureViewerAatLifetime()
   const accessToken = await signInToSupabase(config)
   const token = await issueAat(config, accessToken)
   const aatVer = await ensurePlatformEnrollment(operatorBearer)
