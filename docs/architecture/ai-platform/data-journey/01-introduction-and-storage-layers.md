@@ -191,6 +191,7 @@ Deployed with the Worker:
 | Path                                                  | Role                                |
 | ----------------------------------------------------- | ----------------------------------- |
 | `manifests/published/clinic.visit_summary@1.0.0.json` | Capability manifest                 |
+| `context/shapes/published/visit.chief_complaint@v1.json` | Context key shape (field names, types, cardinality, units — [01-ai-platform.md §5.2](../01-ai-platform.md#52-context-contract)); immutable per key version |
 | `prompts/clinic.visit_summary/*.md`                   | System, rules, template prompt text |
 | `control/pricing/platform-default/1.json`             | Post-response model price table (input/output per 1K tokens). Bundled, never client-visible. Money is applied only at settlement from provider-reported tokens (§13.6.2). |
 
@@ -276,6 +277,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | ----- | ----- |
 | Token contract lives in D1 `token_contract` | [§4.3.3](#433-d1-filing-cabinet-shape), [§4.3.15](#4315-token-contract-cache-key) |
 | Capability manifest is bundled JSON (`manifests/published/`), not D1/R2 | [§4.3.2](#432-bindings-vars-secrets-and-worker-boot), [§4.3.4](#434-bundled-artifacts-are-not-d1-or-r2), [§4.3.8](#438-entitle-in-memory-catalog-pricing-not-on-the-wire) |
+| Context key shapes are bundled JSON (`context/shapes/published/`); shape schema and validation frozen in `src/context/index.ts` | [§4.3.2](#432-bindings-vars-secrets-and-worker-boot), [§4.3.4](#434-bundled-artifacts-are-not-d1-or-r2) |
 | Canonical inference contract is TypeScript `contracts/canonical.ts` | [§4.3.2](#432-bindings-vars-secrets-and-worker-boot) |
 | `wrangler.toml` bindings: `DB`, `R2`, `DO`, rate limiters, crons, vars | [§4.3.2](#432-bindings-vars-secrets-and-worker-boot) |
 | Secrets are not in `wrangler.toml` (`OPERATOR_BEARER_TOKEN` via `.dev.vars`) | [§4.3.2](#432-bindings-vars-secrets-and-worker-boot), [§4.3.5](#435-control-bearer-enroll-and-shared-operator_id) |

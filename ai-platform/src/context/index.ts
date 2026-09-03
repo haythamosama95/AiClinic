@@ -1,7 +1,11 @@
 /**
  * Context-key vocabulary and published shapes (§5.2).
- * Types and validation derive from the published shape manifest; contract tests (T-A5-*) exercise it.
+ * Shape schema and validation logic live here; shape data is loaded from
+ * immutable bundled JSON under `context/shapes/published/` at module init.
+ * Malformed artifacts throw at load time (build/test failure), never per request.
+ * Contract tests (T-A5-*) exercise the published shapes.
  */
+import visitChiefComplaintV1ShapeJson from "../../context/shapes/published/visit.chief_complaint@v1.json";
 
 export type FieldType = "string" | "number" | "boolean";
 
@@ -30,32 +34,127 @@ export type ValidationResult =
       readonly field?: string;
     };
 
+const FIELD_TYPES = new Set<FieldType>(["string", "number", "boolean"]);
+
+const SHAPE_ROOT_KEYS = ["key", "fields"] as const;
+const SHAPE_FIELD_KEYS = ["name", "type", "cardinality", "units"] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function assertExactKeys(
+  object: Record<string, unknown>,
+  keys: readonly string[],
+  context: string,
+): void {
+  const expected = new Set(keys);
+  for (const key of keys) {
+    if (!(key in object)) {
+      throw new Error(`Malformed key shape artifact: ${context}`);
+    }
+  }
+  for (const key of Object.keys(object)) {
+    if (!expected.has(key)) {
+      throw new Error(`Malformed key shape artifact: ${context}`);
+    }
+  }
+}
+
+function parseFieldCardinality(
+  value: unknown,
+  context: string,
+): FieldCardinality {
+  if (value === "required" || value === "optional") {
+    return value;
+  }
+
+  if (isPlainObject(value)) {
+    assertExactKeys(value, ["maxLength"], context);
+    const maxLength = value.maxLength;
+    if (
+      typeof maxLength !== "number" ||
+      !Number.isFinite(maxLength) ||
+      maxLength <= 0
+    ) {
+      throw new Error(`Malformed key shape artifact: ${context}`);
+    }
+    return { maxLength };
+  }
+
+  throw new Error(`Malformed key shape artifact: ${context}`);
+}
+
+function parseKeyShapeField(raw: unknown, index: number): KeyShapeField {
+  const context = `field[${index}]`;
+  if (!isPlainObject(raw)) {
+    throw new Error(`Malformed key shape artifact: ${context}`);
+  }
+
+  assertExactKeys(raw, SHAPE_FIELD_KEYS, context);
+
+  const name = raw.name;
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error(`Malformed key shape artifact: ${context}`);
+  }
+
+  const type = raw.type;
+  if (typeof type !== "string" || !FIELD_TYPES.has(type as FieldType)) {
+    throw new Error(`Malformed key shape artifact: ${context}`);
+  }
+
+  const cardinality = parseFieldCardinality(
+    raw.cardinality,
+    `${context}.cardinality`,
+  );
+
+  const units = raw.units;
+  if (units !== null && typeof units !== "string") {
+    throw new Error(`Malformed key shape artifact: ${context}`);
+  }
+
+  return {
+    name,
+    type: type as FieldType,
+    cardinality,
+    units,
+  };
+}
+
+/** Strictly validate a bundled key-shape JSON artifact (fail closed at load time). */
+export function parseKeyShapeArtifact(
+  raw: unknown,
+  artifactId: string,
+): KeyShape {
+  if (!isPlainObject(raw)) {
+    throw new Error(`Malformed key shape artifact: ${artifactId}`);
+  }
+
+  assertExactKeys(raw, SHAPE_ROOT_KEYS, artifactId);
+
+  const key = raw.key;
+  if (typeof key !== "string" || key !== artifactId) {
+    throw new Error(`Malformed key shape artifact: ${artifactId}`);
+  }
+
+  const fields = raw.fields;
+  if (!Array.isArray(fields) || fields.length === 0) {
+    throw new Error(`Malformed key shape artifact: ${artifactId}`);
+  }
+
+  return {
+    key,
+    fields: fields.map((field, index) => parseKeyShapeField(field, index)),
+  };
+}
+
 /** First published context key — OD-1 visit-summary capability (manifest fixture). */
 export const VISIT_CHIEF_COMPLAINT_V1 = "visit.chief_complaint@v1" as const;
 
-export const VISIT_CHIEF_COMPLAINT_V1_SHAPE: KeyShape = {
-  key: VISIT_CHIEF_COMPLAINT_V1,
-  fields: [
-    {
-      name: "visit_id",
-      type: "string",
-      cardinality: "required",
-      units: "uuid",
-    },
-    {
-      name: "complaint",
-      type: "string",
-      cardinality: { maxLength: 10_000 },
-      units: null,
-    },
-    {
-      name: "recorded_at",
-      type: "string",
-      cardinality: "optional",
-      units: "iso8601",
-    },
-  ],
-};
+export const VISIT_CHIEF_COMPLAINT_V1_SHAPE: KeyShape = parseKeyShapeArtifact(
+  visitChiefComplaintV1ShapeJson,
+  VISIT_CHIEF_COMPLAINT_V1,
+);
 
 const SECTION_5_2_EXAMPLE_KEYS = [
   "patient.demographics@v1",

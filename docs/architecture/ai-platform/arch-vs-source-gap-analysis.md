@@ -51,7 +51,7 @@ Items below are either **absent**, **schema/control writers absent**, or **so in
 |------|--------------------------|----------------|
 | **Capability registry** | Versioned manifests for AI features | Only `clinic.visit_summary@1.0.0` published under `manifests/published/` |
 | **Prompt registry** | Bundled artifacts per capability | Only `prompts/clinic.visit_summary/*` |
-| **Context Contract vocabulary** (§5.2) | Published shapes for declared keys | Fully published shape: `visit.chief_complaint@v1`; other §5.2 example keys are named, not fully shaped |
+| **Context Contract vocabulary** (§5.2) | Published shapes for declared keys | Fully published shape: `visit.chief_complaint@v1` (bundled artifact `context/shapes/published/visit.chief_complaint@v1.json`); other §5.2 example keys are named, not fully shaped |
 | **Conversational capability** (§6.7 / §8.10) | Same submit surface; context negotiation | Stream/context-request code paths exist in libraries/tests; **no published conversational capability** in `manifests/published/` |
 
 ### 2.3 Explicitly deferred in architecture (not current gaps)

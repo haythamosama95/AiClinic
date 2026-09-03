@@ -1627,7 +1627,7 @@ naming rule is strict and worth stating as a rule because violating it silently 
 | Aspect        | Specification                                                                                                                                                                                                                                                                            |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Key format    | `domain.concept@vN` — e.g. `patient.demographics@v1`, `visit.vitals@v1`, `visit.chief_complaint@v1`, `medication.active_list@v1`, `lab.recent_results@v1`, `clinic.branch_profile@v1`                                                                                                    |
-| Shape         | Each key has a platform-published shape (field names, types, cardinality, units) — the *only* schema knowledge shared between the two sides                                                                                                                                              |
+| Shape         | Each key has a platform-published shape (field names, types, cardinality, units) — the *only* schema knowledge shared between the two sides. The shape is a bundled JSON artifact at `context/shapes/published/<key>.json` (e.g. `visit.chief_complaint@v1.json`), immutable per key version; the shape *schema* (`KeyShape`) and validation stay frozen TypeScript in `src/context/index.ts` |
 | Direction     | Client → platform, always ([§1.3.1](#131-the-ai-platform-cannot-reach-the-clinics-database))                                                                                                                                                                                             |
 | Discovery     | Client fetches capability manifests (cached, revalidated by version/etag) and knows the key list before submitting                                                                                                                                                                       |
 | Self-healing  | `single_shot` only. If a client submits without a required key (stale cache), the platform rejects with `context_required` plus the missing-key manifest; the client resolves and resubmits once ([§8.4](#84-missing-context-self-healing))                                              |
@@ -1635,6 +1635,16 @@ naming rule is strict and worth stating as a rule because violating it silently 
 | Authorization | Resolution happens under the caller's own Supabase permissions and RLS; the platform additionally verifies that supplied context is branch-consistent with the token's claims                                                                                                            |
 | Evolution     | Adding an optional key is backward compatible. Adding a required key, or changing a shape, requires a new key version and a new capability version (A12)                                                                                                                                 |
 | Minimization  | Only declared keys are forwarded to the composer; extras are dropped ([§4.3.5](#435-context-validator))                                                                                                                                                                                  |
+
+
+**Shape artifacts.** A published shape is data, not code — the same discipline as the capability
+manifest ([§5.1](#51-capability-manifest)): the `KeyShape` types and validation rules stay frozen in
+TypeScript (`src/context/index.ts`), while each key version's field definitions live in an immutable
+bundled JSON artifact under `context/shapes/published/`, imported and validated at build time so a
+malformed artifact fails the build, never a request. A manifest's `shapeRef` names one of these
+artifacts by key id; the manifest schema is unchanged. Changing a shape means publishing a new
+`@vN` artifact (the Evolution row above); editing a published artifact in place is a contract
+change.
 
 
 **Freshness and trust.** Context is a client-supplied snapshot, so it can be stale or tampered with

@@ -1394,7 +1394,7 @@ Entry fields (single-shot array items):
 | ----- | -------- | ---- | ------- | ------- |
 | `key` | field required | `string` | A5 context key id | not routing |
 | `required` | field required | `boolean` | Must appear in invoke `context` | not routing |
-| `shapeRef` | field required | `string` | Validator shape reference | not routing |
+| `shapeRef` | field required | `string` | Validator shape reference → bundled artifact `context/shapes/published/{shapeRef}.json` | not routing |
 | `maxSize` | field required | number | Max serialized bytes for key | not routing |
 
 **Schema note:** there is no `freshnessHint`. The loader rejects it as an extra key. Stale context is accepted by design (architecture §6.7.3); containment is the journal of exact context plus the advisory-output rule, not a per-key freshness gate.

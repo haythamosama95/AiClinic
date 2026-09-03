@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import visitChiefComplaintV1ShapeJson from "../context/shapes/published/visit.chief_complaint@v1.json";
 import {
+  parseKeyShapeArtifact,
   validateKey,
   validatePayload,
   VISIT_CHIEF_COMPLAINT_V1,
@@ -253,6 +255,96 @@ describe("T-A5-09 context_key_shape_violation_missing_field", () => {
       expect(result.code).toBe("missing_field");
       expect(result.field).toBe(missingField.name);
     }
+  });
+});
+
+describe("T-A5-11 key_shape_artifact_contract", () => {
+  it("parses the bundled artifact to the exported VISIT_CHIEF_COMPLAINT_V1_SHAPE", () => {
+    const parsed = parseKeyShapeArtifact(
+      visitChiefComplaintV1ShapeJson,
+      VISIT_CHIEF_COMPLAINT_V1,
+    );
+    expect(parsed).toEqual(VISIT_CHIEF_COMPLAINT_V1_SHAPE);
+    expect(parsed.key).toBe(VISIT_CHIEF_COMPLAINT_V1_SHAPE.key);
+    expect(parsed.fields).toEqual(VISIT_CHIEF_COMPLAINT_V1_SHAPE.fields);
+  });
+
+  it.each([
+    {
+      label: "bad type",
+      raw: {
+        key: VISIT_CHIEF_COMPLAINT_V1,
+        fields: [
+          {
+            name: "visit_id",
+            type: "object",
+            cardinality: "required",
+            units: "uuid",
+          },
+        ],
+      },
+    },
+    {
+      label: "bad cardinality",
+      raw: {
+        key: VISIT_CHIEF_COMPLAINT_V1,
+        fields: [
+          {
+            name: "visit_id",
+            type: "string",
+            cardinality: { maxLength: -1 },
+            units: "uuid",
+          },
+        ],
+      },
+    },
+    {
+      label: "missing name",
+      raw: {
+        key: VISIT_CHIEF_COMPLAINT_V1,
+        fields: [
+          {
+            type: "string",
+            cardinality: "required",
+            units: "uuid",
+          },
+        ],
+      },
+    },
+    {
+      label: "extra root key",
+      raw: {
+        key: VISIT_CHIEF_COMPLAINT_V1,
+        fields: visitChiefComplaintV1ShapeJson.fields,
+        extra: true,
+      },
+    },
+    {
+      label: "extra field key",
+      raw: {
+        key: VISIT_CHIEF_COMPLAINT_V1,
+        fields: [
+          {
+            name: "visit_id",
+            type: "string",
+            cardinality: "required",
+            units: "uuid",
+            extra: true,
+          },
+        ],
+      },
+    },
+    {
+      label: "wrong key id",
+      raw: {
+        key: "visit.chief_complaint@v2",
+        fields: visitChiefComplaintV1ShapeJson.fields,
+      },
+    },
+  ])("rejects malformed artifact: $label", ({ raw }) => {
+    expect(() =>
+      parseKeyShapeArtifact(raw, VISIT_CHIEF_COMPLAINT_V1),
+    ).toThrow(/Malformed key shape artifact/);
   });
 });
 

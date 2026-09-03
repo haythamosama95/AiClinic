@@ -1,0 +1,8 @@
+{
+  "key": "visit.chief_complaint@v1",
+  "fields": [
+    { "name": "visit_id", "type": "string", "cardinality": "required", "units": "uuid" },
+    { "name": "complaint", "type": "string", "cardinality": { "maxLength": 10000 }, "units": null },
+    { "name": "recorded_at", "type": "string", "cardinality": "optional", "units": "iso8601" }
+  ]
+}

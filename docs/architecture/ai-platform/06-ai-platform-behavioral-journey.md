@@ -818,7 +818,7 @@ Single-shot:
 
 Conversational (library; no published cap): omitted transcript → `context_invalid`; budgets exceeded → `conversation_budget_exhausted`; permitted-key allowlist drop.
 
-**Files:** `context/validator.ts`, `context/index.ts`, `context/context-request.ts`. **Tests:** `context.test.ts`, `context-validator.test.ts`, `transcript-validation.test.ts`. **Ops:** Submit visit summary without `visit.chief_complaint@v1` → 422 `context_required`.
+**Files:** `context/validator.ts`, `context/index.ts`, `context/context-request.ts`; shape artifact `context/shapes/published/visit.chief_complaint@v1.json`. **Tests:** `context.test.ts`, `context-validator.test.ts`, `transcript-validation.test.ts`. **Ops:** Submit visit summary without `visit.chief_complaint@v1` → 422 `context_required`.
 
 ---
 

@@ -21,6 +21,7 @@
     "src/**/*.d.ts",
     "test/**/*.ts",
     "manifests/published/**/*.json",
+    "context/shapes/published/**/*.json",
     "control/pricing/**/*.json"
   ]
 }
