@@ -101,17 +101,23 @@ type TableCounts = {
   control_audit: number;
 };
 
-const FIXTURE_INSTALLATION_ID = "inst-test-001";
-const FIXTURE_ORG_ID = "org-test-001";
+const FIXTURE_INSTALLATION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+const FIXTURE_INSTALLATION_ID_2 = "b1b2c3d4-e5f6-7890-abcd-ef1234567891";
+const FIXTURE_ORG_ID = "d2000000-0000-4000-8000-000000000001";
+const FIXTURE_KID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+const FIXTURE_KID_2 = "a47ac10b-58cc-4372-a567-0e02b2c3d480";
+const FIXTURE_PUBLIC_KEY_B64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const FIXTURE_PUBLIC_KEY_B64_ALT =
+  "AZeVzdEsbUSAw3kOR7Vn6D6oZB03vUIyQvk-Mq2mwLc";
 
 const DEFAULT_ENROLL_PAYLOAD: EnrollPayload = {
   org_id: FIXTURE_ORG_ID,
   display_name: "Test Clinic",
   region: "us-east-1",
   plan: "starter",
-  public_key: "dGVzdC1wdWJsaWMta2V5",
+  public_key: FIXTURE_PUBLIC_KEY_B64,
   algorithm: "EdDSA",
-  kid: "kid-test-001",
+  kid: FIXTURE_KID,
 };
 
 /** Loads lifecycle handlers from `src/control/` (absent until Phase 3). */
@@ -204,6 +210,26 @@ async function enrollFixture(
   return response;
 }
 
+async function rotateFixture(
+  handlers: ControlHandlers,
+  operatorAuth: OperatorAuth = createFakeOperatorAuth(),
+  installationId: string = FIXTURE_INSTALLATION_ID,
+  kid: string = FIXTURE_KID_2,
+  publicKey: string = FIXTURE_PUBLIC_KEY_B64_ALT,
+): Promise<Response> {
+  const response = await handlers.handleRotate(
+    buildLifecycleRequest(installationId, "rotate", {
+      kid,
+      public_key: publicKey,
+      algorithm: "EdDSA",
+    }),
+    bindings(),
+    operatorAuth,
+  );
+  expect(response.ok).toBe(true);
+  return response;
+}
+
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
   const statements = sql
     .replace(/--.*$/gm, "")
@@ -289,7 +315,7 @@ describe("enroll_writes_all_four_tables", () => {
     );
     expect(
       Date.parse(installationKey!.valid_until!) -
-        Date.parse(installationKey!.valid_from),
+      Date.parse(installationKey!.valid_from),
     ).toBe(365 * 24 * 60 * 60 * 1000);
 
     const entitlement = await env.DB.prepare(
@@ -424,7 +450,7 @@ describe("lifecycle_resume_audit", () => {
 });
 
 describe("lifecycle_rotate_audit", () => {
-  it("adds a new key row, retires the enroll kid, and writes rotate audit", async () => {
+  it("adds a new key row, keeps the enroll kid active, and writes rotate audit", async () => {
     const handlers = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
 
@@ -433,11 +459,11 @@ describe("lifecycle_rotate_audit", () => {
     const beforeCounts = await readTableCounts();
     expect(beforeCounts.installation_key).toBe(1);
 
-    const rotateKid = "kid-test-002";
+    const rotateKid = FIXTURE_KID_2;
     const response = await handlers.handleRotate(
       buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
         kid: rotateKid,
-        public_key: "bmV3LXB1YmxpYy1rZXk=",
+        public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
         algorithm: "EdDSA",
       }),
       bindings(),
@@ -468,8 +494,7 @@ describe("lifecycle_rotate_audit", () => {
     );
 
     const enrollKey = byKid[DEFAULT_ENROLL_PAYLOAD.kid];
-    expect(enrollKey.revoked_at).toBeTruthy();
-    expect(Number.isNaN(Date.parse(enrollKey.revoked_at!))).toBe(false);
+    expect(enrollKey.revoked_at).toBeNull();
 
     const rotatedKey = byKid[rotateKid];
     expect(rotatedKey.revoked_at).toBeNull();
@@ -489,6 +514,34 @@ describe("lifecycle_rotate_audit", () => {
       action: "rotate",
     });
   });
+
+  it("leaves both keys active so overlap verification can succeed until revoke-key", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await enrollFixture(handlers, operatorAuth);
+
+    const rotateKid = FIXTURE_KID_2;
+    const response = await handlers.handleRotate(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
+        kid: rotateKid,
+        public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
+        algorithm: "EdDSA",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+    expect(response.ok).toBe(true);
+
+    const activeCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM installation_key
+       WHERE installation_id = ? AND revoked_at IS NULL`,
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ count: number }>();
+    expect(activeCount?.count).toBe(2);
+  });
 });
 
 describe("lifecycle_revoke_key_audit", () => {
@@ -497,6 +550,7 @@ describe("lifecycle_revoke_key_audit", () => {
     const operatorAuth = createFakeOperatorAuth();
 
     await enrollFixture(handlers, operatorAuth);
+    await rotateFixture(handlers, operatorAuth);
 
     const beforeCounts = await readTableCounts();
     const response = await handlers.handleRevokeKey(
@@ -509,7 +563,7 @@ describe("lifecycle_revoke_key_audit", () => {
     expect(response.ok).toBe(true);
 
     const afterCounts = await readTableCounts();
-    expect(afterCounts.installation_key).toBe(1);
+    expect(afterCounts.installation_key).toBe(2);
     expect(afterCounts.control_audit).toBe(beforeCounts.control_audit + 1);
 
     const key = await env.DB.prepare(
@@ -519,6 +573,13 @@ describe("lifecycle_revoke_key_audit", () => {
       .first<{ key_id: string; revoked_at: string | null }>();
     expect(key?.key_id).toBe(DEFAULT_ENROLL_PAYLOAD.kid);
     expect(key?.revoked_at).toBeTruthy();
+
+    const successor = await env.DB.prepare(
+      "SELECT key_id, revoked_at FROM installation_key WHERE key_id = ?",
+    )
+      .bind(FIXTURE_KID_2)
+      .first<{ key_id: string; revoked_at: string | null }>();
+    expect(successor?.revoked_at).toBeNull();
 
     const audit = await env.DB.prepare(
       "SELECT operator_id, action, after_pointer FROM control_audit WHERE action = 'revoke-key'",
@@ -538,7 +599,7 @@ describe("lifecycle_revoke_key_audit", () => {
 
     const response = await handlers.handleRevokeKey(
       buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
-        kid: "kid-does-not-exist",
+        kid: "00000000-0000-4000-8000-000000000099",
       }),
       bindings(),
       operatorAuth,
@@ -553,6 +614,7 @@ describe("lifecycle_revoke_key_audit", () => {
     const handlers = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
     await enrollFixture(handlers, operatorAuth);
+    await rotateFixture(handlers, operatorAuth);
 
     expect(
       (
@@ -577,6 +639,61 @@ describe("lifecycle_revoke_key_audit", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "key_already_revoked" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects revoke of sole active key with 409 cannot_revoke_last_active_key", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleRevokeKey(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+        kid: DEFAULT_ENROLL_PAYLOAD.kid,
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "cannot_revoke_last_active_key",
+    });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects revoke when only one key remains active after prior revokes", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+    await rotateFixture(handlers, operatorAuth);
+
+    expect(
+      (
+        await handlers.handleRevokeKey(
+          buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+            kid: DEFAULT_ENROLL_PAYLOAD.kid,
+          }),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeCounts = await readTableCounts();
+    const response = await handlers.handleRevokeKey(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "revoke-key", {
+        kid: FIXTURE_KID_2,
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "cannot_revoke_last_active_key",
+    });
     expect(await readTableCounts()).toEqual(beforeCounts);
   });
 });
@@ -628,71 +745,71 @@ describe("non_operator_credentials_rejected", () => {
       label: string;
       invoke: () => Promise<Response>;
     }> = [
-      {
-        label: "enroll",
-        invoke: () =>
-          handlers.handleEnroll(
-            buildEnrollRequest("inst-reject-001", {
-              ...DEFAULT_ENROLL_PAYLOAD,
-              org_id: "org-reject-001",
-              kid: "kid-reject-001",
-            }),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-      {
-        label: "rotate",
-        invoke: () =>
-          handlers.handleRotate(
-            buildLifecycleRequest("inst-reject-002", "rotate", {
-              kid: "kid-reject-rotate",
-              public_key: "cHVibGlj",
-              algorithm: "EdDSA",
-            }),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-      {
-        label: "revoke-key",
-        invoke: () =>
-          handlers.handleRevokeKey(
-            buildLifecycleRequest("inst-reject-006", "revoke-key", {
-              kid: "kid-reject-revoke",
-            }),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-      {
-        label: "suspend",
-        invoke: () =>
-          handlers.handleSuspend(
-            buildLifecycleRequest("inst-reject-003", "suspend"),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-      {
-        label: "resume",
-        invoke: () =>
-          handlers.handleResume(
-            buildLifecycleRequest("inst-reject-004", "resume"),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-      {
-        label: "delete",
-        invoke: () =>
-          handlers.handleDelete(
-            buildLifecycleRequest("inst-reject-005", "delete"),
-            bindings(),
-            rejectAuth,
-          ),
-      },
-    ];
+        {
+          label: "enroll",
+          invoke: () =>
+            handlers.handleEnroll(
+              buildEnrollRequest("11111111-1111-4111-8111-111111111001", {
+                ...DEFAULT_ENROLL_PAYLOAD,
+                org_id: "22222222-2222-4222-8222-222222222201",
+                kid: "33333333-3333-4333-8333-333333333301",
+              }),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+        {
+          label: "rotate",
+          invoke: () =>
+            handlers.handleRotate(
+              buildLifecycleRequest("44444444-4444-4444-8444-444444444401", "rotate", {
+                kid: "55555555-5555-4555-8555-555555555501",
+                public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
+                algorithm: "EdDSA",
+              }),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+        {
+          label: "revoke-key",
+          invoke: () =>
+            handlers.handleRevokeKey(
+              buildLifecycleRequest("66666666-6666-4666-8666-666666666601", "revoke-key", {
+                kid: "77777777-7777-4777-8777-777777777701",
+              }),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+        {
+          label: "suspend",
+          invoke: () =>
+            handlers.handleSuspend(
+              buildLifecycleRequest("88888888-8888-4888-8888-888888888801", "suspend"),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+        {
+          label: "resume",
+          invoke: () =>
+            handlers.handleResume(
+              buildLifecycleRequest("99999999-9999-4999-8999-999999999901", "resume"),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+        {
+          label: "delete",
+          invoke: () =>
+            handlers.handleDelete(
+              buildLifecycleRequest("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01", "delete"),
+              bindings(),
+              rejectAuth,
+            ),
+        },
+      ];
 
     for (const mutation of mutations) {
       const beforeCounts = await readTableCounts();
@@ -851,11 +968,11 @@ describe("control_route_end_to_end", () => {
 
     const wrong = await SELF.fetch(
       buildEnrollRequest(
-        "inst-e2e-unauth",
+        "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01",
         {
           ...DEFAULT_ENROLL_PAYLOAD,
-          org_id: "org-e2e-unauth",
-          kid: "kid-e2e-unauth",
+          org_id: "ffffffff-ffff-4fff-8fff-fffffffffff1",
+          kid: "12121212-1212-4212-8212-121212121201",
         },
         "wrong-token",
       ),
@@ -946,8 +1063,8 @@ describe("lifecycle_illegal_transitions", () => {
     const beforeCounts = await readTableCounts();
     const response = await handlers.handleRotate(
       buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
-        kid: "kid-rotate-deleted",
-        public_key: "bmV3LXB1YmxpYy1rZXk=",
+        kid: "16161616-1616-4616-8616-161616161601",
+        public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
         algorithm: "EdDSA",
       }),
       bindings(),
@@ -1104,9 +1221,9 @@ describe("duplicate_enrollment_same_org_different_installation", () => {
     const countsAfterFirst = await readTableCounts();
 
     const second = await handleEnroll(
-      buildEnrollRequest("inst-test-002", {
+      buildEnrollRequest(FIXTURE_INSTALLATION_ID_2, {
         ...DEFAULT_ENROLL_PAYLOAD,
-        kid: "kid-test-002",
+        kid: FIXTURE_KID_2,
       }),
       bindings(),
       operatorAuth,
@@ -1138,6 +1255,98 @@ describe("enroll_invalid_payload", () => {
     expect(await response.json()).toEqual({ error: "invalid_payload" });
     expect(await readTableCounts()).toEqual(beforeCounts);
   });
+
+  it("rejects enroll with unknown plan with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest(FIXTURE_INSTALLATION_ID, {
+        ...DEFAULT_ENROLL_PAYLOAD,
+        plan: "verify",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects enroll with unsupported algorithm with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest(FIXTURE_INSTALLATION_ID, {
+        ...DEFAULT_ENROLL_PAYLOAD,
+        algorithm: "RS256",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects enroll with non-uuid installation_id path with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest("not-a-uuid", DEFAULT_ENROLL_PAYLOAD),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects enroll with non-uuid org_id with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest(FIXTURE_INSTALLATION_ID, {
+        ...DEFAULT_ENROLL_PAYLOAD,
+        org_id: "org-not-uuid",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects enroll with short public_key with 400 invalid_payload", async () => {
+    const { handleEnroll } = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeCounts = await readTableCounts();
+
+    const response = await handleEnroll(
+      buildEnrollRequest(FIXTURE_INSTALLATION_ID, {
+        ...DEFAULT_ENROLL_PAYLOAD,
+        public_key: "c2hvcnQ",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
 });
 
 describe("rotate_duplicate_kid", () => {
@@ -1149,8 +1358,8 @@ describe("rotate_duplicate_kid", () => {
 
     const response = await handlers.handleRotate(
       buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
-        kid: DEFAULT_ENROLL_PAYLOAD.kid,
-        public_key: "ZHVwbGljYXRlLWtpZA==",
+        kid: FIXTURE_KID,
+        public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
         algorithm: "EdDSA",
       }),
       bindings(),
@@ -1159,6 +1368,27 @@ describe("rotate_duplicate_kid", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "duplicate_kid" });
+    expect(await readTableCounts()).toEqual(beforeCounts);
+  });
+
+  it("rejects rotate with unsupported algorithm with 400 invalid_payload", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+    const beforeCounts = await readTableCounts();
+
+    const response = await handlers.handleRotate(
+      buildLifecycleRequest(FIXTURE_INSTALLATION_ID, "rotate", {
+        kid: "14141414-1414-4414-8414-141414141401",
+        public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
+        algorithm: "RS256",
+      }),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_payload" });
     expect(await readTableCounts()).toEqual(beforeCounts);
   });
 });
@@ -1220,7 +1450,7 @@ describe("installation_not_found", () => {
   it("rejects rotate/revoke-key/suspend/resume/delete on unknown id with 404", async () => {
     const handlers = await loadControlHandlers();
     const operatorAuth = createFakeOperatorAuth();
-    const unknownId = "inst-does-not-exist";
+    const unknownId = "00000000-0000-4000-8000-000000000098";
 
     const cases: Array<{ label: string; invoke: () => Promise<Response> }> = [
       {
@@ -1228,8 +1458,8 @@ describe("installation_not_found", () => {
         invoke: () =>
           handlers.handleRotate(
             buildLifecycleRequest(unknownId, "rotate", {
-              kid: "kid-missing",
-              public_key: "cHVibGlj",
+              kid: "15151515-1515-4515-8515-151515151501",
+              public_key: FIXTURE_PUBLIC_KEY_B64_ALT,
               algorithm: "EdDSA",
             }),
             bindings(),
@@ -1241,7 +1471,7 @@ describe("installation_not_found", () => {
         invoke: () =>
           handlers.handleRevokeKey(
             buildLifecycleRequest(unknownId, "revoke-key", {
-              kid: "kid-missing",
+              kid: "15151515-1515-4515-8515-151515151501",
             }),
             bindings(),
             operatorAuth,

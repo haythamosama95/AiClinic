@@ -1,6 +1,22 @@
-import { defineConfig } from "vitest/config";
+import { readFileSync } from "node:fs";
+import { defineConfig, type Plugin } from "vitest/config";
+
+function promptArtifactPlugin(): Plugin {
+  return {
+    name: "prompt-artifact-text",
+    enforce: "pre",
+    load(id) {
+      if (!id.endsWith(".md") || id.includes("\0")) {
+        return null;
+      }
+      const source = readFileSync(id, "utf8");
+      return `export default ${JSON.stringify(source)}`;
+    },
+  };
+}
 
 export default defineConfig({
+  plugins: [promptArtifactPlugin()],
   test: {
     include: ["test/**/*.test.ts"],
     exclude: [

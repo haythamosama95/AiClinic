@@ -2,6 +2,7 @@
  * Entitlement stage — AI-enablement, plan tier, capability grant, kill switches (B3 §4.3.3–4).
  */
 
+import { planTierMeetsMinimum } from "../platform-vocabulary";
 import {
   type ConfigCache,
   ConfigCacheMissError,
@@ -33,17 +34,10 @@ export type EntitlementRejectionPath =
 export type EntitlementResult =
   | { ok: true }
   | {
-      ok: false;
-      code: "forbidden_capability" | "capability_disabled";
-      path: EntitlementRejectionPath;
-    };
-
-/**
- * Plan tier rank — lower index means lower tier (§4.3.4 plan-level allowances).
- * Vocabulary is the closed set used by entitlement rows in this platform; unknown
- * tiers fail closed.
- */
-const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
+    ok: false;
+    code: "forbidden_capability" | "capability_disabled";
+    path: EntitlementRejectionPath;
+  };
 
 function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] | null {
   const raw = entitlement.allowed_capabilities;
@@ -62,17 +56,6 @@ function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[
     }
   }
   return [];
-}
-
-function planTierMeetsMinimum(plan: string, minimum: string): boolean {
-  const planRank = PLAN_TIER_ORDER.indexOf(plan as typeof PLAN_TIER_ORDER[number]);
-  const minimumRank = PLAN_TIER_ORDER.indexOf(
-    minimum as typeof PLAN_TIER_ORDER[number],
-  );
-  if (planRank === -1 || minimumRank === -1) {
-    return false;
-  }
-  return planRank >= minimumRank;
 }
 
 function rejectForbidden(

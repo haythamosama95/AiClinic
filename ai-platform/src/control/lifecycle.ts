@@ -1,4 +1,11 @@
 import {
+  isCanonicalUuid,
+  isEd25519PublicKeyByteLength,
+  isImportableEd25519PublicKeyBase64url,
+  isKnownPlanTier,
+  isSupportedInstallationKeyAlgorithm,
+} from "../platform-vocabulary";
+import {
   newId,
   nowIso,
   ok,
@@ -35,6 +42,25 @@ function parseInstallationId(request: Request): string | null {
   return match?.[1] ?? null;
 }
 
+function requireValidInstallationId(
+  installationId: string | null,
+): string | Response {
+  if (!installationId) {
+    return reject(400, "invalid_route");
+  }
+  if (!isCanonicalUuid(installationId)) {
+    return reject(400, "invalid_payload");
+  }
+  return installationId;
+}
+
+async function requireValidPublicKey(publicKey: string): Promise<Response | null> {
+  if (!(await isImportableEd25519PublicKeyBase64url(publicKey))) {
+    return reject(400, "invalid_payload");
+  }
+  return null;
+}
+
 type RevokeKeyPayload = {
   kid: string;
 };
@@ -47,6 +73,9 @@ function validateRevokeKeyPayload(
   }
   const kid = requireNonEmptyString(body.kid);
   if (!kid) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isCanonicalUuid(kid)) {
     return reject(400, "invalid_payload");
   }
   return { kid };
@@ -76,6 +105,18 @@ function validateEnrollPayload(
   ) {
     return reject(400, "invalid_payload");
   }
+  if (!isKnownPlanTier(plan)) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isSupportedInstallationKeyAlgorithm(algorithm)) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isCanonicalUuid(org_id) || !isCanonicalUuid(kid)) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isEd25519PublicKeyByteLength(public_key)) {
+    return reject(400, "invalid_payload");
+  }
   return {
     org_id,
     display_name,
@@ -97,6 +138,15 @@ function validateRotatePayload(
   const public_key = requireNonEmptyString(body.public_key);
   const algorithm = requireNonEmptyString(body.algorithm);
   if (!kid || !public_key || !algorithm) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isSupportedInstallationKeyAlgorithm(algorithm)) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isCanonicalUuid(kid)) {
+    return reject(400, "invalid_payload");
+  }
+  if (!isEd25519PublicKeyByteLength(public_key)) {
     return reject(400, "invalid_payload");
   }
   return { kid, public_key, algorithm };
@@ -156,9 +206,9 @@ export async function handleEnroll(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const rawBody = await parseJsonBody<EnrollPayload>(request);
@@ -169,6 +219,11 @@ export async function handleEnroll(
   const body = validateEnrollPayload(rawBody);
   if (body instanceof Response) {
     return body;
+  }
+
+  const publicKeyError = await requireValidPublicKey(body.public_key);
+  if (publicKeyError) {
+    return publicKeyError;
   }
 
   const { DB } = bindings;
@@ -246,9 +301,9 @@ export async function handleRotate(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const rawBody = await parseJsonBody<RotatePayload>(request);
@@ -259,6 +314,11 @@ export async function handleRotate(
   const body = validateRotatePayload(rawBody);
   if (body instanceof Response) {
     return body;
+  }
+
+  const publicKeyError = await requireValidPublicKey(body.public_key);
+  if (publicKeyError) {
+    return publicKeyError;
   }
 
   const { DB } = bindings;
@@ -290,11 +350,6 @@ export async function handleRotate(
   const auditId = newId();
 
   const batchError = await runControlBatch(DB, [
-    DB.prepare(
-      `UPDATE installation_key
-          SET revoked_at = ?
-        WHERE installation_id = ? AND revoked_at IS NULL`,
-    ).bind(validFrom, installationId),
     DB.prepare(
       `INSERT INTO installation_key
          (key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at)
@@ -330,9 +385,9 @@ export async function handleRevokeKey(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const rawBody = await parseJsonBody<RevokeKeyPayload>(request);
@@ -375,6 +430,17 @@ export async function handleRevokeKey(
     return reject(409, "key_already_revoked");
   }
 
+  const activeKeyCount = await DB.prepare(
+    `SELECT COUNT(*) AS count FROM installation_key
+     WHERE installation_id = ? AND revoked_at IS NULL`,
+  )
+    .bind(installationId)
+    .first<{ count: number }>();
+
+  if ((activeKeyCount?.count ?? 0) <= 1) {
+    return reject(409, "cannot_revoke_last_active_key");
+  }
+
   const revokedAt = nowIso();
   const auditId = newId();
 
@@ -407,9 +473,9 @@ export async function handleSuspend(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const { DB } = bindings;
@@ -460,9 +526,9 @@ export async function handleResume(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const { DB } = bindings;
@@ -510,9 +576,9 @@ export async function handleDelete(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
-    return reject(400, "invalid_route");
+  const installationId = requireValidInstallationId(parseInstallationId(request));
+  if (installationId instanceof Response) {
+    return installationId;
   }
 
   const { DB } = bindings;

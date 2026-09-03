@@ -1,43 +1,42 @@
 import type { Manifest } from "../manifest";
-
-type ArtifactModuleMap = Record<string, string>;
-type RegistryModuleMap = Record<string, Record<string, string>>;
+import clinicVisitSummaryRules from "../../prompts/clinic.visit_summary/rules-visit-summary.md";
+import clinicVisitSummarySystem from "../../prompts/clinic.visit_summary/system.md";
+import clinicVisitSummaryTemplate from "../../prompts/clinic.visit_summary/template-visit-summary.md";
+import clinicVisitSummaryRegistry from "../../prompts/clinic.visit_summary/registry.json";
 
 /**
  * Build-time index over prompts/ (Clarification Q1): every `.md` under
- * `prompts/<cap>/` maps to ref `<cap>/<name>@v1`. Uniform `?raw` imports only —
- * no second dynamic-import resolution path.
+ * `prompts/<cap>/` maps to ref `<cap>/<name>@v1`. Eager static imports only —
+ * Workers runtime has no `import.meta.glob`. Add each new prompt artifact and
+ * its `registry.json` here when shipping a capability.
  */
-const artifactModules = import.meta.glob("../../prompts/**/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-}) as ArtifactModuleMap;
+const BUNDLED_ARTIFACTS: ReadonlyArray<{
+  ref: string;
+  content: string;
+}> = [
+    {
+      ref: "clinic.visit_summary/system@v1",
+      content: clinicVisitSummarySystem,
+    },
+    {
+      ref: "clinic.visit_summary/rules-visit-summary@v1",
+      content: clinicVisitSummaryRules,
+    },
+    {
+      ref: "clinic.visit_summary/template-visit-summary@v1",
+      content: clinicVisitSummaryTemplate,
+    },
+  ];
 
-const registryModules = import.meta.glob("../../prompts/**/registry.json", {
-  eager: true,
-  import: "default",
-}) as RegistryModuleMap;
-
-function modulePathToArtifactRef(modulePath: string): string {
-  const normalized = modulePath.replace(/\\/g, "/");
-  const promptsIdx = normalized.indexOf("prompts/");
-  if (promptsIdx < 0) {
-    throw new Error(`Artifact path outside prompts/: ${modulePath}`);
-  }
-  const relative = normalized.slice(promptsIdx + "prompts/".length);
-  if (!relative.endsWith(".md")) {
-    throw new Error(`Expected .md artifact path: ${modulePath}`);
-  }
-  return `${relative.slice(0, -".md".length)}@v1`;
-}
+const BUNDLED_REGISTRIES: ReadonlyArray<Record<string, string>> = [
+  clinicVisitSummaryRegistry,
+];
 
 function buildBaseArtifactMap(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const [modulePath, content] of Object.entries(artifactModules)) {
-    const ref = modulePathToArtifactRef(modulePath);
+  for (const { ref, content } of BUNDLED_ARTIFACTS) {
     if (Object.hasOwn(map, ref)) {
-      throw new Error(`Duplicate artifact ref from glob: ${ref}`);
+      throw new Error(`Duplicate artifact ref: ${ref}`);
     }
     map[ref] = content;
   }
@@ -46,7 +45,7 @@ function buildBaseArtifactMap(): Record<string, string> {
 
 function buildPinRegistry(): Record<string, string> {
   const pins: Record<string, string> = {};
-  for (const registry of Object.values(registryModules)) {
+  for (const registry of BUNDLED_REGISTRIES) {
     for (const [ref, hash] of Object.entries(registry)) {
       if (Object.hasOwn(pins, ref) && pins[ref] !== hash) {
         throw new Error(`Duplicate conflicting registry pin for ${ref}`);
@@ -94,7 +93,7 @@ export function stableContentHash(content: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Base indexed ?raw content (ignores the test overlay). */
+/** Base indexed content (ignores the test overlay). */
 export function indexedArtifactContent(ref: string): string | undefined {
   return BASE_ARTIFACT_MAP[ref];
 }

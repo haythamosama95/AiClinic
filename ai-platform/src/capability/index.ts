@@ -30,7 +30,7 @@ export type DiscoveryResult = {
   etag: string;
 };
 
-const PLAN_TIER_ORDER = ["starter", "standard", "professional", "enterprise"] as const;
+import { planTierMeetsMinimum } from "../platform-vocabulary";
 
 /** OD-9 overlap window: two client release cycles, minimum 90 days (not a configuration surface). */
 export const OVERLAP_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
@@ -148,17 +148,6 @@ function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[
     }
   }
   return [];
-}
-
-function planTierMeetsMinimum(plan: string, minimum: string): boolean {
-  const planRank = PLAN_TIER_ORDER.indexOf(plan as (typeof PLAN_TIER_ORDER)[number]);
-  const minimumRank = PLAN_TIER_ORDER.indexOf(
-    minimum as (typeof PLAN_TIER_ORDER)[number],
-  );
-  if (planRank === -1 || minimumRank === -1) {
-    return false;
-  }
-  return planRank >= minimumRank;
 }
 
 function isKillSwitchActive(row: Record<string, unknown>): boolean {

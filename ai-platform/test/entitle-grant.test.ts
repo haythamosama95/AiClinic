@@ -19,10 +19,12 @@ type D1Row = Record<string, unknown>;
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
 const TEST_OPERATOR_ID = "operator-test-principal";
 
-const FIXTURE_INSTALLATION_ID = "inst-entitle-001";
-const FIXTURE_ORG_ID = "org-entitle-001";
+const FIXTURE_INSTALLATION_ID = "c1000000-0000-4000-8000-000000000010";
+const FIXTURE_ORG_ID = "d2000000-0000-4000-8000-000000000011";
 const FIXTURE_CAPABILITY_ID = "clinic.visit_summary";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
+const FIXTURE_KID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+const FIXTURE_PUBLIC_KEY_B64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 type OperatorPrincipal = {
   operatorId: string;
@@ -111,10 +113,10 @@ type EntitlementHandlers = {
   ) => Promise<
     | { ok: true }
     | {
-        ok: false;
-        code: "forbidden_capability" | "capability_disabled";
-        path: string;
-      }
+      ok: false;
+      code: "forbidden_capability" | "capability_disabled";
+      path: string;
+    }
   >;
 };
 
@@ -123,9 +125,9 @@ const DEFAULT_ENROLL_PAYLOAD: EnrollPayload = {
   display_name: "Entitle Test Clinic",
   region: "us-east-1",
   plan: "professional",
-  public_key: "dGVzdC1wdWJsaWMta2V5",
+  public_key: FIXTURE_PUBLIC_KEY_B64,
   algorithm: "EdDSA",
-  kid: "kid-entitle-001",
+  kid: FIXTURE_KID,
 };
 
 const DEFAULT_ENTITLE_PAYLOAD: EntitlePayload = {
