@@ -201,6 +201,20 @@ export async function handleEntitle(
 
   const recordedAt = nowIso();
   const allowedCapabilitiesJson = JSON.stringify(body.allowed_capabilities);
+  const planScope = `plan:${entitlement.plan}`;
+  const existingLivePlanGrantCapabilityIds = new Set<string>();
+  if (body.grants.some((grant) => grant.scope === "plan")) {
+    const existingPlanGrants = await DB.prepare(
+      `SELECT capability_id FROM capability_grant
+       WHERE scope = ? AND revoked_at IS NULL`,
+    )
+      .bind(planScope)
+      .all<{ capability_id: string }>();
+    for (const row of existingPlanGrants.results ?? []) {
+      existingLivePlanGrantCapabilityIds.add(row.capability_id);
+    }
+  }
+
   const statements: D1PreparedStatement[] = [
     DB.prepare(
       `UPDATE entitlement
@@ -221,9 +235,13 @@ export async function handleEntitle(
 
   for (const grant of body.grants) {
     const scope =
-      grant.scope === "plan"
-        ? `plan:${entitlement.plan}`
-        : `installation:${installationId}`;
+      grant.scope === "plan" ? planScope : `installation:${installationId}`;
+    if (
+      grant.scope === "plan" &&
+      existingLivePlanGrantCapabilityIds.has(grant.capability_id)
+    ) {
+      continue;
+    }
     statements.push(
       DB.prepare(
         `INSERT INTO capability_grant (

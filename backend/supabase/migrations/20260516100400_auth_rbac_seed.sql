@@ -57,6 +57,7 @@ VALUES
   ('administrator', 'shifts.manage', true),
   ('administrator', 'analytics.view', true),
   ('administrator', 'ai.access', true),
+  ('administrator', 'ai.visit_summary', true),
   -- doctor: clinical + AI; no staff/branch settings
   ('doctor', 'patients.view', true),
   ('doctor', 'patients.create', true),
