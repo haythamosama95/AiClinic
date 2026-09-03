@@ -1,9 +1,10 @@
 import fs from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unstable_dev, type Unstable_DevWorker } from "wrangler";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG_PATH = path.join(ROOT, "wrangler.toml");
@@ -17,6 +18,8 @@ const DEV_OPTIONS = {
   logLevel: "error" as const,
   experimental: { disableExperimentalWarning: true, disableDevRegistry: true },
 };
+
+let persistDir: string;
 
 interface EnvironmentBindings {
   workerName: string;
@@ -195,6 +198,7 @@ async function expectStartupFailure(
           ...DEV_OPTIONS,
           config: configPath,
           env: environment,
+          persistTo: persistDir,
         }),
         hangGuard(
           `unstable_dev hung past ${STARTUP_FAILURE_HANG_GUARD_MS}ms hang guard`,
@@ -295,8 +299,15 @@ async function expectStartupFailure(
 describe("env_each_environment_deploys", () => {
   const workers: Unstable_DevWorker[] = [];
 
+  beforeEach(async () => {
+    persistDir = await mkdtemp(path.join(os.tmpdir(), "ai-platform-env-deploys-"));
+  });
+
   afterEach(async () => {
     await Promise.all(workers.splice(0).map((worker) => worker.stop()));
+    if (persistDir) {
+      await rm(persistDir, { recursive: true, force: true });
+    }
   });
 
   for (const environment of ENVIRONMENTS) {
@@ -307,6 +318,7 @@ describe("env_each_environment_deploys", () => {
         ...DEV_OPTIONS,
         config: CONFIG_PATH,
         env: environment,
+        persistTo: persistDir,
       });
       workers.push(worker);
 
@@ -336,6 +348,16 @@ describe("env_no_binding_shared_between_environments", () => {
 });
 
 describe("env_missing_required_binding_fails_at_startup", () => {
+  beforeEach(async () => {
+    persistDir = await mkdtemp(path.join(os.tmpdir(), "ai-platform-env-deploys-"));
+  });
+
+  afterEach(async () => {
+    if (persistDir) {
+      await rm(persistDir, { recursive: true, force: true });
+    }
+  });
+
   for (const binding of ["d1", "r2", "do"] as const) {
     it(`fails at startup when the ${binding.toUpperCase()} binding is missing`, async () => {
       const { configPath, cleanup } = writeTemporaryConfig(

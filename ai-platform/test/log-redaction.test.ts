@@ -1,7 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unstable_dev, type Unstable_DevWorker } from "wrangler";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   writePostResponseDetail,
   type PostResponseInput,
@@ -108,11 +110,20 @@ function buildSensitivePostResponseInput(): PostResponseInput {
   };
 }
 
+let persistDir: string;
+
 describe("adapter malformed body rejection (T25)", () => {
   const workers: Unstable_DevWorker[] = [];
 
+  beforeEach(async () => {
+    persistDir = await mkdtemp(path.join(tmpdir(), "ai-platform-log-redaction-"));
+  });
+
   afterEach(async () => {
     await Promise.all(workers.splice(0).map((worker) => worker.stop()));
+    if (persistDir) {
+      await rm(persistDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects a malformed body without producing a taxonomy-coded error body or bare 400", async () => {
@@ -120,6 +131,7 @@ describe("adapter malformed body rejection (T25)", () => {
       ...DEV_OPTIONS,
       config: CONFIG_PATH,
       env: "development",
+      persistTo: persistDir,
     });
     workers.push(worker);
 

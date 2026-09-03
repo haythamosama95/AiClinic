@@ -1,7 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unstable_dev, type Unstable_DevWorker } from "wrangler";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG_PATH = path.join(ROOT, "wrangler.toml");
@@ -16,11 +18,20 @@ const DEV_OPTIONS = {
   experimental: { disableExperimentalWarning: true, disableDevRegistry: true },
 };
 
+let persistDir: string;
+
 describe("health_returns_build_and_environment_identity", () => {
   const workers: Unstable_DevWorker[] = [];
 
+  beforeEach(async () => {
+    persistDir = await mkdtemp(path.join(tmpdir(), "ai-platform-health-"));
+  });
+
   afterEach(async () => {
     await Promise.all(workers.splice(0).map((worker) => worker.stop()));
+    if (persistDir) {
+      await rm(persistDir, { recursive: true, force: true });
+    }
   });
 
   for (const environment of ENVIRONMENTS) {
@@ -29,6 +40,7 @@ describe("health_returns_build_and_environment_identity", () => {
         ...DEV_OPTIONS,
         config: CONFIG_PATH,
         env: environment,
+        persistTo: persistDir,
       });
       workers.push(worker);
 

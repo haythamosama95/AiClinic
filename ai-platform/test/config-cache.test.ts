@@ -6,8 +6,11 @@ import {
   CACHE_TTL_MS,
   ConfigCache,
   ConfigCacheMissError,
+  DEFAULT_CONFIG_CACHE_TTL_MS,
+  configureIsolateConfigCache,
   isolateConfigCache,
   loadConfig,
+  resolveConfigCacheTtlMs,
   type ConfigEntityKind,
   type D1Reader,
 } from "../src/config-cache";
@@ -73,6 +76,34 @@ async function warmEntry(
   await loadConfig(cache, reader, kind, key);
   reader.read.mockClear();
 }
+
+describe("resolveConfigCacheTtlMs", () => {
+  it("defaults to 30_000 when unset or invalid", () => {
+    expect(resolveConfigCacheTtlMs(undefined)).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("nope")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("-1")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+  });
+
+  it("parses wrangler string vars", () => {
+    expect(resolveConfigCacheTtlMs("0")).toBe(0);
+    expect(resolveConfigCacheTtlMs("5000")).toBe(5000);
+  });
+});
+
+describe("configureIsolateConfigCache", () => {
+  afterEach(() => {
+    configureIsolateConfigCache(DEFAULT_CONFIG_CACHE_TTL_MS);
+    isolateConfigCache.clear();
+  });
+
+  it("updates isolate TTL used by remember()", () => {
+    configureIsolateConfigCache(5_000);
+    expect(isolateConfigCache.getTtlMs()).toBe(5_000);
+    const cache = new ConfigCache(1_000);
+    expect(cache.getTtlMs()).toBe(1_000);
+  });
+});
 
 describe("T-A5-17 config_cache_cold_isolate_one_d1_read", () => {
   it("performs exactly one reader.read on a cold cache miss", async () => {
@@ -293,9 +324,12 @@ describe("T-A5-24 no_per_request_state_introduced", () => {
       "CACHE_TTL_MS",
       "ConfigCache",
       "ConfigCacheMissError",
+      "DEFAULT_CONFIG_CACHE_TTL_MS",
+      "configureIsolateConfigCache",
       "createD1ConfigReader",
       "isolateConfigCache",
       "loadConfig",
+      "resolveConfigCacheTtlMs",
     ].sort();
 
     expect(exportNames).toEqual(allowedRuntimeExports);

@@ -22,8 +22,22 @@ export interface D1Reader {
   read(key: string): Promise<D1Row | "miss">;
 }
 
-/** Plan-time short TTL (§4.3.2); not a configuration surface (R-20). */
-export const CACHE_TTL_MS = 30_000;
+/** Default when `CONFIG_CACHE_TTL_MS` is unset or invalid (wrangler `[vars]`). */
+export const DEFAULT_CONFIG_CACHE_TTL_MS = 30_000;
+
+/** @deprecated Use `DEFAULT_CONFIG_CACHE_TTL_MS` or `ConfigCache#getTtlMs()`. */
+export const CACHE_TTL_MS = DEFAULT_CONFIG_CACHE_TTL_MS;
+
+export function resolveConfigCacheTtlMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_CONFIG_CACHE_TTL_MS;
+  }
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return DEFAULT_CONFIG_CACHE_TTL_MS;
+  }
+  return parsed;
+}
 
 type CacheEntry = {
   value: D1Row;
@@ -49,6 +63,19 @@ export class ConfigCache {
   private readonly stores = new Map<ConfigEntityKind, Map<string, CacheEntry>>();
   /** In-flight cold loads keyed by `${kind}:${key}` — single-flight / stampede protection. */
   private readonly inflight = new Map<string, Promise<D1Row>>();
+  private ttlMs: number;
+
+  constructor(ttlMs: number = DEFAULT_CONFIG_CACHE_TTL_MS) {
+    this.ttlMs = ttlMs;
+  }
+
+  getTtlMs(): number {
+    return this.ttlMs;
+  }
+
+  setTtlMs(ttlMs: number): void {
+    this.ttlMs = ttlMs;
+  }
 
   private storeFor(kind: ConfigEntityKind): Map<string, CacheEntry> {
     let store = this.stores.get(kind);
@@ -83,7 +110,7 @@ export class ConfigCache {
   ): void {
     this.storeFor(kind).set(key, {
       value: cloneRow(value),
-      expiresAt: now + CACHE_TTL_MS,
+      expiresAt: now + this.ttlMs,
     });
   }
 
@@ -124,6 +151,11 @@ export class ConfigCache {
  * requests. Tests keep constructing their own `new ConfigCache()`.
  */
 export const isolateConfigCache = new ConfigCache();
+
+/** Called once at Worker boot from `CONFIG_CACHE_TTL_MS` (wrangler `[vars]`). */
+export function configureIsolateConfigCache(ttlMs: number): void {
+  isolateConfigCache.setTtlMs(ttlMs);
+}
 
 function parseCanaryIds(raw: unknown): string[] {
   if (typeof raw !== "string" || raw.length === 0) {

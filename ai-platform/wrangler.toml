@@ -25,6 +25,7 @@ name = "ai-platform-gateway-development"
 BUILD_SHA = "local"
 ENVIRONMENT = "development"
 LOG_VERBOSITY = "2"
+CONFIG_CACHE_TTL_MS = "100"
 OPERATOR_ID = "platform-operator"
 
 [[env.development.d1_databases]]
@@ -62,6 +63,7 @@ name = "ai-platform-gateway-staging"
 BUILD_SHA = "local"
 ENVIRONMENT = "staging"
 LOG_VERBOSITY = "1"
+CONFIG_CACHE_TTL_MS = "30000"
 OPERATOR_ID = "platform-operator"
 
 [[env.staging.d1_databases]]
@@ -99,6 +101,7 @@ name = "ai-platform-gateway-production"
 BUILD_SHA = "local"
 ENVIRONMENT = "production"
 LOG_VERBOSITY = "0"
+CONFIG_CACHE_TTL_MS = "30000"
 OPERATOR_ID = "platform-operator"
 
 [[env.production.d1_databases]]
@@ -122,7 +125,7 @@ simple = { limit = 600, period = 60 }
 [[env.production.ratelimits]]
 name = "RATE_LIMITER_INSTALLATION_ACTOR"
 namespace_id = "3002"
-simple = { limit = 120, period = 60 }
+simple = { limit = 120, pneriod = 60 }
 
 [[env.production.ratelimits]]
 name = "RATE_LIMITER_INSTALLATION_CAPABILITY"

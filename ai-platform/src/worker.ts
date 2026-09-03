@@ -10,7 +10,12 @@ import {
   createCapabilityRegistry,
   setCapabilityRegistry,
 } from "./capability";
-import { createD1ConfigReader, isolateConfigCache } from "./config-cache";
+import {
+  configureIsolateConfigCache,
+  createD1ConfigReader,
+  isolateConfigCache,
+  resolveConfigCacheTtlMs,
+} from "./config-cache";
 import { creditUsage, reconcileGraceUsage } from "./credit";
 import type { CanonicalRequest, CanonicalResult } from "./contracts/canonical";
 import {
@@ -110,6 +115,7 @@ interface Env {
   BUILD_SHA: string;
   ENVIRONMENT: string;
   LOG_VERBOSITY?: string;
+  CONFIG_CACHE_TTL_MS?: string;
   OPERATOR_BEARER_TOKEN: string;
   OPERATOR_ID: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
@@ -136,6 +142,9 @@ function assertRequiredBindings(runtimeEnv: Env): void {
 }
 
 assertRequiredBindings(env as Env);
+configureIsolateConfigCache(
+  resolveConfigCacheTtlMs((env as Env).CONFIG_CACHE_TTL_MS),
+);
 
 try {
   setCapabilityRegistry(
