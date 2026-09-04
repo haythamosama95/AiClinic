@@ -114,36 +114,33 @@ export const STAGE10_OPERATIONS: JourneyOperationDefinition[] = [
     section: 'Routing preload',
     title: 'Publish fake-provider routing policy',
     method: 'POST',
-    path: '/control/routing-policies/{policy_id}/versions/{version}/publish',
+    path: '/control/routing-policies/publish',
     auth: 'operator',
     bodyKind: 'json',
     summary:
-      'Loads routing policy into R2 and inserts a published D1 row. Visit summary manifest references routing/standard@v1 — config-cache serves the active row for policy_id=standard. Edit document to change targets.',
+      'Loads routing policy into R2 and inserts a published D1 row. Identity from document.policy_id and document.policy_version. Visit summary manifest references routing/standard@v1 — config-cache serves the active row for policy_id=standard. Edit document to change targets.',
     successNote:
-      '200 — policy published to control/routing-policy/standard/{version}.json. Follow with promote to set status=active.',
+      '200 — {} or warnings. Policy published to control/routing-policy/standard/91.json (from document). Follow with promote to set status=active.',
     failures: [
       { status: 401, error: 'unauthorized', trigger: 'Invalid operator bearer' },
+      { status: 400, error: 'invalid_json', trigger: 'Body is not valid JSON' },
+      { status: 400, error: 'missing_document', trigger: 'document field absent from body' },
+      {
+        status: 400,
+        error: 'invalid_policy_identity',
+        trigger:
+          'Missing/empty document.policy_id, or document.policy_version not an integer ≥ 1 (string "1" rejected)',
+      },
       { status: 409, error: 'already_published', trigger: 'Version already exists' },
+      { status: 500, error: 'storage_error', trigger: 'D1 or R2 failure' },
     ],
     fields: [
-      {
-        name: 'policy_id',
-        scope: 'path',
-        defaultValue: 'standard',
-        hint: 'Routing policy id — matches manifest routingPolicyRef',
-      },
-      {
-        name: 'version',
-        scope: 'path',
-        defaultValue: '91',
-        hint: 'Unused version number for local probes',
-      },
       {
         name: 'document',
         scope: 'body',
         json: true,
         defaultValue: FAKE_PROVIDER_POLICY_JSON,
-        hint: 'Full routing policy document — fake provider needs no API keys',
+        hint: 'Full routing policy document — fake provider needs no API keys; policy_version=91',
         wide: true,
       },
     ],

@@ -186,7 +186,7 @@ Operator  (Authorization: Bearer OPERATOR_BEARER_TOKEN)
 ├─ POST /control/capabilities/{id}/versions/{ver}/promote
 ├─ POST /control/capabilities/{id}/versions/{ver}/deprecate
 ├─ POST /control/capabilities/{id}/versions/{ver}/retire
-├─ POST /control/routing-policies/{policyId}/versions/{ver}/publish
+├─ POST /control/routing-policies/publish
 ├─ POST /control/routing-policies/{policyId}/versions/{ver}/canary
 ├─ POST /control/routing-policies/{policyId}/versions/{ver}/promote
 ├─ POST /control/routing-policies/{policyId}/versions/{ver}/rollback
@@ -436,10 +436,10 @@ Operator
 ```
 Operator
 │
-├─ POST /control/routing-policies/{policyId}/versions/{ver}/publish
+├─ POST /control/routing-policies/publish
 │  └─ handleRoutingPolicyPublish()
-│     ├─ [happy] 200 {} | 200 { warnings: ["latency_class_mismatch"] }
-│     ├─ [error] 400 policy_identity_mismatch
+│     ├─ [happy] 200 {} | 200 { warnings: ["latency_class_mismatch"] } | 200 { warnings: ["unreferenced_policy"] }
+│     ├─ [error] 400 invalid_json | missing_document | invalid_policy_identity
 │     ├─ [error] 409 already_published
 │     └─ [error] 500 storage_error
 │
@@ -816,7 +816,7 @@ ConfigCache: `entitlements/{installationId}`, `grants/{installationId}/{capabili
 
 **Caller.** Operator:
 
-- `POST /control/routing-policies/{policyId}/versions/{ver}/publish` → `handleRoutingPolicyPublish` (R2 PUT then D1 INSERT `status=published`)
+- `POST /control/routing-policies/publish` → `handleRoutingPolicyPublish` (identity from `document.policy_id` / `policy_version`; R2 PUT then D1 INSERT `status=published`)
 - `…/canary` → `handleRoutingPolicyCanary` (D1 `status=canary` + `canary_installation_ids`)
 - `…/promote` → `handleRoutingPolicyPromote` (supersede other active/canary; target `active`)
 - `…/rollback` → `handleRoutingPolicyRollback`
@@ -1197,7 +1197,7 @@ DeepSeek and Gemini adapters (`src/provider/deepseek.ts`, `gemini.ts`) are selec
 | POST | `/control/capabilities/{id}/versions/{v}/promote` | Operator | operator bearer | `handleCohortPromote` |
 | POST | `/control/capabilities/{id}/versions/{v}/deprecate` | Operator | operator bearer | `handleDeprecate` |
 | POST | `/control/capabilities/{id}/versions/{v}/retire` | Operator | operator bearer | `handleRetire` |
-| POST | `/control/routing-policies/{id}/versions/{v}/publish` | Operator | operator bearer | `handleRoutingPolicyPublish` |
+| POST | `/control/routing-policies/publish` | Operator | operator bearer | `handleRoutingPolicyPublish` |
 | POST | `/control/routing-policies/{id}/versions/{v}/canary` | Operator | operator bearer | `handleRoutingPolicyCanary` |
 | POST | `/control/routing-policies/{id}/versions/{v}/promote` | Operator | operator bearer | `handleRoutingPolicyPromote` |
 | POST | `/control/routing-policies/{id}/versions/{v}/rollback` | Operator | operator bearer | `handleRoutingPolicyRollback` |

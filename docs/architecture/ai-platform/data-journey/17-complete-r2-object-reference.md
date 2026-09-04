@@ -216,7 +216,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
   -H "Authorization: Bearer $AAT" \
   "$GATEWAY/control/routing-policy/verify-r2/1.json"
 
-curl -s -X POST "$GATEWAY/control/routing-policies/verify-r2/versions/1/publish" \
+curl -s -X POST "$GATEWAY/control/routing-policies/publish" \
   -H "Content-Type: application/json" \
   -d '{"document":{"policy_id":"verify-r2","policy_version":1}}'
 ```
@@ -225,19 +225,19 @@ curl -s -X POST "$GATEWAY/control/routing-policies/verify-r2/versions/1/publish"
 
 #### 3.3.3 Publish failure does not write R2
 
-**Do:** operator bearer, URL and document identity disagree:
+**Do:** operator bearer, malformed document identity (missing `policy_id` — the publish URL carries no identity, so the document alone must supply it):
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST \
-  "$GATEWAY/control/routing-policies/verify-r2/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"document":{"schema_version":1,"policy_id":"standard","policy_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+  -d '{"document":{"schema_version":1,"policy_version":1,"defaults":{},"rules":[],"overrides":[]}}'
 ```
 
 Then repeat the `wrangler r2 object get` from [§3.3.1](#331-reset-to-a-known-r2-state).
 
-**Expect:** HTTP 400, `policy_identity_mismatch`. Get still fails. Validation runs **before** `R2.put`.
+**Expect:** HTTP 400, `invalid_policy_identity`. Get still fails. Validation runs **before** `R2.put`.
 
 #### 3.3.4 Publish a full routing policy document
 
@@ -245,7 +245,7 @@ Then repeat the `wrangler r2 object get` from [§3.3.1](#331-reset-to-a-known-r2
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST \
-  "$GATEWAY/control/routing-policies/verify-r2/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -441,7 +441,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
   "SELECT policy_id, version, content_pointer, status FROM routing_policy WHERE policy_id = 'verify-r2'"
 ```
 
-**Expect:** the wrong keys fail. D1 has one row: `policy_id = verify-r2`, `version = 1` (TEXT, from the URL), `content_pointer = control/routing-policy/verify-r2/1.json`, `status = published`. The pointer **is** the R2 key — not a UUID, not a repo path (`control/routing-policy/platform-default/1.json` is the on-disk fixture name only).
+**Expect:** the wrong keys fail. D1 has one row: `policy_id = verify-r2`, `version = 1` (TEXT, derived from the document), `content_pointer = control/routing-policy/verify-r2/1.json`, `status = published`. The pointer **is** the R2 key — not a UUID, not a repo path (`control/routing-policy/platform-default/1.json` is the on-disk fixture name only).
 
 **Expect:** `/tmp/routing-policy.json` is JSON. Publish sets `httpMetadata.contentType = application/json` on `R2.put`. `wrangler r2 object get` writes the **body only** — it has no flag to print httpMetadata, so the header itself is not visible from this CLI.
 
@@ -451,7 +451,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST \
-  "$GATEWAY/control/routing-policies/verify-r2/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"document":{"schema_version":1,"policy_id":"verify-r2","policy_version":1,"defaults":{},"rules":[{"rule_id":"x","match":{},"requires":{"structured_output":false,"min_context_window":0,"languages":[]},"targets":[]}],"overrides":[],"ops_note":"should-not-land"}}'
@@ -547,7 +547,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/2/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -754,7 +754,7 @@ curl -s -X POST "$GATEWAY/control/support/lookup?reference=<REFERENCE>" \
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/3/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{

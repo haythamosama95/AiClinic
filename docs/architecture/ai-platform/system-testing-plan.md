@@ -167,7 +167,7 @@ Traceability key: `DJ-nn §x.y` = data-journey doc `nn`, section x.y.
 
 | ID | Scenario | Key assertions |
 |---|---|---|
-| SYS-4.1 | Publish validation & immutability | 400 `invalid_json`/`missing_document`/`policy_identity_mismatch`; duplicate publish → 409 `already_published` and R2 bytes unchanged; publish is R2-put only after D1 existence check (DJ-07 §9.3.3–5, DJ-17 §3.3.3–6). |
+| SYS-4.1 | Publish validation & immutability | 400 `invalid_json`/`missing_document`/`invalid_policy_identity`; 200 `warnings: ["unreferenced_policy"]` when no capability references the identity; duplicate publish → 409 `already_published` and R2 bytes unchanged; publish is R2-put only after D1 existence check (DJ-07 §9.3.3–5, DJ-17 §3.3.3–6). |
 | SYS-4.2 | Canary split two installations | I0 and I1 both entitled; publish v1+v2; promote v1, canary v2 onto I0. Invoke as I0 → `routing_decision.policy_version=2`; invoke as I1 → `policy_version=1` (DJ-07 §9.3.9, DJ-12 §19.3.14). |
 | SYS-4.3 | Promote & rollback semantics | Promote v2 → v2 `active`, v1 `superseded`; canary on active → 409 `illegal_policy_transition`; rollback → v1 active again; rollback with no superseded → 409 (DJ-07 §9.3.10–11). |
 | SYS-4.4 | Version tie-break | Publish versions 9, 10, 11 with equal `active_from`; rollback picks **10** not 9 (`active_from DESC, rowid DESC`) (DJ-07 §9.3.11, DJ-16 §15.3.6). |

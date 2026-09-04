@@ -807,7 +807,7 @@ Manifest `Routing.routingPolicyRef` is `routing/standard@v1`. Config-cache strip
 **Do:** publish version `91` (or any unused version), then promote. `max_parallel_attempts: 99` is deliberate — invocation must ignore it.
 
 ```bash
-curl -s -X POST "$GATEWAY/control/routing-policies/standard/versions/91/publish" \
+curl -s -X POST "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

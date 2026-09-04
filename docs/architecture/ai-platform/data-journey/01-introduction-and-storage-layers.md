@@ -626,7 +626,7 @@ d1 "SELECT request_reference, state, payload_pointer, terminal_error_code FROM a
 
 ```bash
 curl -sS -D - -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -713,7 +713,7 @@ d1 "SELECT version, status, canary_installation_ids FROM routing_policy ORDER BY
 
 ```bash
 curl -sS -D - -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/2/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -763,7 +763,7 @@ curl -sS -D - -X POST \
 d1 "SELECT version, status FROM routing_policy ORDER BY active_from DESC, rowid DESC;"
 ```
 
-**Expect:** version `2` is `active` first; version `1` is `superseded`. The reader’s `ORDER BY active_from DESC, rowid DESC` on `status = 'active'` therefore selects v2. Repeat `…/versions/1/publish` → HTTP **409** `{ "error": "already_published" }`.
+**Expect:** version `2` is `active` first; version `1` is `superseded`. The reader’s `ORDER BY active_from DESC, rowid DESC` on `status = 'active'` therefore selects v2. Re-publish the version-1 document → HTTP **409** `{ "error": "already_published" }`.
 
 #### 4.3.11 Terminal settlement: Quota DO, D1 ledger, R2 envelope
 

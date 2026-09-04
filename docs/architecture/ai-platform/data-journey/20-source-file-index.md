@@ -297,7 +297,7 @@ ls ai-platform/migrations/*.sql >/dev/null
 | `/control/capabilities/{id}/versions/{v}/promote` | POST | operator bearer | [Stage 4 §8](06-stage-4-entitlement-and-capability-grants.md#8-api-post-controlcapabilitiescapability_idversionsversionpromote) |
 | `/control/capabilities/{id}/versions/{v}/deprecate` | POST | operator bearer | [Stage 4 §9](06-stage-4-entitlement-and-capability-grants.md#9-api-post-controlcapabilitiescapability_idversionsversiondeprecate) |
 | `/control/capabilities/{id}/versions/{v}/retire` | POST | operator bearer | [Stage 4 §10](06-stage-4-entitlement-and-capability-grants.md#10-api-post-controlcapabilitiescapability_idversionsversionretire) |
-| `/control/routing-policies/{id}/versions/{v}/publish` | POST | operator bearer | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
+| `/control/routing-policies/publish` | POST | operator bearer | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
 | `/control/routing-policies/{id}/versions/{v}/promote` | POST | operator bearer | [§1.3.4](#134-duplicate-routing-publish-checks-d1-first) |
 | `/control/routing-policies/{id}/versions/{v}/canary` | POST | operator bearer | [Stage 5 §6.2](07-stage-5-routing-policy.md#62-api-post-controlrouting-policiespolicy_idversionsversioncanary) |
 | `/control/routing-policies/{id}/versions/{v}/rollback` | POST | operator bearer | [Stage 5 §6.4](07-stage-5-routing-policy.md#64-api-post-controlrouting-policiespolicy_idversionsversionrollback) |
@@ -403,7 +403,7 @@ FROM entitlement WHERE installation_id = '<I0>' LIMIT 1;
 **Do:** publish the checked-in fixture (document `policy_id` / `policy_version` must match the URL):
 
 ```bash
-curl -s -X POST "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+curl -s -X POST "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"document\": $(cat ai-platform/control/routing-policy/platform-default/1.json)}"

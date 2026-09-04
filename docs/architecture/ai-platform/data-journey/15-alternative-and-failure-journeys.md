@@ -342,10 +342,10 @@ Guard compose does **not** load the routing document. **Do:** fresh AAT, `invoke
 
 **Expect:** HTTP 200 `text/event-stream`. First event `accepted`. Then `event: failed` with `code: "internal_error"` (invoke `preloadRoutingPolicyForInstallation` / `loadConfig("active_routing_policy")` miss). D1 `ai_request` exists (`state` Failed, `terminal_error_code=internal_error`). This is [§3](#3-missing-routing-policy), not a pre-SSE outage.
 
-**Do:** publish and promote a playbook whose only target **omits** `features.min_context_window` (mistype `cost_class` or omit `languages` — same fail-closed path). URL version `1`, `document.policy_id: "standard"`, `document.policy_version: 1`, `features.latency_class: "standard"` (manifest `Routing.latencyClass`). Then wait 31 s. Fresh AAT. `invoke`. Inspect `ai_request.routing_decision`.
+**Do:** publish and promote a playbook whose only target **omits** `features.min_context_window` (mistype `cost_class` or omit `languages` — same fail-closed path). Document identity `policy_id: "standard"`, `policy_version: 1`, `features.latency_class: "standard"` (manifest `Routing.latencyClass`). Then wait 31 s. Fresh AAT. `invoke`. Inspect `ai_request.routing_decision`.
 
 ```bash
-curl -sS -X POST "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+curl -sS -X POST "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"document":{ "schema_version":1, "policy_id":"standard", "policy_version":1, "defaults":{"cost_class":"standard","max_parallel_attempts":1}, "rules":[{ "rule_id":"broken-features", "match":{"capability_ids":["clinic.visit_summary"],"installation_ids":[],"cost_classes":[],"tiers":[],"languages":[],"latency_classes":[]}, "requires":{"structured_output":false,"min_context_window":0,"languages":[]}, "targets":[{ "provider_id":"fake", "model_id":"fake-v1", "features":{"structured_output":false,"languages":["en"],"latency_class":"standard","cost_class":"standard"}, "max_attempts":1, "timeout_ms":5000 }] }], "overrides":[] }}'

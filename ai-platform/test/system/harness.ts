@@ -683,10 +683,9 @@ export async function publishPolicy(
   version: string,
   document: Record<string, unknown>,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const result = await operatorFetch(
-    `/control/routing-policies/${policyId}/versions/${version}/publish`,
-    { document },
-  );
+  const result = await operatorFetch("/control/routing-policies/publish", {
+    document,
+  });
   if (result.status === 200) {
     const policy = await getRoutingPolicy(policyId, version);
     if (!policy || policy.status !== "published") {

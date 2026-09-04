@@ -50,8 +50,8 @@ The platform does **not** start at “a Flutter button was pressed.” A request
         → installation(status=active) + installation_key + entitlement(status=pending, quotas=0)
    POST /control/installations/{id}/entitle
         → entitlement(status=active, budgets, allowed_capabilities) + capability_grant rows
-   POST /control/routing-policies/{id}/versions/{v}/publish
-        → R2 policy document + routing_policy(status=published)
+   POST /control/routing-policies/publish
+        → R2 policy document + routing_policy(status=published); identity from document.policy_id/policy_version
    POST .../canary  and/or  POST .../promote
         → routing_policy(status=canary|active)
           [invoke preload requires this; missing policy → accepted then failed/internal_error]
@@ -423,10 +423,10 @@ Missing routing does **not** fail the guard. After `accepted`, `preloadRoutingPo
 ### 8.2 Inputs
 
 - Entitled installation (so a request can reach this far)
-- `POST /control/routing-policies/{policy_id}/versions/{version}/publish` with `{ document }`
+- `POST /control/routing-policies/publish` with `{ document }`
 - Then `.../canary` with `{ installation_ids: [...] }` and/or `.../promote`
 
-The JSON document must include `schema_version: 1`, matching `policy_id` / `policy_version`, a catch-all rule, and `targets[]` with `provider_id`, `model_id`, `features`, `max_attempts`, `timeout_ms`.
+The JSON document must include `schema_version: 1`, well-formed `policy_id` / `policy_version` (they define the published identity — R2 key and D1 PK derive from them), a catch-all rule, and `targets[]` with `provider_id`, `model_id`, `features`, `max_attempts`, `timeout_ms`.
 
 Wired provider ids in code: `deepseek`, `gemini`. `fake` is resolved in the Worker without being in `createProviderAdapter`. Unknown ids become a FakeAdapter that immediately returns `provider_unavailable`.
 

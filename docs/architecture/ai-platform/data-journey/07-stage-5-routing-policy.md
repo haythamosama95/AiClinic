@@ -36,7 +36,7 @@
   - [Hardcoded, ignored, and wiring gaps](#45-hardcoded-ignored-and-wiring-gaps)
 5. [D1](#5-d1-routing_policy-row-every-column) `routing_policy` [row — every column](#5-d1-routing_policy-row-every-column)
 6. [Control endpoints](#6-control-endpoints)
-  - [Publish:](#61-publish-post-controlrouting-policiespolicyidversionsversionpublish) `POST /control/routing-policies/{policyId}/versions/{version}/publish`
+  - [Publish:](#61-publish-post-controlrouting-policiespublish) `POST /control/routing-policies/publish`
   - [Canary:](#62-canary-post-canary) `POST …/canary`
   - [Promote:](#63-promote-post-promote) `POST …/promote`
   - [Rollback:](#64-rollback-post-rollback) `POST …/rollback`
@@ -573,7 +573,7 @@ Checked-in production fixture (catch-all only, no overrides):
 On-disk directory name is historical; the document identity is `policy_id: "standard"` /
 `policy_version: 1`. Both targets advertise `latency_class: "standard"` so they match published
 `clinic.visit_summary@1.0.0` (`routingPolicyRef: "routing/standard@v1"`, `latencyClass: "standard"`).
-Publish writes R2 at `control/routing-policy/{policyId}/{version}.json` from the URL, not the repo path.
+Publish writes R2 at `control/routing-policy/{policy_id}/{version}.json` derived from the document's identity fields, not the repo path.
 
 Sibling platform config (not part of this R2 document, never client-visible): the versioned
 price table `ai-platform/control/pricing/platform-default/1.json` is bundled into the Worker and
@@ -779,8 +779,8 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | `routing_decision.required_features`                               | **Request requirements only**       | `selectCandidateChain` sets this to `context.requirements`, not the merged rule floor — filtering uses merged floor but journal shows manifest-only                                                                                                                                                                                                                                                                                                                        | Optional — journal accuracy improvement                                                 |
 | Latency mismatch `reason_code`                                     | **Mapped to** `feature_unsupported` | Frozen enum has no `latency_unsupported` code (`router/index.ts` `filterTargets`)                                                                                                                                                                                                                                                                                                                                                                                          | None unless contract is extended                                                        |
 | Malformed target feature fields                                    | **Fail closed at** `filterTargets`  | Missing/unknown `min_context_window`, `cost_class`, or `languages` → `feature_unsupported`; languages is `Array.isArray`-guarded so a missing array does not throw                                                                                                                                                                                                                                                                                                         | None — request-path defense; publish-time target-shape check remains the in-depth layer |
-| Publish-time validation                                            | **Identity + latency warning**      | `handleRoutingPolicyPublish` rejects URL/document identity mismatch; warns (200 `warnings`) when no target `latency_class` matches a published capability that references this policy. Catch-all and target shape are still not checked.                                                                                                                                                                                                                                   | **Partial** — catch-all and target shape still unvalidated                              |
-| `policy_id` / `policy_version` vs URL at publish                   | **Rejected (400)**                  | `document.policy_id` must equal URL `{policyId}`; `document.policy_version` (number) must equal URL `{version}` (string `"1"` matches `1`). Checked before R2.put / D1 insert. Code: `policy_identity_mismatch`.                                                                                                                                                                                                                                                           | None — closed                                                                           |
+| Publish-time validation                                            | **Identity shape + warnings**       | `handleRoutingPolicyPublish` rejects a document whose `policy_id` / `policy_version` are missing or malformed (400 `invalid_policy_identity`); warns (200 `warnings`) with `unreferenced_policy` when no published capability references the identity, or `latency_class_mismatch` when no target `latency_class` matches a referencing capability. Catch-all and target shape are still not checked.                                                                                                     | **Partial** — catch-all and target shape still unvalidated                              |
+| `policy_id` / `policy_version` at publish                          | **Document is the source of truth** | The publish URL carries no identity; R2 key, D1 PK, and audit target are derived from `document.policy_id` / `document.policy_version`. There is no URL/document mismatch to reject — `policy_identity_mismatch` exists only as the runtime router check against the D1 row.                                                                                                                                                        | None — closed                                                                           |
 | Extra JSON keys                                                    | **Stored, ignored**                 | R2 body is written as-is; router reads only known fields                                                                                                                                                                                                                                                                                                                                                                                                                   | None — but avoid relying on unknown keys                                                |
 | `rule_id` uniqueness                                               | **Not enforced**                    | Duplicate ids make journal attribution ambiguous                                                                                                                                                                                                                                                                                                                                                                                                                           | Ops discipline — consider publish-time check                                            |
 | Kill switches                                                      | **Not in R2 document**              | Live in D1 (`kill_switches`); guard stage 5 collects active `provider:<id>` rows as `killedProviderIds` and the router applies them in `filterTargets`. Capability-level kills (manifest flag, D1 `global` / `capability:` / `installation:`) 503 before routing. Invoke-path routing shares the isolate `ConfigCache`, so `collectKilledProviderIds` `consult` can hit kill-switch entries the guard already loaded (still merged with `RouterContext.killedProviderIds`) | None — isolate cache is a copy of D1, not a second source of truth                      |
@@ -808,7 +808,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 
 
 
-### 6.1 Publish: `POST /control/routing-policies/{policyId}/versions/{version}/publish`
+### 6.1 Publish: `POST /control/routing-policies/publish`
 
 **Body:**
 
@@ -816,17 +816,25 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 { "document": { /* RoutingPolicyDocument */ } }
 ```
 
+The document is the **only source of identity**. There is no `{policyId}` / `{version}` in the URL — the R2 key `control/routing-policy/{policy_id}/{version}.json`, the D1 primary key, and the `control_audit.target` (`{policy_id}@{version}`) are all derived from `document.policy_id` / `document.policy_version`. Canary/promote/rollback keep their versioned URLs because they address an already-published row and carry no document.
+
 **Writes:** SELECT existing `(policy_id, version)` first. On a hit, return 409 `already_published` without touching R2 (a duplicate body must not overwrite the published object). Otherwise R2.put, then D1 INSERT `status=published`. The D1 insert + `control_audit` share one `DB.batch`; a UNIQUE/SQLITE_CONSTRAINT race (two concurrent first publishes) is still mapped to 409.
 
 **Validation (before R2/D1 write) and D1 constraint mapping:**
 
 
-| Result | Body                                         | Trigger                                                                                                                                                                                                                                                         |
-| ------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `{ "error": "policy_identity_mismatch" }`    | `document.policy_id` ≠ URL `{policyId}`, or `document.policy_version` does not match URL `{version}` (`1` matches `"1"`)                                                                                                                                        |
-| 409    | `{ "error": "already_published" }`           | Same `(policy_id, version)` already exists in D1 (`PRIMARY KEY`); checked before R2.put so a rejected duplicate does not mutate the published object. Concurrent insert races still map UNIQUE/SQLITE_CONSTRAINT to 409. Other D1 errors → 500 `storage_error`. |
-| 200    | `{ "warnings": ["latency_class_mismatch"] }` | Identity matches, but no target `latency_class` equals `Routing.latencyClass` of a published capability whose `routingPolicyRef` is `routing/{policyId}@v{version}`                                                                                             |
-| 200    | `{}`                                         | Identity matches and latency is aligned, or no published manifest references this policy version                                                                                                                                                                |
+| Result | Body                                          | Trigger                                                                                                                                                                                                                    |
+| ------ | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `{ "error": "invalid_json" }`                 | Body does not parse as JSON                                                                                                                                                                                                |
+| 400    | `{ "error": "missing_document" }`             | `document` key absent or not an object                                                                                                                                                                                     |
+| 400    | `{ "error": "invalid_policy_identity" }`      | `document.policy_id` is not a non-empty string, or `document.policy_version` is not an integer ≥ 1 (a JSON **number** — string `"1"` is rejected). Fail closed: identity must be well-formed before any key is derived from it |
+| 409    | `{ "error": "already_published" }`            | Same `(policy_id, version)` already exists in D1 (`PRIMARY KEY`); checked before R2.put so a rejected duplicate does not mutate the published object. Concurrent insert races still map UNIQUE/SQLITE_CONSTRAINT to 409. Other D1 errors → 500 `storage_error`. |
+| 200    | `{ "warnings": ["latency_class_mismatch"] }`  | A published capability's `routingPolicyRef` is `routing/{policy_id}@v{policy_version}`, but no target `latency_class` equals that capability's `Routing.latencyClass`                                                       |
+| 200    | `{ "warnings": ["unreferenced_policy"] }`     | No published capability manifest references `routing/{policy_id}@v{policy_version}` — the typical symptom of a typo'd identity, which would otherwise publish silently                                                     |
+| 200    | `{}`                                          | Identity is well-formed, a published manifest references this policy version, and latency is aligned                                                                                                                       |
+
+
+`policy_identity_mismatch` is no longer a publish-time outcome — there is nothing to mismatch against. It survives only as the **runtime** check ([§8](#8-routing-failure-paths-post-accept)): the router re-validates document identity against the D1 row on every load, which catches out-of-band R2 overwrites ([§9.3.14](#9314-router-identity-schema-and-catch-all)).
 
 
 Catch-all / target shape are still not validated at publish — see [§4.5](#45-hardcoded-ignored-and-wiring-gaps).
@@ -948,9 +956,9 @@ r2del() {
 }
 
 publish() {
-  local policy_id="$1" version="$2" file="$3"
+  local file="$1"
   curl -sS -D - -o /tmp/rp-http-body.json \
-    -X POST "$GATEWAY/control/routing-policies/${policy_id}/versions/${version}/publish" \
+    -X POST "$GATEWAY/control/routing-policies/publish" \
     -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
     -H "Content-Type: application/json" \
     --data-binary @"$file"
@@ -1021,7 +1029,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `routingTier` comes from admission (`routingTierFromAdmission`), matches `ai_request.routing_tier`                | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors)                                                                               |
 | Client `routing_tier` / `degraded` / `degraded_notice` body keys are ignored                                      | [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                                                                                      |
 | R2 key is `control/routing-policy/{policy_id}/{version}.json`                                                     | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
-| Publish writes that key from the URL, not the repo path `platform-default/`                                       | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                               |
+| Publish derives that key from `document.policy_id` / `document.policy_version`, not the repo path `platform-default/` | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                               |
 | Router does not read R2 on the hot path (config cache `row.document`)                                             | [§9.3.13](#9313-missing-r2-document)                                                                                                                                                      |
 | `schema_version` always present; only `1` accepted                                                                | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                                                |
 | `policy_id` / `policy_version` always present; must match D1 row                                                  | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                                                |
@@ -1073,9 +1081,11 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Missing/wrong Bearer, or a staff AAT, → 401 `unauthorized`                                                        | [§9.3.2](#932-who-may-call-control-apis)                                                                                                                                                  |
 | Publish body is `{ "document": { … } }`; missing document → 400 `missing_document`                                | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
 | Invalid JSON body → 400 `invalid_json`                                                                            | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
-| URL/document identity mismatch → 400 `policy_identity_mismatch`; no R2.put / no D1 insert                         | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
+| Publish URL carries no identity; document is the only source of `policy_id` / `policy_version`                    | [§9.3.3](#933-publish-failure-paths), [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                 |
+| Missing/malformed document identity → 400 `invalid_policy_identity`; no R2.put / no D1 insert                     | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
+| Publish of an identity no capability references → 200 `{ "warnings": ["unreferenced_policy"] }`                   | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
 | First publish: D1 existence check, then R2.put, then D1 INSERT `status=published`                                 | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
-| First publish 200 `{}` when identity matches and latency is aligned, or no capability references this version     | [§9.3.4](#934-first-publish-and-storage-inspection), [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                               |
+| First publish 200 `{}` when a capability references this version and latency is aligned                           | [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                                                                                    |
 | First publish 200 `{ "warnings": ["latency_class_mismatch"] }` when no target latency matches visit-summary       | [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                                                                                    |
 | Duplicate `(policy_id, version)` → 409 `already_published` without touching R2                                    | [§9.3.5](#935-duplicate-publish-leaves-r2-unchanged)                                                                                                                                      |
 | Concurrent UNIQUE/SQLITE_CONSTRAINT also maps to 409                                                              | [§9.3.21](#9321-unreachable-and-operator-hostile-paths)                                                                                                                                   |
@@ -1159,70 +1169,77 @@ curl -sS -D - -o /tmp/rp-http-body.json -X GET \
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Content-Type: application/json" \
   -d '{"document":{"policy_id":"standard","policy_version":1}}'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer not-the-operator-token" \
   -H "Content-Type: application/json" \
   -d '{"document":{"policy_id":"standard","policy_version":1}}'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $AAT" \
   -H "Content-Type: application/json" \
   -d '{"document":{"policy_id":"standard","policy_version":1}}'
 echo; cat /tmp/rp-http-body.json; echo
 ```
 
-**Expect:** GET of the collection path is **404** (pattern requires `…/publish|canary|promote|rollback`). The three POSTs are **401** `{ "error": "unauthorized" }`. Clinic staff (AAT) are not operators. Repeat a canary/promote/rollback URL without a Bearer — same 401. `routing_policy` is still empty.
+**Expect:** GET of the collection path is **404** (versioned pattern requires `…/canary|promote|rollback`; publish is the bare `/control/routing-policies/publish`). The three POSTs are **401** `{ "error": "unauthorized" }`. Clinic staff (AAT) are not operators. Repeat a canary/promote/rollback URL without a Bearer — same 401. `routing_policy` is still empty.
 
 #### 9.3.3 Publish failure paths
 
-**Do:** as operator, identity mismatches and missing body (before any successful write):
+**Do:** as operator, malformed bodies and malformed document identity (before any successful write):
 
 ```bash
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d 'not-json'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"document":null}'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"document":{"policy_id":"other","policy_version":1,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+  -d '{"document":{"policy_version":1,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
 echo; cat /tmp/rp-http-body.json; echo
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
-  "$GATEWAY/control/routing-policies/standard/versions/1/publish" \
+  "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"document":{"policy_id":"standard","policy_version":2,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+  -d '{"document":{"policy_id":"standard","policy_version":"1","schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/publish" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"document":{"policy_id":"","policy_version":0,"schema_version":1,"defaults":{},"rules":[],"overrides":[]}}'
 echo; cat /tmp/rp-http-body.json; echo
 ```
 
-**Expect:** `not-json` → **400** `{ "error": "invalid_json" }`. `{}` and `{"document":null}` → **400** `{ "error": "missing_document" }`. `policy_id` ≠ URL or `policy_version` ≠ URL (`2` vs `"1"`) → **400** `{ "error": "policy_identity_mismatch" }`. `string "1"` matching number `1` is the passing equality (`String(document.policy_version) === route.version`).
+**Expect:** `not-json` → **400** `{ "error": "invalid_json" }`. `{}` and `{"document":null}` → **400** `{ "error": "missing_document" }`. Missing `policy_id`, string `policy_version` `"1"` (must be a JSON number), and empty `policy_id` / `0` version → **400** `{ "error": "invalid_policy_identity" }`. Identity is derived from the document alone — there is no URL to agree or disagree with, so `policy_identity_mismatch` is not a publish outcome anymore.
 
 **Do:**
 
@@ -1231,11 +1248,11 @@ d1 "SELECT COUNT(*) AS n FROM routing_policy"
 r2get "control/routing-policy/standard/1.json" /tmp/rp-should-miss.json || true
 ```
 
-**Expect:** still zero D1 rows. R2 get fails / empty — identity mismatch is checked **before** R2.put.
+**Expect:** still zero D1 rows. R2 get fails / empty — identity validation runs **before** R2.put.
 
 #### 9.3.4 First publish and storage inspection
 
-Use a policy id **no bundled capability references**, so latency warning stays off ([§6.1](#61-publish-post-controlrouting-policiespolicyidversionsversionpublish) empty `{}` branch). The document below includes every router-understood key plus schema-retained defaults, an extra unknown key, and a catch-all.
+Use a policy id **no bundled capability references**, so the publish returns the `unreferenced_policy` warning ([§6.1](#61-publish-post-controlrouting-policiespublish)). The document below includes every router-understood key plus schema-retained defaults, an extra unknown key, and a catch-all.
 
 **Do:**
 
@@ -1324,10 +1341,10 @@ cat > /tmp/rp-probe-v1.json <<'EOF'
 }
 EOF
 
-publish probe 1 /tmp/rp-probe-v1.json
+publish /tmp/rp-probe-v1.json
 ```
 
-**Expect:** HTTP **200** and body `{}` (no `warnings`). No published capability has `routingPolicyRef: "routing/probe@v1"`.
+**Expect:** HTTP **200** and body `{ "warnings": ["unreferenced_policy"] }`. No published capability has `routingPolicyRef: "routing/probe@v1"` — the publish succeeds (identity is well-formed) but the warning flags that nothing references this identity, the typical symptom of a typo'd `policy_id`.
 
 **Do:** inspect R2 (every written field) and D1 (every column):
 
@@ -1358,7 +1375,7 @@ d1 "SELECT action, target, before_pointer, after_pointer, operator_id
     ORDER BY recorded_at DESC LIMIT 1"
 ```
 
-**Expect:** R2 object is the document **as posted** (extra `ops_note` kept; schema-retained defaults kept). D1 row: `policy_id=probe`, `version=1` (TEXT), `content_pointer=control/routing-policy/probe/1.json`, `active_from` ISO now, `activated_by=platform-operator`, `canary_installation_ids` NULL, `status=published`. Audit `action=routing_policy_publish`, `target=probe@1`, `before_pointer` NULL, `after_pointer` equals the R2 key, `operator_id=platform-operator`. Publish used the **URL** to build the key, not `ai-platform/control/routing-policy/platform-default/`.
+**Expect:** R2 object is the document **as posted** (extra `ops_note` kept; schema-retained defaults kept). D1 row: `policy_id=probe`, `version=1` (TEXT), `content_pointer=control/routing-policy/probe/1.json`, `active_from` ISO now, `activated_by=platform-operator`, `canary_installation_ids` NULL, `status=published`. Audit `action=routing_policy_publish`, `target=probe@1`, `before_pointer` NULL, `after_pointer` equals the R2 key, `operator_id=platform-operator`. Publish derived the key from `document.policy_id` / `document.policy_version`, not `ai-platform/control/routing-policy/platform-default/`.
 
 `status=published` is **not** served ([§9.3.7](#937-published-policy-is-not-served)).
 
@@ -1373,7 +1390,7 @@ doc=json.load(open("/tmp/rp-probe-v1.json"))
 doc["document"]["rules"][0]["targets"][0]["provider_id"]="gemini"
 json.dump(doc, open("/tmp/rp-probe-v1-conflict.json","w"))
 PY
-publish probe 1 /tmp/rp-probe-v1-conflict.json
+publish /tmp/rp-probe-v1-conflict.json
 r2get "control/routing-policy/probe/1.json" /tmp/rp-probe-after-409.json
 python3 - <<'PY'
 import json
@@ -1404,10 +1421,10 @@ for rule in doc["document"]["rules"]:
         t["features"]["latency_class"]="interactive"
 json.dump(doc, open("/tmp/rp-standard-mismatch.json","w"))
 PY
-publish standard 1 /tmp/rp-standard-mismatch.json
+publish /tmp/rp-standard-mismatch.json
 ```
 
-**Expect:** HTTP **200** `{ "warnings": ["latency_class_mismatch"] }`. Identity matched; no target `latency_class` equals visit-summary `"standard"`.
+**Expect:** HTTP **200** `{ "warnings": ["latency_class_mismatch"] }`. Visit summary references `routing/standard@v1`, so no `unreferenced_policy` warning — but no target `latency_class` equals its `"standard"`.
 
 **Do:** delete that version and publish the aligned production shape (on-disk directory `platform-default` is historical; identity is `standard` / `1`):
 
@@ -1460,11 +1477,11 @@ cat > /tmp/rp-standard-v1.json <<'EOF'
   }
 }
 EOF
-publish standard 1 /tmp/rp-standard-v1.json
+publish /tmp/rp-standard-v1.json
 r2get "control/routing-policy/standard/1.json" /tmp/rp-standard-stored.json
 ```
 
-**Expect:** HTTP **200** `{}`. R2 key is `control/routing-policy/standard/1.json` (URL), `policy_id` is `"standard"`, both targets advertise `latency_class: "standard"`, `overrides` is `[]`. D1 `status=published`.
+**Expect:** HTTP **200** `{}`. R2 key is `control/routing-policy/standard/1.json` (derived from the document), `policy_id` is `"standard"`, both targets advertise `latency_class: "standard"`, `overrides` is `[]`. D1 `status=published`.
 
 #### 9.3.7 Published policy is not served
 
@@ -1542,7 +1559,7 @@ doc["document"]["rules"][0]["rule_id"]="canary-gemini-first"
 doc["document"]["rules"][0]["targets"].reverse()
 json.dump(doc, open("/tmp/rp-standard-v2.json","w"))
 PY
-publish standard 2 /tmp/rp-standard-v2.json
+publish /tmp/rp-standard-v2.json
 
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
   "$GATEWAY/control/routing-policies/standard/versions/2/canary" \
@@ -1669,9 +1686,9 @@ for ver, first in [(9,"deepseek"),(10,"gemini"),(11,"deepseek")]:
     d["document"]["rules"][0]["targets"][0]["provider_id"]=first
     json.dump(d, open(f"/tmp/rp-standard-v{ver}.json","w"))
 PY
-publish standard 9 /tmp/rp-standard-v9.json
-publish standard 10 /tmp/rp-standard-v10.json
-publish standard 11 /tmp/rp-standard-v11.json
+publish /tmp/rp-standard-v9.json
+publish /tmp/rp-standard-v10.json
+publish /tmp/rp-standard-v11.json
 
 d1 "UPDATE routing_policy SET status='superseded', active_from='2026-08-03T12:00:00.000Z'
     WHERE policy_id='standard' AND version IN ('9','10')"
@@ -1754,7 +1771,7 @@ Wait 31 s.
 
 #### 9.3.14 Router identity schema and catch-all
 
-Publish does not check catch-all or `schema_version` beyond URL identity. Overwrite R2 in place (D1 still says `standard` / `1`).
+Publish validates only identity shape ([§6.1](#61-publish-post-controlrouting-policiespublish)) — not catch-all or `schema_version`. Overwrite R2 in place (D1 still says `standard` / `1`).
 
 **Do:** identity mismatch in the **document** vs D1 row:
 
@@ -1906,7 +1923,7 @@ cat > /tmp/rp-standard-v3.json <<EOF
   }
 }
 EOF
-publish standard 3 /tmp/rp-standard-v3.json
+publish /tmp/rp-standard-v3.json
 curl -sS -o /dev/null -X POST \
   "$GATEWAY/control/routing-policies/standard/versions/3/promote" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
@@ -1994,7 +2011,7 @@ cat > /tmp/rp-standard-v4.json <<EOF
   }
 }
 EOF
-publish standard 4 /tmp/rp-standard-v4.json
+publish /tmp/rp-standard-v4.json
 curl -sS -o /dev/null -X POST \
   "$GATEWAY/control/routing-policies/standard/versions/4/promote" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"

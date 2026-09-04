@@ -368,7 +368,7 @@ Expect one indexed D1 lookup + at most one R2 `GetObject` worth of envelope data
 | --- | --- |
 | Deprecate / retire capability version (J1) | `POST /control/capabilities/{id}/versions/{v}/deprecate` \| `…/retire` |
 | Cohort activate / promote (J3) | `POST /control/capabilities/{id}/versions/{v}/activate` \| `…/promote` |
-| Routing policy canary (J3) | `POST /control/routing-policies/{id}/versions/{v}/publish` \| `canary` \| `promote` \| `rollback` |
+| Routing policy canary (J3) | `POST /control/routing-policies/publish` \| `…/{id}/versions/{v}/canary` \| `promote` \| `rollback` |
 | Token contract rotation (J4) | `POST /control/token-contract/begin-rotation` \| `…/retire` |
 
 Confirm each mutation in `control_audit` and, for canary, D1 `routing_policy` / R2 policy objects.

@@ -108,7 +108,7 @@
       - [9.4.5 Hardcoded, ignored, and wiring gaps](#945-hardcoded-ignored-and-wiring-gaps)
    - [9.5 D1 `routing_policy` row — every column](#95-d1-routing_policy-row-every-column)
    - [9.6 Control endpoints](#96-control-endpoints)
-      - [Publish: `POST /control/routing-policies/{policyId}/versions/{version}/publish`](#publish-post-controlrouting-policiespolicyidversionsversionpublish)
+      - [Publish: `POST /control/routing-policies/publish`](#publish-post-controlrouting-policiespublish)
       - [Canary: `POST …/canary`](#canary-post-canary)
       - [Promote: `POST …/promote`](#promote-post-promote)
       - [Rollback: `POST …/rollback`](#rollback-post-rollback)
@@ -1807,8 +1807,8 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | `routing_decision.required_features` | **Request requirements only** | `selectCandidateChain` sets this to `context.requirements`, not the merged rule floor — filtering uses merged floor but journal shows manifest-only | Optional — journal accuracy improvement |
 | Latency mismatch `reason_code` | **Mapped to `feature_unsupported`** | Frozen enum has no `latency_unsupported` code (`router/index.ts` line 511) | None unless contract is extended |
 | `clampParallelAttempts` | **Silent clamp** | Values `< 1` → `1`; values `> 6` → `6` | None — platform cap by design |
-| Publish-time validation | **Minimal** | `handleRoutingPolicyPublish` only checks `document` is an object; no structural or identity validation | **Yes** — validate catch-all, identity match, and target shape at publish |
-| `policy_id` / `policy_version` vs URL at publish | **Not checked** | Mismatch caught only at router time (`policy_identity_mismatch`) | **Yes** — reject at publish when URL and document disagree |
+| Publish-time validation | **Identity shape + warnings** | `handleRoutingPolicyPublish` checks `document` identity shape (400 `invalid_policy_identity`) and warns on unreferenced identity / latency mismatch; catch-all and target shape are not validated | **Partial** — catch-all and target shape still unvalidated |
+| `policy_id` / `policy_version` at publish | **Document is the source of truth** | Publish URL carries no identity; R2 key and D1 PK derive from the document. `policy_identity_mismatch` exists only as the runtime router check against the D1 row | None — closed |
 | Extra JSON keys | **Stored, ignored** | R2 body is written as-is; router reads only known fields | None — but avoid relying on unknown keys |
 | `rule_id` uniqueness | **Not enforced** | Duplicate ids make journal attribution ambiguous | Ops discipline — consider publish-time check |
 | Kill switches | **Not in R2 document** | Live in D1/config cache (`kill_switches` table); applied during `filterTargets` | None — intentional separation of volatile ops controls |
@@ -1834,7 +1834,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 
 
 
-#### Publish: `POST /control/routing-policies/{policyId}/versions/{version}/publish`
+#### Publish: `POST /control/routing-policies/publish`
 
 **Body:**
 
@@ -1842,9 +1842,11 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 { "document": { /* RoutingPolicyDocument */ } }
 ```
 
+The document is the only source of identity: the R2 key, D1 primary key, and audit target derive from `document.policy_id` / `document.policy_version`. Missing or malformed identity → 400 `invalid_policy_identity`; duplicate `(policy_id, version)` → 409 `already_published`. Warnings: `unreferenced_policy` when no published capability references the identity, `latency_class_mismatch` when a referencing capability's `Routing.latencyClass` matches no target.
+
 **Writes:** R2.put + D1 INSERT `status=published`.
 
-> **Note:** Publish does not validate document structure or identity match — see [§9.4.5](#945-hardcoded-ignored-and-wiring-gaps).
+> **Note:** Publish validates identity shape only — not catch-all or target structure — see [§9.4.5](#945-hardcoded-ignored-and-wiring-gaps).
 
 #### Canary: `POST …/canary`
 

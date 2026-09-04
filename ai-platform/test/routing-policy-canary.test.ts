@@ -240,21 +240,15 @@ async function seedInstallation(
     .run();
 }
 
-function buildPublishRequest(
-  version: string,
-  document: Record<string, unknown>,
-): Request {
-  return new Request(
-    `${GATEWAY_ORIGIN}/control/routing-policies/${FIXTURE_POLICY_ID}/versions/${version}/publish`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${FAKE_OPERATOR_ID}`,
-      },
-      body: JSON.stringify({ document }),
+function buildPublishRequest(document: Record<string, unknown>): Request {
+  return new Request(`${GATEWAY_ORIGIN}/control/routing-policies/publish`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${FAKE_OPERATOR_ID}`,
     },
-  );
+    body: JSON.stringify({ document }),
+  });
 }
 
 function buildCanaryRequest(
@@ -349,7 +343,7 @@ async function publishAndPromoteVersion(
 ): Promise<void> {
   const versionKey = String(version);
   const publish = await handlers.handleRoutingPolicyPublish(
-    buildPublishRequest(versionKey, policyDocument(version, providerId)),
+    buildPublishRequest(policyDocument(version, providerId)),
     bindings,
     operatorAuth,
   );
@@ -502,7 +496,7 @@ describe("T-J3-04 every_activation_writes_control_audit_with_operator_identity",
     });
 
     const publishV2 = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+      buildPublishRequest( policyDocument(2, "gemini")),
       bindings,
       operatorAuth,
     );
@@ -599,7 +593,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -658,7 +652,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -694,7 +688,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -748,7 +742,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -807,7 +801,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -857,7 +851,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -901,7 +895,7 @@ describe("routing_policy_canary_split", () => {
 
     const responses = await Promise.all([
       handlers.handleRoutingPolicyPublish(
-        buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+        buildPublishRequest( policyDocument(1, "deepseek")),
         bindings,
         unauth,
       ),
@@ -950,7 +944,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -1038,7 +1032,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -1136,7 +1130,7 @@ describe("routing_policy_canary_split", () => {
     expect(
       (
         await handleRoutingPolicyPublish(
-          buildPublishRequest(FIXTURE_VERSION_V2, policyDocument(2, "gemini")),
+          buildPublishRequest( policyDocument(2, "gemini")),
           bindings,
           operatorAuth,
         )
@@ -1202,32 +1196,62 @@ describe("routing_policy_canary_split", () => {
 });
 
 describe("routing_policy_publish_document_validation", () => {
-  it("rejects identity mismatch with 400 policy_identity_mismatch and does not persist", async () => {
+  it("rejects invalid policy identity with 400 invalid_policy_identity and does not persist", async () => {
     const operatorAuth = createFakeOperatorAuth();
     const bindings = { DB: env.DB, R2: env.R2 };
     const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+    const valid = policyDocument(1, "deepseek");
 
-    const mismatchedId = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, {
-        ...policyDocument(1, "deepseek"),
-        policy_id: "platform-default",
-      }),
+    const missingPolicyId = { ...valid };
+    delete missingPolicyId.policy_id;
+    const missingId = await handleRoutingPolicyPublish(
+      buildPublishRequest(missingPolicyId),
       bindings,
       operatorAuth,
     );
-    expect(mismatchedId.status).toBe(400);
-    expect(await mismatchedId.json()).toEqual({
-      error: "policy_identity_mismatch",
+    expect(missingId.status).toBe(400);
+    expect(await missingId.json()).toEqual({
+      error: "invalid_policy_identity",
     });
 
-    const mismatchedVersion = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(2, "deepseek")),
+    const stringVersion = await handleRoutingPolicyPublish(
+      buildPublishRequest({ ...valid, policy_version: "1" }),
       bindings,
       operatorAuth,
     );
-    expect(mismatchedVersion.status).toBe(400);
-    expect(await mismatchedVersion.json()).toEqual({
-      error: "policy_identity_mismatch",
+    expect(stringVersion.status).toBe(400);
+    expect(await stringVersion.json()).toEqual({
+      error: "invalid_policy_identity",
+    });
+
+    const zeroVersion = await handleRoutingPolicyPublish(
+      buildPublishRequest({ ...valid, policy_version: 0 }),
+      bindings,
+      operatorAuth,
+    );
+    expect(zeroVersion.status).toBe(400);
+    expect(await zeroVersion.json()).toEqual({
+      error: "invalid_policy_identity",
+    });
+
+    const nonIntegerVersion = await handleRoutingPolicyPublish(
+      buildPublishRequest({ ...valid, policy_version: 1.5 }),
+      bindings,
+      operatorAuth,
+    );
+    expect(nonIntegerVersion.status).toBe(400);
+    expect(await nonIntegerVersion.json()).toEqual({
+      error: "invalid_policy_identity",
+    });
+
+    const emptyPolicyId = await handleRoutingPolicyPublish(
+      buildPublishRequest({ ...valid, policy_id: "" }),
+      bindings,
+      operatorAuth,
+    );
+    expect(emptyPolicyId.status).toBe(400);
+    expect(await emptyPolicyId.json()).toEqual({
+      error: "invalid_policy_identity",
     });
 
     const stored = await env.DB
@@ -1239,13 +1263,42 @@ describe("routing_policy_publish_document_validation", () => {
         `control/routing-policy/${FIXTURE_POLICY_ID}/${FIXTURE_VERSION_V1}.json`,
       ),
     ).toBeNull();
+  });
 
-    const matching = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+  it("warns with unreferenced_policy when no manifest references the policy identity", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+    const unreferencedPolicyId = "orphan-policy";
+    const document = {
+      ...policyDocument(1, "deepseek"),
+      policy_id: unreferencedPolicyId,
+    };
+
+    const response = await handleRoutingPolicyPublish(
+      buildPublishRequest(document),
       bindings,
       operatorAuth,
     );
-    expect(matching.status).toBe(200);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      warnings: ["unreferenced_policy"],
+    });
+
+    const stored = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS count FROM routing_policy
+         WHERE policy_id = ? AND version = ?`,
+      )
+      .bind(unreferencedPolicyId, FIXTURE_VERSION_V1)
+      .first<{ count: number }>();
+    expect(stored?.count ?? 0).toBe(1);
+    const object = await env.R2.get(
+      `control/routing-policy/${unreferencedPolicyId}/${FIXTURE_VERSION_V1}.json`,
+    );
+    expect(object).not.toBeNull();
+    const published = JSON.parse(await object!.text()) as { policy_id: string };
+    expect(published.policy_id).toBe(unreferencedPolicyId);
   });
 
   it("warns on publish when no target latency_class matches published visit-summary", async () => {
@@ -1254,7 +1307,7 @@ describe("routing_policy_publish_document_validation", () => {
     const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
 
     const unmatchedPublish = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, policyDocument(1, "deepseek")),
+      buildPublishRequest( policyDocument(1, "deepseek")),
       bindings,
       operatorAuth,
     );
@@ -1283,7 +1336,7 @@ describe("routing_policy_publish_document_validation", () => {
     }
 
     const alignedPublish = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, aligned),
+      buildPublishRequest( aligned),
       bindings,
       operatorAuth,
     );
@@ -1303,14 +1356,14 @@ describe("routing_policy_control_robustness", () => {
     const document = policyDocument(1, "deepseek");
 
     const first = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, document),
+      buildPublishRequest( document),
       bindings,
       operatorAuth,
     );
     expect(first.status).toBe(200);
 
     const duplicate = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, document),
+      buildPublishRequest( document),
       bindings,
       operatorAuth,
     );
@@ -1338,14 +1391,14 @@ describe("routing_policy_control_robustness", () => {
     const conflicting = policyDocument(1, "gemini");
 
     const first = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, original),
+      buildPublishRequest( original),
       bindings,
       operatorAuth,
     );
     expect(first.status).toBe(200);
 
     const duplicate = await handleRoutingPolicyPublish(
-      buildPublishRequest(FIXTURE_VERSION_V1, conflicting),
+      buildPublishRequest( conflicting),
       bindings,
       operatorAuth,
     );
@@ -1444,7 +1497,7 @@ describe("routing_policy_control_robustness", () => {
     ]);
 
     const publish = await handleRoutingPolicyPublish(
-      buildPublishRequest("11", policyDocument(11, "deepseek")),
+      buildPublishRequest( policyDocument(11, "deepseek")),
       bindings,
       operatorAuth,
     );

@@ -75,8 +75,9 @@ const TOKEN_CONTRACT_PATTERN =
 
 const SUPPORT_LOOKUP_PATTERN = /^\/control\/support\/lookup$/;
 
-const ROUTING_POLICY_PATTERN =
-  /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(publish|canary|promote|rollback)$/;
+const ROUTING_POLICY_PUBLISH_PATTERN = /^\/control\/routing-policies\/publish$/;
+const ROUTING_POLICY_VERSIONED_PATTERN =
+  /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(canary|promote|rollback)$/;
 
 const COHORT_CAPABILITY_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(activate|promote)$/;
@@ -86,7 +87,8 @@ export function isControlRoute(pathname: string): boolean {
     CONTROL_ACTION_PATTERN.test(pathname) ||
     CAPABILITY_LIFECYCLE_PATTERN.test(pathname) ||
     COHORT_CAPABILITY_PATTERN.test(pathname) ||
-    ROUTING_POLICY_PATTERN.test(pathname) ||
+    ROUTING_POLICY_PUBLISH_PATTERN.test(pathname) ||
+    ROUTING_POLICY_VERSIONED_PATTERN.test(pathname) ||
     TOKEN_CONTRACT_PATTERN.test(pathname) ||
     SUPPORT_LOOKUP_PATTERN.test(pathname)
   );
@@ -129,13 +131,14 @@ export async function dispatchControlRequest(
     return handleCohortPromote(request, bindings, operatorAuth);
   }
 
-  if (ROUTING_POLICY_PATTERN.test(pathname)) {
+  if (ROUTING_POLICY_PUBLISH_PATTERN.test(pathname)) {
+    return handleRoutingPolicyPublish(request, bindings, operatorAuth);
+  }
+
+  if (ROUTING_POLICY_VERSIONED_PATTERN.test(pathname)) {
     const route = parseRoutingPolicyRoute(request);
     if (!route) {
       return reject(400, "invalid_route");
-    }
-    if (route.action === "publish") {
-      return handleRoutingPolicyPublish(request, bindings, operatorAuth);
     }
     if (route.action === "canary") {
       return handleRoutingPolicyCanary(request, bindings, operatorAuth);

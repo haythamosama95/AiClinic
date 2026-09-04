@@ -53,11 +53,13 @@ export type CohortCapabilityRoute = {
   action: "activate" | "promote";
 };
 
-export type RoutingPolicyRoute = {
-  policyId: string;
-  version: string;
-  action: "publish" | "canary" | "promote" | "rollback";
-};
+export type RoutingPolicyRoute =
+  | { action: "publish" }
+  | {
+      policyId: string;
+      version: string;
+      action: "canary" | "promote" | "rollback";
+    };
 
 export type TokenContractBeginPayload = {
   ver: string;

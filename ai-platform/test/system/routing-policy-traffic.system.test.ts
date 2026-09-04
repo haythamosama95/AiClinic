@@ -70,8 +70,49 @@ describe("routing policy traffic", () => {
     const probePolicyId = "probe-publish";
     const version = "1";
     const validDocument = fakePolicyDocument(probePolicyId, version);
+    const publishUrl = "/control/routing-policies/publish";
 
     const invalidJson = await SELF.fetch(
+      new Request(`${GATEWAY_ORIGIN}${publishUrl}`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-operator-bearer-token",
+          "content-type": "application/json",
+        },
+        body: "not-json",
+      }),
+    );
+    expect(invalidJson.status).toBe(400);
+    const invalidJsonBody = (await invalidJson.json()) as { error?: string };
+    expect(invalidJsonBody.error).toBe("invalid_json");
+
+    const missingDoc = await operatorFetch(publishUrl, {});
+    expect(missingDoc.status).toBe(400);
+    expect(missingDoc.json.error).toBe("missing_document");
+
+    const nullDoc = await operatorFetch(publishUrl, { document: null });
+    expect(nullDoc.status).toBe(400);
+    expect(nullDoc.json.error).toBe("missing_document");
+
+    const { policy_id: _policyId, ...missingPolicyIdDocument } = validDocument;
+    const missingPolicyId = await operatorFetch(publishUrl, {
+      document: missingPolicyIdDocument,
+    });
+    expect(missingPolicyId.status).toBe(400);
+    expect(missingPolicyId.json.error).toBe("invalid_policy_identity");
+
+    const stringVersion = await operatorFetch(publishUrl, {
+      document: { ...validDocument, policy_version: "1" },
+    });
+    expect(stringVersion.status).toBe(400);
+    expect(stringVersion.json.error).toBe("invalid_policy_identity");
+
+    expect(await count("routing_policy")).toBe(0);
+    expect(
+      await r2Exists(`control/routing-policy/${probePolicyId}/${version}.json`),
+    ).toBe(false);
+
+    const legacyPublish = await SELF.fetch(
       new Request(
         `${GATEWAY_ORIGIN}/control/routing-policies/${probePolicyId}/versions/${version}/publish`,
         {
@@ -80,50 +121,32 @@ describe("routing policy traffic", () => {
             authorization: "Bearer test-operator-bearer-token",
             "content-type": "application/json",
           },
-          body: "not-json",
+          body: JSON.stringify({ document: validDocument }),
         },
       ),
     );
-    expect(invalidJson.status).toBe(400);
-    const invalidJsonBody = (await invalidJson.json()) as { error?: string };
-    expect(invalidJsonBody.error).toBe("invalid_json");
+    expect(legacyPublish.status).toBe(404);
 
-    const missingDoc = await operatorFetch(
-      `/control/routing-policies/${probePolicyId}/versions/${version}/publish`,
-      {},
+    const unreferencedPolicyId = "unreferenced-probe";
+    const unreferencedDocument = fakePolicyDocument(unreferencedPolicyId, version);
+    const unreferenced = await publishPolicy(
+      unreferencedPolicyId,
+      version,
+      unreferencedDocument,
     );
-    expect(missingDoc.status).toBe(400);
-    expect(missingDoc.json.error).toBe("missing_document");
-
-    const nullDoc = await operatorFetch(
-      `/control/routing-policies/${probePolicyId}/versions/${version}/publish`,
-      { document: null },
-    );
-    expect(nullDoc.status).toBe(400);
-    expect(nullDoc.json.error).toBe("missing_document");
-
-    const policyMismatch = await operatorFetch(
-      `/control/routing-policies/${probePolicyId}/versions/${version}/publish`,
-      {
-        document: fakePolicyDocument("other-policy", version),
-      },
-    );
-    expect(policyMismatch.status).toBe(400);
-    expect(policyMismatch.json.error).toBe("policy_identity_mismatch");
-
-    const versionMismatch = await operatorFetch(
-      `/control/routing-policies/${probePolicyId}/versions/${version}/publish`,
-      {
-        document: fakePolicyDocument(probePolicyId, "2"),
-      },
-    );
-    expect(versionMismatch.status).toBe(400);
-    expect(versionMismatch.json.error).toBe("policy_identity_mismatch");
-
-    expect(await count("routing_policy")).toBe(0);
-    expect(await r2Exists(`control/routing-policy/${probePolicyId}/${version}.json`)).toBe(
-      false,
-    );
+    expect(unreferenced.status).toBe(200);
+    expect(unreferenced.json.warnings).toEqual(["unreferenced_policy"]);
+    expect(
+      await r2Exists(
+        `control/routing-policy/${unreferencedPolicyId}/${version}.json`,
+      ),
+    ).toBe(true);
+    expect(
+      await count("routing_policy", "policy_id = ? AND version = ?", [
+        unreferencedPolicyId,
+        version,
+      ]),
+    ).toBe(1);
 
     const first = await publishPolicy(probePolicyId, version, validDocument);
     expect(first.status).toBe(200);

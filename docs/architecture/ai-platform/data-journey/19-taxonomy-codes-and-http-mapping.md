@@ -419,7 +419,7 @@ Post-accept. Guard must pass (clinician/nurse, valid context, quota).
 **Do:** publish (or D1/R2-replace) `routing/standard` so the matched rule’s only target is an unwired id. `resolveProviderPort` uses `FakeAdapter(["terminal:provider_unavailable"])` for unknown providers; an empty chain after exclusions is the same terminal:
 
 ```bash
-curl -sS -X POST "$GATEWAY/control/routing-policies/standard/versions/2/publish" \
+curl -sS -X POST "$GATEWAY/control/routing-policies/publish" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

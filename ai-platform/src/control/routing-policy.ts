@@ -90,18 +90,19 @@ function isUniqueConstraint(err: unknown): boolean {
 
 function latencyMismatchWarnings(
   document: Record<string, unknown>,
-  route: RoutingPolicyRoute,
+  policyId: string,
+  version: string,
 ): string[] {
   const referenced = PUBLISHED_CAPABILITY_MANIFESTS.filter((manifest) => {
     const parsed = parseRoutingPolicyRef(manifest.Routing?.routingPolicyRef);
     return (
       parsed !== null &&
-      parsed.policyId === route.policyId &&
-      parsed.version === route.version
+      parsed.policyId === policyId &&
+      parsed.version === version
     );
   });
   if (referenced.length === 0) {
-    return [];
+    return ["unreferenced_policy"];
   }
 
   const targetClasses = collectTargetLatencyClasses(document);
@@ -138,8 +139,12 @@ async function assertInstallationsExist(
 export function parseRoutingPolicyRoute(
   request: Request,
 ): RoutingPolicyRoute | null {
-  const match = new URL(request.url).pathname.match(
-    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/(publish|canary|promote|rollback)$/,
+  const pathname = new URL(request.url).pathname;
+  if (pathname === "/control/routing-policies/publish") {
+    return { action: "publish" };
+  }
+  const match = pathname.match(
+    /^\/control\/routing-policies\/([^/]+)\/versions\/([^/]+)\/(canary|promote|rollback)$/,
   );
   if (!match) {
     return null;
@@ -147,7 +152,7 @@ export function parseRoutingPolicyRoute(
   return {
     policyId: match[1],
     version: match[2],
-    action: match[3] as "publish" | "canary" | "promote" | "rollback",
+    action: match[3] as "canary" | "promote" | "rollback",
   };
 }
 
@@ -180,22 +185,28 @@ export async function handleRoutingPolicyPublish(
   }
 
   const document = body.document as Record<string, unknown>;
+  const policyId = document.policy_id;
+  const policyVersion = document.policy_version;
   if (
-    document.policy_id !== route.policyId ||
-    String(document.policy_version) !== route.version
+    typeof policyId !== "string" ||
+    policyId.length === 0 ||
+    typeof policyVersion !== "number" ||
+    !Number.isInteger(policyVersion) ||
+    policyVersion < 1
   ) {
-    return reject(400, "policy_identity_mismatch");
+    return reject(400, "invalid_policy_identity");
   }
+  const version = String(policyVersion);
 
   const { DB, R2 } = bindings;
   const recordedAt = nowIso();
-  const contentPointer = `control/routing-policy/${route.policyId}/${route.version}.json`;
-  const target = `${route.policyId}@${route.version}`;
+  const contentPointer = `control/routing-policy/${policyId}/${version}.json`;
+  const target = `${policyId}@${version}`;
 
   const alreadyPublished = await DB.prepare(
     `SELECT policy_id FROM routing_policy WHERE policy_id = ? AND version = ?`,
   )
-    .bind(route.policyId, route.version)
+    .bind(policyId, version)
     .first();
   if (alreadyPublished) {
     return reject(409, "already_published");
@@ -213,8 +224,8 @@ export async function handleRoutingPolicyPublish(
            canary_installation_ids, status
          ) VALUES (?, ?, ?, ?, ?, NULL, 'published')`,
       ).bind(
-        route.policyId,
-        route.version,
+        policyId,
+        version,
         contentPointer,
         recordedAt,
         auth.operatorId,
@@ -232,7 +243,7 @@ export async function handleRoutingPolicyPublish(
     return reject(500, "storage_error");
   }
 
-  const warnings = latencyMismatchWarnings(document, route);
+  const warnings = latencyMismatchWarnings(document, policyId, version);
   return warnings.length > 0 ? ok({ warnings }) : ok();
 }
 

@@ -20,43 +20,33 @@ export const STAGE5_OPERATIONS: JourneyOperationDefinition[] = [
     section: 'Publish policy',
     title: 'POST …/publish',
     method: 'POST',
-    path: '/control/routing-policies/{policy_id}/versions/{version}/publish',
+    path: '/control/routing-policies/publish',
     auth: 'operator',
     bodyKind: 'json',
     fields: [
-      {
-        name: 'policy_id',
-        scope: 'path',
-        defaultValue: 'standard',
-        hint: 'Policy id — must match document.policy_id',
-      },
-      {
-        name: 'version',
-        scope: 'path',
-        defaultValue: '1',
-        hint: 'Policy version — must match document.policy_version',
-      },
       {
         name: 'document',
         scope: 'body',
         json: true,
         defaultValue: DEFAULT_ROUTING_POLICY_DOCUMENT,
-        hint: 'RoutingPolicyDocument JSON — default is platform-default/1.json',
+        hint: 'RoutingPolicyDocument JSON — identity via document.policy_id and document.policy_version (integer ≥ 1); default is platform-default/1.json',
         wide: true,
         jsonRows: 53,
       },
     ],
     summary:
-      'Write the routing playbook to R2 and INSERT a D1 routing_policy row with status=published. document.policy_id and document.policy_version must match URL path segments.',
+      'Write the routing playbook to R2 and INSERT a D1 routing_policy row with status=published. Identity comes solely from document.policy_id (non-empty string) and document.policy_version (JSON integer ≥ 1).',
     successNote:
-      '200 — {} or { warnings: ["latency_class_mismatch"] }. R2 key control/routing-policy/{policy_id}/{version}.json; D1 status=published.',
+      '200 — {} or { warnings: ["latency_class_mismatch"] } (capability latency class matches no target) or { warnings: ["unreferenced_policy"] } (no published capability manifest references routing/{policy_id}@v{policy_version}). R2 key control/routing-policy/{policy_id}/{version}.json; D1 status=published.',
     failures: [
       { status: 401, error: 'unauthorized', trigger: 'Missing or wrong operator bearer' },
       { status: 400, error: 'invalid_json', trigger: 'Body is not valid JSON' },
+      { status: 400, error: 'missing_document', trigger: 'document field absent from body' },
       {
         status: 400,
-        error: 'policy_identity_mismatch',
-        trigger: 'document.policy_id or policy_version ≠ URL path',
+        error: 'invalid_policy_identity',
+        trigger:
+          'Missing/empty document.policy_id, or document.policy_version not an integer ≥ 1 (string "1" rejected)',
       },
       { status: 409, error: 'already_published', trigger: 'Same (policy_id, version) already in D1' },
       { status: 500, error: 'storage_error', trigger: 'D1 or R2 failure' },

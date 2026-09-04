@@ -228,7 +228,7 @@ Prior bands introduced the Worker, D1, R2, Durable Objects, AAT, manifests, and 
 - **Routes:**
   - `POST /control/capabilities/{id}/versions/{version}/activate`
   - `POST /control/capabilities/{id}/versions/{version}/promote`
-  - `POST /control/routing-policies/{policy_id}/versions/{version}/publish`
+  - `POST /control/routing-policies/publish` (identity derived from `document.policy_id` / `document.policy_version`)
   - `…/canary`, `…/rollback`
 - **Audit actions:** `cohort_activate`, `cohort_promote`, `routing_policy_publish`, `routing_policy_canary`, `routing_policy_rollback`.
 - **Tests:** `T-J3-01` … `T-J3-05` plus routing canary split cases — **7** across two files.

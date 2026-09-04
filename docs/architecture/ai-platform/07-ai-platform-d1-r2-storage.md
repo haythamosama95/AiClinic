@@ -258,7 +258,7 @@ Example flow: v1 active (everyone → DeepSeek) → publish v2 (Gemini) → cana
 
 **When read:** Router (invoke path) and config cache `active_routing_policy:{ref}` or `active_routing_policy:{ref}/{installation_id}`. Canary rows are checked first; otherwise the newest `active` row is used. On cache miss, D1 row is loaded and the R2 document is fetched via `content_pointer`.
 
-**When written:** `POST /control/routing-policies/{id}/versions/{v}/publish|canary|promote|rollback`.
+**When written:** `POST /control/routing-policies/publish` and `POST /control/routing-policies/{id}/versions/{v}/canary|promote|rollback`.
 
 #### `kill_switch`
 
