@@ -13,13 +13,23 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
   }
 
   let event = ''
-  let data = ''
+  const dataLines: string[] = []
+  let inData = false
 
   for (const line of trimmed.split('\n')) {
     if (line.startsWith('event:')) {
       event = line.slice('event:'.length).trim()
+      inData = false
+      dataLines.length = 0
     } else if (line.startsWith('data:')) {
-      data = line.slice('data:'.length).trim()
+      inData = true
+      const inline = line.slice('data:'.length).trim()
+      dataLines.length = 0
+      if (inline) {
+        dataLines.push(inline)
+      }
+    } else if (inData) {
+      dataLines.push(line)
     }
   }
 
@@ -27,7 +37,29 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
     return null
   }
 
-  return { event, data }
+  return { event, data: dataLines.join('\n').trim() }
+}
+
+/** Crockford ticket from the `accepted` SSE frame, when present. */
+export function extractRequestReferenceFromSse(text: string): string | undefined {
+  for (const block of text.split(/\n\n+/)) {
+    const parsed = parseSseBlock(block)
+    if (parsed?.event !== 'accepted' || !parsed.data) {
+      continue
+    }
+    try {
+      const payload = JSON.parse(parsed.data) as { request_reference?: unknown }
+      if (
+        typeof payload.request_reference === 'string' &&
+        payload.request_reference.length > 0
+      ) {
+        return payload.request_reference
+      }
+    } catch {
+      // ignore malformed accepted payloads
+    }
+  }
+  return undefined
 }
 
 export function prettySseText(text: string): string {

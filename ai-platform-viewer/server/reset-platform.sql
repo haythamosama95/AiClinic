@@ -1,6 +1,7 @@
 DELETE FROM ai_attempt;
 DELETE FROM usage_event;
 DELETE FROM ai_request;
+DELETE FROM grace_admission_queue;
 DELETE FROM entitlement;
 DELETE FROM installation_key;
 DELETE FROM installation;

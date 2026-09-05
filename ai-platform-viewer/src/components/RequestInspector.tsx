@@ -66,6 +66,7 @@ export function RequestInspector({ exchange }: RequestInspectorProps) {
                   value: String(response.status),
                   meaning: response.statusText,
                 },
+                ...(response.pinned ?? []),
               ]}
               platformRows={response.body.map((row) => ({
                 ...row,

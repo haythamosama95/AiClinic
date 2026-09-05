@@ -68,6 +68,8 @@ export interface HttpExchange {
     statusText: string
     headers: FieldRow[]
     body: FieldRow[]
+    /** Shown above the payload — e.g. request_reference from SSE accepted. */
+    pinned?: FieldRow[]
     rawBody: string
     raw: string
   }

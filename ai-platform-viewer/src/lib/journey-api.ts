@@ -6,7 +6,7 @@ import type {
 import { buildVisitSummaryContextJson } from '@/catalog/stage-8-ingress'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import { prettyJsonValue } from '@/lib/json-format'
-import { isSseText, parseSseResponseBody } from '@/lib/sse-format'
+import { isSseText, parseSseResponseBody, extractRequestReferenceFromSse } from '@/lib/sse-format'
 import { sendStage2SupabaseRequest, sendSupabaseRpcRequest } from '@/lib/supabase-api'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
@@ -51,6 +51,79 @@ function parseResponseBody(rawBody: string): FieldRow[] {
   }
 }
 
+const LAST_REQUEST_REFERENCE_KEY = 'ai-platform-viewer:last-request-reference'
+
+async function readResponseText(response: Response): Promise<string> {
+  if (!response.body) {
+    return await response.text()
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+
+  text += decoder.decode()
+  return text
+}
+
+function extractRequestReferenceFromJson(text: string): string | undefined {
+  try {
+    const payload = JSON.parse(text) as { request_reference?: unknown }
+    return typeof payload.request_reference === 'string' &&
+      payload.request_reference.length > 0
+      ? payload.request_reference
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function buildResponsePinnedRows(
+  rawBody: string,
+  operation: JourneyOperationDefinition,
+): FieldRow[] {
+  const pinned: FieldRow[] = []
+
+  const requestReference = isSseText(rawBody)
+    ? extractRequestReferenceFromSse(rawBody)
+    : extractRequestReferenceFromJson(rawBody)
+
+  if (requestReference) {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(LAST_REQUEST_REFERENCE_KEY, requestReference)
+    }
+    pinned.push({
+      name: 'request_reference',
+      value: requestReference,
+      meaning:
+        operation.id === 'stream-sse-happy'
+          ? 'Copy into GET poll below — only on the accepted frame; completed omits it'
+          : 'Gateway ticket (also on pre-accept JSON errors)',
+    })
+  } else if (
+    operation.bodyKind === 'sse' &&
+    isSseText(rawBody) &&
+    rawBody.includes('event: completed')
+  ) {
+    pinned.push({
+      name: 'request_reference',
+      value: '(not in response body)',
+      meaning:
+        'Expected on event: accepted (first frame). completed never includes it. Retry POST with a new x-idempotency-key or check wrangler logs / D1 ai_request.',
+    })
+  }
+
+  return pinned
+}
+
 export function buildJourneyDefaultParams(
   fields: JourneyParamField[],
   material?: ClinicEnrollmentMaterial | null,
@@ -76,6 +149,12 @@ export function buildJourneyDefaultParams(
       }
     } else if (field.defaultValue !== undefined) {
       values[field.name] = field.defaultValue
+    } else if (
+      field.name === 'request_reference' &&
+      typeof sessionStorage !== 'undefined'
+    ) {
+      values[field.name] =
+        sessionStorage.getItem(LAST_REQUEST_REFERENCE_KEY) ?? ''
     } else {
       values[field.name] = ''
     }
@@ -340,13 +419,7 @@ export async function sendJourneyRequest(
   }
 
   const response = await fetch(url, fetchInit)
-  let rawBody = await response.text()
-
-  if (operation.bodyKind === 'sse' && response.ok) {
-    const lines = rawBody.split('\n').filter((line) => line.trim())
-    const preview = lines.slice(0, 12).join('\n')
-    rawBody = lines.length > 12 ? `${preview}\n… (${lines.length} SSE lines total)` : preview
-  }
+  const rawBody = await readResponseText(response)
 
   const responseHeaders: Record<string, string> = {}
   response.headers.forEach((value, name) => {
@@ -422,6 +495,7 @@ export async function sendJourneyRequest(
       statusText: response.statusText,
       headers: Object.entries(responseHeaders).map(([name, value]) => ({ name, value })),
       body: parseResponseBody(rawBody),
+      pinned: buildResponsePinnedRows(rawBody, operation),
       rawBody,
       raw: buildRawResponse(response.status, response.statusText, responseHeaders, rawBody),
     },

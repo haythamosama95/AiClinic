@@ -64,7 +64,7 @@ export const STAGE10_OPERATIONS: JourneyOperationDefinition[] = [
     summary:
       'Full fresh path: accepted → text_delta → completed on the fake provider when routing policy version 91 is active. Save request_reference from the accepted frame for Stage 11.',
     successNote:
-      '200 text/event-stream. First event: accepted with request_reference and trace_id. Terminal: completed with result.finalContent.text = "Fake adapter summary."',
+      '200 text/event-stream. Payload rows are per SSE event (body.accepted, body.completed, …). request_reference is only in body.accepted — also pinned above the payload when present. Terminal completed uses placeholder text on idempotent replay (same x-idempotency-key).',
     failures: [
       { status: 401, error: 'unauthenticated', trigger: 'Guard stage 2 failure' },
       { status: 200, error: 'failed (SSE)', trigger: 'Missing routing policy after accepted' },
@@ -91,7 +91,7 @@ export const STAGE10_OPERATIONS: JourneyOperationDefinition[] = [
     auth: 'aat',
     bodyKind: 'none',
     summary:
-      'Poll terminal state after the SSE stream completes. Returns envelope result for Completed requests. Paste request_reference from the accepted SSE frame (XXXX-XXXX).',
+      'Poll terminal state after the SSE stream completes. Paste request_reference from the pinned field or body.accepted on the POST response (XXXX-XXXX). GET does not echo the ticket back.',
     successNote:
       '200 with terminal payload when the journal row is Completed. 404 while still in-flight or unknown reference.',
     failures: [
