@@ -772,6 +772,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Side effects | Persisted routing_decision showing the kill_switch exclusion; settlement proceeds against gemini (invocation/settlement chapters' behavior). |
 | Code reference | ai-platform/src/capability/index.ts:L380-L400 — collectActiveProviderKillSwitches; ai-platform/src/router/index.ts:L477-L485 — kill_switch filter; L447-L463 — mergeKilledProviderIds |
 
+**Control-plane variant (C-17):** Kill switches can be armed with `POST /control/kill-switches/arm` and disarmed with `POST /control/kill-switches/disarm` (operator bearer; JSON body `{"scope":"provider","target":"<provider_id>"}` — also `global`/`capability`/`installation` scopes per the `kill_switch` table). S05-069 and S05-070 can be written as control-plane-driven journeys (arm deepseek, then arm gemini) instead of `[SEED]` direct D1 inserts.
+
 ## Scenario S05-070 — Kill switch on every target → empty chain → provider_unavailable with synthetic attempt row
 
 | Field | Content |

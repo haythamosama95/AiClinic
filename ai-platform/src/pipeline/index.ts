@@ -12,7 +12,11 @@ import {
   runCostPreflight,
   serializePreflightInput,
 } from "../context/preflight";
-import { validateContext, type Transcript } from "../context/validator";
+import {
+  validateContext,
+  type ContextRequiredFailure,
+  type Transcript,
+} from "../context/validator";
 import { creditUsage, type CreditBindings } from "../credit";
 import { evaluateEntitlement, type EntitlementContext } from "../entitlement";
 import type { EntitlementSnapshot } from "../quota-do/index";
@@ -158,6 +162,8 @@ export type GuardFailure = {
   stage: GuardStage;
   guardLatencyMs: number;
   retryAfter?: number;
+  periodReset?: string;
+  contextRequired?: ContextRequiredFailure;
 };
 
 export type GuardResult = GuardSuccess | GuardFailure;
@@ -194,7 +200,7 @@ function fail(
   code: string,
   started: number,
   logger: Logger,
-  extras?: Pick<GuardFailure, "retryAfter">,
+  extras?: Pick<GuardFailure, "retryAfter" | "periodReset" | "contextRequired">,
 ): GuardFailure {
   const guardLatencyMs = performance.now() - started;
   const logData = { stage, code, guard_latency_ms: Math.round(guardLatencyMs) };
@@ -209,6 +215,10 @@ function fail(
     stage,
     guardLatencyMs,
     ...(extras?.retryAfter !== undefined ? { retryAfter: extras.retryAfter } : {}),
+    ...(extras?.periodReset !== undefined ? { periodReset: extras.periodReset } : {}),
+    ...(extras?.contextRequired !== undefined
+      ? { contextRequired: extras.contextRequired }
+      : {}),
   };
 }
 
@@ -402,7 +412,11 @@ export async function runGuard(
     logger,
   );
   if (!contextResult.ok) {
-    return fail(6, contextResult.code, started, logger);
+    return fail(6, contextResult.code, started, logger, {
+      ...(contextResult.code === "context_required"
+        ? { contextRequired: contextResult }
+        : {}),
+    });
   }
   const filteredContext = contextResult.filteredContext as Record<string, unknown>;
   const validatedTranscript = contextResult.validatedTranscript;
@@ -422,6 +436,7 @@ export async function runGuard(
     serializedInput,
     promptArtifactBytes,
     logger,
+    principal.installationId,
   );
   if (!preflight.ok) {
     return fail(7, preflight.code, started, logger);
@@ -444,6 +459,9 @@ export async function runGuard(
     return fail(8, admission.code, started, logger, {
       ...(admission.retryAfter !== undefined
         ? { retryAfter: admission.retryAfter }
+        : {}),
+      ...(admission.periodReset !== undefined
+        ? { periodReset: admission.periodReset }
         : {}),
     });
   }

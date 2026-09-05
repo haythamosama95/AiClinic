@@ -72,6 +72,7 @@ export type PreAcceptResult =
       ok: false;
       code: TaxonomyCode;
       retryAfter?: number;
+      periodReset?: string;
       contextRequired?: ContextRequiredFailure;
     };
 
@@ -225,13 +226,14 @@ function preAcceptFailureResponse(
   traceId: string,
   retryAfter?: number,
   contextRequired?: ContextRequiredFailure,
+  periodReset?: string,
 ): Response {
   const body =
     code === "context_required" && contextRequired !== undefined
       ? buildContextRequiredResponse(contextRequired, requestReference, traceId)
       : {
           ...buildErrorBody({ code, requestReference, traceId }),
-          ...supplementaryFieldsForCode(code, { retryAfter }),
+          ...supplementaryFieldsForCode(code, { retryAfter, periodReset }),
         };
   const status = liveHttpStatusForCode(code);
   return new Response(JSON.stringify(body), {
@@ -444,6 +446,7 @@ export async function handleAdapterRequest(
         parsedHeaders.traceId,
         gate.retryAfter,
         gate.contextRequired,
+        gate.periodReset,
       );
     }
     degradedNotice = gate.degradedNotice;

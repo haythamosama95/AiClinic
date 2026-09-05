@@ -26,6 +26,7 @@ export {
   handleSupportLookup,
 } from "./support-purge";
 export { handleInstallationQuotaGet } from "./quota-inspect";
+export { handleKillSwitchArm, handleKillSwitchDisarm } from "./kill-switch";
 
 import {
   handleDeprecate,
@@ -59,6 +60,7 @@ import {
   handleSupportLookup,
 } from "./support-purge";
 import { handleInstallationQuotaGet } from "./quota-inspect";
+import { handleKillSwitchArm, handleKillSwitchDisarm } from "./kill-switch";
 import {
   handleTokenContractBeginRotation,
   handleTokenContractRetire,
@@ -86,6 +88,8 @@ const ROUTING_POLICY_VERSIONED_PATTERN =
 const COHORT_CAPABILITY_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(activate|promote)$/;
 
+const KILL_SWITCH_PATTERN = /^\/control\/kill-switches\/(arm|disarm)$/;
+
 export function isQuotaInspectRoute(pathname: string): boolean {
   return QUOTA_INSPECT_PATTERN.test(pathname);
 }
@@ -99,7 +103,8 @@ export function isControlRoute(pathname: string): boolean {
     ROUTING_POLICY_VERSIONED_PATTERN.test(pathname) ||
     TOKEN_CONTRACT_PATTERN.test(pathname) ||
     SUPPORT_LOOKUP_PATTERN.test(pathname) ||
-    QUOTA_INSPECT_PATTERN.test(pathname)
+    QUOTA_INSPECT_PATTERN.test(pathname) ||
+    KILL_SWITCH_PATTERN.test(pathname)
   );
 }
 
@@ -169,6 +174,17 @@ export async function dispatchControlRequest(
     }
     if (action === "retire") {
       return handleTokenContractRetire(request, bindings, operatorAuth);
+    }
+    return reject(400, "invalid_route");
+  }
+
+  if (KILL_SWITCH_PATTERN.test(pathname)) {
+    const action = pathname.split("/").pop();
+    if (action === "arm") {
+      return handleKillSwitchArm(request, bindings, operatorAuth);
+    }
+    if (action === "disarm") {
+      return handleKillSwitchDisarm(request, bindings, operatorAuth);
     }
     return reject(400, "invalid_route");
   }

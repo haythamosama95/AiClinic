@@ -1318,6 +1318,12 @@ function createProductionPreAccept(
         ...(typeof guard.retryAfter === "number"
           ? { retryAfter: guard.retryAfter }
           : {}),
+        ...(guard.periodReset !== undefined
+          ? { periodReset: guard.periodReset }
+          : {}),
+        ...(code === "context_required" && guard.contextRequired !== undefined
+          ? { contextRequired: guard.contextRequired }
+          : {}),
       };
     }
     if (guard.outcome === "idempotent") {
