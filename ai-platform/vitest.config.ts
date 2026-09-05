@@ -47,6 +47,7 @@ export default defineConfig({
       "test/entitle-grant.test.ts",
       "test/quota-inspect.test.ts",
       "test/system/**/*.system.test.ts",
+      "test/e2e/**",
     ],
     testTimeout: 120_000,
     fileParallelism: false,

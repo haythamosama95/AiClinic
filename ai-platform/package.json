@@ -14,6 +14,7 @@
     "test": "npm run verify-manifests && vitest run && vitest run --config vitest.workers.config.ts",
     "test:unit": "vitest run",
     "test:load": "vitest run --config vitest.workers.config.ts test/load/load-and-cost.test.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "types": "wrangler types"
   },
   "devDependencies": {
