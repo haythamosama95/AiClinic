@@ -5,6 +5,8 @@
 1. [Plain language](#1-plain-language)
 2. [Metaphor](#2-metaphor)
 3. [Guard flow diagram](#3-guard-flow-diagram)
+   - [3.1 Reachability caveats](#31-reachability-caveats)
+   - [3.2 Trace identifier divergence](#32-trace-identifier-divergence)
 4. [Stage 1 — Ingress size + JSON](#4-stage-1-ingress-size-json)
 5. [Stage 2 — Identity](#5-stage-2-identity)
 6. [Stage 3 — Entitlement](#6-stage-3-entitlement)
@@ -60,7 +62,30 @@ Stage 9  Journal INSERT (D1 ai_request)     ← skipped on idempotent replay
 Stage 10 Prompt compose (CanonicalRequest)  ← skipped on idempotent replay
 ```
 
+### 3.1 Reachability caveats
 
+#### 3.1.1 Stage 1 — non-object JSON → `internal_error` (unreachable on the wire)
+
+The guard stage-1 branch `parseAdapterRequestBody(...) === null → fail(1, "internal_error")` (`pipeline/index.ts:L325-L327`) is **unreachable via `POST /v1/requests`**: the adapter parse gate (`adapter.ts:L390-L394`) rejects non-object JSON with HTTP 422 and an empty `text/plain` body before `preAccept`/`runGuard` runs. Direct `runGuard` invocation with non-object body text can still hit the branch.
+
+#### 3.1.2 Stage 8 — defensive `exp` recheck (unreachable on the wire)
+
+`runAdmission` re-checks `now > principal.exp + ADMISSION_CLOCK_SKEW_SECONDS` (`admission/index.ts:L591-L601`) and returns `unauthenticated` with a tally. Via `POST /v1/requests`, stage 2 identity rejects expired tokens first with the same code (`identity/index.ts:L286-L291`), so the stage-8 branch never fires on the full wire path. It is reachable only when `runGuard` is called with a harness-supplied `principal` whose `exp` was not validated at stage 2 (see §3.1.3).
+
+#### 3.1.3 Harness-only `input.principal` path
+
+Production `createProductionPreAccept` always supplies `token` + `verifier` and never sets `input.principal`. When `runGuard` receives `input.principal !== undefined` with `input.token === undefined`, it skips stage-2 verification and uses the supplied principal directly (`pipeline/index.ts:L337-L357`). This seam exists for unit/integration tests that need to exercise later guard stages without a signed AAT (e.g. probing stage-8 `exp` recheck, or entitlement/context failures with a crafted principal). It is not a client-visible contract.
+
+### 3.2 Trace identifier divergence
+
+Two distinct "trace id" values coexist past stage 10:
+
+| Surface | Value | Source |
+|---|---|---|
+| HTTP/SSE `trace_id` on pre-accept responses and the `accepted` event | `x-trace-id` request header (adapter-trimmed) | `worker.ts` → `input.traceId` → journaled `ai_request.trace_id` (`journal/index.ts`) |
+| `CanonicalRequest.correlationIds.trace_id` after compose | AAT `jti` claim | `prompt/composer.ts:L413-L416` (`trace_id: principal.jti`) |
+
+Clients correlating journaled rows or SSE envelopes to clinic-side telemetry should use the header value; downstream provider/invocation code reading the composed request sees `jti`.
 
 ## 4. Stage 1 — Ingress size + JSON
 
@@ -70,6 +95,7 @@ Stage 10 Prompt compose (CanonicalRequest)  ← skipped on idempotent replay
 | `bodyText` | ≤ 1 MiB UTF-8     | parsed `body` | `request_too_large` |
 | `bodyText` | plain object JSON | continues     | `internal_error`    |
 
+**Reachability:** The `internal_error` row is unreachable via `POST /v1/requests` — the adapter returns HTTP 422 first (§3.1.1). Direct `runGuard` invocation can still hit it.
 
 Extracts: `userIntent`, `suppliedContext`, `conversationId`, `turnOrdinal`, `transcript`. Body keys `routing_tier` / `degraded` / `degraded_notice` are **not** extracted — ingress ignores them via empty `ADAPTER_ROUTING_BODY_FIELDS` (see [Ignored body keys](10-stage-8-request-ingress.md#47-ignored-body-keys)).
 
@@ -114,6 +140,8 @@ installationId, organizationId, branchId, actorId, role, scopes, jti, iat, exp, 
 
 See [§4 Runtime entitlement checks](06-stage-4-entitlement-and-capability-grants.md#4-runtime-entitlement-checks-guard-stage-3) table. Uses `capability_id` from request body and hardcoded `providerId: "fake"` for one kill-switch dimension only.
 
+**Missing entitlement row:** `evaluateEntitlement` catches `ConfigCacheMissError` on the entitlement row and returns stage-3 `internal_error` with the taxonomy GuardFailure envelope (HTTP 500, `retry_safe: true`) and a rejection tally — not an uncaught runtime 500 (`entitlement/index.ts:L167-L176`). The stage-8 admission entitlement miss → `quota_exhausted` branch (`admission/index.ts:L612-L617`) is unreachable in the ordered pipeline because stage 3 fails first.
+
 ## 7. Stage 4 — Rate limit
 
 
@@ -135,11 +163,13 @@ retried inside invocation and, if the chain exhausts, surface as
 `provider_unavailable`.
 
 
-Rejections from stages 2–4 (and admission) call `recordGuardRejection`, which increments an
-**in-isolate** tally. Cron `flushRejectionCounters` writes only the isolate that happens to run
-the tick; other isolates' maps are lost on eviction. `platform_counter` (and therefore
-`dashboardQuotaRejectionRate`) is a **lower bound**, not an exact count. An accurate count would
-flush tallies to D1 batched with the journal write at request end — not implemented.
+Rejections from stages 2–8 call `recordGuardRejection` (stages 5–7 since C-21: capability
+resolve, context validate, cost pre-flight), which increments an **in-isolate** tally. Stage 1
+and adapter ingress gates do not tally. Cron `flushRejectionCounters` writes only the isolate
+that happens to run the tick; other isolates' maps are lost on eviction. `platform_counter`
+(and therefore `dashboardQuotaRejectionRate`) is a **lower bound**, not an exact count. An
+accurate count would flush tallies to D1 batched with the journal write at request end — not
+implemented.
 
 
 
@@ -182,7 +212,7 @@ flush tallies to D1 batched with the journal write at request end — not implem
 
 | Check                                      | Fields                          | Failure                             |
 | ------------------------------------------ | ------------------------------- | ----------------------------------- |
-| Required keys present                      | `context` vs manifest           | `context_required` + `missing_keys` |
+| Required keys present                      | `context` vs manifest           | `context_required` + `missing_keys`, `shapes`, `manifest_version`, `manifest_capability_id` |
 | `context.org === principal.organizationId` | body + AAT                      | `context_invalid`                   |
 | `context.branch === principal.branchId`    | body + AAT                      | `context_invalid`                   |
 | Shape + maxSize per key                    | manifest `Context requirements` | `context_invalid`                   |
@@ -215,7 +245,7 @@ Failure: `request_too_large` if `estimatedInputTokens > maxInputTokens` or `esti
 
 ## 11. Stage 8 — Admission (Quota DO)
 
-**Pre-DO:**
+**Pre-DO** (defensive; see §3.1 for wire reachability):
 
 
 | Check              | Field            | Failure           |
@@ -223,6 +253,7 @@ Failure: `request_too_large` if `estimatedInputTokens > maxInputTokens` or `esti
 | Token not expired  | `principal.exp`  | `unauthenticated` |
 | Entitlement config | D1 `entitlement` | `quota_exhausted` |
 
+On `POST /v1/requests`, the `exp` recheck is unreachable — stage 2 rejects expired tokens first (§3.1.2). The entitlement-config miss path is unreachable in the ordered pipeline — stage 3 loads the same row and returns `internal_error` first (§6). Both remain for the harness-only `input.principal` path (§3.1.3).
 
 **DO RPC payload (**`kind: admission`**):**
 
@@ -302,7 +333,9 @@ soft_threshold, status
 
 ## 13. Stage 10 — Prompt compose
 
-Builds `CanonicalRequest` (see [Stage 10 CanonicalRequest](12-stage-10-accept-route-invoke-stream.md#12-canonicalrequest-every-field)). Passes `streamFlag: true` and forwards `deadline` when the guard input supplies one. On failure: D1 UPDATE `state=Failed` + guard `internal_error`. `stopConditions` is always `[]` under A4 (no stop-sequences field).
+Builds `CanonicalRequest` (see [Stage 10 CanonicalRequest](12-stage-10-accept-route-invoke-stream.md#12-canonicalrequest-every-field)). Passes `streamFlag: true` and forwards `deadline` when the guard input supplies one. On failure: D1 UPDATE `state=Failed`, Quota DO `release` (mirrors stage-9 journal failure), + guard `internal_error`. `stopConditions` is always `[]` under A4 (no stop-sequences field).
+
+`CanonicalRequest.correlationIds.trace_id` is the AAT `jti`, not the `x-trace-id` header — see §3.2.
 
 The composer runs the final `userIntent` part through the same `neutralizeText` escaping used for context blocks and transcript turns (`</` → `\u003c/`) before pushing it as the last `user` part. Conversational prior turns are the already-allowlisted `validatedTranscript` from stage 6.
 
@@ -454,7 +487,7 @@ invoke() {
 }
 ```
 
-Taxonomy HTTP mapping used below: `unauthenticated` 401, `installation_suspended` 403, `forbidden_capability` 403, `rate_limited` 429, `quota_exhausted` 429, `request_too_large` 413, `context_required` / `context_invalid` 422, `conversation_budget_exhausted` 409, `capability_unknown` / `capability_retired` 404, `capability_disabled` 503, `internal_error` 500. Pre-SSE JSON: `code`, `request_reference`, `trace_id`, `retry_safe`, plus `retry_after` on `rate_limited`.
+Taxonomy HTTP mapping used below: `unauthenticated` 401, `installation_suspended` 403, `forbidden_capability` 403, `rate_limited` 429, `quota_exhausted` 429, `request_too_large` 413, `context_required` / `context_invalid` 422, `conversation_budget_exhausted` 409, `capability_unknown` / `capability_retired` 404, `capability_disabled` 503, `internal_error` 500. Pre-SSE JSON: `code`, `request_reference`, `trace_id`, `retry_safe`, plus `retry_after` on `rate_limited` and `period_reset` on `quota_exhausted`.
 
 ### 14.2 Coverage
 
@@ -493,10 +526,11 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Stage 3: `allowed_capabilities` missing id → `forbidden_capability` | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) |
 | Stage 3: grant missing / revoked / version mismatch → `forbidden_capability` | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) |
 | Stage 3: D1 kill switch global / capability / installation → `capability_disabled` | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) |
+| Stage 3: missing entitlement row → stage-3 `internal_error` GuardFailure (not stage-8 `quota_exhausted`) | [§14.3.9](#1439-stage-8-admission-refusals) |
 | Stage 3: hardcoded `providerId: "fake"` kill switch → `capability_disabled` | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) |
 | Stage 4: three dimensions; `rate_limited` + `retry_after` (hint or 60) | [§14.3.15](#14315-stage-4-rate-limit) |
 | Only pre-SSE `rate_limited`; post-accept provider 429s are not this code | [§14.3.15](#14315-stage-4-rate-limit), [§14.3.13](#14313-journal-insert-columns-and-independent-switches) |
-| `recordGuardRejection` is in-isolate; `platform_counter` is a lower bound | [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
+| `recordGuardRejection` is in-isolate; stages 2–8 tally (5–7 since C-21); `platform_counter` is a lower bound | [§14.3.14](#14314-configcache-rotate-and-rejection-counters) |
 | Stage 5: unknown `capability_id@version` → `capability_unknown` | [§14.3.6](#1436-stage-5-capability-resolve) |
 | Stage 5: lifecycle retired → `capability_retired` | [§14.3.6](#1436-stage-5-capability-resolve) |
 | Stage 5: plan / grants / `requiredCapabilityScope` / `allowedStaffRoles` → `forbidden_capability` | [§14.3.6](#1436-stage-5-capability-resolve) |
@@ -505,7 +539,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Stage 5: D1 kill switches → `capability_disabled` | [§14.3.5](#1435-stage-3-entitlement-plan-grants-and-kill-switches) (stage 3 fires first on the same rows) |
 | Stage 5: provider kill switches → `killedProviderIds`, not `capability_disabled` | [§14.3.13](#14313-journal-insert-columns-and-independent-switches) |
 | Manifest groups consumed on the visit-summary happy path | [§14.3.10](#14310-happy-path-through-prompt-compose) |
-| Stage 6: missing required keys → `context_required` (`missing_keys` not on live HTTP) | [§14.3.7](#1437-stage-6-context-validate) |
+| Stage 6: missing required keys → `context_required` (`missing_keys`, `shapes`, `manifest_version` on wire) | [§14.3.7](#1437-stage-6-context-validate) |
 | Stage 6: `context.org` / `context.branch` mismatch → `context_invalid` | [§14.3.7](#1437-stage-6-context-validate) |
 | Stage 6: shape / `maxSize` → `context_invalid` | [§14.3.7](#1437-stage-6-context-validate) |
 | No freshness check; extra keys dropped from `filteredContext` | [§14.3.7](#1437-stage-6-context-validate), [§14.3.10](#14310-happy-path-through-prompt-compose) |
@@ -513,19 +547,20 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Stage 7: estimator counts context + intent + prompt scaffold bytes; units are tokens | [§14.3.8](#1438-stage-7-cost-pre-flight) |
 | Stage 7: never reads the price table / never converts to currency | [§14.3.8](#1438-stage-7-cost-pre-flight) |
 | Stage 7: over `maxInputTokens` or `perRequestTokenCeiling` → `request_too_large` | [§14.3.8](#1438-stage-7-cost-pre-flight) |
-| Stage 8 pre-DO: expired `exp` → `unauthenticated` | [§14.3.3](#1433-stage-2-wire-token-identity-failures) (identity fires first on live POST) |
-| Stage 8: entitlement row miss → `quota_exhausted` | unprobeable on live ordered pipeline (see [§14.3.9](#1439-stage-8-admission-refusals)) |
+| Stage 8 pre-DO: expired `exp` → `unauthenticated` | unreachable on live POST — identity fires first (§3.1.2); [§14.3.3](#1433-stage-2-wire-token-identity-failures) |
+| Stage 8: entitlement row miss → `quota_exhausted` | unreachable in ordered pipeline — stage 3 returns `internal_error` first (§6); [§14.3.9](#1439-stage-8-admission-refusals) |
 | Stage 8 DO payload: `jti`, `installationId`, `idempotencyKey`, `requestReference`, `entitlement` | [§14.3.10](#14310-happy-path-through-prompt-compose) |
 | `admitted` → journal + compose; optional `degraded` when usage ≥ `soft_threshold` | [§14.3.10](#14310-happy-path-through-prompt-compose), [§14.3.12](#14312-soft-threshold-degraded-routing-tier) |
 | `idempotent` → skip stages 9 and 10 | [§14.3.11](#14311-idempotent-replay-skips-journal-and-compose) |
 | JTI `replay` → `unauthenticated` | [§14.3.9](#1439-stage-8-admission-refusals) |
-| `quota_exhausted` (and concurrency mapped to that code), not grace-cap `rate_limited` | [§14.3.9](#1439-stage-8-admission-refusals) |
+| `quota_exhausted` (and concurrency mapped to that code) carries `period_reset`; grace-cap `rate_limited` does not | [§14.3.9](#1439-stage-8-admission-refusals) |
 | Grace admit: local UUID, `routing_tier=degraded`, D1 queue, cap 5 → `rate_limited` | unprobeable while Quota DO is up (see [§14.3.9](#1439-stage-8-admission-refusals)) |
 | `routing_tier` from admission only: grace/soft → `degraded`, else `standard` | [§14.3.10](#14310-happy-path-through-prompt-compose), [§14.3.12](#14312-soft-threshold-degraded-routing-tier) |
 | Stage 9: every `ai_request` column on the fresh path | [§14.3.10](#14310-happy-path-through-prompt-compose), [§14.3.13](#14313-journal-insert-columns-and-independent-switches) |
 | Stage 9 insert failure → Quota DO `release` + `internal_error` | unprobeable on live D1 (see [§14.3.13](#14313-journal-insert-columns-and-independent-switches)) |
 | Stage 10 compose: `streamFlag: true`; `stopConditions` always `[]`; `neutralizeText` on `userIntent` | [§14.3.10](#14310-happy-path-through-prompt-compose) |
-| Compose failure → D1 `state=Failed` + `internal_error` | unprobeable on published artifacts (see [§14.3.10](#14310-happy-path-through-prompt-compose)) |
+| Compose failure → D1 `state=Failed`, Quota DO `release`, + `internal_error` | unprobeable on published artifacts (see [§14.3.10](#14310-happy-path-through-prompt-compose)) |
+| Composed `correlationIds.trace_id` is AAT `jti`; journaled `ai_request.trace_id` is `x-trace-id` header | [§3.2](#32-trace-identifier-divergence), [§14.3.10](#14310-happy-path-through-prompt-compose) |
 | `promptVersion` / `prompt_artifact_hash` is content hash, not the artifact ref | [§14.3.10](#14310-happy-path-through-prompt-compose) |
 | Guard success fields; SSE `accepted` is the Stage 10 boundary; no provider call / no settle in the guard | [§14.3.10](#14310-happy-path-through-prompt-compose), [§14.3.13](#14313-journal-insert-columns-and-independent-switches) |
 
@@ -954,7 +989,7 @@ invoke "$CLINICIAN_AAT" ctx-req -d "{
 }"
 ```
 
-**Expect:** HTTP 422, `code = context_required`. Live `preAcceptFailureResponse` does **not** attach `missing_keys` (that helper is unused on the Worker). No journal row. No SSE.
+**Expect:** HTTP 422, `code = context_required`, JSON includes `missing_keys`, `shapes`, `manifest_version`, and `manifest_capability_id` (`buildContextRequiredResponse` via `preAcceptFailureResponse`). No journal row. No SSE.
 
 **Do:** required key present, `"org":"other-org"`, correct `branch` and complaint object.
 
@@ -1024,7 +1059,7 @@ d1 "UPDATE entitlement SET request_quota = 1000 WHERE installation_id = '$INSTAL
 sleep 31
 ```
 
-**Expect:** HTTP 429, `code = quota_exhausted`. **Not** `rate_limited`. Live pre-SSE JSON typically **omits** `period_reset`: `runGuard` only forwards `retryAfter`, and `preAcceptFailureResponse` does not pass admission’s `periodReset`. No `ai_request` row.
+**Expect:** HTTP 429, `code = quota_exhausted`, JSON includes `period_reset` (entitlement `period_end`). **Not** `rate_limited`. `runGuard`'s `fail()` and the worker preAccept path forward admission’s `periodReset` through `supplementaryFieldsForCode`. No `ai_request` row.
 
 **Do:** JTI replay — mint one clinician AAT, POST happy path with idempotency key `jti-a` (this **admits**; see [§14.3.10](#14310-happy-path-through-prompt-compose) if you have not yet done a fresh admit). Then POST **again** with the **same** AAT (same `jti`) and a **new** idempotency key `jti-b`.
 
@@ -1034,7 +1069,7 @@ sleep 31
 
 Grace path (DO unavailable → local UUID, `grace_admission_queue`, cap 5, 6th = `rate_limited` not `quota_exhausted`) requires the Quota DO fetch to fail. Local `wrangler` binds `GatewayObject`; there is no operator switch to take the DO down. **Unprobeable** on a healthy local Worker. Distinction still stands vs [§14.3.15](#14315-stage-4-rate-limit) (binding limiter) and vs `quota_exhausted` above.
 
-Stage 8 entitlement **miss** (`quota_exhausted`): live `evaluateEntitlement` loads the same row first and does not catch a cache miss, so deleting `entitlement` yields `internal_error` at stage 3, not stage-8 `quota_exhausted`. **Unprobeable** as specified on the ordered pipeline. Do not leave the row deleted.
+Stage 8 entitlement **miss** (`quota_exhausted` at admission): live `evaluateEntitlement` at stage 3 loads the same row first and returns stage-3 `internal_error` on `ConfigCacheMissError` — the stage-8 miss path is unreachable in the ordered pipeline (§6). Deleting `entitlement` is a valid force for stage-3 `internal_error`, not stage-8 `quota_exhausted`. Restore the row afterwards.
 
 #### 14.3.10 Happy path through prompt compose
 
@@ -1092,9 +1127,9 @@ d1 "SELECT request_id, request_reference, installation_id, actor_id, branch_id,
 
 Principal handoff: journal `installation_id` / `actor_id` / `branch_id` match AAT `iss` / `sub` / `branch`. Role and scopes are not journaled; they were enforced at stage 5 (`clinician` + `ai.visit_summary`).
 
-Compose: `streamFlag: true` is why the response is SSE rather than a JSON body. `stopConditions` is always `[]` (no HTTP field). Production `createProductionPreAccept` does not forward a client `deadline` (always `null` on the CanonicalRequest). `neutralizeText` (`</` → `\u003c/`) lives on the composed user part; it is **not** a D1 column. If Stage 11 later writes `request/<request_id>/envelope`, the `prompt` field shows the escaped intent — that read is settlement, not the guard.
+Compose: `streamFlag: true` is why the response is SSE rather than a JSON body. `stopConditions` is always `[]` (no HTTP field). Production `createProductionPreAccept` does not forward a client `deadline` (always `null` on the CanonicalRequest). `neutralizeText` (`</` → `\u003c/`) lives on the composed user part; it is **not** a D1 column. On the composed `CanonicalRequest`, `correlationIds.trace_id` is the AAT `jti`, not the `x-trace-id` header — see §3.2 (the journaled `ai_request.trace_id` and SSE `accepted.trace_id` use the header). If Stage 11 later writes `request/<request_id>/envelope`, the `prompt` field shows the escaped intent — that read is settlement, not the guard.
 
-Compose `internal_error` (missing prompt artifact) cannot be forced without breaking published pins. **Unprobeable** on this Worker.
+Compose `internal_error` (missing prompt artifact) journals `Failed` and releases the Quota DO admission reservation (mirrors stage-9 journal failure). Cannot be forced without breaking published pins. **Unprobeable** on this Worker.
 
 #### 14.3.11 Idempotent replay skips journal and compose
 

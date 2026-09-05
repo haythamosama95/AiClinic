@@ -21,6 +21,45 @@ Conventions used throughout:
 - Consumer-side scenarios drive `POST /v1/requests` end-to-end; identity (Stage 9's guard, pipeline stage 2) is where the `ver` claim is checked against `token_contract`. AATs are produced by the test AAT-minting helper with full claim control over an installation created by the Stage 3 enrollment happy path.
 - The isolate `ConfigCache` caches `token_contracts:{ver}` for `CONFIG_CACHE_TTL_MS` (default 30 000 ms). Every scenario that mutates `token_contract` and then verifies an AAT sets `CONFIG_CACHE_TTL_MS=0` in the test environment so each verify re-reads D1 (see `## Non-automatable notes`).
 
+## 4. Control-plane token-contract routes
+
+Both routes use operator Bearer auth (`requireOperator`), parse a JSON body, and validate `ver` via
+`requireNonEmptyString` followed by `.trim()` before any D1 work. The `ver` contract is
+**non-empty after trim** only — surrounding whitespace is stripped and the trimmed value is
+inserted, returned, and used for duplicate checks; there is no length or charset validation beyond
+that (S01-023, S01-024). Malformed paths and unknown actions fall through to HTTP 404 plain-text
+`Not Found` at the worker router — not `400 invalid_route` (dispatch pre-filters with
+`TOKEN_CONTRACT_PATTERN`; see S01-008).
+
+### 4.1 `POST /control/token-contract/begin-rotation`
+
+**Request:** `{ "ver": "<new version string>" }`
+
+**Success (200):** `{ "ver": "<ver>" }` (trimmed value)
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid `OPERATOR_BEARER_TOKEN` |
+| 400 | `invalid_json` | Body not JSON |
+| 400 | `invalid_ver` | `ver` missing, empty, whitespace-only, or non-string |
+| 409 | `ver_already_exists` | `ver` (after trim) already in table (including retired rows) |
+| 409 | `rotation_already_open` | Already two non-retired versions |
+
+### 4.2 `POST /control/token-contract/retire`
+
+**Request:** `{ "ver": "<version>" }`
+
+**Success (200):** `{ "ver": "<ver>", "retired_at": "<ISO>" }` (`ver` is the trimmed value)
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid `OPERATOR_BEARER_TOKEN` |
+| 400 | `invalid_json` | Body not JSON |
+| 400 | `invalid_ver` | `ver` missing, empty, whitespace-only, or non-string |
+| 404 | `ver_not_found` | `ver` (after trim) not in table |
+| 409 | `ver_already_retired` | `retired_at` already set |
+| 409 | `no_rotation_open` | Only one non-retired version remains |
+
 ## Scenario S01-001 — Migration seed establishes the ver=1 baseline
 
 | Field | Content |
@@ -127,9 +166,9 @@ Conventions used throughout:
 | ID | S01-010 |
 | Journey setup | S01-001. |
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{}`. |
-| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. `body.ver?.trim()` is `undefined`, which is falsy. |
+| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. `requireNonEmptyString(body.ver)` returns null when the key is absent. |
 | Side effects | None. |
-| Code reference | ai-platform/src/control/token-contract.ts:L31-L34 — `ver` presence guard |
+| Code reference | ai-platform/src/control/token-contract.ts:L32-L35 — `requireNonEmptyString(body.ver)` guard |
 
 ## Scenario S01-011 — begin-rotation with empty ver string
 
@@ -140,7 +179,7 @@ Conventions used throughout:
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{"ver":""}`. |
 | Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. |
 | Side effects | None. Seed row unchanged. |
-| Code reference | ai-platform/src/control/token-contract.ts:L31-L34 |
+| Code reference | ai-platform/src/control/token-contract.ts:L32-L35 — `requireNonEmptyString(body.ver)` guard |
 
 ## Scenario S01-012 — begin-rotation with whitespace-only ver
 
@@ -149,9 +188,9 @@ Conventions used throughout:
 | ID | S01-012 |
 | Journey setup | S01-001. |
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{"ver":"   "}`. |
-| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. `.trim()` reduces the value to the empty string. |
+| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. `requireNonEmptyString` rejects whitespace-only strings (`value.trim() === ""`). |
 | Side effects | None. |
-| Code reference | ai-platform/src/control/token-contract.ts:L31-L34 — trim-then-check |
+| Code reference | ai-platform/src/control/http.ts:L51-L55 — `requireNonEmptyString` trim check; ai-platform/src/control/token-contract.ts:L32-L35 |
 
 ## Scenario S01-013 — begin-rotation with non-string ver returns invalid_ver
 
@@ -195,7 +234,7 @@ Conventions used throughout:
 | Action | (a) `POST /control/token-contract/retire` with valid operator bearer, body `{}`. (b) Same route, body `{"ver":"  "}`. |
 | Expected outcome | Both: HTTP 400, body `{"error":"invalid_ver"}`. |
 | Side effects | None; `ver='1'` row untouched. |
-| Code reference | ai-platform/src/control/token-contract.ts:L86-L89 |
+| Code reference | ai-platform/src/control/token-contract.ts:L89-L92 — `requireNonEmptyString(body.ver)` guard |
 
 ## Scenario S01-017 — retire with non-string ver returns invalid_ver
 
@@ -272,7 +311,7 @@ Conventions used throughout:
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{"ver":" 3 "}`. |
 | Expected outcome | HTTP 200, body `{"ver":"3"}` — the trimmed value is what gets inserted and returned. |
 | Side effects | `token_contract` row is `ver='3'` (no whitespace); audit `target='3'`. A subsequent `{"ver":"3"}` returns 409 `ver_already_exists` and `{"ver":" 3 "}` also returns 409 (trimmed before the duplicate check). |
-| Code reference | ai-platform/src/control/token-contract.ts:L31 — `body.ver?.trim()` normalizes before insert |
+| Code reference | ai-platform/src/control/token-contract.ts:L32-L36 — `requireNonEmptyString` then `.trim()` before insert |
 
 ## Scenario S01-024 — begin-rotation accepts a long ver string (no length guard)
 
@@ -283,7 +322,7 @@ Conventions used throughout:
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{"ver":"2026-09-05-emergency-rotation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}` (118 chars). |
 | Expected outcome | HTTP 200, `{"ver":"2026-09-05-emergency-rotation-aaaa…"}`. The code performs no length or charset validation beyond non-empty-after-trim; the D1 `TEXT` primary key accepts the value. Boundary scenario documenting the absence of a length contract. |
 | Side effects | Row inserted with the full 118-char `ver`; audit `target` equals the same string. |
-| Code reference | ai-platform/src/control/token-contract.ts:L31-L48 — no length check; ai-platform/migrations/20260803120000_token_contract.sql:L2-L6 — `ver TEXT PRIMARY KEY` |
+| Code reference | ai-platform/src/control/token-contract.ts:L32-L48 — no length check after trim; ai-platform/migrations/20260803120000_token_contract.sql:L2-L6 — `ver TEXT PRIMARY KEY` |
 
 ## Scenario S01-025 — Dual-accept window: AATs with ver=1 and ver=2 both pass identity
 
@@ -364,13 +403,13 @@ Conventions used throughout:
 
 ## Doc-drift observations
 
-1. **Missing failure rows in the doc tables.** The orientation doc's §4.1/§4.2 failure tables omit `400 invalid_json` (malformed body) for both routes and omit `400 invalid_ver` / `401 unauthorized` from the §4.2 retire table (retire performs the same auth, JSON-parse, and `ver` validation as begin-rotation — `ai-platform/src/control/token-contract.ts:L76-L89`). Code is authoritative; the doc under-documents retire's failure surface.
-2. **Wrong-type `ver` — fixed (C-05).** Non-string `ver` (e.g. `{"ver":2}`) now returns `400 invalid_ver` via `requireNonEmptyString` (`token-contract.ts`). Previously threw an uncaught `TypeError`; pinned by S01-013/S01-017.
+1. **Missing failure rows in the doc tables — fixed (D-07).** Catalog [§4.1](#41-post-controltoken-contractbegin-rotation) / [§4.2](#42-post-controltoken-contractretire) now list `400 invalid_json`, `400 invalid_ver`, and `401 unauthorized` on both routes. The orientation doc's §4.1/§4.2 tables still need the same update (out of scope for this chapter file).
+2. **Wrong-type `ver` — fixed (C-05 / D-07).** Non-string `ver` (e.g. `{"ver":2}`) returns `400 invalid_ver` via `requireNonEmptyString` (`token-contract.ts:L32-L35, L89-L92`); pinned by S01-013/S01-017.
 3. **Stage numbering collision.** The orientation doc §5 calls identity "identity stage 2" (pipeline-internal numbering — `fail(2, …)` in `ai-platform/src/pipeline/index.ts:L344`), while the data-journey/catalog convention numbers the request-ingress guard as Stage 9. Same component, two numbers; readers should map doc "stage 2" = catalog "Stage 9 identity guard".
-4. **Unreachable `invalid_route` branch.** `dispatchControlRequest` contains `reject(400, "invalid_route")` for the token-contract pattern (`ai-platform/src/control/index.ts:L172-L173`), but `TOKEN_CONTRACT_PATTERN` already constrains the action to `begin-rotation|retire`, so the branch is dead code. The doc does not list `invalid_route` for token-contract routes — consistent with behavior, but the dead branch is worth flagging.
+4. **Unreachable `invalid_route` branch — fixed (D-09).** `dispatchControlRequest` contains `reject(400, "invalid_route")` for the token-contract pattern (`ai-platform/src/control/index.ts:L172-L173`), but `TOKEN_CONTRACT_PATTERN` pre-filters the action; [§4](#4-control-plane-token-contract-routes) documents 404 fallthrough instead and does not list `invalid_route`. Direct-invocation seam only (S01-008).
 5. **Cache-flush guidance is incomplete.** The doc (§6 intro) says to restart `npm run dev` or wait 30 s after a control mutation before an identity probe. Code exposes `CONFIG_CACHE_TTL_MS` (`ai-platform/src/config-cache/index.ts:L26-L40`), and `0` is accepted (`parsed < 0` is rejected, `0` is not), which disables caching outright — the doc never mentions this lever. Tests should set `CONFIG_CACHE_TTL_MS=0` instead of waiting.
-6. **Whitespace-trim acceptance undocumented.** The doc says `ver` must be "non-empty" but does not state that surrounding whitespace is silently trimmed and the trimmed value inserted/returned (`token-contract.ts:L31`). S01-023 pins the behavior.
-7. **No length/charset contract documented or enforced.** The doc's "non-empty" is the entire `ver` contract; code matches (S01-024). Not a drift, but an explicitly undocumented boundary worth recording.
+6. **Whitespace-trim acceptance — fixed (D-07).** [§4](#4-control-plane-token-contract-routes) documents trim-before-insert; S01-023 pins the behavior.
+7. **No length/charset contract — fixed (D-07).** [§4](#4-control-plane-token-contract-routes) records the absence of length/charset bounds; S01-024 pins the boundary.
 8. **`control_audit` helper divergence.** `ai-platform/src/control/audit.ts` exports `writeAudit`, but the token-contract handlers deliberately do **not** use it — they inline a conditioned audit INSERT into the atomic batch so failed guards leave no audit row. The doc's claim "no extra audit row for the failed calls" (§6.3.6) is correct, but only because of this inlined conditioning; chapters for other control routes should not assume the same mechanism.
 
 ## Non-automatable notes

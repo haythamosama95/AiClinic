@@ -104,6 +104,8 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `deprecated_at`      | TEXT NULL | Deprecation time                             |
 | `retire_after`       | TEXT NULL | Hard retire-after                            |
 
+Ledger retention (`runRetentionPurge`, 2555 d on `changed_at`) deletes **all** grant rows past the cutoff, including live installation/plan grants — retention does not distinguish overlay state from entitle-written grants.
+
 
 
 
@@ -132,7 +134,9 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 | `target`     | TEXT PK part | Scope-specific id                               |
 | `active`     | INTEGER      | `1` = on (fail closed)                          |
 | `changed_at` | TEXT ISO     | Last change                                     |
-| `changed_by` | TEXT         | Actor (no HTTP API — direct D1)                 |
+| `changed_by` | TEXT         | Actor (`OPERATOR_ID` on control routes, or direct D1) |
+
+Armed/disarmed via `POST /control/kill-switches/arm` and `POST /control/kill-switches/disarm` (`control/kill-switch.ts`). **Never purged** by cron — no `DELETE FROM kill_switch` in `runRetentionPurge`; rows survive until explicitly cleared.
 
 
 
@@ -219,6 +223,8 @@ Quick lookup for every table. For narrative, see stages above and [07-ai-platfor
 
 ## 11. `usage_rollup`
 
+Written by cron `runRollup` (`0 4 * * *`). **No in-repo reader** selects from this table — dashboards read `ai_attempt` / `ai_request` / `platform_counter` only; rows are written for **external reporting**. Purged at the ledger horizon (2555 d; `dimensions.period` lexicographic compare against cutoff `YYYY-MM`).
+
 
 | Column          | Type    | Meaning                        |
 | --------------- | ------- | ------------------------------ |
@@ -240,6 +246,8 @@ exact rejection count.** Dashboards that consume this table
 (`dashboardQuotaRejectionRate`) inherit the same lower-bound semantics. An accurate
 count would flush at request end batched with the journal write — not implemented.
 
+Cron retention deletes rows with `time_bucket < now − 90d` (`COUNTER_HORIZON_DAYS`, aligned with journal horizon).
+
 
 | Column          | Type    | Meaning                      |
 | --------------- | ------- | ---------------------------- |
@@ -252,6 +260,8 @@ count would flush at request end batched with the journal write — not implemen
 
 
 ## 13. `control_audit`
+
+Purged at the ledger horizon (`recorded_at < now − 2555d`) by `runRetentionPurge`. `after_pointer` may carry JSON `details` — e.g. routing-policy canary audits persist `details.cohort_name` when supplied in the canary body.
 
 
 | Column           | Type      | Meaning                                            |
@@ -383,7 +393,12 @@ Every table and every column claim in this file maps to a probe. Carry them all 
 | `kill_switch.target` TEXT PK part | [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
 | `kill_switch.active` INTEGER `1` = on (fail closed) | [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
 | `kill_switch.changed_at` TEXT ISO | [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
-| `kill_switch.changed_by` TEXT; no HTTP API — direct D1 | [§15.3.2](#1532-clients-cannot-read-d1), [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
+| `kill_switch.changed_by` TEXT; control routes or direct D1 | [§15.3.2](#1532-clients-cannot-read-d1), [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
+| `usage_rollup` has no in-repo reader (external reporting only) | [§11](#11-usage_rollup), [§15.3.10](#15310-crons-counters-rollup-retention-grace) |
+| `capability_grant` ledger purge at 2555 d includes live grants | [§4](#4-capability_grant), [§15.3.10](#15310-crons-counters-rollup-retention-grace) |
+| `control_audit` ledger purge at 2555 d | [§13](#13-control_audit), [§15.3.10](#15310-crons-counters-rollup-retention-grace) |
+| `platform_counter` counter purge at 90 d | [§12](#12-platform_counter), [§15.3.10](#15310-crons-counters-rollup-retention-grace) |
+| `kill_switch` never purged by cron | [§6](#6-kill_switch), [§15.3.10](#15310-crons-counters-rollup-retention-grace) |
 | `token_contract.ver` TEXT PK (AAT `ver`) | [§15.3.1](#1531-inspect-schema-all-14-tables), [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
 | `token_contract.added_at` TEXT ISO | [§15.3.1](#1531-inspect-schema-all-14-tables), [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
 | `token_contract.retired_at` TEXT NULL | [§15.3.1](#1531-inspect-schema-all-14-tables), [§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch) |
@@ -516,7 +531,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 curl -s -o /dev/null -w "%{http_code}" -X POST "$GATEWAY/d1/query"
 ```
 
-**Expect:** no HTTP API returns `PRAGMA table_info` or `SELECT * FROM installation`. Staff AAT cannot call `/control/*` (401 `unauthorized`). Support lookup is operator-only and, when authorized, returns one request projection — not raw D1. Flutter/Supabase have no inbound path to this database. The only inspect tool is `wrangler d1 execute`. `kill_switch` has no HTTP writer either — next kill-switch write is wrangler SQL ([§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch)).
+**Expect:** no HTTP API returns `PRAGMA table_info` or `SELECT * FROM installation`. Staff AAT cannot call `/control/*` (401 `unauthorized`). Support lookup is operator-only and, when authorized, returns one request projection — not raw D1. Flutter/Supabase have no inbound path to this database. The only inspect tool is `wrangler d1 execute`. Kill switches are writable via `POST /control/kill-switches/{arm|disarm}` ([§15.3.7](#1537-token-contract-capability-overlay-and-kill-switch)).
 
 #### 15.3.3 Enroll writes installation, key, and pending entitlement
 
@@ -637,23 +652,18 @@ FROM routing_policy WHERE policy_id = 'standard' ORDER BY active_from DESC, rowi
 
 **Do:** `POST /control/token-contract/begin-rotation` `{"ver":"2"}` then inspect both `token_contract` rows. Then `POST /control/token-contract/retire` `{"ver":"2"}` so seed `ver=1` stays the accepted edition (clinic AATs use `ver=1`). Then `POST /control/capabilities/clinic.visit_summary/versions/1.0.0/deprecate` with `{"successor_id":"clinic.visit_summary@1.0.0"}`. Inspect the new global overlay. **Do not retire yet** — overlap is 90 days and a `retired` overlay would block [§15.3.8](#1538-happy-path-request-journal-attempts-usage); retire is [§15.3.10](#15310-crons-counters-rollup-retention-grace).
 
-**Do:** there is no `POST /control/kill-switch`. Insert via wrangler, then `POST /v1/requests` with a valid AAT (wait up to 30 s for config-cache TTL, or restart the Worker):
+**Do:** arm via control route, then clear:
 
-```sql
-INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-VALUES ('global', 'global', 1, '<now ISO>', 'operator-sql');
+```bash
+curl -sS -X POST "$GATEWAY/control/kill-switches/arm" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"global","target":"global"}'
 ```
 
-Clear it before the happy-path request:
+Or insert via wrangler for probes that predate the route. Clear with `POST …/disarm` or `UPDATE kill_switch SET active = 0`.
 
-```sql
-UPDATE kill_switch SET active = 0, changed_at = '<now ISO>'
-WHERE scope = 'global' AND target = 'global';
-```
-
-Repeat once with `scope='installation', target='<I0>'` if you want that PK pair too; set `active=0` again.
-
-**Expect:** after begin-rotation, two live rows (`retired_at` NULL): seed `ver=1` `changed_by='seed'` and `ver=2` `changed_by='platform-operator'`, `added_at` ISO. After retiring **v2**: `ver=2.retired_at` ISO, `changed_by='platform-operator'`; `ver=1` still `retired_at` NULL. Audits `token_contract_begin_rotation` / `token_contract_retire`. Overlay grant: `scope='global'`, `lifecycle_state='deprecated'`, `successor_id` set, `deprecated_at` / `retire_after` ISO (`retire_after` ≈ `deprecated_at` + 90 days), `revoked_at` equal to `changed_at` (overlay is not a live grant). Live entitle grants still have overlay columns NULL. **No row has `lifecycle_state='active'`** — that overlay value is not written by any route. Deprecated still resolves during the overlap window, so later `POST /v1/requests` can proceed. Kill-switch: PK `(scope, target)`, `active=1` fail-closed (`capability_disabled` / `forbidden_capability` JSON, **no** new `ai_request`). `changed_by='operator-sql'`. After `active=0`, invoke is allowed again. `POST /control/kill-switch` → 404.
+**Expect:** after begin-rotation, two live rows (`retired_at` NULL): seed `ver=1` `changed_by='seed'` and `ver=2` `changed_by='platform-operator'`, `added_at` ISO. After retiring **v2**: `ver=2.retired_at` ISO, `changed_by='platform-operator'`; `ver=1` still `retired_at` NULL. Audits `token_contract_begin_rotation` / `token_contract_retire`. Overlay grant: `scope='global'`, `lifecycle_state='deprecated'`, `successor_id` set, `deprecated_at` / `retire_after` ISO (`retire_after` ≈ `deprecated_at` + 90 days), `revoked_at` equal to `changed_at` (overlay is not a live grant). Live entitle grants still have overlay columns NULL. **No row has `lifecycle_state='active'`** — that overlay value is not written by any route. Deprecated still resolves during the overlap window, so later `POST /v1/requests` can proceed. Kill-switch arm HTTP 200; `active=1` fail-closed (`capability_disabled` / `forbidden_capability` JSON, **no** new `ai_request`). `changed_by='platform-operator'`. After disarm or `active=0`, invoke is allowed again.
 
 #### 15.3.8 Happy-path request (journal, attempts, usage)
 
@@ -730,6 +740,8 @@ Wait for config-cache TTL (30 s) or restart the Worker after each key UPDATE.
 `dashboardRepairRateByCapability` would use `SUM(outcome='repair')` as numerator; with zero repair rows the rate is 0. A non-zero numerator cannot be produced from the published catalog.
 
 #### 15.3.10 Crons: counters, rollup, retention, grace
+
+`runRetentionPurge` (`0 3 * * *`) runs four passes: diagnostic (R2 + pointer NULL), journal (row delete + `usage_event.request_id` NULL), ledger at 2555 d (`usage_event`, `usage_rollup`, `control_audit`, **`capability_grant` including live grants**), and counter at 90 d (`platform_counter`). **`kill_switch` is never purged.**
 
 **Do — retire overlay:** journal probes are done. Age the deprecated overlay (public retire cannot elapse 90 days in this session), then `POST /control/capabilities/clinic.visit_summary/versions/1.0.0/retire`:
 

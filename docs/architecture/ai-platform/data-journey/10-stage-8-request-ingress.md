@@ -60,8 +60,12 @@ The client submits an AI job: which capability, what context, optional intent te
 | `Authorization`        | effectively yes | `Bearer <AAT>`          | Guard stage 2                                |
 | `x-idempotency-key`    | **yes**         | non-empty after trim    | Quota DO idempotency                         |
 | `x-capability-version` | **yes**         | non-empty after trim    | Guard stages 3, 5, 10                        |
-| `x-trace-id`           | optional        | if present, non-empty   | Correlation; server generates ULID if absent |
+| `x-trace-id`           | optional        | if present, non-empty after trim | Correlation; server generates ULID if absent |
 | `Content-Length`       | optional        | if > 1_048_576 → reject | Pre-read size gate                           |
+
+Ingress validates **non-empty-after-trim only** for the required headers (`parseRequiredHeaders`,
+`adapter.ts:L258-L284`). There is no length cap, charset restriction, or semver/format
+validation at this stage — trimmed values are what reach pre-accept and the guard.
 
 
 
@@ -143,7 +147,9 @@ The client submits an AI job: which capability, what context, optional intent te
 
 ## 4. Body — every field
 
-JSON object (`Content-Type: application/json`). Must parse to a **plain object** (not array, not scalar). Empty body parses as failure → HTTP 422.
+JSON object. The adapter has **no `Content-Type` check** — it never branches on
+`Content-Type`; any bytes that parse as a JSON **plain object** (not array, not scalar)
+pass ingress. Empty body fails parse → HTTP 422.
 
 
 | Field             | Aliases          | Required             | Default | Consumer                             |
@@ -180,7 +186,8 @@ JSON object (`Content-Type: application/json`). Must parse to a **plain object**
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Aliases        | `intent`                                                                                                                                                          |
 | Type           | String (optional)                                                                                                                                                 |
-| Default        | `""` when omitted or wrong type                                                                                                                                   |
+| Default        | `""` when both `user_intent` and `intent` are absent or non-string                                                                                                |
+| Extraction     | After ingress, `extractUserIntent` (`worker.ts:L269-L277`): string `user_intent` wins; else string `intent`; else `""`. A non-string `user_intent` **falls through** to the `intent` alias — it does not force `""` while ignoring `intent`. |
 | Meaning        | **Natural-language instruction** from the staff member — what they want the model to do with the supplied context (e.g. "Summarize today's visit for the chart.") |
 | Guard stage 6  | Included in context validation inputs where the manifest expects intent-shaped content                                                                            |
 | Guard stage 7  | Serialized with `filteredContext` (and conversational `transcript` when present) for token/cost pre-flight estimation                                             |
@@ -268,12 +275,15 @@ These keys are **never read** from the request body. Ingress ignores them struct
 
 ## 5. Ingress validation (before guard)
 
+Gate order in `handleAdapterRequest` (`adapter.ts`): body size → JSON parse (plain
+object) → required headers → optional `preAccept` → SSE stream.
 
 | Check            | Limit               | Failure                      |
 | ---------------- | ------------------- | ---------------------------- |
 | Body bytes       | ≤ 1_048_576 (1 MiB) | HTTP 413 `request_too_large` |
 | JSON parse       | plain object        | HTTP 422 empty body          |
-| Required headers | see above           | HTTP 422                     |
+| Required headers | non-empty after trim (see [§3](#3-required-headers-every-field)) | HTTP 422 |
+| `Content-Type`   | not checked         | —                            |
 
 
 
@@ -419,7 +429,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Omit or whitespace-only `x-idempotency-key` → HTTP 422 (adapter, before guard) | [§8.3.4](#834-required-headers-omitted-or-empty) |
 | Omit or whitespace-only `x-capability-version` → HTTP 422 | [§8.3.4](#834-required-headers-omitted-or-empty) |
 | `x-trace-id` present but empty after trim → HTTP 422 | [§8.3.4](#834-required-headers-omitted-or-empty) |
-| Non-empty after trim is enough for the two required headers (spaces around a value are not 422) | [§8.3.4](#834-required-headers-omitted-or-empty) |
+| Non-empty after trim is enough for the two required headers (spaces around a value are not 422); no length/charset/format bounds at ingress | [§8.3.4](#834-required-headers-omitted-or-empty) |
+| No `Content-Type` check — any parseable plain-object body passes ingress | [§8.3.3](#833-json-parse-never-reaches-the-guard) |
 | Omit `x-trace-id` → server ULID on the pre-accept error body | [§8.3.5](#835-optional-x-trace-id-and-content-length) |
 | Any non-empty `x-trace-id` (including non-ULID) is echoed on HTTP error bodies | [§8.3.5](#835-optional-x-trace-id-and-content-length) |
 | Absent `Content-Length` with a small body is not 413 | [§8.3.5](#835-optional-x-trace-id-and-content-length) |
@@ -432,7 +443,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Alias `capability` is read when `capability_id` is absent | [§8.3.7](#837-pre-accept-capability_id-and-request_reference) |
 | Pre-accept mints `request_reference` `XXXX-XXXX` (Crockford base32) | [§8.3.7](#837-pre-accept-capability_id-and-request_reference) |
 | `ADAPTER_ROUTING_BODY_FIELDS = []` — `routing_tier` / `degraded` / `degraded_notice` are not read from the body | [§8.3.8](#838-ignored-routing-body-keys), [§8.3.10](#8310-mint-an-aat-and-visit-summary-through-ingress) |
-| `user_intent` / `intent` optional; omitted or wrong type is not an ingress 422 (default `""`) | [§8.3.9](#839-optional-and-conversational-body-fields) |
+| `user_intent` / `intent` optional; omitted or non-string types are not ingress 422; extraction uses string `user_intent`, else string `intent`, else `""` | [§8.3.9](#839-optional-and-conversational-body-fields) |
 | `context` omitted is not an ingress 422 (default `{}`) | [§8.3.9](#839-optional-and-conversational-body-fields) |
 | `conversation_id` / `turn_ordinal` / `transcript` ignored on single-shot visit summary | [§8.3.9](#839-optional-and-conversational-body-fields) |
 | [§7](#7-visit-summary-example-body) body through ingress: not 413/422; first guard taxonomy **or** SSE `accepted` | [§8.3.10](#8310-mint-an-aat-and-visit-summary-through-ingress) |
@@ -862,17 +873,19 @@ curl -sS -D - -o /tmp/stage8-body -X POST "$GATEWAY/v1/requests" \
 
 **Expect:** not 422. Pre-accept runs (401 without an AAT). Those fields are not ingress-required.
 
-**Do:** wrong-type `user_intent` (number):
+**Do:** wrong-type `user_intent` (number) with string `intent` alias:
 
 ```bash
 curl -sS -D - -o /tmp/stage8-body -X POST "$GATEWAY/v1/requests" \
   -H "Content-Type: application/json" \
   -H "x-idempotency-key: probe-stage8-intent-num" \
   -H "x-capability-version: $CAP_VER" \
-  -d '{"capability_id":"clinic.visit_summary","user_intent":123,"intent":"ignored-because-user_intent-wrong-type"}'
+  -d '{"capability_id":"clinic.visit_summary","user_intent":123,"intent":"Summarize today."}'
 ```
 
-**Expect:** not 422. Wrong-type `user_intent` defaults to `""` at extract; ingress does not reject it.
+**Expect:** not 422. Non-string `user_intent` falls through to the `intent` alias at
+extract (`extractUserIntent` in `worker.ts:L269-L277`); ingress does not reject either
+field.
 
 **Do:** alias `intent` only:
 

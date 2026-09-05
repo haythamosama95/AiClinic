@@ -118,7 +118,7 @@ data: <json object>
 
 ```
 
-Every `data` object includes `trace_id` (same value as header `x-trace-id` when the client supplied one, otherwise the server ULID from ingress).
+Every terminal and control-frame `data` object includes `trace_id` (same value as header `x-trace-id` when the client supplied one, otherwise the server ULID from ingress). **`text_delta` is the exception** — `data` is `{text, sequence, provisional}` only; `trace_id` lives on the event wrapper (`encodeSseEvent` serializes only `event.data`).
 
 ### 4.1 SSE response contract (consolidated)
 
@@ -130,7 +130,7 @@ Wire encoding: `event: <type>` then `data: <json>` (`encodeSseEvent` in `src/ada
 | `accepted` | no | `request_reference` (Crockford `XXXX-XXXX`), `trace_id`, optional `degraded_notice` (boolean `true`) | First frame; emitted before routing/provider I/O ([§6](#6-phase-a-sse-accepted)) |
 | `heartbeat` | no | `trace_id` | Every **15 s** without `text_delta` / `regenerating` ([§11.2](#112-heartbeat)) |
 | `regenerating` | no | `trace_id` | Client discards provisional `text_delta` since last `regenerating` or `accepted` ([§11.3](#113-regenerating)) |
-| `text_delta` | no | `text` (string), `sequence` (number, monotonic per leg), `provisional` (always `true`) | **Platform today:** `data` often omits `trace_id` — wrapper carries it but `encodeSseEvent` serializes only `event.data` ([§19.3.5](#1935-happy-fresh-path-end-to-end)) |
+| `text_delta` | no | `text` (string), `sequence` (number, monotonic per leg), `provisional` (always `true`) | **`trace_id` is not in `data`** — only on the event wrapper ([§11.4](#114-text_delta)) |
 | `completed` | **yes** | `result.finalContent.text` (string), `result.finalContent.authoritative` (always `true`), `trace_id` | Authoritative prose; replaces all provisional deltas ([§11.5](#115-completed)) |
 | `failed` | **yes** | `code` (taxonomy string), `request_reference`, `trace_id`, `retry_safe` (boolean) | Same JSON shape as pre-accept HTTP error bodies ([§11.6](#116-failed)) |
 | `cancelled` | **yes** | `trace_id` only | Client disconnect / abort ([§11.7](#117-cancelled)) |
@@ -157,7 +157,7 @@ POST /v1/requests (guard 1–10 complete)     ← Stages 8–9
 
 **Concurrency rationale:** provider invocation and SSE relay run in parallel so the clinic client sees `text_delta` while the model is still generating, instead of waiting for the full provider response.
 
-**Client disconnect:** closing the POST or SSE connection aborts the in-flight provider request and drives terminal `cancelled` (unless a terminal event was already sent).
+**Client disconnect:** closing the POST or SSE connection aborts the in-flight provider request and drives terminal `cancelled` settlement (unless a terminal event was already sent). On a true drop the adapter calls `markCancelledWithoutEnqueue()` — the broker still emits `cancelled` into the dead stream, but the dropped connection shows **no** terminal frame; observe `cancelled` only via idempotent replay ([§11.7](#117-cancelled), [§19.3.12](#19312-client-disconnect-and-cancelled-replay)).
 
 ## 6. Phase A — SSE `accepted`
 
@@ -252,7 +252,7 @@ Each attempt becomes one D1 `ai_attempt` row at settlement ([Stage 11](13-stage-
 
 ## 10. Phase E — Stream relay and output guards
 
-Visit summary uses **prose relay** (structured JSON capabilities use a separate relay path not covered here).
+Visit summary uses the **prose relay** (`createStreamBroker` in `worker.ts`). The structured relay path — `createStructuredStreamBroker`, `validateAndRepair`, SSE `progress` / `partial_structured`, commit-time schema/business validation, and `repairPolicy` reask — has **no caller in `worker.ts`** and is **dormant** until a structured-output (`Output.mode`) capability ships (F-02). **`regenerating` is live** for visit summary: it originates in the invocation loop when a partial stream is discarded before retry or cross-target fallback ([§11.3](#113-regenerating)), not in the dormant validation-repair path.
 
 
 | Responsibility | Detail |
@@ -337,8 +337,7 @@ When degraded routing applies (spec):
 {
   "text": "<chunk>",
   "sequence": 0,
-  "provisional": true,
-  "trace_id": "<ulid>"
+  "provisional": true
 }
 ```
 
@@ -348,7 +347,8 @@ When degraded routing applies (spec):
 | `text` | Incremental UTF-8 fragment from the provider |
 | `sequence` | Monotonic within one generation leg — resets after `regenerating` |
 | `provisional` | Always `true` — only `completed.result.finalContent` is authoritative |
-| `trace_id` | Same as `accepted` |
+
+`trace_id` is on the SSE event wrapper only — not serialized inside `data` (`encodeSseEvent` in `src/adapter.ts`).
 
 
 ### 11.5 `completed`
@@ -405,6 +405,7 @@ Same JSON shape as pre-accept HTTP error bodies ([Stage 19 — Taxonomy](19-taxo
 | Aspect | Detail |
 | ------ | ------ |
 | When | Client closes the SSE connection or aborts the POST |
+| Wire on drop | The broker emits `cancelled` synchronously, but `markCancelledWithoutEnqueue()` suppresses enqueue on a dead connection — **no terminal frame** on the dropped POST. Settlement (credit + journal) still runs. Observe `cancelled` on the wire only via idempotent replay of the same `x-idempotency-key` ([§15](#15-idempotent-replay-path-no-provider-call)) |
 | Quota DO | Always receives `credit` with `partial: true` (accrued usage or zeros) |
 | D1 | `ai_request.state = Cancelled` |
 
@@ -566,7 +567,7 @@ DeepSeek's OpenAI-compatible chat-completions API accepts only `system` / `user`
 | Caller cancelled | — | SSE `cancelled` |
 
 
-**D1 `ai_attempt.selection_reason`:** `primary`, `fallback_after_retryable_error`, `fallback_after_timeout`.
+**In-memory `selection_reason` (not a D1 column):** `runInvocation` sets `primary`, `fallback_after_retryable_error`, or `fallback_after_timeout` on each `AttemptRecord` (`invocation/index.ts`); the `ai_attempt` migration has no such column — optional schema addition is deferred. Dashboard fallback heuristics use provider-switch detection instead.
 
 **D1 `ai_attempt.cost`:** priced from that attempt's provider-reported tokens via the shared helper (`src/pricing`); cancel without reported usage uses `estimateUsageFromStreamedChars` (chars as output tokens through the same rates). See [Stage 11](13-stage-11-terminal-settlement.md).
 
@@ -585,8 +586,9 @@ SSE accepted
 
 | DO prior state | Terminal emitted |
 | -------------- | ---------------- |
-| `completed`, `admitted` (still in-flight, not yet swept) | SSE `completed` with placeholder text `"Prior request completed."` |
-| `failed` | SSE `failed` `internal_error` — includes abandoned admissions swept after the 2h horizon (not the completed placeholder) |
+| `completed` | SSE `completed` with placeholder text `"Prior request completed."` — not the original result text from R2 |
+| `admitted` (still in-flight, not yet swept) | **`accepted` only** — stream stays open; no fabricated terminal (C-04) |
+| `failed` | SSE `failed` with the **`terminalErrorCode` stored at credit time** (fallback `internal_error` when absent) — includes abandoned admissions swept after the 2h horizon |
 | `cancelled` | SSE `cancelled` |
 
 
@@ -599,7 +601,8 @@ Quota DO idempotency states are `admitted` \| `completed` \| `failed` \| `cancel
 
 | Failure | SSE `code` | D1 `ai_request` |
 | ------- | ---------- | --------------- |
-| Missing guard handoff | `internal_error` | unchanged or Failed depending on timing |
+| Missing guard handoff | `internal_error` | `Failed` / `terminal_error_code = internal_error` — `settlePostAcceptInternalError` credits and journals (C-01) |
+| Missing routing policy / unexpected post-accept error | `internal_error` | `Failed` / `terminal_error_code = internal_error` — same settlement path as missing handoff (C-01) |
 | Empty routing chain | `provider_unavailable` | `Failed` — includes every target excluded (kill switch, installation override, feature mismatch, **or** malformed `min_context_window` / `cost_class` / `languages` fail-closed as `feature_unsupported`) |
 | All providers exhausted | `provider_unavailable` | `Failed` |
 | Output guard (length, stop, leak, refusal, injection-echo) / truncation | `validation_failed` | `Failed` |
@@ -637,7 +640,7 @@ These items are part of the **intended** data journey but behave differently on 
 | ----- | ------------------ | ----------------------- |
 | **`degraded_notice` on `accepted`** | Present when D1 `ai_request.routing_tier = degraded` (soft threshold or grace admission) | Wired: preAccept returns per-request `degradedNotice` from `degradedNoticeFromAdmission`; the SSE `accepted` frame includes `degraded_notice: true` |
 | **Invoke-time routing tier** | Routing rule `match.tiers` should use the same tier as D1 `ai_request.routing_tier` | Wired: `runFreshEventSource` passes `routingTierFromAdmission(...)` into `selectCandidateChain`, so journaled tier and actual routing agree |
-| **Idempotent replay result** | Client receives the prior terminal outcome | Terminal `completed` uses **placeholder prose** `"Prior request completed."` — not the original result text from R2 |
+| **Idempotent replay result** | Client receives the prior terminal outcome | `completed` → placeholder `"Prior request completed."` (not R2 replay). `admitted` → **`accepted` only**, no fabricated completion (C-04). `failed` → replays stored `terminalErrorCode` (C-11). `cancelled` → SSE `cancelled` |
 | **Kill switches → routing** | Guard stage 5 collects `provider:<id>` kills as `killedProviderIds`; the router excludes those targets (`kill_switch`) and fails over | Wired: `runFreshEventSource` passes `guard.killedProviderIds` into `selectCandidateChain`. Capability-level kills (manifest flag, D1 `global` / `capability:` / `installation:`) still 503 before SSE |
 | **Entitlement cost ceiling at invoke** | Effective cost class from D1 entitlement | Invoke path may use a **fixed premium ceiling** rather than reading the installation entitlement row |
 
@@ -649,7 +652,7 @@ Provider HTTPS streaming is live on the visit-summary path: compose sets `stream
 
 Live probes against a local Worker (`npm run dev` on `http://127.0.0.1:8787`) and a throwaway enrolled clinic. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§19.3](#193-ordered-probes) top to bottom**. If every probe matches, this stage is working.
 
-**Fake provider.** Local happy-path invokes use `provider_id: "fake"` / model `fake-v1`. The Worker constructs `new FakeAdapter(["success"])` for that id (`src/worker.ts` `resolveProviderPort`) so you do **not** need `DEEPSEEK_API_KEY` or `GEMINI_API_KEY`. The checked-in playbook `control/routing-policy/platform-default/1.json` targets DeepSeek then Gemini; without secrets those adapters fail **before** HTTPS with `provider_rejected` and do **not** fall through ([§19.3.9](#1939-default-provider-chain-without-api-keys)). Unknown `provider_id` values get `FakeAdapter(["terminal:provider_unavailable"])` — taxonomy `provider_unavailable` is retryable, which is how [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) forces retry/fallback without API keys.
+**Fake provider.** Local happy-path invokes use `provider_id: "fake"` / model `fake-v1`. The Worker constructs `new FakeAdapter(["success"])` for that id (`src/worker.ts` `resolveProviderPort`) so you do **not** need `DEEPSEEK_API_KEY` or `GEMINI_API_KEY`. The checked-in playbook `control/routing-policy/platform-default/1.json` targets DeepSeek then Gemini; without secrets those adapters fail **before** HTTPS with `provider_rejected` and do **not** fall through ([§19.3.9](#1939-default-provider-chain-without-api-keys)). Unknown `provider_id` values get `FakeAdapter(["retryable:provider_unavailable"])` — taxonomy `provider_unavailable` is retryable, which is how [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) forces retry/fallback without API keys (C-23).
 
 The isolate `ConfigCache` TTL is 30 s. After every D1/R2 policy, kill-switch, or entitlement write in these probes, **restart** `npm run dev` so the next POST is not served from a stale isolate.
 
@@ -751,13 +754,13 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `ai_attempt.selection_reason` claimed in [§14](#14-invocation-retry-and-fallback-logic) — **not a D1 column today** (invocation-only; dashboard uses provider-switch heuristic) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion) |
 | CanonicalRequest every field in R2 `envelope.prompt`; never on the SSE ([§12](#12-canonicalrequest--every-field)) | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
 | Fake adapter raw body in `envelope.attempts[]`; DeepSeek/Gemini wire map needs API keys | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement), [§19.3.15](#19315-what-this-stage-does-not-do) |
-| Idempotent `completed` / `admitted` replay uses placeholder `"Prior request completed."` ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.8](#1938-idempotent-replay-of-completed) |
-| Idempotent `failed` → SSE `failed` `internal_error`; `cancelled` → SSE `cancelled` ([§15](#15-idempotent-replay-path-no-provider-call)) | [§19.3.12](#19312-client-disconnect-and-cancelled-replay), [§19.3.13](#19313-idempotent-replay-of-failed) |
+| Idempotent `completed` replay uses placeholder `"Prior request completed."`; `admitted` replay emits **`accepted` only** (no fabricated completion) ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)) | [§19.3.8](#1938-idempotent-replay-of-completed) |
+| Idempotent `failed` → SSE `failed` with **stored `terminalErrorCode`** (fallback `internal_error`); `cancelled` → SSE `cancelled` ([§15](#15-idempotent-replay-path-no-provider-call)) | [§19.3.12](#19312-client-disconnect-and-cancelled-replay), [§19.3.13](#19313-idempotent-replay-of-failed) |
 | Client disconnect: D1 `Cancelled`, Quota DO `credit` `partial: true`; original connection may not deliver `event: cancelled` ([§5](#5-runtime-flow--fresh-path), [§11.7](#117-cancelled), [§16](#16-failure-paths-after-accepted)) | [§19.3.12](#19312-client-disconnect-and-cancelled-replay) |
 | Completed settlement handoff: DO credit, D1 `Completed`, `ai_attempt`, `usage_event`, R2 envelope, `payload_pointer` ([§17](#17-settlement-handoff-stage-11)) | [§19.3.6](#1936-canonical-request-routing-decision-and-settlement) |
 | Failed/cancelled still credit and write the same Stage 11 writers; Failed always has ≥1 `ai_attempt`; Cancelled always has `usage_event` ([§17](#17-settlement-handoff-stage-11)) | [§19.3.10](#19310-retry-fallback-and-chain-exhaustion), [§19.3.12](#19312-client-disconnect-and-cancelled-replay) |
 | Invoke-time cost ceiling is hardcoded `premium` / manifest `standard`, not the entitlement row ([§18](#18-spec-vs-platform-behavior-today)) | [§19.3.11](#19311-empty-chain-fail-closed-filters-and-kill-switch-failover) |
-| `text_delta` `data` JSON omits `trace_id` today (wrapper field is not serialized); other events include it in `data` ([§4](#4-http-response-shape), [§11.4](#114-text_delta)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
+| `text_delta` `data` is `{text, sequence, provisional}` — **`trace_id` on the wrapper only**, not inside `data` ([§4.1](#41-sse-response-contract-consolidated), [§11.4](#114-text_delta)) | [§19.3.5](#1935-happy-fresh-path-end-to-end) |
 | Missing guard handoff; `regenerating`; truncation; live output-guard trips; DeepSeek/Gemini HTTPS bodies | [§19.3.15](#19315-what-this-stage-does-not-do) (unprobeable on this fake path) |
 | What this stage does not do (guard matrix, lookup, entitle, conversational `context_requested`) | [§19.3.15](#19315-what-this-stage-does-not-do) |
 
@@ -786,7 +789,7 @@ Skip if `routing_policy` already has `status='active'` or a canary for this inst
 
 **Do:** `invoke_sse "idem-no-policy-1" "trace-no-policy-1"`
 
-**Expect:** HTTP 200, `content-type: text/event-stream`. First frame `event: accepted` with `request_reference` (Crockford `XXXX-XXXX`) and `trace_id: "trace-no-policy-1"`. Then `event: failed` whose `data` is the taxonomy body: `code: "internal_error"`, same `request_reference`, `trace_id`, `retry_safe: true`. No `text_delta`. Guard passed (you saw `accepted`); routing/provider never ran. D1 `ai_request.state` becomes `Failed`, `terminal_error_code = internal_error`. This is [§16](#16-failure-paths-after-accepted) unexpected platform error — not a guard failure.
+**Expect:** HTTP 200, `content-type: text/event-stream`. First frame `event: accepted` with `request_reference` (Crockford `XXXX-XXXX`) and `trace_id: "trace-no-policy-1"`. Then `event: failed` whose `data` is the taxonomy body: `code: "internal_error"`, same `request_reference`, `trace_id`, `retry_safe: true`. No `text_delta`. Guard passed (you saw `accepted`); routing/provider never ran. D1 `ai_request.state` becomes `Failed`, `terminal_error_code = internal_error`, with Stage 11 settlement (synthetic attempt, `usage_event`, envelope, DO credit) via `settlePostAcceptInternalError` (C-01).
 
 #### 19.3.3 Guard boundary without SSE
 
@@ -862,7 +865,7 @@ Inspect headers and frames. Save `request_reference` from `accepted` as **REF0**
 **Expect — SSE order and fields:**
 
 1. `event: accepted` first. `data` has `request_reference` (`XXXX-XXXX`), `trace_id: "trace-happy-1"`, and **no** `degraded_notice` (first credits are below a default 0.8 soft threshold).
-2. `event: text_delta`. `data.text` is `"Fake adapter summary."` (the fake adapter’s fixed prose). `data.sequence` is `0`. `data.provisional` is `true`. **Platform today:** `data` does **not** include `trace_id` — the broker puts `trace_id` on the event wrapper, and `encodeSseEvent` serializes only `event.data`. [§4](#4-http-response-shape) / [§11.4](#114-text_delta) say every `data` object includes `trace_id`; Expect the wire (omit), and treat that as the same class of gap [§18](#18-spec-vs-platform-behavior-today) lists for other topics.
+2. `event: text_delta`. `data.text` is `"Fake adapter summary."` (the fake adapter’s fixed prose). `data.sequence` is `0`. `data.provisional` is `true`. **`data` has no `trace_id`** — only `{text, sequence, provisional}`; correlation uses the wrapper / prior `accepted` frame ([§11.4](#114-text_delta)).
 3. `event: completed`. `data.result.finalContent.text` equals the assembled deltas (`"Fake adapter summary."`). `data.result.finalContent.authoritative` is `true`. `data.trace_id` is `"trace-happy-1"`.
 4. **No** further events after that terminal. **No** `heartbeat` (invoke finished in milliseconds; the 15 s silence timer never fires). **No** `regenerating`. **No** `context_requested` (visit summary is `single_shot`). **No** second terminal.
 
@@ -919,7 +922,7 @@ Fetch the envelope at `payload_pointer`. Count `ai_attempt` and `usage_event` fo
 
 Count D1 `ai_request` rows and `ai_attempt` rows before vs after. Note `routing_decision` on **REF0**.
 
-**Expect:** HTTP 200 SSE. `event: accepted` then `event: completed` with `result.finalContent.text = "Prior request completed."` and `authoritative: true` — **not** `"Fake adapter summary."` and **not** an R2 replay ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)). No `text_delta` (no provider). No new `ai_request` INSERT (still one row for **REF0**). `routing_decision` unchanged. `ai_attempt` count unchanged. Envelope object not rewritten (same `payload_pointer`). DO prior state `completed` (or `admitted` if you raced an in-flight job) maps to this placeholder; you are not charged a second provider call.
+**Expect:** HTTP 200 SSE. `event: accepted` then `event: completed` with `result.finalContent.text = "Prior request completed."` and `authoritative: true` — **not** `"Fake adapter summary."` and **not** an R2 replay ([§15](#15-idempotent-replay-path-no-provider-call), [§18](#18-spec-vs-platform-behavior-today)). No `text_delta` (no provider). No new `ai_request` INSERT (still one row for **REF0**). `routing_decision` unchanged. `ai_attempt` count unchanged. Envelope object not rewritten (same `payload_pointer`). DO prior state must be `completed` — an `admitted` replay emits **`accepted` only** with no fabricated terminal (C-04); you are not charged a second provider call.
 
 #### 19.3.9 Default provider chain without API keys
 
@@ -1008,7 +1011,7 @@ invoke_sse "idem-cancel-1" "trace-cancel-replay"
 invoke_sse "idem-ex-1" "trace-fail-replay"
 ```
 
-**Expect:** `accepted`, then `failed` `code: "internal_error"` — **not** `provider_unavailable` again. [§15](#15-idempotent-replay-path-no-provider-call) maps DO `failed` to placeholder `internal_error`. No new `ai_attempt`. `retry_safe: true` on that taxonomy body.
+**Expect:** `accepted`, then `failed` with `code: "provider_unavailable"` — the **original taxonomy code** replayed from the DO idempotency entry's `terminalErrorCode` at credit time (C-11), **not** a generic `internal_error`. No new `ai_attempt`. `retry_safe: true` on that taxonomy body.
 
 #### 19.3.14 Degraded notice and canary preference
 

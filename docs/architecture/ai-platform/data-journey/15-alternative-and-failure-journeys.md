@@ -11,21 +11,22 @@
 7. [7. Prose guard failures (post-accept)](#7-prose-guard-failures-post-accept)
 8. [8. Complete pre-SSE failure matrix](#8-complete-pre-sse-failure-matrix)
 9. [9. Journal retention and aged usage joinability](#9-journal-retention-and-aged-usage-joinability)
-10. [10. Guard-rejection counters are a lower bound](#10-guard-rejection-counters-are-a-lower-bound)
-11. [11. Behavioral verification](#11-behavioral-verification)
-   - [11.1 Setup](#111-setup)
-   - [11.2 Coverage](#112-coverage)
-   - [11.3 Ordered probes](#113-ordered-probes)
-     - [11.3.1 Reset to a known platform state](#1131-reset-to-a-known-platform-state)
-     - [11.3.2 Lifecycle alternatives (control plane)](#1132-lifecycle-alternatives-control-plane)
-     - [11.3.3 Zero quotas after entitle](#1133-zero-quotas-after-entitle)
-     - [11.3.4 Missing routing policy](#1134-missing-routing-policy)
-     - [11.3.5 JTI replay](#1135-jti-replay)
-     - [11.3.6 Grace admission and cron reconciliation](#1136-grace-admission-and-cron-reconciliation)
-     - [11.3.7 Client disconnect](#1137-client-disconnect)
-     - [11.3.8 Prose guard failures](#1138-prose-guard-failures)
-     - [11.3.9 Complete pre-SSE failure matrix](#1139-complete-pre-sse-failure-matrix)
-     - [11.3.10 Retention, counters, delete, and purge](#11310-retention-counters-delete-and-purge)
+10. [10. Scheduled handler (cron)](#10-scheduled-handler-cron)
+11. [11. Guard-rejection counters are a lower bound](#11-guard-rejection-counters-are-a-lower-bound)
+12. [12. Behavioral verification](#12-behavioral-verification)
+   - [12.1 Setup](#121-setup)
+   - [12.2 Coverage](#122-coverage)
+   - [12.3 Ordered probes](#123-ordered-probes)
+     - [12.3.1 Reset to a known platform state](#1231-reset-to-a-known-platform-state)
+     - [12.3.2 Lifecycle alternatives (control plane)](#1232-lifecycle-alternatives-control-plane)
+     - [12.3.3 Zero quotas after entitle](#1233-zero-quotas-after-entitle)
+     - [12.3.4 Missing routing policy](#1234-missing-routing-policy)
+     - [12.3.5 JTI replay](#1235-jti-replay)
+     - [12.3.6 Grace admission and cron reconciliation](#1236-grace-admission-and-cron-reconciliation)
+     - [12.3.7 Client disconnect](#1237-client-disconnect)
+     - [12.3.8 Prose guard failures](#1238-prose-guard-failures)
+     - [12.3.9 Complete pre-SSE failure matrix](#1239-complete-pre-sse-failure-matrix)
+     - [12.3.10 Retention, counters, delete, and purge](#12310-retention-counters-delete-and-purge)
 
 ---
 
@@ -71,6 +72,24 @@ Quota DO down at stage 8 → Worker admits under a **D1-backed** grace queue (`g
 3. **Quota:** last-known usage vs the entitlement snapshot already loaded from D1 — in-period `ai_request` count vs `request_quota`, plus `usage_event` token/cost sums vs budgets. Exhausted installations are not served during the outage.
 4. **Usage:** production settlement (`creditUsage` with `DB`) attaches tokens/cost onto the pending D1 row. Cron `reconcileGraceUsage` SELECTs pending rows from D1 (every isolate's work), re-admits on the recovered DO, and credits **attached** usage (not phantom zeros). TTL and max-attempt drops remain; dropped/reconciled rows leave `pending` so they no longer count toward the cap.
 
+5. **Reconcile outcomes** — every cron tick runs `reconcileGraceUsage` (after `flushRejectionCounters`; see [§10](#10-scheduled-handler-cron)). Pending rows can:
+
+| Outcome | Row effect |
+| ------- | ---------- |
+| Fresh `admitted` + credit OK | `status='reconciled'`; DO counters updated |
+| Admission transport failure | `reconcile_attempts++`, `reconcile_first_seen_at_ms` stamped; stays `pending` |
+| Admission `quota_exhausted` or `concurrency_exhausted` (any non-`admitted` / non-`idempotent` / non-`replay`) | Same retry stamp — **not dropped**; churns every tick until TTL or max attempts; attached usage **never credited** |
+| Admission `idempotent` | `status='dropped'`; journal reason **`settled_by_another_path_idempotent`** |
+| Admission `replay` | `status='dropped'`; journal reason **`settled_by_another_path_replay`** |
+| Credit `unknown_request` after fresh admit | `status='dropped'`; journal reason **`settled_by_another_path_unknown_request`** |
+| Credit transport failure after fresh admit | Retry stamp — next tick admission may return `replay` → drop without credit (**SX-018 leak**: DO `inFlight` leaks until `sweepAbandonedAdmissions` at the 2 h horizon) |
+| `reconcile_attempts >= 5` (`GRACE_RECONCILE_MAX_ATTEMPTS`) | `status='dropped'`; reason **`max_attempts`** — checked **before** any DO RPC |
+| TTL: `nowMs - reconcileQueuedAtMs > 7_200_000` (`GRACE_RECONCILE_TTL_MS`, strict `>`) | `status='dropped'`; reason **`expired`** |
+
+All five `GraceDropReason` values (`credit/index.ts`): `expired`, `max_attempts`, `settled_by_another_path_idempotent`, `settled_by_another_path_replay`, `settled_by_another_path_unknown_request`.
+
+6. **TTL origin:** on first cron presentation, `reconcileQueuedAtMs` defaults to **`nowMs`** when `reconcile_first_seen_at_ms` is NULL (`prior.reconcileQueuedAtMs ?? nowMs` **before** the TTL check). TTL therefore **cannot fire on first sighting** even when `queued_at` is hours old. Only **`reconcile_first_seen_at_ms`** (set on first failed presentation / retry stamp) matters for subsequent ticks; `queued_at` age is irrelevant.
+
 ## 6. Client disconnect
 
 Stream `cancelled` → Quota DO `credit` with `partial: true` even when no tokens accrued (`{ tokens: 0, cost: 0 }`) so `inFlight` is released → idempotency state `cancelled`. The same settlement writers as completed then insert `usage_event` (always) and `ai_attempt` (when invocation recorded attempts), plus one R2 envelope.
@@ -115,9 +134,22 @@ Provider kill switches are **not** a pre-SSE outage. Guard stage 5 returns the r
 
 ## 9. Journal retention and aged usage joinability
 
-Scheduled `runRetentionPurge` (`0 3 * * *`) keeps ledger money rows while the journal is purged:
+Scheduled `runRetentionPurge` (`0 3 * * *`) runs four independent passes (strict `<` cutoffs unless noted):
 
-1. `UPDATE usage_event SET request_id = NULL` for aged `ai_request` rows — this is why `usage_event.request_id` is nullable.
+| Pass | Horizon | What is deleted / mutated |
+| ---- | ------- | ------------------------- |
+| **Diagnostic** | Per-manifest class (`diagnostic_30d` for visit-summary; fallback `diagnostic_7d`) — strict `ageMs > horizonMs` | R2 envelope delete + `ai_request.payload_pointer = NULL`. Row and `ai_attempt`/`usage_event` **survive**. Distinct from journal purge. |
+| **Journal** | `created_at < now − 90d` | R2 delete (pointer or derived key) **first**; then `usage_event.request_id` NULL; then `ai_attempt` + `ai_request` row deletes. |
+| **Ledger** | `recorded_at < now − 2555d` (and rollup period string `< cutoff YYYY-MM`) | `usage_event` rows; `usage_rollup` rows; `control_audit` rows; **`capability_grant` rows including live grants** — retention does not distinguish overlay state. |
+| **Counter** | `time_bucket < now − 90d` | `platform_counter` buckets only. |
+
+**Never purged:** `kill_switch` — no `DELETE FROM kill_switch` in `runRetentionPurge`. Active kill switches survive every cron until cleared via `POST /control/kill-switches/{arm|disarm}` or direct D1.
+
+**Two-purge distinction (visit-summary):** at ~31 days diagnostic purge nulls the pointer and deletes the R2 envelope while the D1 row remains; at ~90 days journal purge deletes the row (and attempts). Pointer NULLing is the **diagnostic** horizon, not the journal horizon.
+
+**Journal purge joinability:** for aged journal rows:
+
+1. `UPDATE usage_event SET request_id = NULL` — this is why `usage_event.request_id` is nullable.
 2. Then `DELETE` those `ai_request` / `ai_attempt` rows (and their R2 envelopes).
 
 Aged usage therefore **loses request-level joinability by design**. `runReconciliation`
@@ -125,7 +157,27 @@ Aged usage therefore **loses request-level joinability by design**. `runReconcil
 Nulled `request_id` can never match, so reconciliation coverage shrinks with age. The money
 row remains as commercial evidence; it is no longer joinable to a journal ticket.
 
-## 10. Guard-rejection counters are a lower bound
+## 10. Scheduled handler (cron)
+
+Every cron tick runs **four jobs in fixed order**, each wrapped in its own **try/catch** so one failure does not abort the others:
+
+1. `flushRejectionCounters` — always
+2. `reconcileGraceUsage` — always (`ctx`/`now` **not** passed — wall clock only)
+3. Cron-specific branch:
+   - `"0 3 * * *"` → `runRetentionPurge` (no `bindings.now` — wall clock only)
+   - `"0 4 * * *"` → `runRollupAndReconciliation` (no `window` — full ledger + default 30-day reconciliation window)
+   - any other cron string → steps 1–2 only
+4. `scheduled_cron_complete` log
+
+**No time injection through cron.** Injectable clocks exist only on direct job-function calls (`runRetentionPurge({ now })`, `runRollupAndReconciliation({ window })`, `reconcileGraceUsage(_, { now })`, DO RPC body `now`) and on probe backdating against real wall clock.
+
+**Local dev trigger (Wrangler 4.86.0):** canonical test hook is `GET /cdn-cgi/handler/scheduled?cron=<expression>` with `wrangler dev --test-scheduled`. Wrangler's scheduled middleware also exposes `/__scheduled?cron=…` as an alternate dev-only path — both fire `scheduled()`; prefer **`/cdn-cgi/handler/scheduled`** in probes and docs.
+
+**Quota DO sweeps:** no `alarm()` handler — all ephemeral sweeps are **lazy**, run at the start of mutating RPCs (`admission`, `credit`, `release`) and on read-only `inspectRPC` (in memory only — no `storage.put`).
+
+**`usage_rollup` consumer:** the rollup cron writes `usage_rollup`; **no in-repo reader** selects it — dashboards read `ai_attempt`/`ai_request`/`platform_counter` only. The table is written for **external reporting**. Retention still purges aged rollup rows at the ledger horizon.
+
+## 11. Guard-rejection counters are a lower bound
 
 `recordGuardRejection` increments an isolate-local map. Cron `flushRejectionCounters` writes
 only the isolate that happens to run the tick. Tallies in other isolates are lost on eviction.
@@ -135,9 +187,9 @@ tallies to D1 batched with the existing journal write at request end rather than
 cron isolate — not implemented.
 
 
-## 11. Behavioral verification
+## 12. Behavioral verification
 
-Live probes against a local Worker (`npx wrangler dev --env development --test-scheduled`) and a throwaway local clinic Supabase. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§11.3](#113-ordered-probes) top to bottom**. If every probe matches, this failure catalog is working.
+Live probes against a local Worker (`npx wrangler dev --env development --test-scheduled`) and a throwaway local clinic Supabase. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§12.3](#123-ordered-probes) top to bottom**. If every probe matches, this failure catalog is working.
 
 Admission records AAT `jti` only after a **successful** Quota DO admit (`EPHEMERAL_HORIZON_MS` = 2 h). Reusing the same token on a later request that reaches stage 8 is [§4](#4-jti-replay) (`unauthenticated`), not a new job. Mint a **fresh** `issue_ai_token()` for every probe that can pass stage 8, except the replay probe itself.
 
@@ -145,7 +197,7 @@ The isolate `ConfigCache` TTL is 30 s (`CACHE_TTL_MS`). After any control-plane 
 
 Published capability on this Worker is only `clinic.visit_summary@1.0.0` (single-shot). `Access.allowedStaffRoles` is `clinician` / `nurse`; `requiredCapabilityScope` is `ai.visit_summary`; `minimumPlanTier` is `standard` (hardcoded again in `createProductionPreAccept`). Enroll `plan` must be `standard` or higher.
 
-### 11.1 Setup
+### 12.1 Setup
 
 - Local Worker on `http://127.0.0.1:8787` with `--test-scheduled` so Wrangler exposes `/cdn-cgi/handler/scheduled` (not a production route — it fires `scheduled()`).
 - `OPERATOR_BEARER_TOKEN` from `.dev.vars` / `.dev.vars.development` (one secret; `OPERATOR_ID` is `platform-operator` in `wrangler.toml`).
@@ -184,65 +236,70 @@ invoke() {
 
 `$VISIT_BODY` is the visit-summary object from [Stage 8 §7](10-stage-8-request-ingress.md#7-visit-summary-example-body) with `context.org` / `context.branch` equal to the AAT claims.
 
-### 11.2 Coverage
+### 12.2 Coverage
 
 Every claim in this file maps to a probe, including every [§8](#8-complete-pre-sse-failure-matrix) matrix row. Carry them all out.
 
 
 | Claim | Probe |
 | ----- | ----- |
-| One `OPERATOR_BEARER_TOKEN` / `OPERATOR_ID`; `control_audit` cannot distinguish operators | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/suspend` → `installation.status=suspended` → AAT `installation_suspended` | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/resume` → `status=active` → restores | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/rotate` → new key `valid_until` = now + 365 days; prior keys keep `revoked_at` NULL (dual-key overlap); old and new `kid` AATs verify until `revoke-key` | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/revoke-key` → `revoked_at` on that key; AAT with that `kid` fails identity | [§11.3.2](#1132-lifecycle-alternatives-control-plane) |
-| `POST …/delete` → `status=deleted` → `unauthenticated` | [§11.3.10](#11310-retention-counters-delete-and-purge) |
-| `POST …/purge` deletes installation data + R2 envelopes (irreversible) | [§11.3.10](#11310-retention-counters-delete-and-purge) |
-| `entitlement.status=active` and `request_quota=0` → admission `quota_exhausted` | [§11.3.3](#1133-zero-quotas-after-entitle) |
-| Guard passes → `accepted` → invoke preload miss → `failed` `internal_error` | [§11.3.4](#1134-missing-routing-policy) |
-| Target `features` omit/mistype `min_context_window`, `cost_class`, or `languages` → `feature_unsupported` (no throw) | [§11.3.4](#1134-missing-routing-policy) |
-| Remaining chain empty → `failed` / `provider_unavailable` (not `internal_error`) | [§11.3.4](#1134-missing-routing-policy) |
-| Same `jti` within 2 h → admission `replay` → `unauthenticated` | [§11.3.5](#1135-jti-replay) |
-| Quota DO down → D1 `grace_admission_queue` (not isolate memory) | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Cap `GRACE_ADMISSION_CAP` (5) pending → `rate_limited` + `retry_after`, not `quota_exhausted`; count is durable | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Journaled `(installation_id, idempotency_key)` → `idempotent` (skips provider) | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Pending grace row on same key → same `graceRequestId` / `requestReference` | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Grace `UNIQUE (installation_id, idempotency_key)`; `ai_request` has no such unique | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Exhausted ledger is not served during an outage (`quota_exhausted`) | [§11.3.3](#1133-zero-quotas-after-entitle), [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| `creditUsage` attaches tokens/cost onto the pending D1 row; cron credits **attached** usage | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Cron `reconcileGraceUsage` re-admits on the recovered DO; TTL / max-attempt drops leave `pending` so they no longer count toward the cap | [§11.3.6](#1136-grace-admission-and-cron-reconciliation) |
-| Client disconnect → SSE `cancelled`; Quota DO `credit` `partial: true` even at `{ tokens: 0, cost: 0 }`; idempotency `cancelled` | [§11.3.7](#1137-client-disconnect) |
-| Cancel writes `usage_event` always, `ai_attempt` only when invocation recorded attempts, plus one R2 envelope | [§11.3.7](#1137-client-disconnect) |
-| Output > 128000 chars → `validation_failed`; credit accrued/zero; `partial: false`; idempotency `failed` | [§11.3.8](#1138-prose-guard-failures) |
-| Stop sequence `<\|end\|>` → same | [§11.3.8](#1138-prose-guard-failures) |
-| System-prompt leak (opening / interior / ending slice) → same | [§11.3.8](#1138-prose-guard-failures) |
-| Refusal prefix (`I'm sorry, I can't help with that` / `I'm sorry, I can't assist`) → same | [§11.3.8](#1138-prose-guard-failures) |
-| Injection-echo needle `Ignore previous instructions` → same | [§11.3.8](#1138-prose-guard-failures) |
-| Empty output → same | [§11.3.8](#1138-prose-guard-failures) |
-| Provider truncation (`finishReason: length`) is never authoritative `completed` | [§11.3.8](#1138-prose-guard-failures) |
-| Ingress size → HTTP 413 `request_too_large` (empty `request_reference` / `trace_id`) | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Ingress JSON → HTTP 422, no taxonomy body | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Missing `x-idempotency-key` / `x-capability-version` → HTTP 422, no taxonomy body | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 1 `request_too_large` / `internal_error` | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 2 `unauthenticated` / `installation_suspended` | [§11.3.2](#1132-lifecycle-alternatives-control-plane), [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 3 `forbidden_capability` / `capability_disabled` | [§11.3.1](#1131-reset-to-a-known-platform-state), [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 4 `rate_limited` (`retry_after` from binding, else 60) | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 5 `capability_unknown` / `capability_retired` / `capability_disabled` | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 6 `context_required` / `context_invalid` / `conversation_budget_exhausted` | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 7 `request_too_large` (economics + prompt-scaffold bytes) | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 8 `unauthenticated` / `quota_exhausted` / `rate_limited` / `internal_error` | [§11.3.3](#1133-zero-quotas-after-entitle), [§11.3.5](#1135-jti-replay), [§11.3.6](#1136-grace-admission-and-cron-reconciliation), [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 9 `context_invalid` / `internal_error` | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| Stage 10 `internal_error` (compose failure) | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| `provider:<id>` kill switch is not a pre-SSE 503; after `accepted`, `reason_code: kill_switch`; empty chain → `provider_unavailable` | [§11.3.9](#1139-complete-pre-sse-failure-matrix) |
-| `runRetentionPurge` (`0 3 * * *`) nulls `usage_event.request_id` then deletes `ai_request` / `ai_attempt` / R2 envelopes | [§11.3.10](#11310-retention-counters-delete-and-purge) |
-| Aged usage loses request-level joinability; `LEFT JOIN usage_event u ON u.request_id = r.request_id` cannot match; money row remains | [§11.3.10](#11310-retention-counters-delete-and-purge) |
-| `recordGuardRejection` is isolate-local; cron `flushRejectionCounters` writes only the ticking isolate; `platform_counter.count` is a lower bound | [§11.3.10](#11310-retention-counters-delete-and-purge) |
-| Request-end batched flush is not implemented | [§11.3.10](#11310-retention-counters-delete-and-purge) |
+| One `OPERATOR_BEARER_TOKEN` / `OPERATOR_ID`; `control_audit` cannot distinguish operators | [§12.3.2](#1232-lifecycle-alternatives-control-plane) |
+| `POST …/suspend` → `installation.status=suspended` → AAT `installation_suspended` | [§12.3.2](#1232-lifecycle-alternatives-control-plane) |
+| `POST …/resume` → `status=active` → restores | [§12.3.2](#1232-lifecycle-alternatives-control-plane) |
+| `POST …/rotate` → new key `valid_until` = now + 365 days; prior keys keep `revoked_at` NULL (dual-key overlap); old and new `kid` AATs verify until `revoke-key` | [§12.3.2](#1232-lifecycle-alternatives-control-plane) |
+| `POST …/revoke-key` → `revoked_at` on that key; AAT with that `kid` fails identity | [§12.3.2](#1232-lifecycle-alternatives-control-plane) |
+| `POST …/delete` → `status=deleted` → `unauthenticated` | [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| `POST …/purge` deletes installation data + R2 envelopes (irreversible) | [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| `entitlement.status=active` and `request_quota=0` → admission `quota_exhausted` | [§12.3.3](#1233-zero-quotas-after-entitle) |
+| Guard passes → `accepted` → invoke preload miss → `failed` `internal_error` | [§12.3.4](#1234-missing-routing-policy) |
+| Target `features` omit/mistype `min_context_window`, `cost_class`, or `languages` → `feature_unsupported` (no throw) | [§12.3.4](#1234-missing-routing-policy) |
+| Remaining chain empty → `failed` / `provider_unavailable` (not `internal_error`) | [§12.3.4](#1234-missing-routing-policy) |
+| Same `jti` within 2 h → admission `replay` → `unauthenticated` | [§12.3.5](#1235-jti-replay) |
+| Quota DO down → D1 `grace_admission_queue` (not isolate memory) | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Cap `GRACE_ADMISSION_CAP` (5) pending → `rate_limited` + `retry_after`, not `quota_exhausted`; count is durable | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Journaled `(installation_id, idempotency_key)` → `idempotent` (skips provider) | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Pending grace row on same key → same `graceRequestId` / `requestReference` | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Grace `UNIQUE (installation_id, idempotency_key)`; `ai_request` has no such unique | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Exhausted ledger is not served during an outage (`quota_exhausted`) | [§12.3.3](#1233-zero-quotas-after-entitle), [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| `creditUsage` attaches tokens/cost onto the pending D1 row; cron credits **attached** usage | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Cron `reconcileGraceUsage` re-admits on the recovered DO; TTL / max-attempt drops leave `pending` so they no longer count toward the cap | [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Five `GraceDropReason`s; reconcile-time `quota_exhausted` retry-churn; SX-018 credit-transport leak | [§5](#5-grace-admission-cron-reconciliation), [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| TTL cannot fire on first sighting; `queued_at` age irrelevant | [§5](#5-grace-admission-cron-reconciliation), [§12.3.6](#1236-grace-admission-and-cron-reconciliation) |
+| Client disconnect → SSE `cancelled`; Quota DO `credit` `partial: true` even at `{ tokens: 0, cost: 0 }`; idempotency `cancelled` | [§12.3.7](#1237-client-disconnect) |
+| Cancel writes `usage_event` always, `ai_attempt` only when invocation recorded attempts, plus one R2 envelope | [§12.3.7](#1237-client-disconnect) |
+| Output > 128000 chars → `validation_failed`; credit accrued/zero; `partial: false`; idempotency `failed` | [§12.3.8](#1238-prose-guard-failures) |
+| Stop sequence `<\|end\|>` → same | [§12.3.8](#1238-prose-guard-failures) |
+| System-prompt leak (opening / interior / ending slice) → same | [§12.3.8](#1238-prose-guard-failures) |
+| Refusal prefix (`I'm sorry, I can't help with that` / `I'm sorry, I can't assist`) → same | [§12.3.8](#1238-prose-guard-failures) |
+| Injection-echo needle `Ignore previous instructions` → same | [§12.3.8](#1238-prose-guard-failures) |
+| Empty output → same | [§12.3.8](#1238-prose-guard-failures) |
+| Provider truncation (`finishReason: length`) is never authoritative `completed` | [§12.3.8](#1238-prose-guard-failures) |
+| Ingress size → HTTP 413 `request_too_large` (empty `request_reference` / `trace_id`) | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Ingress JSON → HTTP 422, no taxonomy body | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Missing `x-idempotency-key` / `x-capability-version` → HTTP 422, no taxonomy body | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 1 `request_too_large` / `internal_error` | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 2 `unauthenticated` / `installation_suspended` | [§12.3.2](#1232-lifecycle-alternatives-control-plane), [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 3 `forbidden_capability` / `capability_disabled` | [§12.3.1](#1231-reset-to-a-known-platform-state), [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 4 `rate_limited` (`retry_after` from binding, else 60) | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 5 `capability_unknown` / `capability_retired` / `capability_disabled` | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 6 `context_required` / `context_invalid` / `conversation_budget_exhausted` | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 7 `request_too_large` (economics + prompt-scaffold bytes) | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 8 `unauthenticated` / `quota_exhausted` / `rate_limited` / `internal_error` | [§12.3.3](#1233-zero-quotas-after-entitle), [§12.3.5](#1235-jti-replay), [§12.3.6](#1236-grace-admission-and-cron-reconciliation), [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 9 `context_invalid` / `internal_error` | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| Stage 10 `internal_error` (compose failure) | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| `provider:<id>` kill switch is not a pre-SSE 503; after `accepted`, `reason_code: kill_switch`; empty chain → `provider_unavailable` | [§12.3.9](#1239-complete-pre-sse-failure-matrix) |
+| `runRetentionPurge` (`0 3 * * *`) nulls `usage_event.request_id` then deletes `ai_request` / `ai_attempt` / R2 envelopes | [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| Full retention surface: diagnostic + journal + ledger (`usage_rollup`, `control_audit`, `capability_grant` at 2555 d) + counter (90 d); `kill_switch` never purged | [§9](#9-journal-retention-and-aged-usage-joinability), [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| Scheduled handler: per-job try/catch; no time injection through cron; lazy DO sweeps (no `alarm()`) | [§10](#10-scheduled-handler-cron) |
+| Local cron trigger uses `/cdn-cgi/handler/scheduled` | [§10](#10-scheduled-handler-cron), [§12.1](#121-setup) |
+| Aged usage loses request-level joinability; `LEFT JOIN usage_event u ON u.request_id = r.request_id` cannot match; money row remains | [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| `recordGuardRejection` is isolate-local; cron `flushRejectionCounters` writes only the ticking isolate; `platform_counter.count` is a lower bound | [§12.3.10](#12310-retention-counters-delete-and-purge) |
+| Request-end batched flush is not implemented | [§12.3.10](#12310-retention-counters-delete-and-purge) |
 
 
-### 11.3 Ordered probes
+### 12.3 Ordered probes
 
-#### 11.3.1 Reset to a known platform state
+#### 12.3.1 Reset to a known platform state
 
 **Do:** as clinic owner, mint a keypair if none exists (`SELECT public.enroll_installation_keypair();`). Save `installation_id` **I0**, `kid` **K0**, `public_jwk.x`. Start the Worker with `--test-scheduled`. Enroll with `plan: "standard"` (not `starter` for visit-summary minimum tier):
 
@@ -293,7 +350,7 @@ Wait 31 s.
 
 **Expect:** HTTP 200 `{ "installation_id": "<I0>", "status": "active" }`. D1 `entitlement.status=active`, `request_quota=1000`. Repeat entitle → 409 `not_pending`. Do **not** publish a routing policy yet.
 
-#### 11.3.2 Lifecycle alternatives (control plane)
+#### 12.3.2 Lifecycle alternatives (control plane)
 
 **Do:** `POST $GATEWAY/control/installations/$INSTALLATION_ID/suspend` with the operator Bearer (empty body). Then `d1 "SELECT status FROM installation WHERE installation_id = '<I0>'"` and `d1 "SELECT action, operator_id FROM control_audit ORDER BY recorded_at DESC LIMIT 5"`. Wait 31 s. Mint a fresh AAT. `invoke`.
 
@@ -320,7 +377,7 @@ Wait 31 s. Invoke with an AAT whose header `kid` is **K0**, then mint a new AAT 
 
 **Expect:** revoke K0 HTTP 200; K0 `revoked_at` set. K0 AAT → 401 `unauthenticated`. Repeat revoke K0 → 409 `key_already_revoked`. Revoke K1 (last active key) → 409 `cannot_revoke_last_active_key`. Clinic `rotate_installation_key` → `success = true` with new **K2** (same `installation_id` **I0**). Platform rotate HTTP 200; **K1** `revoked_at` stays NULL (dual-key overlap with **K2**). Freshly minted AAT with **K2** verifies. Save **K2** as the live `kid`.
 
-#### 11.3.3 Zero quotas after entitle
+#### 12.3.3 Zero quotas after entitle
 
 Entitle cannot run again (`not_pending`). **Do:**
 
@@ -336,7 +393,7 @@ Wait 31 s. Fresh AAT. `invoke`.
 
 **Expect:** later probes can admit again.
 
-#### 11.3.4 Missing routing policy
+#### 12.3.4 Missing routing policy
 
 Guard compose does **not** load the routing document. **Do:** fresh AAT, `invoke` (still no `routing_policy` row with `status=active` / `canary` for `standard`). Read the SSE stream to the terminal event (`curl -N` or `invoke` as-is if it buffers the stream).
 
@@ -360,13 +417,13 @@ curl -sS -X POST "$GATEWAY/control/routing-policies/standard/versions/1/promote"
 
 **Expect:** SSE `accepted` then `completed` (local `FakeAdapter(["success"])` text `Fake adapter summary.`). Save this `request_reference` if the stream echoes it. This is the working policy for later post-accept probes.
 
-#### 11.3.5 JTI replay
+#### 12.3.5 JTI replay
 
 **Do:** mint AAT **T**. `invoke` with idempotency key `jti-a` using **T**. Immediately `invoke` with a **different** key `jti-b` still using **T**.
 
 **Expect:** first call is admitted (SSE opens). Second call is HTTP 401 `code: "unauthenticated"` (DO `outcome: "replay"`, `EPHEMERAL_HORIZON_MS` = 7_200_000 ms). Same `jti` within 2 h cannot start a second job. (Retry of the **same** job uses a **new** AAT and the **same** `x-idempotency-key` — that is idempotent replay, not this probe.)
 
-#### 11.3.6 Grace admission and cron reconciliation
+#### 12.3.6 Grace admission and cron reconciliation
 
 Local Miniflare keeps the Quota DO up, so the Worker does not enter `admitUnderGrace` on a healthy process. The queue, cap, uniqueness, and cron drain are still D1 — force them with SQL and Wrangler’s scheduled injector.
 
@@ -387,7 +444,7 @@ d1 "INSERT INTO grace_admission_queue (grace_request_id, installation_id, idempo
 d1 "SELECT COUNT(*) AS pending FROM grace_admission_queue WHERE installation_id = '<I0>' AND status = 'pending'"
 ```
 
-**Expect:** `g-cap-6` is absent. Pending count stays 5 — the cap is a durable `COUNT(*)`, not isolate memory. On a live outage the Worker maps this miss to HTTP 429 `rate_limited` with `retry_after` 60 (`DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS`), **not** `quota_exhausted`. That HTTP observation requires Quota DO transport `unavailable` (unprobeable on a healthy local DO). Ledger exhaustion during an outage is the same `isLedgerQuotaExhausted` check already seen in [§11.3.3](#1133-zero-quotas-after-entitle).
+**Expect:** `g-cap-6` is absent. Pending count stays 5 — the cap is a durable `COUNT(*)`, not isolate memory. On a live outage the Worker maps this miss to HTTP 429 `rate_limited` with `retry_after` 60 (`DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS`), **not** `quota_exhausted`. That HTTP observation requires Quota DO transport `unavailable` (unprobeable on a healthy local DO). Ledger exhaustion during an outage is the same `isLedgerQuotaExhausted` check already seen in [§12.3.3](#1233-zero-quotas-after-entitle).
 
 **Do:** pick one pending row. `d1 "UPDATE grace_admission_queue SET usage_tokens = 10, usage_cost = 0.01, partial = 0 WHERE grace_request_id = '<that id>'"`. Fire cron (every tick runs `flushRejectionCounters` then `reconcileGraceUsage`; `0 3 * * *` also runs retention):
 
@@ -402,11 +459,11 @@ d1 "SELECT grace_request_id, status, usage_tokens, usage_cost FROM grace_admissi
 
 **Expect:** those rows become `status=dropped` (leave `pending`). `COUNT(*) … status='pending'` no longer includes them.
 
-**Do:** after a **completed** job from [§11.3.4](#1134-missing-routing-policy), mint a **new** AAT (new `jti`) and `invoke` with the **same** `x-idempotency-key` as that completed job.
+**Do:** after a **completed** job from [§12.3.4](#1234-missing-routing-policy), mint a **new** AAT (new `jti`) and `invoke` with the **same** `x-idempotency-key` as that completed job.
 
 **Expect:** guard `outcome: "idempotent"` — pipeline skips the provider (SSE replays the prior terminal). That is the journaled-row short-circuit. When the DO is down, `admitUnderGrace` does the same via `SELECT ai_request` / pending grace on `(installation_id, idempotency_key)` and returns the stored `graceRequestId` / `requestReference` for a pending grace hit. Re-selecting that pending key does not insert a second queue row (unique + `selectGraceByKey`).
 
-#### 11.3.7 Client disconnect
+#### 12.3.7 Client disconnect
 
 **Do:** fresh AAT. Open the stream and abort after `accepted` (before the terminal):
 
@@ -423,7 +480,7 @@ Then `d1` the `ai_request` / `usage_event` / `ai_attempt` for that job; confirm 
 
 **Expect:** if the abort wins, SSE `event: cancelled`. Broker `creditSink` is called with `partial: true` (`cancelled.consumesQuota` is `"Partially, recorded"`, not `"Yes"`) even when usage is `{ tokens: 0, cost: 0 }`, so Quota DO `inFlight` is released and idempotency state is `cancelled`. `usage_event` is present. `ai_attempt` is present only if invocation recorded attempts (abort before the first provider call may have none). One R2 envelope. If local `FakeAdapter` completes first, you will see `completed` instead — the disconnect lost the race on the fast fake path (retry immediately after `accepted`, or use a slow wired provider). That race is the only unprobeable part of this claim on the default local adapter.
 
-#### 11.3.8 Prose guard failures
+#### 12.3.8 Prose guard failures
 
 Production thresholds (`PRODUCTION_GUARD_THRESHOLDS`): `maxLength` 128000; `stopSequences` `["<|end|>"]`; `refusalPrefixes` `I'm sorry, I can't help with that` and `I'm sorry, I can't assist`; `injectionEchoNeedle` `Ignore previous instructions`; leak needles are the composed system-instruction opening / interior / ending slices from the guard. Every hit is SSE `failed` `validation_failed` (HTTP 200 stream, not pre-SSE 422). Settlement: credit accrued or zero usage with `partial: false` (taxonomy `consumesQuota: "Yes"`); idempotency `failed`.
 
@@ -447,7 +504,7 @@ Local `resolveProviderPort("fake")` is `new FakeAdapter(["success"])` — assemb
 
 **Expect:** each of those assembled texts → SSE `failed` / `validation_failed`, credit `partial: false`, idempotency `failed`, never `completed`. Truncated prose is never authoritative `completed`. Local `FakeAdapter(["success"])` still completes with `Fake adapter summary.` for every `user_intent` — these terminals are observable only when the invoke path actually emits that assembled text.
 
-#### 11.3.9 Complete pre-SSE failure matrix
+#### 12.3.9 Complete pre-SSE failure matrix
 
 Every row is a pre-SSE HTTP JSON failure except where noted. Error bodies that have a taxonomy code are `{ code, request_reference, trace_id, retry_safe }` plus `retry_after` / `period_reset` when `supplementaryFieldsForCode` adds them.
 
@@ -469,7 +526,7 @@ Every row is a pre-SSE HTTP JSON failure except where noted. Error bodies that h
 
 **Stage 2 `unauthenticated`.** **Do:** omit `Authorization`; or send `Bearer not-a-jws`. Fresh valid AAT is not required.
 
-**Expect:** HTTP 401 `code: "unauthenticated"`. Suspended is already [§11.3.2](#1132-lifecycle-alternatives-control-plane) (403 `installation_suspended`). Deleted is [§11.3.10](#11310-retention-counters-delete-and-purge).
+**Expect:** HTTP 401 `code: "unauthenticated"`. Suspended is already [§12.3.2](#1232-lifecycle-alternatives-control-plane) (403 `installation_suspended`). Deleted is [§12.3.10](#12310-retention-counters-delete-and-purge).
 
 **Stage 3 `capability_disabled`.** **Do:**
 
@@ -483,7 +540,7 @@ Wait 31 s. Fresh AAT. `invoke`. Then delete the row and wait 31 s. Repeat with `
 
 **Stage 3 `forbidden_capability` (grants).** **Do:** `d1 "UPDATE entitlement SET allowed_capabilities = '[]' WHERE installation_id = '<I0>'"`. Wait 31 s. `invoke`. Restore `["clinic.visit_summary"]` and wait 31 s.
 
-**Expect:** HTTP 403 `code: "forbidden_capability"`. Pending-entitlement 403 was [§11.3.1](#1131-reset-to-a-known-platform-state).
+**Expect:** HTTP 403 `code: "forbidden_capability"`. Pending-entitlement 403 was [§12.3.1](#1231-reset-to-a-known-platform-state).
 
 **Stage 4.** **Do:** 121 `invoke`s in one minute with **fresh AATs** and distinct idempotency keys (actor binding `simple.limit = 120` / `period = 60` in `wrangler.toml`; installation 600, capability 300).
 
@@ -533,7 +590,7 @@ Wait 31 s. `invoke`. Then delete those global overlay grant rows and wait 31 s s
 
 **Stage 8 `unauthenticated` (exp).** **Do:** mint AAT; wait until `now > exp + 60` (`ADMISSION_CLOCK_SKEW_SECONDS`; issuer lifetime is minutes, max `exp − iat` 600 s). `invoke`.
 
-**Expect:** HTTP 401 `code: "unauthenticated"` (stage 8 defensive recheck). JTI replay is [§11.3.5](#1135-jti-replay). `quota_exhausted` is [§11.3.3](#1133-zero-quotas-after-entitle). Grace-cap `rate_limited` is [§11.3.6](#1136-grace-admission-and-cron-reconciliation) (DO-down). Stage 8 `internal_error` is DO transport `client_error` or an unknown admission `outcome` — **unprobeable** on a healthy DO.
+**Expect:** HTTP 401 `code: "unauthenticated"` (stage 8 defensive recheck). JTI replay is [§12.3.5](#1235-jti-replay). `quota_exhausted` is [§12.3.3](#1233-zero-quotas-after-entitle). Grace-cap `rate_limited` is [§12.3.6](#1236-grace-admission-and-cron-reconciliation) (DO-down). Stage 8 `internal_error` is DO transport `client_error` or an unknown admission `outcome` — **unprobeable** on a healthy DO.
 
 **Stage 9.** **Do:** visit-summary invoke that has already passed stage 8.
 
@@ -541,7 +598,7 @@ Wait 31 s. `invoke`. Then delete those global overlay grant rows and wait 31 s s
 
 **Stage 10.** **Do:** visit-summary invoke with bound prompt artifacts present.
 
-**Expect:** compose succeeds. `composeRequest` `internal_error` (missing system instruction / rule fragment / omitted `requestReference`) is **unprobeable** without breaking the bundled registry. The post-accept preload miss in [§11.3.4](#1134-missing-routing-policy) is **not** this row — that is after SSE `accepted`.
+**Expect:** compose succeeds. `composeRequest` `internal_error` (missing system instruction / rule fragment / omitted `requestReference`) is **unprobeable** without breaking the bundled registry. The post-accept preload miss in [§12.3.4](#1234-missing-routing-policy) is **not** this row — that is after SSE `accepted`.
 
 **Provider kill switch (not pre-SSE).** **Do:** restore visit_summary. Publish/promote a policy whose chain is `deepseek` then `fake` (complete features).
 
@@ -553,7 +610,7 @@ Wait 31 s. Fresh AAT. `invoke`. Inspect `routing_decision`. Then kill `fake` as 
 
 **Expect:** HTTP 200 SSE `accepted` — **not** 503. `excluded[]` has `reason_code: "kill_switch"` for `deepseek`; `fake` still runs → `completed`. When every target is excluded, `failed` / `provider_unavailable`. `provider:fake` **does** 503 at stage 3 because preAccept hardcodes `providerId: "fake"` — that is not this claim; the claim is `provider:<id>` at stage 5 collection.
 
-#### 11.3.10 Retention, counters, delete, and purge
+#### 12.3.10 Retention, counters, delete, and purge
 
 **Retention / joinability.** **Do:** after at least one completed (or failed) job with a `usage_event` row, backdate the journal ticket beyond `JOURNAL_HORIZON_DAYS` (90):
 
@@ -567,7 +624,7 @@ d1 "SELECT request_id FROM ai_attempt WHERE request_id = '<rid>'"
 
 **Expect:** `runRetentionPurge` runs only on cron `0 3 * * *`. `usage_event.request_id` is **NULL** (money row remains). `ai_request` / `ai_attempt` for that id are gone; R2 `request/<rid>/envelope` is gone. `runReconciliation` (`0 4 * * *`) is request-centric (`LEFT JOIN usage_event u ON u.request_id = r.request_id`) — a nulled `request_id` can never match, so coverage shrinks with age by design.
 
-**Counters are a lower bound.** **Do:** cause a `quota_exhausted` ([§11.3.3](#1133-zero-quotas-after-entitle)). Immediately:
+**Counters are a lower bound.** **Do:** cause a `quota_exhausted` ([§12.3.3](#1233-zero-quotas-after-entitle)). Immediately:
 
 ```bash
 d1 "SELECT count, dimension_set, time_bucket FROM platform_counter"

@@ -268,9 +268,20 @@ Authorization: Bearer <OPERATOR_BEARER_TOKEN> + enroll JSON body
 ## 7. Post-enroll lifecycle APIs
 
 After enroll, the operator can rotate keys, revoke a single key, suspend or resume the installation,
-mark it deleted, or purge all platform data. Every route is `POST`, uses the same operator Bearer
+mark it deleted, or purge platform data. Every route is `POST`, uses the same operator Bearer
 as enroll (`requireOperator` in `control/http.ts`), and writes a `control_audit` row. Clinic staff
-AATs are never accepted on `/control`.
+AATs are never accepted on `/control/*`. Malformed paths and unknown actions fall through to HTTP
+404 plain-text `Not Found` at the worker router — not `400 invalid_route` (dispatch pre-filters with
+`CONTROL_ACTION_PATTERN`).
+
+**Key management on suspended installations:** `rotate` and `revoke-key` reject only
+`installation.status = deleted` — `suspended` is permitted.
+
+**Delete:** no suspend precondition — `active → deleted` and `suspended → deleted` are both legal;
+only `deleted → delete` is blocked.
+
+**Body-ignoring routes:** `suspend`, `resume`, and `delete` never call `parseJsonBody` — the
+request body is unread; any content type, malformed JSON, or empty body succeeds identically.
 
 ### 7. API: `POST /control/installations/{installation_id}/rotate`
 
@@ -328,9 +339,8 @@ In one `runControlBatch` (`control/lifecycle.ts`):
 | 401  | `unauthorized`                | Missing/invalid operator Bearer                                           |
 | 400  | `invalid_json`                | Body not JSON                                                             |
 | 400  | `invalid_payload`             | Required body field empty or `algorithm` ≠ `EdDSA`                      |
-| 400  | `invalid_route`               | Path does not match `/control/installations/{id}/rotate`                  |
 | 404  | `installation_not_found`      | No `installation` row for path `installation_id`                          |
-| 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                                           |
+| 409  | `illegal_lifecycle_transition`| `installation.status = deleted` (suspended is permitted)                  |
 | 409  | `duplicate_kid`               | `kid` already present in `installation_key` (globally unique `key_id`)  |
 | 500  | `storage_error`               | D1 batch failure                                                          |
 
@@ -375,11 +385,10 @@ Unlike rotate, `revoke-key` stamps `revoked_at` on one row. Rotate a successor b
 | ---- | ----------------------------- | -------------------------------------------------------- |
 | 401  | `unauthorized`                | Missing/invalid operator Bearer                          |
 | 400  | `invalid_json`                | Body not JSON                                            |
-| 400  | `invalid_payload`             | `kid` missing or empty                                   |
-| 400  | `invalid_route`               | Malformed path                                           |
+| 400  | `invalid_payload`             | `kid` missing, empty, or not a canonical UUID            |
 | 404  | `installation_not_found`      | Unknown `installation_id`                                |
 | 404  | `key_not_found`               | No `installation_key` row for this `kid` + installation    |
-| 409  | `illegal_lifecycle_transition`| `installation.status = deleted`                          |
+| 409  | `illegal_lifecycle_transition`| `installation.status = deleted` (suspended is permitted) |
 | 409  | `key_already_revoked`         | `revoked_at` already set on that key                     |
 | 409  | `cannot_revoke_last_active_key` | Revoke would leave zero active keys — rotate a replacement first |
 | 500  | `storage_error`               | D1 batch failure                                         |
@@ -397,7 +406,7 @@ Same `installation_id` as enroll.
 
 #### Request body
 
-Empty JSON object `{}` (no fields). `Content-Type: application/json` recommended.
+No request body is read.
 
 #### Success response (200)
 
@@ -418,7 +427,7 @@ Empty JSON object `{}` (no fields). `Content-Type: application/json` recommended
 | HTTP | `error`                       | Triggering input                                              |
 | ---- | ----------------------------- | ------------------------------------------------------------- |
 | 401  | `unauthorized`                | Missing/invalid operator Bearer                               |
-| 400  | `invalid_route`               | Malformed path                                                |
+| 400  | `invalid_payload`             | Path `installation_id` not a canonical UUID                   |
 | 404  | `installation_not_found`      | Unknown `installation_id`                                     |
 | 409  | `illegal_lifecycle_transition`| Already `suspended` or `deleted`                              |
 | 500  | `storage_error`               | D1 batch failure                                              |
@@ -436,7 +445,7 @@ Same `installation_id` as enroll.
 
 #### Request body
 
-`{}`
+No request body is read.
 
 #### Success response (200)
 
@@ -455,7 +464,7 @@ Same `installation_id` as enroll.
 | HTTP | `error`                       | Triggering input                                              |
 | ---- | ----------------------------- | ------------------------------------------------------------- |
 | 401  | `unauthorized`                | Missing/invalid operator Bearer                               |
-| 400  | `invalid_route`               | Malformed path                                                |
+| 400  | `invalid_payload`             | Path `installation_id` not a canonical UUID                   |
 | 404  | `installation_not_found`      | Unknown `installation_id`                                     |
 | 409  | `illegal_lifecycle_transition`| Status is not `suspended` (e.g. already `active` or `deleted`) |
 | 500  | `storage_error`               | D1 batch failure                                              |
@@ -463,7 +472,7 @@ Same `installation_id` as enroll.
 
 ### 7.4 API: `POST /control/installations/{installation_id}/delete`
 
-**Plain language:** Mark the installation lifecycle-terminal (`status = deleted`). AATs fail identity (`unauthenticated`). Rows remain in D1 until purge.
+**Plain language:** Mark the installation lifecycle-terminal (`status = deleted`). AATs fail identity (`unauthenticated`). Rows remain in D1 until purge. No suspend precondition — `active` and `suspended` installations may be deleted directly.
 
 **Auth:** Operator Bearer.
 
@@ -473,7 +482,7 @@ Same `installation_id` as enroll.
 
 #### Request body
 
-`{}`
+No request body is read. No suspend precondition.
 
 #### Success response (200)
 
@@ -483,7 +492,7 @@ Same `installation_id` as enroll.
 
 #### D1 writes (atomic batch)
 
-1. **`installation` UPDATE** — `status = deleted`.
+1. **`installation` UPDATE** — `status = deleted` (from `active` or `suspended`; not from `deleted`).
 2. **`control_audit` INSERT** — `action = delete`, `target = installation_id`.
 
 Does not delete `installation_key`, `entitlement`, journal, or R2 objects. Rotate, revoke-key, suspend, resume, and delete on a `deleted` installation → `409 illegal_lifecycle_transition`.
@@ -494,7 +503,7 @@ Does not delete `installation_key`, `entitlement`, journal, or R2 objects. Rotat
 | HTTP | `error`                       | Triggering input                         |
 | ---- | ----------------------------- | ---------------------------------------- |
 | 401  | `unauthorized`                | Missing/invalid operator Bearer          |
-| 400  | `invalid_route`               | Malformed path                           |
+| 400  | `invalid_payload`             | Path `installation_id` not a canonical UUID |
 | 404  | `installation_not_found`      | Unknown `installation_id`                |
 | 409  | `illegal_lifecycle_transition`| Already `deleted`                        |
 | 500  | `storage_error`               | D1 batch failure                         |
@@ -502,19 +511,19 @@ Does not delete `installation_key`, `entitlement`, journal, or R2 objects. Rotat
 
 ### 7.5 API: `POST /control/installations/{installation_id}/purge`
 
-**Plain language:** Irreversibly remove this installation's platform footprint — D1 identity, entitlement, grants, journal, ledger rows, counters, and R2 envelopes. Use after `delete` when support agrees data must go.
+**Plain language:** Irreversibly remove this installation's platform footprint — D1 identity, entitlement, grants, journal, ledger rows, counters, and R2 envelopes. Requires a prior `delete` (`installation.status = deleted` when an `installation` row exists). Unknown ids are not an error.
 
 **Auth:** Operator Bearer.
 
-**Binding:** Requires Worker `R2` binding. If absent → `500 missing_r2_binding` before any delete.
+**Binding:** Requires Worker `R2` binding. If absent → `500 missing_r2_binding` before any audit write.
 
 #### Path parameter
 
-Same `installation_id` as enroll.
+Same `installation_id` as enroll. Unlike other lifecycle handlers, purge does not validate UUID shape on the path — any slash-free segment is accepted.
 
 #### Request body
 
-`{}`
+No request body is read.
 
 #### Success response (200)
 
@@ -526,22 +535,26 @@ Same `installation_id` as enroll.
 
 Handler: `handleInstallationPurge` (`control/support-purge.ts`).
 
-1. **`control_audit` INSERT** — `action = purge_installation`, `target = installation_id` (intent row **before** deletes).
+Purge removes data tables and R2 envelopes for the installation but **preserves** prior
+`control_audit` history (`enroll`, `suspend`, `delete`, etc.) and `grace_admission_queue` rows.
+Each successful purge call writes **exactly two** `purge_installation` audit rows:
+
+1. **`control_audit` INSERT** — intent row (`writeAudit`) **before** deletes: `action = purge_installation`, `target = installation_id`.
 2. **R2 DELETE** — every `request/{request_id}/envelope` for `ai_request` rows with this `installation_id` (derived key; NULL `payload_pointer` still deleted).
 3. **D1 batch DELETE** (order in `purgeByInstallationId`, `retention/index.ts`): `ai_attempt` (for this installation's requests) → `usage_event` → `ai_request` → `usage_rollup` / `platform_counter` (JSON dimension match) → `capability_grant` (`scope = installation:{id}`) → `installation_key` → `entitlement` → `installation`.
-4. **`control_audit` INSERT** — second `purge_installation` row via `writePurgeAudit` after the batch completes.
+4. **`control_audit` INSERT** — completion row via `writePurgeAudit` after the batch completes.
 
-Purge does **not** check `installation.status`; it deletes whatever exists for the id. It does **not** clear `grace_admission_queue` — delete those rows manually if needed before probing locally. Clinic Supabase keys are untouched.
+Clinic Supabase keys are untouched.
 
 #### Failure paths
 
 
-| HTTP | `error`              | Triggering input                    |
-| ---- | -------------------- | ----------------------------------- |
-| 401  | `unauthorized`       | Missing/invalid operator Bearer     |
-| 400  | `invalid_route`      | Malformed path                      |
-| 500  | `missing_r2_binding` | Worker env has no R2 bucket       |
-| 500  | `storage_error`    | D1/R2 failure during purge          |
+| HTTP | `error`                       | Triggering input                    |
+| ---- | ----------------------------- | ----------------------------------- |
+| 401  | `unauthorized`                | Missing/invalid operator Bearer     |
+| 409  | `illegal_lifecycle_transition`| `installation` row exists and `status` ≠ `deleted` |
+| 500  | `missing_r2_binding`          | Worker env has no R2 bucket (before any audit write) |
+| 500  | `storage_error`               | D1/R2 failure during purge (intent audit row may already exist) |
 
 ## 8. Behavioral verification
 
@@ -626,9 +639,12 @@ Every happy and failure claim in this file maps to a probe. Carry them all out. 
 | Clinic `rotate_installation_key()` then operator `POST …/rotate` with new `kid` + `public_key` | [§8.3.9](#839-key-rotation) |
 | `POST …/revoke-key` stamps one key when another remains active; sole active key → `cannot_revoke_last_active_key` | [§8.3.10](#8310-revoke-key) |
 | `POST …/revoke-key` repeat → `key_already_revoked`; unknown `kid` → `key_not_found` | [§8.3.10](#8310-revoke-key) |
+| Rotate / revoke-key permitted on `suspended` installations (only `deleted` blocked) ([§7](#7-post-enroll-lifecycle-apis)) | [§8.3.9](#839-key-rotation), [§8.3.10](#8310-revoke-key) |
+| Suspend / resume / delete ignore the request body ([§7.2](#72-api-post-controlinstallationsinstallation_idsuspend)–[§7.4](#74-api-post-controlinstallationsinstallation_iddelete)) | [§8.3.11](#8311-suspend--resume) |
 | `POST …/suspend` → `installation_suspended`; `POST …/resume` restores; illegal transitions → 409 | [§8.3.11](#8311-suspend--resume) |
-| `POST …/delete` → `status = deleted`; AAT → `unauthenticated`; repeat delete → 409 | [§8.3.12](#8312-delete) |
-| `POST …/purge` removes installation D1 + R2; irreversible | [§8.3.13](#8313-purge) |
+| `POST …/delete` → `status = deleted` with no suspend precondition; AAT → `unauthenticated`; repeat delete → 409 | [§8.3.12](#8312-delete) |
+| Purge requires prior `delete` (`409 illegal_lifecycle_transition` on active/suspended) ([§7.5](#75-api-post-controlinstallationsinstallation_idpurge)) | [§8.3.13](#8313-purge) |
+| Purge removes installation D1 + R2; preserves prior `control_audit` and `grace_admission_queue`; exactly two `purge_installation` audit rows | [§8.3.13](#8313-purge) |
 
 
 ### 8.3 Ordered probes
@@ -1100,7 +1116,9 @@ Assume **K2** is the current active platform key and a fresh AAT **AAT2** verifi
 
 #### 8.3.13 purge
 
-Purge is destructive — run last on a throwaway installation. Clear grace queue rows the purge batch does not touch:
+Purge is destructive — run last on a throwaway installation, **after** [§8.3.12](#8312-delete) (`installation.status = deleted`). Purge on an active or suspended installation returns `409 illegal_lifecycle_transition`.
+
+**Do (optional, local isolation only):** if you seeded `grace_admission_queue` rows for this installation, delete them manually — purge **preserves** the grace queue in production code, so leftover rows would otherwise survive the probe:
 
 ```bash
 npx wrangler d1 execute ai-platform-development --local --env development --command \
@@ -1109,7 +1127,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Do:** `POST …/purge` with operator Bearer and `{}`.
 
-**Expect:** HTTP 200, `{}`. D1: no `installation`, `installation_key`, or `entitlement` row for **I0**; journal/ledger/grant rows for this installation gone. R2 envelopes for its `ai_request` ids gone. At least one `control_audit` row with `action = purge_installation`.
+**Expect:** HTTP 200, `{}`. D1: no `installation`, `installation_key`, or `entitlement` row for **I0**; journal/ledger/grant rows for this installation gone. R2 envelopes for its `ai_request` ids gone. Prior `control_audit` rows for this installation (`enroll`, `suspend`, `delete`, …) **remain**. Exactly **two** new `control_audit` rows with `action = purge_installation` (intent before deletes, completion after).
 
 **Do:** `post_v1` with any prior AAT.
 

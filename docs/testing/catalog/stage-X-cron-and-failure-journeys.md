@@ -1,7 +1,7 @@
 # Stage X — Cron-driven behaviors and alternative/failure journeys
 
 Source files read:
-- `ai-platform/src/worker.ts` (`scheduled` handler L1447-L1495 — job order flushRejectionCounters → reconcileGraceUsage → cron-string dispatch; `GatewayObject.fetch` `now` injection L1263-L1266; GET `/v1/requests/{ref}` Completed/resultMissing branch L1412-L1420)
+- `ai-platform/src/worker.ts` (`scheduled` handler L1678-L1750 — per-job try/catch; job order flushRejectionCounters → reconcileGraceUsage → cron-string dispatch; `GatewayObject.fetch` `now` injection L1494-L1498; GET `/v1/requests/{ref}` Completed/resultMissing branch L1643-L1651)
 - `ai-platform/src/rate-limit/index.ts` (`recordGuardRejection` L70-L75, `currentTimeBucket` L47-L50, `counterIdFor` L78-L87, `flushRejectionCounters` L159-L190)
 - `ai-platform/src/credit/index.ts` (`GRACE_RECONCILE_MAX_ATTEMPTS` L19, `GRACE_RECONCILE_TTL_MS` L21, `journalGraceDrop` L99-L116, `invokeAdmissionRpc` L118-L150, `invokeCreditRpc` L152-L198, `creditUsage` L201-L244, `reconcileGraceUsage` L256-L346)
 - `ai-platform/src/admission/index.ts` (`GRACE_ADMISSION_CAP` L27, `listPendingGraceAdmissions` L323-L330, `markGraceAdmissionStatus` L332-L342, `stampGraceReconcileRetry` L344-L361, `attachGraceUsage` L381-L404, `admitUnderGrace` capped insert L490-L575)
@@ -18,10 +18,85 @@ Source files read:
 Conventions used throughout:
 - All D1 state is built by applying the real migration chain to a fresh database, then real operations (control-plane calls, `POST /v1/requests`, DO RPCs). `[SEED]` marks the permitted exceptions: aged rows (retention/reconciliation backdating) and deliberately inconsistent rows that production writers never produce (e.g. Completed without `ai_attempt`) seeded to exercise reconciliation signal detection. Each use carries its justification inline.
 - "Run cron tick `C`" means directly invoking the exported scheduled handler: `worker.scheduled({ cron: C, scheduledTime: Date.now(), noRetry() {} }, env, ctx)` — the exact pattern of `test/system/harness.ts:runScheduled`. Never a wall-clock wait.
-- The scheduled handler passes **no** `now` to `runRetentionPurge` and **no** `window`/`now` to `runRollupAndReconciliation` or `reconcileGraceUsage` (worker.ts L1458-L1483). Where a job function supports injection (`runRetentionPurge` `bindings.now`, `RollupBindings.window`, `ReconcileGraceContext.now`, DO RPC body `now`), scenarios say "direct call" and use it; scheduled-handler scenarios use `[SEED]` backdating relative to real wall-clock instead.
+- The scheduled handler passes **no** `now` to `runRetentionPurge` and **no** `window`/`now` to `runRollupAndReconciliation` or `reconcileGraceUsage` (`worker.ts` L1701-L1704, L1715-L1733). Where a job function supports injection (`runRetentionPurge` `bindings.now`, `RollupBindings.window`, `ReconcileGraceContext.now`, DO RPC body `now`), scenarios say "direct call" and use it; scheduled-handler scenarios use `[SEED]` backdating relative to real wall-clock instead.
 - Concrete identities: installation **I0** = `inst-9f8e7d6c-0000-4000-8000-aaaaaaaa0001`, **I1** = `inst-9f8e7d6c-0000-4000-8000-aaaaaaaa0002`; capability `clinic.visit_summary@1.0.0` (retention class `diagnostic_30d`); entitlement period P1 = `2026-08-01T00:00:00.000Z`→`2026-09-01T00:00:00.000Z` (`request_quota=1000`, `token_budget=500000`, `cost_budget=50.0`, `soft_threshold=0.8`).
-- DO RPCs are invoked through `GatewayObject.fetch` (`POST https://quota-do.internal/rpc` via `env.DO.idFromName(installationId)`), which honors an optional numeric `now` field in the body (worker.ts L1263-L1266) — the forced-timing mechanism for all DO sweep scenarios.
-- Log assertions reference the structured event names the code emits: `scheduled_cron_start`, `Flushing guard rejection counters`, `grace_reconcile_batch_start`/`grace_reconcile_batch_end`, `grace_reconcile_dropped`, `scheduled_retention_purge_start`/`scheduled_retention_purge_complete`, `retention_purge_complete`, `rollup_start`/`rollup_complete`, `reconcile_start`/`reconcile_complete`, `usage_rollup_reconciliation`, `scheduled_cron_complete`.
+- DO RPCs are invoked through `GatewayObject.fetch` (`POST https://quota-do.internal/rpc` via `env.DO.idFromName(installationId)`), which honors an optional numeric `now` field in the body (`worker.ts` L1494-L1498) — the forced-timing mechanism for all DO sweep scenarios.
+- Log assertions reference the structured event names the code emits: `scheduled_cron_start`, `Flushing guard rejection counters`, `grace_reconcile_batch_start`/`grace_reconcile_batch_end`, `grace_reconcile_dropped`, `scheduled_retention_purge_start`/`scheduled_retention_purge_complete`, `retention_purge_complete`, `rollup_start`/`rollup_complete`, `reconcile_start`/`reconcile_complete`, `usage_rollup_reconciliation`, `scheduled_cron_complete`, `scheduled_flush_failed`, `scheduled_reconcile_failed`, `scheduled_retention_purge_failed`, `scheduled_rollup_failed`.
+
+---
+
+## 1. Scheduled handler contract
+
+Every cron tick runs **four jobs in fixed order**, each wrapped in its own **try/catch** (C-15) so one failure does not abort the others (SX-004):
+
+1. `flushRejectionCounters` — always
+2. `reconcileGraceUsage` — always (`ctx`/`now` **not** passed — wall clock only)
+3. Cron-specific branch:
+   - `"0 3 * * *"` → `runRetentionPurge` (no `bindings.now` — wall clock only)
+   - `"0 4 * * *"` → `runRollupAndReconciliation` (no `window` — full ledger + default 30-day reconciliation window)
+   - any other cron string → steps 1–2 only (SX-003)
+
+**No time injection through cron.** Injectable clocks exist only on direct job-function calls (`runRetentionPurge({ now })`, `runRollupAndReconciliation({ window })`, `reconcileGraceUsage(_, { now })`, DO RPC body `now`) and on `[SEED]` backdating against real wall clock in scheduled-handler scenarios.
+
+**Local dev trigger (Wrangler 4.86.0):** canonical test hook is `GET /cdn-cgi/handler/scheduled?cron=<expression>` with `wrangler dev --test-scheduled` (see `wrangler` template `new-worker-scheduled.ts` and CLI help). Wrangler's scheduled middleware also exposes `/__scheduled?cron=…` as an alternate dev-only path — both fire `scheduled()`; prefer **`/cdn-cgi/handler/scheduled`** in probes and docs for consistency. Production fires the handler via Cloudflare cron bindings — no HTTP URL.
+
+Catalog tests invoke `worker.scheduled({ cron, scheduledTime, noRetry() }, env, ctx)` directly (`test/system/harness.ts:runScheduled`) — never a wall-clock wait.
+
+## 2. Grace reconcile (`reconcileGraceUsage`)
+
+Pending rows in `grace_admission_queue` (`status='pending'`) are re-presented to the Quota DO on every cron tick. Outcomes:
+
+| Outcome | Row effect | Scenario |
+| ------- | ---------- | -------- |
+| Fresh `admitted` + credit OK | `status='reconciled'`; DO counters updated | SX-011, SX-012 |
+| Admission transport failure | `reconcile_attempts++`, `reconcile_first_seen_at_ms` stamped; stays `pending` | SX-013 |
+| Admission `quota_exhausted` or `concurrency_exhausted` (any non-`admitted` / non-`idempotent` / non-`replay`) | Same retry stamp — **not dropped**; churns every tick until TTL or max attempts; attached usage **never credited** | SX-014 |
+| Admission `idempotent` | `status='dropped'`; journal reason **`settled_by_another_path_idempotent`** | SX-015 |
+| Admission `replay` | `status='dropped'`; journal reason **`settled_by_another_path_replay`** | SX-016, SX-018 tick 2 |
+| Credit `unknown_request` after fresh admit | `status='dropped'`; journal reason **`settled_by_another_path_unknown_request`** | SX-017 |
+| Credit transport failure after fresh admit | Retry stamp (same as SX-013) — next tick admission may return `replay` → drop without credit (**SX-018 leak**) | SX-018 |
+| `reconcile_attempts >= 5` (`GRACE_RECONCILE_MAX_ATTEMPTS`) | `status='dropped'`; reason **`max_attempts`** (error log) — checked **before** any DO RPC | SX-019 |
+| TTL: `nowMs - reconcileQueuedAtMs > 7_200_000` (`GRACE_RECONCILE_TTL_MS`, strict `>`) | `status='dropped'`; reason **`expired`** (error log) | SX-020 |
+
+All five `GraceDropReason` values (`credit/index.ts`): `expired`, `max_attempts`, `settled_by_another_path_idempotent`, `settled_by_another_path_replay`, `settled_by_another_path_unknown_request`.
+
+**TTL origin:** on first cron presentation, `reconcileQueuedAtMs` defaults to **`nowMs`** when `reconcile_first_seen_at_ms` is NULL (`prior.reconcileQueuedAtMs ?? nowMs` **before** the TTL check). TTL therefore **cannot fire on first sighting** even when `queued_at` is hours old (SX-021). Only **`reconcile_first_seen_at_ms`** (set on first failed presentation / retry stamp) matters for subsequent ticks; `queued_at` age is irrelevant.
+
+**SX-018 leak:** tick 1 admits on the real DO but credit throws → retry stamp. Tick 2 admission returns `replay` (jti recorded tick 1) → dropped `settled_by_another_path_replay` without crediting attached usage; DO `inFlight` leaks until `sweepAbandonedAdmissions` at the 2 h horizon (SX-046).
+
+## 3. Retention purge (`runRetentionPurge`)
+
+Single function; cron `"0 3 * * *"` only. Four independent passes (strict `<` cutoffs unless noted):
+
+| Pass | Horizon | What is deleted / mutated |
+| ---- | ------- | ------------------------- |
+| **Diagnostic** | Per-manifest class (`diagnostic_30d` for visit-summary; fallback `diagnostic_7d`) — strict `ageMs > horizonMs` | R2 envelope delete + `ai_request.payload_pointer = NULL`. Row and `ai_attempt`/`usage_event` **survive**. Distinct from journal purge (SX-024). |
+| **Journal** | `created_at < now − 90d` | R2 delete (pointer or derived key) **first**; then `usage_event.request_id` NULL; then `ai_attempt` + `ai_request` row deletes (SX-028). |
+| **Ledger** | `recorded_at < now − 2555d` (and rollup period string `< cutoff YYYY-MM`) | `usage_event` rows; `usage_rollup` rows (`dimensions.period` lexicographic compare); `control_audit` rows; **`capability_grant` rows including live grants** — retention does not distinguish overlay state (SX-033…SX-035). |
+| **Counter** | `time_bucket < now − 90d` | `platform_counter` buckets only (SX-036). |
+
+**Never purged:** `kill_switch` — no `DELETE FROM kill_switch` in `runRetentionPurge` (ACCEPT; SX-036). Active kill switches survive every cron until cleared by direct D1/SQL.
+
+**Two-purge distinction (visit-summary):** at ~31 days diagnostic purge nulls the pointer and deletes the R2 envelope while the D1 row remains; at ~90 days journal purge deletes the row (and attempts). Doc probes that compress these into one "90d envelope delete" are wrong — pointer NULLing is the **diagnostic** horizon (SX-024 vs SX-028).
+
+**`usage_rollup` consumer:** the rollup cron writes `usage_rollup`; **no in-repo reader** selects it — dashboards read `ai_attempt`/`ai_request`/`platform_counter` only (`dashboards/index.ts`). The table is written for **external reporting** (ACCEPT). Retention still purges aged rollup rows at the ledger horizon (SX-034).
+
+## 4. Quota DO ephemeral sweeps
+
+**No `alarm()` handler** — all sweeps are **lazy**, run at the start of mutating RPCs (`admission`, `credit`, `release`) and on read-only `inspectRPC` (in memory only — no `storage.put`, SX-050).
+
+`sweepEphemeral` order (`quota-do/index.ts`):
+
+1. Delete expired `jtiReplay` entries (`expiresAt <= now`)
+2. **`sweepAbandonedAdmissions`** — drop stale in-flight admissions; decrement `inFlight`; mark matching idempotency `failed` with slid expiry
+3. Delete expired `idempotency` entries
+4. Delete expired `creditedRequests` entries
+
+Abandoned-admission handling runs **after** jti expiry deletion and **before** idempotency expiry — not "first" overall (doc 18 §4 nit; SX-046).
+
+Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body `now` (`worker.ts` GatewayObject path).
+
+---
 
 ## Scenario SX-001 — Cron `0 3 * * *` runs flush → grace reconcile → retention purge, in that order
 
@@ -32,7 +107,7 @@ Conventions used throughout:
 | Action | Run cron tick `"0 3 * * *"`. |
 | Expected outcome | Log order is `scheduled_cron_start{cron:"0 3 * * *"}` → `Flushing guard rejection counters` → `grace_reconcile_batch_start`/`grace_reconcile_batch_end` → `scheduled_retention_purge_start` → `retention_purge_complete` → `scheduled_retention_purge_complete` → `scheduled_cron_complete`. Final D1: one `platform_counter` row (count ≥ 1); `grace-sx001.status='reconciled'`; R-old and its `ai_attempt` rows deleted, its `usage_event.request_id` NULLed. `usage_rollup` untouched (no rollup on this cron). |
 | Side effects | Writes: `platform_counter` upsert, `grace_admission_queue` status update, `usage_event` NULL update, `ai_attempt`/`ai_request` deletes, R2 delete of `request/<R-old>/envelope`. Must NOT write: `usage_rollup`, `kill_switch`, `installation`. |
-| Code reference | ai-platform/src/worker.ts:L1447-L1495 — `scheduled` (flush L1458-L1461, reconcile L1463-L1467, retention dispatch L1469-L1477) |
+| Code reference | ai-platform/src/worker.ts:L1678-L1726 — `scheduled` (flush L1689-L1698, reconcile L1700-L1710, retention dispatch L1712-L1726) |
 
 ## Scenario SX-002 — Cron `0 4 * * *` runs flush → grace reconcile → rollup + reconciliation with report log fields
 
@@ -43,7 +118,7 @@ Conventions used throughout:
 | Action | Run cron tick `"0 4 * * *"`. |
 | Expected outcome | Log order: flush → `grace_reconcile_batch_start{pending_count:0}` → `scheduled_rollup_start` → `rollup_start`/`rollup_complete` → `reconcile_start`/`reconcile_complete` → `usage_rollup_reconciliation{rollups_written:1, missing_attempt_rows:0, missing_usage_credit:0, window:{start:<now−30d ISO>, end:<now ISO>}}` → `scheduled_cron_complete`. D1: one `usage_rollup` row, `dimensions={"installation_id":I0,"period":"2026-08"}`, `request_count=1`, `tokens=30`, `cost=0.003`. The window is the default trailing 30 days of wall clock — the scheduled handler cannot inject it. |
 | Side effects | Writes: `usage_rollup` upsert only. Must NOT write: `ai_request`, `ai_attempt`, `usage_event`, `platform_counter` (empty tally), R2 (no deletes). |
-| Code reference | ai-platform/src/worker.ts:L1478-L1492 — rollup dispatch + report log; ai-platform/src/rollup/index.ts:L202-L209 — `runRollupAndReconciliation`; L28-L33 — `defaultReconciliationWindow` |
+| Code reference | ai-platform/src/worker.ts:L1727-L1747 — rollup dispatch + report log; ai-platform/src/rollup/index.ts:L202-L209 — `runRollupAndReconciliation`; L28-L33 — `defaultReconciliationWindow` |
 
 ## Scenario SX-003 — Unknown cron string runs only flush + reconcile (no retention, no rollup)
 
@@ -54,7 +129,7 @@ Conventions used throughout:
 | Action | Run cron tick `"0 5 * * *"` (also repeat with `""` and `"* * * * *"` — identical else-if fallthrough). |
 | Expected outcome | Logs show `scheduled_cron_start`, flush, `grace_reconcile_batch_*`, `scheduled_cron_complete` — and neither `scheduled_retention_purge_start` nor `scheduled_rollup_start`. D1: `platform_counter` row written; the aged `ai_request` row still present; `usage_rollup` still empty. |
 | Side effects | Writes: `platform_counter` only. Must NOT delete any `ai_request`/`ai_attempt`/R2 object; must NOT write `usage_rollup`. |
-| Code reference | ai-platform/src/worker.ts:L1469-L1492 — `if/else if` cron-string dispatch with no else branch |
+| Code reference | ai-platform/src/worker.ts:L1712-L1747 — `if/else if` cron-string dispatch with no else branch |
 
 ## Scenario SX-004 — One cron job failure does not abort the others (per-job try/catch)
 
@@ -428,7 +503,7 @@ Conventions used throughout:
 | Action | Run cron tick `"0 4 * * *"`. Capture `usage_rollup`. Run the same tick again. |
 | Expected outcome | First run: `rollups_written=3`; rows `(I0,2026-08): count=2, tokens=70, cost=0.007`, `(I0,2026-09): count=1, tokens=10, cost=0.001`, `(I1,2026-08): count=1, tokens=5, cost=0.0005`; each `rollup_id` = SHA-256 hex of the dimensions JSON. Second run: `rollups_written=3` again, still exactly 3 rows, identical values (`ON CONFLICT(rollup_id) DO UPDATE` — no duplicates, no drift). The scheduled path passes no window → full-ledger `GROUP BY installation_id, period`. |
 | Side effects | Writes: 3 `usage_rollup` upserts per run. No other table touched. |
-| Code reference | ai-platform/src/rollup/index.ts:L70-L82 — unwindowed aggregate; L97-L126 — upsert; ai-platform/src/worker.ts:L1481-L1484 — no window passed |
+| Code reference | ai-platform/src/rollup/index.ts:L70-L82 — unwindowed aggregate; L97-L126 — upsert; ai-platform/src/worker.ts:L1731-L1734 — no window passed |
 
 ## Scenario SX-038 — Windowed rollup re-aggregates **entire** periods touched by the window
 
@@ -527,7 +602,7 @@ Conventions used throughout:
 | Action | Any mutating DO RPC with injected `now = t0 + 7_200_001` — e.g. an admission RPC for a different key `sx046-probe` (body field `now`). Then `inspect`. |
 | Expected outcome | `sweepAbandonedAdmissions` runs inside `sweepEphemeral`: Q0's `admittedRequests` entry (`admittedAt=t0 ≤ now−7_200_000`) is deleted; `periodCounters.inFlight` 1→0 (floored at 0); the matching idempotency entry `sx046-key` (state `admitted`) flips to `state='failed'` with `expiresAt = now + 7_200_000` (slid, so a retry replays as failed rather than a completed placeholder or a fresh admit). The probe admission itself succeeds (inFlight back to 1). Persisted: inspect afterwards shows the swept state. |
 | Side effects | Writes: DO storage put (swept state + probe admission). No D1 writes. |
-| Code reference | ai-platform/src/quota-do/index.ts:L209-L231 — `sweepAbandonedAdmissions`; L233-L254 — `sweepEphemeral`; L371 — sweep on admission; ai-platform/src/worker.ts:L1263-L1266 — `now` injection |
+| Code reference | ai-platform/src/quota-do/index.ts:L209-L231 — `sweepAbandonedAdmissions`; L233-L254 — `sweepEphemeral`; L371 — sweep on admission; ai-platform/src/worker.ts:L1494-L1498 — `now` injection |
 
 ## Scenario SX-047 — Slid-window replay: retry inside the slid 2 h replays `failed`; after the slid window the key admits fresh
 
@@ -637,7 +712,7 @@ Conventions used throughout:
 | Action | Run cron tick `"0 3 * * *"` once. |
 | Expected outcome | Single run, ordered logs per SX-001. Final state: `platform_counter` one row count=2; `grace-sx056.status='reconciled'` and DO counters `{requestsUsed:1, tokensUsed:7, costUsed:0.007, inFlight:0}`; R-old journal-purged (usage NULLed, envelope gone); R-diag diagnostic-purged (row kept, pointer NULL, envelope gone); R-new untouched. `retention_purge_complete{diagnostic_deleted:1, journal_deleted:2, ledger_deleted:0, counter_deleted:0}`. No rollup rows (not this cron). |
 | Side effects | Writes: exactly the union of the three jobs' writes listed above; nothing else in D1/DO/R2 changes. |
-| Code reference | ai-platform/src/worker.ts:L1447-L1495 — `scheduled` (full 03:00 path) |
+| Code reference | ai-platform/src/worker.ts:L1678-L1726 — `scheduled` (full 03:00 path) |
 
 ## Scenario SX-057 — GatewayObject rejects a non-POST call with 405
 
@@ -720,20 +795,11 @@ Conventions used throughout:
 
 Verified doc-15 failure journeys against code (each is a scenario here or belongs to another stage chapter):
 
-- Doc 15 §1 (lifecycle alternatives) — control-plane chapter (Stage 3); not cron. §2 (zero quotas) and §4 (JTI replay) and §8 matrix stage-8 rows — Stage 8 admission chapter; this catalog covers only the 2 h JTI expiry side (SX-048). §3 (missing routing policy) — Stage 10 invoke chapter. §6 (client disconnect) and §7 (prose guards) — Stage 11 settlement chapter. §5 (grace + cron reconcile), §9 (retention joinability), §10 (counters lower bound) — this chapter (SX-010…SX-023, SX-028/SX-053, SX-005…SX-009 respectively). §11.3.6 / §11.3.10 probe claims verified against code and encoded as scenarios.
-- **Doc 15 §5 / §11.3.6 is incomplete on reconcile outcomes.** Code has five drop reasons (`GraceDropReason`, credit/index.ts L51-L57): `expired`, `max_attempts`, `settled_by_another_path_idempotent`, `settled_by_another_path_replay`, `settled_by_another_path_unknown_request`. The doc mentions only TTL/max-attempt drops and the happy reconcile. SX-015…SX-017 are code-derived, doc-silent.
-- **Doc 15 is silent on reconcile-time `quota_exhausted`/`concurrency_exhausted`:** any non-admitted/non-idempotent/non-replay admission outcome is retried, not dropped (SX-014) — a grace entry for an exhausted installation churns until TTL/max-attempts and its usage is never credited.
-- **Doc 15 is silent on the SX-018 leak:** reconcile admit succeeds but credit transport fails → next tick's admission is a jti `replay` → the entry is dropped `settled_by_another_path_replay`, the attached usage is never credited, and the DO-side in-flight slot leaks until the 2 h abandoned sweep (SX-046) marks it `failed`.
-- **Doc 15 §11.3.6 vs doc 17 §3.3.15 trigger URL inconsistency:** the former fires `/cdn-cgi/handler/scheduled?cron=…`, the latter `/__scheduled?cron=…`. Code-agnostic (Wrangler test endpoint), but the docs disagree with each other.
-- **Doc 17 §3.3.15 coverage table compresses two purges:** "deletes the envelope and nulls `payload_pointer` (90d journal horizon)" — the pointer NULLing happens at the **diagnostic** horizon (30d for visit-summary, SX-024); the 90d journal purge deletes the row (SX-028). The probe body itself is correct.
-- **Doc 15 §9 / doc 16 §10 omit most of the retention surface.** Code also purges `usage_rollup` (period < cutoff month, SX-034), `control_audit` and `capability_grant` (2555d, SX-035 — including *live* grants untouched for 7 years), and `platform_counter` (90d, SX-036). Docs mention only `usage_event`/`ai_request`/`ai_attempt`.
-- **Doc 16 §14 / doc 15 §5:** `reconcile_first_seen_at_ms` as "first cron sighting (TTL origin)" is accurate, but neither doc states that TTL therefore cannot fire on first sighting and that `queued_at` age is irrelevant (SX-021).
-- **Doc 18 §4 ordering nit:** "abandoned-admission handling first, then deletes idempotency entries" — true relative to idempotency, but `sweepEphemeral` deletes expired `jtiReplay` entries *before* the abandoned sweep (quota-do/index.ts L233-L254). Observable only in ordering, not outcome.
-- **`usage_rollup` has no in-repo reader.** Dashboards never select it (dashboards/index.ts reads `ai_attempt`/`ai_request`/`platform_counter` only); the rollup cron writes a table nothing in the Worker consumes. Docs describe the columns but not the absence of a consumer.
-- **No injection through the scheduled handler.** `runRetentionPurge`'s `bindings.now`, `RollupBindings.window`, and `ReconcileGraceContext.now` are unreachable via cron (worker.ts passes none); docs don't state this. Scheduled-handler tests must backdate `[SEED]` rows against real wall clock; only direct job-function calls can inject time (SX-026, SX-029, SX-033…SX-035, SX-038, SX-044).
-- **No DO alarm.** `quota-do/index.ts` defines no `alarm()` handler; all sweeps are lazy, driven by the next RPC (or read-only via `inspect`, SX-050). Doc 18 does not claim an alarm — recorded here per mission, not as drift.
-- **`kill_switch` is immortal under cron** (no `DELETE FROM kill_switch` anywhere in retention) — docs silent; SX-036.
-- **Per-job try/catch in `scheduled()` — fixed (C-15).** A flush failure is logged (`scheduled_flush_failed`) and does not starve reconcile, retention, or rollup for that tick (SX-004).
+- Doc 15 §1 (lifecycle alternatives) — control-plane chapter (Stage 3); not cron. §2 (zero quotas) and §4 (JTI replay) and §8 matrix stage-8 rows — Stage 8 admission chapter; this catalog covers only the 2 h JTI expiry side (SX-048). §3 (missing routing policy) — Stage 10 invoke chapter. §6 (client disconnect) and §7 (prose guards) — Stage 11 settlement chapter. §5 (grace + cron reconcile), §9 (retention joinability), §10 (counters lower bound) — this chapter ([§2](#2-grace-reconcile-reconcilegraceusage), [§3](#3-retention-purge-runretentionpurge), SX-010…SX-023, SX-028/SX-053, SX-005…SX-009 respectively). §11.3.6 / §11.3.10 probe claims verified against code and encoded as scenarios.
+- **[FIXED — D-20]** All five `GraceDropReason`s, reconcile-time `quota_exhausted` retry-churn, SX-018 leak, and TTL/`reconcile_first_seen_at_ms` origin documented in [§2](#2-grace-reconcile-reconcilegraceusage).
+- **[FIXED — D-21]** Full retention surface, two-purge distinction, `kill_switch` immortality, `usage_rollup` no in-repo reader, cron no time injection, lazy sweeps (no DO alarm), and sweep ordering documented in [§1](#1-scheduled-handler-contract), [§3](#3-retention-purge-runretentionpurge), [§4](#4-quota-do-ephemeral-sweeps).
+- **[FIXED — D-21]** Trigger URL unified: canonical dev hook is `/cdn-cgi/handler/scheduled?cron=…` (Wrangler 4.86.0); `/__scheduled` is an alternate middleware dev path — see [§1](#1-scheduled-handler-contract).
+- **[FIXED — D-21 / C-15]** Per-job try/catch in `scheduled()` — flush failure logs `scheduled_flush_failed` and does not starve reconcile, retention, or rollup (SX-004); see [§1](#1-scheduled-handler-contract).
 - `request-lifecycle-brief.md` L106/L266-L267 (tally flush on cron, grace queue writers) — consistent with code; no drift.
 
 ## Non-automatable notes
@@ -742,5 +808,5 @@ Verified doc-15 failure journeys against code (each is a scenario here or belong
 - **Genuine Quota DO outage/eviction.** Real DO unavailability (5xx, network, state eviction between RPCs) cannot be produced against the in-pool DO. Scenarios SX-013, SX-017, SX-018, SX-022 use a stub/facade `DurableObjectNamespace` whose `stub.fetch` throws or scripts responses; the real GatewayObject covers all state-machine assertions.
 - **Mid-flush / mid-tick D1 failure.** Real D1 in the pool does not fail on demand; SX-004 and SX-008 use a proxy shim around the binding that throws on targeted SQL. The production failure mode itself (D1 incident) is not reproducible.
 - **Platform cron triggering.** Whether Cloudflare fires `0 3 * * *` at 03:00 UTC is platform behavior; all scenarios invoke `worker.scheduled({cron})` directly. `ScheduledController.retry`/`noRetry` semantics are not exercised — the handler never calls them.
-- **Wall-clock horizons.** 90d/2555d/2h waits are never performed; they are forced by `[SEED]` backdating (retention, reconciliation windows) or injected `now` (DO RPC body field, worker.ts L1263-L1266; direct job-function args). This is by design, listed here so implementers don't "simplify" scenarios into sleeps.
+- **Wall-clock horizons.** 90d/2555d/2h waits are never performed; they are forced by `[SEED]` backdating (retention, reconciliation windows) or injected `now` (DO RPC body field, `worker.ts` L1494-L1498; direct job-function args). This is by design, listed here so implementers don't "simplify" scenarios into sleeps.
 - **`AwaitingContext` and unpublished-capability rows** cannot be produced by any real operation on the current catalog (single-shot visit-summary only; one bundled manifest). SX-031, SX-043, SX-025 seed them with justification; if a conversational capability ships, replace the seeds with real operations.

@@ -14,6 +14,49 @@ Shared realistic values used throughout this chapter:
 
 ---
 
+## 1. Ingress contract (`handleAdapterRequest`)
+
+Gate order: body size → JSON parse (plain object) → required headers → optional
+`preAccept` → SSE stream. Everything below is enforced in `adapter.ts`; body-field
+extraction for routing/compose runs later in the worker `preAccept` path.
+
+### 1.1 Required headers
+
+`parseRequiredHeaders` (`adapter.ts:L258-L284`) validates **non-empty-after-trim only**:
+
+| Header | Required | Rule |
+| ------ | -------- | ---- |
+| `x-idempotency-key` | yes | Trim; reject if empty |
+| `x-capability-version` | yes | Trim; reject if empty |
+| `x-trace-id` | no | If present, trim; reject if empty after trim; otherwise server ULID |
+
+There is **no** length cap, charset restriction, or semver/format validation at ingress
+(S08-024, S08-025). Trimmed values are what reach preAccept and the guard.
+
+### 1.2 Body parsing
+
+- **No `Content-Type` check** — the adapter never branches on `Content-Type`; any
+  content type whose bytes parse as JSON is accepted (S08-016).
+- Body must be a JSON **plain object** (not array, not scalar); empty body fails parse →
+  HTTP 422 bare `text/plain` (S08-010).
+- Oversize bodies are rejected at `INGRESS_BODY_SIZE_LIMIT` (1 048 576 bytes) before parse
+  or header validation (S08-003…S08-008).
+
+### 1.3 `user_intent` / `intent` (preAccept extraction, not an ingress gate)
+
+Neither field is required at ingress; wrong types are never adapter 422s. After ingress,
+`extractUserIntent` (`worker.ts:L269-L277`) applies:
+
+1. If `user_intent` is a string → use it.
+2. Else if `intent` is a string → use it (alias).
+3. Else → `""`.
+
+When `user_intent` is present but **non-string** (e.g. a number), extraction **falls
+through to the `intent` alias** — it does not default to `""` while ignoring `intent`
+(S08-054 case c). This corrects orientation doc probe §8.3.9.
+
+---
+
 ## Scenario S08-001 — Wrong HTTP method never reaches the adapter
 
 | Field | Content |
@@ -186,7 +229,7 @@ Shared realistic values used throughout this chapter:
 | ID | S08-016 |
 | Journey setup | None. |
 | Action | `POST /v1/requests` with `Content-Type: text/plain`, body `{"capability_id":"clinic.visit_summary"}`, valid required headers, no `Authorization`. |
-| Expected outcome | Not 422/415. The adapter contains **no content-type branch** — the body is parsed regardless. Request reaches preAccept → HTTP 401 `unauthenticated` taxonomy JSON. Recorded as doc drift (the orientation doc §4 implies `application/json`; the mission brief assumed a content-type check exists). |
+| Expected outcome | Not 422/415. The adapter contains **no content-type branch** — the body is parsed regardless (§1.2). Request reaches preAccept → HTTP 401 `unauthenticated` taxonomy JSON. |
 | Side effects | No D1/DO writes. |
 | Code reference | `ai-platform/src/adapter.ts:L373-L399` — `handleAdapterRequest` (no content-type gate exists) |
 
@@ -274,7 +317,7 @@ Shared realistic values used throughout this chapter:
 | ID | S08-024 |
 | Journey setup | None. |
 | Action | `POST /v1/requests` with `x-idempotency-key: x` (one character), `x-capability-version: not-a-published-version`, body `{"capability_id":"clinic.visit_summary"}`, no `Authorization`. |
-| Expected outcome | Not 422. Ingress has no length/charset/semver checks — any non-empty strings pass. Identity fails first → HTTP 401 `unauthenticated`. (With a valid AAT this same header set would reach manifest resolution and return 404 `capability_unknown` — Stage 9 stage-5 behavior; see S08-042.) Recorded as doc drift: the mission brief anticipated length/charset and format rules; none exist in code. |
+| Expected outcome | Not 422. Ingress has no length/charset/semver checks — any non-empty strings pass (§1.1). Identity fails first → HTTP 401 `unauthenticated`. (With a valid AAT this same header set would reach manifest resolution and return 404 `capability_unknown` — Stage 9 stage-5 behavior; see S08-042.) |
 | Side effects | No D1/DO writes. |
 | Code reference | `ai-platform/src/adapter.ts:L242-L268` — `parseRequiredHeaders` (trim-only validation) |
 
@@ -604,7 +647,7 @@ Shared realistic values used throughout this chapter:
 | ID | S08-054 |
 | Journey setup | Same as S08-049. |
 | Action | Three `POST /v1/requests` variants with fresh keys: (a) both `user_intent: "Summarize for the chart."` and `intent: "IGNORED"`; (b) only `intent: "Summarize today."`; (c) `user_intent: 123` (wrong type) with `intent: "Summarize today."`. |
-| Expected outcome | All three pass ingress and reach `accepted` (entitled) — neither field is ingress-required and wrong types are never a 422. Precedence handed to Stage 9 compose by behavior reference: (a) `user_intent` wins; (b) alias used; (c) **the alias is used** — `extractUserIntent` falls through to `intent` when `user_intent` is non-string. This contradicts the orientation doc's probe 8.3.9, which expects `""` for case (c); recorded as doc drift. |
+| Expected outcome | All three pass ingress and reach `accepted` (entitled) — neither field is ingress-required and wrong types are never a 422 (§1.3). Precedence handed to Stage 9 compose by behavior reference: (a) `user_intent` wins; (b) alias used; (c) **the alias is used** — `extractUserIntent` falls through to `intent` when `user_intent` is non-string. |
 | Side effects | Same class as S08-049. |
 | Code reference | `ai-platform/src/worker.ts:L261-L269` — `extractUserIntent` fall-through |
 
@@ -775,9 +818,9 @@ Shared realistic values used throughout this chapter:
 
 ## Doc-drift observations
 
-1. **No Content-Type check exists.** The orientation doc §4 implies `Content-Type: application/json` and the mission brief assumed a content-type branch; `handleAdapterRequest` (`adapter.ts:373-399`) has none. Any content-type with a parseable plain-object body passes ingress (S08-016). Code is authoritative.
-2. **No header length/charset/format bounds.** The mission brief anticipated idempotency-key length/charset bounds and capability-version format rules; `parseRequiredHeaders` (`adapter.ts:242-268`) validates only non-empty-after-trim. The orientation doc §3.2/§3.3 is accurate ("non-empty after trim"); the mission brief overstated. S08-024/S08-025 pin the actual behavior.
-3. **Doc probe 8.3.9 contradicts the code on `user_intent` fall-through.** The doc sends `{"user_intent":123,"intent":"ignored-because-user_intent-wrong-type"}` and claims the intent value is ignored (default `""`). `extractUserIntent` (`worker.ts:261-269`) falls through to the `intent` alias when `user_intent` is non-string, so the "ignored" string is in fact used. Invisible at ingress (both pass), material at compose — flagged for Stage 9/10 chapters and S08-054.
+1. **No Content-Type check exists — fixed (D-23).** §1.2 documents that `handleAdapterRequest` has no content-type branch; any parseable plain-object body passes ingress (S08-016).
+2. **No header length/charset/format bounds — fixed (D-23).** §1.1 documents trim-only validation in `parseRequiredHeaders` (`adapter.ts:L258-L284`); S08-024/S08-025 pin the behavior.
+3. **Doc probe 8.3.9 `user_intent` fall-through — fixed (D-23).** §1.3 documents that a non-string `user_intent` falls through to the `intent` alias (S08-054 case c); orientation doc probe §8.3.9 still needs a separate edit.
 4. **Unreachable branch: second parse check.** `adapter.ts:409-413` re-parses the body after `adapter.ts:390-393` already proved it parses; the `parsedBody === null` branch at L410-413 is dead code. Not a scenario (unreachable); flagged for cleanup.
 5. **`quota_exhausted` never carries `period_reset` from the live ingress path.** `createProductionPreAccept` forwards only `retryAfter` (`worker.ts:1087-1096`), and `supplementaryFieldsForCode` omits undefined/empty `periodReset` (`errors.ts:193-199`). The `errors.ts` comment says concurrency-mapped refusals "must populate periodReset from the entitlement snapshot (F4)" — the live POST path cannot. Neither the orientation doc nor this chapter's scenarios can observe `period_reset` on `POST /v1/requests`; flagged for the Stage 9 chapter.
 6. **`cancelled` would map to HTTP 500 at preAccept.** `liveHttpStatusForCode("cancelled")` returns `null` and `preAcceptFailureResponse` falls back to 500 (`adapter.ts:224`). The guard never returns `cancelled` from preAccept in production, so this is a latent, unreachable mapping — recorded, not scenarized.

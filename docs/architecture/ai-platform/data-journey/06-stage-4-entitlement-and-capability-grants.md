@@ -153,7 +153,7 @@ can fire on tokens or cost instead: e.g. 400k of 500k tokens used (80%) triggers
 #### D1 writes
 
 1. **UPDATE** `entitlement` — all budget fields + `status='active'` (`WHERE installation_id = ?`). `UNIQUE (installation_id)` guarantees this touches exactly one row; a duplicate row set cannot silently multi-update.
-2. **INSERT** `capability_grant` per grant item
+2. **INSERT** `capability_grant` per grant item — **plan-scope dedup:** when a grant has `scope: "plan"` and a live row already exists at `plan:{plan}` for the same `capability_id` (`revoked_at IS NULL`), the insert is **skipped** while activation still proceeds (`entitle.ts`).
 3. **INSERT** `control_audit` — `action='entitle'`, `after_pointer` = JSON of `allowed_capabilities`
 
 **Not updated:** `entitlement.plan`, `installation.status`.
@@ -191,11 +191,13 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 
 | HTTP | `error`                  | Trigger                                  |
 | ---- | ------------------------ | ---------------------------------------- |
+| 401  | `unauthorized`           | Missing / wrong operator bearer          |
+| 400  | `invalid_json`           | Body does not parse as JSON              |
+| 400  | `invalid_payload`        | Bad numbers, empty `grants`, bad `scope`, non-ISO `period_start`/`period_end`, or `period_start >= period_end` |
 | 404  | `installation_not_found` | No `installation` row                    |
 | 404  | `entitlement_not_found`  | No `entitlement` row                     |
 | 409  | `not_pending`            | `status !== 'pending'`                   |
-| 400  | `invalid_payload`        | Bad numbers, empty `grants`, bad `scope`, non-ISO `period_start`/`period_end`, or `period_start >= period_end` |
-| 500  | `storage_error`          | D1 batch failure                         |
+| 500  | `storage_error`          | D1 batch failure via `runControlBatch`   |
 
 
 
@@ -223,6 +225,8 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 
 ## 7. API: `POST /control/capabilities/{capability_id}/versions/{version}/activate`
 
+Malformed capability lifecycle control paths fall through to HTTP 404 plain-text `Not Found` at the worker router — not `400 invalid_route` (dispatch pre-filters with handler-identical regexes).
+
 **Auth:** operator bearer (same as entitle).
 
 **Handler:** `control/cohort.ts` → `handleCohortActivate`.
@@ -234,7 +238,7 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 
 | Field               | Required | Meaning                                                                 |
 | ------------------- | -------- | ----------------------------------------------------------------------- |
-| `installation_ids`  | yes      | Non-empty array of installation ids that receive `{version}`            |
+| `installation_ids`  | yes      | Non-empty array of installation ids that receive `{version}`; duplicates in one request are deduped before the grant loop (`[...new Set(body.installation_ids)]`) |
 | `cohort_name`       | no       | Operator label for audit `target` (appended after `:` when present)     |
 
 
@@ -283,7 +287,7 @@ Then **INSERT** `control_audit`:
 | 400  | `missing_installation_ids` | `installation_ids` missing, not an array, or empty   |
 | 404  | `capability_not_found`     | `{capability_id}@{version}` not in Worker registry   |
 | 404  | `installation_not_found`   | Any listed installation id has no `installation` row |
-| 500  | `storage_error`            | D1 batch failure                                     |
+| 500  | `storage_error`            | D1 batch failure via `runControlBatch`               |
 
 ## 8. API: `POST /control/capabilities/{capability_id}/versions/{version}/promote`
 
@@ -295,7 +299,7 @@ Then **INSERT** `control_audit`:
 
 #### Request body
 
-No body required. Send `{}` or an empty body.
+**Ignored entirely** — no `parseJsonBody`; malformed JSON, wrong content type, or any body succeeds identically.
 
 #### Success response (200)
 
@@ -323,7 +327,7 @@ No body required. Send `{}` or an empty body.
 | ---- | ---------------------- | ---------------------------------------------- |
 | 401  | `unauthorized`         | Missing / wrong operator bearer                |
 | 404  | `capability_not_found` | `{capability_id}@{version}` not in registry    |
-| 500  | `storage_error`        | D1 batch failure                               |
+| 500  | `storage_error`        | D1 batch failure via `runControlBatch`         |
 
 ## 9. API: `POST /control/capabilities/{capability_id}/versions/{version}/deprecate`
 
@@ -395,11 +399,12 @@ While deprecated and inside the window, `resolve()` still serves the manifest; `
 | 401  | `unauthorized`       | Missing / wrong operator bearer                                         |
 | 400  | `invalid_json`       | Body is not valid JSON                                                  |
 | 400  | `missing_successor_id` | Empty / missing `successor_id`                                        |
+| 400  | `invalid_payload`    | Truthy non-string `successor_id` (`requireNonEmptyString` type guard) |
 | 400  | `unknown_successor`  | `successor_id` not in registry                                          |
 | 404  | `capability_not_found` | `{capability_id}@{version}` not in registry                           |
 | 409  | `already_retired`    | Latest global overlay is `retired`                                      |
 | 409  | `already_deprecated` | Already deprecated with a **different** `successor_id`                  |
-| 500  | `storage_error`      | D1 batch failure                                                        |
+| 500  | `storage_error`      | D1 batch failure via `runControlBatch`                                  |
 
 ## 10. API: `POST /control/capabilities/{capability_id}/versions/{version}/retire`
 
@@ -411,7 +416,7 @@ While deprecated and inside the window, `resolve()` still serves the manifest; `
 
 #### Request body
 
-Empty JSON `{}`. No fields.
+**Ignored entirely** — no `parseJsonBody`; `400 invalid_json` is unreachable.
 
 #### Success response (200)
 
@@ -430,11 +435,10 @@ Empty JSON `{}`. No fields.
 | HTTP | `error`                  | Trigger                                                                 |
 | ---- | ------------------------ | ----------------------------------------------------------------------- |
 | 401  | `unauthorized`           | Missing / wrong operator bearer                                         |
-| 400  | `invalid_json`           | Body is not valid JSON (if body sent)                                   |
 | 400  | `not_deprecated`         | No prior global overlay with `lifecycle_state = deprecated` and successor |
 | 400  | `overlap_window_active`  | Current time `< retire_after`, or `retire_after` unparseable            |
 | 404  | `capability_not_found`   | `{capability_id}@{version}` not in registry                             |
-| 500  | `storage_error`          | D1 batch failure                                                        |
+| 500  | `storage_error`          | D1 batch failure via `runControlBatch`                                  |
 
 After a successful retire, `POST …/deprecate` on the same pin returns `409 already_retired`.
 
@@ -453,7 +457,7 @@ The isolate `ConfigCache` TTL is 30 s. After any **D1 SQL** mutation (and after 
 - Entitlement `plan` must be one of `starter`, `standard`, `professional`, or `enterprise`. Enroll rejects unknown tiers with `400 invalid_payload`; `starter` may still fail later at guard stage 3 (`plan_tier`) when the capability minimum is `standard`. For visit-summary probes that must pass guard stage 3, enroll with `professional` (or `standard` / `enterprise`) — entitle does not write `plan`.
 - Clinic Supabase with the Stage 2 keypair whose `installation_id` is **I0**. A **doctor** session that can `issue_ai_token` (RBAC `ai.access` is enough to mint; visit-summary Access fields are a later probe).
 - SQL as `postgres` only to mint AATs and inspect clinic tables. D1 inspection via wrangler.
-- **Registry note:** local development ships one visit-summary build — `clinic.visit_summary@1.0.0`. Probes that need a **second** registered version (cohort split onto `2.0.0`) are marked **Unprobeable** until a second manifest is deployed to the Worker.
+- **Registry note:** local development ships one visit-summary build — `clinic.visit_summary@1.0.0`. Probes that need a **second** registered version (cohort split onto `2.0.0`) are **automatable** via a two-version in-memory registry seam (`setCapabilityRegistry(..., { replace: true })`); the orientation doc may still label them **Unprobeable** when that seam is not wired in a given probe run.
 
 ```bash
 export GATEWAY='http://127.0.0.1:8787'
@@ -552,6 +556,8 @@ Reset `role` to `postgres` before inspecting `ai_internal`. Decode the JWS paylo
 
 Every happy and failure claim in this file maps to a probe. Carry them all out.
 
+**Registry-seam automatable probes:** The table below marks several claims **Unprobeable** in live dev because only `clinic.visit_summary@1.0.0` ships in the default Worker bundle. They are **automatable** via the two-version in-memory registry seam plus `[SEED]` `retire_after` backdating where noted. Probes blocked by visit-summary `Access.allowedStaffRoles` (quota / degraded / runtime servability) remain **Unprobeable** — unchanged.
+
 
 | Claim | Probe |
 | ----- | ----- |
@@ -559,12 +565,13 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `plan` is stored at enroll; entitle does not change it | [§11.3.1](#1131-confirm-stage-3-pending-sentinel), [§11.3.5](#1135-first-entitle-visit-summary-payload) |
 | Closed plan ranks: unknown / `starter` fail `minimumPlanTier: "standard"` even after entitle | [§11.3.1](#1131-confirm-stage-3-pending-sentinel), [§11.3.7](#1137-independent-runtime-switches) |
 | Only `OPERATOR_BEARER_TOKEN` may call entitle; missing/wrong/AAT bearer → HTTP 401 `{ "error": "unauthorized" }` | [§11.3.2](#1132-who-may-not-call-entitle) |
+| Malformed entitle JSON → HTTP 400 `invalid_json` | [§11.3.3](#1133-entitle-failure-paths) |
 | Clinic staff / Flutter / `issue_ai_token` cannot entitle | [§11.3.2](#1132-who-may-not-call-entitle) |
 | No `installation` row → HTTP 404 `installation_not_found` | [§11.3.3](#1133-entitle-failure-paths) |
 | No `entitlement` row → HTTP 404 `entitlement_not_found` | [§11.3.3](#1133-entitle-failure-paths) |
 | `status !== 'pending'` → HTTP 409 `not_pending` | [§11.3.6](#1136-re-entitle-is-not-pending) |
 | Bad numbers, empty `grants`, bad `scope`, non-ISO period, `period_start >= period_end` → HTTP 400 `invalid_payload`; row unchanged | [§11.3.3](#1133-entitle-failure-paths) |
-| HTTP 500 `storage_error` (D1 batch failure) | **Unprobeable** — requires a live D1 `batch` exception |
+| HTTP 500 `storage_error` (D1 batch failure via `runControlBatch`) | **Unprobeable** — requires a live D1 `batch` exception |
 | Pending runtime → HTTP 403 `forbidden_capability` (`ai_disabled`); no spend rights yet | [§11.3.4](#1134-runtime-while-pending) |
 | [§6](#6-example-entitle-payload-visit-summary) body: every request field; HTTP 200 `{ installation_id, status: "active" }` | [§11.3.5](#1135-first-entitle-visit-summary-payload) |
 | D1 `UPDATE entitlement` writes every budget column + `allowed_capabilities` JSON + `status='active'` | [§11.3.5](#1135-first-entitle-visit-summary-payload) |
@@ -594,16 +601,19 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Activate: unregistered version → 404 `capability_not_found` | [§11.3.12](#11312-cohort-activate) |
 | Activate: upserts grant + `cohort_activate` audit with `before_pointer` / `after_pointer` | [§11.3.12](#11312-cohort-activate) |
 | Activate: optional `cohort_name` on audit `target` | [§11.3.12](#11312-cohort-activate) |
-| Cohort split (cohort on new build, others on old) | **Unprobeable** — local registry has only `clinic.visit_summary@1.0.0` |
+| Cohort split (cohort on new build, others on old) | **Automatable** via two-version registry seam (orientation §11.2 may say Unprobeable) |
 | Promote: non-operator → 401; unknown version → 404 | [§11.3.13](#11313-cohort-promote) |
+| Promote: request body ignored entirely | [§11.3.13](#11313-cohort-promote) |
 | Promote: updates all live grants + entitled missing grants + `cohort_promote` audit | [§11.3.13](#11313-cohort-promote) |
-| Deprecate: missing / unknown successor → 400; unregistered pin → 404 | [§11.3.14](#11314-deprecate-with-successor) |
+| Deprecate: missing / unknown successor → 400; truthy non-string `successor_id` → 400 `invalid_payload` | [§11.3.14](#11314-deprecate-with-successor) |
+| Deprecate: unregistered pin → 404 | [§11.3.14](#11314-deprecate-with-successor) |
 | Deprecate: global overlay `deprecated`, `retire_after = deprecated_at + 90d`, audit `after_pointer` = successor | [§11.3.14](#11314-deprecate-with-successor) |
-| Deprecate: same successor idempotent 200; different successor → 409 `already_deprecated` | [§11.3.14](#11314-deprecate-with-successor) |
+| Deprecate: same successor idempotent 200; different successor → 409 `already_deprecated` | [§11.3.14](#11314-deprecate-with-successor); **automatable** via two-version registry seam |
 | Deprecate after retire → 409 `already_retired` | [§11.3.15](#11315-retire-after-overlap-window) |
+| Retire: request body ignored (no `invalid_json`) | [§11.3.15](#11315-retire-after-overlap-window) |
 | Retire without deprecate → 400 `not_deprecated` | [§11.3.15](#11315-retire-after-overlap-window) |
 | Retire inside overlap window → 400 `overlap_window_active` | [§11.3.15](#11315-retire-after-overlap-window) |
-| Retire after window → overlay `retired`, audit `action='retire'` | [§11.3.15](#11315-retire-after-overlap-window) |
+| Retire after window → overlay `retired`, audit `action='retire'` | [§11.3.15](#11315-retire-after-overlap-window); **automatable** via `[SEED]` `retire_after` backdating |
 | Deprecated version still servable inside window (no auto-retire) | **Unprobeable** — same Access role block as [§11.3.8](#1138-access-role-and-scope) for `/v1` |
 | Retired version omitted from discovery | **Unprobeable** — same Access block; confirm overlay + audit in [§11.3.15](#11315-retire-after-overlap-window) |
 

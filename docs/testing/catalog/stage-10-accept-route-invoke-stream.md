@@ -22,14 +22,40 @@ Source files read:
 - `ai-platform/test/system/harness.ts`, `ai-platform/test/worker-request-orchestrator.test.ts` (established harness seams)
 - Orientation only: `docs/architecture/ai-platform/data-journey/12-stage-10-accept-route-invoke-stream.md`
 
-Conventions used throughout:
+## 1. Harness and provider conventions
+
 - Harness: `@cloudflare/vitest-pool-workers`, `SELF.fetch` against the real worker (`src/worker.ts`), real D1 migrations, real R2/DO, per `test/system/harness.ts`. Gateway origin `https://ai-gateway.test`; operator bearer `test-operator-bearer-token`.
 - **Setup FRESH** (referenced by most scenarios): Stage 3 enrollment happy path for a new installation; Stage 4 entitle happy path (`period_start 2026-07-01`, `soft_threshold 0.8`, grant `clinic.visit_summary@1.0.0`); Stage 5 policy publish/promote happy path for policy id `standard` with the scenario's document; AAT minted by the test helper (`role: "clinician"`, scopes `["ai.visit_summary","ai.access"]`, `ver "1"`); POST body = `visitSummaryInvokeBody` (`capability_id "clinic.visit_summary"`, `user_intent "Summarize the visit."`, context with `visit.chief_complaint@v1`). `isolateConfigCache.clear()` after every control-plane write. Stage 9 guard fresh success is a precondition for every scenario here; guard rejections are Stage 9's chapter.
-- **Provider seam**: production `resolveProviderPort` (worker.ts:L343-L359) maps `provider_id: "fake"` → `new FakeAdapter(["success"])`, wired ids (`deepseek`, `gemini`) → real adapters over `createFetchTransport()`, and any unknown id → `new FakeAdapter(["terminal:provider_unavailable"])`. Tests script behavior by `vi.spyOn(fakeMod, "FakeAdapter")` / subclassing `FakeAdapter.prototype.invoke` — the established seam in `test/worker-request-orchestrator.test.ts` (T16/T21/`prose_safety_markers_on_live_path`). No other provider double is used.
+- **Provider seam**: production `resolveProviderPort` (`worker.ts:L343-L359`) maps `provider_id: "fake"` → `new FakeAdapter(["success"])`, wired ids (`deepseek`, `gemini`) → real adapters over `createFetchTransport()`, and any unknown id → `new FakeAdapter(["retryable:provider_unavailable"])`. Tests script behavior by `vi.spyOn(fakeMod, "FakeAdapter")` / subclassing `FakeAdapter.prototype.invoke` — the established seam in `test/worker-request-orchestrator.test.ts` (T16/T21/`prose_safety_markers_on_live_path`). No other provider double is used.
 - The test pool env has **no** `DEEPSEEK_API_KEY` / `GEMINI_API_KEY`; wired-id invokes fail before HTTP with terminal `provider_rejected` (`missing_api_key`).
-- SSE wire notes (code-authoritative): `text_delta.data` is `{text, sequence, provisional: true}` and does **not** contain `trace_id` (the broker puts `trace_id` on the event wrapper; `encodeSseEvent` serializes only `event.data`). All other events carry `trace_id` inside `data`. `failed.data` is the full taxonomy body `{code, request_reference, trace_id, retry_safe}`.
 - Pricing: `fake-v1` rates 0.1/0.2 per 1K input/output (`control/pricing/platform-default/1.json`). Fake success usage is 10 in / 20 out → tokens 30, cost 0.005.
-- SSE event-type → scenario map: `accepted` → every scenario (asserted explicitly in S10-001); `text_delta` → S10-001; `regenerating` → S10-029/030/031; `heartbeat` → S10-033; `completed` → S10-001, replay S10-016/017; `failed` → S10-003/004/005/009/020–028/032/034, replay S10-018; `cancelled` → S10-013/014/015, replay S10-019; `context_requested` → never emitted for `single_shot` (see Non-automatable notes); `progress` / `partial_structured` → structured broker only, never wired (see Doc-drift observations).
+
+## 2. SSE wire contract (code-authoritative)
+
+Wire encoding: `event: <type>` then `data: <json>` (`encodeSseEvent` in `adapter.ts` serializes **only** `event.data`).
+
+| `event` | `data` shape | `trace_id` placement |
+| ------- | ------------ | -------------------- |
+| `accepted` | `request_reference`, `trace_id`, optional `degraded_notice` | inside `data` |
+| `heartbeat`, `regenerating` | `trace_id` only | inside `data` |
+| `text_delta` | `{text, sequence, provisional}` — **no** `trace_id` in `data` | on the event wrapper only (`stream/index.ts` sets `trace_id` on the `AdapterSseEvent`, but `encodeSseEvent` drops it) |
+| `completed` | `result.finalContent`, `trace_id` | inside `data` |
+| `failed` | `{code, request_reference, trace_id, retry_safe}` | inside `data` |
+| `cancelled` | `{trace_id}` only | inside `data` |
+
+**Client drop:** on a true disconnect the adapter calls `markCancelledWithoutEnqueue()` (`adapter.ts:L484-L486`) so the original connection shows **no** terminal frame. The broker still emits `cancelled` synchronously into that dead stream during `disconnect("client_close")`; settlement (credit + journal) proceeds. The only way to observe `cancelled` on the wire after a real drop is idempotent replay (S10-019).
+
+SSE event-type → scenario map: `accepted` → every scenario (S10-001); `text_delta` → S10-001; `regenerating` → S10-029/030/031; `heartbeat` → S10-033; `completed` → S10-001, replay S10-016/017; `failed` → S10-003/004/005/009/020–028/032/034, replay S10-018; `cancelled` → S10-015 (abort-at-entry: none), drop S10-013/014 (unobservable on dead connection), replay S10-019; `context_requested` → never for `single_shot` (Non-automatable notes); `progress` / `partial_structured` → dormant structured path only (§4).
+
+## 3. Invocation metadata (`selection_reason`)
+
+`runInvocation` derives in-memory `selection_reason` on each `AttemptRecord` (`invocation/index.ts:L21-L37`): `primary`, `fallback_after_retryable_error`, or `fallback_after_timeout`. The D1 `ai_attempt` table (`20260731120000_platform_schema.sql:L86-L100`) has **no** `selection_reason` column — optional schema addition is deferred. Scenarios that mention selection_reason (S10-008, S10-011, S10-030) assert invocation-time behavior only; no D1 column exists to query.
+
+## 4. Stream relay paths (prose live; structured dormant)
+
+Production `runFreshEventSource` always creates the **prose** broker (`createStreamBroker`, `worker.ts:L814-L866`). The structured relay path — `createStructuredStreamBroker` (`stream/structured.ts`), `validateAndRepair` (`validate/index.ts`) — has **no caller in `worker.ts`** and is **dormant** until a structured-output (`Output.mode`) capability ships (F-02). Unreachable on `POST /v1/requests` today regardless of manifest: `progress`, `partial_structured`, commit-time schema/business validation, and `repairPolicy` reask.
+
+**`regenerating` is live** for visit summary: it originates in the invocation loop when a partial stream is discarded before retry or cross-target fallback (`invocation/index.ts:L546-L610`), not in validation repair — `repairPolicy.allowed: false` does not block it (S10-029/030/031).
 
 ## Scenario S10-001 — Single-target chain success: accepted → text_delta → completed with full settlement
 
@@ -115,7 +141,7 @@ Conventions used throughout:
 | ID | S10-008 |
 | Journey setup | Setup FRESH. Policy: catch-all with two feature-valid targets — `{provider_id: "bogus-primary", model_id: "bogus-v1", max_attempts: 2, timeout_ms: 30000}` then `{provider_id: "fake", model_id: "fake-v1", max_attempts: 1, timeout_ms: 30000}`. No spy. |
 | Action | `POST /v1/requests`, idempotency key `s10-008-idem`. Measure elapsed. |
-| Expected outcome | Events: `accepted` → `text_delta("Fake adapter summary.")` → `completed`. **No** `regenerating` (bogus attempts stream nothing). Elapsed ≥ ~100 ms (one inter-retry backoff on the bogus target). In-memory `selection_reason` for the fake attempt is `fallback_after_retryable_error` — **not observable in D1** (`ai_attempt` has no such column; see Doc-drift observations). |
+| Expected outcome | Events: `accepted` → `text_delta("Fake adapter summary.")` → `completed`. **No** `regenerating` (bogus attempts stream nothing). Elapsed ≥ ~100 ms (one inter-retry backoff on the bogus target). In-memory `selection_reason` for the fake attempt is `fallback_after_retryable_error` — **not observable in D1** (§3). |
 | Side effects | `ai_attempt` 3 rows in order: `(1, "bogus-primary", "retryable_failure", "provider_unavailable")`, `(2, "bogus-primary", "retryable_failure", "internal_error")` (queue exhausted), `(3, "fake", "success")`. `routing_decision.chain` lists bogus then fake. `ai_request` → `Completed`; credit once tokens 30. |
 | Code reference | ai-platform/src/invocation/index.ts:L525-L568 — chain walk and `selection_reason` derivation; ai-platform/src/worker.ts:L358 — unknown-id FakeAdapter fallback |
 
@@ -148,7 +174,7 @@ Conventions used throughout:
 | ID | S10-011 |
 | Journey setup | Setup FRESH. Policy: two fake targets — `{model_id: "fake-slow", timeout_ms: 50, max_attempts: 1}` then `{model_id: "fake-v1", timeout_ms: 30000, max_attempts: 1}`. Spy `FakeAdapter` by construction order: first instance hangs (as S10-010), second is `new original(["success"])`. |
 | Action | `POST /v1/requests`, idempotency key `s10-011-idem`. |
-| Expected outcome | Events: `accepted` → `text_delta("Fake adapter summary.")` → `completed`. No `regenerating` (the timed-out attempt streamed nothing). In-memory `selection_reason` for attempt 2 is `fallback_after_timeout` (prior target's final failure was timeout-classified) — in-memory only, not persisted (Doc-drift observations). |
+| Expected outcome | Events: `accepted` → `text_delta("Fake adapter summary.")` → `completed`. No `regenerating` (the timed-out attempt streamed nothing). In-memory `selection_reason` for attempt 2 is `fallback_after_timeout` (prior target's final failure was timeout-classified) — in-memory only, not persisted (§3). |
 | Side effects | `ai_attempt`: `(1, model "fake-slow", outcome "timeout", error_code "timeout")`, `(2, model "fake-v1", outcome "success")`. `ai_request` → `Completed`; credit tokens 30 / cost 0.005 priced at `fake-v1` rates. |
 | Code reference | ai-platform/src/invocation/index.ts:L552-L559 — `fallback_after_timeout` selection; ai-platform/src/invocation/index.ts:L736-L739 — `prevExhaustedViaTimeout` propagation |
 
@@ -218,16 +244,16 @@ Conventions used throughout:
 | Side effects | Exactly one `ai_request` row total; one `ai_attempt`; one credit (`partial: false`) from the first request only. The replay connection writes nothing. |
 | Code reference | ai-platform/src/worker.ts — `replayIdempotentTerminal` `admitted` branch (no terminal emission) |
 
-## Scenario S10-018 — Idempotent replay of a failed prior request → failed internal_error (not the original code)
+## Scenario S10-018 — Idempotent replay of a failed prior request → failed with original taxonomy code
 
 | Field | Content |
 |-------|---------|
 | ID | S10-018 |
-| Journey setup | S10-005 (or S10-012) completed its failure: DO idempotency state `failed` for key `s10-005-idem` (original terminal code `provider_unavailable`). |
+| Journey setup | S10-005 (or S10-012) completed its failure: DO idempotency state `failed` for key `s10-005-idem` (original terminal code `provider_unavailable`, persisted as `terminalErrorCode` on the DO idempotency entry at credit time). |
 | Action | Re-`POST /v1/requests` with `x-idempotency-key: "s10-005-idem"`, trace `s10-018-trace`. |
-| Expected outcome | Events: `accepted` → `failed` with `data.code: "internal_error"` — the replay deliberately does **not** echo the original `provider_unavailable` — `retry_safe: true`, `request_reference` of this new connection. No provider call. |
+| Expected outcome | Events: `accepted` → `failed` with `data.code: "provider_unavailable"` — replay echoes the `terminalErrorCode` stored on the DO idempotency entry — `retry_safe: true`, `request_reference` of this new connection. No provider call. Falls back to `internal_error` only when the stored code is missing or not a taxonomy code. |
 | Side effects | None (no new rows, no credit). |
-| Code reference | ai-platform/src/worker.ts:L631-L634 — `failed` → `pushFailedTerminal(..., "internal_error")` |
+| Code reference | ai-platform/src/worker.ts:L813-L820 — `replayIdempotentTerminal` failed branch; ai-platform/src/quota-do/index.ts — `terminalErrorCode` on idempotency entry |
 
 ## Scenario S10-019 — Idempotent replay of a cancelled prior request → cancelled
 
@@ -409,12 +435,14 @@ Conventions used throughout:
 
 1. **Missing-policy / missing-handoff post-accept failures — fixed (C-01).** `settlePostAcceptInternalError` / `settleMissingHandoffInternalError` now journal, credit, and `recordTerminalState` for the `runFreshEventSource` catch and missing-accept-context branches (S10-003, S10-034).
 2. **Abort-at-entry (S10-015) unchanged.** The adapter short-circuits before the event-source factory runs; the row stays `Accepted` — distinct from the missing-handoff settlement paths above.
-3. **`ai_attempt.selection_reason` is not a D1 column.** §14 presents `primary` / `fallback_after_retryable_error` / `fallback_after_timeout` as `D1 ai_attempt.selection_reason`; the migration (`20260731120000_platform_schema.sql:L86-L100`) has no such column — the values exist only on the in-memory `AttemptRecord` (`invocation/index.ts:L21-L24`). §19.3.10 self-flags this, but the §14 table still drifts (S10-008, S10-011, S10-030).
-4. **`text_delta.data` omits `trace_id`.** §4.1 and §11.4 claim every `data` object includes `trace_id`; the broker puts `trace_id` on the event wrapper and `encodeSseEvent` serializes only `event.data`, so `text_delta.data` is `{text, sequence, provisional}` only. §19.3.5 acknowledges the gap; the §4.1/§11.4 contract tables were not updated (S10-001).
-5. **Structured relay path is documented as live but is never wired.** §10 says "structured JSON capabilities use a separate relay path"; `createStructuredStreamBroker` (`stream/structured.ts:L177`) and `validateAndRepair` (`validate/index.ts:L87`) have **no caller in `worker.ts`** — the prose broker is created unconditionally (`worker.ts:L814-L866`). `progress` / `partial_structured` events, commit-time schema/business validation, and `repairPolicy` reask are unreachable on `POST /v1/requests` regardless of manifest `Output.mode`. Conversely, `regenerating` **is** reachable for visit summary despite `repairPolicy.allowed: false`, because regenerating originates in the invocation loop (partial-stream retry/fallback), not in validation repair (S10-029/030/031).
+3. **`ai_attempt.selection_reason` is in-memory only — fixed (D-14).** Catalog §3 documents that the D1 `ai_attempt` table has no `selection_reason` column; values exist only on the in-memory `AttemptRecord` (S10-008, S10-011, S10-030).
+4. **`text_delta.data` omits `trace_id` — fixed (D-14).** Catalog §2 documents `{text, sequence, provisional}` with `trace_id` on the event wrapper only (S10-001).
+5. **Structured relay path dormant — fixed (D-15).** Catalog §4 marks `createStructuredStreamBroker` / `validateAndRepair` as not wired; `progress` / `partial_structured` unreachable; `regenerating` reachable via the invocation loop (S10-029/030/031).
 6. **`AdapterDisconnectReason "network_drop"` is dead.** Defined at `adapter.ts:L31` and accepted by the broker, but all three adapter call sites pass `"client_close"` (`adapter.ts:L529, L543, L555`). No scenario can produce `network_drop`.
-7. **Unknown-provider fallback token renamed (C-23).** `resolveProviderPort` now scripts `retryable:provider_unavailable` for unknown ids, matching retryable semantics (S10-005).
-8. **`cancelled` on a true client drop is emitted into a dead stream.** §11.7 shows the `cancelled` frame without noting it is unobservable on the dropped connection (adapter `markCancelledWithoutEnqueue`, `adapter.ts:L472-L474`); §19.3.12 documents the replay-based observation. S10-013/014 (drop) + S10-019 (replay) encode the code behavior.
+7. **Unknown-provider fallback token renamed — fixed (C-23).** `resolveProviderPort` scripts `retryable:provider_unavailable` for unknown ids (§1, S10-005).
+8. **`cancelled` on a true client drop is emitted into a dead stream — fixed (D-16).** Catalog §2 documents unobservability on the dropped connection and replay-based observation (S10-013/014 + S10-019).
+9. **Failed idempotent replay preserves original code — fixed (C-11).** `terminalErrorCode` is persisted on the DO idempotency entry and replayed on the SSE `failed` frame (S10-018).
+10. **In-flight (`admitted`) replay no longer fabricates completion — fixed (C-04).** Second connection gets `accepted` only; client waits for the real outcome (S10-017).
 
 ## Non-automatable notes
 

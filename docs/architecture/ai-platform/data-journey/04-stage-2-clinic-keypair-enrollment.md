@@ -8,7 +8,8 @@
    - [3.1 API: `public.rotate_installation_key()`](#31-api-publicrotate_installation_key)
    - [3.2 API: `public.revoke_installation_key(p_kid text)`](#32-api-publicrevoke_installation_keyp_kid-text)
    - [3.3 API: `public.get_ai_availability()`](#33-api-publicget_ai_availability)
-4. [Clinic availability flag (manual step)](#4-clinic-availability-flag-manual-step)
+   - [3.4 API: `public.set_ai_availability()`](#34-api-publicset_ai_availability)
+4. [Clinic availability flag](#4-clinic-availability-flag)
 5. [Failure paths](#5-failure-paths)
 6. [Happy path](#6-happy-path)
 7. [Who calls this RPC and how the platform learns `installation_id`](#7-who-calls-this-rpc-and-how-the-platform-learns-installation_id)
@@ -36,6 +37,7 @@
      - [8.3.13 Availability flag after the key exists](#8313-availability-flag-after-the-key-exists)
      - [8.3.14 Cannot revoke last active key](#8314-cannot-revoke-last-active-key)
      - [8.3.15 Recovery re-enroll after all keys revoked (postgres simulation)](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation)
+     - [8.3.16 Rotate succeeds when every key is revoked](#8316-rotate-succeeds-when-every-key-is-revoked)
 
 ---
 
@@ -46,7 +48,7 @@
 
 The clinic generates an Ed25519 keypair **inside Supabase**. The private key never leaves the clinic database. The public key and `kid` are later copied to the platform enroll call.
 
-After the first enroll, operators **rotate** keys with `rotate_installation_key()` (adds a new signing key, keeps the same `installation_id`) and **revoke** old keys with `revoke_installation_key(kid)` when overlap ends. Revoke cannot remove the **last** active key (`is_deleted = false` and `revoked_at IS NULL`) — rotate a replacement first, then revoke the old `kid`. Normal ops never reach zero active keys via the revoke API; recovery re-enroll when every key is revoked remains on `enroll_installation_keypair` but is reachable only via postgres/admin simulation or disaster recovery, not by revoking every key through the RPC.
+After the first enroll, operators **rotate** keys with `rotate_installation_key()` (adds a new signing key, keeps the same `installation_id`) and **revoke** old keys with `revoke_installation_key(kid)` when overlap ends. Revoke cannot remove the **last** active key (`is_deleted = false` and `revoked_at IS NULL`) — rotate a replacement first, then revoke the old `kid`. Normal ops never reach zero active keys via the revoke API. When every key is revoked (disaster recovery / privileged maintenance), **`rotate_installation_key()`** or **`enroll_installation_keypair()`** both recover under the same `installation_id` ([§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation), [§8.3.16](#8316-rotate-succeeds-when-every-key-is-revoked)).
 
 ## 2. Metaphor
 
@@ -76,7 +78,7 @@ The clinic prints its own **signing stamp** (private key) and sends a **stamp sp
 
 
 **About** `kid`**:** `installation_id` identifies *which clinic*; `kid` identifies *which signing key* for that
-clinic. Steady state is one active key. Production rotation uses `rotate_installation_key()` ([§3.1](#31-api-publicrotate_installation_key)). A second `enroll_installation_keypair()` while an active key exists (`is_deleted = false` and `revoked_at IS NULL`) fails with `ALREADY_ENROLLED`. Re-enroll is allowed only when **no** active key remains (recovery path): the RPC reuses `installation_id` from existing non-deleted rows and mints a new `kid`. That zero-active state cannot be produced by revoking every key through `revoke_installation_key` — the RPC rejects the last active key with `CANNOT_REVOKE_LAST_ACTIVE_KEY` ([§8.3.14](#8314-cannot-revoke-last-active-key)).
+clinic. Steady state is one active key. Production rotation uses `rotate_installation_key()` ([§3.1](#31-api-publicrotate_installation_key)). A second `enroll_installation_keypair()` while an active key exists (`is_deleted = false` and `revoked_at IS NULL`) fails with `ALREADY_ENROLLED`. When **no** active key remains, **`rotate_installation_key()`** or **`enroll_installation_keypair()`** both recover under the same `installation_id` ([§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation), [§8.3.16](#8316-rotate-succeeds-when-every-key-is-revoked)). That zero-active state cannot be produced by revoking every key through `revoke_installation_key` — the RPC rejects the last active key with `CANNOT_REVOKE_LAST_ACTIVE_KEY` ([§8.3.14](#8314-cannot-revoke-last-active-key)).
 
 Clinic keystore rotation is **additive**: old keys stay until revoked ([§3.2](#32-api-publicrevoke_installation_keyp_kid-text)). On the platform, `POST …/rotate` stamps `revoked_at` on prior D1 keys in the same batch as the new-key insert ([§7 in Stage 3](05-stage-3-platform-installation-enrollment.md#7-api-post-controlinstallationsinstallation_idrotate)). In-flight AATs signed with an old `kid` fail identity on the platform as soon as rotate returns — there is no platform dual-key overlap. Operators mint new AATs with the new `kid`. The platform selects the public key by AAT header `kid` (with payload `iss`). Revoked keys are rejected regardless of `exp`.
 
@@ -97,16 +99,17 @@ Clinic keystore rotation is **additive**: old keys stay until revoked ([§3.2](#
 **Errors:**
 
 
-| Code                         | When                                                                 |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `FORBIDDEN`                  | Caller is not owner or administrator                                 |
-| `ALREADY_ENROLLED`           | An active key row exists — use `rotate_installation_key()` ([§8.3.5](#835-second-enroll-while-active-key-exists)) |
-| `SINGLE_INSTALLATION_VIOLATION` | Trigger rejects a second distinct `installation_id` on insert     |
+| Code               | When                                                                 |
+| ------------------ | -------------------------------------------------------------------- |
+| `FORBIDDEN`        | Caller is not an administrator (`role = 'administrator'`) and not `is_bootstrap_admin = true` |
+| `ALREADY_ENROLLED` | An active key row exists — use `rotate_installation_key()` ([§8.3.5](#835-second-enroll-while-active-key-exists)) |
+
+`SINGLE_INSTALLATION_VIOLATION` is **not** an envelope code — the `installation_keys_single_installation` trigger raises it (P0001) on a direct INSERT with a second `installation_id`; no RPC reaches that branch ([§8.3.9](#839-single-installation-trigger-failure-path)).
 
 
 ### 3.1 API: `public.rotate_installation_key()`
 
-Adds a new signing key for the clinic’s existing `installation_id`. Use this after the first enroll when you need a fresh `kid` and keypair. Requires at least one active key row — otherwise returns `INSTALLATION_NOT_ENROLLED`.
+Adds a new signing key for the clinic’s existing `installation_id`. Use this after the first enroll when you need a fresh `kid` and keypair. Requires at least one non-deleted keystore row — succeeds even when every existing key is revoked (recovery path, [§8.3.16](#8316-rotate-succeeds-when-every-key-is-revoked)). Returns `INSTALLATION_NOT_ENROLLED` only when no non-deleted rows exist.
 
 
 | Item         | Value                       |
@@ -129,10 +132,10 @@ Adds a new signing key for the clinic’s existing `installation_id`. Use this a
 **Errors:**
 
 
-| Code                         | When                                                                 |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `FORBIDDEN`                  | Caller is not owner or administrator                                 |
-| `INSTALLATION_NOT_ENROLLED`  | No active `installation_keys` row — run enroll first ([§8.3.8](#838-rotate-before-enroll-fails-installation_not_enrolled)) |
+| Code                        | When                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| `FORBIDDEN`                 | Caller is not an administrator and not `is_bootstrap_admin = true`   |
+| `INSTALLATION_NOT_ENROLLED` | No non-deleted `installation_keys` row — run enroll first ([§8.3.8](#838-rotate-before-enroll-fails-installation_not_enrolled)) |
 
 
 Rotation is **additive**: the previous key row stays until you revoke it ([§3.2](#32-api-publicrevoke_installation_keyp_kid-text)). The issuer signs with the newest non-revoked key (`valid_from DESC, kid DESC`).
@@ -155,10 +158,10 @@ Marks one key row as revoked. Tokens signed with that `kid` must not verify afte
 | Field        | Type   | Meaning                                      |
 | ------------ | ------ | -------------------------------------------- |
 | `kid`        | string | The key id you passed (or already revoked)   |
-| `revoked_at` | string | Timestamp when revocation took effect        |
+| `revoked_at` | string | Stored `revoked_at` from the key row         |
 
 
-If the key was already revoked, the RPC returns success with the **existing** `revoked_at` (idempotent).
+Fresh revocation returns the **stored** `revoked_at` from the row (`RETURNING` after the UPDATE). If the key was already revoked, the RPC returns success with the same stored value (idempotent).
 
 Revoking the **last** active key (`is_deleted = false` and `revoked_at IS NULL`) is rejected — operators must `rotate_installation_key()` first, then revoke the superseded `kid`. Idempotent revoke of an already-revoked key still succeeds even when it is the only key row left.
 
@@ -167,7 +170,7 @@ Revoking the **last** active key (`is_deleted = false` and `revoked_at IS NULL`)
 
 | Code                            | When                                                                 |
 | ------------------------------- | -------------------------------------------------------------------- |
-| `FORBIDDEN`                     | Caller is not owner or administrator                                 |
+| `FORBIDDEN`                     | Caller is not an administrator and not `is_bootstrap_admin = true`   |
 | `INVALID_INPUT`                 | `p_kid` is null or blank after trim                                  |
 | `KEY_NOT_FOUND`                 | No non-deleted row with that `kid`                                   |
 | `CANNOT_REVOKE_LAST_ACTIVE_KEY` | Revoke would leave zero active keys — rotate a replacement first     |
@@ -204,9 +207,43 @@ Read-only clinic switch for the Flutter client. Returns **plain `jsonb`**, not t
 | Valid staff session    | Always returns the current JSON (no error code) |
 
 
-Flutter calls this to decide whether to show AI UI — it **never** probes the AI platform to discover enrollment. Who may **write** the flag is documented in [§4](#4-clinic-availability-flag-manual-step); this RPC is read-only.
+Flutter calls this to decide whether to show AI UI — it **never** probes the AI platform to discover enrollment. Who may **write** the flag is documented in [§4](#4-clinic-availability-flag); this RPC is read-only.
 
-## 4. Clinic availability flag (manual step)
+### 3.4 API: `public.set_ai_availability(p_enrolled, p_platform_base_url)`
+
+Administrator-gated write path for the clinic availability flag (migration `20260905120100_set_ai_availability_rpc.sql`). Returns the standard `rpc_result` envelope.
+
+
+| Item         | Value                       |
+| ------------ | --------------------------- |
+| Method       | RPC (PostgREST)             |
+| Auth         | Authenticated admin session |
+| Parameters   | `p_enrolled` (boolean, required); `p_platform_base_url` (text, required when `p_enrolled = true`) |
+
+
+**Success** `data` **object — same shape as** [§3.3](#33-api-publicget_ai_availability):
+
+
+| Field               | Type    | Meaning                                              |
+| ------------------- | ------- | ---------------------------------------------------- |
+| `enrolled`          | boolean | Whether the clinic considers AI enabled in the UI    |
+| `platform_base_url` | string or null | Base URL of the enrolled AI platform Worker   |
+
+
+When `p_enrolled = false`, `platform_base_url` in the stored JSON is set to `null`.
+
+**Errors:**
+
+
+| Code            | When                                                                 |
+| --------------- | -------------------------------------------------------------------- |
+| `FORBIDDEN`     | Caller is not an administrator and not `is_bootstrap_admin = true`   |
+| `INVALID_INPUT` | `p_enrolled` is null, or `p_enrolled = true` with blank/missing URL  |
+
+
+Enroll, rotate, and revoke still do not touch `app_settings` — call this RPC (or Flutter wiring to it) after Stage 3 platform enrollment ([§8.3.13](#8313-availability-flag-after-the-key-exists)).
+
+## 4. Clinic availability flag
 
 **Table:** `ai_internal.app_settings` key `ai.availability`
 
@@ -228,13 +265,12 @@ Flutter calls this to decide whether to show AI UI — it **never** probes the A
 | AI platform (Stage 3 enroll)                          | **No**                  | Enroll returns `platform_base_url` in the HTTP response only; D1 is updated, not clinic Postgres                                                                                   |
 | `enroll_installation_keypair` ([§3](#3-api-publicenroll_installation_keypair))                  | **No**                  | Keypair RPC does not touch `app_settings`                                                                                                                                          |
 | `rotate_installation_key` / `revoke_installation_key` | **No**                  | Keystore RPCs do not touch `app_settings`                                                                                                                                            |
-| Flutter (intended production)                         | **Yes** — not built yet | After successful platform enroll ([§7.2 step 4](#72-end-to-end-flow-intended-production)): owner/admin flow sets `enrolled: true` and stores `platform_base_url` from the enroll response                                     |
-| Vendor onboarding (today)                             | **Yes**                 | Manual `UPDATE ai_internal.app_settings … WHERE key = 'ai.availability'` until Flutter writes it ([04-ai-platform-operator-runbook.md §5.3](../04-ai-platform-operator-runbook.md#53-clinic-flip-availability)) |
+| `set_ai_availability` ([§3.4](#34-api-publicset_ai_availability)) | **Yes** | Intended production path after Stage 3 platform enrollment: administrator or bootstrap admin sets `enrolled: true` and stores `platform_base_url` from the enroll response |
+| Flutter (intended production)                         | **Yes** — not built yet | Should call [§3.4 `set_ai_availability`](#34-api-publicset_ai_availability) after successful platform enroll ([§7.2 step 4](#72-end-to-end-flow-intended-production))                                     |
+| Vendor onboarding (today)                             | **Yes**                 | `SELECT public.set_ai_availability(true, '<platform_base_url>');` as an administrator, or manual `UPDATE ai_internal.app_settings …` until Flutter calls the RPC ([04-ai-platform-operator-runbook.md §5.3](../04-ai-platform-operator-runbook.md#53-clinic-flip-availability)) |
 
 
-There is **no** `set_ai_availability` write RPC today — only the read path exists. The section title
-**manual step** reflects that gap: until Flutter (or a small settings RPC) is built, something outside
-the app must flip the flag after platform enroll completes.
+The write RPC closes the former manual-only gap. Until Flutter wires it, operators may still flip the flag with a privileged SQL `UPDATE`, but **`set_ai_availability`** is the supported contract surface.
 
 **Purpose:** a clinic-local switch so the desktop client can hide or show AI affordances without
 calling Cloudflare on every launch. It does not grant quotas; entitlement on the platform (Stage 4)
@@ -247,7 +283,6 @@ is separate.
 | --------------------------------- | --------------------------------- | ------------------------------- | ------------------------------ |
 | `enroll_installation_keypair`     | Non-admin caller                  | `FORBIDDEN`                     | Session role                   |
 | `enroll_installation_keypair`     | Active key already exists         | `ALREADY_ENROLLED`              | Use `rotate_installation_key`  |
-| `enroll_installation_keypair`     | Second distinct `installation_id` | `SINGLE_INSTALLATION_VIOLATION` | Trigger on `installation_keys` |
 | `rotate_installation_key`         | Non-admin caller                  | `FORBIDDEN`                     | Session role                   |
 | `rotate_installation_key`         | No active key row yet             | `INSTALLATION_NOT_ENROLLED`     | Enroll first                   |
 | `revoke_installation_key`         | Non-admin caller                  | `FORBIDDEN`                     | Session role                   |
@@ -262,7 +297,7 @@ is separate.
 ## 6. Happy path
 
 ```
-Owner/admin session (Flutter)
+Bootstrap administrator or administrator session (Flutter)
   → enroll_installation_keypair()
   → { kid, installation_id, public_jwk }
   → Flutter POST /control/installations/{installation_id}/enroll with public_jwk.x + kid
@@ -271,7 +306,7 @@ Owner/admin session (Flutter)
 Later key changes:
 
 ```
-Owner/admin session
+Bootstrap administrator or administrator session
   → rotate_installation_key()     # new kid + public_jwk, same installation_id
   → revoke_installation_key(kid)  # retire an old kid when overlap ends (not the last active key)
 ```
@@ -289,7 +324,7 @@ This subsection answers the production question: after a clinic buys the app and
 
 | Actor                                           | Calls this RPC?                    | Why                                                                                                                                                                                                |
 | ----------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Clinic **owner or administrator** (via Flutter) | **Yes** — intended production path | Gated by `auth_internal.assert_owner_or_administrator()`; only these roles may create, rotate, or revoke installation keys                                                                         |
+| Clinic **administrator or bootstrap admin** (via Flutter) | **Yes** — intended production path | Gated by `auth_internal.assert_owner_or_administrator()` as the **first** statement in each RPC — the role check precedes all other validation; only `role = 'administrator'` or `is_bootstrap_admin = true` may create, rotate, or revoke installation keys |                                                                         |
 | Clinic staff / doctors                          | No                                 | They call `issue_ai_token` (Stage 6) only **after** enrollment is complete; they may call `get_ai_availability` ([§3.3](#33-api-publicget_ai_availability))                                      |
 | AI platform (Cloudflare Worker)                 | No                                 | The platform has **no inbound path** to clinic Postgres ([01-ai-platform.md §1.3.1](../01-ai-platform.md#131-the-ai-platform-cannot-reach-the-clinics-database)); data flows client → platform only |
 | `anon` / unauthenticated clients                | No                                 | `GRANT EXECUTE` is to `authenticated` only                                                                                                                                                         |
@@ -299,15 +334,15 @@ This subsection answers the production question: after a clinic buys the app and
 `POST /control/.../enroll` plus manual clinic DB updates) until a verified purchase flow exists
 ([01-ai-platform.md §12.5 — Self-service enrollment](../01-ai-platform.md#125-explicitly-not-to-be-built-yet)).
 
-**Intended production path:** the clinic owner or administrator taps **Buy / Enable AI** in Flutter;
-after payment verification, Flutter calls this RPC on **that clinic's Supabase** using the owner's or
-administrator's authenticated session. Flutter is only the HTTP client — the RPC still runs inside
+**Intended production path:** a clinic administrator or bootstrap admin taps **Buy / Enable AI** in Flutter;
+after payment verification, Flutter calls this RPC on **that clinic's Supabase** using that staff member's
+authenticated session. Flutter is only the HTTP client — the RPC still runs inside
 clinic Postgres and the private key never leaves it.
 
 ### 7.2 End-to-end flow (intended production)
 
 ```
-Clinic owner/admin in Flutter
+Clinic administrator or bootstrap admin in Flutter
   │
   ├─1─► Payment / purchase verified (billing gate — not built yet)
   │
@@ -320,8 +355,8 @@ Clinic owner/admin in Flutter
   │         Auth: Bearer OPERATOR_BEARER_TOKEN (today; `control/auth.ts` — future: purchase token)
   │         Handler: `control/lifecycle.ts` `handleEnroll` → D1 batch; returns `platform_base_url`
   │
-  ├─4─► Clinic Supabase: set ai.availability { enrolled: true, platform_base_url }
-  │         ([§4](#4-clinic-availability-flag-manual-step) — Flutter or a small settings RPC; platform enroll does not write this)
+  ├─4─► Clinic Supabase: set_ai_availability(true, platform_base_url)
+  │         ([§3.4](#34-api-publicset_ai_availability) — Flutter wiring not built yet; platform enroll does not write this)
   │
   └─5─► POST /control/installations/{installation_id}/entitle (Stage 4) — vendor or automation;
         enroll alone leaves entitlement `pending` / zero quota
@@ -365,21 +400,21 @@ DB state is unchanged on the platform side.
 
 - Does **not** register the installation on the AI platform (Stage 3).
 - Does **not** grant quotas or capabilities (Stage 4 entitle).
-- Does **not** set `ai.availability` ([§4](#4-clinic-availability-flag-manual-step)).
+- Does **not** set `ai.availability` ([§4](#4-clinic-availability-flag); use [§3.4](#34-api-publicset_ai_availability) after Stage 3).
 - Does **not** mint AATs for staff use (Stage 6 — `issue_ai_token` requires an existing keypair from this stage).
 
 ## 8. Behavioral verification
 
 Live probes against a running clinic Supabase (and a local Worker from [§8.3.11](#8311-platform-does-not-know-the-clinic-yet) onward). Each probe is an operator action and the outcome you should see — not a unit test. Run **[§8.3](#83-ordered-probes) top to bottom** on a throwaway local clinic. If every probe matches, this stage is working.
 
-The gate in code is `auth_internal.assert_owner_or_administrator()`: `staff_members.role = 'administrator'` **or** `is_bootstrap_admin = true` (the first installer; the “owner” this document names). Non-admin roles (`doctor`, and any other non-administrator who is not bootstrap admin) must fail enroll, rotate, and revoke.
+The gate in code is `auth_internal.assert_owner_or_administrator()`: `staff_members.role = 'administrator'` **or** `is_bootstrap_admin = true` (bootstrap administrator — the first installer). Non-admin roles (`doctor`, and any other non-administrator who is not bootstrap admin) must fail enroll, rotate, and revoke with `FORBIDDEN` **before** any input or state validation runs.
 
 ### 8.1 Setup
 
 - Local clinic Supabase with migrations applied. Prefer a database you can wipe; several probes insert extra key rows and enroll the local Worker.
 - Three authenticated sessions (look up `auth_user_id` from `staff_members`):
-  - **Owner** — `is_bootstrap_admin = true`
-  - **Administrator** — `role = 'administrator'` and a different `auth_user_id` than the owner (create one if the bootstrap admin is the only administrator)
+  - **Bootstrap administrator (BOOT)** — `is_bootstrap_admin = true`
+  - **Administrator** — `role = 'administrator'` and a different `auth_user_id` than the bootstrap admin (create one if the bootstrap admin is the only administrator)
   - **Doctor** — `role = 'doctor'` (or any non-administrator who is not bootstrap admin)
 - SQL as `postgres` only to inspect `ai_internal`, reset rows, and force the single-installation trigger.
 - Local Worker (`npm run dev`) with `OPERATOR_BEARER_TOKEN` from [§8.3.11](#8311-platform-does-not-know-the-clinic-yet). Clinic `organizations.id` for the enroll body.
@@ -410,11 +445,11 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Seed `ai.availability` is `{ enrolled: false, platform_base_url: null }` | [§8.3.1](#831-reset-to-a-known-clinic-state), [§8.3.2](#832-before-any-key-exists) |
 | `get_ai_availability()` works for any authenticated staff (including doctor) | [§8.3.2](#832-before-any-key-exists) |
 | Flutter hides AI and does not probe the Worker while `enrolled` is false | [§8.3.2](#832-before-any-key-exists) |
-| `issue_ai_token` before any key → `INSTALLATION_NOT_ENROLLED` | [§8.3.2](#832-before-any-key-exists) |
+| `issue_ai_token` before any key → `INSTALLATION_NOT_ENROLLED` (P0001, not `rpc_result`) | [§8.3.2](#832-before-any-key-exists) |
 | `rotate_installation_key` before any key → `INSTALLATION_NOT_ENROLLED` | [§8.3.3](#833-enroll-failure-paths), [§8.3.8](#838-rotate-before-enroll-fails-installation_not_enrolled) |
 | Non-admin enroll → `FORBIDDEN`; no key row | [§8.3.3](#833-enroll-failure-paths) |
 | `anon` cannot call `enroll_installation_keypair` | [§8.3.3](#833-enroll-failure-paths) |
-| Empty keystore: owner enroll mints a new `installation_id`, `kid`, Ed25519 JWK | [§8.3.4](#834-first-enroll-happy-path) |
+| Empty keystore: bootstrap admin enroll mints a new `installation_id`, `kid`, Ed25519 JWK | [§8.3.4](#834-first-enroll-happy-path) |
 | Success `data` has every field in [§3](#3-api-publicenroll_installation_keypair); no `secret_key` | [§8.3.4](#834-first-enroll-happy-path) |
 | Postgres write: `algorithm = EdDSA`, `secret_key` present, audit columns, `public_key` = `public_jwk.x` | [§8.3.4](#834-first-enroll-happy-path) |
 | Authenticated clients cannot `SELECT` the keystore | [§8.3.4](#834-first-enroll-happy-path) |
@@ -422,19 +457,20 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Second enroll while active key exists → `ALREADY_ENROLLED`; no new row | [§8.3.5](#835-second-enroll-while-active-key-exists) |
 | Administrator may rotate; same `installation_id`, new `kid` via `rotate_installation_key` | [§8.3.6](#836-key-rotation-via-rotate_installation_key-happy-path) |
 | `rotate_installation_key` success `data` matches [§3.1](#31-api-publicrotate_installation_key) | [§8.3.6](#836-key-rotation-via-rotate_installation_key-happy-path) |
-| `revoke_installation_key(kid)` returns `{ kid, revoked_at }`; idempotent on second call | [§8.3.7](#837-revoke-installation-key-happy-path) |
+| `revoke_installation_key(kid)` returns `{ kid, revoked_at }` (stored row value); idempotent on second call | [§8.3.7](#837-revoke-installation-key-happy-path) |
 | Revoked `kid` fails `verify_aat`; unrevoked sibling `kid` still verifies | [§8.3.7](#837-revoke-installation-key-happy-path) |
 | Blank / unknown `p_kid` on revoke → `INVALID_INPUT` / `KEY_NOT_FOUND` | [§8.3.7](#837-revoke-installation-key-happy-path) |
 | Revoke last active key → `CANNOT_REVOKE_LAST_ACTIVE_KEY`; K1 stays unrevoked | [§8.3.7](#837-revoke-installation-key-happy-path), [§8.3.14](#8314-cannot-revoke-last-active-key) |
-| Second distinct `installation_id` → `SINGLE_INSTALLATION_VIOLATION` | [§8.3.9](#839-single-installation-trigger-failure-path) |
+| Second distinct `installation_id` → trigger `SINGLE_INSTALLATION_VIOLATION` (P0001, not envelope) | [§8.3.9](#839-single-installation-trigger-failure-path) |
 | AAT `iss` = `installation_id`; header `kid` selects this key | [§8.3.10](#8310-mint-an-aat-from-this-key-happy-path-for-the-handoff-fields) |
 | Clinic enroll does not register D1; capability POST fails identity | [§8.3.11](#8311-platform-does-not-know-the-clinic-yet) |
 | [§6](#6-happy-path) handoff: path `installation_id`, body `public_jwk.x` + `kid` → platform 200 | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
 | Platform does not write clinic `app_settings` | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
 | Re-enroll same installation/org → 409 `already_enrolled` ([§7.4](#74-duplicate-installation_id-across-clinics)) | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
 | Enroll leaves entitlement `pending` / zero quota ([§7.5](#75-what-this-stage-does-not-do)) | [§8.3.12](#8312-stage-3-enroll-using-this-rpcs-output-happy-path-6) |
-| Manual `UPDATE` flips the flag; no `set_ai_availability` RPC; flag does not grant quotas | [§8.3.13](#8313-availability-flag-after-the-key-exists) |
+| `set_ai_availability` flips the flag; flag does not grant quotas | [§8.3.13](#8313-availability-flag-after-the-key-exists) |
 | Recovery re-enroll when no active key remains reuses `installation_id`, mints new `kid` (postgres simulation) | [§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation) |
+| Rotate when every key is revoked still succeeds under the same `installation_id` | [§8.3.16](#8316-rotate-succeeds-when-every-key-is-revoked) |
 
 ---
 
@@ -469,13 +505,13 @@ WHERE key = 'ai.availability';
 
 **Do:** as doctor (or any staff with `ai.*`), `SELECT public.issue_ai_token();`
 
-**Expect:** `success = false`, `error_code = 'INSTALLATION_NOT_ENROLLED'`. This stage’s keypair is a prerequisite for Stage 6; this RPC does not mint AATs.
+**Expect:** exception `INSTALLATION_NOT_ENROLLED` (SQLSTATE `P0001`; PostgREST `message` is that string). There is no `rpc_result` envelope — unlike enroll / rotate / revoke. This stage’s keypair is a prerequisite for Stage 6; this RPC does not mint AATs.
 
 ---
 
 #### 8.3.3 Enroll failure paths
 
-**Do:** as **owner**, with `installation_keys` still empty, `SELECT public.rotate_installation_key();`
+**Do:** as **bootstrap administrator (BOOT)**, with `installation_keys` still empty, `SELECT public.rotate_installation_key();`
 
 **Expect:** `success = false`, `error_code = 'INSTALLATION_NOT_ENROLLED'`, message to enroll first. No new key row ([§3.1](#31-api-publicrotate_installation_key)).
 
@@ -485,7 +521,7 @@ WHERE key = 'ai.availability';
 
 **Do:** as **doctor**, `SELECT public.rotate_installation_key();` and `SELECT public.revoke_installation_key('any');`
 
-**Expect:** both `FORBIDDEN`. Non-admins cannot rotate or revoke.
+**Expect:** both `FORBIDDEN` — the role check runs before the empty-keystore / blank-kid guards, so non-admins never see `INSTALLATION_NOT_ENROLLED` or `INVALID_INPUT`. Non-admins cannot rotate or revoke.
 
 **Do:** as `anon` (no JWT), `POST /rest/v1/rpc/enroll_installation_keypair`.
 
@@ -495,7 +531,7 @@ WHERE key = 'ai.availability';
 
 #### 8.3.4 First enroll (happy path)
 
-**Do:** as **owner** (`is_bootstrap_admin`), with `installation_keys` still empty:
+**Do:** as **bootstrap administrator (BOOT)** (`is_bootstrap_admin`), with `installation_keys` still empty:
 
 ```sql
 SELECT public.enroll_installation_keypair();
@@ -531,9 +567,9 @@ FROM ai_internal.installation_keys
 WHERE is_deleted = false;
 ```
 
-**Expect:** exactly one row. `kid = K0`, `installation_id = I0`, `algorithm = 'EdDSA'`, `has_secret = true`, `public_len = 32`, `secret_len = 64`, `created_by` and `updated_by` equal the owner’s `auth_user_id`, `valid_from` is now, `revoked_at IS NULL`, `x_from_row` equals RPC `public_jwk.x`. The private key exists only in this row.
+**Expect:** exactly one row. `kid = K0`, `installation_id = I0`, `algorithm = 'EdDSA'`, `has_secret = true`, `public_len = 32`, `secret_len = 64`, `created_by` and `updated_by` equal BOOT’s `auth_user_id`, `valid_from` is now, `revoked_at IS NULL`, `x_from_row` equals RPC `public_jwk.x`. The private key exists only in this row.
 
-**Do:** as the same authenticated owner, `SELECT * FROM ai_internal.installation_keys;`
+**Do:** as the same authenticated bootstrap admin, `SELECT * FROM ai_internal.installation_keys;`
 
 **Expect:** denied (no schema `USAGE` / RLS deny-all). Clients cannot read the stamp out of the drawer.
 
@@ -545,7 +581,7 @@ WHERE is_deleted = false;
 
 #### 8.3.5 Second enroll while active key exists
 
-**Do:** as **owner**, with **K0** still active from [§8.3.4](#834-first-enroll-happy-path):
+**Do:** as **bootstrap administrator (BOOT)**, with **K0** still active from [§8.3.4](#834-first-enroll-happy-path):
 
 ```sql
 SELECT public.enroll_installation_keypair();
@@ -557,7 +593,7 @@ SELECT public.enroll_installation_keypair();
 
 #### 8.3.6 Key rotation via `rotate_installation_key` (happy path)
 
-**Do:** as **administrator** (different `auth_user_id` from the owner):
+**Do:** as **administrator** (different `auth_user_id` from BOOT):
 
 ```sql
 SELECT public.rotate_installation_key();
@@ -569,13 +605,13 @@ SELECT public.rotate_installation_key();
 
 #### 8.3.7 Revoke installation key (happy path)
 
-**Do:** as **owner**, revoke the first key:
+**Do:** as **bootstrap administrator (BOOT)**, revoke the first key:
 
 ```sql
 SELECT public.revoke_installation_key('K0');
 ```
 
-**Expect:** `success = true`, `data.kid = 'K0'`, `data.revoked_at` is a recent timestamp. As `postgres`, the K0 row has `revoked_at IS NOT NULL`; K1 is still unrevoked.
+**Expect:** `success = true`, `data.kid = 'K0'`, `data.revoked_at` equals the **stored** `revoked_at` on the K0 row (same value as `SELECT revoked_at FROM ai_internal.installation_keys WHERE kid = 'K0'`). As `postgres`, the K0 row has `revoked_at IS NOT NULL`; K1 is still unrevoked.
 
 **Do:** call `revoke_installation_key('K0')` again.
 
@@ -585,13 +621,13 @@ SELECT public.revoke_installation_key('K0');
 
 **Expect:** `success = false`, `error_code = 'INVALID_INPUT'`.
 
-**Do:** as **owner**, `SELECT public.revoke_installation_key('00000000-0000-0000-0000-000000000000');`
+**Do:** as **bootstrap administrator (BOOT)**, `SELECT public.revoke_installation_key('00000000-0000-0000-0000-000000000000');`
 
 **Expect:** `success = false`, `error_code = 'KEY_NOT_FOUND'`.
 
 **Do:** mint an AAT as doctor. Decode header `kid`. If it is **K0**, `SELECT auth_internal.verify_aat('<token>');` must be `false`. Mint again (or use a token with **K1**) — `verify_aat` is `true` while K1 remains unrevoked.
 
-**Do:** as **owner**, attempt to revoke the last active key:
+**Do:** as **bootstrap administrator (BOOT)**, attempt to revoke the last active key:
 
 ```sql
 SELECT public.revoke_installation_key('K1');
@@ -702,24 +738,14 @@ curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
 
 #### 8.3.13 Availability flag after the key exists
 
-**Do:** try to find a write RPC: `\df public.set_ai_availability` (or call it).
-
-**Expect:** it does not exist. Only the read path exists ([§3.3](#33-api-publicget_ai_availability)).
-
-**Do:** vendor update ([runbook §5.3](../04-ai-platform-operator-runbook.md#53-clinic-flip-availability)):
+**Do:** as **bootstrap administrator (BOOT)** after Stage 3 platform enroll returns `platform_base_url`:
 
 ```sql
-UPDATE ai_internal.app_settings
-SET value_json = jsonb_build_object(
-  'enrolled', true,
-  'platform_base_url', 'http://127.0.0.1:8787'
-)
-WHERE key = 'ai.availability';
-
+SELECT public.set_ai_availability(true, 'http://127.0.0.1:8787');
 SELECT public.get_ai_availability();
 ```
 
-**Expect:** `{ "enrolled": true, "platform_base_url": "http://127.0.0.1:8787" }` for **doctor** as well as owner/admin.
+**Expect:** `set_ai_availability` returns `success = true`, `data = {"enrolled": true, "platform_base_url": "http://127.0.0.1:8787"}`. `get_ai_availability()` returns the same plain `jsonb` for **doctor** as well as administrators.
 
 **Do:** open the Flutter AI surface.
 
@@ -735,7 +761,7 @@ SELECT public.get_ai_availability();
 
 The revoke API enforces at least one active key per installation. After [§8.3.7](#837-revoke-installation-key-happy-path) revokes **K0**, **K1** is the sole active key — `revoke_installation_key('K1')` must fail with `CANNOT_REVOKE_LAST_ACTIVE_KEY` (probe performed there).
 
-**Do:** as **owner**, with only **K1** still active, call `revoke_installation_key('K1')` again if needed.
+**Do:** as **bootstrap administrator (BOOT)**, with only **K1** still active, call `revoke_installation_key('K1')` again if needed.
 
 **Expect:** same failure. Operators rotate first (`rotate_installation_key()` → **K2**), revoke **K1**, and may revoke **K0** if still present — never the last unrevoked key via RPC.
 
@@ -758,10 +784,24 @@ WHERE is_deleted = false AND revoked_at IS NULL;
 
 **Expect:** count = 0.
 
-**Do:** as **owner**:
+**Do:** as **bootstrap administrator (BOOT)**:
 
 ```sql
 SELECT public.enroll_installation_keypair();
 ```
 
 **Expect:** `success = true`. **Same** `installation_id` **I0**. New `kid` (**Kx** ≠ **K0**, **K1**). As `postgres`, exactly one active row (`revoked_at IS NULL`). This is the recovery path when every prior key has been revoked outside normal revoke RPC flow.
+
+---
+
+#### 8.3.16 Rotate succeeds when every key is revoked
+
+Same zero-active state as [§8.3.15](#8315-recovery-re-enroll-after-all-keys-revoked-postgres-simulation) — rows exist under **I0**, all with `revoked_at` set (not an empty keystore).
+
+**Do:** as **administrator**, without calling `enroll_installation_keypair()`:
+
+```sql
+SELECT public.rotate_installation_key();
+```
+
+**Expect:** `success = true`. **Same** `installation_id` **I0**. New `kid` (**Kr**). Rotate’s lookup selects any non-deleted row (no `revoked_at` filter), so rotation proceeds even when every existing key is revoked — the authoritative recovery path alongside re-enroll. `INSTALLATION_NOT_ENROLLED` fires only when no non-deleted rows exist ([§8.3.8](#838-rotate-before-enroll-fails-installation_not_enrolled)).

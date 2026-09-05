@@ -48,7 +48,7 @@
 | `periodBounds.period_start`   | string | From entitlement snapshot                           |
 | `periodBounds.period_end`     | string | From entitlement snapshot                           |
 | `jtiReplay[jti].expiresAt`    | number | Replay window (2h). Already ≥ the 10-minute max AAT lifetime (`MAX_AAT_LIFETIME_SECONDS = 600`); a token cannot outlive its JTI entry. |
-| `idempotency[key]`            | object | `{ expiresAt, requestReference, state, requestId }` — `state` is `admitted` \| `completed` \| `failed` \| `cancelled` only (not `in_progress` / `awaiting_context`; those are not DO states). `admitted` at admit; credit may set `completed`, `failed`, or `cancelled`; abandoned sweep may set `failed`. |
+| `idempotency[key]`            | object | `{ expiresAt, requestReference, state, requestId, terminalErrorCode? }` — `state` is `admitted` \| `completed` \| `failed` \| `cancelled` only (not `in_progress` / `awaiting_context`; those are not DO states). `terminalErrorCode` is set on `failed` credit (C-11) and replayed on idempotent failure responses. `admitted` at admit; credit may set `completed`, `failed`, or `cancelled`; abandoned sweep may set `failed`. |
 | `creditedRequests[requestId]` | object | `{ expiresAt }`                                     |
 | `admittedRequests[requestId]` | object | `{ requestReference, admittedAt, entitlement }` — `entitlement` is the admission-time snapshot so `creditRPC` can re-run `maybeResetPeriod` before applying usage |
 | `boundInstallationId`         | string | Installation binding                                |
@@ -80,7 +80,18 @@
 
 ## 4. Ephemeral sweep and idempotency TTL
 
-Admission sets `idempotency.expiresAt` and `admittedAt` to the same timestamp plus the 2h horizon. On every later RPC, `sweepEphemeral` runs **abandoned-admission handling first**, then deletes idempotency entries whose `expiresAt <= now`. JTI replay uses the same 2h horizon, which already covers the 10-minute maximum AAT lifetime (`MAX_AAT_LIFETIME_SECONDS`); a still-valid token cannot be replayed after its JTI entry expires.
+No `alarm()` handler — sweeps are **lazy**, run at the start of mutating RPCs (`admission`, `credit`, `release`) and on read-only `inspectRPC` (in memory only — no `storage.put`).
+
+`sweepEphemeral` order (`quota-do/index.ts`):
+
+1. Delete expired `jtiReplay` entries (`expiresAt <= now`)
+2. **`sweepAbandonedAdmissions`** — drop stale in-flight admissions; decrement `inFlight`; mark matching idempotency `failed` with slid expiry
+3. Delete expired `idempotency` entries
+4. Delete expired `creditedRequests` entries
+
+Abandoned-admission handling runs **after** jti expiry deletion and **before** idempotency expiry — not first overall.
+
+Admission sets `idempotency.expiresAt` and `admittedAt` to the same timestamp plus the 2h horizon. On every later RPC, `sweepEphemeral` runs the order above. JTI replay uses the same 2h horizon, which already covers the 10-minute maximum AAT lifetime (`MAX_AAT_LIFETIME_SECONDS`); a still-valid token cannot be replayed after its JTI entry expires.
 
 When an `admittedRequests` row is older than the horizon (crashed / never credited):
 
@@ -140,10 +151,11 @@ curl -s -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
 | HTTP | Code | Meaning |
 | ---- | ---- | ------- |
 | 401 | `unauthorized` | Missing or invalid operator Bearer |
-| 400 | `invalid_route` | Malformed path |
 | 404 | `installation_not_found` | No D1 `installation` row |
 | 405 | `method_not_allowed` | Non-GET |
 | 503 | `quota_do_unavailable` | DO binding missing or DO unreachable — same transport failure that triggers grace admission on `POST /v1/requests` |
+
+`400 invalid_route` exists in the handler but is **unreachable via HTTP** (dispatch pre-filters with identical regex; direct handler invocation only).
 
 ### 5.3 Response → DO field mapping
 
@@ -263,7 +275,7 @@ Every field, constant, RPC kind, and sweep/TTL claim in this file maps to a prob
 | `maybeResetPeriod` on admit and credit when bounds change | [§6.3.8](#638-period-reset) |
 | `jtiReplay[jti].expiresAt` — same AAT cannot admit twice | [§6.3.4](#634-jti-replay) |
 | JTI window 2h already ≥ 10-minute max AAT lifetime | [§6.3.4](#634-jti-replay), [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
-| `idempotency[key]` `{ expiresAt, requestReference, state, requestId }` | [§6.3.3](#633-first-admit-and-credit), [§6.3.5](#635-idempotent-replay-after-credit) |
+| `idempotency[key]` `{ expiresAt, requestReference, state, requestId, terminalErrorCode? }` | [§6.3.3](#633-first-admit-and-credit), [§6.3.5](#635-idempotent-replay-after-credit) |
 | Idempotency states are `admitted` \| `completed` \| `failed` \| `cancelled` only | [§6.3.5](#635-idempotent-replay-after-credit), [§6.3.9](#639-cancel-and-zero-usage-credit), [§6.3.10](#6310-abandoned-admission-sweep) |
 | `admitted` at admit; credit may set `completed` / `failed` / `cancelled` | [§6.3.3](#633-first-admit-and-credit), [§6.3.9](#639-cancel-and-zero-usage-credit), [§6.3.10](#6310-abandoned-admission-sweep) |
 | Abandoned sweep may set `failed` (not a completed placeholder) | [§6.3.10](#6310-abandoned-admission-sweep) |
@@ -283,7 +295,7 @@ Every field, constant, RPC kind, and sweep/TTL claim in this file maps to a prob
 | Credit re-runs `maybeResetPeriod`; slides `expiresAt` | [§6.3.8](#638-period-reset), [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
 | RPC `release` — compensate when stage-9 journal INSERT fails | [§6.3.11](#6311-release-on-journal-insert-failure) |
 | Admission sets `idempotency.expiresAt` and `admittedAt` to the same now+2h | [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
-| `sweepEphemeral`: abandoned-admission first, then delete expired maps | [§6.3.10](#6310-abandoned-admission-sweep), [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
+| `sweepEphemeral`: jti expiry → abandoned admissions → idempotency expiry → creditedRequests expiry | [§6.3.10](#6310-abandoned-admission-sweep), [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
 | Abandoned: drop admitted row, `inFlight` −1, mark matching idempotency `failed`, slide `expiresAt` | [§6.3.10](#6310-abandoned-admission-sweep) |
 | Retry after original horizon but inside slid window stays idempotent; after slid window the key admits fresh | [§6.3.14](#6314-ephemeral-sweep-and-idempotency-ttl) |
 

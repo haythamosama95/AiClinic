@@ -5,6 +5,8 @@ Source files read:
 - `backend/supabase/migrations/20260801120000_ai_keystore_schema.sql` (keystore, issuance ledger, `app_settings` seed)
 - `backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql` (enroll / rotate / revoke)
 - `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` (idempotent re-apply of the above; confirms no added guards)
+- `backend/supabase/migrations/20260902120000_enroll_installation_keypair_already_enrolled_guard.sql` (`ALREADY_ENROLLED` guard)
+- `backend/supabase/migrations/20260902130100_revoke_last_active_key_guard.sql` (`CANNOT_REVOKE_LAST_ACTIVE_KEY` guard)
 - `backend/supabase/migrations/20260903180000_grant_ai_visit_summary_administrator.sql` (`ai.visit_summary` grant)
 - `backend/supabase/migrations/20260516100000_auth_rbac_schema.sql` (`roles_permissions`, `staff_role` enum)
 - `backend/supabase/migrations/20260516100400_auth_rbac_seed.sql` (permission matrix seed, bootstrap admin)
@@ -36,6 +38,28 @@ matter. Reset with `SELECT set_config('role', 'postgres', true);` to inspect `ai
 **Failure shape.** `public.issue_ai_token` returns `text` and fails with bare
 `RAISE EXCEPTION '<CODE>'`: psql shows `ERROR:  <CODE>`, SQLSTATE `P0001`; PostgREST returns
 HTTP 400 with body `{"code":"P0001","message":"<CODE>",...}`. There is no `rpc_result` envelope.
+
+### 1.1 Issuer error codes (guard order)
+
+All contract failures are raised in this order (`20260801120200…sql:L143-L238`):
+
+| Order | Code | When |
+| ----- | ---- | ---- |
+| 1 | `UNAUTHENTICATED` | No JWT / missing `sub` (`assert_valid_ai_session`, L87-L100) |
+| 2 | `SESSION_EXPIRED` | `exp` claim in the past (L102-L107) |
+| 3 | `STAFF_NOT_FOUND` | No active staff row for `auth.uid()` (`build_staff_claims` empty or re-SELECT miss, L145-L160) |
+| 4 | `BRANCH_NOT_FOUND` | No active branch assignment (L162-L175) |
+| 5 | `INSTALLATION_NOT_ENROLLED` | No non-deleted keystore row, or no active signing key (L177-L199) |
+| 6 | `RATE_LIMITED` | Per-actor mint count ≥ ceiling within window (L214-L223) |
+| 7 | `AI_ACCESS_DENIED` | Role has no granted `ai.*` permission (L225-L238) |
+
+Non-contract failures (e.g. invalid `ai.issuer.rate_limit.ceiling` JSON → `22P02` cast error, S06-033) surface as uncoded Postgres errors.
+
+### 1.2 Branch selection and scope ordering
+
+**Branch claim.** `ORDER BY sba.is_primary DESC, b.name LIMIT 1` (L170) — the primary active assignment wins; when no assignment is flagged primary, the alphabetically first active branch name wins (S06-024).
+
+**Scopes claim.** Derived from `roles_permissions` with `ORDER BY permission_key` (L225-L227) — deterministic alphabetical ordering (S06-020).
 
 **Named personas and aliases** (concrete ids written as fixed aliases for the ids returned by setup):
 
@@ -381,7 +405,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | Field | Content |
 |-------|---------|
 | ID | S06-029 |
-| Journey setup | S06-011 end state (only key K0 revoked; minting fails `INSTALLATION_NOT_ENROLLED`). Recovery path, as BOOT: `SELECT public.enroll_installation_keypair();` — **corrected (Register 4 item 1):** the `ALREADY_ENROLLED` guard exists (`20260902120000`, L19-L29) but fires only when an **active** key exists; from this zero-active state enroll succeeds and, because the installation lookup ignores `revoked_at`, the existing I0 is reused rather than a fresh uuid (matches S02-022). |
+| Journey setup | S06-011 end state (only key K0 revoked; minting fails `INSTALLATION_NOT_ENROLLED`). Recovery path, as BOOT: `SELECT public.enroll_installation_keypair();` — **corrected (Register 4 item 1):** the `ALREADY_ENROLLED` guard exists (`20260902120000`, L19-L29) but fires only when an **active** key exists; from this zero-active state enroll succeeds and, because the installation lookup ignores `revoked_at`, the existing I0 is reused rather than a fresh uuid (matches S02-022). Alternatively, `rotate_installation_key` also recovers from the same state (S02-023) by minting a new active key under I0 without re-enrolling. |
 | Action | Enroll (above), then inject claims for DOC-AUTH and `SELECT public.issue_ai_token();` |
 | Expected outcome | Enroll returns `rpc_success` with a **new** kid K2 and `installation_id = "<I0>"` (unchanged). The subsequent mint succeeds: header `kid = "<K2>"`, payload `iss = "<I0>"` — platform-side continuity of the installation identity is preserved across the recovery. |
 | Side effects | One new `installation_keys` row (K2, active); one issuance row. |
@@ -605,16 +629,9 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
    (→ `exp − iat = 600`), matching `MAX_AAT_LIFETIME_SECONDS`. Default-configured clinics mint
    platform-compatible tokens (S06-043). The contract (§4, T12) caps `exp − iat` at the configured
    lifetime; operators must still keep `lifetime_minutes ≤ 10` if they override the seed.
-3. **Stage-6 doc §5 error table is incomplete.** It lists only `INSTALLATION_NOT_ENROLLED`,
-   `AI_ACCESS_DENIED`, `BRANCH_NOT_FOUND`, `RATE_LIMITED`. The issuer also raises
-   `UNAUTHENTICATED`, `SESSION_EXPIRED`, and `STAFF_NOT_FOUND` (all covered here; contract §9.2
-   lists all seven correctly).
-4. **Stage-6 doc calls the bootstrap admin "Owner".** The `owner` role was removed in
-   `20260611150000`; the bootstrap admin is role `administrator` with `is_bootstrap_admin = true`.
-   Its `ai.access` scope comes from the administrator row of the permission matrix.
-5. **Doc omits the branch tie-break.** The doc's payload table says `branch` = "Primary active
-   branch"; the code falls back to alphabetical branch-name order when no assignment is primary
-   (S06-024).
+3. **~~Stage-6 doc §5 error table is incomplete~~ — Fixed (D-24).** Catalog §1.1 documents all seven contract codes including `UNAUTHENTICATED`, `SESSION_EXPIRED`, and `STAFF_NOT_FOUND` (scenarios S06-002…S06-004).
+4. **~~Stage-6 doc calls the bootstrap admin "Owner"~~ — Fixed (D-24).** Catalog persona **BOOT** is `role = 'administrator'` with `is_bootstrap_admin = true` (the `owner` role was removed in `20260611150000`).
+5. **~~Doc omits the branch tie-break~~ — Fixed (D-24).** Documented in §1.2 and S06-024: `ORDER BY sba.is_primary DESC, b.name` — alphabetical branch-name fallback when no assignment is primary.
 6. **Defensive dead branches in the issuer (code reality, not doc).** The second
    `UNAUTHENTICATED` raise (claims without `sub`) is unreachable via JWT injection because
    `auth.uid()` derives from the same `sub` claim; the second `STAFF_NOT_FOUND` raise is

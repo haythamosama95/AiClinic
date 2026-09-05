@@ -50,7 +50,7 @@ Full field list: [07-stage-5-routing-policy.md §4](07-stage-5-routing-policy.md
 | D1 link     | `ai_request.payload_pointer`                   |
 | Written by  | `journal/index.ts` on every terminal settlement (`Completed`, `Failed`, `Cancelled`) — one object per request |
 | Read by     | `getRequest`, support lookup                   |
-| Deleted by  | Retention purge (90d diagnostic horizon)       |
+| Deleted by  | **Diagnostic** purge (~30d for `diagnostic_30d`): R2 delete + `payload_pointer = NULL`; D1 row survives. **Journal** purge (~90d): R2 delete then row delete. See [§3.3.15](#3315-retention-purge-deletes-the-envelope) |
 
 
 Full field list: [13-stage-11-terminal-settlement.md §7](13-stage-11-terminal-settlement.md#7-r2-envelope-every-field).
@@ -170,7 +170,7 @@ Every object, key, reader, and field claim in this file maps to a probe. Carry t
 | `Failed` still writes **one** envelope; empty chain stores `no_provider_attempt` | [§3.3.13](#3313-failed-terminal-one-envelope) |
 | Fail/cancel `result.finishReason` is the taxonomy code | [§3.3.13](#3313-failed-terminal-one-envelope), [§3.3.14](#3314-cancelled-terminal-one-envelope) |
 | `Cancelled` still writes **one** envelope | [§3.3.14](#3314-cancelled-terminal-one-envelope) |
-| Retention purge deletes the envelope and nulls `payload_pointer` (90d journal horizon) | [§3.3.15](#3315-retention-purge-deletes-the-envelope) |
+| Retention purge deletes the envelope and nulls `payload_pointer` (diagnostic ~30d; journal ~90d row delete) | [§3.3.15](#3315-retention-purge-deletes-the-envelope) |
 | Installation purge deletes envelopes | [§3.3.16](#3316-installation-purge-deletes-envelopes) |
 
 
@@ -821,17 +821,20 @@ On the FakeAdapter success path the invoke finishes in milliseconds — abort of
 
 #### 3.3.15 Retention purge deletes the envelope
 
-Visit-summary `Governance.retentionClass` is `diagnostic_30d`. Journal rows themselves last **90 days**; that is the horizon this file names. Diagnostic purge can delete the object sooner and null `payload_pointer` while the D1 row remains.
+Visit-summary `Governance.retentionClass` is `diagnostic_30d`. Journal rows themselves last **90 days** — two distinct purges, not one compressed step:
+
+1. **Diagnostic (~31 days):** R2 envelope deleted, `payload_pointer` set NULL; D1 `ai_request` row **remains**.
+2. **Journal (~90 days):** R2 delete (pointer or derived key), then `usage_event.request_id` NULL, then `ai_request` / `ai_attempt` row deletes.
 
 Worker must be running with `--test-scheduled` ([§3.1](#31-setup)).
 
-**Do:** keep **R0**’s envelope. Backdate it past 30 days but **inside** 90 days, then fire the 03:00 UTC cron:
+**Do:** keep **R0**’s envelope. Backdate it past 30 days but **inside** 90 days, then fire the 03:00 UTC cron (canonical dev hook):
 
 ```bash
 npx wrangler d1 execute ai-platform-development --local --env development --command \
   "UPDATE ai_request SET created_at = datetime('now','-31 days'), completed_at = datetime('now','-31 days') WHERE request_id = '<R0>'"
 
-curl -s "$GATEWAY/__scheduled?cron=0+3+*+*+*"
+curl -s "$GATEWAY/cdn-cgi/handler/scheduled?cron=0+3+*+*+*"
 
 npx wrangler d1 execute ai-platform-development --local --env development --command \
   "SELECT request_id, payload_pointer FROM ai_request WHERE request_id = '<R0>'"
@@ -849,7 +852,7 @@ npx wrangler r2 object get \
 npx wrangler d1 execute ai-platform-development --local --env development --command \
   "UPDATE ai_request SET created_at = datetime('now','-91 days'), completed_at = datetime('now','-91 days') WHERE request_id = '<RJ>'"
 
-curl -s "$GATEWAY/__scheduled?cron=0+3+*+*+*"
+curl -s "$GATEWAY/cdn-cgi/handler/scheduled?cron=0+3+*+*+*"
 
 npx wrangler d1 execute ai-platform-development --local --env development --command \
   "SELECT request_id FROM ai_request WHERE request_id = '<RJ>'"

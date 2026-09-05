@@ -53,7 +53,12 @@ Same single-operator auth as every `/control/*` route: one `OPERATOR_BEARER_TOKE
 `OPERATOR_ID` on `token_contract.changed_by` / `control_audit`. The trail cannot distinguish
 operators (see [Stage 3 enroll auth](05-stage-3-platform-installation-enrollment.md#3-api-post-controlinstallationsinstallation_idenroll)).
 
-
+Both routes use operator Bearer auth (`requireOperator`), parse a JSON body, and validate `ver` via
+`requireNonEmptyString` followed by `.trim()` before any D1 work. The `ver` contract is
+**non-empty after trim** only — surrounding whitespace is stripped and the trimmed value is
+inserted, returned, and used for duplicate checks; there is no length or charset validation beyond
+that. Malformed paths and unknown actions fall through to HTTP 404 plain-text `Not Found` at the
+worker router — not `400 invalid_route` (dispatch pre-filters with `TOKEN_CONTRACT_PATTERN`).
 
 ### 4.1 `POST /control/token-contract/begin-rotation`
 
@@ -66,10 +71,10 @@ operators (see [Stage 3 enroll auth](05-stage-3-platform-installation-enrollment
 
 | Field | Required       | Meaning                   |
 | ----- | -------------- | ------------------------- |
-| `ver` | yes, non-empty | New AAT version to accept |
+| `ver` | yes, non-empty after trim | New AAT version to accept |
 
 
-**Success (200):** `{ "ver": "<ver>" }`
+**Success (200):** `{ "ver": "<ver>" }` (trimmed value)
 
 **D1 writes:** INSERT `token_contract` if fewer than 2 non-retired versions exist.
 
@@ -77,9 +82,10 @@ operators (see [Stage 3 enroll auth](05-stage-3-platform-installation-enrollment
 | Failure | `error`                 | Triggering field                        |
 | ------- | ----------------------- | --------------------------------------- |
 | 401     | `unauthorized`          | Missing/invalid `OPERATOR_BEARER_TOKEN` |
-| 400     | `invalid_ver`           | Empty `ver`                             |
-| 409     | `ver_already_exists`    | `ver` already in table                  |
-| 409     | `rotation_already_open` | Already 2 accepted versions             |
+| 400     | `invalid_json`          | Body not JSON                           |
+| 400     | `invalid_ver`           | `ver` missing, empty, whitespace-only, or non-string |
+| 409     | `ver_already_exists`    | `ver` (after trim) already in table (including retired rows) |
+| 409     | `rotation_already_open` | Already 2 non-retired versions          |
 
 
 
@@ -88,14 +94,20 @@ operators (see [Stage 3 enroll auth](05-stage-3-platform-installation-enrollment
 
 **Request:** `{ "ver": "<version>" }`
 
-**Success (200):** `{ "ver": "<ver>", "retired_at": "<ISO>" }`
+**Success (200):** `{ "ver": "<ver>", "retired_at": "<ISO>" }` (`ver` is the trimmed value)
+
+Retire parses and validates the body the same way as begin-rotation (`parseJsonBody` →
+`requireNonEmptyString` → `.trim()`).
 
 
 | Failure | `error`               | Trigger                        |
 | ------- | --------------------- | ------------------------------ |
-| 404     | `ver_not_found`       | `ver` not in table             |
+| 401     | `unauthorized`        | Missing/invalid `OPERATOR_BEARER_TOKEN` |
+| 400     | `invalid_json`        | Body not JSON                  |
+| 400     | `invalid_ver`         | `ver` missing, empty, whitespace-only, or non-string |
+| 404     | `ver_not_found`       | `ver` (after trim) not in table |
 | 409     | `ver_already_retired` | `retired_at` already set       |
-| 409     | `no_rotation_open`    | Only one accepted version left |
+| 409     | `no_rotation_open`    | Only one non-retired version left |
 
 
 
@@ -179,7 +191,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Rotation `changed_by` is `OPERATOR_ID` (`platform-operator`), not `seed` and not the bearer string ([§3](#3-d1-row-token_contract), [§4](#4-control-plane-token-contract-rotation)) | [§6.3.5](#635-first-rotation), [§6.3.8](#638-retire-the-prior-version) |
 | Same single-operator auth as every `/control/*`: missing/invalid bearer → 401 `unauthorized`; trail cannot distinguish operators ([§4](#4-control-plane-token-contract-rotation), [§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.3](#633-who-may-not-call-control-apis), [§6.3.5](#635-first-rotation) |
 | Operator bearer may call begin-rotation and retire; AAT Bearer and anon may not | [§6.3.3](#633-who-may-not-call-control-apis) |
-| begin-rotation empty `ver` → 400 `invalid_ver` ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.4](#634-failure-paths-on-the-stable-set) |
+| begin-rotation empty / missing / non-string `ver` → 400 `invalid_ver` ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.4](#634-failure-paths-on-the-stable-set) |
+| begin-rotation body not JSON → 400 `invalid_json` ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.4](#634-failure-paths-on-the-stable-set) |
 | begin-rotation 409 `ver_already_exists` (`ver` already in table, including retired rows) ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.4](#634-failure-paths-on-the-stable-set), [§6.3.10](#6310-rotation-reuse-and-what-this-stage-does-not-do) |
 | begin-rotation 409 `rotation_already_open` (already 2 accepted versions) ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.6](#636-rotation-already-open) |
 | begin-rotation success 200 `{ "ver" }`; D1 INSERT when fewer than 2 non-retired versions ([§4.1](#41-post-controltoken-contractbegin-rotation)) | [§6.3.5](#635-first-rotation), [§6.3.10](#6310-rotation-reuse-and-what-this-stage-does-not-do) |

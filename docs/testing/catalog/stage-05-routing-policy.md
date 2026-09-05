@@ -11,7 +11,52 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 - Installations used below: `018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f` ("inst-A", canary cohort member) and `018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a` ("inst-B", non-canary). Both are honestly built via the installation-lifecycle chapter's enroll happy path plus the entitlement chapter's entitle happy path (grant for `clinic.visit_summary@1.0.0`).
 - Invoke journeys use `POST /v1/requests` per Stage 10 (request ingress) accepted-request behavior: headers `Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0yMDI2LTA4In0.eyJvcmdfaWQiOiJvcmctN2YzYSIsInNjb3BlIjoiYWkudmlzaXRfc3VtbWFyeSJ9.c2lnbmF0dXJl` (AAT minted per Stage 6 — AAT minting behavior), `Content-Type: application/json`, `x-idempotency-key: idem-s05-<suffix>`, `x-capability-version: 1.0.0`; body `{"capability_id":"clinic.visit_summary","user_intent":"Summarize today's visit for the chart.","context":{"org":"org-7f3a","branch":"branch-01","visit.chief_complaint@v1":"Patient reports headache for 3 days."}}`. Expected accept: HTTP 202 with a Crockford `request_reference`; post-accept outcomes are observed on the request's SSE stream and in D1 (`ai_request.state`, `ai_request.routing_decision`, `ai_attempt`).
 - Invoke-path hardwiring (from `worker.ts` L754–L755, code is truth): `manifestCostClass` is always `"standard"`, `entitlementMaxCostClass` is always `"premium"`; therefore the effective cost class on any un-overridden invoke is `standard` with `cost_class_source: "manifest"`.
-- Routing errors thrown post-accept (`ConfigCacheMissError`, any `RoutingPolicyError`) are caught by the `runFreshEventSource` `.catch` (`worker.ts` L685–L697) and surface only as an SSE `failed` terminal event with code `internal_error`; router error codes never appear on the wire.
+- Routing errors thrown post-accept (`ConfigCacheMissError`, any `RoutingPolicyError`) are caught by the `runFreshEventSource` `.catch` (`worker.ts` L886–L913) and surface on the wire only as SSE `failed`/`internal_error` — router internal codes never reach the client. The catch also settles the request as `Failed`/`internal_error` via `settlePostAcceptInternalError` (journal + `recordTerminalState` + synthetic `ai_attempt`; C-01). Malformed routing-policy control paths → worker 404, not `400 invalid_route` (dispatch pre-filters; A-01).
+
+## 6.2 Canary: `POST /control/routing-policies/{policy_id}/versions/{version}/canary`
+
+**Body:** `installation_ids` (required non-empty array); optional `cohort_name` (when present, persisted in audit `after_pointer` JSON under `details.cohort_name` — S05-023; C-20).
+
+**Multi-canary coexistence:** Multiple rows of the same `policy_id` may be `status='canary'` at once — the handler updates only the addressed `(policy_id, version)` row (S05-025).
+
+**Cross-version `before_pointer`:** `priorCanary` reads the latest canary row for the **policy** (`ORDER BY active_from DESC, rowid DESC`), so a v2 canary audit `before_pointer` may name v1's cohort list (S05-025).
+
+**Serving order:** For installation-scoped cache keys, the reader scans canary rows `ORDER BY active_from DESC, rowid DESC` and serves the first whose `canary_installation_ids` contains the installation; otherwise falls through to the active row (S05-051; `config-cache/index.ts:L349-L378`).
+
+**Canary R2 miss — no fallback:** When a matching canary row's R2 object is missing, `loadRoutingPolicyDocument` returns `"miss"` from the canary branch without consulting the active row (S05-054; `config-cache/index.ts:L358-L362`).
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong operator bearer (S05-034, S05-084) |
+| 400 | `invalid_json` | Body not JSON (S05-029) |
+| 400 | `missing_installation_ids` | Field absent, not an array, or empty array (S05-030–S05-032) |
+| 404 | `policy_version_not_found` | Addressed row missing (S05-026) |
+| 404 | `installation_not_found` | Any listed id missing from `installation` (S05-033) |
+| 409 | `illegal_policy_transition` | Source status neither `published` nor `canary` (S05-027, S05-028) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` (C-08) |
+
+## 6.3 Promote / 6.4 Rollback — state preconditions (C-13)
+
+**Promote** rejects `active` and `superseded` source rows with `409 illegal_policy_transition` (S05-039, S05-040). **Rollback** of `published` or `superseded` rows returns `409 illegal_policy_transition` (S05-046, S05-047). Promote and rollback read no request body.
+
+| HTTP | `error` | Trigger (promote / rollback) |
+| ---- | ------- | ---------------------------- |
+| 401 | `unauthorized` | Missing / wrong bearer (S05-041, S05-049, S05-085) |
+| 404 | `policy_version_not_found` | Addressed row missing (S05-038, S05-048) |
+| 409 | `illegal_policy_transition` | Illegal source status (see above; S05-045 for active rollback with no superseded prior) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` (C-08) |
+
+## 8. Routing failure paths (post-accept)
+
+Every throw from the routing block (`ConfigCacheMissError`, any `RoutingPolicyError` — including `policy_identity_mismatch`, `unsupported_schema_version`, `missing_catch_all`, and the defensive `no_matching_rule`) is caught by `runFreshEventSource`'s `.catch` (`worker.ts` L886–L913).
+
+| On the wire | Persisted terminal state |
+| ----------- | ------------------------ |
+| SSE `failed` with `data.code = "internal_error"` only | `ai_request.state = 'Failed'`, `terminal_error_code = 'internal_error'`; synthetic `ai_attempt` + ledger via `settlePostAcceptInternalError` (C-01; S05-050, S05-053–S05-058) |
+
+Router error codes are **never** on the wire. `no_matching_rule` is unreachable on the production path — `validatePolicyDocument` requires a catch-all before rule matching (S05-058).
+
+**Contrast:** An empty provider chain after successful routing resolves settles as `provider_unavailable`, not `internal_error` (S05-070, S05-071).
 
 ## Scenario S05-001 — Publish platform-default policy (happy path)
 
@@ -560,8 +605,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | S05-001 completed (`standard@1` `published`, never promoted); inst-A fully entitled and AAT-minted per Conventions. |
 | Action | `POST /v1/requests` with the Conventions invoke headers/body for inst-A (`x-idempotency-key: idem-s05-050-0001`), then read the SSE stream for the returned `request_reference`. |
 | Expected outcome | HTTP 202 accept (Stage 10 behavior — guards do not touch routing policy). On the stream: a `failed` terminal event with code `internal_error`. Root cause: `preloadRoutingPolicyForInstallation` → reader finds no `canary` row naming inst-A and no `active` row → `ConfigCacheMissError("active_routing_policy", "routing/standard/…")` → caught by the `runFreshEventSource` catch-all. |
-| Side effects | `ai_request` row exists from accept. No `ai_request.routing_decision` write (routing never resolved). See Doc-drift observations on missing settlement in this catch path. |
-| Code reference | ai-platform/src/config-cache/index.ts:L366-L378 — active-row lookup returns "miss"; ai-platform/src/worker.ts:L731-L736 — preload; L685-L697 — catch → internal_error |
+| Side effects | `ai_request` row exists from accept. No `ai_request.routing_decision` write (routing never resolved). Terminal settlement: `state = 'Failed'`, `terminal_error_code = 'internal_error'`, synthetic `ai_attempt` + ledger per `settlePostAcceptInternalError` (C-01). |
+| Code reference | ai-platform/src/config-cache/index.ts:L366-L378 — active-row lookup returns "miss"; ai-platform/src/worker.ts:L731-L736 — preload; L886-L913 — catch → `internal_error` + settlement |
 
 ## Scenario S05-051 — Canary installation served canary version; sibling installation served active version
 
@@ -593,8 +638,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | S05-035 completed (`standard@1` active). [SEED] delete the R2 object `control/routing-policy/standard/1.json` directly via the R2 binding — justified: models R2 object loss/tombstoning outside the control plane; no control API deletes R2 objects. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-053-0001`); read the SSE stream. |
 | Expected outcome | HTTP 202 → SSE `failed` terminal with code `internal_error`. The reader logs `routing_policy_r2_miss` with `content_pointer='control/routing-policy/standard/1.json'` and returns "miss", which becomes `ConfigCacheMissError`. |
-| Side effects | No `routing_decision` write. Error log `routing_policy_r2_miss` emitted. |
-| Code reference | ai-platform/src/config-cache/index.ts:L176-L194 — loadRoutingPolicyDocument R2 miss; ai-platform/src/worker.ts:L685-L697 — catch → internal_error |
+| Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). Error log `routing_policy_r2_miss` emitted. |
+| Code reference | ai-platform/src/config-cache/index.ts:L176-L194 — loadRoutingPolicyDocument R2 miss; ai-platform/src/worker.ts:L886-L913 — catch → internal_error + settlement |
 
 ## Scenario S05-054 — Canary row whose R2 object is missing → miss, no fallback to active
 
@@ -615,8 +660,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | S05-035 completed (`standard@1` active). [SEED] overwrite R2 object `control/routing-policy/standard/1.json` with a document whose header reads `"policy_id":"standard","policy_version":2` (identity tamper) — justified: models an out-of-band R2 edit; the control plane never rewrites a published pointer (S05-004). Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-055-0001`); read the SSE stream. |
 | Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. `validatePolicyDocument` throws `RoutingPolicyError` code `policy_identity_mismatch` ("Document identity standard@2 does not match row standard@1"); the worker catch-all maps it to `internal_error` — the router code never reaches the wire. |
-| Side effects | No `routing_decision` write. |
-| Code reference | ai-platform/src/router/index.ts:L246-L255 — identity check; ai-platform/src/worker.ts:L685-L697 — catch → internal_error |
+| Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
+| Code reference | ai-platform/src/router/index.ts:L246-L255 — identity check; ai-platform/src/worker.ts:L886-L913 — catch → internal_error + settlement |
 
 ## Scenario S05-056 — Unsupported schema_version in served document → internal_error
 
@@ -626,8 +671,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | Publish `standard@3` with `"schema_version": 2` (otherwise identical to the fixture) — publish accepts it (identity-only validation, S05-022); promote it (S05-035 shape). Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-056-0001`); read the SSE stream. |
 | Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `unsupported_schema_version` ("Unsupported routing policy schema_version 2"); mapped to `internal_error` on the wire. |
-| Side effects | No `routing_decision` write. |
-| Code reference | ai-platform/src/router/index.ts:L257-L263 — schema version gate; L214 — SUPPORTED_SCHEMA_VERSIONS = {1} |
+| Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
+| Code reference | ai-platform/src/router/index.ts:L257-L263 — schema version gate; L214 — SUPPORTED_SCHEMA_VERSIONS = {1}; ai-platform/src/worker.ts:L886-L913 |
 
 ## Scenario S05-057 — Served document without a catch-all last rule → missing_catch_all → internal_error
 
@@ -637,8 +682,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | S05-022 completed (`standard@9` published; its only rule matches `capability_ids:["clinic.nonexistent"]` — not a catch-all); promote `standard@9`. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-057-0001`); read the SSE stream. |
 | Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `missing_catch_all` ("Routing policy document must end with a catch-all rule (empty/absent match)") before any rule matching. |
-| Side effects | No `routing_decision` write. |
-| Code reference | ai-platform/src/router/index.ts:L229-L240 — isCatchAllMatch; L265-L270 — missing_catch_all throw |
+| Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
+| Code reference | ai-platform/src/router/index.ts:L229-L240 — isCatchAllMatch; L265-L270 — missing_catch_all throw; ai-platform/src/worker.ts:L886-L913 |
 
 ## Scenario S05-058 — no_matching_rule is unreachable through the serving path (defensive code)
 
@@ -766,20 +811,20 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Field | Content |
 |-------|---------|
 | ID | S05-069 |
-| Journey setup | S05-035 completed (`standard@1` active, fixture targets deepseek→gemini). [SEED] `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by) VALUES ('provider','deepseek',1,'2026-09-05T03:00:00.000Z','platform-operator')` — justified: no control-plane endpoint writes `kill_switch` in this codebase (verified: no `INSERT INTO kill_switch` in `ai-platform/src/`); the table's producer is out of scope (§3.1.1). Inst-A entitled; config cache cold so the guard reloads kill switches. |
+| Journey setup | S05-035 completed (`standard@1` active, fixture targets deepseek→gemini). Arm provider kill via `POST /control/kill-switches/arm` with operator bearer, body `{"scope":"provider","target":"deepseek"}` (C-17) — or **[SEED]** `INSERT INTO kill_switch …` when testing without the control route. Inst-A entitled; config cache cold so the guard reloads kill switches. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-069-0001`) per Stage 10 accepted-request behavior → stream to completion; inspect `ai_request.routing_decision`. |
 | Expected outcome | HTTP 202 → `completed` (served by gemini). Guard stage 5 collects `killedProviderIds: ["deepseek"]` (capability resolve behavior of the guard chapter); the router excludes deepseek: `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"kill_switch"}]`; `chain = [{ordinal:0, provider_id:"gemini", model_id:"gemini-3.5-flash", ...}]`. |
 | Side effects | Persisted routing_decision showing the kill_switch exclusion; settlement proceeds against gemini (invocation/settlement chapters' behavior). |
 | Code reference | ai-platform/src/capability/index.ts:L380-L400 — collectActiveProviderKillSwitches; ai-platform/src/router/index.ts:L477-L485 — kill_switch filter; L447-L463 — mergeKilledProviderIds |
 
-**Control-plane variant (C-17):** Kill switches can be armed with `POST /control/kill-switches/arm` and disarmed with `POST /control/kill-switches/disarm` (operator bearer; JSON body `{"scope":"provider","target":"<provider_id>"}` — also `global`/`capability`/`installation` scopes per the `kill_switch` table). S05-069 and S05-070 can be written as control-plane-driven journeys (arm deepseek, then arm gemini) instead of `[SEED]` direct D1 inserts.
+**Kill switches (C-17):** Arm with `POST /control/kill-switches/arm` and disarm with `POST /control/kill-switches/disarm` (operator bearer; JSON body `{"scope":"provider","target":"<provider_id>"}` — scopes `global`/`capability`/`installation`/`provider` per `kill-switch.ts`). S05-069/S05-070 use this path by default; `[SEED]` D1 inserts remain a valid alternative.
 
 ## Scenario S05-070 — Kill switch on every target → empty chain → provider_unavailable with synthetic attempt row
 
 | Field | Content |
 |-------|---------|
 | ID | S05-070 |
-| Journey setup | S05-069 setup plus a second [SEED] row `('provider','gemini',1,'2026-09-05T03:01:00.000Z','platform-operator')` — both fixture providers killed. Config cache cold. |
+| Journey setup | S05-069 setup with a second provider kill: arm `gemini` via `POST /control/kill-switches/arm` (body `{"scope":"provider","target":"gemini"}`) or equivalent `[SEED]`. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-070-0001`) → read the SSE stream; inspect D1. |
 | Expected outcome | HTTP 202 → SSE `failed` terminal with code `provider_unavailable` (empty chain, not `internal_error`). `routing_decision.chain = []`; `excluded` lists both targets with `reason_code: "kill_switch"`. D1: one `ai_attempt` row with `outcome='terminal_failure'`, `error_code='provider_unavailable'`, `rawBody.payload.reason='no_provider_attempt'` and `rawBody.payload.excluded` echoing both exclusions (failed settlement always persists an attempt). |
 | Side effects | `ai_request` terminal state `Failed` with `terminal_error_code='provider_unavailable'`; journal + ledger writes per the settlement chapter's failed-settlement behavior (same persisted terminal settlement as the empty-chain path). |
@@ -952,23 +997,24 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 
 ## Doc-drift observations
 
-1. **Post-accept routing failures all surface as `internal_error`, not router codes.** Doc §8 (`07-stage-5-routing-policy.md` L932–L947) lists `policy_identity_mismatch` and `no_matching_rule` in a way that implies distinct terminal codes. Code: every throw from the routing block (`ConfigCacheMissError`, any `RoutingPolicyError`) is caught by the `runFreshEventSource` `.catch` (`worker.ts` L685–L697) and pushed as SSE `failed`/`internal_error`. Router error codes are never on the wire. Scenarios S05-050, S05-053–S05-058 encode the code behavior.
-2. **The post-accept routing catch path skips settlement.** ~~`worker.ts` L685–L697 pushes the failed terminal but never calls `settleTerminal`/`recordTerminalState` — a request whose routing throws (missing policy, missing R2 doc, identity mismatch, bad schema, missing catch-all) is left without terminal-state persistence, no `ai_attempt`, and no ledger entry. Doc §8 does not mention this. (Contrast the empty-chain path, which *does* settle — S05-070/S05-071.)~~ **Fixed (C-01):** post-accept routing / missing-policy / missing-handoff failures now settle the request as `Failed`/`internal_error` with journal + terminal-state persistence (`recordTerminalState`, `ai_attempt`, ledger entry), mirroring the empty-chain path. The SSE `failed`/`internal_error` event on the wire is unchanged; scenarios S05-050, S05-053–S05-058 should pin the persisted terminal state alongside the stream event.
-3. **`no_matching_rule` is dead code on the production path.** `validatePolicyDocument` (catch-all requirement) runs before rule matching, and a catch-all matches everything, so `document.rules.find(...)` can never return undefined. Doc §8 lists it as a live failure path. Recorded as S05-058.
-4. **Promote has no status precondition; rollback of published/superseded is a 200 no-op.** ~~Doc §6.3–6.4 describe only the happy transitions. Code: promote requires only existence (S05-039 self-promote yields a self-referential audit pair; S05-040 re-activates a superseded version); rollback's `else` branch (published/superseded) succeeds without touching the addressed row (S05-046, S05-047).~~ **Fixed (C-13):** promote rejects `active` and `superseded` sources with 409 `illegal_policy_transition`; rollback of `published`/`superseded` rows returns 409 (S05-039, S05-040, S05-046, S05-047).
-5. **Doc §6.2 canary failure table is incomplete.** It omits 400 `invalid_json` (S05-029) and 404 `policy_version_not_found` (S05-026), and documents `missing_installation_ids` only for the empty array — code also rejects absent and non-array values (S05-030, S05-032).
-6. **`cohort_name` is accepted but discarded.** ~~Doc §6.2 shows it in the canary body; `CohortPayload.cohort_name` is never read or stored (S05-023).~~ **Fixed (C-20):** when present, `cohort_name` is persisted in the canary audit row `after_pointer` JSON under `details.cohort_name` (S05-023).
-7. **Two canary versions can coexist; audit before_pointer can name another version's cohort.** The canary handler updates only the addressed row (S05-025), and `priorCanary` reads the latest canary row of the *policy*, so a v2 canary's audit `before_pointer` is v1's cohort list. Neither doc §6.2 nor §5 mentions multi-canary coexistence or the serving order (`active_from DESC, rowid DESC` scan in the config-cache reader).
-8. **Canary R2 miss does not fall back to active.** The config-cache reader returns `"miss"` directly from the canary branch when the R2 object is gone (`config-cache/index.ts` L357–L363); doc §9.3.13 covers a missing R2 document generally but not this no-fallback asymmetry (S05-054).
-9. **`invalid_route` rejections in the routing-policy handlers are unreachable via the dispatcher.** `dispatchControlRequest` (`control/index.ts` L146–L163) pre-filters with regexes that only match `publish`/`canary`/`promote`/`rollback` shapes, so `parseRoutingPolicyRoute` cannot fail inside a handler reached through the Worker. The 400 `invalid_route` branches exist only for direct handler invocation. Not documented either way; noted here so no chapter invents a trigger.
-10. **Doc §4.5 already-accurate items confirmed against code:** `defaults.cost_class` ignored; `max_parallel_attempts` ignored; `manifestCostClass`/`entitlementMaxCostClass` hardwired in `worker.ts` (L754–L755); latency mismatch maps to `feature_unsupported`; malformed target features fail closed; publish validates identity only. No drift in these rows.
-11. **Bootstrap script semantics match code**: publish 409 treated as success, promote required for serving, idempotent skip when another version is active (`scripts/bootstrap-routing-policy.sh`). Consistent with S05-004/S05-035/S05-050.
+Orientation doc: `docs/architecture/ai-platform/data-journey/07-stage-5-routing-policy.md`. Catalog reference sections above mirror corrected behavior.
+
+1. **~~Post-accept routing failures surface as router codes on the wire.~~** **Fixed (D-12):** catalog §8 — every routing throw maps to SSE `failed`/`internal_error` only; router codes never on the wire (S05-050, S05-053–S05-058).
+2. **~~Post-accept routing catch skips settlement.~~** **Fixed (C-01, D-12):** catalog §8 and scenario side effects — `settlePostAcceptInternalError` persists `Failed`/`internal_error` + `ai_attempt` + ledger (S05-050, S05-053–S05-058).
+3. **~~`no_matching_rule` listed as live failure path.~~** **Fixed (D-12):** catalog §8 — dead defensive code (S05-058).
+4. **~~Promote/rollback no-ops on illegal transitions.~~** **Fixed (C-13, D-12):** catalog §6.3 — promote rejects `active`/`superseded`; rollback of non-`canary`/`active` → 409 (S05-039, S05-040, S05-046, S05-047).
+5. **~~Doc §6.2 canary failure table incomplete.~~** **Fixed (D-12):** catalog §6.2 adds `invalid_json`, `policy_version_not_found`, absent/non-array `installation_ids`, and `storage_error`.
+6. **~~`cohort_name` accepted but discarded.~~** **Fixed (C-20, D-12):** catalog §6.2 — persisted in audit `after_pointer.details.cohort_name` (S05-023).
+7. **~~Multi-canary coexistence / serving order / cross-version before_pointer / canary R2 no-fallback undocumented.~~** **Fixed (D-12):** catalog §6.2 (S05-025, S05-051, S05-054).
+8. **~~`invalid_route` in routing-policy failure tables — unreachable via HTTP.~~** **Fixed (D-09):** catalog control-route sections omit `invalid_route`; worker 404 for malformed paths (A-01).
+9. **Doc §4.5 already-accurate items confirmed against code:** `defaults.cost_class` ignored; `max_parallel_attempts` ignored; `manifestCostClass`/`entitlementMaxCostClass` hardwired in `worker.ts` (L754–L755); latency mismatch maps to `feature_unsupported`; malformed target features fail closed; publish validates identity only. No drift in these rows.
+10. **Bootstrap script semantics match code**: publish 409 treated as success, promote required for serving, idempotent skip when another version is active (`scripts/bootstrap-routing-policy.sh`). Consistent with S05-004/S05-035/S05-050.
 
 ## Non-automatable notes
 
 1. **S05-020 (concurrent publish race → UNIQUE-mapped 409).** `@cloudflare/vitest-pool-workers` runs against a single local D1 (miniflare) where requests serialize; two simultaneous publishes cannot be forced to interleave deterministically between the SELECT and the batch. Proposed seam: a fault-injecting `D1Database` wrapper whose `batch` throws `Error("UNIQUE constraint failed: routing_policy.policy_id, routing_policy.version")` on the insert, asserting the 409 `already_published` mapping (`isUniqueConstraint`) directly.
 2. **S05-016 (missing R2 binding → 500).** The deployed Worker always has R2 bound via wrangler; the branch is reachable only by invoking `handleRoutingPolicyPublish` with `ControlBindings` lacking `R2`. Proposed seam: direct handler invocation in a unit-style workers test (automatable at that level; not through `SELF.fetch`).
-3. **500 `storage_error` (non-unique D1 failure during the publish batch).** No production-faithful trigger exists in the local pool. Proposed seam: the same fault-injecting D1 wrapper throwing a non-constraint error (e.g. `Error("disk I/O error")`); also note the orphan window — R2.put precedes the batch, so this path leaves an R2 object with no D1 row (worth asserting in the seam test).
+3. **500 `storage_error` (non-unique D1 failure during publish / canary / promote / rollback batches).** All routing-policy handlers use `runControlBatch` (C-08). No production-faithful trigger exists in the local pool. Proposed seam: fault-injecting D1 wrapper throwing a non-constraint error; note the publish orphan window — R2.put precedes the batch, so this path can leave an R2 object with no D1 row.
 4. **S05-059 (30 s TTL staleness) is automatable but slow.** A full-path run needs a real 31 s wait against `isolateConfigCache`. Acceptable seams: construct `new ConfigCache(50)` for router-level TTL proof, or call `isolateConfigCache.clear()` to simulate expiry — both are production code paths (`ConfigCache` TTL and `clear` are the documented test reset). Multi-isolate cache divergence (each isolate holds its own cache) cannot be reproduced in the single-isolate pool at all.
 5. **S05-060, S05-061, S05-078, S05-082 (router-seam scenarios).** These exercise inputs the bundled manifest set cannot produce today (legacy `@vN` refs, structured-output requirement from a prose-only manifest catalog, multi-language floors, non-hardwired cost sources). They are automatable by calling `selectCandidateChain`/`createD1ConfigReader` directly against real migrated D1 and real R2 — production functions, production storage, but a direct-call seam rather than `POST /v1/requests`. If a structured-output or multi-language manifest is published later, S05-061/S05-078 should be re-expressed as full-path invoke journeys.
-6. **Kill-switch writes (S05-069, S05-070).** No control-plane endpoint writes `kill_switch` in this codebase; the `[SEED]` direct D1 inserts are the only way to arm a provider kill. If a kill-switch control route is added, these scenarios should grow a control-plane-driven variant.
+6. **Kill-switch writes (S05-069, S05-070).** Prefer control-plane `POST /control/kill-switches/arm` and `POST /control/kill-switches/disarm` (C-17; operator bearer; body `{"scope":"provider","target":"<id>"}` — also `global`/`capability`/`installation`). `[SEED]` direct D1 inserts remain valid when the control route is not under test.

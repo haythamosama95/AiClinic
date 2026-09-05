@@ -15,6 +15,69 @@ Error bodies below are produced by `buildErrorBody` and always have exactly the 
 
 ---
 
+## 1. D1 reads (via config cache)
+
+Discovery shares the isolate-scoped `ConfigCache` with `POST /v1/requests` and
+`GET /v1/requests/{ref}`. Default TTL is `DEFAULT_CONFIG_CACHE_TTL_MS` (30 000 ms),
+overridable at boot via the `CONFIG_CACHE_TTL_MS` wrangler var (`CACHE_TTL_MS` is a
+deprecated alias). A prior request in the isolate can warm rows until TTL expiry.
+
+| Cache kind | Key | Purpose |
+| ---------- | --- | ------- |
+| `installations` | `{installationId}` | Installation exists; lifecycle `status` |
+| `keys` | `{kid}` | `installation_key` row — read during AAT verification only (`EnrolledKeyVerifier`) |
+| `token_contracts` | `{ver}` | `token_contract` row — read during AAT verification only |
+| `entitlements` | `{installationId}` | `status`, `allowed_capabilities`, `plan` |
+| `grants` | `{installationId}/{capabilityId}` | Installation-scope version grant |
+| `grants` | `plan:{plan}/{capabilityId}` | Plan-scope grant fallback when the installation grant misses |
+| `grants` | `global/{capabilityId}/{version}` | Lifecycle overlay — one read per registry candidate in `discover()` |
+
+`keys` and `token_contracts` are consulted before `discover()` runs; entitlement and
+grant kinds are read inside `discover()`.
+
+## 2. Failure paths
+
+| Condition | HTTP | Taxonomy code | `retry_safe` |
+| --------- | ---- | ------------- | ------------ |
+| Missing / malformed / invalid AAT (all cases before a verified principal) | 401 | `unauthenticated` | `true` |
+| Valid signature but `installation.status = 'suspended'` | 403 | `installation_suspended` | `false` |
+
+Any other non-`active`, non-`suspended` installation status still maps to `401
+unauthenticated` (S07-024). Suspended is the **only** non-401 auth failure on this
+endpoint (S07-023).
+
+## 3. Grant revocation semantics
+
+The production D1 reader's grant SQL filters `revoked_at IS NULL`
+(`config-cache/index.ts:L310-L312`, `L325-L327`). A revoked installation-scope grant
+therefore surfaces to `discover()` as a **miss**, not as a live row with
+`revoked_at` set. Consequences:
+
+1. The `grant.revoked_at != null → "skip"` branch in `discover()` is unreachable via
+   the production reader (annotated A-08 in `discovery/index.ts:L103-L105`).
+2. Revoking an installation-scope grant does **not** remove the capability from discovery
+   when a live plan-scope grant exists — the installation grant miss falls through to the
+   plan grant (S07-034).
+
+## 4. Filtering, ETag, and auth telemetry
+
+**Role and scope.** `discover()` evaluates entitlement status, plan tier,
+`allowed_capabilities`, grants, and lifecycle only. It does **not** filter by
+`Access.allowedStaffRoles` or `Access.requiredCapabilityScope`; those gates live in
+`assertPlanAllowance` on the invoke path (S07-041).
+
+**ETag scope.** `computeDiscoveryEtag` hashes `{manifests: [<public projection>, …]}` only —
+no installation, org, branch, or principal field participates (S07-050). Installations with
+identical entitled lists share the same ETag; the empty-list ETag is a fixed constant
+across all unentitled callers.
+
+**Bare-`Bearer` log reasons.** `Authorization: Bearer` with no trailing space fails
+`startsWith("Bearer ")` and logs `invalid_authorization_scheme` (S07-005 note). The scheme
+prefix followed only by whitespace trims to an empty token and logs `empty_bearer_token`.
+Both return `401 unauthenticated`.
+
+---
+
 ## Scenario S07-001 — POST to /v1/capabilities is not routed (404 plain text)
 
 | Field | Content |
@@ -385,7 +448,7 @@ Error bodies below are produced by `buildErrorBody` and always have exactly the 
 | ID | S07-034 |
 | Journey setup | Baseline B0, plus a plan-scope grant (`scope = 'plan:professional'`, `capability_id = 'clinic.visit_summary'`, `capability_version = '1.0.0'`, `revoked_at = NULL`), then revoke the installation-scope grant as in S07-033. Fresh config cache. |
 | Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` |
-| Expected outcome | HTTP `200`, body lists `clinic.visit_summary@1.0.0` exactly as in the happy path. This is the code-derived behavior, not the intuitive one: because the reader's SQL excludes revoked rows, the revoked installation grant is indistinguishable from "missing", the plan-grant fallback succeeds, and the capability remains advertised. The `grant.revoked_at != null → "skip"` branch in `discover()` is unreachable through the production D1 reader. See Doc-drift observations. |
+| Expected outcome | HTTP `200`, body lists `clinic.visit_summary@1.0.0` exactly as in the happy path. This is the code-derived behavior, not the intuitive one: because the reader's SQL excludes revoked rows, the revoked installation grant is indistinguishable from "missing", the plan-grant fallback succeeds, and the capability remains advertised. The `grant.revoked_at != null → "skip"` branch in `discover()` is unreachable through the production D1 reader (§3). |
 | Side effects | D1 reads: standard set plus both grant queries. No writes. |
 | Code reference | `ai-platform/src/capability/index.ts:L722-L747 — discover (grant evaluation)`; `ai-platform/src/config-cache/index.ts:L319-L332 — createD1ConfigReader (revoked rows filtered by SQL)` |
 
@@ -591,14 +654,14 @@ Error bodies below are produced by `buildErrorBody` and always have exactly the 
 
 ## Doc-drift observations
 
-1. **D1-reads table incomplete (doc §3).** The doc lists cache kinds `installations`, `entitlements`, `grants`. The code path additionally reads `keys` (`installation_key` by `kid`) and `token_contracts` (by `ver`) during AAT verification (`identity/index.ts:L307-L315`, `L363-L371`), and reads a second `grants` shape — the lifecycle overlay at `global/{capabilityId}/{version}` — per candidate (`capability/index.ts:L88-L116`). The doc's table omits all three.
-2. **Failure-paths section incomplete (doc §5).** The doc says invalid AAT → `401 unauthenticated` is the only failure. The code also returns `403 installation_suspended` for suspended installations (`identity/index.ts:L356-L358`, taxonomy in `errors.ts`), with `retry_safe: false`. Doc probe §6.3.2 never exercises it.
-3. **Revocation semantics undocumented (code-derived surprise).** The production D1 reader filters `revoked_at IS NULL` in its grant SQL (`config-cache/index.ts:L319-L332`), so a revoked installation-scope grant presents to `discover()` as a *miss* and falls through to the plan-grant fallback. Consequences: (a) the `grant.revoked_at != null → "skip"` branch in `discover()` (`capability/index.ts:L724-L726`) is unreachable via the production reader; (b) an installation-scope revocation does **not** remove the capability from discovery when a plan-scope grant exists (S07-034). The doc is silent on revocation entirely.
-4. **TTL constant naming (doc §6.1).** The doc names `CACHE_TTL_MS`; the code's canonical constant is `DEFAULT_CONFIG_CACHE_TTL_MS` (30 000 ms), overridable at boot via the `CONFIG_CACHE_TTL_MS` wrangler var (`config-cache/index.ts:L26-L40`, `worker.ts:L147-L149`). `CACHE_TTL_MS` is a deprecated alias. Cosmetic.
-5. **`Authorization: Bearer` probe classification (doc §6.3.2).** The doc groups the bare-`Bearer` probe with empty-token rejection; in code, `Bearer` with no trailing space fails `startsWith("Bearer ")` and logs `invalid_authorization_scheme`, while `Bearer ` + whitespace logs `empty_bearer_token`. Same 401 either way — cosmetic, but the log-reason distinction matters when asserting telemetry.
-6. **Role/scope non-filtering is implied but never stated.** Doc §6 says "any staff who can mint an AAT may call." Code confirms discovery ignores `Access.allowedStaffRoles` and `Access.requiredCapabilityScope` (those gates live in `assertPlanAllowance`, used only by `resolve()` on the invoke path). Worth stating explicitly in the doc, since the manifest carries those fields and readers may assume discovery enforces them (S07-041).
-7. **ETag scope unstated.** The doc notes the ETag is computed over the projection (internal edits don't revalidate) but does not state that it contains no per-installation input — identical entitled lists across installations share an ETag (S07-050), and the empty-list ETag is a fixed constant.
-8. **Consistent (no drift):** 304 semantics and header set (§4.2), public-projection field list and absent internal groups (§4.1), POST → 404 (§6.3.2), kill switches not applied on discovery (§1, §6.3.8), `private, must-revalidate` on both 200 and 304, deprecated-listed/retired-never-listed (§4.1) — all match the code as written.
+1. **D1-reads table incomplete — fixed (D-22).** §1 now lists `keys`, `token_contracts`, installation/plan/global `grants` shapes, and notes which reads happen in verification vs `discover()`.
+2. **Failure-paths section incomplete — fixed (D-22).** §2 documents both `401 unauthenticated` and `403 installation_suspended` (S07-023).
+3. **Revocation semantics undocumented — fixed (D-22).** §3 documents the `revoked_at IS NULL` reader filter, plan-grant fallback after installation revocation (S07-034), and the unreachable `discover()` skip branch (A-08).
+4. **TTL constant naming — fixed (D-22).** §1 names `DEFAULT_CONFIG_CACHE_TTL_MS` and notes `CACHE_TTL_MS` is deprecated.
+5. **`Authorization: Bearer` probe classification — fixed (D-22).** §4 distinguishes bare `Bearer` (`invalid_authorization_scheme`) from whitespace-only token (`empty_bearer_token`).
+6. **Role/scope non-filtering — fixed (D-22).** §4 states explicitly that discovery ignores `Access.allowedStaffRoles` and `Access.requiredCapabilityScope` (S07-041).
+7. **ETag scope unstated — fixed (D-22).** §4 states the ETag hash input contains no per-installation field (S07-050).
+8. **Consistent (no drift):** 304 semantics and header set (orientation doc §4.2), public-projection field list and absent internal groups (§4.1), POST → 404 (§6.3.2), kill switches not applied on discovery (§1, §6.3.8), `private, must-revalidate` on both 200 and 304, deprecated-listed/retired-never-listed (§4.1) — all match the code as written.
 
 ## Non-automatable notes
 

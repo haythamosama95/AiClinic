@@ -28,6 +28,110 @@ Shared concrete values used throughout this chapter:
 
 ---
 
+## 4. Post-enroll lifecycle APIs
+
+After enroll, the operator can rotate keys, revoke a single key, suspend or resume the installation,
+mark it deleted, or purge platform data. Every route is `POST` with the same operator Bearer as
+enroll. Malformed paths and unknown actions fall through to HTTP 404 plain-text `Not Found` at the
+worker router — not `400 invalid_route` (dispatch pre-filters with `CONTROL_ACTION_PATTERN`; see
+S03-017). The only reachable path-shape 400 on lifecycle routes is `400 invalid_payload` for a
+non-UUID `installation_id` (S03-033); purge does not validate UUID shape (S03-082).
+
+**Key management on suspended installations:** `rotate` and `revoke-key` reject only
+`installation.status = deleted` — `suspended` is permitted (S03-059, S03-070).
+
+**Delete:** no suspend precondition — `active → deleted` and `suspended → deleted` are both legal
+(S03-072, S03-078); only `deleted → delete` is blocked.
+
+**Body-ignoring routes:** `suspend`, `resume`, and `delete` never call `parseJsonBody` — the
+request body is unread; any content type, malformed JSON, or empty body succeeds identically
+(S03-047).
+
+### 4.1 `POST /control/installations/{installation_id}/rotate`
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 400 | `invalid_json` | Body not JSON |
+| 400 | `invalid_payload` | Required body field empty, invalid UUID `kid`, wrong `public_key` length, or `algorithm` ≠ `EdDSA` |
+| 400 | `invalid_payload` | Path `installation_id` not a canonical UUID |
+| 404 | `installation_not_found` | No `installation` row |
+| 409 | `illegal_lifecycle_transition` | `installation.status = deleted` |
+| 409 | `duplicate_kid` | `kid` already in `installation_key` (globally unique) |
+| 500 | `storage_error` | D1 batch failure |
+
+### 4.2 `POST /control/installations/{installation_id}/revoke-key`
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 400 | `invalid_json` | Body not JSON |
+| 400 | `invalid_payload` | `kid` missing, empty, or not a canonical UUID |
+| 400 | `invalid_payload` | Path `installation_id` not a canonical UUID |
+| 404 | `installation_not_found` | No `installation` row |
+| 404 | `key_not_found` | No `installation_key` row for this `kid` + installation |
+| 409 | `illegal_lifecycle_transition` | `installation.status = deleted` |
+| 409 | `key_already_revoked` | `revoked_at` already set |
+| 409 | `cannot_revoke_last_active_key` | Would leave zero active keys |
+| 500 | `storage_error` | D1 batch failure |
+
+### 4.3 `POST /control/installations/{installation_id}/suspend`
+
+No request body is read.
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 400 | `invalid_payload` | Path `installation_id` not a canonical UUID |
+| 404 | `installation_not_found` | No `installation` row |
+| 409 | `illegal_lifecycle_transition` | Status is `suspended` or `deleted` |
+| 500 | `storage_error` | D1 batch failure |
+
+### 4.4 `POST /control/installations/{installation_id}/resume`
+
+No request body is read.
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 400 | `invalid_payload` | Path `installation_id` not a canonical UUID |
+| 404 | `installation_not_found` | No `installation` row |
+| 409 | `illegal_lifecycle_transition` | Status is not `suspended` |
+| 500 | `storage_error` | D1 batch failure |
+
+### 4.5 `POST /control/installations/{installation_id}/delete`
+
+No request body is read. No suspend precondition.
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 400 | `invalid_payload` | Path `installation_id` not a canonical UUID |
+| 404 | `installation_not_found` | No `installation` row |
+| 409 | `illegal_lifecycle_transition` | Status is already `deleted` |
+| 500 | `storage_error` | D1 batch failure |
+
+### 4.6 `POST /control/installations/{installation_id}/purge`
+
+Requires Worker `R2` binding. **Precondition:** `installation.status = deleted` when an
+`installation` row exists — active or suspended installations return `409 illegal_lifecycle_transition`
+(S03-080). Unknown ids are not an error (S03-081).
+
+Purge removes data tables and R2 envelopes for the installation but **preserves** prior
+`control_audit` history (`enroll`, `suspend`, `delete`, etc.) and `grace_admission_queue` rows
+(S03-079). Each successful purge call writes **exactly two** `purge_installation` audit rows: an
+intent row before deletes (`writeAudit` in `handleInstallationPurge`) and a completion row after
+the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
+
+| HTTP | `error` | Triggering input |
+| ---- | ------- | ---------------- |
+| 401 | `unauthorized` | Missing/invalid operator Bearer |
+| 409 | `illegal_lifecycle_transition` | `installation` row exists and `status` ≠ `deleted` |
+| 500 | `missing_r2_binding` | Worker env has no R2 bucket (before any audit write) |
+| 500 | `storage_error` | D1/R2 failure during purge (intent audit row may already exist) |
+
+---
+
 ## Scenario S03-001 — Enroll rejects a request with no Authorization header
 
 | Field | Content |
@@ -945,14 +1049,14 @@ Shared concrete values used throughout this chapter:
 
 ## Doc-drift observations
 
-1. **`400 invalid_route` is listed but unreachable via HTTP.** The stage-3 doc failure tables for rotate (§7), revoke-key (§7.1), suspend (§7.2), resume (§7.3), delete (§7.4), and purge (§7.5) all list `400 invalid_route` for "malformed path". In code, `CONTROL_ACTION_PATTERN` (`control/index.ts`) pre-filters requests to exactly the shape each handler's own path regex requires (`parseInstallationId` in `lifecycle.ts`, the purge regex in `support-purge.ts`), so once a request reaches a handler the "no match" branch can never fire. The only path-shape 400 actually reachable over HTTP is `invalid_payload` for a non-UUID path id on lifecycle routes (S03-033) — and purge does not even validate that (S03-082). See Non-automatable notes for the direct-invocation seam.
-2. **Purge `500 storage_error` — fixed (C-07).** `handleInstallationPurge` now wraps `purgeByInstallationId` in the same error mapping as `runControlBatch`; D1/R2 failures return `{"error":"storage_error"}` after the intent audit row is written. Previously escaped as a non-JSON runtime 500.
-3. **Suspend/resume/delete "request body `{}`" is a convention, not a requirement.** Doc §§7.2–7.4 show `{}` bodies; the handlers never read the body at all (S03-047). Any content type, malformed JSON, or empty body succeeds identically.
-4. **Rotate and revoke-key are permitted on suspended installations — undocumented.** The code blocks only `status = deleted` in `handleRotate`/`handleRevokeKey` (S03-059, S03-070). The stage-3 doc does not state whether key management works while suspended; the suspend section only describes the `/v1/*` guard effect.
-5. **Delete has no suspend precondition — doc is silent, code is permissive.** `handleDelete` allows `active → deleted` directly (S03-072) and `suspended → deleted` (S03-078). **Purge delete precondition — fixed (C-14):** purge now requires `status = 'deleted'` and returns 409 `illegal_lifecycle_transition` otherwise (S03-080); there is no force-purge escape hatch.
+1. **`400 invalid_route` listed but unreachable via HTTP — fixed (D-09).** Catalog [§4.1](#41-post-controlinstallationsinstallation_idrotate)–[§4.6](#46-post-controlinstallationsinstallation_idpurge) omit `invalid_route`; malformed paths 404 at the worker. Direct-invocation seam only (Non-automatable notes #3).
+2. **Purge `500 storage_error` — fixed (C-07 / D-10).** `handleInstallationPurge` wraps `purgeByInstallationId` in error mapping; D1/R2 failures return `{"error":"storage_error"}` after the intent audit row (S03-079 side effects).
+3. **Suspend/resume/delete body convention — fixed (D-09).** [§4.3](#43-post-controlinstallationsinstallation_idsuspend)–[§4.5](#45-post-controlinstallationsinstallation_iddelete) state that these handlers ignore the request body entirely (S03-047).
+4. **Rotate and revoke-key on suspended installations — fixed (D-10).** [§4](#4-post-enroll-lifecycle-apis) documents that only `deleted` blocks key management (S03-059, S03-070).
+5. **Delete and purge preconditions — fixed (D-10 / C-14).** [§4.5](#45-post-controlinstallationsinstallation_iddelete) documents no suspend precondition; [§4.6](#46-post-controlinstallationsinstallation_idpurge) documents the `status = deleted` purge precondition (S03-072, S03-078, S03-080).
 6. **"Canonical UUID" is case-insensitive in code.** `CANONICAL_UUID_RE` uses the `/i` flag, so uppercase hex UUIDs pass validation and are stored verbatim (S03-036). Docs imply lowercase canonical form.
-7. **Purge audit cardinality.** Doc §8.3.13 expects "at least one" `purge_installation` audit row; code writes exactly two per purge call (intent row in `handleInstallationPurge` via `writeAudit`, completion row in `purgeByInstallationId` via `writePurgeAudit`) — including for unknown or malformed ids (S03-081, S03-082). Doc §7.5's step list does describe both writes; only the probe expectation is loose.
-8. **Purge preserves `control_audit` history and `grace_admission_queue`.** The doc mentions the grace queue survival but does not call out that the installation's prior audit history (`enroll`, `rotate`, etc.) survives purge — only data tables are deleted (S03-079 side effects).
+7. **Purge audit cardinality — fixed (D-10).** [§4.6](#46-post-controlinstallationsinstallation_idpurge) documents exactly two `purge_installation` rows per call (S03-079, S03-081, S03-082).
+8. **Purge preserves `control_audit` history and `grace_admission_queue` — fixed (D-10).** [§4.6](#46-post-controlinstallationsinstallation_idpurge) and S03-079 side effects document both survivals.
 9. **No drift on enroll semantics.** Enroll dedup on `installation_id OR org_id` (S03-038/S03-039), `duplicate_kid` via batch UNIQUE (S03-040), the pending/zero-quota entitlement, `valid_until = +365d`, and the `{platform_base_url}`-only success body all match the doc exactly.
 
 ## Non-automatable notes

@@ -11,26 +11,29 @@
 7. [R2 envelope — every field](#7-r2-envelope-every-field)
 8. [Happy path settlement diagram](#8-happy-path-settlement-diagram)
 9. [Failed and cancelled credit](#9-failed-and-cancelled-credit)
-10. [Behavioral verification](#10-behavioral-verification)
-   - [10.1 Setup](#101-setup)
-   - [10.2 Coverage](#102-coverage)
-   - [10.3 Ordered probes](#103-ordered-probes)
-     - [10.3.1 Complete a request then inspect](#1031-complete-a-request-then-inspect)
-     - [10.3.2 D1 ai_request terminal UPDATE](#1032-d1-ai_request-terminal-update)
-     - [10.3.3 D1 ai_attempt INSERT every column](#1033-d1-ai_attempt-insert-every-column)
-     - [10.3.4 D1 usage_event INSERT every column](#1034-d1-usage_event-insert-every-column)
-     - [10.3.5 R2 envelope every field](#1035-r2-envelope-every-field)
-     - [10.3.6 Quota DO credit (kind credit)](#1036-quota-do-credit-kind-credit)
-     - [10.3.7 Failed credit](#1037-failed-credit)
-     - [10.3.8 Cancelled credit](#1038-cancelled-credit)
-     - [10.3.9 What this stage does not do](#1039-what-this-stage-does-not-do)
-     - [10.3.10 Clients cannot read control tables](#10310-clients-cannot-read-control-tables)
+10. [Acceptance recording](#10-acceptance-recording-record_ai_acceptance)
+11. [Behavioral verification](#11-behavioral-verification)
+   - [11.1 Setup](#111-setup)
+   - [11.2 Coverage](#112-coverage)
+   - [11.3 Ordered probes](#113-ordered-probes)
+     - [11.3.1 Complete a request then inspect](#1131-complete-a-request-then-inspect)
+     - [11.3.2 D1 ai_request terminal UPDATE](#1132-d1-ai_request-terminal-update)
+     - [11.3.3 D1 ai_attempt INSERT every column](#1133-d1-ai_attempt-insert-every-column)
+     - [11.3.4 D1 usage_event INSERT every column](#1134-d1-usage_event-insert-every-column)
+     - [11.3.5 R2 envelope every field](#1135-r2-envelope-every-field)
+     - [11.3.6 Quota DO credit (kind credit)](#1136-quota-do-credit-kind-credit)
+     - [11.3.7 Failed credit](#1137-failed-credit)
+     - [11.3.8 Cancelled credit](#1138-cancelled-credit)
+     - [11.3.9 What this stage does not do](#1139-what-this-stage-does-not-do)
+     - [11.3.10 Clients cannot read control tables](#11310-clients-cannot-read-control-tables)
 
 ---
 
 ## 1. Plain language
 
 Every terminal outcome credits the Quota DO so `inFlight` is released and the idempotency entry leaves `"admitted"`. Completed, failed, and cancelled terminals then reuse the same post-response journal writers: `ai_attempt` row(s), one `usage_event`, one R2 diagnostic envelope (`request/{request_id}/envelope`), and `ai_request.payload_pointer`. Failed/cancelled credit accrued usage (including `{ tokens: 0, cost: 0 }`). Cost on those rows is computed by one shared helper (`src/pricing`) from the versioned platform price table (`control/pricing/platform-default/1.json`): provider-reported input/output tokens × per-1K model rates. `ai_attempt.cost` and `usage_event.cost` therefore agree. Cancel without provider usage uses the named char-as-output-token estimate (`estimateUsageFromStreamedChars`) through that same helper. Money appears only here — the preflight stays token-only (§13.6.2).
+
+**Journal vs Quota DO:** `usage_event` (and `ai_attempt`, R2 envelope, `payload_pointer`) are written only by the journal path (`persistPostResponseDetail` in `src/journal/index.ts`) — **never** by the Quota DO, which mutates only its own storage.
 
 ## 2. Metaphor
 
@@ -43,13 +46,15 @@ Every terminal outcome credits the Quota DO so `inFlight` is released and the id
 | ------------------- | ------ |
 | `installationId`    | Principal |
 | `requestId`         | journal row |
-| `jti`               | AAT |
-| `idempotencyKey`    | header |
+| `requestReference`  | Crockford ref from admission |
 | `usage.tokens`      | Success: `usage.input + usage.output`. Failed/cancelled: accrued partial usage, or `{ tokens: 0, cost: 0 }` when none. |
 | `usage.cost`        | Success: `priceUsage` on the provider result (same helper as `ai_attempt.cost`). Zero-usage terminals: `0`. Cancel/fail with accrued usage: that partial-usage cost (provider tokens × rates, or `estimateUsageFromStreamedChars` when usage was not reported). |
 | `partial`           | From §5.4 taxonomy `consumesQuota`: `"Yes"` → `false` (full consume); `"Partially, recorded"` → `true`. Success always `false`. |
 | `idempotencyState`  | Optional. `"completed"` / `"failed"` / `"cancelled"`. Omitted → `partial ? "cancelled" : "completed"`. |
+| `terminalErrorCode` | Optional taxonomy code stored on the idempotency entry when `idempotencyState` is `"failed"` — replayed on idempotent retry (C-11) |
 | `entitlement`       | Optional. Admission-time entitlement snapshot (`period_start` / `period_end` and budgets). Worker always sends it so credit and D1 share the same period. |
+
+`jti` and `x-idempotency-key` are consumed at **`kind: admission`** only; credit finds the reservation by `requestId` and slides the matching idempotency `expiresAt`.
 
 
 **DO state changes on credit:**
@@ -168,7 +173,7 @@ If the request was **grace-admitted** (Quota DO was down at stage 8), the same `
 
 ## 9. Failed and cancelled credit
 
-Non-completed terminals still call `credit` (possibly zero usage) so the DO releases `inFlight` and the idempotency key leaves `"admitted"`. Without that credit, a retry of the same key **while the request is still in-flight** would replay as `"Prior request completed."`. If the Worker crashes and never credits, the 2h abandoned-admission sweep marks that key `failed` (and slides `expiresAt`) so a later retry replays SSE `failed`, not the completed placeholder and not a second charge.
+Non-completed terminals still call `credit` (possibly zero usage) so the DO releases `inFlight` and the idempotency key leaves `"admitted"`. Without that credit, a retry of the same key while still in-flight would replay as **`accepted` only** (no fabricated completion — C-04). If the Worker crashes and never credits, the 2h abandoned-admission sweep marks that key `failed` (and slides `expiresAt`) so a later retry replays SSE `failed` with the stored `terminalErrorCode` (fallback `internal_error`), not the completed placeholder and not a second charge.
 
 
 | Terminal | Taxonomy | `partial` | `idempotencyState` |
@@ -181,15 +186,27 @@ Invocation failure credits in the worker with `ignoreBrokerSettlement` so the br
 
 Failed requests always persist at least one `ai_attempt` row (collected `attemptRecords`, or a diagnostic row from the routing exclusion list when the chain was empty). Cancelled requests write `usage_event` always; `ai_attempt` only when invocation recorded attempts (abort before the first provider call is expected to have none).
 
+**Caller-abort during an in-flight invoke:** when the client signal aborts while `port.invoke` is running, `processInvokeResult` terminal-classifies the error as `cancelled` and records one `ai_attempt` row with `outcome 'terminal_failure'`, `error_code 'cancelled'` (tokens/cost 0 on the attempt row — partial usage flows to credit/`usage_event` separately). A **pre-attempt** abort (signal already set before the first `recordAttempt`) yields zero `ai_attempt` rows but still journals `usage_event`.
+
+**Client drop:** on a true disconnect the broker emits `cancelled` into a dead stream (`markCancelledWithoutEnqueue` in `src/adapter.ts`) — the dropped connection shows no terminal frame, but settlement (credit + journal) still runs. Observe `cancelled` on the wire only via idempotent replay ([Stage 10 §11.7](12-stage-10-accept-route-invoke-stream.md#117-cancelled)).
+
 Cron `runReconciliation` uses that expected profile and does **not** flag Cancelled-without-attempts or AwaitingContext. It flags Completed/Failed missing attempts or usage, and Cancelled missing `usage_event`.
 
-## 10. Behavioral verification
+## 10. Acceptance recording (`record_ai_acceptance`)
 
-Live probes against a local Worker after Stage 10 has produced an `ai_request` row. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§10.3](#103-ordered-probes) top to bottom**. If every probe matches, this stage is working.
+After settlement, the clinic may persist AI output into domain tables via Supabase `public.record_ai_acceptance(request_reference, target_key, target_args)` (delegates to `auth_internal.record_ai_acceptance`).
+
+**Duplicate guard (broader than the UNIQUE constraint):** before any domain write, the RPC rejects when `(ai_request_reference, table_name)` already exists in `ai_accepted_output` — even if `record_id` differs. The table UNIQUE is `(table_name, record_id, ai_request_reference)`; the pre-check prevents accepting the same reference into a second row of the same table.
+
+**Visit-summary provenance:** for target `save_visit_documentation`, `table_name` is `'visit_clinical_notes'` but `record_id` stored in `ai_accepted_output` is the **visit uuid** (`data->>'visit_id'` from the domain RPC), not the clinical-note row id. Joining `ai_accepted_output.record_id` to `visit_clinical_notes.id` will miss — resolve via `visit_clinical_notes.visit_id`.
+
+## 11. Behavioral verification
+
+Live probes against a local Worker after Stage 10 has produced an `ai_request` row. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§11.3](#113-ordered-probes) top to bottom**. If every probe matches, this stage is working.
 
 Stage 10 opens the SSE stream and invokes the provider. This stage is everything after the terminal event: Quota DO `kind: credit`, D1 `ai_request` UPDATE, `ai_attempt` / `usage_event` INSERT, one R2 envelope, `payload_pointer`. Inspect D1 and R2 as **wrangler** (privileged). The AAT is only an HTTP client.
 
-### 10.1 Setup
+### 11.1 Setup
 
 - Local Worker: `cd ai-platform && npm run dev` (`http://127.0.0.1:8787`). D1 database and R2 bucket `ai-platform-development`, `--local --env development`.
 - Clinic already enrolled, entitled, and granted `clinic.visit_summary` (Stages 3–6). Stage 10 must be able to pass the guard and emit SSE `accepted`.
@@ -233,52 +250,55 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
   "SELECT 1"
 ```
 
-### 10.2 Coverage
+### 11.2 Coverage
 
 Every happy and failure claim in this file maps to a probe. Carry them all out.
 
 
 | Claim | Probe |
 | ----- | ----- |
-| [§8](#8-happy-path-settlement-diagram) happy path: SSE `completed` → `recordTerminalState(Completed)` → `creditUsage` (`partial: false`) → post-response writers | [§10.3.1](#1031-complete-a-request-then-inspect) |
-| [§4](#4-d1-ai_request-update-terminal) Completed: `state = Completed`, `completed_at` set, `terminal_error_code` unchanged (null) | [§10.3.2](#1032-d1-ai_request-terminal-update) |
-| Terminal UPDATE is a no-op once already terminal | [§10.3.2](#1032-d1-ai_request-terminal-update) |
-| [§5](#5-d1-ai_attempt-insert-per-attempt) INSERT every column: `attempt_id` (ULID), `request_id`, `attempt_no`, `provider`, `model`, `outcome`, `latency_ms`, `tokens_in`, `tokens_out`, `cost`, `provider_request_id`, `error_code` | [§10.3.3](#1033-d1-ai_attempt-insert-every-column) |
-| Happy `outcome = success`; `cost` from `priceUsage` (`control/pricing/platform-default/1.json`); tokens from the provider | [§10.3.3](#1033-d1-ai_attempt-insert-every-column) |
-| Truncation is **not** a Completed request (`outcome` stays `truncation`; `ai_request` is Failed / `validation_failed`) | [§10.3.3](#1033-d1-ai_attempt-insert-every-column) if that outcome appears; not forceable on a healthy provider — see unprobeable |
+| [§8](#8-happy-path-settlement-diagram) happy path: SSE `completed` → `recordTerminalState(Completed)` → `creditUsage` (`partial: false`) → post-response writers | [§11.3.1](#1131-complete-a-request-then-inspect) |
+| [§4](#4-d1-ai_request-update-terminal) Completed: `state = Completed`, `completed_at` set, `terminal_error_code` unchanged (null) | [§11.3.2](#1132-d1-ai_request-terminal-update) |
+| Terminal UPDATE is a no-op once already terminal | [§11.3.2](#1132-d1-ai_request-terminal-update) |
+| [§5](#5-d1-ai_attempt-insert-per-attempt) INSERT every column: `attempt_id` (ULID), `request_id`, `attempt_no`, `provider`, `model`, `outcome`, `latency_ms`, `tokens_in`, `tokens_out`, `cost`, `provider_request_id`, `error_code` | [§11.3.3](#1133-d1-ai_attempt-insert-every-column) |
+| Happy `outcome = success`; `cost` from `priceUsage` (`control/pricing/platform-default/1.json`); tokens from the provider | [§11.3.3](#1133-d1-ai_attempt-insert-every-column) |
+| Truncation is **not** a Completed request (`outcome` stays `truncation`; `ai_request` is Failed / `validation_failed`) | [§11.3.3](#1133-d1-ai_attempt-insert-every-column) if that outcome appears; not forceable on a healthy provider — see unprobeable |
 | `repair` rows are the dashboard repair-rate numerator (Cancelled excluded) | This stage only **writes** `outcome`; it does not compute the rate. Inspect if a repair row exists; see unprobeable |
-| [§6](#6-d1-usage_event-insert) INSERT every column: `usage_event_id` (ULID), `installation_id`, `period`, `request_id`, `quota_weight`, `tokens`, `cost`, `recorded_at` | [§10.3.4](#1034-d1-usage_event-insert-every-column) |
-| `period` is `YYYY-MM` from admission-time `period_start`, not wall-clock at credit; `quota_weight = 1` | [§10.3.4](#1034-d1-usage_event-insert-every-column) |
-| `ai_attempt.cost` and `usage_event.cost` agree; `usage_event.tokens = tokens_in + tokens_out` on success | [§10.3.3](#1033-d1-ai_attempt-insert-every-column), [§10.3.4](#1034-d1-usage_event-insert-every-column) |
-| Money appears only here — preflight stays token-only | [§10.3.9](#1039-what-this-stage-does-not-do) |
-| This stage does **not** `SET NULL` `usage_event.request_id` (retention is later) | [§10.3.4](#1034-d1-usage_event-insert-every-column), [§10.3.9](#1039-what-this-stage-does-not-do) |
-| [§7](#7-r2-envelope-every-field) key `request/{request_id}/envelope`; fields `context`, `prompt`, `attempts`, `result` | [§10.3.5](#1035-r2-envelope-every-field) |
-| `attempts[]` is captured raw body (`payload` + `truncated`, 16 KB cap), not `{}` | [§10.3.5](#1035-r2-envelope-every-field) |
-| One envelope per request on **every** terminal — not a second object on failure | [§10.3.5](#1035-r2-envelope-every-field), [§10.3.7](#1037-failed-credit) |
-| Write order: D1 `ai_attempt` + `usage_event` → `R2.put` → `payload_pointer` | [§10.3.5](#1035-r2-envelope-every-field) |
-| Empty-chain `provider_unavailable` stores `{ reason: "no_provider_attempt", excluded }` | [§10.3.7](#1037-failed-credit) |
-| [§3](#3-quota-do-credit-kind-credit) `kind: credit`: `installationId`, `requestId`, usage, `partial: false` on success, entitlement snapshot, `idempotencyState` completed (or omitted → completed) | [§10.3.6](#1036-quota-do-credit-kind-credit) |
-| Credit RPC is internal (`quota-do.internal`); `jti` / `idempotencyKey` are not public HTTP fields — observe via replay of the same key | [§10.3.6](#1036-quota-do-credit-kind-credit), [§10.3.10](#10310-clients-cannot-read-control-tables) |
-| DO: `tokensUsed` / `costUsed` / `requestsUsed` increment; `inFlight -= 1`; `admittedRequests[requestId]` deleted; idempotency leaves `"admitted"` | [§10.3.6](#1036-quota-do-credit-kind-credit) |
-| Healthy path: one credit after admit (two DO round trips); failed/cancelled do not add a third | [§10.3.6](#1036-quota-do-credit-kind-credit), [§10.3.7](#1037-failed-credit), [§10.3.8](#1038-cancelled-credit) |
-| [§9](#9-failed-and-cancelled-credit) Failed: `partial` from taxonomy; `idempotencyState = failed`; `completed_at` set; `terminal_error_code` = taxonomy; ≥1 `ai_attempt`; `usage_event` (zeros allowed) | [§10.3.7](#1037-failed-credit) |
-| `provider_unavailable` / `timeout` / `cancelled` → `partial: true`; `provider_rejected` / `validation_failed` → `partial: false` | [§10.3.7](#1037-failed-credit) for unavailable; Yes-consume codes are not forceable live — see unprobeable |
-| Invocation failure still one `usage_event` / one envelope (`ignoreBrokerSettlement`; no double-credit) | [§10.3.7](#1037-failed-credit) |
-| [§9](#9-failed-and-cancelled-credit) Cancelled: `partial: true`; `idempotencyState = cancelled`; `terminal_error_code` unchanged; `usage_event` always; `ai_attempt` only if invocation recorded attempts | [§10.3.8](#1038-cancelled-credit) |
-| Cancel without provider usage → `{ tokens: 0, cost: 0 }`; cancel after `text_delta` uses `estimateUsageFromStreamedChars` | [§10.3.8](#1038-cancelled-credit) |
-| Retry after credit does **not** emit `"Prior request completed."` for failed/cancelled; completed retry **does** (idempotent replay) | [§10.3.6](#1036-quota-do-credit-kind-credit), [§10.3.7](#1037-failed-credit), [§10.3.8](#1038-cancelled-credit) |
-| Cron `runReconciliation` profile: Completed/Failed need attempts **and** usage; Cancelled needs usage; Cancelled-without-attempts and AwaitingContext are not flagged | [§10.3.9](#1039-what-this-stage-does-not-do) |
-| Grace-admitted attach to `grace_admission_queue` (`usage_tokens` / `usage_cost` / `partial`) | Healthy path: table unused ([§10.3.9](#1039-what-this-stage-does-not-do)). DO-down attach is not live-probeable |
-| What this stage does not do (Stage 12 APIs, retention NULL, second R2 object, preflight cost, public `kind: credit`) | [§10.3.9](#1039-what-this-stage-does-not-do) |
-| Stage 12 handoff this doc asserts: `GET /v1/requests/{REF}` returns envelope `result` for Completed — not control tables | [§10.3.10](#10310-clients-cannot-read-control-tables) |
-| Clients / AAT cannot `SELECT` `ai_request` / `ai_attempt` / `usage_event`; wrangler can | [§10.3.10](#10310-clients-cannot-read-control-tables) |
+| [§6](#6-d1-usage_event-insert) INSERT every column: `usage_event_id` (ULID), `installation_id`, `period`, `request_id`, `quota_weight`, `tokens`, `cost`, `recorded_at` | [§11.3.4](#1134-d1-usage_event-insert-every-column) |
+| `period` is `YYYY-MM` from admission-time `period_start`, not wall-clock at credit; `quota_weight = 1` | [§11.3.4](#1134-d1-usage_event-insert-every-column) |
+| `ai_attempt.cost` and `usage_event.cost` agree; `usage_event.tokens = tokens_in + tokens_out` on success | [§11.3.3](#1133-d1-ai_attempt-insert-every-column), [§11.3.4](#1134-d1-usage_event-insert-every-column) |
+| Money appears only here — preflight stays token-only | [§11.3.9](#1139-what-this-stage-does-not-do) |
+| This stage does **not** `SET NULL` `usage_event.request_id` (retention is later) | [§11.3.4](#1134-d1-usage_event-insert-every-column), [§11.3.9](#1139-what-this-stage-does-not-do) |
+| [§7](#7-r2-envelope-every-field) key `request/{request_id}/envelope`; fields `context`, `prompt`, `attempts`, `result` | [§11.3.5](#1135-r2-envelope-every-field) |
+| `attempts[]` is captured raw body (`payload` + `truncated`, 16 KB cap), not `{}` | [§11.3.5](#1135-r2-envelope-every-field) |
+| One envelope per request on **every** terminal — not a second object on failure | [§11.3.5](#1135-r2-envelope-every-field), [§11.3.7](#1137-failed-credit) |
+| Write order: D1 `ai_attempt` + `usage_event` → `R2.put` → `payload_pointer` | [§11.3.5](#1135-r2-envelope-every-field) |
+| Empty-chain `provider_unavailable` stores `{ reason: "no_provider_attempt", excluded }` | [§11.3.7](#1137-failed-credit) |
+| [§3](#3-quota-do-credit-kind-credit) `kind: credit`: `installationId`, `requestId`, `requestReference`, usage, `partial: false` on success, optional `terminalErrorCode` on failed, entitlement snapshot, `idempotencyState` completed (or omitted → completed) | [§11.3.6](#1136-quota-do-credit-kind-credit) |
+| `usage_event` written by journal (`persistPostResponseDetail`), never by the Quota DO | [§1](#1-plain-language), [§11.3.4](#1134-d1-usage_event-insert-every-column) |
+| Caller-abort during in-flight invoke → `ai_attempt` `terminal_failure` / `error_code cancelled` | [§9](#9-failed-and-cancelled-credit) |
+| `record_ai_acceptance` duplicate pre-check on `(reference, table_name)`; visit id under `visit_clinical_notes` | [§10](#10-acceptance-recording-record_ai_acceptance) |
+| Credit RPC is internal (`quota-do.internal`); not a public HTTP route — observe effects via replay of the same `x-idempotency-key` | [§11.3.6](#1136-quota-do-credit-kind-credit), [§11.3.10](#11310-clients-cannot-read-control-tables) |
+| DO: `tokensUsed` / `costUsed` / `requestsUsed` increment; `inFlight -= 1`; `admittedRequests[requestId]` deleted; idempotency leaves `"admitted"` | [§11.3.6](#1136-quota-do-credit-kind-credit) |
+| Healthy path: one credit after admit (two DO round trips); failed/cancelled do not add a third | [§11.3.6](#1136-quota-do-credit-kind-credit), [§11.3.7](#1137-failed-credit), [§11.3.8](#1138-cancelled-credit) |
+| [§9](#9-failed-and-cancelled-credit) Failed: `partial` from taxonomy; `idempotencyState = failed`; `completed_at` set; `terminal_error_code` = taxonomy; ≥1 `ai_attempt`; `usage_event` (zeros allowed) | [§11.3.7](#1137-failed-credit) |
+| `provider_unavailable` / `timeout` / `cancelled` → `partial: true`; `provider_rejected` / `validation_failed` → `partial: false` | [§11.3.7](#1137-failed-credit) for unavailable; Yes-consume codes are not forceable live — see unprobeable |
+| Invocation failure still one `usage_event` / one envelope (`ignoreBrokerSettlement`; no double-credit) | [§11.3.7](#1137-failed-credit) |
+| [§9](#9-failed-and-cancelled-credit) Cancelled: `partial: true`; `idempotencyState = cancelled`; `terminal_error_code` unchanged; `usage_event` always; `ai_attempt` only if invocation recorded attempts | [§11.3.8](#1138-cancelled-credit) |
+| Cancel without provider usage → `{ tokens: 0, cost: 0 }`; cancel after `text_delta` uses `estimateUsageFromStreamedChars` | [§11.3.8](#1138-cancelled-credit) |
+| Retry after credit does **not** emit `"Prior request completed."` for failed/cancelled; completed retry **does** (idempotent replay) | [§11.3.6](#1136-quota-do-credit-kind-credit), [§11.3.7](#1137-failed-credit), [§11.3.8](#1138-cancelled-credit) |
+| Cron `runReconciliation` profile: Completed/Failed need attempts **and** usage; Cancelled needs usage; Cancelled-without-attempts and AwaitingContext are not flagged | [§11.3.9](#1139-what-this-stage-does-not-do) |
+| Grace-admitted attach to `grace_admission_queue` (`usage_tokens` / `usage_cost` / `partial`) | Healthy path: table unused ([§11.3.9](#1139-what-this-stage-does-not-do)). DO-down attach is not live-probeable |
+| What this stage does not do (Stage 12 APIs, retention NULL, second R2 object, preflight cost, public `kind: credit`) | [§11.3.9](#1139-what-this-stage-does-not-do) |
+| Stage 12 handoff this doc asserts: `GET /v1/requests/{REF}` returns envelope `result` for Completed — not control tables | [§11.3.10](#11310-clients-cannot-read-control-tables) |
+| Clients / AAT cannot `SELECT` `ai_request` / `ai_attempt` / `usage_event`; wrangler can | [§11.3.10](#11310-clients-cannot-read-control-tables) |
 
 
-**Not live-probeable** (do not wait 2h, crash the Worker, or take the Quota DO down): period-boundary `maybeResetPeriod` between admit and credit; 2h abandoned-admission sweep → idempotency `failed`; retry **while still `"admitted"`** (never credited) → `"Prior request completed."`; grace-queue attach while the DO is down; forcing `truncation` / `repair` / `timeout` / `retryable_failure` / `provider_rejected` / output-guard `validation_failed`; dumping DO `creditedRequests` / slid `expiresAt`; a raw provider body larger than 16 KB; counting DO RPCs with wrangler.
+**Not live-probeable** (do not wait 2h, crash the Worker, or take the Quota DO down): period-boundary `maybeResetPeriod` between admit and credit; 2h abandoned-admission sweep → idempotency `failed`; retry while still `"admitted"` emits **`accepted` only** (no fabricated completion — C-04); grace-queue attach while the DO is down; forcing `truncation` / `repair` / `timeout` / `retryable_failure` / `provider_rejected` / output-guard `validation_failed`; dumping DO `creditedRequests` / slid `expiresAt`; a raw provider body larger than 16 KB; counting DO RPCs with wrangler.
 
-### 10.3 Ordered probes
+### 11.3 Ordered probes
 
-#### 10.3.1 Complete a request then inspect
+#### 11.3.1 Complete a request then inspect
 
 **Do:** capture the admission-time period, then run a fresh visit-summary to completion:
 
@@ -305,7 +325,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** one row. Save `request_id` as **RID0**. `state = 'Completed'`. Settlement has run; the next probes inspect that row’s attempt, usage, envelope, and credit.
 
-#### 10.3.2 D1 ai_request terminal UPDATE
+#### 11.3.2 D1 ai_request terminal UPDATE
 
 **Do:** as wrangler, read every column this stage stamps on the Completed row:
 
@@ -321,7 +341,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** idempotent replay (Stage 10 — no new D1 INSERT). Re-read **RID0**: `state`, `completed_at`, and `terminal_error_code` are unchanged. The UPDATE is a no-op once the row is already terminal. Replay may emit placeholder `"Prior request completed."` — that is DO idempotency after credit, not a second settlement.
 
-#### 10.3.3 D1 ai_attempt INSERT every column
+#### 11.3.3 D1 ai_attempt INSERT every column
 
 **Do:**
 
@@ -350,7 +370,7 @@ Rates in that table today: `deepseek-v4-flash` 0.14 / 0.28; `gemini-3.5-flash` 0
 
 `selection_reason` is **not** a D1 column on this table (Stage 10 documents it as invoke metadata). Do not expect it in this `SELECT`.
 
-#### 10.3.4 D1 usage_event INSERT every column
+#### 11.3.4 D1 usage_event INSERT every column
 
 **Do:**
 
@@ -384,7 +404,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** `attempt_cost = usage_cost`. `u.tokens = tokens_in + tokens_out`. Preflight did not write this row — it appears only after the terminal.
 
-#### 10.3.5 R2 envelope every field
+#### 11.3.5 R2 envelope every field
 
 **Do:** fetch the object the pointer names (privileged R2, not the AAT):
 
@@ -410,9 +430,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
   "SELECT payload_pointer FROM ai_request WHERE request_id = '<RID0>'"
 ```
 
-**Expect:** `payload_pointer` equals `request/<RID0>/envelope`. Attempts and usage rows already exist ([§10.3.3](#1033-d1-ai_attempt-insert-every-column)–[§10.3.4](#1034-d1-usage_event-insert-every-column)) **and** the object is in R2 **and** the pointer matches — the three steps in [§7](#7-r2-envelope-every-field) write order. There is still only **one** object for this `request_id` (no `envelope-2`, no failure sidecar).
+**Expect:** `payload_pointer` equals `request/<RID0>/envelope`. Attempts and usage rows already exist ([§11.3.3](#1133-d1-ai_attempt-insert-every-column)–[§11.3.4](#1134-d1-usage_event-insert-every-column)) **and** the object is in R2 **and** the pointer matches — the three steps in [§7](#7-r2-envelope-every-field) write order. There is still only **one** object for this `request_id` (no `envelope-2`, no failure sidecar).
 
-#### 10.3.6 Quota DO credit (kind credit)
+#### 11.3.6 Quota DO credit (kind credit)
 
 There is no wrangler dump of DO storage. The credit RPC is `POST https://quota-do.internal/rpc` with `kind: "credit"` inside the Worker ([§3](#3-quota-do-credit-kind-credit)). Observe the **effects**.
 
@@ -420,7 +440,7 @@ There is no wrangler dump of DO storage. The credit RPC is `POST https://quota-d
 
 **Expect:** admission succeeds (`inFlight` was released by the prior credit). If `inFlight` were still held at the concurrency cap, this would be `concurrency_exhausted`. One successful follow-up job is enough to show the slot is free.
 
-**Do:** retry **K0** again (already done in [§10.3.2](#1032-d1-ai_request-terminal-update); repeat if needed).
+**Do:** retry **K0** again (already done in [§11.3.2](#1132-d1-ai_request-terminal-update); repeat if needed).
 
 **Expect:** SSE terminal `completed` with placeholder `"Prior request completed."` — idempotency state is `completed`, **not** `"admitted"`. A still-admitted retry would be the same placeholder for the wrong reason ([§9](#9-failed-and-cancelled-credit)); after this credit, D1 **RID0** stays Completed with usage already written, and the retry does **not** INSERT a second `usage_event` for **RID0**.
 
@@ -437,9 +457,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Do:** `curl -s -X POST "$GATEWAY/quota-do.internal/rpc"` (or any path with body `{"kind":"credit"}`) with the AAT.
 
-**Expect:** not a credit RPC. That URL is Durable Object internal. The AAT cannot send `installationId` / `requestId` / `jti` / `idempotencyKey` into the DO. `jti` was consumed at **admit**; credit finds the reservation by `requestId` and slides the matching idempotency `expiresAt` (2h). Do not wait 2h to prove the slide — immediate replay already shows the key is still remembered.
+**Expect:** not a credit RPC. That URL is Durable Object internal. The AAT cannot invoke `kind: credit`. Credit finds the reservation by `requestId` and slides the matching idempotency `expiresAt` (2h). Do not wait 2h to prove the slide — immediate replay already shows the key is still remembered.
 
-#### 10.3.7 Failed credit
+#### 11.3.7 Failed credit
 
 Force an empty provider chain so settlement is Failed / `provider_unavailable` without depending on a live model.
 
@@ -492,7 +512,7 @@ python3 -c 'import json; e=json.load(open("/tmp/envelope-ridf.json")); print(sor
 
 **Do:** `post_request "$IDEMF"` again (same **KF**).
 
-**Expect:** SSE `failed` (Stage 10 replays DO `failed`, typically `internal_error` on the replay frame). **Not** `"Prior request completed."`. No second `usage_event` for **RIDF**. Idempotency left `"admitted"`; `partial: true` (`consumesQuota` = `"Partially, recorded"`); Worker sent `idempotencyState: "failed"`. Failed/cancelled did **not** add a third DO kind on this path — still admit + one credit.
+**Expect:** SSE `failed` (Stage 10 replays DO `failed` with the stored **`terminalErrorCode`** — `provider_unavailable` for this probe, not a generic `internal_error`). **Not** `"Prior request completed."`. No second `usage_event` for **RIDF**. Idempotency left `"admitted"`; `partial: true` (`consumesQuota` = `"Partially, recorded"`); Worker sent `idempotencyState: "failed"` with `terminalErrorCode: "provider_unavailable"`. Failed/cancelled did **not** add a third DO kind on this path — still admit + one credit.
 
 **Do:** clear the kills before the next probe:
 
@@ -503,7 +523,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 Restart the Worker (or wait 30 s).
 
-#### 10.3.8 Cancelled credit
+#### 11.3.8 Cancelled credit
 
 **Do:** open a stream and abort after `accepted`, before a terminal event:
 
@@ -550,7 +570,7 @@ Usage: `{ tokens: 0, cost: 0 }` when nothing accrued. If any `text_delta` arrive
 
 **Expect:** one envelope (placeholder `result.finishReason` related to cancel). Replay is SSE `cancelled`, **not** `"Prior request completed."`. `partial: true`; `idempotencyState: "cancelled"`. If the broker already credited, the worker still writes D1/R2 with `skipCredit: true` — still **one** `usage_event`, not two.
 
-#### 10.3.9 What this stage does not do
+#### 11.3.9 What this stage does not do
 
 **Do:** on the healthy Completed **RID0**:
 
@@ -595,13 +615,13 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
      AND u.usage_event_id IS NULL"
 ```
 
-**Expect:** both result sets empty for these ids. Completed/Failed have attempts **and** usage; Cancelled has usage. A Cancelled row with `attempt_n = 0` ([§10.3.8](#1038-cancelled-credit)) is **not** in the missing-attempts query (that query only considers Completed/Failed). AwaitingContext is not flagged. Settlement does not call `runReconciliation`; it only writes the rows that job later reads.
+**Expect:** both result sets empty for these ids. Completed/Failed have attempts **and** usage; Cancelled has usage. A Cancelled row with `attempt_n = 0` ([§11.3.8](#1138-cancelled-credit)) is **not** in the missing-attempts query (that query only considers Completed/Failed). AwaitingContext is not flagged. Settlement does not call `runReconciliation`; it only writes the rows that job later reads.
 
 **Do:** confirm this stage is not Stage 10 and not Stage 12: there is no new routing policy write, no second provider call on replay, and no new `/control/support/lookup` route introduced here. `GET /v1/requests/{reference}` already exists; the next probe only checks the **handoff** this file asserts (`payload_pointer` → envelope `result`).
 
 **Expect:** preflight did not INSERT `usage_event` (the row appears only after the terminal). Cost is absent from admit. `kind: credit` is not a public `/v1` or `/control` route. Quota DO storage is not in D1 — wrangler `d1 execute` cannot `SELECT` `inFlight`.
 
-#### 10.3.10 Clients cannot read control tables
+#### 11.3.10 Clients cannot read control tables
 
 **Do:** as the staff AAT (not wrangler):
 
@@ -617,7 +637,7 @@ curl -sS -D - -o /tmp/get-rid0.json \
 
 **Expect:** unauthenticated GET → 401. There is no `/v1/attempts` (or `/v1/usage`) catalog of control tables. AAT cannot `SELECT` D1.
 
-**Do:** the same `SELECT` as [§10.3.3](#1033-d1-ai_attempt-insert-every-column) / [§10.3.4](#1034-d1-usage_event-insert-every-column) via wrangler.
+**Do:** the same `SELECT` as [§11.3.3](#1133-d1-ai_attempt-insert-every-column) / [§11.3.4](#1134-d1-usage_event-insert-every-column) via wrangler.
 
 **Expect:** rows return. Journal control tables are wrangler-privileged (Worker binding). Clients never get a SQL session.
 

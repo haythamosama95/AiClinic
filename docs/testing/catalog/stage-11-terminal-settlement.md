@@ -4,6 +4,47 @@ Source files read: `ai-platform/src/worker.ts` (settleTerminal, settleCompletedR
 
 Shared fixture vocabulary (from `test/system/harness.ts`, reused by every scenario unless overridden): capability `clinic.visit_summary@1.0.0` (single_shot, `Economics.quotaWeight: 1`, `Output.mode: prose`, repairPolicy disabled); entitlement `period_start: "2026-07-01T00:00:00.000Z"`, `period_end: "2026-09-01T00:00:00.000Z"`, `request_quota: 1000`, `token_budget: 500000`, `cost_budget: 50.0`, `soft_threshold: 0.8`; routing policy `standard@1` with one target `{ provider_id: "fake", model_id: "fake-v1", max_attempts: 1, timeout_ms: 30000 }`; FakeAdapter success result `{ usage: { input: 10, output: 20, cached: 0 }, providerModel: { provider: "fake", model: "fake-v1" }, finishReason: "stop", providerRequestId: "fake-req-001", timing: { queue_ms: 1, provider_ms: 5, total_ms: 6 } }` with body `visitSummaryInvokeBody(scenario)` (`user_intent: "Summarize the visit."`, context key `visit.chief_complaint@v1`). Platform pricing (`control/pricing/platform-default/1.json`): `fake-v1` 0.1/0.2, `deepseek-v4-flash` 0.14/0.28, `gemini-3.5-flash` 0.075/0.3 per 1K input/output tokens, `default` 0.1/0.2; costs rounded to 6 decimals. The FakeAdapter success therefore prices at `(10/1000)*0.1 + (20/1000)*0.2 = 0.005` with `tokens = 30`. DO state is observed via `kind: "inspect"` RPC on the installation's GatewayObject stub.
 
+## 1. Quota DO credit RPC (`kind: credit`)
+
+`CreditRequest` (`quota-do/index.ts:L131-L141`) fields — **`jti` and `idempotencyKey` are not on credit** (they are consumed at `kind: admission` only; credit finds the reservation by `requestId`):
+
+| Field | Source |
+| ----- | ------ |
+| `installationId` | principal |
+| `requestId` | journal row / admission |
+| `requestReference` | Crockford ref |
+| `usage.tokens`, `usage.cost` | priced settlement usage |
+| `partial` | `consumesQuota !== "Yes"` from taxonomy |
+| `idempotencyState` | optional: `"completed"` / `"failed"` / `"cancelled"`; omitted → `partial ? "cancelled" : "completed"` |
+| `terminalErrorCode` | optional taxonomy code stored on the idempotency entry when `idempotencyState` is `"failed"` (C-11 replay) |
+| `entitlement` | admission-time snapshot; worker always sends it |
+
+## 2. Journal vs Quota DO responsibilities
+
+| Artifact | Writer | Notes |
+| -------- | ------ | ----- |
+| Quota DO counters / idempotency | `creditRPC` in `quota-do/index.ts` | mutates DO storage only |
+| `usage_event` | `persistPostResponseDetail` in `journal/index.ts` | D1 INSERT — **never** written by the Quota DO |
+| `ai_attempt` | same journal path | D1 batch with `usage_event` |
+| R2 envelope | same journal path | `buildEnvelope` → `R2.put` |
+| `ai_request.payload_pointer` | same journal path | after batch + R2 |
+| `grace_admission_queue` usage attach | `creditUsage` before DO RPC | only D1 touch from credit layer |
+
+Direct DO `kind: credit` RPCs (S11-012) do not touch D1.
+
+## 3. Failed and cancelled settlement profiles
+
+**Caller-abort during an in-flight invoke** terminal-classifies as `cancelled` (`processInvokeResult`); settlement writes one `ai_attempt` row with `outcome 'terminal_failure'`, `error_code 'cancelled'` (S11-008). **Pre-attempt abort** (caller signal already set before `recordAttempt`) yields zero `ai_attempt` rows but still journals `usage_event` (S11-009).
+
+**Client drop:** the broker emits `cancelled` into a dead stream (`markCancelledWithoutEnqueue` on the adapter — Stage 10 §2); settlement (credit + journal) still runs. The dropped connection does not show the terminal frame; replay observes `cancelled` (S11-015).
+
+Chain exhaustion after per-attempt `timeout` rows settles `ai_request.terminal_error_code = 'provider_unavailable'`, never `'timeout'` (S11-004).
+
+## 4. `record_ai_acceptance` provenance
+
+- **Duplicate guard** rejects on `(ai_request_reference, table_name)` before any domain write — broader than the UNIQUE constraint `(table_name, record_id, ai_request_reference)`; the same reference cannot be accepted into a second record of the same table (S11-025 case b).
+- **`record_id` for `visit_clinical_notes`** is the **visit uuid** from domain `data->>'visit_id'`, not the clinical-note row id; `branch_id` is resolved from `public.visits` (S11-022). Joining `ai_accepted_output.record_id` to `visit_clinical_notes.id` will miss.
+
 ## Scenario S11-001 — Completed settlement writes the full ledger (request, attempt, usage, envelope, DO credit)
 
 | Field | Content |
@@ -88,7 +129,7 @@ Shared fixture vocabulary (from `test/system/harness.ts`, reused by every scenar
 | ID | S11-008 |
 | Journey setup | Fresh scenario; standard policy. FakeAdapter seam: `invoke` waits on a 5 s timer and rejects `AbortError` on signal abort (SYS-7.3 shape). |
 | Action | `POST /v1/requests` with `x-idempotency-key: s11-008-<uuid>` and an `AbortController` signal on the fetch; wait until the fake invoke is entered, then `controller.abort()`; drain background work. |
-| Expected outcome | The SSE stream dies with the disconnect (broker emits terminal `cancelled` with `data.trace_id` synchronously on disconnect). `ai_request` `state 'Cancelled'`, `completed_at` set, `terminal_error_code` NULL (Cancelled never stamps a taxonomy code). One `ai_attempt` row: the in-flight invoke resolves to a caller-abort error which `processInvokeResult` terminal-classifies (`cancelled` retryable `"—"` → not retry-safe), so `outcome 'terminal_failure'`, `error_code 'cancelled'`, `tokens 0`, `cost 0`. Exactly one `usage_event` `{ tokens: 0, cost: 0 }` — cancelled requests always journal usage. DO: one credit from the broker's `handleCancel` with `partial: true` (`cancelled` consumesQuota `"Partially, recorded"`), `idempotencyState "cancelled"`, usage `{ tokens: 0, cost: 0 }` (no accrued usage, no streamed chars); idempotency entry state `cancelled`; `inFlight` back to 0. The worker's cancelled branch sees `brokerTerminal === "cancelled"` and re-journals with `skipCredit: true`. Envelope exists at the standard key; `result.finishReason = "cancelled"`. |
+| Expected outcome | The SSE stream dies with the disconnect — **no** `cancelled` frame is observable on the dead connection (Stage 10 §2); the broker still credits and journals. `ai_request` `state 'Cancelled'`, `completed_at` set, `terminal_error_code` NULL (Cancelled never stamps a taxonomy code). One `ai_attempt` row: the in-flight invoke resolves to a caller-abort error which `processInvokeResult` terminal-classifies (`cancelled` retryable `"—"` → not retry-safe), so `outcome 'terminal_failure'`, `error_code 'cancelled'`, `tokens 0`, `cost 0`. Exactly one `usage_event` `{ tokens: 0, cost: 0 }` — cancelled requests always journal usage. DO: one credit from the broker's `handleCancel` with `partial: true` (`cancelled` consumesQuota `"Partially, recorded"`), `idempotencyState "cancelled"`, usage `{ tokens: 0, cost: 0 }` (no accrued usage, no streamed chars); idempotency entry state `cancelled`; `inFlight` back to 0. The worker's cancelled branch sees `brokerTerminal === "cancelled"` and re-journals with `skipCredit: true`. Envelope exists at the standard key; `result.finishReason = "cancelled"`. |
 | Side effects | MUST: exactly one `usage_event` and one DO credit (broker); worker writes D1/R2 only. MUST NOT: `terminal_error_code` stays NULL; no `failed` event; no second credit when the worker's settleTerminal runs. |
 | Code reference | ai-platform/src/worker.ts:925-957 — cancelled branch (skipCredit when brokerTerminal set); ai-platform/src/stream/index.ts:258-287 — handleCancel; ai-platform/src/invocation/index.ts:117-128 — createCancelledError; ai-platform/src/invocation/index.ts:320-329 — cancelled terminal-classified attempt record |
 
@@ -121,7 +162,7 @@ Shared fixture vocabulary (from `test/system/harness.ts`, reused by every scenar
 | ID | S11-011 |
 | Journey setup | Fresh scenario; standard policy. FakeAdapter seam: `invoke` calls `options.onStreamChunk` with one `text_delta` of exactly 250 characters (`"x".repeat(250)`), then hangs abort-aware (never returns a result). |
 | Action | `POST /v1/requests`, `x-idempotency-key: s11-011-<uuid>`; wait until the chunk is relayed (invoke entered + small delay), then abort; drain background work. |
-| Expected outcome | `ai_request` `state 'Cancelled'`. One `usage_event` with `tokens 250`, `cost 0.05` — `estimateUsageFromStreamedChars(250, "fake-v1")` treats streamed chars as OUTPUT tokens through `priceUsage`: `(250/1000)*0.2 = 0.05` (6-decimal exact). DO credit `partial: true`, `idempotencyState "cancelled"`, same usage. `ai_attempt`: one row `outcome 'terminal_failure'`, `error_code 'cancelled'`, `tokens_in 0`, `tokens_out 0`, `cost 0` (no provider result was processed, so the attempt row itself carries no usage — only the credit/usage_event do). SSE relayed one `text_delta` (`provisional: true`) before the terminal `cancelled`. |
+| Expected outcome | `ai_request` `state 'Cancelled'`. One `usage_event` with `tokens 250`, `cost 0.05` — `estimateUsageFromStreamedChars(250, "fake-v1")` treats streamed chars as OUTPUT tokens through `priceUsage`: `(250/1000)*0.2 = 0.05` (6-decimal exact). DO credit `partial: true`, `idempotencyState "cancelled"`, same usage. `ai_attempt`: one row `outcome 'terminal_failure'`, `error_code 'cancelled'`, `tokens_in 0`, `tokens_out 0`, `cost 0` (no provider result was processed, so the attempt row itself carries no usage — only the credit/usage_event do). SSE relayed one `text_delta` (`provisional: true`) before disconnect; **no** `cancelled` frame on the dead connection (Stage 10 §2). |
 | Side effects | MUST: the estimate flows through the named `priceUsage` helper with the chain entry's model (`fake-v1`) — no anonymous 0.001 formula; `usage_event.cost` equals the DO `costUsed` delta. MUST NOT: no accrued-usage path (result never processed → `hasAccruedUsage` false); no `completed` event despite streamed text. |
 | Code reference | ai-platform/src/invocation/index.ts:480-488 — readPartialUsage streamedChars branch; ai-platform/src/pricing/index.ts:138-155 — estimateUsageFromStreamedChars; ai-platform/src/invocation/index.ts:511-515 — observingSink.emitStreamText counts chars; ai-platform/src/stream/index.ts:274-281 — handleCancel |
 
@@ -325,16 +366,16 @@ Shared fixture vocabulary (from `test/system/harness.ts`, reused by every scenar
 
 ## Doc-drift observations
 
-1. **Credit RPC fields (doc self-contradiction).** `13-stage-11-terminal-settlement.md` §3 lists `jti` and `idempotencyKey` as fields of the `kind: credit` RPC; `CreditRequest` in `src/quota-do/index.ts` has neither (they exist only on `AdmissionRequest`). The doc's own §10.3.6 later states the correct behavior ("`jti` was consumed at admit; credit finds the reservation by `requestId`"). Follow the code.
-2. **Terminal `timeout` is unreachable.** The orientation doc §9 table and the chapter briefing list `timeout` as a failed-settlement taxonomy with `partial: true`. In code, `timeout` is retryable-classified (`classifyFailure`), so it only ever appears as an `ai_attempt.outcome = 'timeout'` / `error_code = 'timeout'`; chain exhaustion always settles the request as `provider_unavailable` (`runInvocation` L755-761). `ai_request.terminal_error_code = 'timeout'` cannot be produced by the current invocation path (worker would honor it via `isTaxonomyCode` if it ever arose). Covered as S11-004.
-3. **Cancelled-during-invoke writes an attempt row.** Doc §9 says cancelled requests have `ai_attempt` "only when invocation recorded attempts (abort before the first provider call is expected to have none)". Code terminal-classifies the caller-abort error (`cancelled` retryable `"—"` → not retry-safe), so an abort DURING an in-flight invoke records `outcome 'terminal_failure', error_code 'cancelled'` (S11-008). Only a pre-attempt abort yields zero rows (S11-009).
-4. **usage_event is never written by the Quota DO.** The chapter briefing grouped "usage_event insertion" under `quota-do`; in code `usage_event` is written only by `persistPostResponseDetail` (journal, D1). The DO mutates only its own storage; `creditUsage`'s only D1 touch is the grace-queue attach. Scenarios S11-001/S11-012 assert this split.
-5. **Replay of a failed request preserves the original code — fixed (C-11).** `terminalErrorCode` is persisted on the DO idempotency entry at credit time and replayed on the SSE `failed` frame (S11-014).
-6. **Duplicate pre-check is broader than the UNIQUE constraint.** `record_ai_acceptance` rejects on `(ai_request_reference, table_name)` alone, while `ai_accepted_output_unique_domain_reference` is `(table_name, record_id, ai_request_reference)` — the same AI output cannot be accepted into two different records of the same table even though the constraint would allow it (S11-025 case b). Not documented in the migration comment beyond "foreseeable duplicate".
-7. **Provenance records the visit id under `table_name 'visit_clinical_notes'`.** `record_id` comes from domain `data->>'visit_id'` (the visit uuid), not the clinical-note row id; `branch_id` is then resolved from `public.visits`. Anyone joining `ai_accepted_output.record_id` to `visit_clinical_notes.id` will miss (S11-022).
-8. **Worker cancelled branch's non-skipCredit sub-path is defensive.** `brokerTerminal === undefined` after a cancel is effectively unreachable via client disconnect because `broker.disconnect()` synchronously runs `handleCancel` → `journalTerminalSink`, which sets `brokerTerminal` before the worker checks it (worker.ts L931-945, stream/index.ts L472-488). No scenario can reach the credit-without-skipCredit cancelled path through `POST /v1/requests` without fault injection inside the broker sinks.
-9. **`repair` attempt outcome unreachable for `clinic.visit_summary`.** The doc §5 lists `repair` among legal outcomes; the published manifest sets `repairPolicy.allowed: false, maxAttempts: 0`, and repair orchestration is a Stage 10 concern. No Stage 11 settlement scenario can produce a `repair` row with the published capability.
-10. **Doc §3 credit-field table otherwise matches code** (`partial` derivation, `idempotencyState` default `partial ? "cancelled" : "completed"`, entitlement snapshot always sent, period sharing) — verified by S11-001/005/017.
+1. **Credit RPC fields — fixed (D-18).** Catalog §1 documents `CreditRequest` without `jti`/`idempotencyKey` (admission-only fields).
+2. **Terminal `timeout` is unreachable at request level.** `timeout` appears only as `ai_attempt.outcome` / `error_code`; chain exhaustion settles `provider_unavailable` (§3, S11-004). Orientation doc drift is D-19.
+3. **Cancelled-during-invoke writes an attempt row — fixed (D-18).** Catalog §3 documents caller-abort during in-flight invoke → `terminal_failure`/`cancelled` attempt row (S11-008); pre-attempt abort → zero rows (S11-009).
+4. **`usage_event` is never written by the Quota DO — fixed (D-18).** Catalog §2 documents journal-only `usage_event` insertion via `persistPostResponseDetail` (S11-001, S11-012).
+5. **Replay of a failed request preserves the original code — fixed (C-11).** `terminalErrorCode` persisted on the DO idempotency entry and replayed on SSE `failed` (S11-014).
+6. **Duplicate pre-check broader than UNIQUE — fixed (D-18).** Catalog §4 documents `(ai_request_reference, table_name)` guard (S11-025).
+7. **Provenance records visit id — fixed (D-18).** Catalog §4 documents `record_id` from `visit_id` under `table_name 'visit_clinical_notes'` (S11-022).
+8. **`cancelled` on client drop unobservable on wire — fixed (D-16).** Catalog §3 cross-references Stage 10 §2; replay in S11-015.
+9. **Worker cancelled branch's non-skipCredit sub-path is defensive.** `broker.disconnect()` synchronously sets `brokerTerminal` before the worker check — unreachable via client disconnect without fault injection.
+10. **`repair` attempt outcome unreachable for `clinic.visit_summary`.** `repairPolicy.allowed: false`; repair orchestration is Stage 10 / F-03.
 
 ## Non-automatable notes
 

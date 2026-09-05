@@ -4,23 +4,26 @@
 
 1. [`GET /v1/requests/{request_reference}`](#1-get-v1requestsrequest_reference)
 2. [`POST /control/support/lookup`](#2-post-controlsupportlookup)
-3. [`public.record_ai_acceptance()`](#3-publicrecord_ai_acceptance)
-4. [Journal retention vs lookup and reconciliation](#4-journal-retention-vs-lookup-and-reconciliation)
-5. [Behavioral verification](#5-behavioral-verification)
-   - [5.1 Setup](#51-setup)
-   - [5.2 Coverage](#52-coverage)
-   - [5.3 Ordered probes](#53-ordered-probes)
-     - [5.3.1 Capture a completed journal row](#531-capture-a-completed-journal-row)
-     - [5.3.2 GET happy path every field](#532-get-happy-path-every-field)
-     - [5.3.3 Support lookup happy path every field](#533-support-lookup-happy-path-every-field)
-     - [5.3.4 Who may vs may not call each](#534-who-may-vs-may-not-call-each)
-     - [5.3.5 Missing and invalid references](#535-missing-and-invalid-references)
-     - [5.3.6 Installation scope vs cross-installation lookup](#536-installation-scope-vs-cross-installation-lookup)
-     - [5.3.7 Joinability before retention](#537-joinability-before-retention)
-     - [5.3.8 Force aged rows and run retention](#538-force-aged-rows-and-run-retention)
-     - [5.3.9 After purge: lookup, money row, reconciliation](#539-after-purge-lookup-money-row-reconciliation)
-     - [5.3.10 Record AI acceptance RPC](#5310-record-ai-acceptance-rpc)
-     - [5.3.11 What this stage does not do](#5311-what-this-stage-does-not-do)
+3. [Control-plane route dispatch](#3-control-plane-route-dispatch)
+4. [`GET /control/installations/{id}/quota`](#4-get-controlinstallationsidquota)
+5. [Dashboard SQL functions (no HTTP route)](#5-dashboard-sql-functions-no-http-route)
+6. [`public.record_ai_acceptance()`](#6-publicrecord_ai_acceptance)
+7. [Journal retention vs lookup and reconciliation](#7-journal-retention-vs-lookup-and-reconciliation)
+8. [Behavioral verification](#8-behavioral-verification)
+   - [8.1 Setup](#81-setup)
+   - [8.2 Coverage](#82-coverage)
+   - [8.3 Ordered probes](#83-ordered-probes)
+     - [8.3.1 Capture a completed journal row](#831-capture-a-completed-journal-row)
+     - [8.3.2 GET happy path every field](#832-get-happy-path-every-field)
+     - [8.3.3 Support lookup happy path every field](#833-support-lookup-happy-path-every-field)
+     - [8.3.4 Who may vs may not call each](#834-who-may-vs-may-not-call-each)
+     - [8.3.5 Missing and invalid references](#835-missing-and-invalid-references)
+     - [8.3.6 Installation scope vs cross-installation lookup](#836-installation-scope-vs-cross-installation-lookup)
+     - [8.3.7 Joinability before retention](#837-joinability-before-retention)
+     - [8.3.8 Force aged rows and run retention](#838-force-aged-rows-and-run-retention)
+     - [8.3.9 After purge: lookup, money row, reconciliation](#839-after-purge-lookup-money-row-reconciliation)
+     - [8.3.10 Record AI acceptance RPC](#8310-record-ai-acceptance-rpc)
+     - [8.3.11 What this stage does not do](#8311-what-this-stage-does-not-do)
 
 ---
 
@@ -57,8 +60,23 @@ Poll the journal for a request you already submitted. Use this after SSE `comple
 
 | HTTP | Body | When |
 | ---- | ---- | ---- |
-| 401  | Taxonomy JSON `{ "code": "unauthenticated", … }` or `{ "code": "installation_suspended", … }` | Missing/invalid AAT or suspended installation |
-| 404  | **Empty body** | Unknown `request_reference`, wrong installation, or non-pollable state |
+| 401  | Taxonomy JSON `{ "code": "unauthenticated", …, "retry_safe": true }` | Missing/invalid AAT (`getRequestAuthErrorBody` mints a **new** reference, never the path reference) |
+| 403  | Taxonomy JSON `{ "code": "installation_suspended", …, "retry_safe": false }` | Suspended installation — `liveHttpStatusForCode("installation_suspended")` = **403**, not 401 |
+| 404  | **Empty body** | Unknown/malformed/cross-installation reference, empty path segment, or unrecognized `ai_request.state` string |
+
+Non-GET methods on `/v1/requests/{ref}` and `/v1/requests` (no trailing slash) return plain-text **`Not Found`** — the catch-all route, not the empty-body GET 404.
+
+### 1.1 Reference normalization (clinic GET)
+
+The path param is the raw pathname slice — **no whitespace trim**. `normalizeRequestReference` uppercases and maps ambiguous Crockford chars (`I`/`L`→`1`, `O`→`0`) only. A padded reference 404s on GET.
+
+### 1.2 Code-only GET branches
+
+| Branch | HTTP outcome |
+| ------ | ------------ |
+| `Failed` with NULL `terminal_error_code` | 200 `{ "state": "Failed", "terminal_error_code": "internal_error" }` |
+| Unrecognized `state` string | 404 empty body |
+| `Completed` with corrupt/missing R2 envelope | 200 `{ "state": "Completed" }` (no `result`) |
 
 **D1 read:** `ai_request` by `request_reference`. **R2 read:** only when `state = Completed` and `payload_pointer` is set — fetches `request/{request_id}/envelope` and returns `envelope.result`.
 
@@ -104,9 +122,55 @@ Operator diagnostic dump for a single request ticket — across **all** installa
 | 404  | `not_found`          | No journal row for that reference |
 | 500  | `missing_r2_binding` | Worker misconfiguration |
 
+### 2.1 Reference normalization (support lookup)
+
+Query param `reference` is **trimmed**, then normalized and validated (`support-purge.ts`). Whitespace-padded references succeed on lookup but 404 on the clinic GET — **intentional**: machine clients send exact references; operator tooling is forgiving.
+
+### 2.2 Support lookup envelope fallback (code-only)
+
+When `payload_pointer` is NULL, support lookup still reads R2 at the derived key `request/{request_id}/envelope` (`support/index.ts`). The clinic GET returns `{ "state": "Completed" }` without `result` for the same row.
+
+Lookup writes **no** `control_audit` row (read-only).
+
 Same single shared bearer + `OPERATOR_ID` as every other `/control/*` route: the audit trail cannot distinguish operators.
 
-## 3. `public.record_ai_acceptance()`
+## 3. Control-plane route dispatch
+
+`worker.ts` admits control routes when `isControlRoute(pathname)` and **either** `method === "POST"` **or** (`method === "GET"` **and** `isQuotaInspectRoute(pathname)`). Every other `/control/*` path on GET returns plain-text `Not Found` before auth. The claim that "`/control/*` is POST-only" is accurate for support lookup but **overbroad** — quota inspect is GET-only inside the dispatcher (`quota-inspect.ts` rejects non-GET with 405).
+
+## 4. `GET /control/installations/{id}/quota` (quota inspect)
+
+Operator read of D1 entitlement + Quota DO state. `verbose=true` adds `maps` (idempotency, jti_replay, admitted_requests, credited_requests) capped at **500 entries per map** (`capMap`); counts in the top-level body are never truncated.
+
+### 4.1 Success response (200)
+
+Top-level keys: `installation_id`, `bound_installation_id`, `period_bounds`, `period_counters` (`requests_used`, `tokens_used`, `cost_used`, `in_flight`), `entitlement` (D1 row or **null** when installation exists but entitlement row is missing), `remaining` (null when entitlement null), `idempotency_keys`, `jti_replay_entries`, `admitted_requests`, `credited_requests`. Optional `maps` when `verbose=true`.
+
+`inspectRPC` runs ephemeral sweeps **in memory only** — no DO `storage.put`.
+
+### 4.2 Failure responses
+
+Dispatch pre-filters with the same regex as the handler (`QUOTA_INSPECT_PATTERN`), so **`400 invalid_route` is unreachable via HTTP** (direct handler invocation only). Reachable failures:
+
+| HTTP | `error` | When |
+| ---- | ------- | ---- |
+| 401 | `unauthorized` | Missing/wrong operator bearer (runs before method check) |
+| 405 | `method_not_allowed` | POST to this path |
+| 404 | `installation_not_found` | No `installation` row — DO never contacted |
+| 503 | `quota_do_unavailable` | DO binding missing or stub fetch failed/non-OK |
+
+## 5. Dashboard SQL functions (no HTTP route)
+
+Exported from `dashboards/index.ts`; call them directly against migrated D1 — there is no HTTP route.
+
+| Function | Reads | Contract |
+| -------- | ----- | -------- |
+| `dashboardQuotaRejectionRate(db, now?)` | `platform_counter` (LIKE `%quota_exhausted%`) ÷ in-window `ai_request` count | Numerator is a **lower bound** — only cron-flushed tallies appear; 90-day window matches `JOURNAL_HORIZON_DAYS` |
+| `dashboardRepairRateByCapability(db, now?)` | `ai_attempt` LEFT JOIN `ai_request` | Repair attempts ÷ Completed+Failed requests per `capability_id`; Cancelled/in-flight excluded |
+
+Other exports (`dashboardAvgAttemptLatencyByProvider`, `dashboardValidationFailureByPromptVersion`, `dashboardFallbackRateByProvider`, `dashboardCostPerCapabilityPerInstallation`, `runAllDashboardQueries`) follow the same SQL-contract pattern.
+
+## 6. `public.record_ai_acceptance()`
 
 Clinic-side acceptance recording — **not** an HTTP route on the AI platform. After a terminal SSE `completed`, staff may persist AI-generated clinical content through this RPC; the gateway is not involved and D1 is not written.
 
@@ -171,7 +235,7 @@ Plus any keys returned by the delegated domain RPC (demonstration target: `save_
 
 **Registry (demonstration target):** `visit_clinical_notes` → `save_visit_documentation` → table `visit_clinical_notes`.
 
-## 4. Journal retention vs lookup and reconciliation
+## 7. Journal retention vs lookup and reconciliation
 
 After the journal horizon, `runRetentionPurge` nulls `usage_event.request_id` and deletes the
 `ai_request` row. Support lookup by `request_reference` then finds nothing: the ticket is gone.
@@ -179,15 +243,15 @@ The usage money row remains, but it cannot be joined back to a request. `runReco
 `LEFT JOIN usage_event u ON u.request_id = r.request_id` likewise cannot match those aged rows,
 so reconciliation coverage shrinks with age. See [§9 in Alternative journeys](15-alternative-and-failure-journeys.md#9-journal-retention-and-aged-usage-joinability).
 
-## 5. Behavioral verification
+## 8. Behavioral verification
 
-Live probes against a local Worker. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§5.3](#53-ordered-probes) top to bottom** on a throwaway local D1. If every probe matches, this stage is working.
+Live probes against a local Worker. Each probe is an operator action and the outcome you should see — not a unit test. Run **[§8.3](#83-ordered-probes) top to bottom** on a throwaway local D1. If every probe matches, this stage is working.
 
 Clinic poll is `authenticateGetRequest` + `getRequest` scoped to the AAT's `installationId`. Support dump is `requireOperator` + `supportLookup` with **no** installation filter. Journal purge is cron `0 3 * * *` (`runRetentionPurge`), not either HTTP route.
 
-### 5.1 Setup
+### 8.1 Setup
 
-- Local Worker. For [§5.3.8](#538-force-aged-rows-and-run-retention) the process must expose the scheduled handler:
+- Local Worker. For [§8.3.8](#838-force-aged-rows-and-run-retention) the process must expose the scheduled handler:
 
 ```bash
 cd ai-platform
@@ -198,7 +262,7 @@ npx wrangler dev --env development --test-scheduled
 
 - Enrolled, entitled installation **I0** and a staff AAT whose `iss` is **I0** ([Stage 6](08-stage-6-minting-an-aat.md)). Same token that can `POST /v1/requests`.
 - `OPERATOR_BEARER_TOKEN` (Workers secret) and `OPERATOR_ID` (`platform-operator` in `wrangler.toml` `[env.development.vars]`). One shared bearer for every `/control/*` route.
-- Clinic `org` / `branch` that match the AAT, for the optional live `POST /v1/requests` in [§5.3.1](#531-capture-a-completed-journal-row).
+- Clinic `org` / `branch` that match the AAT, for the optional live `POST /v1/requests` in [§8.3.1](#831-capture-a-completed-journal-row).
 - D1 inspect as:
 
 ```bash
@@ -212,47 +276,50 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
   "SELECT 1"
 ```
 
-Prefer a database you can wipe: [§5.3.8](#538-force-aged-rows-and-run-retention) backdates `created_at` and the cron **deletes** that journal row.
+Prefer a database you can wipe: [§8.3.8](#838-force-aged-rows-and-run-retention) backdates `created_at` and the cron **deletes** that journal row.
 
-### 5.2 Coverage
+### 8.2 Coverage
 
 Every happy and failure claim in this file maps to a probe. Carry them all out.
 
 
 | Claim | Probe |
 | ----- | ----- |
-| `GET /v1/requests/{ref}` auth is Bearer AAT (`authenticateGetRequest`) | [§5.3.2](#532-get-happy-path-every-field), [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| GET uses isolate-scoped `ConfigCache` (same instance as `POST /v1/requests`) | [§5.3.2](#532-get-happy-path-every-field) (same AAT verifies both). Singleton identity is **unprobeable** from HTTP — see note below |
-| GET scope must match `ai_request.installation_id` | [§5.3.6](#536-installation-scope-vs-cross-installation-lookup) |
-| D1 read is `ai_request` by `request_reference` | [§5.3.1](#531-capture-a-completed-journal-row), [§5.3.2](#532-get-happy-path-every-field) |
-| `Completed` + `payload_pointer` set → R2 envelope → HTTP `result` | [§5.3.2](#532-get-happy-path-every-field) |
-| `Completed` with no envelope payload → `{ "state": "Completed" }` and no `result` | [§5.3.2](#532-get-happy-path-every-field) |
-| GET happy-path JSON is only `state` + `result` (every `CanonicalResult` field) | [§5.3.2](#532-get-happy-path-every-field) |
-| Operator bearer / missing / empty Bearer cannot GET | [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| Suspended installation → GET `403` `installation_suspended` | [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| Unknown or mismatched GET reference → empty `404` body | [§5.3.5](#535-missing-and-invalid-references), [§5.3.6](#536-installation-scope-vs-cross-installation-lookup) |
-| `POST /control/support/lookup` requires `OPERATOR_BEARER_TOKEN` (`requireOperator`) | [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| Support lookup is by `request_reference` across installations | [§5.3.3](#533-support-lookup-happy-path-every-field), [§5.3.6](#536-installation-scope-vs-cross-installation-lookup) |
-| Lookup happy path returns every `request`, `attempts[]`, and `envelope` field | [§5.3.3](#533-support-lookup-happy-path-every-field) |
-| Same shared bearer + `OPERATOR_ID` as every other `/control/*`; audit cannot distinguish operators | [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| Lookup writes no `control_audit` row | [§5.3.3](#533-support-lookup-happy-path-every-field) |
-| AAT cannot call support lookup; GET method does not reach the control dispatcher | [§5.3.4](#534-who-may-vs-may-not-call-each) |
-| Missing / blank lookup `reference` → `400` `missing_reference` | [§5.3.5](#535-missing-and-invalid-references) |
-| Invalid lookup `reference` → `400` `invalid_reference` | [§5.3.5](#535-missing-and-invalid-references) |
-| Unknown but well-formed lookup `reference` → `404` `not_found` | [§5.3.5](#535-missing-and-invalid-references) |
-| Before journal horizon, `usage_event.request_id` joins to `ai_request` | [§5.3.7](#537-joinability-before-retention) |
-| After journal horizon, `runRetentionPurge` nulls `usage_event.request_id` and deletes `ai_request` | [§5.3.8](#538-force-aged-rows-and-run-retention), [§5.3.9](#539-after-purge-lookup-money-row-reconciliation) |
-| Support lookup (and GET) then find nothing; money row remains | [§5.3.9](#539-after-purge-lookup-money-row-reconciliation) |
-| `LEFT JOIN usage_event u ON u.request_id = r.request_id` cannot match aged rows; coverage shrinks | [§5.3.9](#539-after-purge-lookup-money-row-reconciliation) |
-| `public.record_ai_acceptance` — `rpc_result`, success merge, `INVALID_INPUT` / `FORBIDDEN` / `INTERNAL_ERROR`, delegated pass-through ([§3](#3-publicrecord_ai_acceptance)) | [§5.3.10](#5310-record-ai-acceptance-rpc) |
-| This stage does not admit, settle, entitle, or restore joinability | [§5.3.11](#5311-what-this-stage-does-not-do) |
+| `GET /v1/requests/{ref}` auth is Bearer AAT (`authenticateGetRequest`) | [§8.3.2](#832-get-happy-path-every-field), [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| GET uses isolate-scoped `ConfigCache` (same instance as `POST /v1/requests`) | [§8.3.2](#832-get-happy-path-every-field) (same AAT verifies both). Singleton identity is **unprobeable** from HTTP — see note below |
+| GET scope must match `ai_request.installation_id` | [§8.3.6](#836-installation-scope-vs-cross-installation-lookup) |
+| D1 read is `ai_request` by `request_reference` | [§8.3.1](#831-capture-a-completed-journal-row), [§8.3.2](#832-get-happy-path-every-field) |
+| `Completed` + `payload_pointer` set → R2 envelope → HTTP `result` | [§8.3.2](#832-get-happy-path-every-field) |
+| `Completed` with no envelope payload → `{ "state": "Completed" }` and no `result` | [§8.3.2](#832-get-happy-path-every-field) |
+| GET happy-path JSON is only `state` + `result` (every `CanonicalResult` field) | [§8.3.2](#832-get-happy-path-every-field) |
+| Operator bearer / missing / empty Bearer cannot GET | [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| Suspended installation → GET `403` `installation_suspended` | [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| Unknown or mismatched GET reference → empty `404` body | [§8.3.5](#835-missing-and-invalid-references), [§8.3.6](#836-installation-scope-vs-cross-installation-lookup) |
+| `POST /control/support/lookup` requires `OPERATOR_BEARER_TOKEN` (`requireOperator`) | [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| Support lookup is by `request_reference` across installations | [§8.3.3](#833-support-lookup-happy-path-every-field), [§8.3.6](#836-installation-scope-vs-cross-installation-lookup) |
+| Lookup happy path returns every `request`, `attempts[]`, and `envelope` field | [§8.3.3](#833-support-lookup-happy-path-every-field) |
+| Same shared bearer + `OPERATOR_ID` as every other `/control/*`; audit cannot distinguish operators | [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| Lookup writes no `control_audit` row | [§8.3.3](#833-support-lookup-happy-path-every-field) |
+| Quota inspect GET; `400 invalid_route` unreachable via HTTP | [§4](#4-get-controlinstallationsidquota) |
+| Dashboard SQL functions have no HTTP route | [§5](#5-dashboard-sql-functions-no-http-route) |
+| Reference trim asymmetry (support trims; clinic GET does not) | [§1.1](#11-reference-normalization-clinic-get), [§2.1](#21-reference-normalization-support-lookup) |
+| AAT cannot call support lookup; GET on support lookup does not reach the handler (quota inspect is the only GET `/control/*` route) | [§8.3.4](#834-who-may-vs-may-not-call-each) |
+| Missing / blank lookup `reference` → `400` `missing_reference` | [§8.3.5](#835-missing-and-invalid-references) |
+| Invalid lookup `reference` → `400` `invalid_reference` | [§8.3.5](#835-missing-and-invalid-references) |
+| Unknown but well-formed lookup `reference` → `404` `not_found` | [§8.3.5](#835-missing-and-invalid-references) |
+| Before journal horizon, `usage_event.request_id` joins to `ai_request` | [§8.3.7](#837-joinability-before-retention) |
+| After journal horizon, `runRetentionPurge` nulls `usage_event.request_id` and deletes `ai_request` | [§8.3.8](#838-force-aged-rows-and-run-retention), [§8.3.9](#839-after-purge-lookup-money-row-reconciliation) |
+| Support lookup (and GET) then find nothing; money row remains | [§8.3.9](#839-after-purge-lookup-money-row-reconciliation) |
+| `LEFT JOIN usage_event u ON u.request_id = r.request_id` cannot match aged rows; coverage shrinks | [§8.3.9](#839-after-purge-lookup-money-row-reconciliation) |
+| `public.record_ai_acceptance` — `rpc_result`, success merge, `INVALID_INPUT` / `FORBIDDEN` / `INTERNAL_ERROR`, delegated pass-through ([§6](#6-publicrecord_ai_acceptance)) | [§8.3.10](#8310-record-ai-acceptance-rpc) |
+| This stage does not admit, settle, entitle, or restore joinability | [§8.3.11](#8311-what-this-stage-does-not-do) |
 
 
 **Unprobeable from HTTP / local wrangler:** that `authenticateGetRequest` and `POST /v1/requests` share the *same module-scope* `isolateConfigCache` object (code identity; the probes only show the same AAT verifies both). `500` `missing_r2_binding` (R2 is bound in `wrangler.toml`). Ledger deletion of `usage_event` at `LEDGER_HORIZON_DAYS` (2555) — not this stage's journal-horizon claim.
 
-### 5.3 Ordered probes
+### 8.3 Ordered probes
 
-#### 5.3.1 Capture a completed journal row
+#### 8.3.1 Capture a completed journal row
 
 **Do:** find a `Completed` row that still has an R2 pointer (settlement from Stages 10–11):
 
@@ -296,9 +363,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
    FROM usage_event WHERE request_id = '<RID>'"
 ```
 
-**Expect:** at least one money row. Save `usage_event_id` as **UEID**. `request_id = RID`. This is the join [§3](#3-journal-retention-vs-lookup-and-reconciliation) will later sever.
+**Expect:** at least one money row. Save `usage_event_id` as **UEID**. `request_id = RID`. This is the join [§7](#7-journal-retention-vs-lookup-and-reconciliation) will later sever.
 
-#### 5.3.2 GET happy path every field
+#### 8.3.2 GET happy path every field
 
 **Do:**
 
@@ -335,9 +402,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** while the pointer is null, HTTP 200 `{ "state": "Completed" }` with **no** `result` (`resultMissing`). After restore, GET again returns `result` as before. [§1](#1-get-v1requestsrequest_reference) fetches R2 only when `payload_pointer` is set.
 
-#### 5.3.3 Support lookup happy path every field
+#### 8.3.3 Support lookup happy path every field
 
-**Do:** count audit rows, then lookup. Query string, not JSON body. Live Worker accepts **POST** only on `/control/*`.
+**Do:** count audit rows, then lookup. Query string, not JSON body. Support lookup is POST-only; quota inspect is the sole GET `/control/*` route ([§3](#3-control-plane-route-dispatch)).
 
 ```bash
 npx wrangler d1 execute ai-platform-development --local --env development --command \
@@ -374,9 +441,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 `envelope` is the R2 JSON (not `null` while `clinic.visit_summary` is inside `diagnostic_30d`): `context`, `prompt`, `attempts`, `result`. `envelope.result` matches GET `result`.
 
-`control_audit` count is **unchanged**. Lookup does not insert an audit row. The shared-`OPERATOR_ID` claim is visible on routes that *do* audit ([§5.3.4](#534-who-may-vs-may-not-call-each)).
+`control_audit` count is **unchanged**. Lookup does not insert an audit row. The shared-`OPERATOR_ID` claim is visible on routes that *do* audit ([§8.3.4](#834-who-may-vs-may-not-call-each)).
 
-#### 5.3.4 Who may vs may not call each
+#### 8.3.4 Who may vs may not call each
 
 **Do:** GET with no `Authorization`, with `Authorization: Bearer ` (empty token), and with the operator secret:
 
@@ -412,7 +479,7 @@ curl -sS -D - "$GATEWAY/control/support/lookup?reference=$REF" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
 ```
 
-**Expect:** both POSTs without the operator secret → HTTP 401 `{ "error": "unauthorized" }` (`requireOperator`; not a taxonomy body). The GET → HTTP 404 `Not Found` text: `worker.ts` dispatches `/control/*` only on **POST**, so the lookup handler never runs. Clinic AAT is not the operator bearer.
+**Expect:** both POSTs without the operator secret → HTTP 401 `{ "error": "unauthorized" }` (`requireOperator`; not a taxonomy body). GET on the support-lookup path → HTTP 404 `Not Found` text: support lookup is POST-only; quota inspect is the only GET `/control/*` route ([§3](#3-control-plane-route-dispatch)). Clinic AAT is not the operator bearer.
 
 **Do:** suspend **I0** with the **same** operator token, GET with the AAT, then resume:
 
@@ -430,9 +497,9 @@ curl -sS -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/resume" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN"
 ```
 
-**Expect:** suspend HTTP 200. GET → HTTP 403 `{ "code": "installation_suspended", …, "retry_safe": false }`. `control_audit.operator_id` is `platform-operator` (the configured `OPERATOR_ID`), `action` is `suspend`, `target` is **I0**. A second operator cannot appear: there is one bearer and one id for every `/control/*` route, including lookup. Resume HTTP 200. GET with the AAT again returns [§5.3.2](#532-get-happy-path-every-field).
+**Expect:** suspend HTTP 200. GET → HTTP 403 `{ "code": "installation_suspended", …, "retry_safe": false }`. `control_audit.operator_id` is `platform-operator` (the configured `OPERATOR_ID`), `action` is `suspend`, `target` is **I0**. A second operator cannot appear: there is one bearer and one id for every `/control/*` route, including lookup. Resume HTTP 200. GET with the AAT again returns [§8.3.2](#832-get-happy-path-every-field).
 
-#### 5.3.5 Missing and invalid references
+#### 8.3.5 Missing and invalid references
 
 **Do:** GET a Crockford-shaped ticket that does not exist (still send the AAT — auth runs first):
 
@@ -464,7 +531,7 @@ curl -sS -D - -X POST "$GATEWAY/control/support/lookup?reference=AAAA-BBBB" \
 
 **Expect:** no / empty / whitespace `reference` → HTTP 400 `{ "error": "missing_reference" }`. `SHORT` (fails `isValidRequestReference` after normalize) → HTTP 400 `{ "error": "invalid_reference" }`. `AAAA-BBBB` (valid shape, no row) → HTTP 404 `{ "error": "not_found" }`.
 
-#### 5.3.6 Installation scope vs cross-installation lookup
+#### 8.3.6 Installation scope vs cross-installation lookup
 
 GET scopes to the AAT’s installation; lookup does not. **Do** insert a second installation row (not a full enroll) and point **REF** at it, then restore:
 
@@ -488,9 +555,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
    WHERE request_reference = '<REF>'"
 ```
 
-**Expect:** GET → HTTP 404, empty body (`installation_id` mismatch is indistinguishable from missing). Lookup → HTTP 200, `request.installationId` = `verify-other-installation` — support reads `WHERE request_reference = ?` with no installation predicate. After restore, GET returns [§5.3.2](#532-get-happy-path-every-field) again.
+**Expect:** GET → HTTP 404, empty body (`installation_id` mismatch is indistinguishable from missing). Lookup → HTTP 200, `request.installationId` = `verify-other-installation` — support reads `WHERE request_reference = ?` with no installation predicate. After restore, GET returns [§8.3.2](#832-get-happy-path-every-field) again.
 
-#### 5.3.7 Joinability before retention
+#### 8.3.7 Joinability before retention
 
 **Do:**
 
@@ -505,7 +572,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** `usage_request_id` = `journal_id` = **RID**, `request_reference` = **REF**. The money row still joins. This is the `LEFT JOIN usage_event u ON u.request_id = r.request_id` that `runReconciliation` uses, in the direction that still matches.
 
-#### 5.3.8 Force aged rows and run retention
+#### 8.3.8 Force aged rows and run retention
 
 Do **not** wait 90 days. Journal purge keys off `ai_request.created_at < now − JOURNAL_HORIZON_DAYS` (`90`). Leave `usage_event.recorded_at` alone so ledger purge (`LEDGER_HORIZON_DAYS` = 2555) does not delete the money row.
 
@@ -518,7 +585,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
    WHERE request_reference = '<REF>'"
 ```
 
-Confirm the Worker was started with `--test-scheduled` ([§5.1](#41-setup)). **Do** fire the retention cron (`wrangler.toml` `[triggers] crons` includes `0 3 * * *`):
+Confirm the Worker was started with `--test-scheduled` ([§8.1](#81-setup)). **Do** fire the retention cron (`wrangler.toml` `[triggers] crons` includes `0 3 * * *`):
 
 ```bash
 curl -sS "$GATEWAY/cdn-cgi/handler/scheduled?cron=0+3+*+*+*&format=json"
@@ -526,7 +593,7 @@ curl -sS "$GATEWAY/cdn-cgi/handler/scheduled?cron=0+3+*+*+*&format=json"
 
 **Expect:** `{ "outcome": "ok", "noRetry": false }`. `scheduled()` runs `runRetentionPurge` on that cron (after rejection-counter flush and grace reconcile). Inside the purge, for this row: R2 envelope delete, `UPDATE usage_event SET request_id = NULL WHERE request_id IN (SELECT request_id FROM ai_request WHERE created_at < ?)`, then `DELETE` `ai_attempt` and `ai_request`.
 
-#### 5.3.9 After purge: lookup, money row, reconciliation
+#### 8.3.9 After purge: lookup, money row, reconciliation
 
 **Do:**
 
@@ -563,9 +630,9 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 **Expect:** GET → empty HTTP 404. Lookup → HTTP 404 `{ "error": "not_found" }`. The ticket is gone. **UEID** still exists; `request_id` is **NULL**; `tokens` / `cost` unchanged. `journal_id` is NULL — the money row cannot be joined back to a request. The request-centric reconciliation query (same `LEFT JOIN` as `runReconciliation`) returns **no row** for **RID**: coverage shrank because the journal side of the join was deleted, and a nulled `usage_event.request_id` can never match a remaining `ai_request`. The leftover usage is commercial evidence only.
 
-#### 5.3.10 Record AI acceptance RPC
+#### 8.3.10 Record AI acceptance RPC
 
-Clinic Postgres probe for [§3](#3-publicrecord_ai_acceptance) — not the Worker HTTP surface.
+Clinic Postgres probe for [§6](#6-publicrecord_ai_acceptance) — not the Worker HTTP surface.
 
 **Do:** with a completed visit-summary job, save **REF** from SSE `accepted`. As clinician with `visits.edit_soap`, call with a bogus reference:
 
@@ -630,9 +697,9 @@ SELECT public.record_ai_acceptance(
 
 **Expect:** `success = false`, `error_code = 'INVALID_INPUT'`, duplicate acceptance message — rejected **before** the delegated write.
 
-#### 5.3.11 What this stage does not do
+#### 8.3.11 What this stage does not do
 
-**Do:** GET the (now-missing) **REF** and inspect the JSON you stored from [§5.3.2](#532-get-happy-path-every-field). **Do** lookup **REF** again. **Do** compare `control_audit` after a lookup-only POST (use any still-live reference if you kept a second row; otherwise this is the 404 lookup you just ran).
+**Do:** GET the (now-missing) **REF** and inspect the JSON you stored from [§8.3.2](#832-get-happy-path-every-field). **Do** lookup **REF** again. **Do** compare `control_audit` after a lookup-only POST (use any still-live reference if you kept a second row; otherwise this is the 404 lookup you just ran).
 
 **Expect:**
 

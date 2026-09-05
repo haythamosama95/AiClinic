@@ -10,6 +10,96 @@ Conventions used throughout:
 - Auth-failure bodies are produced by `getRequestAuthErrorBody` → `buildErrorBody`: `request_reference` is a **freshly minted** reference (never the path reference) and `trace_id` a fresh ULID. Shown as `<fresh-ref>` / `<fresh-ulid>`.
 - Dashboard scenarios (S12-066…S12-072) are **SQL-contract scenarios**: they call the exported dashboard functions directly against a migrated D1 — there is no HTTP route.
 
+---
+
+## 1. `GET /v1/requests/{request_reference}`
+
+Poll the journal for a settled or in-flight request. Auth is `authenticateGetRequest` (same `EnrolledKeyVerifier` as discovery/ingress). The row must belong to the token's `installation_id`; a mismatch returns **404** with an empty body (same as unknown reference — no cross-tenant leak).
+
+### 1.1 Failure responses
+
+| HTTP | Body | When |
+| ---- | ---- | ---- |
+| 401 | Taxonomy JSON `{ "code": "unauthenticated", "request_reference": "<fresh-ref>", "trace_id": "<fresh-ulid>", "retry_safe": true }` | Missing/invalid AAT (`getRequestAuthErrorBody` mints a **new** reference, never the path reference) |
+| 403 | Taxonomy JSON `{ "code": "installation_suspended", …, "retry_safe": false }` | Suspended installation — `liveHttpStatusForCode("installation_suspended")` = **403**, not 401 (`worker.ts` GET branch, `errors.ts`) |
+| 404 | **Empty body** (`new Response(null, { status: 404 })`) | Unknown/malformed/cross-installation reference, empty path segment (`/v1/requests/`), or unrecognized `ai_request.state` string |
+
+Non-GET methods on `/v1/requests/{ref}` and `/v1/requests` (no trailing slash) return plain-text **`Not Found`** — the catch-all route, not the empty-body GET 404 (S12-013 vs S12-014/S12-018).
+
+### 1.2 Reference normalization (clinic GET)
+
+The path param is the raw pathname slice — **no whitespace trim**. `normalizeRequestReference` uppercases and maps ambiguous Crockford chars (`I`/`L`→`1`, `O`→`0`) only. A padded reference 404s on GET (S12-016).
+
+### 1.3 Code-only GET branches
+
+| Branch | HTTP outcome | Scenario |
+| ------ | ------------ | -------- |
+| `Failed` with NULL `terminal_error_code` | 200 `{ "state": "Failed", "terminal_error_code": "internal_error" }` | S12-006 |
+| Unrecognized `state` string | 404 empty body | S12-010 |
+| `Completed` with corrupt/missing R2 envelope | 200 `{ "state": "Completed" }` (no `result`) | S12-002…S12-004 |
+
+## 2. `POST /control/support/lookup`
+
+Operator diagnostic dump by `request_reference` across **all** installations. Auth: `requireOperator` → `{"error":"unauthorized"}` (not the taxonomy envelope).
+
+### 2.1 Reference normalization (support lookup)
+
+Query param `reference` is **trimmed**, then normalized and validated (`support-purge.ts`). Whitespace-padded references succeed on lookup but 404 on the clinic GET — **intentional**: machine clients send exact references; operator tooling is forgiving (S12-042 vs S12-016).
+
+### 2.2 Failure responses
+
+| HTTP | `error` | When |
+| ---- | ------- | ---- |
+| 401 | `unauthorized` | Missing/wrong operator bearer or clinic AAT |
+| 400 | `missing_reference` | Absent or blank-after-trim query param |
+| 400 | `invalid_reference` | Fails Crockford `XXXX-XXXX` after normalize |
+| 404 | `not_found` | No journal row (JSON body — unlike clinic GET 404) |
+| 500 | `missing_r2_binding` | Worker misconfiguration (R2 unbound) |
+
+Lookup writes **no** `control_audit` row (read-only).
+
+## 3. Control-plane route dispatch
+
+`worker.ts` admits control routes when `isControlRoute(pathname)` and **either** `method === "POST"` **or** (`method === "GET"` **and** `isQuotaInspectRoute(pathname)`). Every other `/control/*` path on GET returns plain-text `Not Found` before auth (S12-055). The claim that "`/control/*` is POST-only" is accurate for support lookup but **overbroad** — quota inspect is GET-only inside the dispatcher (`quota-inspect.ts` rejects non-GET with 405).
+
+## 4. `GET /control/installations/{id}/quota` (quota inspect)
+
+Operator read of D1 entitlement + Quota DO state. `verbose=true` adds `maps` (idempotency, jti_replay, admitted_requests, credited_requests) capped at **500 entries per map** (`capMap`); counts in the top-level body are never truncated.
+
+### 4.1 Success response (200)
+
+Top-level keys: `installation_id`, `bound_installation_id`, `period_bounds`, `period_counters` (`requests_used`, `tokens_used`, `cost_used`, `in_flight`), `entitlement` (D1 row or **null** when installation exists but entitlement row is missing — S12-061), `remaining` (null when entitlement null), `idempotency_keys`, `jti_replay_entries`, `admitted_requests`, `credited_requests`. Optional `maps` when `verbose=true`.
+
+`inspectRPC` runs ephemeral sweeps **in memory only** — no DO `storage.put` (S12-065).
+
+### 4.2 Failure responses
+
+Dispatch pre-filters with the same regex as the handler (`QUOTA_INSPECT_PATTERN`), so **`400 invalid_route` is unreachable via HTTP** (A-01; direct handler invocation only). Reachable failures:
+
+| HTTP | `error` | When |
+| ---- | ------- | ---- |
+| 401 | `unauthorized` | Missing/wrong operator bearer (runs before method check — S12-063) |
+| 405 | `method_not_allowed` | POST to this path (worker admits POST to control dispatch; handler rejects — S12-064) |
+| 404 | `installation_not_found` | No `installation` row — DO never contacted (S12-062) |
+| 503 | `quota_do_unavailable` | DO binding missing or stub fetch failed/non-OK |
+
+### 4.3 Support lookup envelope fallback (code-only)
+
+When `payload_pointer` is NULL, support lookup still reads R2 at the derived key `request/{request_id}/envelope` (`support/index.ts`). The clinic GET returns `{ "state": "Completed" }` without `result` for the same row (S12-052 vs S12-002).
+
+## 5. Dashboard SQL functions (no HTTP route)
+
+Exported from `dashboards/index.ts`; scenarios S12-066…S12-072 call them directly against migrated D1.
+
+| Function | Reads | Contract |
+| -------- | ----- | -------- |
+| `dashboardQuotaRejectionRate(db, now?)` | `platform_counter` (LIKE `%quota_exhausted%`) ÷ in-window `ai_request` count | Numerator is a **lower bound** — only cron-flushed tallies appear (S12-068); 90-day window matches `JOURNAL_HORIZON_DAYS` |
+| `dashboardRepairRateByCapability(db, now?)` | `ai_attempt` LEFT JOIN `ai_request` | Repair attempts ÷ Completed+Failed requests per `capability_id`; Cancelled/in-flight excluded (S12-071); `{}` when denominator empty (S12-072) |
+
+Other exports (`dashboardAvgAttemptLatencyByProvider`, `dashboardValidationFailureByPromptVersion`, `dashboardFallbackRateByProvider`, `dashboardCostPerCapabilityPerInstallation`, `runAllDashboardQueries`) follow the same SQL-contract pattern but have no catalog scenarios in this chapter.
+
+---
+
 ## Scenario S12-001 — GET Completed returns the R2 envelope result
 
 | Field | Content |
@@ -804,14 +894,15 @@ Conventions used throughout:
 
 ## Doc-drift observations
 
-1. **Stage-12 doc §1 failure table lists `installation_suspended` under HTTP 401.** Code maps it through `liveHttpStatusForCode` to **403** (`worker.ts:1391`, `errors.ts:35-40`). The doc's own probe §5.3.4 correctly expects 403 — the §1 table is internally inconsistent with it. Follow the code: 403.
-2. **Stage-12 doc omits the quota-inspect route and the dashboards entirely.** `GET /control/installations/{id}/quota` (including the `verbose=true` map dump and its 500-entry truncation) and the SQL-only dashboard functions have no mention in `14-stage-12-lookup-and-support.md`, although the stage title ("quota inspect, dashboards") covers them. Catalogued here as S12-056…S12-072.
-3. **Doc §5.3.4 says "worker.ts dispatches /control/* only on POST".** Code also dispatches **GET** for the quota-inspect route (`worker.ts:1354-1358`). The doc's claim is accurate for the lookup route (S12-055) but overbroad as stated.
-4. **Reference normalization asymmetry is undocumented.** Support lookup **trims** whitespace before normalizing (`support-purge.ts:34`); the clinic GET does not trim (`worker.ts:1380` passes the raw path slice). A padded reference therefore 404s on GET (S12-016) but succeeds on lookup (S12-042). The doc mentions only "normalized Crockford" for both.
-5. **Doc does not specify the two distinct 404 bodies on the GET path.** Empty reference (`/v1/requests/`) and unknown/malformed/cross-installation references return an **empty** 404 body, while `/v1/requests` (no trailing slash) and wrong-method requests return the plain-text `Not Found` catch-all (S12-013 vs S12-014/S12-018).
-6. **Defensive branches have no doc mention** (code-only paths catalogued here): Failed with NULL `terminal_error_code` → `internal_error` fallback (S12-006); unknown state string → 404 (S12-010); corrupt R2 envelope → `{state:"Completed"}` (S12-004); lookup envelope fallback key when `payload_pointer` is NULL (S12-052); quota inspect with missing entitlement row → nulls (S12-061).
-7. **Doc §3 (`record_ai_acceptance`) is clinic-side Supabase RPC**, not AI-platform code — outside this catalog's automatable surface; noted here for completeness only.
-8. **No drift found** on: installation-scope 404 for cross-tenant GET (doc §1/§5.3.6 matches `journal/index.ts:480-485`); freshly minted `request_reference` in GET auth-failure bodies (doc §5.3.4 matches `getRequestAuthErrorBody`); lookup writing no `control_audit` row (doc §5.3.3 matches code).
+1. **[FIXED — D-17]** `installation_suspended` is documented as HTTP **403** in [§1.1](#11-failure-responses) (was incorrectly grouped under 401 in orientation doc §1).
+2. **[FIXED — D-17]** Quota-inspect route and dashboard functions documented in [§4](#4-get-controlinstallationsidquota-quota-inspect) and [§5](#5-dashboard-sql-functions-no-http-route); scenarios S12-056…S12-072.
+3. **[FIXED — D-17]** Control dispatch nuance documented in [§3](#3-control-plane-route-dispatch) — GET only for quota inspect, not all `/control/*`.
+4. **[FIXED — D-17]** Reference trim asymmetry documented in [§1.2](#12-reference-normalization-clinic-get) and [§2.1](#21-reference-normalization-support-lookup).
+5. **[FIXED — D-17]** Two distinct GET 404 bodies documented in [§1.1](#11-failure-responses).
+6. **[FIXED — D-17]** Code-only branches catalogued in [§1.3](#13-code-only-get-branches), [§4.3](#43-support-lookup-envelope-fallback-code-only), and entitlement-null in [§4.1](#41-success-response-200).
+7. **[FIXED — D-09]** Quota-inspect failure table omits unreachable `400 invalid_route` — dispatch pre-filter; see [§4.2](#42-failure-responses).
+8. **Doc §3 (`record_ai_acceptance`) is clinic-side Supabase RPC**, not AI-platform code — outside this catalog's automatable surface; noted here for completeness only.
+9. **No drift found** on: installation-scope 404 for cross-tenant GET; freshly minted `request_reference` in GET auth-failure bodies; lookup writing no `control_audit` row.
 
 ## Non-automatable notes
 

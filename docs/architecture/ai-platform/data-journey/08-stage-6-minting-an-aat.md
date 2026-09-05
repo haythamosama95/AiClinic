@@ -48,6 +48,10 @@ A **boarding pass** — short-lived, tied to one passenger (staff), one airline 
 
 **Request:** No client-supplied scopes (ignored if present).
 
+**Success:** returns **`text`** — the compact JWS (not an `rpc_result` envelope).
+
+**Failure:** bare `RAISE EXCEPTION '<CODE>'` (SQLSTATE `P0001`); PostgREST surfaces HTTP 400 with `"code":"P0001"` and `"message":"<CODE>"`. See [§5](#5-mint-failure-codes) for the full ordered code list.
+
 ## 4. JWS structure
 
 ```
@@ -76,7 +80,7 @@ A **boarding pass** — short-lived, tied to one passenger (staff), one airline 
 | `aud`    | string   | `ai.aat.audience` (default `ai-platform`) | Must match verifier audience          | Audience — intended recipient; only the AI platform should accept it    |
 | `sub`    | string   | `staff_members.id`                        | `actorId`                             | Subject — the staff member acting on behalf of the clinic             |
 | `org`    | string   | Staff `organization_id`                   | `organizationId`                      | Organization — the clinic tenant the staff member belongs to            |
-| `branch` | string   | Primary active branch                     | `branchId`                            | Branch — the staff member's primary active branch for this session      |
+| `branch` | string   | Primary active branch (`ORDER BY is_primary DESC, b.name` — primary wins; when no assignment is primary, alphabetically first branch name) | `branchId`                            | Branch — the staff member's primary active branch for this session      |
 | `role`   | string   | `staff_members.role`                      | `role`                                | Role — the staff member's job role (e.g. doctor, admin)                 |
 | `scopes` | string[] | RBAC `ai.*` permissions                   | `scopes`                              | Scopes — which AI permissions this token grants (from RBAC `ai.*`)      |
 | `jti`    | string   | `gen_random_uuid()`                       | `jti` — replay protection in Quota DO | JWT ID — unique id for audit trail and one-time-use replay protection   |
@@ -93,13 +97,19 @@ One row per `jti` for audit.
 
 ## 5. Mint failure codes
 
+On failure, `issue_ai_token` raises bare `RAISE EXCEPTION '<CODE>'` (SQLSTATE `P0001`) — not an `rpc_result` envelope. PostgREST returns HTTP 400 with `"code":"P0001"` and `"message":"<CODE>"` (same string as psql `SQLERRM`).
 
-| Code                        | Trigger                       |
-| --------------------------- | ----------------------------- |
-| `INSTALLATION_NOT_ENROLLED` | No keypair in clinic DB       |
-| `AI_ACCESS_DENIED`          | Staff lacks `ai.*` permission |
-| `BRANCH_NOT_FOUND`          | No primary branch             |
-| `RATE_LIMITED`              | Issuance rate limit           |
+Guards run in this order (session/staff checks before keystore validation):
+
+| Order | Code                        | Trigger                                              |
+| ----- | --------------------------- | ---------------------------------------------------- |
+| 1     | `UNAUTHENTICATED`           | No JWT / missing `sub`                               |
+| 2     | `SESSION_EXPIRED`           | `exp` claim in the past                                |
+| 3     | `STAFF_NOT_FOUND`           | No active staff row for `auth.uid()`                 |
+| 4     | `BRANCH_NOT_FOUND`          | No primary/active branch assignment                  |
+| 5     | `INSTALLATION_NOT_ENROLLED` | No keypair in clinic DB, or no active signing key     |
+| 6     | `RATE_LIMITED`              | Issuance rate limit                                  |
+| 7     | `AI_ACCESS_DENIED`          | Staff lacks `ai.*` permission                        |
 
 
 
@@ -114,15 +124,15 @@ See [§5 Stage 2 — Identity](11-stage-9-the-guard.md#5-stage-2-identity) for e
 
 Live probes against a running clinic Supabase (and a local Worker from [§7.3.10](#7310-platform-does-not-know-the-clinic-yet) onward). Each probe is an operator action and the outcome you should see — not a unit test. Run **[§7.3](#73-ordered-probes) top to bottom** on a throwaway local clinic. If every probe matches, this stage is working.
 
-`public.issue_ai_token()` returns **`text`** (the compact JWS). Failures are bare `RAISE EXCEPTION '<CODE>'` (`P0001`); `SQLERRM` is the code string. There is no `rpc_result` envelope — unlike `enroll_installation_keypair`. Any authenticated staff session whose role has at least one granted `ai.*` permission may mint. Seed `ai.aat.lifetime_minutes` is **15** (900 s). Independently, `EnrolledKeyVerifier` rejects `exp − iat > 600`. Do not dump the rest of the Stage 9 guard matrix here.
+`public.issue_ai_token()` returns **`text`** (the compact JWS). Failures are bare `RAISE EXCEPTION '<CODE>'` (`P0001`); `SQLERRM` is the code string. There is no `rpc_result` envelope — unlike `enroll_installation_keypair`. Any authenticated staff session whose role has at least one granted `ai.*` permission may mint. Seed `ai.aat.lifetime_minutes` is **10** (→ `exp − iat = 600` s), aligned with the platform's `MAX_AAT_LIFETIME_SECONDS` ceiling. The issuer imposes no cap of its own — operators who override the setting above 10 minutes mint tokens the platform rejects as `unauthenticated`. Do not dump the rest of the Stage 9 guard matrix here.
 
 ### 7.1 Setup
 
 - Local clinic Supabase with migrations applied. Prefer a database you can wipe; several probes delete keystore and issuance rows, and enroll the local Worker.
 - Keep **one** active `installation_keys` row after [§7.3.4](#734-stage-2-keypair-prerequisite). Extra kids make the issuer sign the latest key, which will not match a platform enroll of the first `kid`.
 - Authenticated sessions (look up `auth_user_id` from `staff_members`). Every minting actor needs at least one active branch assignment — the issuer reads `staff_branch_assignments`, not the JWT `branch_ids` claim.
-  - **Owner** — `is_bootstrap_admin = true` (has seed `ai.access`)
-  - **Administrator** — `role = 'administrator'` and a different `auth_user_id` than the owner (create one if needed; grant a primary branch)
+  - **Bootstrap administrator (BOOT)** — `is_bootstrap_admin = true` (has seed `ai.access`)
+  - **Administrator** — `role = 'administrator'` and a different `auth_user_id` than BOOT (create one if needed; grant a primary branch)
   - **Doctor** — `role = 'doctor'` with seed `ai.access` and a primary active branch
   - **Receptionist** (staff without `ai.*`) — `role = 'receptionist'` with a branch assignment; seed has no `ai.*` grants
 - SQL as `postgres` only to inspect `ai_internal`, reset rows, lower the issuer ceiling, and create a no-branch staff row.
@@ -195,18 +205,20 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 
 | Claim | Probe |
 | ----- | ----- |
-| `issue_ai_token` before any key → `INSTALLATION_NOT_ENROLLED` | [§7.3.2](#732-before-any-key-exists) |
+| `issue_ai_token` before any key → `INSTALLATION_NOT_ENROLLED` (P0001) | [§7.3.2](#732-before-any-key-exists) |
 | `anon` cannot call; `GRANT EXECUTE` is to `authenticated` only | [§7.3.3](#733-who-may-not-call) |
+| Missing/expired JWT / no staff row → `UNAUTHENTICATED`, `SESSION_EXPIRED`, `STAFF_NOT_FOUND` | [§7.3.3](#733-who-may-not-call), [§5](#5-mint-failure-codes) |
 | AI platform has no inbound path to this RPC | [§7.3.3](#733-who-may-not-call) |
 | Stage 2 keypair is a prerequisite; enroll returns public JWK only | [§7.3.4](#734-stage-2-keypair-prerequisite) |
 | Staff without `ai.*` (receptionist) → `AI_ACCESS_DENIED` | [§7.3.5](#735-caller-gates-after-a-key-exists) |
 | No primary/active branch → `BRANCH_NOT_FOUND` | [§7.3.5](#735-caller-gates-after-a-key-exists) |
-| Owner (bootstrap admin) and administrator with `ai.*` may mint | [§7.3.5](#735-caller-gates-after-a-key-exists) |
+| Bootstrap administrator and administrator with `ai.*` may mint | [§7.3.5](#735-caller-gates-after-a-key-exists) |
 | Doctor (authenticated staff with `ai.*`) may mint | [§7.3.6](#736-first-mint-happy-path) |
 | Compact JWS `header.payload.signature`; private key absent from the response | [§7.3.6](#736-first-mint-happy-path) |
 | Header `alg = EdDSA`, `kid` selects the latest active `installation_keys` row | [§7.3.6](#736-first-mint-happy-path) |
 | Every [§4](#4-jws-structure) payload claim (`iss`, `aud`, `sub`, `org`, `branch`, `role`, `scopes`, `jti`, `iat`, `exp`, `ver`) | [§7.3.6](#736-first-mint-happy-path) |
-| `exp = iat + lifetime_minutes * 60` (seed 15 minutes) | [§7.3.6](#736-first-mint-happy-path) |
+| `exp = iat + lifetime_minutes * 60` (seed 10 minutes → 600 s) | [§7.3.6](#736-first-mint-happy-path) |
+| Primary branch selection: `ORDER BY is_primary DESC, b.name` | [§7.3.6](#736-first-mint-happy-path) |
 | `scopes` from RBAC `ai.*`; client-supplied `p_scopes` ignored | [§7.3.6](#736-first-mint-happy-path), [§7.3.8](#738-reuse-mint-ignored-scopes-omitted-claims) |
 | Deliberately omitted: patient ids, quotas, provider hints | [§7.3.8](#738-reuse-mint-ignored-scopes-omitted-claims) |
 | One `ai_token_issuance` row per `jti`; clients cannot `SELECT` `ai_internal` | [§7.3.7](#737-issuance-row-and-clients-cannot-read-ai_internal) |
@@ -216,7 +228,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Platform never receives the private key; D1 stores `public_key` only | [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll) |
 | Identity accepts a valid AAT after enroll when `exp − iat ≤ 600` | [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll) |
 | Stage 8 uses the AAT; pending entitlement still `forbidden_capability` / `ai_disabled` | [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll), [§7.3.13](#7313-what-this-stage-does-not-do) |
-| `EnrolledKeyVerifier` rejects `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`) as `unauthenticated` | [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg) |
+| Default seed lifetime is platform-compatible (`exp − iat = 600`) | [§7.3.6](#736-first-mint-happy-path), [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll) |
+| `EnrolledKeyVerifier` rejects `exp − iat > 600` when lifetime is overridden above 10 minutes | [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg) |
 | Payload `ver` → `token_contract` lookup; unknown `ver` → `unauthenticated` | [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg) |
 | Header `alg` other than `EdDSA` → `unauthenticated` | [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg) |
 | Payload `aud` must match verifier audience (`ai-platform`) | [§7.3.6](#736-first-mint-happy-path), [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg) |
@@ -237,7 +250,7 @@ DELETE FROM ai_internal.ai_token_issuance;
 DELETE FROM ai_internal.installation_keys;
 
 UPDATE ai_internal.app_settings
-SET value_json = '15'::jsonb
+SET value_json = '10'::jsonb
 WHERE key = 'ai.aat.lifetime_minutes';
 
 UPDATE ai_internal.app_settings
@@ -277,7 +290,7 @@ WHERE key = 'ai.issuer.rate_limit.window_seconds';
 
 #### 7.3.4 Stage 2 keypair prerequisite
 
-**Do:** as **owner** (`is_bootstrap_admin`), with `installation_keys` still empty:
+**Do:** as **bootstrap administrator (BOOT)** (`is_bootstrap_admin`), with `installation_keys` still empty:
 
 ```sql
 SELECT public.enroll_installation_keypair();
@@ -307,9 +320,9 @@ SELECT public.issue_ai_token();
 
 **Expect:** a compact JWS (three `.` segments). Administrator is an allowed caller. Do **not** save this token as the happy-path AAT — [§7.3.6](#736-first-mint-happy-path) mints the doctor token used later. Delete this administrator issuance row as `postgres` if you want a clean ledger count, or just remember it when counting rows in [§7.3.7](#737-issuance-row-and-clients-cannot-read-ai_internal).
 
-**Do:** as **owner** (`is_bootstrap_admin`, seed `ai.access`, with a branch), `SELECT public.issue_ai_token();`
+**Do:** as **bootstrap administrator (BOOT)** (`is_bootstrap_admin`, seed `ai.access`, with a branch), `SELECT public.issue_ai_token();`
 
-**Expect:** a compact JWS. Owner and administrator are allowed callers the same way doctor is — this RPC is not admin-gated. Delete that issuance row too if you want a clean doctor-only count in [§7.3.7](#737-issuance-row-and-clients-cannot-read-ai_internal).
+**Expect:** a compact JWS. Bootstrap administrator and administrator are allowed callers the same way doctor is — this RPC is not admin-gated. Delete that issuance row too if you want a clean doctor-only count in [§7.3.7](#737-issuance-row-and-clients-cannot-read-ai_internal).
 
 #### 7.3.6 First mint (happy path)
 
@@ -375,7 +388,7 @@ Payload — **every** claim in [§4](#payload-every-claim):
 - `scopes` = the doctor `ai.*` array (seed is `["ai.access"]`)
 - `jti` = UUID text
 - `iat` = Unix seconds now
-- `exp = iat + 900` (seed `lifetime_minutes = 15`)
+- `exp = iat + 600` (seed `lifetime_minutes = 10`; migration `20260905120000_fix_aat_lifetime_minutes_seed.sql`)
 - `ver = "1"` (`ai.aat.ver` seed)
 
 Three base64url segments. This is the first mint. Call this payload `jti` **J0**.
@@ -444,7 +457,7 @@ WHERE key = 'ai.issuer.rate_limit.ceiling';
 DELETE FROM ai_internal.ai_token_issuance;
 ```
 
-**AAT0** remains a valid compact JWS until its `exp` — deleting the ledger does not un-sign it. Remint **AAT0** as doctor if you wiped it from memory; you need a **15-minute** token (`lifetime_minutes` still 15) for [§7.3.12](#7312-platform-rejects-oversized-lifetime-bad-ver-other-alg). Save that remint as **AAT0**.
+**AAT0** remains a valid compact JWS until its `exp` — deleting the ledger does not un-sign it. Remint **AAT0** as doctor if you wiped it from memory before [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll). Save that remint as **AAT0**.
 
 #### 7.3.10 Platform does not know the clinic yet
 
@@ -489,19 +502,13 @@ curl -s -D - -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/enroll" \
 
 **Expect:** HTTP 200, `{ "platform_base_url": "http://127.0.0.1:8787" }`. D1 `installation.installation_id = I0`, `installation_key.key_id = K0`, `installation_key.public_key = X0`. There is **no** secret-key column — the platform verifies with the enrolled public key only ([§1](#1-plain-language)). Entitlement stays `pending` / quotas `0`.
 
-**Do:** as `postgres`, set a platform-acceptable lifetime, then remint as **doctor**:
-
-```sql
-UPDATE ai_internal.app_settings
-SET value_json = '10'::jsonb
-WHERE key = 'ai.aat.lifetime_minutes';
-```
+**Do:** as `postgres`, confirm seed lifetime (already `10` after migration `20260905120000`), then remint as **doctor** if needed:
 
 ```sql
 SELECT public.issue_ai_token();
 ```
 
-Save as **AAT2**. Decode: `exp − iat = 600`. Header `kid = K0`, payload `iss = I0`, `ver = "1"`.
+Save as **AAT2** (or reuse **AAT0** if still valid). Decode: `exp − iat = 600`. Header `kid = K0`, payload `iss = I0`, `ver = "1"`.
 
 **Do:** `get_cap "$AAT2"`. Then `post_v1 "$AAT2"` (do **not** entitle).
 
@@ -509,9 +516,20 @@ Save as **AAT2**. Decode: `exp − iat = 600`. Header `kid = K0`, payload `iss =
 
 #### 7.3.12 Platform rejects oversized lifetime, bad ver, other alg
 
-**Do:** `get_cap "$AAT0"` — the **15-minute** token from [§7.3.6](#736-first-mint-happy-path) / remint in [§7.3.9](#739-rate_limited). Installation **I0** is already on the platform. `AAT0` is still unexpired (`exp − iat = 900`).
+**Do:** `get_cap "$AAT2"` (or `"$AAT0"`) — seed-default token with `exp − iat = 600` from [§7.3.6](#736-first-mint-happy-path). Installation **I0** is already on the platform.
 
-**Expect:** HTTP 401, `code = unauthenticated`. `EnrolledKeyVerifier` rejects `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`) independently of the issuer ([§1](#1-plain-language), [§6](#6-platform-verification-summary)). Contrast [§7.3.11](#7311-identity-accepts-a-valid-aat-after-enroll): the same installation accepts **AAT2** (`exp − iat = 600`).
+**Expect:** `GET /v1/capabilities` is **not** `401 unauthenticated` for lifetime — the default seed (10 minutes) is within `MAX_AAT_LIFETIME_SECONDS` ([§1](#1-plain-language)).
+
+**Do:** as `postgres`, override lifetime above the platform ceiling, then as doctor mint **AAT_OVERSIZED**:
+
+```sql
+UPDATE ai_internal.app_settings SET value_json = '15'::jsonb WHERE key = 'ai.aat.lifetime_minutes';
+SELECT public.issue_ai_token();
+```
+
+Decode: `exp − iat = 900`. `get_cap` with that token.
+
+**Expect:** HTTP 401, `code = unauthenticated`. `EnrolledKeyVerifier` rejects `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`) independently of the issuer ([§6](#6-platform-verification-summary)). Restore `ai.aat.lifetime_minutes` to `'10'` afterwards.
 
 **Do:** as `postgres`, `UPDATE ai_internal.app_settings SET value_json = '"99"'::jsonb WHERE key = 'ai.aat.ver';` then as doctor `SELECT public.issue_ai_token();` Save as **AAT3**. Decode `ver = "99"` and `exp − iat = 600`. `get_cap "$AAT3"`. Restore `ver` to `"1"` afterwards.
 
@@ -537,7 +555,7 @@ Save as **AAT2**. Decode: `exp − iat = 600`. Header `kid = K0`, payload `iss =
 
 ```sql
 UPDATE ai_internal.app_settings
-SET value_json = '15'::jsonb
+SET value_json = '10'::jsonb
 WHERE key = 'ai.aat.lifetime_minutes';
 ```
 

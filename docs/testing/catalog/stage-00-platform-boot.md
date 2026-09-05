@@ -6,6 +6,64 @@ Canonical values used throughout: installation `I0` = `inst_01J4ZEXAMPLE00000000
 
 Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalation: each trips exactly one boot-time or configuration blocker. Routing/auth boundary scenarios (S00-015…S00-023) trip route-table and unauthenticated boundaries that require no prior business state. Schema and cron scenarios (S00-024…S00-029) verify the empty-airport baseline. Build-gate scenarios (S00-030…S00-033) cover the manifest publication gate. Happy paths come last (S00-034…S00-037).
 
+## 3. Wrangler configuration (`ai-platform/wrangler.toml`)
+
+### 3.3 Per-environment bindings
+
+Each of `development`, `staging`, `production` declares `BUILD_SHA`, `ENVIRONMENT`, `OPERATOR_ID`, `DB`, `R2`, `DO`, three rate limiters, and:
+
+| Binding / var | Type | Meaning |
+| --- | --- | --- |
+| `CONFIG_CACHE_TTL_MS` | var | Isolate config-cache TTL in milliseconds (`resolveConfigCacheTtlMs` at boot, `config-cache/index.ts:L31-L40`). Unset, empty, non-numeric, or negative → `30_000` (`DEFAULT_CONFIG_CACHE_TTL_MS`). `"0"` is accepted and disables caching (every `consult` misses). |
+| `LOG_VERBOSITY` | var | Log level for the isolate (`verbosityFromEnv`, `logger.ts:L96-L104`). Accepts `0`/`1`/`2` or aliases `V0`/`V1`/`V2` (case-insensitive). Unrecognized values → `V0`. When unset or empty: `ENVIRONMENT=development` → `V2`; otherwise → `V0`. |
+
+## 4. D1 schema bootstrap
+
+**Command:** `npx wrangler d1 migrations apply ai-platform-<env> --env <env>`
+
+The baseline migration `20260731120000_platform_schema.sql` creates **11** tables (`installation`, `installation_key`, `entitlement`, `capability_grant`, `routing_policy`, `ai_request`, `ai_attempt`, `usage_event`, `usage_rollup`, `platform_counter`, `control_audit`). Four later migrations add the remaining platform surface:
+
+| Migration | Adds |
+| --- | --- |
+| `20260803120000_token_contract.sql` | `token_contract` table + seed row (`ver='1'`) |
+| `20260807120000_kill_switch.sql` | `kill_switch` |
+| `20260821120000_grace_admission_queue.sql` | `grace_admission_queue` |
+| `20260821130000_entitlement_installation_unique.sql` | unique index `idx_entitlement_installation_id` on `entitlement(installation_id)` |
+
+After the full chain: **14** tables and exactly one SQL seed row (S00-027). Snapshot at `ai-platform/schema.snap.sql`.
+
+## 5. Worker module boot (`worker.ts` at load)
+
+| Action | Data produced | Consumers |
+| --- | --- | --- |
+| `assertRequiredBindings` | Throws if `DB`, `R2`, or `DO` missing | Process won't serve |
+| `configureIsolateConfigCache` | TTL from `CONFIG_CACHE_TTL_MS` | Discovery, identity, control config reads |
+| `setCapabilityRegistry(...)` | In-memory map: `clinic.visit_summary@1.0.0` | Guard stage 5, discovery |
+
+**`/health` (method-agnostic).** The fetch handler branches on `url.pathname === "/health"` with **no method conjunct** (`worker.ts:L1565-L1570`), so any HTTP method (`GET`, `POST`, `DELETE`, …) returns the same JSON `{ "build", "environment" }` with no auth (S00-034).
+
+**Stage-numbering map.** Pipeline-internal identity guard is **stage 2** (`fail(2, …)` in `pipeline/index.ts:L343-L354`). Catalog **Stage 9** is the same component — readers must not conflate the two numbering schemes.
+
+**Two HTTP 404 shapes.** (1) **Null-body 404** — `new Response(null, { status: 404 })`: empty GET reference (`/v1/requests/`), unknown/malformed/cross-installation references on `GET /v1/requests/{ref}` (`worker.ts:L1612-L1613`, `L1636-L1638`). (2) **Plain-text catch-all** — `new Response("Not Found", { status: 404 })`: unknown paths, wrong methods on routed prefixes (`worker.ts:L1675`). No taxonomy envelope on either shape (S00-015, S00-017; Stage 12 lookup scenarios).
+
+**Control-plane 401 (not taxonomy).** Missing or wrong operator bearer on `/control/*` returns HTTP 401 with body exactly `{"error":"unauthorized"}` (`control/http.ts:L3-L8`). This deliberately **bypasses** the clinic taxonomy envelope (`code`, `request_reference`, `trace_id`, `retry_safe`) used on `/v1/*` routes (S00-021).
+
+## 6. Config cache and test guidance
+
+After a control mutation or other D1 config change, a subsequent identity or discovery read may serve a stale isolate-cache entry until TTL expiry. For tests, set `CONFIG_CACHE_TTL_MS=0` in the test environment (wrangler `[vars]` or harness env) so every `loadConfig` re-reads D1 — preferred over restarting `npm run dev` or waiting 30 s (S00-010, S00-011). Production default TTL is 30 000 ms when the var is unset or invalid.
+
+## 9. Failed and cancelled credit
+
+Non-completed terminals still call Quota DO `credit` so `inFlight` is released and the idempotency key leaves `"admitted"`. Request-level settlement taxonomy:
+
+| Terminal | Taxonomy (`ai_request.terminal_error_code`) | `partial` | `idempotencyState` |
+| --- | --- | --- | --- |
+| Success | — | `false` | `completed` (omitted; mapped from `partial`) |
+| `provider_rejected`, `validation_failed` | same code | `false` | `failed` |
+| `provider_unavailable`, `cancelled` | same code | `true` | `failed` or `cancelled` |
+
+Per-attempt `timeout` outcomes are retryable-classified (`invocation/index.ts`); they appear on `ai_attempt.error_code` only. Chain exhaustion always settles the request as `provider_unavailable`, never `timeout` (S11-004).
+
 ## Scenario S00-001 — Boot aborts when the DB (D1) binding is missing
 
 | Field | Content |
@@ -233,7 +291,7 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 | ID | S00-021 |
 | Journey setup | Worker booted normally; `OPERATOR_BEARER_TOKEN = op-token-9f27c1`, `OPERATOR_ID = platform-operator`. |
 | Action | (1) `POST /control/token-contract/begin-rotation` with `Content-Type: application/json`, body `{"ver":"1"}`, **no** Authorization header. (2) Same request with `Authorization: Bearer wrong-token`. |
-| Expected outcome | Both: HTTP 401, body exactly `{"error":"unauthorized"}`, `content-type: application/json`. This is a plain control-plane body, **not** a §5.4 taxonomy body (no `code`/`request_reference`/`trace_id`/`retry_safe`). The timing-safe compare runs for (2); no handler, no audit attribution. |
+| Expected outcome | Both: HTTP 401, body exactly `{"error":"unauthorized"}`, `content-type: application/json`. This is a plain control-plane body, **not** the clinic taxonomy envelope documented in [§5](#5-worker-module-boot-workerts-at-load) (no `code`/`request_reference`/`trace_id`/`retry_safe`). The timing-safe compare runs for (2); no handler, no audit attribution. |
 | Side effects | None — no `control_audit` row, no `token_contract` mutation. |
 | Code reference | `ai-platform/src/control/http.ts:L3-L8` — `unauthorized()`; `ai-platform/src/control/http.ts:L34-L41` — auth gate before dispatch; `ai-platform/src/control/auth.ts:L4-L49` — `timingSafeEqualString` and `createSecretOperatorAuth` |
 
@@ -301,7 +359,7 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 | Action | Query `sqlite_master` for tables (excluding `sqlite_%`, `_cf_%`, `d1_migrations`), for the index `idx_entitlement_installation_id`, and `SELECT ver, added_at, retired_at, changed_by FROM token_contract;`. |
 | Expected outcome | Exactly 14 tables: `ai_attempt`, `ai_request`, `capability_grant`, `control_audit`, `entitlement`, `grace_admission_queue`, `installation`, `installation_key`, `kill_switch`, `platform_counter`, `routing_policy`, `token_contract`, `usage_event`, `usage_rollup`. The unique index `idx_entitlement_installation_id` exists on `entitlement(installation_id)`. Exactly one `token_contract` row: `ver = '1'`, `added_at = '2026-08-03T00:00:00.000Z'`, `retired_at = NULL`, `changed_by = 'seed'` — the only SQL seed in the platform. Every other table is empty. |
 | Side effects | The migration itself is the side effect under test; no runtime writes follow. |
-| Code reference | `ai-platform/migrations/20260731120000_platform_schema.sql` — 12-table baseline; `ai-platform/migrations/20260803120000_token_contract.sql:L9-L10` — seed insert; `ai-platform/migrations/20260807120000_kill_switch.sql` — `kill_switch`; `ai-platform/migrations/20260821120000_grace_admission_queue.sql` — `grace_admission_queue`; `ai-platform/migrations/20260821130000_entitlement_installation_unique.sql` — unique index |
+| Code reference | `ai-platform/migrations/20260731120000_platform_schema.sql` — 11-table baseline; `ai-platform/migrations/20260803120000_token_contract.sql:L9-L10` — seed insert; `ai-platform/migrations/20260807120000_kill_switch.sql` — `kill_switch`; `ai-platform/migrations/20260821120000_grace_admission_queue.sql` — `grace_admission_queue`; `ai-platform/migrations/20260821130000_entitlement_installation_unique.sql` — unique index |
 
 ## Scenario S00-028 — Re-applying migrations is idempotent (no duplicate seed)
 
@@ -376,7 +434,7 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 | ID | S00-034 |
 | Journey setup | Worker booted normally. |
 | Action | `POST /health` with body `{}` (also reproducible with `DELETE`/`PUT`). |
-| Expected outcome | HTTP 200 with the identical JSON body `{"build":"local","environment":"development"}`. The route test is `url.pathname === "/health"` with no method conjunct, so any method is served. (Doc drift: the orientation doc describes only `GET /health`.) |
+| Expected outcome | HTTP 200 with the identical JSON body `{"build":"local","environment":"development"}`. The route test is `url.pathname === "/health"` with no method conjunct, so any method is served (see [§5](#5-worker-module-boot-workerts-at-load)). |
 | Side effects | None. |
 | Code reference | `ai-platform/src/worker.ts:L1334-L1340` — `/health` pathname-only branch |
 
@@ -415,13 +473,15 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 
 ## Doc-drift observations
 
-- **`/health` accepts any method.** The orientation doc (§5, §8.3.3) describes only `GET /health`; `worker.ts` branches on pathname alone, so `POST /health` (and any other method) returns the same 200 body (S00-034). No doc mentions this.
+- **`/health` accepts any method — fixed (D-01).** Documented in [§5](#5-worker-module-boot-workerts-at-load); pathname-only branch (`worker.ts:L1565-L1570`, S00-034).
 - **Boot registry-install failure mode — fixed (C-18).** A bundled manifest that fails `load()` at runtime now logs `boot_registry_install_failed` and rethrows (isolate boot aborts). The harness empty-registry seam (S00-007 variant b) remains the way to test the degraded discovery end-state without a throwing manifest. The "already installed" catch for harness pre-install (S00-008) is unchanged.
-- **`CONFIG_CACHE_TTL_MS` parsing rules are undocumented.** The doc (§3.3) lists the var but not `resolveConfigCacheTtlMs` semantics: unset/empty/non-numeric/negative all fall back to 30 000 ms, and `"0"` is accepted and disables caching (S00-010, S00-011).
-- **`LOG_VERBOSITY` parsing rules are undocumented.** The doc lists `0/1/2` but not the `V0/V1/V2` aliases, case-insensitivity, invalid-value fallback to V0, or the code-level default of V2 when `ENVIRONMENT=development` and the var is absent (S00-012…S00-014).
-- **Schema bootstrap section conflates migrations.** Doc §4 says "Creates 14 tables" citing the §7.3 baseline, but `20260731120000_platform_schema.sql` creates 12; `token_contract` (+seed), `kill_switch`, `grace_admission_queue`, and `idx_entitlement_installation_id` arrive in four later migrations. The end state the doc asserts is correct (verified in S00-027); the attribution to a single bootstrap step is loose.
-- **Empty-reference 404 body shape undocumented.** `GET /v1/requests/` returns 404 with a **null body**, distinct from the plain-text `Not Found` fallthrough (S00-017); no doc distinguishes the two 404 shapes.
-- **Control-plane 401 is not a taxonomy body.** `{"error":"unauthorized"}` lacks `code`/`request_reference`/`trace_id`/`retry_safe` (S00-021). The doc shows the body correctly but does not call out that it deliberately bypasses the §5.4 taxonomy envelope used everywhere else at this stage.
+- **`CONFIG_CACHE_TTL_MS` parsing rules — fixed (D-02).** Documented in [§3.3](#33-per-environment-bindings) and test guidance in [§6](#6-config-cache-and-test-guidance): unset/empty/non-numeric/negative → 30 000 ms; `"0"` disables caching (S00-010, S00-011).
+- **`LOG_VERBOSITY` parsing rules — fixed (D-03).** Documented in [§3.3](#33-per-environment-bindings): `V0`/`V1`/`V2` aliases, case-insensitivity, invalid → V0, development default V2 when unset (S00-012…S00-014).
+- **Schema bootstrap migration attribution — fixed (D-04).** [§4](#4-d1-schema-bootstrap) separates the 11-table baseline from four later migrations; end state (14 tables + seed) unchanged (S00-027).
+- **Empty-reference vs catch-all 404 shapes — fixed (D-05).** [§5](#5-worker-module-boot-workerts-at-load) distinguishes null-body 404 (empty/unknown GET references) from plain-text `Not Found` catch-all (S00-017, S00-015).
+- **Control-plane 401 bypasses taxonomy envelope — fixed (D-06).** [§5](#5-worker-module-boot-workerts-at-load) states `{"error":"unauthorized"}` deliberately omits `code`/`request_reference`/`trace_id`/`retry_safe` (S00-021).
+- **Pipeline stage 2 = catalog Stage 9 — fixed (D-08).** Stage-numbering map in [§5](#5-worker-module-boot-workerts-at-load).
+- **Terminal `timeout` in failed-settlement table — fixed (D-19).** [§9](#9-failed-and-cancelled-credit) omits `timeout` as a request-level terminal taxonomy; chain exhaustion settles `provider_unavailable` (S11-004).
 - **Doc-accurate behaviors confirmed against code (no drift):** required bindings are exactly DB/R2/DO with rate limiters exempt; cron set is exactly `0 3 * * *` + `0 4 * * *` with flush+reconcile on every tick; wrong-method on control routes is 404; `GatewayObject` is not publicly reachable; the `token_contract` seed is the only SQL seed; `/health` reads no storage or secrets; missing provider keys defer to invoke-time `provider_rejected`.
 
 ## Non-automatable notes

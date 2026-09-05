@@ -786,7 +786,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | `policy_id` / `policy_version` at publish                          | **Document is the source of truth** | The publish URL carries no identity; R2 key, D1 PK, and audit target are derived from `document.policy_id` / `document.policy_version`. There is no URL/document mismatch to reject — `policy_identity_mismatch` exists only as the runtime router check against the D1 row.                                                                                                                                                        | None — closed                                                                           |
 | Extra JSON keys                                                    | **Stored, ignored**                 | R2 body is written as-is; router reads only known fields                                                                                                                                                                                                                                                                                                                                                                                                                   | None — but avoid relying on unknown keys                                                |
 | `rule_id` uniqueness                                               | **Not enforced**                    | Duplicate ids make journal attribution ambiguous                                                                                                                                                                                                                                                                                                                                                                                                                           | Ops discipline — consider publish-time check                                            |
-| Kill switches                                                      | **Not in R2 document**              | Live in D1 (`kill_switches`); guard stage 5 collects active `provider:<id>` rows as `killedProviderIds` and the router applies them in `filterTargets`. Capability-level kills (manifest flag, D1 `global` / `capability:` / `installation:`) 503 before routing. Invoke-path routing shares the isolate `ConfigCache`, so `collectKilledProviderIds` `consult` can hit kill-switch entries the guard already loaded (still merged with `RouterContext.killedProviderIds`) | None — isolate cache is a copy of D1, not a second source of truth                      |
+| Kill switches                                                      | **Not in R2 document**              | Live in D1 (`kill_switch`); operators arm/disarm via `POST /control/kill-switches/arm` and `POST /control/kill-switches/disarm` (JSON body `{"scope":"…","target":"…"}`). Guard stage 5 collects active `provider:<id>` rows as `killedProviderIds` and the router applies them in `filterTargets`. Capability-level kills (manifest flag, D1 `global` / `capability:` / `installation:`) 503 before routing. Invoke-path routing shares the isolate `ConfigCache`, so `collectKilledProviderIds` `consult` can hit kill-switch entries the guard already loaded (still merged with `RouterContext.killedProviderIds`) | None — isolate cache is a copy of D1, not a second source of truth                      |
 
 
 
@@ -808,6 +808,8 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 
 
 ## 6. Control endpoints
+
+Malformed control paths fall through to HTTP 404 plain-text `Not Found` at the worker router — not `400 invalid_route` (dispatch pre-filters with handler-identical regexes; the handler's `invalid_route` branch is a direct-invocation seam only).
 
 
 ### 6.0 Greenfield bootstrap
@@ -884,27 +886,63 @@ Catch-all / target shape are still not validated at publish — see [§4.5](#45-
 }
 ```
 
+`installation_ids` is required (non-empty array). When present, `cohort_name` is persisted in audit `after_pointer` JSON under `details.cohort_name` (not a D1 column).
+
+**Multi-canary coexistence:** Multiple rows of the same `policy_id` may be `status='canary'` at once — the handler updates only the addressed `(policy_id, version)` row.
+
+**Cross-version `before_pointer`:** `priorCanary` reads the latest canary row for the **policy** (`ORDER BY active_from DESC, rowid DESC`), so a v2 canary audit `before_pointer` may name v1's cohort list.
+
+**Serving order:** For installation-scoped cache keys, the reader scans canary rows `ORDER BY active_from DESC, rowid DESC` and serves the first whose `canary_installation_ids` contains the installation; otherwise falls through to the active row (`config-cache/index.ts`).
+
+**Canary R2 miss — no fallback:** When a matching canary row's R2 object is missing, `loadRoutingPolicyDocument` returns `"miss"` from the canary branch without consulting the active row.
+
 **Writes:** D1 UPDATE `status=canary`, `canary_installation_ids`.
 
 
-| Failure | `error`                     | Trigger                       |
-| ------- | --------------------------- | ----------------------------- |
-| 400     | `missing_installation_ids`  | Empty array                   |
-| 404     | `installation_not_found`    | Id not in `installation`      |
-| 409     | `illegal_policy_transition` | e.g. canary on already-active |
+| HTTP | `error`                     | Trigger                                              |
+| ---- | --------------------------- | ---------------------------------------------------- |
+| 401  | `unauthorized`              | Missing / wrong operator bearer                      |
+| 400  | `invalid_json`              | Body does not parse as JSON                          |
+| 400  | `missing_installation_ids`  | Field absent, not an array, or empty array           |
+| 404  | `policy_version_not_found`  | Addressed row missing                                |
+| 404  | `installation_not_found`    | Any listed id missing from `installation`            |
+| 409  | `illegal_policy_transition` | Source status neither `published` nor `canary`       |
+| 500  | `storage_error`             | D1 batch failure via `runControlBatch`               |
 
 
 
 
 ### 6.3 Promote: `POST …/promote`
 
-**Body:** none.
+**Request body:** ignored entirely — no `parseJsonBody`.
 
 **Writes:** Supersede other active/canary; target → `active`. The prior-active row used for `control_audit.before_pointer` is selected with `ORDER BY active_from DESC, rowid DESC` (not TEXT `version`) so a same-second `active_from` tie picks the later-inserted row — lexical `"9" > "10"` would otherwise win.
 
+**Promote** rejects `active` and `superseded` source rows with `409 illegal_policy_transition`.
+
+
+| HTTP | `error`                     | Trigger                                              |
+| ---- | --------------------------- | ---------------------------------------------------- |
+| 401  | `unauthorized`              | Missing / wrong operator bearer                      |
+| 404  | `policy_version_not_found`  | Addressed row missing                                |
+| 409  | `illegal_policy_transition` | Source row is `active` or `superseded`               |
+| 500  | `storage_error`             | D1 batch failure via `runControlBatch`               |
+
 ### 6.4 Rollback: `POST …/rollback`
 
+**Request body:** ignored entirely — no `parseJsonBody`.
+
 Reverts canary → published or active → previous superseded. Prior active / prior superseded lookup uses the same `ORDER BY active_from DESC, rowid DESC` tie-break as promote (and as config-cache serving reads), so rollback of an active version resurrects the true latest superseded row when several share an `active_from` timestamp.
+
+**Rollback** of `published` or `superseded` rows returns `409 illegal_policy_transition`. Rollback of an `active` row with no superseded prior also returns `409 illegal_policy_transition`.
+
+
+| HTTP | `error`                     | Trigger                                              |
+| ---- | --------------------------- | ---------------------------------------------------- |
+| 401  | `unauthorized`              | Missing / wrong operator bearer                      |
+| 404  | `policy_version_not_found`  | Addressed row missing                                |
+| 409  | `illegal_policy_transition` | Source row is `published` or `superseded`; or active rollback with no superseded prior |
+| 500  | `storage_error`             | D1 batch failure via `runControlBatch`               |
 
 ## 7. Router output (`RoutingDecision`) — every field
 
@@ -931,14 +969,16 @@ fields that are partially hardcoded in `worker.ts` today.
 
 ## 8. Routing failure paths (post-accept)
 
+Routing errors thrown post-accept (`ConfigCacheMissError`, any `RoutingPolicyError`) are caught by the `runFreshEventSource` `.catch` and surface on the wire **only** as SSE `failed` with `data.code = "internal_error"` — router internal codes (`policy_identity_mismatch`, `no_matching_rule`, etc.) **never** reach the client. The catch also settles the request as `Failed` / `internal_error` via `settlePostAcceptInternalError` (journal + `recordTerminalState` + synthetic `ai_attempt`).
 
-| Condition                     | Terminal SSE         | Code                       |
-| ----------------------------- | -------------------- | -------------------------- |
-| No active/canary policy in D1 | `failed`             | `internal_error`           |
-| R2 document missing           | `failed`             | `internal_error`           |
-| Policy id/version mismatch    | `RoutingPolicyError` | `policy_identity_mismatch` |
-| No matching rule              |                      | `no_matching_rule`         |
-| All targets excluded          | `failed`             | `provider_unavailable`     |
+
+| Condition                     | Terminal SSE         | Persisted `ai_request` state | Notes |
+| ----------------------------- | -------------------- | ---------------------------- | ----- |
+| No active/canary policy in D1 | `failed`             | `Failed` / `internal_error`  | `routing_decision` NULL — miss before `persistRoutingDecision` |
+| R2 document missing (active or canary branch) | `failed` | `Failed` / `internal_error` | Canary R2 miss does **not** fall back to the active row |
+| Policy id/version mismatch    | `failed`             | `Failed` / `internal_error`  | Router throws `RoutingPolicyError` `policy_identity_mismatch`; client sees only `internal_error` |
+| No matching rule              | `failed`             | `Failed` / `internal_error`  | Unreachable on production path once catch-all validates — see [§9.3.21](#9321-unreachable-and-operator-hostile-paths) |
+| All targets excluded          | `failed`             | `Failed` / `provider_unavailable` | `routing_decision` persisted with empty `chain` |
 
 
 Malformed `targets[].features` (missing/unknown `min_context_window`, `cost_class`, or `languages`) exclude that target with `feature_unsupported` rather than routing it or throwing. If that empties the chain, the terminal is `provider_unavailable` — not `internal_error`.
@@ -1124,17 +1164,21 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Duplicate `(policy_id, version)` → 409 `already_published` without touching R2                                    | [§9.3.5](#935-duplicate-publish-leaves-r2-unchanged)                                                                                                                                      |
 | Concurrent UNIQUE/SQLITE_CONSTRAINT also maps to 409                                                              | [§9.3.21](#9321-unreachable-and-operator-hostile-paths)                                                                                                                                   |
 | Other D1 errors → 500 `storage_error`                                                                             | [§9.3.21](#9321-unreachable-and-operator-hostile-paths)                                                                                                                                   |
+| Canary/promote/rollback D1 batch failure → 500 `storage_error` via `runControlBatch`                              | [§6.2](#62-canary-post-canary), [§6.3](#63-promote-post-promote), [§6.4](#64-rollback-post-rollback)                                                                                                                                   |
 | Publish does not validate catch-all or target shape                                                               | [§9.3.14](#9314-router-identity-schema-and-catch-all), [§9.3.18](#9318-target-exclusions-and-empty-chain)                                                                                 |
-| Canary body `installation_ids` empty → 400 `missing_installation_ids`                                             | [§9.3.8](#938-canary-failure-paths)                                                                                                                                                       |
+| Canary body `installation_ids` absent/non-array/empty → 400 `missing_installation_ids`                                             | [§9.3.8](#938-canary-failure-paths)                                                                                                                                                       |
+| Canary malformed JSON → 400 `invalid_json`                                                                                        | [§9.3.8](#938-canary-failure-paths)                                                                                                                                                       |
 | Canary id not in `installation` → 404 `installation_not_found`                                                    | [§9.3.8](#938-canary-failure-paths)                                                                                                                                                       |
 | Canary/promote/rollback on unknown version → 404 `policy_version_not_found`                                       | [§9.3.8](#938-canary-failure-paths)                                                                                                                                                       |
-| Canary on already-active → 409 `illegal_policy_transition`                                                        | [§9.3.10](#9310-promote-to-active)                                                                                                                                                        |
-| Canary success: `status=canary`, `canary_installation_ids` written; `cohort_name` is not a D1 column              | [§9.3.9](#939-canary-success-and-serving-split)                                                                                                                                           |
+| Canary on illegal source status → 409 `illegal_policy_transition`                                                        | [§9.3.8](#938-canary-failure-paths), [§9.3.10](#9310-promote-to-active)                                                                                                                                                        |
+| Multi-canary coexistence; cross-version audit `before_pointer`; serving `active_from DESC, rowid DESC`              | [§6.2](#62-canary-post-canary), [§9.3.9](#939-canary-success-and-serving-split)                                                                                                                                           |
+| Canary R2 miss does not fall back to active row                                                                     | [§6.2](#62-canary-post-canary), [§8](#8-routing-failure-paths-post-accept)                                                                                                                                           |
+| Canary success: `status=canary`, `canary_installation_ids` written; `cohort_name` in audit `after_pointer.details`              | [§9.3.9](#939-canary-success-and-serving-split)                                                                                                                                           |
 | Canary cohort is served that document; others keep the active version                                             | [§9.3.9](#939-canary-success-and-serving-split)                                                                                                                                           |
-| Promote body is none; supersedes other active/canary; target → `active`                                           | [§9.3.10](#9310-promote-to-active)                                                                                                                                                        |
+| Promote body ignored; rejects `active`/`superseded` with 409; supersedes other active/canary; target → `active`                                           | [§6.3](#63-promote-post-promote), [§9.3.10](#9310-promote-to-active)                                                                                                                                                        |
 | Promote `control_audit.before_pointer` uses `ORDER BY active_from DESC, rowid DESC`                               | [§9.3.11](#9311-rollback-and-version-tie-break)                                                                                                                                           |
-| Rollback canary → `published` (clears canary ids)                                                                 | [§9.3.11](#9311-rollback-and-version-tie-break)                                                                                                                                           |
-| Rollback active → prior superseded (same ORDER BY); no prior superseded → 409 `illegal_policy_transition`         | [§9.3.11](#9311-rollback-and-version-tie-break)                                                                                                                                           |
+| Rollback body ignored; canary → `published` (clears canary ids)                                                                 | [§6.4](#64-rollback-post-rollback), [§9.3.11](#9311-rollback-and-version-tie-break)                                                                                                                                           |
+| Rollback active → prior superseded (same ORDER BY); `published`/`superseded` rollback → 409         | [§6.4](#64-rollback-post-rollback), [§9.3.11](#9311-rollback-and-version-tie-break)                                                                                                                                           |
 | `RoutingDecision.policy_id` / `policy_version` from the served document                                           | [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                                                                                      |
 | `RoutingDecision.rule_id` is the matched rule                                                                     | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors)                                                                               |
 | `effective_cost_class` / `cost_class_source`                                                                      | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.17](#9317-overrides-and-cost-class)                                                                                           |
@@ -1145,14 +1189,16 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `max_parallel_attempts` is not a decision field and is not persisted                                              | [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                                                                                      |
 | Stage 10 persists the object onto the existing `ai_request` row (`persistRoutingDecision`)                        | [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                                                                                      |
 | Persist happens only after `selectCandidateChain` returns — throws leave `routing_decision` NULL                  | [§9.3.7](#937-published-policy-is-not-served), [§9.3.13](#9313-missing-r2-document), [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                |
-| No active/canary policy → SSE `failed` `internal_error`                                                           | [§9.3.7](#937-published-policy-is-not-served)                                                                                                                                             |
-| R2 document missing → SSE `failed` `internal_error`                                                               | [§9.3.13](#9313-missing-r2-document)                                                                                                                                                      |
-| Policy id/version mismatch → `RoutingPolicyError` `policy_identity_mismatch` (live SSE wraps as `internal_error`) | [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                                                                                                     |
+| No active/canary policy → SSE `failed` `internal_error`; request settles `Failed`                                                           | [§8](#8-routing-failure-paths-post-accept), [§9.3.7](#937-published-policy-is-not-served)                                                                                                                                             |
+| R2 document missing → SSE `failed` `internal_error`; request settles `Failed`                                                               | [§8](#8-routing-failure-paths-post-accept), [§9.3.13](#9313-missing-r2-document)                                                                                                                                                      |
+| Router internal codes never on the wire; client sees only `internal_error` for routing throws | [§8](#8-routing-failure-paths-post-accept)                                                                                                                                     |
+| Policy id/version mismatch → worker logs `policy_identity_mismatch`; SSE wraps as `internal_error` | [§8](#8-routing-failure-paths-post-accept), [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                                                                                                     |
 | `unsupported_schema_version` / `missing_catch_all` same wrap                                                      | [§9.3.14](#9314-router-identity-schema-and-catch-all)                                                                                                                                     |
 | `no_matching_rule` is unreachable once a catch-all last rule exists                                               | [§9.3.21](#9321-unreachable-and-operator-hostile-paths)                                                                                                                                   |
 | All targets excluded → SSE `failed` `provider_unavailable` with a persisted decision                              | [§9.3.18](#9318-target-exclusions-and-empty-chain)                                                                                                                                        |
 | Malformed target features fail closed (`feature_unsupported`); empty chain is not `internal_error`                | [§9.3.18](#9318-target-exclusions-and-empty-chain)                                                                                                                                        |
 | `reason_code` `kill_switch` excludes that provider; remaining targets stay in order; no 503 of the capability     | [§9.3.19](#9319-provider-kill-switch-failover)                                                                                                                                            |
+| Kill switches armed/disarmed via `POST /control/kill-switches/arm` and `…/disarm`; D1 table `kill_switch`                              | [§9.3.19](#9319-provider-kill-switch-failover)                                                                                              |
 | Capability-level kills 503 before routing; kill switches are D1, not the R2 document                              | [§9.3.19](#9319-provider-kill-switch-failover), [§9.3.20](#9320-what-this-stage-does-not-do)                                                                                              |
 | This stage does not entitle, enroll, mint AATs, or call providers                                                 | [§9.3.12](#9312-manifest-link-and-independent-switches), [§9.3.20](#9320-what-this-stage-does-not-do)                                                                                     |
 | Publish/canary/promote/rollback leave `entitlement` unchanged                                                     | [§9.3.12](#9312-manifest-link-and-independent-switches)                                                                                                                                   |
@@ -1530,13 +1576,27 @@ d1 "SELECT state, terminal_error_code, routing_decision FROM ai_request
 d1 "SELECT status FROM routing_policy WHERE policy_id='standard' AND version='1'"
 ```
 
-**Expect:** SSE `event: accepted` then `event: failed` with `data.code = "internal_error"` ([§8](#8-routing-failure-paths-post-accept) “no active/canary policy”). Journal `routing_decision` is **NULL** — `selectCandidateChain` threw `ConfigCacheMissError` before `persistRoutingDecision`. Entitlement is still active; this is a routing miss, not `forbidden_capability`. `status` remains `published`.
+**Expect:** SSE `event: accepted` then `event: failed` with `data.code = "internal_error"` ([§8](#8-routing-failure-paths-post-accept) “no active/canary policy”). D1 `ai_request.state = 'Failed'`, `terminal_error_code = 'internal_error'`; synthetic `ai_attempt` via `settlePostAcceptInternalError`. Journal `routing_decision` is **NULL** — `selectCandidateChain` threw `ConfigCacheMissError` before `persistRoutingDecision`. Entitlement is still active; this is a routing miss, not `forbidden_capability`. `status` remains `published`.
 
 #### 9.3.8 Canary failure paths
 
 **Do:**
 
 ```bash
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d 'not json{'
+echo; cat /tmp/rp-http-body.json; echo
+
+curl -sS -D - -o /tmp/rp-http-body.json -X POST \
+  "$GATEWAY/control/routing-policies/standard/versions/1/canary" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+echo; cat /tmp/rp-http-body.json; echo
+
 curl -sS -D - -o /tmp/rp-http-body.json -X POST \
   "$GATEWAY/control/routing-policies/standard/versions/1/canary" \
   -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
@@ -1576,7 +1636,7 @@ curl -sS -D - -o /tmp/rp-http-body.json -X POST \
 echo; cat /tmp/rp-http-body.json; echo
 ```
 
-**Expect:** empty `installation_ids` → **400** `{ "error": "missing_installation_ids" }`. Unknown installation → **404** `{ "error": "installation_not_found" }`. Unknown policy id or version → **404** `{ "error": "policy_version_not_found" }` on canary, promote, and rollback. `standard@1` is still `published`.
+**Expect:** malformed JSON → **400** `{ "error": "invalid_json" }`. Missing or non-array `installation_ids` → **400** `{ "error": "missing_installation_ids" }`. Empty `installation_ids` → **400** `{ "error": "missing_installation_ids" }`. Unknown installation → **404** `{ "error": "installation_not_found" }`. Unknown policy id or version → **404** `{ "error": "policy_version_not_found" }` on canary, promote, and rollback. `standard@1` is still `published`.
 
 #### 9.3.9 Canary success and serving split
 
@@ -1606,7 +1666,7 @@ d1 "SELECT version, status, canary_installation_ids FROM routing_policy
     WHERE policy_id='standard' ORDER BY version"
 ```
 
-**Expect:** publish HTTP **200** with body `{}` — no `unreferenced_policy` warning even though the manifest ref is id-only (`routing/standard`); canary **200** `{}`. v2 `status=canary`, `canary_installation_ids` is the JSON array `[I0]` (string ids). `cohort_name` is accepted and **not** stored — there is no such column. v1 remains `published` (still not globally served).
+**Expect:** publish HTTP **200** with body `{}` — no `unreferenced_policy` warning even though the manifest ref is id-only (`routing/standard`); canary **200** `{}`. v2 `status=canary`, `canary_installation_ids` is the JSON array `[I0]` (string ids). `cohort_name` is persisted in the latest `routing_policy_canary` audit `after_pointer` under `details.cohort_name` (not a D1 column). v1 remains `published` (still not globally served).
 
 v2 is not globally active yet, so a non-cohort installation has **no** active row. Promote v1 first so others have a fallback, then keep v2 as canary:
 
@@ -1656,7 +1716,7 @@ curl -sS -D - -o /tmp/rp-http-body.json -X POST \
 echo; cat /tmp/rp-http-body.json; echo
 ```
 
-**Expect:** promote 200 `{}`. v2 `status=active`, `canary_installation_ids` NULL. v1 `status=superseded`, canary ids NULL. Audit `after_pointer=standard@2`, `before_pointer=standard@1`. Canary on already-active v2 → **409** `{ "error": "illegal_policy_transition" }`.
+**Expect:** promote 200 `{}`. v2 `status=active`, `canary_installation_ids` NULL. v1 `status=superseded`, canary ids NULL. Audit `after_pointer=standard@2`, `before_pointer=standard@1`. Canary on already-active v2 → **409** `{ "error": "illegal_policy_transition" }`. Promote of an already-active or superseded version → **409** `{ "error": "illegal_policy_transition" }` (no silent 200).
 
 Wait 31 s, `invoke after-promote-v2`. **Expect:** `policy_version = 2` for **I0**. Manifest picks the playbook **id** (`routing/standard`); D1 `active`/`canary` picks the **version**.
 
@@ -1684,7 +1744,7 @@ curl -sS -D - -o /tmp/rp-http-body.json -X POST \
 echo; cat /tmp/rp-http-body.json; echo
 ```
 
-**Expect:** **409** `{ "error": "illegal_policy_transition" }` (no `status='superseded'` row to resurrect). Restore v2 to superseded:
+**Expect:** **409** `{ "error": "illegal_policy_transition" }` (no `status='superseded'` row to resurrect). Rollback of a `published` or `superseded` row (not `canary`/`active`) → **409** `{ "error": "illegal_policy_transition" }`. Restore v2 to superseded:
 
 ```bash
 d1 "UPDATE routing_policy SET status='superseded' WHERE policy_id='standard' AND version='2'"
@@ -1790,7 +1850,7 @@ d1 "SELECT state, terminal_error_code, routing_decision FROM ai_request
     ORDER BY created_at DESC LIMIT 1"
 ```
 
-**Expect:** SSE `failed` `internal_error` ([§8](#8-routing-failure-paths-post-accept) “R2 document missing”). `routing_decision` NULL. Restore the object from the file you published:
+**Expect:** SSE `failed` `internal_error` ([§8](#8-routing-failure-paths-post-accept) “R2 document missing”). D1 `state = 'Failed'`, `terminal_error_code = 'internal_error'`. `routing_decision` NULL. Restore the object from the file you published:
 
 ```bash
 python3 - <<'PY'
@@ -1821,7 +1881,7 @@ r2put "control/routing-policy/standard/1.json" /tmp/rp-bad-identity.json
 
 Wait 31 s, `invoke bad-identity-1`.
 
-**Expect:** SSE `failed` `internal_error`. The router threw `RoutingPolicyError` `policy_identity_mismatch`; `runFreshEventSource`’s catch maps unexpected throws to taxonomy `internal_error`. `routing_decision` stays NULL (throw is before persist). Worker logs name the mismatch.
+**Expect:** SSE `failed` `internal_error`. D1 `state = 'Failed'`, `terminal_error_code = 'internal_error'`. The router threw `RoutingPolicyError` `policy_identity_mismatch`; `runFreshEventSource`’s catch maps unexpected throws to taxonomy `internal_error` on the wire only. `routing_decision` stays NULL (throw is before persist). Worker logs name the mismatch.
 
 **Do:** `schema_version: 99`, then a document whose last rule is **not** a catch-all:
 
@@ -2128,28 +2188,44 @@ The first target **omits** `min_context_window` (publish still accepts it). Prom
 
 Restore aligned `standard@1` as active (or publish v6 = production fixture), wait 31 s.
 
-**Do:**
+**Do:** arm the provider kill via the control route (preferred over raw D1):
 
 ```bash
-d1 "INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-    VALUES ('provider', 'deepseek', 1, datetime('now'), 'verify')"
+curl -sS -w '\nHTTP %{http_code}\n' -X POST \
+  "$GATEWAY/control/kill-switches/arm" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"provider","target":"deepseek"}'
 ```
 
 Wait 31 s, `invoke kill-deepseek-1`.
 
-**Expect:** SSE does **not** 503 `capability_disabled`. `excluded` contains DeepSeek with `reason_code = "kill_switch"`. `chain[0]` is Gemini (document order, failover). Provider kills are D1 `kill_switch`, not an R2 field.
+**Expect:** HTTP **200** `{}` from arm. SSE does **not** 503 `capability_disabled`. `excluded` contains DeepSeek with `reason_code = "kill_switch"`. `chain[0]` is Gemini (document order, failover). Provider kills are D1 `kill_switch`, not an R2 field.
 
 **Do:**
 
 ```bash
-d1 "DELETE FROM kill_switch WHERE scope='provider' AND target='deepseek'"
-d1 "INSERT INTO kill_switch (scope, target, active, changed_at, changed_by)
-    VALUES ('global', 'global', 1, datetime('now'), 'verify')"
+curl -sS -w '\nHTTP %{http_code}\n' -X POST \
+  "$GATEWAY/control/kill-switches/disarm" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"provider","target":"deepseek"}'
+
+curl -sS -w '\nHTTP %{http_code}\n' -X POST \
+  "$GATEWAY/control/kill-switches/arm" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"global","target":"global"}'
 invoke kill-global-1
-d1 "DELETE FROM kill_switch WHERE scope='global'"
+
+curl -sS -w '\nHTTP %{http_code}\n' -X POST \
+  "$GATEWAY/control/kill-switches/disarm" \
+  -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"global","target":"global"}'
 ```
 
-**Expect:** HTTP JSON **503** `capability_disabled` **before** SSE — capability-level kill never reaches `selectCandidateChain`. No new `routing_decision`.
+**Expect:** HTTP JSON **503** `capability_disabled` **before** SSE — capability-level kill never reaches `selectCandidateChain`. No new `routing_decision`. Disarm returns **200** `{}`.
 
 #### 9.3.20 What this stage does not do
 

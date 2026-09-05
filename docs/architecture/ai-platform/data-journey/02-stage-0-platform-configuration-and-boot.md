@@ -29,6 +29,7 @@
      - [8.3.10 Missing DB, R2, or DO binding (failure path)](#8310-missing-db-r2-or-do-binding-failure-path)
      - [8.3.11 Migrations not applied (failure path)](#8311-migrations-not-applied-failure-path)
      - [8.3.12 Missing provider API key (failure path)](#8312-missing-provider-api-key-failure-path)
+9. [9. Failed and cancelled credit](#9-failed-and-cancelled-credit)
 
 ---
 
@@ -80,7 +81,8 @@ Each of `development`, `staging`, `production` defines:
 | `name`                                 | string         | e.g. `ai-platform-gateway-development`             |
 | `BUILD_SHA`                            | var            | Git SHA shown on `/health`                         |
 | `ENVIRONMENT`                          | var            | `development` / `staging` / `production`           |
-| `LOG_VERBOSITY`                        | var            | `0` (minimal) / `1` / `2` (verbose)                |
+| `CONFIG_CACHE_TTL_MS`                  | var            | Isolate config-cache TTL in milliseconds (`resolveConfigCacheTtlMs` at boot, `config-cache/index.ts:L31-L40`). Unset, empty, non-numeric, or negative → `30_000` (`DEFAULT_CONFIG_CACHE_TTL_MS`). `"0"` disables caching (every `consult` misses). |
+| `LOG_VERBOSITY`                        | var            | Log level for the isolate (`verbosityFromEnv`, `logger.ts:L96-L104`). Accepts `0`/`1`/`2` or aliases `V0`/`V1`/`V2` (case-insensitive). Unrecognized values → `V0`. When unset or empty: `ENVIRONMENT=development` → `V2`; otherwise → `V0`. |
 | `OPERATOR_ID`                          | var            | Single shared operator principal id written to every `control_audit` row. One bearer + one id: the trail cannot distinguish operators. |
 | `DB`                                   | D1             | SQLite database binding                            |
 | `R2`                                   | R2 bucket      | Object storage binding                             |
@@ -110,7 +112,16 @@ Provider key resolution: `env[binding]` string lookup in `worker.ts` `secretStor
 
 **Command:** `npx wrangler d1 migrations apply ai-platform-<env> --env <env>`
 
-Creates 14 tables (see [§18 — Complete D1 column reference](16-complete-d1-column-reference.md#1-installation)), including `grace_admission_queue` for durable grace admission while the Quota DO is down. `entitlement.installation_id` is UNIQUE (`idx_entitlement_installation_id`) so each installation has exactly one entitlement row. Migration order matters; snapshot at `ai-platform/schema.snap.sql`.
+The baseline migration `20260731120000_platform_schema.sql` creates **11** tables (`installation`, `installation_key`, `entitlement`, `capability_grant`, `routing_policy`, `ai_request`, `ai_attempt`, `usage_event`, `usage_rollup`, `platform_counter`, `control_audit`). Four later migrations add the remaining platform surface:
+
+| Migration | Adds |
+| --- | --- |
+| `20260803120000_token_contract.sql` | `token_contract` table + seed row (`ver='1'`) |
+| `20260807120000_kill_switch.sql` | `kill_switch` |
+| `20260821120000_grace_admission_queue.sql` | `grace_admission_queue` |
+| `20260821130000_entitlement_installation_unique.sql` | unique index `idx_entitlement_installation_id` on `entitlement(installation_id)` |
+
+After the full chain: **14** tables and exactly one SQL seed row. Column reference: [§18 — Complete D1 column reference](16-complete-d1-column-reference.md#1-installation). Snapshot at `ai-platform/schema.snap.sql`.
 
 **Only SQL seed row:**
 
@@ -127,12 +138,13 @@ VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed');
 | Action                       | Data produced                               | Consumers                    |
 | ---------------------------- | ------------------------------------------- | ---------------------------- |
 | `assertRequiredBindings`     | Throws if `DB`, `R2`, or `DO` missing       | Process won't serve          |
+| `configureIsolateConfigCache` | TTL from `CONFIG_CACHE_TTL_MS`             | Discovery, identity, control config reads |
 | `setCapabilityRegistry(...)` | In-memory map: `clinic.visit_summary@1.0.0` | Guard stage 5, discovery     |
 | Platform price table         | Bundled `control/pricing/platform-default/1.json` via `src/pricing` | Post-response `ai_attempt.cost`, `usage_event.cost`, cancel credits |
 | Prompt artifacts             | **Not loaded** at boot                      | Lazy import on first compose |
 
 
-`**/health` response:**
+**`/health` (method-agnostic).** The fetch handler branches on `url.pathname === "/health"` with **no method conjunct** (`worker.ts:L1565-L1570`), so any HTTP method (`GET`, `POST`, `DELETE`, …) returns the same JSON with no auth:
 
 ```json
 {
@@ -141,7 +153,15 @@ VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed');
 }
 ```
 
+**Stage-numbering map.** Pipeline-internal identity guard is **stage 2** (`fail(2, …)` in `pipeline/index.ts:L343-L354`). Catalog **Stage 9** is the same component — readers must not conflate the two numbering schemes.
 
+**Two HTTP 404 shapes.** (1) **Null-body 404** — `new Response(null, { status: 404 })`: empty GET reference (`/v1/requests/`), unknown/malformed/cross-installation references on `GET /v1/requests/{ref}` (`worker.ts:L1612-L1613`, `L1636-L1638`). (2) **Plain-text catch-all** — `new Response("Not Found", { status: 404 })`: unknown paths, wrong methods on routed prefixes (`worker.ts:L1675`). No taxonomy envelope on either shape.
+
+**Control-plane 401 (not taxonomy).** Missing or wrong operator bearer on `/control/*` returns HTTP 401 with body exactly `{"error":"unauthorized"}` (`control/http.ts:L3-L8`). This deliberately **bypasses** the clinic taxonomy envelope (`code`, `request_reference`, `trace_id`, `retry_safe`) used on `/v1/*` routes.
+
+### 5.1 Config cache and test guidance
+
+After a control mutation or other D1 config change, a subsequent identity or discovery read may serve a stale isolate-cache entry until TTL expiry. For tests, set `CONFIG_CACHE_TTL_MS=0` in the test environment (wrangler `[vars]` or harness env) so every `loadConfig` re-reads D1 — preferred over restarting `npm run dev` or waiting 30 s. Production default TTL is 30 000 ms when the var is unset or invalid.
 
 ## 6. Happy path
 
@@ -174,7 +194,8 @@ Live probes against a local Worker and its local D1. Each probe is an operator a
 Gates in code (wording in [§5](#5-worker-module-boot-workerts-at-load)–[§7](#7-failure-paths) is slightly looser):
 
 - Required bindings are only `DB`, `R2`, and `DO`. `assertRequiredBindings` throws `Missing required binding: <name>` at **module load**. Rate-limit bindings are not in that check (`?? allowAllRateLimit`).
-- `/health` does not read D1, R2, operator bearer, or provider keys. It returns JSON `{ build, environment }` with no auth.
+- `/health` is method-agnostic (pathname-only branch); it does not read D1, R2, operator bearer, or provider keys. It returns JSON `{ build, environment }` with no auth.
+- Control-plane 401 is `{"error":"unauthorized"}` — not the clinic taxonomy envelope.
 - “Every tick” is not a third cron. `wrangler.toml` has `0 3 * * *` and `0 4 * * *`. Every `scheduled()` invocation runs `flushRejectionCounters` then `reconcileGraceUsage`, then branches on `controller.cron`.
 - Missing migrations: `/health` still works. A well-formed AAT then hits D1 and cannot authenticate. Absent tables often surface as a D1 “no such table” **500**, not a clean `unauthenticated`. Garbage Bearers fail JWT parse **before** D1 either way.
 - Missing `DEEPSEEK_API_KEY` / `GEMINI_API_KEY`: boot still serves. `secretStore.getSecret` runs only when invoke selects that provider; the adapter then returns taxonomy `provider_rejected` with detail `missing_api_key`.
@@ -300,9 +321,10 @@ grep -c '^OPERATOR_BEARER_TOKEN=' .dev.vars.development .dev.vars 2>/dev/null
 
 ```bash
 curl -sS -D- "$GATEWAY/health"
+curl -sS -D- -X POST "$GATEWAY/health" -H 'Content-Type: application/json' -d '{}'
 ```
 
-**Expect:** HTTP 200, `content-type` JSON, body **exactly** the two [§5](#5-worker-module-boot-workerts-at-load) fields:
+**Expect:** both HTTP 200, `content-type` JSON, body **exactly** the two [§5](#5-worker-module-boot-workerts-at-load) fields:
 
 ```json
 {"build":"local","environment":"development"}
@@ -336,9 +358,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$GATEWAY/cdn-cgi/does-not-exist"
 **Expect:**
 
 - `GET /v1/capabilities` with no/garbage Bearer → HTTP 401, taxonomy `code: "unauthenticated"`. Clinic AATs are later stages; this stage does not mint them. Discovery never lists the catalog until identity passes.
-- `POST /control/token-contract/begin-rotation` with missing or wrong bearer → HTTP 401, `{"error":"unauthorized"}`. Do **not** retry with the real `OPERATOR_BEARER_TOKEN` here (that write is Stage 1). The gate is `createSecretOperatorAuth` (timing-safe compare; all later control actions would attribute to `OPERATOR_ID`).
-- `GET /control/token-contract/begin-rotation` → **404**. Only `POST` + a matching control path enters `dispatchControlRequest`.
-- Unknown path → **404** `Not Found`.
+- `POST /control/token-contract/begin-rotation` with missing or wrong bearer → HTTP 401, `{"error":"unauthorized"}` (plain control-plane body — **not** the clinic taxonomy envelope). Do **not** retry with the real `OPERATOR_BEARER_TOKEN` here (that write is Stage 1). The gate is `createSecretOperatorAuth` (timing-safe compare; all later control actions would attribute to `OPERATOR_ID`).
+- `GET /control/token-contract/begin-rotation` → **404** plain-text `Not Found`. Only `POST` + a matching control path enters `dispatchControlRequest`.
+- `GET /v1/requests/` (empty reference) → **404** with an **empty body** (`new Response(null, { status: 404 })`), before auth.
+- Unknown path or wrong method on a routed prefix → **404** plain-text `Not Found`.
 
 **Do:** `curl -sS -o /dev/null -w '%{http_code}\n' "$GATEWAY/quota-do.internal/rpc"`
 
@@ -487,4 +510,16 @@ curl -sS "$GATEWAY/health"
 **Expect:** counts `0` (or the files missing). `/health` still `{"build":"local","environment":"development"}`. Operator bearer may be set; provider keys are independent. Fake-adapter routing does not read these bindings.
 
 Public APIs at this stage **cannot** produce `provider_rejected`. **Forcing (later, not this stage’s happy path):** leave `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` unset, put `deepseek` or `gemini` on the live routing chain (Stage 5), then invoke (Stage 10). The adapter returns taxonomy `provider_rejected` with `missing_api_key` (`DeepSeek API key not found in secret store` / `Gemini API key not found in secret store`) **before** any vendor HTTP. Do not run that invoke here, and do not walk Stage 10’s other failures.
+
+## 9. Failed and cancelled credit
+
+Non-completed terminals still call Quota DO `credit` so `inFlight` is released and the idempotency key leaves `"admitted"`. Request-level settlement taxonomy:
+
+| Terminal | Taxonomy (`ai_request.terminal_error_code`) | `partial` | `idempotencyState` |
+| --- | --- | --- | --- |
+| Success | — | `false` | `completed` (omitted; mapped from `partial`) |
+| `provider_rejected`, `validation_failed` | same code | `false` | `failed` |
+| `provider_unavailable`, `cancelled` | same code | `true` | `failed` or `cancelled` |
+
+Per-attempt `timeout` outcomes are retryable-classified (`invocation/index.ts:L104-L110`, `L332`); they appear on `ai_attempt.error_code` only. Chain exhaustion always settles the request as `provider_unavailable`, never `timeout` (`invocation/index.ts:L757-L761`).
 

@@ -200,13 +200,18 @@ Deployed with the Worker:
 
 ### 3.5 Config cache — 30-second reading glasses
 
-Before most D1 reads, `config-cache` may return a cached copy (TTL `30_000` ms). Production uses
-**one `ConfigCache` instance per Worker isolate** (`isolateConfigCache`) — isolate-local memory,
-not a store. `createProductionPreAccept` (`POST /v1/requests`), `authenticateGetRequest`
-(`GET /v1/requests/{ref}`), invoke-path routing, and discovery share that instance, so the TTL
-dedupes installation, key, entitlement, grant, kill-switch, token-contract, and policy reads
-**across requests** in a warm isolate. Tests inject `new ConfigCache()` so they stay isolated.
-D1 updates become visible after TTL expiry (≤30 s); there is no flush API. Cache keys:
+Before most D1 reads, `config-cache` may return a cached copy. TTL comes from `CONFIG_CACHE_TTL_MS`
+at boot (`resolveConfigCacheTtlMs`, `config-cache/index.ts:L31-L40`): unset, empty, non-numeric, or
+negative → `30_000` ms (`DEFAULT_CONFIG_CACHE_TTL_MS`); `"0"` disables caching (every `consult`
+misses). Production uses **one `ConfigCache` instance per Worker isolate** (`isolateConfigCache`) —
+isolate-local memory, not a store. `createProductionPreAccept` (`POST /v1/requests`),
+`authenticateGetRequest` (`GET /v1/requests/{ref}`), invoke-path routing, and discovery share
+that instance, so the TTL dedupes installation, key, entitlement, grant, kill-switch,
+token-contract, and policy reads **across requests** in a warm isolate. Tests inject
+`new ConfigCache()` so they stay isolated. D1 updates become visible after TTL expiry (≤30 s when
+the default applies); there is no flush API. For behavioral probes that must see D1 writes
+immediately, set `CONFIG_CACHE_TTL_MS=0` in wrangler `[vars]` or the harness env — preferred over
+restarting `npm run dev` or waiting 30 s. Cache keys:
 
 
 
@@ -229,7 +234,9 @@ Live probes against a throwaway local Worker (and local clinic Supabase from [§
 
 Wording in this file vs the wire:
 
-- Control-plane auth failure is JSON `{ "error": "unauthorized" }` (HTTP 401), not a taxonomy `code`.
+- `/health` is method-agnostic: the fetch handler branches on `url.pathname === "/health"` with no method conjunct (`worker.ts:L1565-L1570`), so any HTTP method returns the same JSON `{ build, environment }` with no auth.
+- Control-plane auth failure is JSON `{ "error": "unauthorized" }` (HTTP 401). This deliberately **bypasses** the clinic taxonomy envelope (`code`, `request_reference`, `trace_id`, `retry_safe`) used on `/v1/*` routes.
+- Two HTTP **404** shapes: (1) **null-body 404** — `new Response(null, { status: 404 })` for an empty GET reference (`/v1/requests/`) and for unknown/malformed/cross-installation references on `GET /v1/requests/{ref}`; (2) **plain-text catch-all** — `new Response("Not Found", { status: 404 })` for unknown paths and wrong methods on routed prefixes. Neither carries a taxonomy envelope.
 - Pending entitlement is path `ai_disabled` in Worker logs; the client sees taxonomy **`forbidden_capability`**.
 - JTI replay is Quota DO outcome `replay`, mapped to **`unauthenticated`**.
 - Missing active/canary routing after `accepted` throws `ConfigCacheMissError` on preload; the SSE terminal is **`failed` / `internal_error`** (not a dedicated routing code).
@@ -368,7 +375,7 @@ test -f manifests/published/clinic.visit_summary@1.0.0.json \
   && echo artifacts_ok
 ```
 
-**Expect:** `/health` is HTTP 200 `{ "build": "local", "environment": "development" }` (`BUILD_SHA` / `ENVIRONMENT` from `[env.development.vars]`). `wrangler.toml` declares `DB`, `R2`, `DO` with `class_name = "GatewayObject"`, the three `RATE_LIMITER_*` bindings, `crons = ["0 3 * * *", "0 4 * * *"]`, and `OPERATOR_ID = "platform-operator"`. `OPERATOR_BEARER_TOKEN` does **not** appear in `wrangler.toml`. All six `test -f` paths exist (`artifacts_ok`). The canonical contract is the TypeScript module providers import; it is not a D1/R2 document.
+**Expect:** `/health` is HTTP 200 `{ "build": "local", "environment": "development" }` for any HTTP method (`GET`, `POST`, …) — pathname-only branch, no auth (`worker.ts:L1565-L1570`). `BUILD_SHA` / `ENVIRONMENT` come from `[env.development.vars]`. `wrangler.toml` declares `DB`, `R2`, `DO` with `class_name = "GatewayObject"`, the three `RATE_LIMITER_*` bindings, `crons = ["0 3 * * *", "0 4 * * *"]`, and `OPERATOR_ID = "platform-operator"`. `OPERATOR_BEARER_TOKEN` does **not** appear in `wrangler.toml`. All six `test -f` paths exist (`artifacts_ok`). The canonical contract is the TypeScript module providers import; it is not a D1/R2 document.
 
 **Do:** `curl -sS -o /dev/null -w '%{http_code}\n' "$GATEWAY/v1/capabilities"`
 
@@ -876,6 +883,9 @@ curl -sS -D - "$GATEWAY/v1/requests/$REF1" \
 **Expect:** HTTP 200 `{ "state": "Completed", "result": … }`. `authenticateGetRequest` uses the same isolate `ConfigCache` as discovery and POST (identity `installations` / `keys` / `token_contracts`).
 
 #### 4.3.13 Config cache TTL, plan grant key, no flush API
+
+For tests that must observe D1 config writes without waiting, boot with `CONFIG_CACHE_TTL_MS=0`
+(every `consult` misses). The probes below use the default TTL and a warm isolate instead.
 
 Keep the **same** `npm run dev` process (warm isolate).
 

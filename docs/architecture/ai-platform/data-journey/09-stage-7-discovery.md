@@ -5,6 +5,8 @@
 1. [Plain language](#1-plain-language)
 2. [Request](#2-request)
 3. [D1 reads (via config cache)](#3-d1-reads-via-config-cache)
+   - [3.1 Grant revocation semantics](#31-grant-revocation-semantics)
+   - [3.2 Filtering, ETag, and auth telemetry](#32-filtering-etag-and-auth-telemetry)
 4. [Response shape](#4-response-shape)
   - [4.1 Success — HTTP 200 and `manifests[]`](#41-success--http-200-and-manifests)
   - [4.2 Conditional GET — HTTP 304 Not Modified](#42-conditional-get--http-304-not-modified)
@@ -45,16 +47,52 @@ No body. No extra required headers.
 
 ## 3. D1 reads (via config cache)
 
+Discovery shares the isolate-scoped `ConfigCache` as `POST /v1/requests` and
+`GET /v1/requests/{ref}`. Default TTL is `DEFAULT_CONFIG_CACHE_TTL_MS` (30 000 ms),
+overridable at boot via the `CONFIG_CACHE_TTL_MS` wrangler var (`CACHE_TTL_MS` is a
+deprecated alias). A prior request in the isolate can warm rows until TTL expiry.
 
-| Cache kind      | Key                | Purpose                          |
-| --------------- | ------------------ | -------------------------------- |
-| `installations` | `{installationId}` | Installation exists              |
-| `entitlements`  | `{installationId}` | `status`, `allowed_capabilities` |
-| `grants`        | per capability     | Version grants                   |
+| Cache kind        | Key                              | Purpose                                                                 |
+| ----------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| `installations`   | `{installationId}`               | Installation exists; lifecycle `status`                                 |
+| `keys`            | `{kid}`                          | `installation_key` row — read during AAT verification only              |
+| `token_contracts` | `{ver}`                          | `token_contract` row — read during AAT verification only                |
+| `entitlements`    | `{installationId}`               | `status`, `allowed_capabilities`, `plan`                                |
+| `grants`          | `{installationId}/{capabilityId}` | Installation-scope version grant                                       |
+| `grants`          | `plan:{plan}/{capabilityId}`     | Plan-scope grant fallback when the installation grant misses            |
+| `grants`          | `global/{capabilityId}/{version}` | Lifecycle overlay — one read per registry candidate in `discover()` |
 
+`keys` and `token_contracts` are consulted before `discover()` runs; entitlement and
+grant kinds are read inside `discover()`.
 
-Discovery uses the same isolate-scoped `ConfigCache` as `POST /v1/requests` and
-`GET /v1/requests/{ref}`. A prior request in the isolate can warm these rows for 30 s.
+### 3.1 Grant revocation semantics
+
+The production D1 reader's grant SQL filters `revoked_at IS NULL`
+(`config-cache/index.ts`). A revoked installation-scope grant therefore surfaces to
+`discover()` as a **miss**, not as a live row with `revoked_at` set. Consequences:
+
+1. The `grant.revoked_at != null → "skip"` branch in `discover()` is unreachable via
+   the production reader (annotated A-08 in `discovery/index.ts`).
+2. Revoking an installation-scope grant does **not** remove the capability from discovery
+   when a live plan-scope grant exists — the installation grant miss falls through to the
+   plan grant.
+
+### 3.2 Filtering, ETag, and auth telemetry
+
+**Role and scope.** `discover()` evaluates entitlement status, plan tier,
+`allowed_capabilities`, grants, and lifecycle only. It does **not** filter by
+`Access.allowedStaffRoles` or `Access.requiredCapabilityScope`; those gates live in
+`assertPlanAllowance` on the invoke path.
+
+**ETag scope.** `computeDiscoveryEtag` hashes `{manifests: [<public projection>, …]}` only —
+no installation, org, branch, or principal field participates. Installations with
+identical entitled lists share the same ETag; the empty-list ETag is a fixed constant
+across all unentitled callers.
+
+**Bare-`Bearer` log reasons.** `Authorization: Bearer` with no trailing space fails
+`startsWith("Bearer ")` and logs `invalid_authorization_scheme`. The scheme prefix
+followed only by whitespace trims to an empty token and logs `empty_bearer_token`.
+Both return `401 unauthenticated`.
 
 
 
@@ -119,7 +157,8 @@ Each `manifests[]` element is the public projection — six field groups; visit 
 | Top-level `interactionMode` | Canonical home is `Interaction.interactionMode` |
 
 
-The `ETag` is computed over the projection — edits to internal-only fields do not revalidate client caches.
+The `ETag` is computed over the public projection only ([§3.2](#32-filtering-etag-and-auth-telemetry)) —
+no per-installation input; edits to internal-only manifest fields do not revalidate client caches.
 
 
 Stage 8 sends `Identity.capabilityId` as body `capability_id` and `Identity.version` as header `x-capability-version`.
@@ -144,7 +183,13 @@ When the client sends `If-None-Match` and the opaque tag still matches the curre
 
 ## 5. Failure paths
 
-Same as identity stage 2 — invalid AAT → `401 unauthenticated`.
+| Condition | HTTP | Taxonomy code |
+| --------- | ---- | ------------- |
+| Missing / malformed / invalid AAT (all cases before a verified principal) | 401 | `unauthenticated` |
+| Valid signature but `installation.status = 'suspended'` | 403 | `installation_suspended` |
+
+Any other non-`active`, non-`suspended` installation status still maps to `401
+unauthenticated`. Suspended is the **only** non-401 auth failure on this endpoint.
 
 ## 6. Behavioral verification
 
@@ -158,7 +203,7 @@ The live gate is `EnrolledKeyVerifier` plus `discover()`. Any staff who can mint
 - Clinic already through Stages 2–3: keypair in clinic Postgres, installation row in D1, a staff session that can `issue_ai_token` (at least one `ai.*` RBAC permission).
 - `OPERATOR_BEARER_TOKEN` for Stage 4 entitle only. Clinic `installation_id` from enroll (call it **I0**).
 - Published registry on this Worker is `clinic.visit_summary@1.0.0`. Its `Access.minimumPlanTier` is `standard`, so D1 `entitlement.plan` must be `standard`, `professional`, or `enterprise` at enroll time. If an installation was enrolled before plan validation shipped, patch D1 or re-enroll in [§6.3.1](#631-reset-to-a-known-pending-installation).
-- After D1 writes that do not go through this isolate’s cache (`POST /control/…/entitle`, `wrangler d1 execute`), either wait **31 s** or restart `npm run dev` before treating discovery as fresh. The isolate `ConfigCache` TTL is 30 s (`CACHE_TTL_MS`); entitle does not invalidate it.
+- After D1 writes that do not go through this isolate’s cache (`POST /control/…/entitle`, `wrangler d1 execute`), either wait **31 s** or restart `npm run dev` before treating discovery as fresh. The isolate `ConfigCache` TTL is 30 s (`DEFAULT_CONFIG_CACHE_TTL_MS`; override via `CONFIG_CACHE_TTL_MS`); entitle does not invalidate it.
 
 ```bash
 export GATEWAY='http://127.0.0.1:8787'
@@ -196,7 +241,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Claim | Probe |
 | ----- | ----- |
 | Method `GET /v1/capabilities`; `Authorization: Bearer <AAT>`; no body; no extra required headers | [§6.3.3](#633-pending-entitlement-empty-state), [§6.3.5](#635-entitled-happy-path-every-response-field) |
-| Invalid AAT → `401 unauthenticated` ([§5](#5-failure-paths)) | [§6.3.2](#632-who-may-not-call-failure-paths) |
+| Invalid AAT → `401 unauthenticated`; suspended installation → `403 installation_suspended` ([§5](#5-failure-paths)) | [§6.3.2](#632-who-may-not-call-failure-paths) |
 | Who may call: any valid AAT. Who may not: missing/empty/non-Bearer/operator token; `POST` is not this route | [§6.3.2](#632-who-may-not-call-failure-paths) |
 | Pending entitlement → empty list ([§4](#4-response-shape)) | [§6.3.3](#633-pending-entitlement-empty-state) |
 | Cache kinds `installations` / `entitlements` / `grants` as in [§3](#3-d1-reads-via-config-cache) | [§6.3.1](#631-reset-to-a-known-pending-installation), [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear) |
@@ -204,7 +249,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Stage 4 entitle + grants → capability appears | [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear) |
 | 200 body `{ "manifests": [...] }` plus `ETag` / `Cache-Control` / `Content-Type`; the six-group public projection and absence of internal groups | [§6.3.5](#635-entitled-happy-path-every-response-field) |
 | `If-None-Match` matches → HTTP 304, empty body, same `ETag` ([§4.2](#42-conditional-get--http-304-not-modified)) | [§6.3.6](#636-conditional-get-304-not-modified) |
-| Filtered to entitled, granted, non-retired | [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear), [§6.3.9](#639-what-this-stage-does-not-do) |
+| Filtered to entitled, granted, non-retired; does not filter by staff role or token scope ([§3.2](#32-filtering-etag-and-auth-telemetry)) | [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear), [§6.3.9](#639-what-this-stage-does-not-do) |
+| ETag has no per-installation input ([§3.2](#32-filtering-etag-and-auth-telemetry)) | [§6.3.5](#635-entitled-happy-path-every-response-field), [§6.3.6](#636-conditional-get-304-not-modified) |
 | Kill switches **not** applied on discovery; they apply on invoke ([§1](#1-plain-language)) | [§6.3.8](#638-kill-switches-apply-on-invoke-not-discovery) |
 | Does not mint, entitle, invoke, or write D1 | [§6.3.9](#639-what-this-stage-does-not-do) |
 | Stage 8 ingress consumes `capability_id` + version from this list | [§6.3.7](#637-config-cache-30-s-ttl-and-shared-isolate) |
@@ -252,7 +298,16 @@ Restart `npm run dev` again after these D1 writes.
 
 #### 6.3.2 Who may not call (failure paths)
 
-This is the only failure row in [§5](#5-failure-paths): invalid AAT → `401 unauthenticated`. The handler rejects before `discover()`: missing header, non-`Bearer` scheme, empty token, or `EnrolledKeyVerifier` failure. JSON body is `buildErrorBody` (`code`, `request_reference`, `trace_id`, `retry_safe`) — no `manifests`.
+[§5](#5-failure-paths) names two auth failures before `discover()`: invalid AAT →
+`401 unauthenticated`; valid AAT on a suspended installation → `403
+installation_suspended`. The handler rejects on missing header, non-`Bearer` scheme,
+empty token, or `EnrolledKeyVerifier` failure. JSON body is `buildErrorBody` (`code`,
+`request_reference`, `trace_id`, `retry_safe`) — no `manifests`.
+
+Bare `Authorization: Bearer` (no trailing space) fails `startsWith("Bearer ")` → same
+401, log reason `invalid_authorization_scheme`. `Authorization: Bearer    ` (scheme plus
+whitespace only) trims to an empty token → same 401, log reason `empty_bearer_token`
+([§3.2](#32-filtering-etag-and-auth-telemetry)).
 
 **Do:**
 
@@ -274,7 +329,7 @@ curl -sS -D - -X POST "$GATEWAY/v1/capabilities" \
   -o /tmp/disc-post.txt
 ```
 
-**Expect:** the five GETs are HTTP **401**, `code = "unauthenticated"`, no `manifests` field. Operator bearer is not an AAT — same 401. `POST /v1/capabilities` is **404** `Not Found` (worker matches this path only for `GET`). Nobody else has a discovery route: no extra required headers, no control-plane substitute.
+**Expect:** the five GETs are HTTP **401**, `code = "unauthenticated"`, no `manifests` field. Operator bearer is not an AAT — same 401. `POST /v1/capabilities` is **404** `Not Found` (worker matches this path only for `GET`). Nobody else has a discovery route: no extra required headers, no control-plane substitute. For `403 installation_suspended`, suspend the installation via control plane and repeat with a still-valid AAT — same taxonomy envelope, `retry_safe: false`.
 
 #### 6.3.3 Pending entitlement (empty-state)
 

@@ -39,6 +39,95 @@ Source files read: `ai-platform/src/control/entitle.ts`, `ai-platform/src/contro
 | `retired` | deprecate | — | 409 `already_retired` | S04-090 |
 | `retired` | retire | — | 400 `not_deprecated` | S04-099 |
 
+## 3. API: `POST /control/installations/{installation_id}/entitle`
+
+**Handler:** `control/entitle.ts` → `handleEntitle`. **Auth:** operator bearer (`requireOperator`).
+
+Malformed control paths fall through to HTTP 404 plain-text `Not Found` at the worker router — not `400 invalid_route` (dispatch pre-filters with handler-identical regexes; the handler's `invalid_route` branch is a direct-invocation seam only — see Doc-drift #7).
+
+#### D1 writes
+
+1. **UPDATE** `entitlement` — budget fields + `status='active'` (`WHERE installation_id = ?`).
+2. **INSERT** `capability_grant` per grant item — **plan-scope dedup:** when a grant has `scope: "plan"` and a live row already exists at `plan:{plan}` for the same `capability_id` (`revoked_at IS NULL`), the insert is **skipped** while activation still proceeds (`entitle.ts:L239-L245`; S04-054).
+3. **INSERT** `control_audit` — `action='entitle'`, `after_pointer` = JSON of `allowed_capabilities`.
+
+**Not updated:** `entitlement.plan`, `installation.status`.
+
+## 5. Failure paths (entitle)
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong / malformed operator bearer; unconfigured operator secret (S04-001–S04-005) |
+| 400 | `invalid_json` | Body does not parse as JSON (S04-006) |
+| 400 | `invalid_payload` | Bad numbers, empty `grants`, bad `scope`, non-ISO `period_start`/`period_end`, or `period_start >= period_end` (S04-007–S04-046) |
+| 404 | `installation_not_found` | No `installation` row (S04-047) |
+| 404 | `entitlement_not_found` | No `entitlement` row (S04-048) |
+| 409 | `not_pending` | `status !== 'pending'` (S04-049, S04-051) |
+| 500 | `storage_error` | D1 `batch` failure via `runControlBatch` (S04-057) |
+
+## 7. Failure paths (cohort activate)
+
+**Body:** `installation_ids` (required non-empty array); optional `cohort_name` (audit `target` suffix). Duplicate `installation_ids` in one request are deduped before the grant loop (`cohort.ts` — `[...new Set(body.installation_ids)]`; S04-070).
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong operator bearer (S04-058, S04-103) |
+| 400 | `invalid_json` | Body not JSON (S04-061) |
+| 400 | `missing_installation_ids` | Field absent, not an array, or empty array (S04-062–S04-064) |
+| 404 | `capability_not_found` | `{capability_id}@{version}` not in registry (S04-059, S04-060) |
+| 404 | `installation_not_found` | Any listed id missing from `installation` (S04-065) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` |
+
+## 8. Failure paths (cohort promote)
+
+**Request body:** ignored entirely — no `parseJsonBody`; malformed JSON, wrong content type, or any body succeeds identically (S04-079).
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong operator bearer (S04-072, S04-104) |
+| 404 | `capability_not_found` | `{capability_id}@{version}` not in registry (S04-073) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` |
+
+## 9. Failure paths (deprecate)
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong operator bearer (S04-080, S04-101) |
+| 400 | `invalid_json` | Body not JSON (S04-082) |
+| 400 | `missing_successor_id` | Missing, null, or empty-string `successor_id` (S04-083, S04-084) |
+| 400 | `invalid_payload` | Truthy non-string `successor_id` (`requireNonEmptyString` type guard; S04-091) |
+| 400 | `unknown_successor` | `successor_id` not in registry (S04-085) |
+| 404 | `capability_not_found` | `{capability_id}@{version}` not in registry (S04-081) |
+| 409 | `already_retired` | Latest overlay is `retired` (S04-090) |
+| 409 | `already_deprecated` | Already deprecated with a **different** `successor_id` (S04-089) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` |
+
+## 10. Failure paths (retire)
+
+**Request body:** ignored entirely — no `parseJsonBody`; `400 invalid_json` is unreachable (S04-100).
+
+| HTTP | `error` | Trigger |
+| ---- | ------- | ------- |
+| 401 | `unauthorized` | Missing / wrong operator bearer (S04-092, S04-102) |
+| 400 | `not_deprecated` | No prior `deprecated` overlay with successor (S04-094, S04-099) |
+| 400 | `overlap_window_active` | Inside overlap window or unparseable/missing `retire_after` (S04-095–S04-097) |
+| 404 | `capability_not_found` | `{capability_id}@{version}` not in registry (S04-093) |
+| 500 | `storage_error` | D1 batch failure via `runControlBatch` |
+
+## 11. Behavioral verification
+
+### 11.2 Coverage — registry-seam automatable probes
+
+The orientation doc marks several probes **Unprobeable** because local dev ships only `clinic.visit_summary@1.0.0`. In this catalog they are **automatable** via `[REGISTRY]` `setCapabilityRegistry(..., { replace: true })` (two-version registry) and `[SEED]` `retire_after` backdating:
+
+| Orientation §11.2 "Unprobeable" claim | Catalog scenarios |
+| ------------------------------------- | ----------------- |
+| Cohort split onto a second version | S04-066, S04-069, S04-074 |
+| Deprecate with a different successor after deprecation | S04-089 |
+| Full retire state machine (overlap window, post-window retire, second retire) | S04-094–S04-099, S04-100 |
+
+Probes blocked by visit-summary `Access.allowedStaffRoles` (quota / degraded / runtime servability) remain **Unprobeable** in live dev — unchanged.
+
 ## Scenario S04-001 — Entitle rejects a request with no Authorization header
 
 | Field | Content |
@@ -1185,22 +1274,22 @@ Source files read: `ai-platform/src/control/entitle.ts`, `ai-platform/src/contro
 
 ## Doc-drift observations
 
-Orientation doc: `docs/architecture/ai-platform/data-journey/06-stage-4-entitlement-and-capability-grants.md`. Code is authoritative; the following divergences were found:
+Orientation doc: `docs/architecture/ai-platform/data-journey/06-stage-4-entitlement-and-capability-grants.md`. Code is authoritative; catalog-side reference sections above mirror corrected behavior. Remaining orientation-only gaps:
 
-1. **~~`500 storage_error` listed for activate / promote / deprecate / retire — not in code.~~** **Partially fixed (C-08):** `cohort.ts` and `capability-lifecycle.ts` now route `DB.batch` through `runControlBatch`, so D1 failures on those handlers return `{"error":"storage_error"}`. `routing-policy.ts` canary/promote/rollback batches remain unguarded (separate C-08 workstream).
-2. **Retire failure table lists `400 invalid_json` "(if body sent)" — unreachable.** `handleRetire` never parses the request body (`capability-lifecycle.ts:L159-L230`); any body, valid or malformed, is ignored (S04-100). Same for promote (S04-079), which the doc handles correctly ("No body required") but does not state that malformed JSON is also accepted.
-3. **Entitle failure table (doc §5) omits two reachable codes.** `401 unauthorized` (S04-001–S04-005) and `400 invalid_json` (S04-006) are reachable entitle outcomes but absent from the §5 table (they appear only in §11 probe text).
-4. **Doc §3 "INSERT capability_grant per grant item" omits the plan-scope dedup.** When a grant has `scope: "plan"` and a live plan grant for the same capability already exists, the insert is silently skipped (`entitle.ts:L239-L243`) while activation proceeds (S04-054).
-5. **~~Duplicate installation ids in one activate produce duplicate live grant rows~~** **Fixed (C-19):** the activate handler dedupes `installation_ids` with `[...new Set(...)]` before the grant loop (S04-070).
-6. **~~Truthy non-string `successor_id` crashes deprecate~~** **Fixed (C-06):** `requireNonEmptyString` rejects non-string values with `400 invalid_payload` before registry lookup (S04-091).
-7. **`invalid_route` branches in the Stage 4 handlers are unreachable via the worker.** `worker.ts:L1353-L1357` gates on `isControlRoute`, whose regexes (`control/index.ts:L69-L88`) are identical in shape to the handlers' own route parsers (`entitle.ts:L21-L27`, `capability-lifecycle.ts:L21-L33`, `cohort.ts:L57-L72`), and the dispatcher (`control/index.ts:L124-L144`, `L175-L196`) only calls each handler when the action already matched. The `reject(400, "invalid_route")` branches are defensive dead code in the production topology. Likewise, non-POST methods on these paths are never dispatched (POST-only gate) and fall through to the Stage 8 ingress 404.
-8. **Doc §11.2 "Unprobeable" labels that ARE automatable under `@cloudflare/vitest-pool-workers`:** the cohort split onto a second version, deprecate-with-different-successor, and the full retire state machine are all reachable by installing a two-version in-memory registry (`setCapabilityRegistry(..., { replace: true })`, `worker.ts:L157-L159` shows the seam) and by seeding `retire_after` via SQL. The doc's "Unprobeable" tag reflects the single-manifest local dev deployment, not the test harness.
-9. **Doc §10 says the retire request body is "Empty JSON `{}`"** — code accepts any body or none; see S04-100.
+1. **~~`500 storage_error` listed for activate / promote / deprecate / retire — not in code.~~** **Fixed (C-08, D-11):** `cohort.ts` and `capability-lifecycle.ts` route `DB.batch` through `runControlBatch`; catalog §7–§10 failure tables list `storage_error` (S04-057 seam applies to entitle; cohort/lifecycle batches use the same mapping).
+2. **~~Retire failure table lists `400 invalid_json` "(if body sent)" — unreachable.~~** **Fixed (D-09, D-11):** catalog §10 documents body-ignore; promote likewise in §8 (S04-079, S04-100). Orientation doc §10 still lists `invalid_json` — pending orientation pass.
+3. **~~Entitle failure table (doc §5) omits `401 unauthorized` and `400 invalid_json`.~~** **Fixed (D-11):** catalog §5 includes both (S04-001–S04-006).
+4. **~~Doc §3 omits plan-scope grant dedup.~~** **Fixed (D-11):** catalog §3 D1-writes bullet documents the skip (S04-054).
+5. **~~Duplicate installation ids in one activate produce duplicate live grant rows.~~** **Fixed (C-19, D-11):** catalog §7 documents dedup (S04-070).
+6. **~~Truthy non-string `successor_id` crashes deprecate.~~** **Fixed (C-06, D-11):** catalog §9 lists `400 invalid_payload` (S04-091).
+7. **~~`invalid_route` in Stage 4 failure tables — unreachable via HTTP.~~** **Fixed (D-09):** catalog §3–§10 failure tables omit `invalid_route`; defensive branches remain in code (A-01). Malformed paths → worker 404.
+8. **~~Doc §11.2 "Unprobeable" labels that ARE automatable.~~** **Fixed (D-11):** catalog §11.2 relabels registry-seam probes (see table above).
+9. **Doc §10 says retire body is "Empty JSON `{}`"** — code ignores any body; catalog §10 states this (S04-100). Orientation doc wording pending.
 
 ## Non-automatable notes
 
 1. **Real 90-day wall-clock wait for the overlap window.** `OVERLAP_WINDOW_MS` is a hardcoded constant (`capability/index.ts:L45-L46`) and the Workers clock cannot be advanced by `@cloudflare/vitest-pool-workers`. Seam used instead: **[SEED]** `UPDATE capability_grant SET retire_after = <past>` after a real deprecate (S04-098, S04-100) — this exercises the exact production comparison in `overlapWindowStillActive`. The un-seeded boundary (`now` exactly equal to `retire_after` → eligible, since the gate is `nowMs < retireAfterMs`) is not reliably schedulable and remains uncovered.
-2. **`500 storage_error` from entitle (S04-057) and unhandled batch 500s from cohort/lifecycle handlers.** Real D1 in the vitest pool does not fail on demand for valid statements. Proposed seam: wrap the `DB` binding in a proxy object whose `batch()` throws once, passed through `dispatchControlRequest`'s `bindings` parameter (the handlers receive `ControlBindings` by injection, so no module mocking is needed).
+2. **`500 storage_error` from entitle, cohort activate/promote, and capability deprecate/retire (S04-057+).** All handlers use `runControlBatch`; real D1 in the vitest pool does not fail on demand for valid statements. Proposed seam: wrap the `DB` binding in a proxy whose `batch()` throws a non-constraint error, passed through `dispatchControlRequest`'s `bindings` parameter.
 3. **Timing-safe bearer comparison.** `timingSafeEqualString` (`auth.ts:L4-L14`) is a side-channel mitigation; its timing behavior is not observable in the test environment. Only functional outcomes (401 vs proceed) are asserted (S04-001–S04-005).
 4. **`cost_budget` `Number.isFinite` guard unreachable over HTTP.** JSON cannot encode `NaN`/`Infinity` (`request.json()` rejects them as `invalid_json` first), so the `!Number.isFinite(cost_budget)` branch in `entitle.ts:L110` is defensive-only; no HTTP scenario can reach it. Covered here by documentation, not by a scenario.
 5. **Multi-operator audit attribution.** `createSecretOperatorAuth` maps every valid bearer to one configured `operatorId` (`auth.ts:L16-L26` comment: single-operator deployment; no `control_operator` table). Per-operator token rotation/revocation is not implemented, so no scenario can distinguish operators in `control_audit`.
