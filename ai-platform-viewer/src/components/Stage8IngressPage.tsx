@@ -13,6 +13,7 @@ export function Stage8IngressPage() {
     <JourneyStagePage
       meta={STAGE8_META}
       operations={STAGE8_OPERATIONS}
+      mintAatBeforeEachRequest
       syncAction={{
         label: 'Sync clinic context',
         title: 'Reload org/branch into context defaults?',

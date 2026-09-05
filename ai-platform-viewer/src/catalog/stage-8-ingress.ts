@@ -34,7 +34,7 @@ export const STAGE8_META: JourneyStageMeta = {
   eyebrow: 'Stage 8 · Request ingress',
   title: 'Checking in at the gate',
   lede:
-    'POST /v1/requests submits an AI job. The adapter validates body size and required headers before the guard runs. Visit summary is single-shot — conversational fields are optional probes. context.org and context.branch must match the AAT org and branch claims.',
+    'POST /v1/requests submits an AI job. The adapter validates body size and required headers before the guard runs. Visit summary is single-shot — conversational fields are optional probes. context.org and context.branch must match the AAT org and branch claims. Each POST mints a fresh AAT first (JTI is one-time per admit).',
   accentClass: 'stage-accent--ingress',
   cardClass: 'operation-card--ingress',
   buttonClass: 'ingress-button',

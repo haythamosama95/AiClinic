@@ -3165,7 +3165,17 @@ button:disabled {
   font-style: italic;
 }
 
-.field-table__row dd .json-block {
+.sse-block__event {
+  color: var(--stream);
+  font-weight: 600;
+}
+
+.sse-block__label {
+  color: var(--muted);
+}
+
+.field-table__row dd .json-block,
+.field-table__row dd .sse-block {
   width: 100%;
 }
 

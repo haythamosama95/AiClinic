@@ -1,6 +1,8 @@
 import type { FieldRow } from '@/types'
 import { JsonBlock } from '@/components/JsonBlock'
+import { SseBlock } from '@/components/SseBlock'
 import { isJsonText } from '@/lib/json-format'
+import { isSseText } from '@/lib/sse-format'
 
 interface FieldListProps {
   rows: FieldRow[]
@@ -14,7 +16,9 @@ export function FieldList({ rows, keyPrefix = 'field' }: FieldListProps) {
         <div key={`${keyPrefix}-${row.name}`} className="field-table__row">
           <dt>{row.name}</dt>
           <dd>
-            {isJsonText(row.value) ? (
+            {isSseText(row.value) ? (
+              <SseBlock value={row.value} />
+            ) : isJsonText(row.value) ? (
               <JsonBlock value={row.value} />
             ) : (
               <code>{row.value}</code>

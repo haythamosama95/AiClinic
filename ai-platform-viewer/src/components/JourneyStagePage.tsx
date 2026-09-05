@@ -33,6 +33,8 @@ interface JourneyStagePageProps {
   syncAction?: SyncAction
   deckEyebrow?: string
   deckLede?: string
+  /** Mint a fresh clinic AAT before each AAT-authenticated gateway request. */
+  mintAatBeforeEachRequest?: boolean
 }
 
 export function JourneyStagePage({
@@ -42,6 +44,7 @@ export function JourneyStagePage({
   syncAction,
   deckEyebrow = 'Commands',
   deckLede = 'Pick a command on the left — its request panel opens on the right.',
+  mintAatBeforeEachRequest = false,
 }: JourneyStagePageProps) {
   const {
     material: clinicMaterial,
@@ -121,6 +124,7 @@ export function JourneyStagePage({
                 }}
                 onClose={() => setSelectedCommand(null)}
                 buttonClass={meta.buttonClass}
+                mintAatBeforeEachRequest={mintAatBeforeEachRequest}
               />
             ) : null
           }

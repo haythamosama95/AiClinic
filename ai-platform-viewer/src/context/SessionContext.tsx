@@ -47,6 +47,8 @@ interface SessionContextValue {
   notifyError: (message: string) => void
   busyAction: 'reset' | 'mint' | null
   mintAat: () => Promise<void>
+  /** Fresh clinic AAT for a gateway invoke (no success toast). */
+  mintAatForRequest: () => Promise<string>
   storeClinicAat: (token: string) => void
   resetAll: () => Promise<void>
   textScaleLevel: number
@@ -233,6 +235,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await runMint('manual')
   }, [runMint])
 
+  const mintAatForRequest = useCallback(async (): Promise<string> => {
+    if (!operatorBearer) {
+      throw new Error(
+        'Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.',
+      )
+    }
+    if (!supabaseAdminUsername || !supabaseAdminPassword) {
+      throw new Error(
+        'Supabase admin credentials not loaded. Open Secrets or set VITE_BOOTSTRAP_ADMIN_* in .env.local.',
+      )
+    }
+
+    const { token } = await mintAatFromSupabase(operatorBearer, {
+      username: supabaseAdminUsername,
+      password: supabaseAdminPassword,
+    })
+    setAat(token)
+    setAatRevealed(true)
+    return token
+  }, [operatorBearer, supabaseAdminUsername, supabaseAdminPassword])
+
   const storeClinicAat = useCallback((token: string) => {
     setAat(token)
     setAatRevealed(true)
@@ -306,6 +329,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       notifyError,
       busyAction,
       mintAat,
+      mintAatForRequest,
       storeClinicAat,
       resetAll,
       textScaleLevel,
@@ -329,6 +353,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       toasts,
       busyAction,
       mintAat,
+      mintAatForRequest,
       storeClinicAat,
       resetAll,
       dismissToast,

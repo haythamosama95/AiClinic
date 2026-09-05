@@ -6,6 +6,7 @@ import type {
 import { buildVisitSummaryContextJson } from '@/catalog/stage-8-ingress'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
 import { prettyJsonValue } from '@/lib/json-format'
+import { isSseText, parseSseResponseBody } from '@/lib/sse-format'
 import { sendStage2SupabaseRequest, sendSupabaseRpcRequest } from '@/lib/supabase-api'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
@@ -24,6 +25,10 @@ function fieldMeaning(field: JourneyParamField): string | undefined {
 }
 
 function parseResponseBody(rawBody: string): FieldRow[] {
+  if (isSseText(rawBody)) {
+    return parseSseResponseBody(rawBody)
+  }
+
   try {
     const parsed = JSON.parse(rawBody) as Record<string, unknown>
     const rows: FieldRow[] = []

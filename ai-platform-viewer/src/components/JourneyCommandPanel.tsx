@@ -25,6 +25,7 @@ interface JourneyCommandPanelProps {
   onReloadClinicDefaults: () => void
   onClose: () => void
   buttonClass: string
+  mintAatBeforeEachRequest?: boolean
 }
 
 export function JourneyCommandPanel({
@@ -35,6 +36,7 @@ export function JourneyCommandPanel({
   onReloadClinicDefaults,
   onClose,
   buttonClass,
+  mintAatBeforeEachRequest = false,
 }: JourneyCommandPanelProps) {
   const {
     operatorBearer,
@@ -42,6 +44,7 @@ export function JourneyCommandPanel({
     supabaseAdminUsername,
     supabaseAdminPassword,
     storeClinicAat,
+    mintAatForRequest,
   } = useSession()
   const needsClinicMaterial = journeyUsesClinicMaterial(operation.fields)
   const materialFingerprint = clinicMaterialFingerprint(clinicMaterial)
@@ -68,6 +71,11 @@ export function JourneyCommandPanel({
       case 'operator':
         return Boolean(operatorBearer)
       case 'aat':
+        if (mintAatBeforeEachRequest) {
+          return Boolean(
+            operatorBearer && supabaseAdminUsername && supabaseAdminPassword,
+          )
+        }
         return Boolean(aat)
       case 'supabase-admin':
         return Boolean(supabaseAdminUsername && supabaseAdminPassword)
@@ -102,6 +110,9 @@ export function JourneyCommandPanel({
 
   const authLine = [
     journeyAuthLine(operation.auth, authReady),
+    operation.auth === 'aat' && mintAatBeforeEachRequest
+      ? 'mints fresh AAT before send'
+      : null,
     operation.bodyKind === 'empty' ? 'body is {}' : null,
     operation.bodyKind === 'sse' ? 'SSE stream response' : null,
     needsClinicMaterial && !clinicDefaultsReady ? 'waiting for clinic defaults' : null,
@@ -122,9 +133,14 @@ export function JourneyCommandPanel({
     setSendError(null)
     setBusy(true)
     try {
+      let requestAat = aat
+      if (mintAatBeforeEachRequest && operation.auth === 'aat') {
+        requestAat = await mintAatForRequest()
+      }
+
       const result = await sendJourneyRequest(operation, params, {
         operatorBearer,
-        aat,
+        aat: requestAat,
         supabaseAdmin:
           supabaseAdminUsername && supabaseAdminPassword
             ? { username: supabaseAdminUsername, password: supabaseAdminPassword }
@@ -203,7 +219,11 @@ export function JourneyCommandPanel({
             onClick={() => void handleSend()}
             disabled={busy || !authReady || !clinicDefaultsReady}
           >
-            {busy ? 'Sending…' : 'Send request'}
+            {busy
+              ? mintAatBeforeEachRequest && operation.auth === 'aat'
+                ? 'Minting & sending…'
+                : 'Sending…'
+              : 'Send request'}
           </button>
         </>
       }
