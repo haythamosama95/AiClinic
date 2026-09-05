@@ -597,3 +597,26 @@ export async function releaseRPC(
     return { kind: "release", ok: true };
   });
 }
+
+export interface InspectRequest {
+  kind: "inspect";
+}
+
+export interface InspectResponse {
+  kind: "inspect";
+  state: QuotaDoState;
+}
+
+/**
+ * Read-only snapshot for operators. Applies the ephemeral sweep in memory so
+ * the snapshot reflects effective state, but never persists (no storage.put).
+ */
+export async function inspectRPC(
+  storage: DurableObjectStorage,
+  now?: number,
+): Promise<InspectResponse> {
+  const timestamp = now ?? Date.now();
+  const state = await loadState(storage);
+  sweepEphemeral(state, timestamp);
+  return { kind: "inspect", state };
+}

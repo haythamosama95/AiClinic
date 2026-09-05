@@ -10,6 +10,7 @@ export type OperatorAuth = {
 export type ControlBindings = {
   DB: D1Database;
   R2?: R2Bucket;
+  DO?: DurableObjectNamespace;
 };
 
 export type EnrollPayload = {

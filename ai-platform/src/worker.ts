@@ -30,6 +30,7 @@ import {
   createSecretOperatorAuth,
   dispatchControlRequest,
   isControlRoute,
+  isQuotaInspectRoute,
 } from "./control";
 import { EnrolledKeyVerifier } from "./identity";
 import {
@@ -85,6 +86,7 @@ import {
 import {
   admissionRPC,
   creditRPC,
+  inspectRPC,
   releaseRPC,
   type AdmissionRequest,
   type CreditIdempotencyState,
@@ -1303,6 +1305,10 @@ export class GatewayObject extends DurableObject {
         );
         return Response.json(result);
       }
+      if (kind === "inspect") {
+        const result = await inspectRPC(this.ctx.storage, now);
+        return Response.json(result);
+      }
     } catch (error) {
       if (isArgValidationError(error)) {
         return Response.json({ error: "bad_request" }, { status: 400 });
@@ -1344,9 +1350,13 @@ export default {
       return handleLivePostRequest(request, runtimeEnv, ctx);
     }
 
-    if (request.method === "POST" && isControlRoute(url.pathname)) {
+    if (
+      isControlRoute(url.pathname) &&
+      (request.method === "POST" ||
+        (request.method === "GET" && isQuotaInspectRoute(url.pathname)))
+    ) {
       // Installation lifecycle, capability deprecate/retire, cohort activate/promote,
-      // routing-policy publish/canary/rollback, support lookup, purge.
+      // routing-policy publish/canary/rollback, support lookup, purge, quota inspect.
       const operatorAuth = createSecretOperatorAuth({
         bearerToken: runtimeEnv.OPERATOR_BEARER_TOKEN ?? "",
         operatorId: runtimeEnv.OPERATOR_ID ?? "",
@@ -1356,6 +1366,7 @@ export default {
         {
           DB: runtimeEnv.DB,
           R2: runtimeEnv.R2,
+          DO: runtimeEnv.DO,
         },
         operatorAuth,
         makeLog("control/index.ts"),

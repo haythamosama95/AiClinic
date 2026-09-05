@@ -16,6 +16,7 @@ const mockCreateManifestRetentionClassResolver = vi.fn(() => vi.fn());
 const mockRunRollupAndReconciliation = vi.fn();
 const mockAdmissionRPC = vi.fn();
 const mockCreditRPC = vi.fn();
+const mockDispatchControlRequest = vi.fn();
 const mockLiveHttpStatusForCode = vi.fn(
   (code: string) => (code === "unauthenticated" ? 401 : 403),
 );
@@ -50,9 +51,11 @@ vi.mock("../src/adapter", () => ({
 }));
 
 vi.mock("../src/control", () => ({
-  createSecretOperatorAuth: vi.fn(() => ({ resolve: () => null })),
-  dispatchControlRequest: vi.fn(),
-  isControlRoute: () => false,
+  createSecretOperatorAuth: vi.fn(() => ({ resolve: () => ({ operatorId: "op-id" }) })),
+  dispatchControlRequest: (...args: unknown[]) => mockDispatchControlRequest(...args),
+  isControlRoute: (pathname: string) => pathname.startsWith("/control/"),
+  isQuotaInspectRoute: (pathname: string) =>
+    /^\/control\/installations\/[^/]+\/quota$/.test(pathname),
 }));
 
 vi.mock("../src/credit", () => ({
@@ -91,6 +94,7 @@ vi.mock("../src/rollup", () => ({
 vi.mock("../src/quota-do/index", () => ({
   admissionRPC: (...args: unknown[]) => mockAdmissionRPC(...args),
   creditRPC: (...args: unknown[]) => mockCreditRPC(...args),
+  inspectRPC: vi.fn(),
 }));
 
 type WorkerModule = typeof import("../src/worker");
@@ -139,7 +143,12 @@ beforeEach(async () => {
   mockRunRollupAndReconciliation.mockReset();
   mockAdmissionRPC.mockReset();
   mockCreditRPC.mockReset();
+  mockDispatchControlRequest.mockReset();
   mockLiveHttpStatusForCode.mockClear();
+
+  mockDispatchControlRequest.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
 
   mockFlushRejectionCounters.mockResolvedValue(undefined);
   mockReconcileGraceUsage.mockResolvedValue(undefined);
@@ -504,5 +513,40 @@ describe("GatewayObject.fetch negatives and §3.1.7", () => {
     expect(logged).toContain("inst-1");
     expect(logged).toContain("ABCD-EFGH");
     expect(logged).toContain("jti-1");
+  });
+});
+
+describe("control route GET gating for quota inspect", () => {
+  it("dispatches GET /control/installations/:id/quota to control", async () => {
+    const response = await workerModule.default.fetch(
+      new Request(
+        "https://ai-gateway.test/control/installations/inst-1/quota",
+        { method: "GET" },
+      ),
+      runtimeEnv as never,
+      { waitUntil: vi.fn() } as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockDispatchControlRequest).toHaveBeenCalledTimes(1);
+    const dispatchedRequest = mockDispatchControlRequest.mock.calls[0]?.[0] as Request;
+    expect(dispatchedRequest.method).toBe("GET");
+    expect(new URL(dispatchedRequest.url).pathname).toBe(
+      "/control/installations/inst-1/quota",
+    );
+  });
+
+  it("does not dispatch GET on other control routes", async () => {
+    const response = await workerModule.default.fetch(
+      new Request(
+        "https://ai-gateway.test/control/installations/inst-1/enroll",
+        { method: "GET" },
+      ),
+      runtimeEnv as never,
+      { waitUntil: vi.fn() } as never,
+    );
+
+    expect(mockDispatchControlRequest).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
   });
 });

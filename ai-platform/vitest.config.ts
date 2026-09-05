@@ -45,6 +45,7 @@ export default defineConfig({
       "test/load/**",
       "test/worker-request-orchestrator.test.ts",
       "test/entitle-grant.test.ts",
+      "test/quota-inspect.test.ts",
       "test/system/**/*.system.test.ts",
     ],
     testTimeout: 120_000,

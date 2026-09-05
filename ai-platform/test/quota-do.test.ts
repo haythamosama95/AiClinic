@@ -141,6 +141,41 @@ type ReleaseUnknownRequest = {
 
 type ReleaseResponse = ReleaseAcknowledged | ReleaseUnknownRequest;
 
+type InspectRequest = {
+  kind: "inspect";
+  now?: number;
+};
+
+type QuotaDoState = {
+  periodCounters: PeriodCounters;
+  periodBounds?: { period_start: string; period_end: string };
+  jtiReplay: Record<string, { expiresAt: number }>;
+  idempotency: Record<
+    string,
+    {
+      expiresAt: number;
+      requestReference: string;
+      state: IdempotencyRequestState;
+      requestId: string;
+    }
+  >;
+  creditedRequests: Record<string, { expiresAt: number }>;
+  admittedRequests: Record<
+    string,
+    {
+      requestReference: string;
+      admittedAt: number;
+      entitlement: EntitlementSnapshot;
+    }
+  >;
+  boundInstallationId?: string;
+};
+
+type InspectResponse = {
+  kind: "inspect";
+  state: QuotaDoState;
+};
+
 let jtiCounter = 0;
 let idempotencyKeyCounter = 0;
 let requestReferenceCounter = 0;
@@ -205,7 +240,13 @@ function quotaStub(installationId: string) {
 
 async function fetchRpc(
   installationId: string,
-  body: AdmissionRequest | CreditRequest | ReleaseRequest,
+  body:
+    | AdmissionRequest
+    | CreditRequest
+    | ReleaseRequest
+    | InspectRequest
+    | (AdmissionRequest & { now?: number })
+    | (CreditRequest & { now?: number }),
 ): Promise<Response> {
   try {
     return await quotaStub(installationId).fetch(RPC_URL, {
@@ -262,6 +303,19 @@ async function callCreditRPC(
   return {
     response,
     body: (await response.json()) as CreditResponse,
+  };
+}
+
+async function callInspectRPC(
+  installationId: string,
+  options: { now?: number } = {},
+): Promise<{ response: Response; body: InspectResponse }> {
+  const body: InspectRequest = { kind: "inspect", ...options };
+  const response = await fetchRpc(installationId, body);
+
+  return {
+    response,
+    body: (await response.json()) as InspectResponse,
   };
 }
 
@@ -1216,6 +1270,143 @@ describe("release_rolls_back_admission_reservation", () => {
       kind: "release",
       ok: false,
       code: "unknown_request",
+    });
+  });
+});
+
+describe("inspect_rpc", () => {
+  it("returns zeroed counters and empty maps for a fresh installation", async () => {
+    const installationId = freshInstallationId();
+
+    const { response, body } = await callInspectRPC(installationId);
+
+    expect(response.ok).toBe(true);
+    expect(body.kind).toBe("inspect");
+    expect(body.state.periodCounters).toEqual({
+      requestsUsed: 0,
+      tokensUsed: 0,
+      costUsed: 0,
+      inFlight: 0,
+    });
+    expect(body.state.jtiReplay).toEqual({});
+    expect(body.state.idempotency).toEqual({});
+    expect(body.state.admittedRequests).toEqual({});
+    expect(body.state.creditedRequests).toEqual({});
+    expect(body.state.boundInstallationId).toBeUndefined();
+    expect(body.state.periodBounds).toBeUndefined();
+  });
+
+  it("reflects admitted state after a successful admission RPC", async () => {
+    const installationId = freshInstallationId();
+    const jti = uniqueJti();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admitFresh(installationId, {
+      jti,
+      idempotencyKey,
+      requestReference,
+    });
+
+    const { response, body } = await callInspectRPC(installationId);
+
+    expect(response.ok).toBe(true);
+    expect(body.state.periodCounters.inFlight).toBe(1);
+    expect(Object.keys(body.state.jtiReplay)).toEqual([jti]);
+    expect(body.state.idempotency[idempotencyKey]).toMatchObject({
+      requestReference,
+      state: "admitted",
+      requestId: admitted.requestId,
+    });
+    expect(body.state.admittedRequests[admitted.requestId]).toMatchObject({
+      requestReference,
+    });
+    expect(body.state.boundInstallationId).toBe(installationId);
+  });
+
+  it("reflects credited state after admission and credit RPCs", async () => {
+    const installationId = freshInstallationId();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+    const usage = { tokens: 60, cost: 0.01 };
+
+    const admitted = await admitFresh(installationId, {
+      idempotencyKey,
+      requestReference,
+    });
+
+    await callCreditRPC(installationId, {
+      requestId: admitted.requestId,
+      requestReference,
+      usage,
+      partial: false,
+    });
+
+    const { response, body } = await callInspectRPC(installationId);
+
+    expect(response.ok).toBe(true);
+    expect(body.state.periodCounters).toEqual({
+      requestsUsed: 1,
+      tokensUsed: usage.tokens,
+      costUsed: usage.cost,
+      inFlight: 0,
+    });
+    expect(body.state.admittedRequests).toEqual({});
+    expect(body.state.creditedRequests[admitted.requestId]).toBeDefined();
+    expect(body.state.idempotency[idempotencyKey]).toMatchObject({
+      state: "completed",
+      requestId: admitted.requestId,
+    });
+  });
+
+  it("applies ephemeral sweep in memory without persisting deletions", async () => {
+    const installationId = freshInstallationId();
+    const jti = uniqueJti();
+    const idempotencyKey = uniqueIdempotencyKey();
+    const requestReference = uniqueRequestReference();
+    const baseTime = new Date("2026-08-01T12:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+
+    await admitFresh(installationId, {
+      jti,
+      idempotencyKey,
+      requestReference,
+    });
+
+    vi.setSystemTime(new Date(baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1));
+
+    const { response, body } = await callInspectRPC(installationId);
+
+    expect(response.ok).toBe(true);
+    expect(body.state.periodCounters.inFlight).toBe(0);
+    expect(body.state.jtiReplay).toEqual({});
+    expect(body.state.admittedRequests).toEqual({});
+    expect(body.state.idempotency[idempotencyKey]).toMatchObject({
+      state: "failed",
+    });
+  });
+
+  it("does not persist inspect sweeps so replay detection still works", async () => {
+    const installationId = freshInstallationId();
+    const jti = uniqueJti();
+    const baseTime = new Date("2026-08-01T13:00:00.000Z");
+
+    vi.setSystemTime(baseTime);
+    await admitFresh(installationId, { jti });
+
+    const inspectTime = baseTime.getTime() + EPHEMERAL_HORIZON_MS + 1;
+    await callInspectRPC(installationId, { now: inspectTime });
+
+    vi.setSystemTime(baseTime);
+    const replay = await callAdmissionRPC(installationId, {
+      jti,
+      idempotencyKey: uniqueIdempotencyKey(),
+    });
+
+    expect(replay.body).toEqual({
+      kind: "admission",
+      outcome: "replay",
     });
   });
 });

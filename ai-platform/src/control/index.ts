@@ -25,6 +25,7 @@ export {
   handleInstallationPurge,
   handleSupportLookup,
 } from "./support-purge";
+export { handleInstallationQuotaGet } from "./quota-inspect";
 
 import {
   handleDeprecate,
@@ -57,6 +58,7 @@ import {
   handleInstallationPurge,
   handleSupportLookup,
 } from "./support-purge";
+import { handleInstallationQuotaGet } from "./quota-inspect";
 import {
   handleTokenContractBeginRotation,
   handleTokenContractRetire,
@@ -75,12 +77,18 @@ const TOKEN_CONTRACT_PATTERN =
 
 const SUPPORT_LOOKUP_PATTERN = /^\/control\/support\/lookup$/;
 
+const QUOTA_INSPECT_PATTERN = /^\/control\/installations\/[^/]+\/quota$/;
+
 const ROUTING_POLICY_PUBLISH_PATTERN = /^\/control\/routing-policies\/publish$/;
 const ROUTING_POLICY_VERSIONED_PATTERN =
   /^\/control\/routing-policies\/[^/]+\/versions\/[^/]+\/(canary|promote|rollback)$/;
 
 const COHORT_CAPABILITY_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(activate|promote)$/;
+
+export function isQuotaInspectRoute(pathname: string): boolean {
+  return QUOTA_INSPECT_PATTERN.test(pathname);
+}
 
 export function isControlRoute(pathname: string): boolean {
   return (
@@ -90,7 +98,8 @@ export function isControlRoute(pathname: string): boolean {
     ROUTING_POLICY_PUBLISH_PATTERN.test(pathname) ||
     ROUTING_POLICY_VERSIONED_PATTERN.test(pathname) ||
     TOKEN_CONTRACT_PATTERN.test(pathname) ||
-    SUPPORT_LOOKUP_PATTERN.test(pathname)
+    SUPPORT_LOOKUP_PATTERN.test(pathname) ||
+    QUOTA_INSPECT_PATTERN.test(pathname)
   );
 }
 
@@ -107,6 +116,10 @@ export async function dispatchControlRequest(
 
   if (SUPPORT_LOOKUP_PATTERN.test(pathname)) {
     return handleSupportLookup(request, bindings, operatorAuth);
+  }
+
+  if (QUOTA_INSPECT_PATTERN.test(pathname)) {
+    return handleInstallationQuotaGet(request, bindings, operatorAuth);
   }
 
   if (CAPABILITY_LIFECYCLE_PATTERN.test(pathname)) {

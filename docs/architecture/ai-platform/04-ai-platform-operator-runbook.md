@@ -313,11 +313,47 @@ npx wrangler r2 object get ai-platform-development \
 
 ### 6.4 Durable Objects (quota / admission)
 
-Class: `GatewayObject`, id typically derived from installation id. There is no first-class Wrangler “dump DO storage” recipe in-repo. Observe via:
+Class: `GatewayObject`, binding `DO`, id from `DO.idFromName(installation_id)` — same binding as live admission/credit.
 
-- Admission / credit behaviour in workers tests (`test/quota-do.test.ts`, `test/admission-credit.test.ts`)
-- Worker logs during `POST /v1/requests`
-- Soft-threshold fields on journal rows / SSE (`routing_tier`, degraded notices) after F4
+**Primary inspection:** `GET /control/installations/{installation_id}/quota` — operator Bearer only (`Authorization: Bearer $OPERATOR_BEARER_TOKEN`), read-only, no AAT. Does not replace D1 `usage_event` (ledger remains audit source of truth). Internally issues DO RPC `kind: "inspect"` on the installation's `GatewayObject`; loads state, applies the **2h ephemeral sweep in memory** (expired jti/idempotency/credited entries and abandoned admissions excluded), never persists.
+
+```bash
+export GATEWAY='http://127.0.0.1:8787'
+export INSTALLATION_ID='…'
+
+curl -s -H "Authorization: Bearer $OPERATOR_BEARER_TOKEN" \
+  "$GATEWAY/control/installations/$INSTALLATION_ID/quota" | jq .
+```
+
+Append `?verbose=true` for full map bodies under `maps` (`idempotency`, `jti_replay`, `admitted_requests`, `credited_requests`). Each map is capped at **500** entries; when capped, `maps.truncated` is `true`.
+
+| Field | Source | Notes |
+| --- | --- | --- |
+| `installation_id` | route param | Requested installation |
+| `bound_installation_id` | DO `boundInstallationId` | `null` if never admitted |
+| `period_bounds` | DO `periodBounds` | `null` before first admission |
+| `period_counters.requests_used` | DO `periodCounters.requestsUsed` | |
+| `period_counters.tokens_used` | DO `periodCounters.tokensUsed` | |
+| `period_counters.cost_used` | DO `periodCounters.costUsed` | |
+| `period_counters.in_flight` | DO `periodCounters.inFlight` | |
+| `entitlement` | D1 `entitlement` row | `plan`, `status`, `period_start`, `period_end`, `request_quota`, `token_budget`, `cost_budget`; `null` if no row |
+| `remaining.requests` | entitlement − counters | plain subtraction; `null` when no entitlement row |
+| `remaining.tokens` | entitlement − counters | |
+| `remaining.cost` | entitlement − counters | |
+| `idempotency_keys` | DO map size (post-sweep) | count only unless verbose |
+| `jti_replay_entries` | DO map size | |
+| `admitted_requests` | DO map size | |
+| `credited_requests` | DO map size | |
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 401 | `unauthorized` | Missing or invalid operator Bearer |
+| 400 | `invalid_route` | Malformed path |
+| 404 | `installation_not_found` | No D1 `installation` row |
+| 405 | `method_not_allowed` | Non-GET |
+| 503 | `quota_do_unavailable` | DO binding missing or DO unreachable — same transport failure that triggers grace admission on `POST /v1/requests` |
+
+**Fallback** (control plane down): infer behaviour from workers tests (`test/quota-do.test.ts`, `test/admission-credit.test.ts`), Worker logs during `POST /v1/requests`, and journal/SSE fields (`routing_tier`, degraded notices).
 
 ### 6.5 Crons and logs
 
