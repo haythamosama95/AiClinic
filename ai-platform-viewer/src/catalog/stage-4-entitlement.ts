@@ -8,7 +8,7 @@ export const STAGE4_META: JourneyStageMeta = {
   eyebrow: 'Stage 4 · Entitlement and capability grants',
   title: 'The ticket office opens',
   lede:
-    'After Stage 3 enroll leaves entitlement pending with zero quotas, the control-plane caller entitles the installation (one-shot), then manages capability cohorts (activate, promote) and version lifecycle (deprecate, retire). Runtime POST /v1/requests probes guard stage 3 while pending vs active.',
+    'After Stage 3 enroll leaves entitlement pending with zero quotas, the control-plane caller entitles the installation (one-shot), then manages capability cohorts (activate, promote) and version lifecycle (deprecate, retire). Runtime POST /v1/requests probes guard stage 3 while pending vs active. GET …/quota inspects the live Quota DO snapshot and remaining budget.',
   accentClass: 'stage-accent--entitlement',
   cardClass: 'operation-card--entitlement',
   buttonClass: 'entitlement-button',
@@ -292,6 +292,45 @@ export const STAGE4_OPERATIONS: JourneyOperationDefinition[] = [
       { status: 400, error: 'overlap_window_active', trigger: 'Current time < retire_after' },
       { status: 404, error: 'capability_not_found', trigger: 'capability_id@version not in registry' },
       { status: 500, error: 'storage_error', trigger: 'D1 batch failure' },
+    ],
+  },
+  {
+    id: 'quota-inspect',
+    section: 'Quota inspection',
+    title: 'GET …/quota',
+    method: 'GET',
+    path: '/control/installations/{installation_id}/quota',
+    auth: 'operator',
+    bodyKind: 'none',
+    fields: [
+      {
+        name: 'installation_id',
+        scope: 'path',
+        clinicKey: 'installation_id',
+        hint: 'From Stage 2 enroll_installation_keypair',
+        wide: true,
+      },
+      {
+        name: 'verbose',
+        scope: 'query',
+        required: false,
+        defaultValue: '',
+        hint: 'Set to true to include full idempotency / JTI replay / admitted / credited maps (500-entry cap per map)',
+      },
+    ],
+    summary:
+      'Read-only live snapshot of the installation\'s Quota DO (GatewayObject): period counters, in-flight admissions, idempotency and JTI replay state, joined with D1 entitlement limits to compute remaining budget.',
+    successNote:
+      '200 — period_counters, entitlement, remaining (limit − used), and entry counts. DO state reflects the 2h ephemeral sweep; nothing is persisted by this call.',
+    failures: [
+      { status: 401, error: 'unauthorized', trigger: 'Missing or wrong OPERATOR_BEARER_TOKEN' },
+      { status: 404, error: 'installation_not_found', trigger: 'No installation row' },
+      { status: 405, error: 'method_not_allowed', trigger: 'Non-GET method on this route' },
+      {
+        status: 503,
+        error: 'quota_do_unavailable',
+        trigger: 'Quota DO unreachable — same condition that triggers grace admission on POST /v1/requests',
+      },
     ],
   },
 ]
