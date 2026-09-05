@@ -507,6 +507,7 @@ Provision D1 + R2 + DO in Cloudflare
   → wrangler d1 migrations apply
   → wrangler deploy --var BUILD_SHA:<sha>
   → GET /health returns 200
+  → npm run bootstrap:routing-policy (publish + promote standard@1 — Stage 5 §6.0)
 ```
 
 
@@ -1220,7 +1221,7 @@ Worker hardcodes `minimumPlanTier: "standard"` in preAccept — enroll with `pla
 
 Routing decides **which AI provider and model** handle a request. Three artifacts link together:
 
-1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard@v1`) plus request-side needs (languages, latency class, cost ceiling).
+1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard`) naming the playbook id only, plus request-side needs (languages, latency class, cost ceiling).
 2. **D1 `routing_policy` row** — resolves that ref to an active version and an R2 `content_pointer`; tracks lifecycle (published, canary, active, superseded).
 3. **R2 routing policy document** — the full playbook at that pointer: ordered `rules[]` with `match` clauses and provider `targets`.
 
@@ -1264,7 +1265,7 @@ The capability manifest is bundled JSON deployed with the Worker (`ai-platform/m
 | `manifestCostClass` | architectural cost ceiling *(not a separate published key today; hardcoded in invoke path)* | `match.cost_classes` + target filter |
 | `policyCacheKey` | `Routing.routingPolicyRef` | D1 preload → R2 document |
 
-`routingPolicyRef` format: `routing/{policy_id}@v{version}` → parsed to D1 lookup `policy_id` + `version` (e.g. `routing/standard@v1` → `standard`, `1`).
+`routingPolicyRef` format: `routing/{policy_id}` (e.g. `routing/standard`). The invoke path looks up D1 by `policy_id` only; `routing_policy.status` (`canary` for cohort installations, else `active`) selects which version is served. A legacy `@v{n}` suffix is tolerated and stripped at parse time — it never pinned a version. To move a capability to playbook v2, operators publish and canary/promote in D1; the manifest ref is not edited.
 
 #### 9.3.3 Complete specimen (visit summary)
 
@@ -1315,7 +1316,7 @@ Checked-in file: `ai-platform/manifests/published/clinic.visit_summary@1.0.0.jso
     "repairPolicy": { "allowed": false, "maxAttempts": 0 }
   },
   "Routing": {
-    "routingPolicyRef": "routing/standard@v1",
+    "routingPolicyRef": "routing/standard",
     "requiredProviderFeatures": {
       "structuredOutput": false,
       "contextWindow": 32000,
@@ -1423,7 +1424,7 @@ Entry fields (single-shot array items):
 
 | Field | Presence | Type | Meaning | Routing |
 | ----- | -------- | ---- | ------- | ------- |
-| `routingPolicyRef` | field required | `string` | Pointer to R2 playbook via D1 (`routing/{id}@v{n}`) | **routing: ref** |
+| `routingPolicyRef` | field required | `string` | Playbook id reference resolved via D1 (`routing/{id}`); version is chosen by D1 `status`, not the ref | **routing: ref** |
 | `requiredProviderFeatures` | field required | object | Minimum provider capability floor from the capability side | **routing: floor** (see nested table) |
 | `latencyClass` | field required | `string` | Expected latency tier (e.g. `"interactive"`, `"standard"`) | **routing: match** + **routing: floor** |
 | `degradedTierPolicy` | field required | `string` | Policy when `routingTier === "degraded"` (e.g. `fallback_chain`) | not routing today (schema only) |
@@ -1690,8 +1691,8 @@ Each field below states what it holds, how the router uses it, and how it fits t
 | Field | Type | Role in the large picture |
 | ----- | ---- | ------------------------- |
 | `schema_version` | `integer` | Document **format** version (today only `1` is accepted). Independent of `policy_version` — you can publish policy v2 that still uses schema v1. Rejected with `unsupported_schema_version` if unknown. |
-| `policy_id` | `string` | Short playbook name (e.g. `standard`). Must equal the D1 `routing_policy.policy_id` row and the manifest ref (`routing/standard@v1` → `standard`). Mismatch → `policy_identity_mismatch`. |
-| `policy_version` | `integer` | Integer playbook revision (e.g. `1` from `@v1`). Must equal D1 `routing_policy.version`. Enables rollback by activating a different row without editing R2. |
+| `policy_id` | `string` | Short playbook name (e.g. `standard`). Must equal the D1 `routing_policy.policy_id` row and the manifest ref (`routing/standard` → `standard`). Mismatch → `policy_identity_mismatch`. |
+| `policy_version` | `integer` | Integer playbook revision (e.g. `1`). Must equal D1 `routing_policy.version`. Enables rollback by activating a different row without editing R2. |
 
 ##### `defaults` — policy-wide fallbacks
 
@@ -1842,7 +1843,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 { "document": { /* RoutingPolicyDocument */ } }
 ```
 
-The document is the only source of identity: the R2 key, D1 primary key, and audit target derive from `document.policy_id` / `document.policy_version`. Missing or malformed identity → 400 `invalid_policy_identity`; duplicate `(policy_id, version)` → 409 `already_published`. Warnings: `unreferenced_policy` when no published capability references the identity, `latency_class_mismatch` when a referencing capability's `Routing.latencyClass` matches no target.
+The document is the only source of identity: the R2 key, D1 primary key, and audit target derive from `document.policy_id` / `document.policy_version`. Missing or malformed identity → 400 `invalid_policy_identity`; duplicate `(policy_id, version)` → 409 `already_published`. Warnings: `unreferenced_policy` when no published capability references the policy id, `latency_class_mismatch` when a referencing capability's `Routing.latencyClass` matches no target (matching by policy id only).
 
 **Writes:** R2.put + D1 INSERT `status=published`.
 

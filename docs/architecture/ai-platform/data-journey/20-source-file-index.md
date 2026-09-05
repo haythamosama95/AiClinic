@@ -37,6 +37,7 @@
 | Control auth           | `ai-platform/src/control/auth.ts` (`createSecretOperatorAuth`: one shared bearer → one `OPERATOR_ID`; `control_audit` cannot distinguish operators) |
 | Control entitle        | `ai-platform/src/control/entitle.ts` (`period_start`/`period_end`: ISO-8601 UTC instants, `start < end`) |
 | Routing policy         | `ai-platform/src/control/routing-policy.ts` (duplicate publish: D1 existence check before R2.put) |
+| Routing policy bootstrap | `ai-platform/scripts/bootstrap-routing-policy.sh` (`npm run bootstrap:routing-policy` — publish + promote `standard@1`) |
 | Token contract         | `ai-platform/src/control/token-contract.ts`                                       |
 | Errors taxonomy        | `ai-platform/src/errors.ts` (`retryAfterSecondsForRateLimited`: hint else 60) |
 | Wrangler config        | `ai-platform/wrangler.toml`                                                       |
@@ -314,7 +315,7 @@ No dashboard HTTP route exists (`src/dashboards/index.ts` is SQL-only). Quota DO
 
 **Do:** `jq -r '.Identity.capabilityId, .Identity.version, .Routing.routingPolicyRef, .Economics.maxInputTokens, ."Context requirements"[0].key' ai-platform/manifests/published/clinic.visit_summary@1.0.0.json`
 
-**Expect:** `clinic.visit_summary`, `1.0.0`, `routing/standard@v1`, `8000`, `visit.chief_complaint@v1`.
+**Expect:** `clinic.visit_summary`, `1.0.0`, `routing/standard`, `8000`, `visit.chief_complaint@v1`.
 
 #### 1.3.2 Clinic RPCs (all seven public surfaces)
 

@@ -84,6 +84,15 @@ npx wrangler d1 migrations list ai-platform-development --local --env developmen
 npx wrangler d1 migrations apply ai-platform-development --local --env development
 ```
 
+Bootstrap the default routing policy (publish + promote `standard@1` from `control/routing-policy/platform-default/1.json`). Run with the Worker up (`npm run dev` in another terminal). Idempotent — safe to re-run.
+
+```bash
+cd ai-platform
+npm run bootstrap:routing-policy
+```
+
+Uses `OPERATOR_BEARER_TOKEN` from the environment or `.dev.vars.development`. For a deployed Worker: `npm run bootstrap:routing-policy -- --env staging --remote --gateway https://…`. See [Stage 5 bootstrap](data-journey/07-stage-5-routing-policy.md#60-greenfield-bootstrap).
+
 ### 3.2 Clinic backend (Supabase)
 
 Start local Supabase as usual for this repo, then confirm AI RPCs exist, for example:
@@ -245,6 +254,7 @@ Scripts (`ai-platform/package.json`):
 | Script | Use |
 | --- | --- |
 | `npm run dev` | Local Worker (`--env development`) |
+| `npm run bootstrap:routing-policy` | Publish + promote default `standard@1` routing policy (greenfield bring-up) |
 | `npm run deploy -- --env development` | Deploy that env (after real `database_id` / buckets) |
 | `npm test` | Manifest gates + unit + workers suites |
 | `npm run test:load` | F5 load / cost assertions |

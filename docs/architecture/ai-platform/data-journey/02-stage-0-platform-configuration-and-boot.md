@@ -152,6 +152,7 @@ Provision D1 + R2 + DO in Cloudflare
   → wrangler d1 migrations apply
   → wrangler deploy --var BUILD_SHA:<sha>
   → GET /health returns 200
+  → npm run bootstrap:routing-policy   (ops script — publish + promote standard@1; [Stage 5](07-stage-5-routing-policy.md#60-greenfield-bootstrap))
 ```
 
 
@@ -391,7 +392,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
      (SELECT retired_at FROM token_contract WHERE ver = '1') AS seed_retired;"
 ```
 
-**Expect:** all counts `0`. `seed_retired` NULL. Boot did not enroll a clinic, grant quotas, publish routing, flip a kill switch, journal a request, or write `control_audit` (`OPERATOR_ID` is unused until a control mutation). `retired_at` stays NULL — this stage does not rotate the passport edition ([Stage 1](03-stage-1-token-contract-baseline.md)).
+**Expect:** all counts `0`. `seed_retired` NULL. Boot did not enroll a clinic, grant quotas, publish routing, flip a kill switch, journal a request, or write `control_audit` (`OPERATOR_ID` is unused until a control mutation). `retired_at` stays NULL — this stage does not rotate the passport edition ([Stage 1](03-stage-1-token-contract-baseline.md)). Routing is still unset after boot; run `npm run bootstrap:routing-policy` ([Stage 5 §6.0](07-stage-5-routing-policy.md#60-greenfield-bootstrap)) once the Worker is up when you need invoke to route — that is an ops step, not part of Worker load.
 
 **Do:** look at the bundled catalog and price table (not HTTP):
 

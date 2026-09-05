@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --env development",
+    "bootstrap:routing-policy": "bash scripts/bootstrap-routing-policy.sh",
     "deploy": "wrangler deploy",
     "check": "wrangler check",
     "verify-manifests": "vitest run test/manifest-registry-gate.test.ts test/prompt-registry-gate.test.ts",

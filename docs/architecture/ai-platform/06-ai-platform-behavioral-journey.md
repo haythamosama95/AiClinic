@@ -54,6 +54,8 @@ The platform does **not** start at “a Flutter button was pressed.” A request
         → R2 policy document + routing_policy(status=published); identity from document.policy_id/policy_version
    POST .../canary  and/or  POST .../promote
         → routing_policy(status=canary|active)
+   (greenfield) npm run bootstrap:routing-policy
+        → publish platform-default/1.json (standard@1) + promote in one idempotent ops step
           [invoke preload requires this; missing policy → accepted then failed/internal_error]
           [stage 5 may load the same policy only to evaluate provider kill switches]
         |
@@ -416,7 +418,7 @@ Entitle does **not** change `entitlement.plan` (that stays from enroll) and does
 
 ### 8.1 What is happening
 
-Inference needs an **active or canary** routing policy document. The visit-summary manifest points at `routing/standard@v1`. Publish writes the document; it is not used until canary (installation-scoped) or promote (global `status='active'`).
+Inference needs an **active or canary** routing policy document. The visit-summary manifest points at `routing/standard` (playbook id only; D1 picks the version). Publish writes the document; it is not used until canary (installation-scoped) or promote (global `status='active'`).
 
 Missing routing does **not** fail the guard. After `accepted`, `preloadRoutingPolicyForInstallation` throws and the stream ends `failed` / `internal_error`. Stage 5 *does* try to load the same policy so it can evaluate **provider kill switches**; if the policy is missing that load is a miss (empty provider list), not a rejection. Promote has **no status pre-check** — publish → promote without canary is allowed.
 
@@ -930,7 +932,7 @@ A client retrying with the same idempotency key therefore does **not** receive t
 
 `runFreshEventSource` is scheduled with `executionCtx.waitUntil` so the Worker can keep working after headers are sent.
 
-1. **Preload** `routing/standard@v1/{installationId}` (canary then active). Throw → `failed`/`internal_error`.
+1. **Preload** `routing/standard/{installationId}` (canary then active). Throw → `failed`/`internal_error`.
 2. **Select chain** with **hardcoded** `routingTier: "standard"` (admission’s degraded flag is ignored here), `entitlementMaxCostClass: "premium"`, `manifestCostClass: "standard"`.
 3. Start prose broker and `runInvocation` concurrently. Invocation pushes `text` / `regenerating` events into a pushable iterable the broker reads.
 4. Heartbeats every 15s of silence (`heartbeat` SSE).

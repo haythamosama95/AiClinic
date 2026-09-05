@@ -36,6 +36,7 @@
   - [Hardcoded, ignored, and wiring gaps](#45-hardcoded-ignored-and-wiring-gaps)
 5. [D1](#5-d1-routing_policy-row-every-column) `routing_policy` [row — every column](#5-d1-routing_policy-row-every-column)
 6. [Control endpoints](#6-control-endpoints)
+  - [Greenfield bootstrap:](#60-greenfield-bootstrap) `npm run bootstrap:routing-policy`
   - [Publish:](#61-publish-post-controlrouting-policiespublish) `POST /control/routing-policies/publish`
   - [Canary:](#62-canary-post-canary) `POST …/canary`
   - [Promote:](#63-promote-post-promote) `POST …/promote`
@@ -76,11 +77,13 @@
 
 Routing decides **which AI provider and model** handle a request. Three artifacts link together:
 
-1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard@v1`) plus request-side needs (languages, latency class, token ceiling).
+1. **Capability manifest** (bundled in the Worker) — each capability declares a `routingPolicyRef` (e.g. `routing/standard`) naming the playbook id only, plus request-side needs (languages, latency class, token ceiling).
 2. **D1** `routing_policy` **row** — resolves that ref to an active version and an R2 `content_pointer`; tracks lifecycle (published, canary, active, superseded).
 3. **R2 routing policy document** — the full playbook at that pointer: ordered `rules[]` with `match` clauses and provider `targets`.
 
 At invoke time the router parses the manifest ref → loads the document via D1 + config cache → walks `rules[]` top to bottom until the first `match` passes (including `capability_ids`, tier, language, and other filters) → merges manifest requirements with the matched rule → applies installation `overrides` → emits the final target chain. The manifest picks **which playbook**; D1 picks **which version**; R2 defines **which providers to try**.
+
+**Greenfield bring-up:** Worker boot and D1 migrations do **not** publish or activate a routing policy. For local/dev provisioning, run `npm run bootstrap:routing-policy` after migrations and `npm run dev` — it publishes the checked-in fixture `control/routing-policy/platform-default/1.json` (`standard@1`) and promotes it to `active`. See [§6.0](#60-greenfield-bootstrap). Stage 5 behavioral probes ([§9.3](#93-ordered-probes)) still start from an empty `routing_policy` table on purpose.
 
 ## 2. Metaphor
 
@@ -89,7 +92,7 @@ Think of **air traffic control** for AI requests:
 
 | Artifact                        | File (example)                                                     | Metaphor                                                                                                                                                                                                                                                                                 |
 | ------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Capability manifest JSON**    | `manifests/published/clinic.visit_summary@1.0.0.json`              | The **flight plan** carried on every plane. It names the capability (`clinic.visit_summary`), states what the flight needs (language, latency, token limits), and points at a playbook: `routingPolicyRef` → `routing/standard@v1`. Bundled in the Worker — not stored in the warehouse. |
+| **Capability manifest JSON**    | `manifests/published/clinic.visit_summary@1.0.0.json`              | The **flight plan** carried on every plane. It names the capability (`clinic.visit_summary`), states what the flight needs (language, latency, token limits), and points at a playbook id: `routingPolicyRef` → `routing/standard` (version is **not** in the ref — D1 picks it). Bundled in the Worker — not stored in the warehouse. |
 | **D1** `routing_policy` **row** | *(no JSON file — a database row)*                                  | The **filing cabinet index card**: "playbook `standard` version `1` is **active**; full copy is at shelf `control/routing-policy/standard/1.json`." Also tracks canary rollouts and superseded versions.                                                                                 |
 | **Routing policy JSON**         | `control/routing-policy/platform-default/1.json` → published to R2 | The **playbook in the warehouse** (R2): ordered rules for *when* to route, *minimum requirements*, and *which providers to try* in order. Published once via the control API; the repo file is only a fixture for operators — runtime reads R2 via the D1 pointer.                       |
 
@@ -136,7 +139,7 @@ The capability manifest is bundled JSON deployed with the Worker (`ai-platform/m
 | `policyCacheKey`                          | `Routing.routingPolicyRef`                                                                  | D1 preload → R2 document                |
 
 
-`routingPolicyRef` format: `routing/{policy_id}@v{version}` → parsed to D1 lookup `policy_id` + `version` (e.g. `routing/standard@v1` → `standard`, `1`).
+`routingPolicyRef` format: `routing/{policy_id}` (e.g. `routing/standard`). The invoke path looks up D1 by `policy_id` only; `routing_policy.status` (`canary` for cohort installations, else `active`) selects which version is served. A legacy `@v{n}` suffix is tolerated and stripped at parse time — it never pinned a version. To move a capability to playbook v2, operators publish and canary/promote in D1; the manifest ref is not edited.
 
 ### 3.3 Complete specimen (visit summary)
 
@@ -187,7 +190,7 @@ Checked-in file: `ai-platform/manifests/published/clinic.visit_summary@1.0.0.jso
     "repairPolicy": { "allowed": false, "maxAttempts": 0 }
   },
   "Routing": {
-    "routingPolicyRef": "routing/standard@v1",
+    "routingPolicyRef": "routing/standard",
     "requiredProviderFeatures": {
       "structuredOutput": false,
       "contextWindow": 32000,
@@ -326,7 +329,7 @@ Entry fields (single-shot array items):
 
 | Field                      | Presence       | Type     | Meaning                                                          | Routing                                 |
 | -------------------------- | -------------- | -------- | ---------------------------------------------------------------- | --------------------------------------- |
-| `routingPolicyRef`         | field required | `string` | Pointer to R2 playbook via D1 (`routing/{id}@v{n}`)              | **routing: ref**                        |
+| `routingPolicyRef`         | field required | `string` | Playbook id reference resolved via D1 (`routing/{id}`); version is chosen by D1 `status`, not the ref | **routing: ref**                        |
 | `requiredProviderFeatures` | field required | object   | Minimum provider capability floor from the capability side       | **routing: floor** (see nested table)   |
 | `latencyClass`             | field required | `string` | Expected latency tier (e.g. `"interactive"`, `"standard"`)       | **routing: match** + **routing: floor** |
 | `degradedTierPolicy`       | field required | `string` | Policy when `routingTier === "degraded"` (e.g. `fallback_chain`) | not routing today (schema only)         |
@@ -523,8 +526,8 @@ is an **illustrative** example, not the checked-in production fixture (that fixt
 | Path                                            | Presence                                                                                              | Field meaning and allowed values                                                                                                                                                                                                 |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema_version`                                | always present                                                                                        | Document JSON **format** version. `integer`; today only `1` is accepted (`unsupported_schema_version` otherwise). Independent of `policy_version`.                                                                           |
-| `policy_id`                                     | always present                                                                                        | Short playbook name. `string` (e.g. `"standard"`). Must equal the D1 `routing_policy.policy_id` row and the publish URL; manifest ref `routing/standard@v1` → `standard`.                                                        |
-| `policy_version`                                | always present                                                                                        | Integer playbook revision. `integer` (e.g. `1` from `@v1`). Must equal D1 `routing_policy.version` and the publish URL.                                                                                                          |
+| `policy_id`                                     | always present                                                                                        | Short playbook name. `string` (e.g. `"standard"`). Must equal the D1 `routing_policy.policy_id` row and the publish URL; manifest ref `routing/standard` → `standard`.                                                        |
+| `policy_version`                                | always present                                                                                        | Integer playbook revision. `integer` (e.g. `1`). Must equal D1 `routing_policy.version` and the publish URL.                                                                                                          |
 | `defaults`                                      | always present                                                                                        | Policy-wide fallback object. Present in every document; most keys are schema-retained only (see below).                                                                                                                            |
 | `defaults.cost_class`                           | schema-retained                                                                                       | Placeholder cost tier for document-shape parity. `economy` \| `standard` \| `premium`. **Ignored at runtime** — effective cost class comes from manifest ceiling, entitlement cap, and optional `force_cost_class`.              |
 | `defaults.max_parallel_attempts`                | schema-retained                                                                                       | Placeholder parallel-attempt cap. `integer` (e.g. `1`). **Ignored at runtime** — invocation walks `chain[]` sequentially.                                                                                                        |
@@ -572,7 +575,7 @@ Checked-in production fixture (catch-all only, no overrides):
 `ai-platform/control/routing-policy/platform-default/1.json`.
 On-disk directory name is historical; the document identity is `policy_id: "standard"` /
 `policy_version: 1`. Both targets advertise `latency_class: "standard"` so they match published
-`clinic.visit_summary@1.0.0` (`routingPolicyRef: "routing/standard@v1"`, `latencyClass: "standard"`).
+`clinic.visit_summary@1.0.0` (`routingPolicyRef: "routing/standard"`, `latencyClass: "standard"`).
 Publish writes R2 at `control/routing-policy/{policy_id}/{version}.json` derived from the document's identity fields, not the repo path.
 
 Sibling platform config (not part of this R2 document, never client-visible): the versioned
@@ -629,8 +632,8 @@ Each field below states what it holds, how the router uses it, and how it fits t
 | Field            | Type      | Role in the large picture                                                                                                                                                                               |
 | ---------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema_version` | `integer` | Document **format** version (today only `1` is accepted). Independent of `policy_version` — you can publish policy v2 that still uses schema v1. Rejected with `unsupported_schema_version` if unknown. |
-| `policy_id`      | `string`  | Short playbook name (e.g. `standard`). Must equal the D1 `routing_policy.policy_id` row and the manifest ref (`routing/standard@v1` → `standard`). Mismatch → `policy_identity_mismatch`.               |
-| `policy_version` | `integer` | Integer playbook revision (e.g. `1` from `@v1`). Must equal D1 `routing_policy.version`. Enables rollback by activating a different row without editing R2.                                             |
+| `policy_id`      | `string`  | Short playbook name (e.g. `standard`). Must equal the D1 `routing_policy.policy_id` row and the manifest ref (`routing/standard` → `standard`). Mismatch → `policy_identity_mismatch`.               |
+| `policy_version` | `integer` | Integer playbook revision (e.g. `1`). Must equal D1 `routing_policy.version`. Enables rollback by activating a different row without editing R2.                                             |
 
 
 
@@ -779,7 +782,7 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 | `routing_decision.required_features`                               | **Request requirements only**       | `selectCandidateChain` sets this to `context.requirements`, not the merged rule floor — filtering uses merged floor but journal shows manifest-only                                                                                                                                                                                                                                                                                                                        | Optional — journal accuracy improvement                                                 |
 | Latency mismatch `reason_code`                                     | **Mapped to** `feature_unsupported` | Frozen enum has no `latency_unsupported` code (`router/index.ts` `filterTargets`)                                                                                                                                                                                                                                                                                                                                                                                          | None unless contract is extended                                                        |
 | Malformed target feature fields                                    | **Fail closed at** `filterTargets`  | Missing/unknown `min_context_window`, `cost_class`, or `languages` → `feature_unsupported`; languages is `Array.isArray`-guarded so a missing array does not throw                                                                                                                                                                                                                                                                                                         | None — request-path defense; publish-time target-shape check remains the in-depth layer |
-| Publish-time validation                                            | **Identity shape + warnings**       | `handleRoutingPolicyPublish` rejects a document whose `policy_id` / `policy_version` are missing or malformed (400 `invalid_policy_identity`); warns (200 `warnings`) with `unreferenced_policy` when no published capability references the identity, or `latency_class_mismatch` when no target `latency_class` matches a referencing capability. Catch-all and target shape are still not checked.                                                                                                     | **Partial** — catch-all and target shape still unvalidated                              |
+| Publish-time validation                                            | **Identity shape + warnings**       | `handleRoutingPolicyPublish` rejects a document whose `policy_id` / `policy_version` are missing or malformed (400 `invalid_policy_identity`); warns (200 `warnings`) with `unreferenced_policy` when no published capability references the policy id, or `latency_class_mismatch` when no target `latency_class` matches a referencing capability (matched by policy id only). Catch-all and target shape are still not checked.                                                                                                     | **Partial** — catch-all and target shape still unvalidated                              |
 | `policy_id` / `policy_version` at publish                          | **Document is the source of truth** | The publish URL carries no identity; R2 key, D1 PK, and audit target are derived from `document.policy_id` / `document.policy_version`. There is no URL/document mismatch to reject — `policy_identity_mismatch` exists only as the runtime router check against the D1 row.                                                                                                                                                        | None — closed                                                                           |
 | Extra JSON keys                                                    | **Stored, ignored**                 | R2 body is written as-is; router reads only known fields                                                                                                                                                                                                                                                                                                                                                                                                                   | None — but avoid relying on unknown keys                                                |
 | `rule_id` uniqueness                                               | **Not enforced**                    | Duplicate ids make journal attribution ambiguous                                                                                                                                                                                                                                                                                                                                                                                                                           | Ops discipline — consider publish-time check                                            |
@@ -807,6 +810,37 @@ Fields and behaviours that exist in the schema or architecture but are not fully
 ## 6. Control endpoints
 
 
+### 6.0 Greenfield bootstrap
+
+Script: `ai-platform/scripts/bootstrap-routing-policy.sh` (npm: `bootstrap:routing-policy`).
+
+**When:** after D1 migrations and with the Worker reachable (`npm run dev` locally, or a deployed gateway URL).
+
+**What it does:**
+
+1. Reads `control/routing-policy/platform-default/1.json` (`policy_id: "standard"`, `policy_version: 1`).
+2. `POST /control/routing-policies/publish` if that version is not yet in D1 (409 `already_published` is treated as success).
+3. `POST /control/routing-policies/standard/versions/1/promote` so config-cache serving finds `status='active'`.
+
+**Idempotent:** exits cleanly when `standard@1` is already active; skips when another version is already active for `standard`.
+
+**Operator token:** `OPERATOR_BEARER_TOKEN` env var, or `ai-platform/.dev.vars` / `.dev.vars.development`.
+
+```bash
+cd ai-platform
+npx wrangler d1 migrations apply ai-platform-development --local --env development
+npm run dev   # separate terminal
+npm run bootstrap:routing-policy
+```
+
+Deployed env (remote D1 + Worker URL):
+
+```bash
+npm run bootstrap:routing-policy -- --env staging --remote --gateway https://…
+```
+
+Publish alone leaves `status=published`, which invoke does **not** serve ([§9.3.7](#937-published-policy-is-not-served)). The bootstrap script exists so operators do not have to remember the promote step on every fresh platform.
+
 
 ### 6.1 Publish: `POST /control/routing-policies/publish`
 
@@ -829,9 +863,9 @@ The document is the **only source of identity**. There is no `{policyId}` / `{ve
 | 400    | `{ "error": "missing_document" }`             | `document` key absent or not an object                                                                                                                                                                                     |
 | 400    | `{ "error": "invalid_policy_identity" }`      | `document.policy_id` is not a non-empty string, or `document.policy_version` is not an integer ≥ 1 (a JSON **number** — string `"1"` is rejected). Fail closed: identity must be well-formed before any key is derived from it |
 | 409    | `{ "error": "already_published" }`            | Same `(policy_id, version)` already exists in D1 (`PRIMARY KEY`); checked before R2.put so a rejected duplicate does not mutate the published object. Concurrent insert races still map UNIQUE/SQLITE_CONSTRAINT to 409. Other D1 errors → 500 `storage_error`. |
-| 200    | `{ "warnings": ["latency_class_mismatch"] }`  | A published capability's `routingPolicyRef` is `routing/{policy_id}@v{policy_version}`, but no target `latency_class` equals that capability's `Routing.latencyClass`                                                       |
-| 200    | `{ "warnings": ["unreferenced_policy"] }`     | No published capability manifest references `routing/{policy_id}@v{policy_version}` — the typical symptom of a typo'd identity, which would otherwise publish silently                                                     |
-| 200    | `{}`                                          | Identity is well-formed, a published manifest references this policy version, and latency is aligned                                                                                                                       |
+| 200    | `{ "warnings": ["latency_class_mismatch"] }`  | A published capability references this `policy_id` via `routingPolicyRef` (matched by id only), but no target `latency_class` equals that capability's `Routing.latencyClass`                                                       |
+| 200    | `{ "warnings": ["unreferenced_policy"] }`     | No published capability manifest references this `policy_id` — the typical symptom of a typo'd id, which would otherwise publish silently                                                     |
+| 200    | `{}`                                          | Identity is well-formed, a published manifest references this policy id, and latency is aligned                                                                                                                       |
 
 
 `policy_identity_mismatch` is no longer a publish-time outcome — there is nothing to mismatch against. It survives only as the **runtime** check ([§8](#8-routing-failure-paths-post-accept)): the router re-validates document identity against the D1 row on every load, which catches out-of-band R2 overwrites ([§9.3.14](#9314-router-identity-schema-and-catch-all)).
@@ -1014,8 +1048,8 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | `Prompt binding.*` is not routing                                                                                 | [§9.3.20](#9320-what-this-stage-does-not-do)                                                                                                                                              |
 | `Output.mode` (not `requiredProviderFeatures.structuredOutput`) sets `structured_output_required`                 | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.20](#9320-what-this-stage-does-not-do)                                                                                        |
 | `Output` `outputSchemaRef` / `businessValidationRuleRefs` / `repairPolicy` are not routing                        | [§9.3.20](#9320-what-this-stage-does-not-do)                                                                                                                                              |
-| `Routing.routingPolicyRef` format `routing/{id}@v{n}` selects playbook id `standard`                              | [§9.3.12](#9312-manifest-link-and-independent-switches), [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                             |
-| D1 status (active/canary), not the `@vN` suffix, picks which version is served                                    | [§9.3.9](#939-canary-success-and-serving-split), [§9.3.10](#9310-promote-to-active)                                                                                                       |
+| `Routing.routingPolicyRef` format `routing/{id}` names playbook id only (e.g. `standard`)                              | [§9.3.12](#9312-manifest-link-and-independent-switches), [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                             |
+| D1 status (active/canary), not any legacy `@vN` suffix in the ref, picks which version is served                                    | [§9.3.9](#939-canary-success-and-serving-split), [§9.3.10](#9310-promote-to-active)                                                                                                       |
 | `Routing.requiredProviderFeatures.contextWindow` → `min_context_window` floor                                     | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.16](#9316-match-clauses-and-requirement-floors)                                                                               |
 | `Routing.requiredProviderFeatures.language` → `requirements.languages`                                            | [§9.3.15](#9315-routingdecision-on-a-routed-request)                                                                                                                                      |
 | `Routing.latencyClass` → `match.latency_classes` and target `features.latency_class`                              | [§9.3.15](#9315-routingdecision-on-a-routed-request), [§9.3.18](#9318-target-exclusions-and-empty-chain)                                                                                  |
@@ -1083,7 +1117,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Invalid JSON body → 400 `invalid_json`                                                                            | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
 | Publish URL carries no identity; document is the only source of `policy_id` / `policy_version`                    | [§9.3.3](#933-publish-failure-paths), [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                 |
 | Missing/malformed document identity → 400 `invalid_policy_identity`; no R2.put / no D1 insert                     | [§9.3.3](#933-publish-failure-paths)                                                                                                                                                      |
-| Publish of an identity no capability references → 200 `{ "warnings": ["unreferenced_policy"] }`                   | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
+| Publish of a policy id no capability references → 200 `{ "warnings": ["unreferenced_policy"] }`                   | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
 | First publish: D1 existence check, then R2.put, then D1 INSERT `status=published`                                 | [§9.3.4](#934-first-publish-and-storage-inspection)                                                                                                                                       |
 | First publish 200 `{}` when a capability references this version and latency is aligned                           | [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                                                                                    |
 | First publish 200 `{ "warnings": ["latency_class_mismatch"] }` when no target latency matches visit-summary       | [§9.3.6](#936-latency-warning-and-unreferenced-policy)                                                                                                                                    |
@@ -1344,7 +1378,7 @@ EOF
 publish /tmp/rp-probe-v1.json
 ```
 
-**Expect:** HTTP **200** and body `{ "warnings": ["unreferenced_policy"] }`. No published capability has `routingPolicyRef: "routing/probe@v1"` — the publish succeeds (identity is well-formed) but the warning flags that nothing references this identity, the typical symptom of a typo'd `policy_id`.
+**Expect:** HTTP **200** and body `{ "warnings": ["unreferenced_policy"] }`. No published capability has `routingPolicyRef: "routing/probe"` — the publish succeeds (identity is well-formed) but the warning flags that nothing references this policy id, the typical symptom of a typo'd `policy_id`.
 
 **Do:** inspect R2 (every written field) and D1 (every column):
 
@@ -1406,7 +1440,7 @@ d1 "SELECT COUNT(*) AS n FROM control_audit WHERE action='routing_policy_publish
 
 #### 9.3.6 Latency warning and unreferenced policy
 
-Visit summary’s bundled ref is `routing/standard@v1` with `latencyClass: "standard"`. Publishing `standard@1` with only `"interactive"` targets must warn; publishing a copy of the checked-in fixture (catch-all, `latency_class: "standard"`, `overrides: []`) must not.
+Visit summary’s bundled ref is `routing/standard` with `latencyClass: "standard"`. Publishing `standard@1` with only `"interactive"` targets must warn; publishing a copy of the checked-in fixture (catch-all, `latency_class: "standard"`, `overrides: []`) must not.
 
 **Do:** mismatched `standard@1`, then replace it (delete is allowed on a throwaway DB; publish itself cannot overwrite):
 
@@ -1424,7 +1458,7 @@ PY
 publish /tmp/rp-standard-mismatch.json
 ```
 
-**Expect:** HTTP **200** `{ "warnings": ["latency_class_mismatch"] }`. Visit summary references `routing/standard@v1`, so no `unreferenced_policy` warning — but no target `latency_class` equals its `"standard"`.
+**Expect:** HTTP **200** `{ "warnings": ["latency_class_mismatch"] }`. Visit summary references `routing/standard` (policy id `standard`), so no `unreferenced_policy` warning — but no target `latency_class` equals its `"standard"`.
 
 **Do:** delete that version and publish the aligned production shape (on-disk directory `platform-default` is historical; identity is `standard` / `1`):
 
@@ -1572,7 +1606,7 @@ d1 "SELECT version, status, canary_installation_ids FROM routing_policy
     WHERE policy_id='standard' ORDER BY version"
 ```
 
-**Expect:** publish 200, canary 200 `{}`. v2 `status=canary`, `canary_installation_ids` is the JSON array `[I0]` (string ids). `cohort_name` is accepted and **not** stored — there is no such column. v1 remains `published` (still not globally served).
+**Expect:** publish HTTP **200** with body `{}` — no `unreferenced_policy` warning even though the manifest ref is id-only (`routing/standard`); canary **200** `{}`. v2 `status=canary`, `canary_installation_ids` is the JSON array `[I0]` (string ids). `cohort_name` is accepted and **not** stored — there is no such column. v1 remains `published` (still not globally served).
 
 v2 is not globally active yet, so a non-cohort installation has **no** active row. Promote v1 first so others have a fallback, then keep v2 as canary:
 
@@ -1596,7 +1630,7 @@ Promote of v1 supersedes other canary/active on this `policy_id`, so the second 
 
 **Expect:** `routing_decision.policy_version = 2`, `chain[0].provider_id = "gemini"` (canary document). `rule_id = "canary-gemini-first"`.
 
-If you can mint an AAT for **I1** and invoke: `policy_version = 1`, `chain[0].provider_id = "deepseek"`. D1 picks **which version**; the bundled ref stays `routing/standard@v1` on both.
+If you can mint an AAT for **I1** and invoke: `policy_version = 1`, `chain[0].provider_id = "deepseek"`. D1 picks **which version**; the bundled ref stays `routing/standard` on both.
 
 #### 9.3.10 Promote to active
 
@@ -1624,7 +1658,7 @@ echo; cat /tmp/rp-http-body.json; echo
 
 **Expect:** promote 200 `{}`. v2 `status=active`, `canary_installation_ids` NULL. v1 `status=superseded`, canary ids NULL. Audit `after_pointer=standard@2`, `before_pointer=standard@1`. Canary on already-active v2 → **409** `{ "error": "illegal_policy_transition" }`.
 
-Wait 31 s, `invoke after-promote-v2`. **Expect:** `policy_version = 2` for **I0** even though the manifest ref is still `@v1`. Manifest picks the playbook **id**; D1 active/canary picks the **version**.
+Wait 31 s, `invoke after-promote-v2`. **Expect:** `policy_version = 2` for **I0**. Manifest picks the playbook **id** (`routing/standard`); D1 `active`/`canary` picks the **version**.
 
 #### 9.3.11 Rollback and version tie-break
 
@@ -1724,7 +1758,7 @@ Wait 31 s.
 python3 - <<'PY'
 import json
 m=json.load(open("manifests/published/clinic.visit_summary@1.0.0.json"))
-assert m["Routing"]["routingPolicyRef"]=="routing/standard@v1"
+assert m["Routing"]["routingPolicyRef"]=="routing/standard"
 assert m["Routing"]["latencyClass"]=="standard"
 assert m["Routing"]["requiredProviderFeatures"]["language"]=="en"
 assert m["Routing"]["requiredProviderFeatures"]["contextWindow"]==32000
@@ -1739,7 +1773,7 @@ d1 "SELECT status, request_quota, allowed_capabilities FROM entitlement
 d1 "SELECT installation_id, status FROM installation WHERE installation_id = '$INSTALLATION_ID'"
 ```
 
-**Expect:** checked-in JSON has the ten groups and `routingPolicyRef` `routing/standard@v1` (`standard`, `1`). No D1 pointer names the manifest file. Entitlement still `active` with the quotas you set in Stage 4 — publish/canary/promote/rollback did not rewrite it. `installation.status` unchanged.
+**Expect:** checked-in JSON has the ten groups and `routingPolicyRef` `routing/standard` (playbook id `standard` only — no version in the ref). No D1 pointer names the manifest file. Entitlement still `active` with the quotas you set in Stage 4 — publish/canary/promote/rollback did not rewrite it. `installation.status` unchanged.
 
 **Do:** `r2get "control/pricing/platform-default/1.json" /tmp/price.json` (may miss locally unless you uploaded it).
 
