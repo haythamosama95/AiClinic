@@ -374,9 +374,9 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-026 |
 | Journey setup | Baseline B0. As `postgres`: `DELETE FROM ai_internal.app_settings WHERE key IN ('ai.aat.lifetime_minutes','ai.aat.audience','ai.aat.ver','ai.issuer.rate_limit.ceiling','ai.issuer.rate_limit.window_seconds');` — [SEED]: no RPC manages these rows; simulates a lost-settings restore. Inject claims for DOC-AUTH. |
 | Action | `SELECT public.issue_ai_token();` |
-| Expected outcome | Compact JWS with `aud = "ai-platform"`, `ver = "1"`, `exp − iat = 900` — the `COALESCE(..., p_default)` in `ai_app_setting_*` supplies 15 / `ai-platform` / `1` / 100 / 3600. Same fallback when rows exist with `is_deleted = true`. Re-run the seed INSERT afterwards to restore. |
+| Expected outcome | Compact JWS with `aud = "ai-platform"`, `ver = "1"`, `exp − iat = 600` — the `COALESCE(..., p_default)` in `ai_app_setting_*` supplies 10 / `ai-platform` / `1` / 100 / 3600. Same fallback when rows exist with `is_deleted = true`. Re-run the seed INSERT afterwards to restore. |
 | Side effects | One issuance row for DOC. |
-| Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L31-L71 — settings readers with defaults; backend/supabase/migrations/20260801120000_ai_keystore_schema.sql:L38-L46 — seed values` |
+| Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L31-L71 — settings readers with defaults; backend/supabase/migrations/20260905120300_fix_aat_lifetime_fallback.sql — lifetime fallback 10 min (600 s platform ceiling); backend/supabase/migrations/20260801120000_ai_keystore_schema.sql:L38-L46 — seed values` |
 
 ## Scenario S06-027 — After additive rotation the new kid signs and old tokens still verify
 
@@ -624,11 +624,13 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
    `CANNOT_REVOKE_LAST_ACTIVE_KEY` — the zero-active keystore must instead be reached by a `[SEED]` direct
    `UPDATE ... SET revoked_at` on the key row; and S06-029's recovery re-enroll is valid only from a
    zero-active keystore (with an active key present, enroll fails `ALREADY_ENROLLED` — matching S02-012/S02-022).
-2. **Seed default lifetime aligned with platform ceiling (C-03).** Migration
+2. **~~Seed default and missing-settings fallback lifetime aligned with platform ceiling~~ — Fixed (C-03).** Migration
    `20260905120000_fix_aat_lifetime_minutes_seed.sql` sets `ai.aat.lifetime_minutes = 10`
-   (→ `exp − iat = 600`), matching `MAX_AAT_LIFETIME_SECONDS`. Default-configured clinics mint
-   platform-compatible tokens (S06-043). The contract (§4, T12) caps `exp − iat` at the configured
-   lifetime; operators must still keep `lifetime_minutes ≤ 10` if they override the seed.
+   (→ `exp − iat = 600`), matching `MAX_AAT_LIFETIME_SECONDS`; migration
+   `20260905120300_fix_aat_lifetime_fallback.sql` changes the issuer's missing-settings fallback from 15 to 10 minutes.
+   Default-configured clinics and clinics with a lost settings row mint platform-compatible tokens (S06-026, S06-043).
+   The contract (§4, T12) caps `exp − iat` at the configured lifetime; operators must still keep
+   `lifetime_minutes ≤ 10` if they override the seed.
 3. **~~Stage-6 doc §5 error table is incomplete~~ — Fixed (D-24).** Catalog §1.1 documents all seven contract codes including `UNAUTHENTICATED`, `SESSION_EXPIRED`, and `STAFF_NOT_FOUND` (scenarios S06-002…S06-004).
 4. **~~Stage-6 doc calls the bootstrap admin "Owner"~~ — Fixed (D-24).** Catalog persona **BOOT** is `role = 'administrator'` with `is_bootstrap_admin = true` (the `owner` role was removed in `20260611150000`).
 5. **~~Doc omits the branch tie-break~~ — Fixed (D-24).** Documented in §1.2 and S06-024: `ORDER BY sba.is_primary DESC, b.name` — alphabetical branch-name fallback when no assignment is primary.
