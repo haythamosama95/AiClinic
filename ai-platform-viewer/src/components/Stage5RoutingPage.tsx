@@ -13,7 +13,7 @@ export function Stage5RoutingPage() {
             <div>
               <dt>routingPolicyRef</dt>
               <dd>
-                <code>routing/standard@v1</code>
+                <code>routing/standard</code>
               </dd>
             </div>
             <div>

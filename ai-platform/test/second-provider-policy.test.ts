@@ -109,12 +109,12 @@ function loadVisitSummaryManifest(): VisitSummaryManifest {
   return JSON.parse(raw) as VisitSummaryManifest;
 }
 
-function parseRoutingPolicyRef(ref: string): { policyId: string; version: number } {
-  const match = /^routing\/([^/]+)@v(\d+)$/.exec(ref);
+function parseRoutingPolicyRef(ref: string): { policyId: string } {
+  const match = /^routing\/([^/]+)(?:@v\d+)?$/.exec(ref);
   if (!match) {
     throw new Error(`unparseable routingPolicyRef: ${ref}`);
   }
-  return { policyId: match[1], version: Number(match[2]) };
+  return { policyId: match[1] };
 }
 
 function preloadPolicyCache(
@@ -305,7 +305,6 @@ describe("checked-in fixture vs published visit-summary", () => {
     const parsed = parseRoutingPolicyRef(manifest.Routing.routingPolicyRef);
 
     expect(document.policy_id).toBe(parsed.policyId);
-    expect(document.policy_version).toBe(parsed.version);
 
     const targets = document.rules.flatMap((rule) => rule.targets);
     expect(targets.length).toBeGreaterThan(0);

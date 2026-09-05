@@ -707,7 +707,7 @@ curl -sS -D - -X POST \
 d1 "SELECT version, status, canary_installation_ids FROM routing_policy ORDER BY active_from DESC, rowid DESC;"
 ```
 
-**Expect:** `version = 1`, `status = active`, `canary_installation_ids` NULL. Preload uses cache key `{policyRef}/{installationId}` (`routing/standard@v1/<I0>`): canary-then-active.
+**Expect:** `version = 1`, `status = active`, `canary_installation_ids` NULL. Preload uses cache key `{policyRef}/{installationId}` (`routing/standard/<I0>`): canary-then-active.
 
 **Do:** publish version 2, then promote it:
 

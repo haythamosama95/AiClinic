@@ -223,7 +223,7 @@ Versioned registry of routing policies. The **policy document** (rules, target c
 
 | Column                    | Type | Nullable | Meaning                                                                                 |
 | ------------------------- | ---- | -------- | --------------------------------------------------------------------------------------- |
-| `policy_id`               | TEXT | NOT NULL | Composite PK with `version`; e.g. `standard` from ref `routing/standard@v1`             |
+| `policy_id`               | TEXT | NOT NULL | Composite PK with `version`; e.g. `standard` from manifest ref `routing/standard` (policy id only)             |
 | `version`                 | TEXT | NOT NULL | Policy version string                                                                   |
 | `content_pointer`         | TEXT | NOT NULL | R2 key → `control/routing-policy/{policy_id}/{version}.json`                            |
 | `active_from`             | TEXT | NOT NULL | When this version was published/activated                                               |
@@ -232,7 +232,7 @@ Versioned registry of routing policies. The **policy document** (rules, target c
 | `status`                  | TEXT | NOT NULL | `published` (stored, not serving), `canary` (cohort only), or `active` (global default) |
 
 
-**In plain terms:** When visit summary runs, the manifest points at `routing/standard@v1`. D1 holds the **catalog card**; R2 holds the **recipe** (which provider, which model, retries, fallbacks).
+**In plain terms:** When visit summary runs, the manifest points at `routing/standard` (playbook id `standard`). D1 holds the **catalog card**; R2 holds the **recipe** (which provider, which model, retries, fallbacks).
 
 **What the R2 recipe dictates:**
 
@@ -544,7 +544,7 @@ Only two object families are written by the platform today.
 | **Read by**      | Config cache on router preload; kill-switch evaluation uses provider ids from the loaded document                                                                 |
 
 
-Example key: `control/routing-policy/standard/1.json` for manifest ref `routing/standard@v1`.
+Example key: `control/routing-policy/standard/1.json` for playbook id `standard` (`routing/standard` in the manifest).
 
 **In plain terms:** The full routing recipe JSON. D1 `routing_policy` is the index card pointing here.
 

@@ -27,7 +27,7 @@ const FIXTURE_CAPABILITY_ID = "clinic.reader";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
 const FIXTURE_KEY_ID = "kid-reader-001";
 const FIXTURE_NOW = "2026-07-31T12:00:00.000Z";
-const FIXTURE_ROUTING_POLICY_REF = "routing/standard@v1";
+const FIXTURE_ROUTING_POLICY_REF = "routing/standard";
 const FIXTURE_TOKEN_VER = "1";
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
@@ -364,5 +364,75 @@ describe("T14 config_reader_miss_typed_failure_not_silent_admit", () => {
     await expect(
       loadConfig(cache, reader, "installations", "missing-installation"),
     ).rejects.toBeInstanceOf(ConfigCacheMissError);
+  });
+});
+
+const CANARY_COHORT_INSTALLATION = "inst-parse-canary";
+const CANARY_OTHER_INSTALLATION = "inst-parse-other";
+
+async function seedCanaryRoutingPolicies(): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO routing_policy (
+        policy_id, version, content_pointer, active_from, activated_by, status
+      ) VALUES ('standard', '1', 'control/routing-policy/standard/1.json', ?, 'operator-test', 'active')`,
+    ).bind(FIXTURE_NOW),
+    env.DB.prepare(
+      `INSERT INTO routing_policy (
+        policy_id, version, content_pointer, active_from, activated_by,
+        canary_installation_ids, status
+      ) VALUES ('standard', '2', 'control/routing-policy/standard/2.json', ?, 'operator-test', ?, 'canary')`,
+    ).bind(FIXTURE_NOW, JSON.stringify([CANARY_COHORT_INSTALLATION])),
+  ]);
+}
+
+describe("active_routing_policy cache key parsing", () => {
+  it("resolves all four accepted key shapes for bare ref, legacy @v suffix, and installation suffix", async () => {
+    await seedCanaryRoutingPolicies();
+
+    const cache = new ConfigCache();
+    const reader = createD1ConfigReader(env.DB);
+
+    const bareActive = await loadConfig(
+      cache,
+      reader,
+      "active_routing_policy",
+      "routing/standard",
+    );
+    expect(bareActive.version).toBe("1");
+    expect(bareActive.policy_id).toBe("standard");
+
+    const legacyBareActive = await loadConfig(
+      cache,
+      reader,
+      "active_routing_policy",
+      "routing/standard@v1",
+    );
+    expect(legacyBareActive.version).toBe("1");
+
+    const bareCanary = await loadConfig(
+      cache,
+      reader,
+      "active_routing_policy",
+      `routing/standard/${CANARY_COHORT_INSTALLATION}`,
+    );
+    expect(bareCanary.version).toBe("2");
+    expect(bareCanary.status).toBe("canary");
+
+    const legacyCanary = await loadConfig(
+      cache,
+      reader,
+      "active_routing_policy",
+      `routing/standard@v1/${CANARY_COHORT_INSTALLATION}`,
+    );
+    expect(legacyCanary.version).toBe("2");
+
+    const otherInstallation = await loadConfig(
+      cache,
+      reader,
+      "active_routing_policy",
+      `routing/standard/${CANARY_OTHER_INSTALLATION}`,
+    );
+    expect(otherInstallation.version).toBe("1");
   });
 });

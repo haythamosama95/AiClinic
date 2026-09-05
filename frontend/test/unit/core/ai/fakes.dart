@@ -346,7 +346,7 @@ Map<String, Object?> sampleActiveManifest({
         'repairPolicy': {'allowed': false, 'maxAttempts': 0},
       },
       'Routing': {
-        'routingPolicyRef': 'routing/standard@v1',
+        'routingPolicyRef': 'routing/standard',
         'requiredProviderFeatures': {
           'structuredOutput': false,
           'contextWindow': 32000,

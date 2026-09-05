@@ -118,7 +118,7 @@ export const STAGE10_OPERATIONS: JourneyOperationDefinition[] = [
     auth: 'operator',
     bodyKind: 'json',
     summary:
-      'Loads routing policy into R2 and inserts a published D1 row. Identity from document.policy_id and document.policy_version. Visit summary manifest references routing/standard@v1 — config-cache serves the active row for policy_id=standard. Edit document to change targets.',
+      'Loads routing policy into R2 and inserts a published D1 row. Identity from document.policy_id and document.policy_version. Visit summary manifest references routing/standard — config-cache serves the active row for policy_id=standard. Edit document to change targets.',
     successNote:
       '200 — {} or warnings. Policy published to control/routing-policy/standard/91.json (from document). Follow with promote to set status=active.',
     failures: [

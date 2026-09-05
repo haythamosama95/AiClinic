@@ -30,7 +30,7 @@ const GATEWAY_ORIGIN = "https://ai-gateway.test";
 const COHORT_INSTALLATION_ID = "inst-j3-routing-cohort";
 const OTHER_INSTALLATION_ID = "inst-j3-routing-other";
 const FIXTURE_POLICY_ID = "standard";
-const FIXTURE_POLICY_REF = "routing/standard@v1";
+const FIXTURE_POLICY_REF = "routing/standard";
 const FIXTURE_VERSION_V1 = "1";
 const FIXTURE_VERSION_V2 = "2";
 const FIXTURE_CAPABILITY_ID = "clinic.j3";
@@ -1345,6 +1345,180 @@ describe("routing_policy_publish_document_validation", () => {
       warnings?: string[];
     };
     expect(alignedBody.warnings ?? []).not.toContain("latency_class_mismatch");
+  });
+
+  it("does not warn unreferenced_policy when publishing a later version of a manifest-referenced policy", async () => {
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const { handleRoutingPolicyPublish } = await loadRoutingControlHandlers();
+
+    const alignedV2 = policyDocument(2, "gemini");
+    const alignedTargets = (
+      alignedV2.rules as Array<{
+        targets: Array<{ features: { latency_class: string } }>;
+      }>
+    )[0].targets;
+    for (const target of alignedTargets) {
+      target.features.latency_class = "standard";
+    }
+
+    const response = await handleRoutingPolicyPublish(
+      buildPublishRequest(alignedV2),
+      bindings,
+      operatorAuth,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { warnings?: string[] };
+    expect(body.warnings ?? []).not.toContain("unreferenced_policy");
+  });
+});
+
+describe("routing_policy_ref_format", () => {
+  const LEGACY_POLICY_REF = "routing/standard@v1";
+
+  async function routeWithPolicyRef(
+    installationId: string,
+    policyRef: string,
+    cache: ConfigCache,
+    reader: D1Reader,
+  ): Promise<ReturnType<typeof selectCandidateChain>> {
+    await preloadRoutingPolicyForInstallation(
+      cache,
+      reader,
+      policyRef,
+      installationId,
+    );
+    return selectCandidateChain({
+      cache,
+      policyCacheKey: policyRef,
+      context: {
+        installationId,
+        capabilityId: FIXTURE_CAPABILITY_ID,
+        routingTier: "standard",
+        requirements: {
+          structured_output_required: false,
+          min_context_window: 0,
+          languages: ["en"],
+          latency_class: "interactive",
+        },
+        manifestCostClass: "standard",
+        entitlementMaxCostClass: "premium",
+      },
+    });
+  }
+
+  it("bare-ref canary routing serves canary document to cohort installation", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyCanary,
+      handleRoutingPolicyPromote,
+    } = await loadRoutingControlHandlers();
+
+    await publishAndPromoteV1(
+      { handleRoutingPolicyPublish, handleRoutingPolicyPromote },
+      bindings,
+      operatorAuth,
+    );
+    expect(
+      (
+        await handleRoutingPolicyPublish(
+          buildPublishRequest(policyDocument(2, "gemini")),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await handleRoutingPolicyCanary(
+          buildCanaryRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const cache = new ConfigCache();
+    const reader = createD1ConfigReader(env.DB, env.R2);
+
+    const cohortOutcome = await routeWithPolicyRef(
+      COHORT_INSTALLATION_ID,
+      FIXTURE_POLICY_REF,
+      cache,
+      reader,
+    );
+    expect(cohortOutcome.routing_decision.policy_version).toBe(2);
+    expect(cohortOutcome.routing_decision.chain[0]?.provider_id).toBe("gemini");
+
+    const otherOutcome = await routeWithPolicyRef(
+      OTHER_INSTALLATION_ID,
+      FIXTURE_POLICY_REF,
+      cache,
+      reader,
+    );
+    expect(otherOutcome.routing_decision.policy_version).toBe(1);
+    expect(otherOutcome.routing_decision.chain[0]?.provider_id).toBe("deepseek");
+  });
+
+  it("legacy @v suffix ref resolves identically for canary and active lookups", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallation(env.DB, OTHER_INSTALLATION_ID);
+
+    const operatorAuth = createFakeOperatorAuth();
+    const bindings = { DB: env.DB, R2: env.R2 };
+    const {
+      handleRoutingPolicyPublish,
+      handleRoutingPolicyCanary,
+      handleRoutingPolicyPromote,
+    } = await loadRoutingControlHandlers();
+
+    await publishAndPromoteV1(
+      { handleRoutingPolicyPublish, handleRoutingPolicyPromote },
+      bindings,
+      operatorAuth,
+    );
+    expect(
+      (
+        await handleRoutingPolicyPublish(
+          buildPublishRequest(policyDocument(2, "gemini")),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await handleRoutingPolicyCanary(
+          buildCanaryRequest(FIXTURE_VERSION_V2, [COHORT_INSTALLATION_ID]),
+          bindings,
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const cache = new ConfigCache();
+    const reader = createD1ConfigReader(env.DB, env.R2);
+
+    const legacyCohort = await routeWithPolicyRef(
+      COHORT_INSTALLATION_ID,
+      LEGACY_POLICY_REF,
+      cache,
+      reader,
+    );
+    expect(legacyCohort.routing_decision.policy_version).toBe(2);
+
+    const legacyOther = await routeWithPolicyRef(
+      OTHER_INSTALLATION_ID,
+      LEGACY_POLICY_REF,
+      cache,
+      reader,
+    );
+    expect(legacyOther.routing_decision.policy_version).toBe(1);
   });
 });
 

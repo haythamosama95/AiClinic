@@ -83,7 +83,7 @@ Guard failures (stages 1–10) never open SSE: HTTP JSON, `Content-Type: applica
 ### 1.1 Setup
 
 - Local Worker (`cd ai-platform && npm run dev`) at `http://127.0.0.1:8787`. D1 migrations applied (`--local --env development`). `OPERATOR_BEARER_TOKEN` for `/control/*`.
-- Clinic already enrolled and entitled for `clinic.visit_summary@1.0.0` with `entitlement.status = active`, plan at least `standard` (Worker preAccept hardcodes `minimumPlanTier: "standard"`), `request_quota` > 0, and an active/canary routing policy for `routing/standard@v1`.
+- Clinic already enrolled and entitled for `clinic.visit_summary@1.0.0` with `entitlement.status = active`, plan at least `standard` (Worker preAccept hardcodes `minimumPlanTier: "standard"`), `request_quota` > 0, and an active/canary routing policy for playbook id `standard` (`routing/standard`).
 - One AAT from `public.issue_ai_token()`. Decode payload `org`, `branch`, `role`, `scopes`, `iss` (installation id). Visit summary `Access.allowedStaffRoles` is `["clinician", "nurse"]` and `requiredCapabilityScope` is `ai.visit_summary`. A `doctor` / `administrator` token is a ready-made [§1.3.4](#134-forbidden_capability) failure. Probes that must **pass** stage 5 need an AAT whose `role` is `clinician` or `nurse` and whose `scopes` include `ai.visit_summary`.
 - `jq`, `uuidgen`, `npx wrangler`. After D1 writes, wait **30 s** (config-cache TTL) or restart the Worker isolate.
 - Restore mutating probes (suspend, quota 0, kill switch, retired overlay) before continuing, or re-run [§1.3.1](#131-reset-to-a-known-invoke-ready-state).

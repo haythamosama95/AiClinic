@@ -34,17 +34,15 @@ const PUBLISHED_CAPABILITY_MANIFESTS: readonly PublishedCapabilityManifest[] = [
   visitSummaryPublished,
 ];
 
-function parseRoutingPolicyRef(
-  ref: unknown,
-): { policyId: string; version: string } | null {
+function parseRoutingPolicyRef(ref: unknown): { policyId: string } | null {
   if (typeof ref !== "string") {
     return null;
   }
-  const match = /^routing\/([^/]+)@v(\d+)$/.exec(ref);
+  const match = /^routing\/([^/]+)(?:@v\d+)?$/.exec(ref);
   if (!match) {
     return null;
   }
-  return { policyId: match[1], version: match[2] };
+  return { policyId: match[1] };
 }
 
 function collectTargetLatencyClasses(
@@ -91,15 +89,10 @@ function isUniqueConstraint(err: unknown): boolean {
 function latencyMismatchWarnings(
   document: Record<string, unknown>,
   policyId: string,
-  version: string,
 ): string[] {
   const referenced = PUBLISHED_CAPABILITY_MANIFESTS.filter((manifest) => {
     const parsed = parseRoutingPolicyRef(manifest.Routing?.routingPolicyRef);
-    return (
-      parsed !== null &&
-      parsed.policyId === policyId &&
-      parsed.version === version
-    );
+    return parsed !== null && parsed.policyId === policyId;
   });
   if (referenced.length === 0) {
     return ["unreferenced_policy"];
@@ -243,7 +236,7 @@ export async function handleRoutingPolicyPublish(
     return reject(500, "storage_error");
   }
 
-  const warnings = latencyMismatchWarnings(document, policyId, version);
+  const warnings = latencyMismatchWarnings(document, policyId);
   return warnings.length > 0 ? ok({ warnings }) : ok();
 }
 

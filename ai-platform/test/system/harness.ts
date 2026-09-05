@@ -101,7 +101,7 @@ export const CAPABILITY_ID = "clinic.visit_summary";
 export const CAPABILITY_VERSION = "1.0.0";
 export const POLICY_ID = "standard";
 export const POLICY_VERSION = "1";
-export const POLICY_REF = "routing/standard@v1";
+export const POLICY_REF = "routing/standard";
 
 export const PLATFORM_TABLES = [
   "installation",

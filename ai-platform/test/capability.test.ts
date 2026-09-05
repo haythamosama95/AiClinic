@@ -64,7 +64,7 @@ const FIXTURE_DEPRECATED_CAPABILITY_ID = "clinic.deprecated";
 const FIXTURE_RETIRED_CAPABILITY_ID = "clinic.retired";
 const FIXTURE_UNGRANTED_CAPABILITY_ID = "clinic.ungranted";
 const FIXTURE_GATED_CAPABILITY_ID = "clinic.gated";
-const FIXTURE_ROUTING_POLICY_REF = "routing/standard@v1";
+const FIXTURE_ROUTING_POLICY_REF = "routing/standard";
 
 function quotedEtag(raw: string): string {
   return `"${raw}"`;

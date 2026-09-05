@@ -8,7 +8,7 @@ export const STAGE5_META: JourneyStageMeta = {
   eyebrow: 'Stage 5 · Routing policy',
   title: 'Air traffic control playbook',
   lede:
-    'Publish routing policy documents to R2 with a D1 index row, then canary, promote, or rollback lifecycle. The manifest routingPolicyRef (routing/standard@v1) resolves through D1 to the R2 playbook that selects provider/model chains at invoke time.',
+    'Publish routing policy documents to R2 with a D1 index row, then canary, promote, or rollback lifecycle. The manifest routingPolicyRef (routing/standard) names the playbook id only — D1 active/canary status picks the served version, which resolves to the R2 playbook that selects provider/model chains at invoke time.',
   accentClass: 'stage-accent--routing',
   cardClass: 'operation-card--routing',
   buttonClass: 'routing-button',

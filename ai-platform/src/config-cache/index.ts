@@ -331,9 +331,16 @@ export function createD1ConfigReader(
           return row ?? "miss";
         }
         case "active_routing_policy": {
-          const withInstall = key.match(/^(.+@v\d+)\/(.+)$/);
-          const policyRef = withInstall ? withInstall[1] : key;
-          const installationId = withInstall ? withInstall[2] : undefined;
+          // Accepted cache key shapes (policy id never contains `/`):
+          //   routing/{policyId}
+          //   routing/{policyId}@v{N}          (legacy — @v suffix ignored at resolve)
+          //   routing/{policyId}/{installationId}
+          //   routing/{policyId}@v{N}/{installationId}
+          const keyMatch = key.match(
+            /^(routing\/[^/@]+(?:@v\d+)?)(?:\/(.+))?$/,
+          );
+          const policyRef = keyMatch?.[1] ?? key;
+          const installationId = keyMatch?.[2];
           const policyId = policyRef
             .replace(/^routing\//, "")
             .replace(/@v\d+$/, "");

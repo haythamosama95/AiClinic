@@ -802,7 +802,7 @@ Do **not** re-run the Stage 9 matrix. Only the boundary this document asserts.
 
 #### 19.3.4 Publish and promote a fake-provider policy
 
-Manifest `Routing.routingPolicyRef` is `routing/standard@v1`. Config-cache strips `@v1` and serves the **active** (or matching **canary**) row for `policy_id = standard`, so a later version is fine.
+Manifest `Routing.routingPolicyRef` is `routing/standard`. Config-cache resolves policy id `standard` and serves the **active** (or matching **canary**) row; legacy `@vN` suffixes in older refs are stripped, so a later version is fine.
 
 **Do:** publish version `91` (or any unused version), then promote. `max_parallel_attempts: 99` is deliberate — invocation must ignore it.
 

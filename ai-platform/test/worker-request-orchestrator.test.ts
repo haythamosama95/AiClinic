@@ -102,7 +102,7 @@ const FIXTURE_ORG_ID = "org-i1-orchestrator";
 const FIXTURE_CAPABILITY_ID = "clinic.visit_summary";
 const FIXTURE_CAPABILITY_VERSION = "1.0.0";
 const FIXTURE_POLICY_ID = "standard";
-const FIXTURE_POLICY_REF = "routing/standard@v1";
+const FIXTURE_POLICY_REF = "routing/standard";
 const FIXTURE_NOW = "2026-07-31T12:00:00.000Z";
 function fixtureNowSeconds(): number {
   return Math.floor(Date.now() / 1000);

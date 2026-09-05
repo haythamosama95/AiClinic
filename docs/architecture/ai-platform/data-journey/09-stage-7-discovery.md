@@ -111,7 +111,7 @@ Each `manifests[]` element is the published §5.1 capability bundle (ten field g
 | | `businessValidationRuleRefs` | string[] | `[]` |
 | | `repairPolicy.allowed` | boolean | `false` |
 | | `repairPolicy.maxAttempts` | number | `0` |
-| **Routing** | `routingPolicyRef` | policy ref | `routing/standard@v1` |
+| **Routing** | `routingPolicyRef` | policy ref | `routing/standard` |
 | | `requiredProviderFeatures.structuredOutput` | boolean | `false` |
 | | `requiredProviderFeatures.contextWindow` | number | `32000` |
 | | `requiredProviderFeatures.language` | string | `en` |
@@ -375,7 +375,7 @@ jq '.manifests[0]' /tmp/discovery.json
 - `Context requirements[0].key = "visit.chief_complaint@v1"` (required, `maxSize` 4096)
 - `Prompt binding.systemInstructionArtifactRef = "clinic.visit_summary/system@v1"`
 - `Output.mode = "prose"`
-- `Routing.routingPolicyRef = "routing/standard@v1"`
+- `Routing.routingPolicyRef = "routing/standard"`
 - `Economics.perRequestTokenCeiling = 9024`
 - `Governance.acceptanceMode = "advisory_display"`
 

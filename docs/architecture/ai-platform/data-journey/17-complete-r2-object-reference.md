@@ -332,7 +332,7 @@ curl -s -w '\nHTTP %{http_code}\n' -X POST \
   }"
 ```
 
-**Expect:** HTTP 200. (A `warnings: ["latency_class_mismatch"]` array appears only when a published capability’s `routingPolicyRef` is this policy version and no target `latency_class` matches — `clinic.visit_summary` refs `routing/standard@v1`, so this body should be `{}`.)
+**Expect:** HTTP 200. (A `warnings: ["latency_class_mismatch"]` array appears only when a published capability references this policy id and no target `latency_class` matches — `clinic.visit_summary` refs `routing/standard`, so this body should be `{}`.)
 
 **Do:** fetch the object:
 
@@ -541,7 +541,7 @@ npx wrangler d1 execute ai-platform-development --local --env development --comm
 
 #### 3.3.9 Config-cache loads the published document
 
-`verify-r2` is not the visit-summary playbook (`routingPolicyRef` is `routing/standard@v1`). To prove the cache reads R2 on the invoke path, publish a new **standard** version whose catch-all targets `fake` (so local invoke does not need provider secrets), then canary it to **I0**.
+`verify-r2` is not the visit-summary playbook (`routingPolicyRef` is `routing/standard`). To prove the cache reads R2 on the invoke path, publish a new **standard** version whose catch-all targets `fake` (so local invoke does not need provider secrets), then canary it to **I0**.
 
 **Do:** if `standard` version `2` is already published, skip to canary (409 is [§3.3.6](#336-duplicate-publish-does-not-overwrite) again).
 

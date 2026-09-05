@@ -619,7 +619,7 @@ curl -s -X POST "$GATEWAY/control/installations/$INSTALLATION_ID/rotate" \
 
 #### 15.3.6 Routing policy publish, canary, promote, rollback
 
-Visit summary resolves `routing/standard@v1`. Publish **v9** then **v1** then **v10** so lexical TEXT `"9" > "10"` would pick the wrong winner if selection used `version DESC`.
+Visit summary resolves `routing/standard` (playbook id `standard`). Publish **v9** then **v1** then **v10** so lexical TEXT `"9" > "10"` would pick the wrong winner if selection used `version DESC`.
 
 **Do:** `POST /control/routing-policies/publish` three times with `{ "document": { … } }` whose `policy_id` is `"standard"` and `policy_version` is `9`, then `1`, then `10` (the document alone carries the identity). Use a `fake` target (`provider_id` `"fake"`, `latency_class` `"standard"`, `min_context_window` ≥ 32000) so local invoke can complete without vendor keys. Then `POST …/versions/1/canary` with `{"installation_ids":["<I0>"]}`, `POST …/versions/1/promote`, `POST …/versions/10/promote`, `POST …/versions/10/rollback`.
 

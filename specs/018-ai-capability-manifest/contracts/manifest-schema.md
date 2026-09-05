@@ -129,7 +129,7 @@ is slice H1.
 
 | Field key | Contents |
 | --- | --- |
-| `routingPolicyRef` | Reference to a versioned routing policy (independently deployable). |
+| `routingPolicyRef` | Reference to a routing policy playbook by id (`routing/{policy_id}`). The policy is independently deployed and versioned via D1 lifecycle (publish/canary/promote); this ref never pins a version. |
 | `requiredProviderFeatures` | Requirements object (e.g. `structuredOutput`, `contextWindow`, `language`) — never a provider or model name. |
 | `latencyClass` | Latency tier (e.g. `standard`). |
 | `degradedTierPolicy` | Policy when primary targets are unavailable (e.g. `fallback_chain`). |
