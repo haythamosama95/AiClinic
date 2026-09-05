@@ -75,7 +75,10 @@ async function applySql(db: D1Database, sql: string): Promise<void> {
   }
 }
 
-async function seedInstallation(id: string): Promise<void> {
+async function seedInstallation(
+  id: string,
+  status: "active" | "deleted" = "active",
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO installation (installation_id, org_id, display_name, status, region, enrolled_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -84,7 +87,7 @@ async function seedInstallation(id: string): Promise<void> {
       id,
       FIXTURE_ORG,
       `Clinic ${id}`,
-      "active",
+      status,
       "us-east-1",
       FIXTURE_NOW.toISOString(),
     )
@@ -236,7 +239,7 @@ describe("installation_purge_missing_r2_binding", () => {
 
 describe("installation_purge_dispatch_wiring", () => {
   it('routes case "purge" through dispatchControlRequest to the handler', async () => {
-    await seedInstallation(FIXTURE_INSTALLATION_A);
+    await seedInstallation(FIXTURE_INSTALLATION_A, "deleted");
     await seedRequestWithEnvelope("req-purge-wire", FIXTURE_INSTALLATION_A);
 
     const { dispatchControlRequest } = await loadPurgeHandlers();
@@ -266,8 +269,8 @@ describe("installation_purge_dispatch_wiring", () => {
 
 describe("installation_purge_happy_path_target_only", () => {
   it("deletes target installation data only and audits operator_id", async () => {
-    await seedInstallation(FIXTURE_INSTALLATION_A);
-    await seedInstallation(FIXTURE_INSTALLATION_B);
+    await seedInstallation(FIXTURE_INSTALLATION_A, "deleted");
+    await seedInstallation(FIXTURE_INSTALLATION_B, "deleted");
     await seedRequestWithEnvelope("req-purge-a", FIXTURE_INSTALLATION_A);
     await seedRequestWithEnvelope("req-purge-b", FIXTURE_INSTALLATION_B);
 

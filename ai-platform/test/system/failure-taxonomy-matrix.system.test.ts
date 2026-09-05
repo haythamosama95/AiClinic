@@ -185,7 +185,7 @@ function assertTaxonomyBody(
     request_reference?: "" | "non-empty";
     trace_id?: "" | "non-empty" | "echo";
     retry_after?: "present" | "absent";
-    missing_keys?: "absent";
+    missing_keys?: "absent" | string[];
   },
   echoedTraceId?: string,
 ): void {
@@ -211,6 +211,8 @@ function assertTaxonomyBody(
   }
   if (expected.missing_keys === "absent") {
     expect(body?.missing_keys).toBeUndefined();
+  } else if (Array.isArray(expected.missing_keys)) {
+    expect(body?.missing_keys).toEqual(expected.missing_keys);
   }
 }
 
@@ -669,7 +671,7 @@ describe("failure taxonomy matrix", () => {
       retry_safe: true,
       request_reference: "non-empty",
       trace_id: "non-empty",
-      missing_keys: "absent",
+      missing_keys: [VISIT_CHIEF_COMPLAINT_V1],
     });
     await assertJournalUnchanged(before);
   });
@@ -1087,7 +1089,7 @@ describe("failure taxonomy matrix", () => {
           retry_safe: true,
           request_reference: "non-empty",
           trace_id: "non-empty",
-          missing_keys: "absent",
+          missing_keys: [VISIT_CHIEF_COMPLAINT_V1],
         });
         continue;
       }

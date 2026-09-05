@@ -158,8 +158,7 @@ describe("quota admission interplay", () => {
     expect(third.body?.code).toBe("quota_exhausted");
     expect(third.body?.retry_safe).toBe(true);
     expect(third.body).not.toHaveProperty("retry_after");
-    // §5 unprobeable register: period_reset is computed in admission but not forwarded on live HTTP.
-    expect(third.body).not.toHaveProperty("period_reset");
+    expect(third.body?.period_reset).toBe("2026-09-01T00:00:00.000Z");
     expect(await count("ai_request")).toBe(2);
   });
 
@@ -340,7 +339,7 @@ describe("quota admission interplay", () => {
       idempotencyKey: failedKey,
     });
     expect(failedReplay.events[1]?.event).toBe("failed");
-    expect(failedReplay.events[1]?.data.code).toBe("internal_error");
+    expect(failedReplay.events[1]?.data.code).toBe("provider_unavailable");
     expect(await count("ai_attempt")).toBe(failedAttemptsBefore);
 
     const cancelledScenario = await newScenario();
