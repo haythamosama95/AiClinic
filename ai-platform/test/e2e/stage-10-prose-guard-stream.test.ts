@@ -15,11 +15,14 @@ import {
   getAiRequest,
   getAttempts,
   getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
+  isolateConfigCache,
   mintAat,
   newScenario,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   POLICY_VERSION,
   postRequest,
   promotePolicy,
@@ -123,11 +126,63 @@ async function setupFresh(options?: {
   return scenario;
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with taxonomy internal_error instead of the expected stream). Raise TTL
+ * and re-stamp the serving policy immediately before POST so the
+ * post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, policyVersion);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+async function loadActiveServingPolicyRow(): Promise<Record<string, unknown>> {
+  const active = await queryOne<{ version: string }>(
+    `SELECT version FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+    [POLICY_ID],
+  );
+  expect(active?.version).toBeTruthy();
+  return loadServingPolicyRow(String(active!.version));
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
+async function pinServingPolicyFor(scenario: Scenario): Promise<void> {
+  const policyRow = await loadActiveServingPolicyRow();
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
+}
+
 async function postVisit(
   scenario: Scenario,
   opts: { idempotencyKey: string; traceId: string },
 ): Promise<InvokeResult> {
   const token = await mintAat(scenario);
+  await pinServingPolicyFor(scenario);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: opts.idempotencyKey,
@@ -438,6 +493,35 @@ async function waitForLatestRequestState(
   throw new Error(`timed out waiting for ai_request state ${state}`);
 }
 
+/**
+ * Cancelled `ai_request` is written before persistPostResponseDetail inserts
+ * the attempt/usage rows (recordTerminalState is sync; journal is waitUntil).
+ * Snapshot counts only after that journal is stable so replay is not blamed
+ * for the original cancel's settlement. Catalog S10-013: 1 ai_attempt +
+ * 1 usage_event on the original cancel.
+ */
+async function waitForStableCancelledSettlement(
+  requestId: string,
+  timeoutMs = 8000,
+): Promise<void> {
+  const started = Date.now();
+  let previous: string | undefined;
+  while (Date.now() - started < timeoutMs) {
+    const attempts = await getAttempts(requestId);
+    const usage = await getUsageEvents(requestId);
+    const settled = attempts.length === 1 && usage.length === 1;
+    const fingerprint = JSON.stringify({ attempts, usage });
+    if (settled && previous === fingerprint) {
+      return;
+    }
+    previous = settled ? fingerprint : undefined;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for stable Cancelled settlement for ${requestId}`,
+  );
+}
+
 function isAcceptContext(value: unknown): boolean {
   if (value === null || typeof value !== "object") {
     return false;
@@ -533,6 +617,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
 
     try {
       const token = await mintAat(scenario);
+      await pinServingPolicyFor(scenario);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -556,7 +641,11 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       }
 
       await flushBackgroundWork(350);
-      await waitForLatestRequestState(scenario.installationId, "Cancelled");
+      const cancelled = await waitForLatestRequestState(
+        scenario.installationId,
+        "Cancelled",
+      );
+      await waitForStableCancelledSettlement(String(cancelled.request_id));
     } finally {
       adapterSpy.mockRestore();
     }
@@ -1132,6 +1221,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       .mockImplementation(() => new SlowFake(["success"]) as never);
     try {
       const token = await mintAat(scenario);
+      await pinServingPolicyFor(scenario);
       const response = await clinicFetch("/v1/requests", {
         method: "POST",
         token,

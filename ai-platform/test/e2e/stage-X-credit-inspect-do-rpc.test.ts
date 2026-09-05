@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSseSequence,
   bootstrapE2e,
+  clearConfigCache,
   controlFetch,
   count,
   CRON_RETENTION,
@@ -30,8 +31,10 @@ import {
   r2Exists,
   resetE2eState,
   seedSql,
+  sseEventNames,
   visitSummaryInvokeBody,
   type EntitlePayload,
+  type InvokeResult,
   type Scenario,
 } from "./harness";
 // HARNESS-GAP: recordGuardRejection is not on the frozen barrel (SX-056).
@@ -241,28 +244,90 @@ async function creditRpc(
   return { status: result.status, json: result.json as CreditRpcJson };
 }
 
+const SETTLE_ATTEMPTS = 8;
+const REBUILD_ATTEMPTS = 8;
+const COMPLETED_WAIT_MS = 8_000;
+
+function visitCompleted(posted: InvokeResult): boolean {
+  const names = sseEventNames(posted.events);
+  return (
+    posted.status === 200 &&
+    names.includes("accepted") &&
+    names.includes("completed")
+  );
+}
+
+/**
+ * Wait until Stage 11 journal + R2 envelope exist. SSE `completed` can land
+ * before `payload_pointer` is visible under a busy isolate.
+ */
+async function waitUntilCompletedRow(
+  requestReference: string,
+): Promise<NonNullable<Awaited<ReturnType<typeof getAiRequest>>>> {
+  const deadline = Date.now() + COMPLETED_WAIT_MS;
+  let row = await getAiRequest(requestReference);
+  while (Date.now() < deadline) {
+    const pointer = row?.payload_pointer;
+    if (
+      row?.state === "Completed" &&
+      typeof pointer === "string" &&
+      pointer.startsWith("request/") &&
+      (await r2Exists(pointer))
+    ) {
+      return row;
+    }
+    await flushBackgroundWork(50);
+    row = await getAiRequest(requestReference);
+  }
+  expect(row).not.toBeNull();
+  expect(row!.state).toBe("Completed");
+  return row!;
+}
+
+/**
+ * Happy-path visit. Retries with a fresh idempotency key because the process-
+ * global config cache (TTL 100ms) can be cleared by another file between
+ * admit and `selectCandidateChain`, turning SSE into accepted+failed.
+ */
 async function settleCompleted(
   scenario: Scenario,
   idempotencyKey: string,
+  maxAttempts = SETTLE_ATTEMPTS,
 ): Promise<SettledRequest> {
-  const token = await mintAat(scenario);
-  const posted = await postRequest(scenario, {
-    token,
-    idempotencyKey,
-    body: visitSummaryInvokeBody(scenario),
-  });
-  await flushBackgroundWork(200);
-  expect(posted.status).toBe(200);
-  assertSseSequence(posted.events, ["accepted", "completed"], "subsequence");
-  const requestReference = String(posted.events[0]?.data.request_reference);
-  const row = await getAiRequest(requestReference);
-  expect(row).not.toBeNull();
-  expect(row!.state).toBe("Completed");
-  return {
-    requestId: String(row!.request_id),
-    requestReference,
-    token,
-  };
+  let lastPosted: InvokeResult | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    clearConfigCache();
+    const token = await mintAat(scenario);
+    const key =
+      attempt === 0
+        ? idempotencyKey
+        : `${idempotencyKey}-retry-${attempt}-${crypto.randomUUID()}`;
+    const posted = await postRequest(scenario, {
+      token,
+      idempotencyKey: key,
+      body: visitSummaryInvokeBody(scenario),
+    });
+    await flushBackgroundWork(200);
+    lastPosted = posted;
+    if (!visitCompleted(posted)) {
+      await flushBackgroundWork(100);
+      continue;
+    }
+    assertSseSequence(posted.events, ["accepted", "completed"], "subsequence");
+    const requestReference = String(posted.events[0]?.data.request_reference);
+    const row = await waitUntilCompletedRow(requestReference);
+    expect(row).not.toBeNull();
+    expect(row!.state).toBe("Completed");
+    return {
+      requestId: String(row!.request_id),
+      requestReference,
+      token,
+    };
+  }
+  expect(lastPosted).toBeDefined();
+  expect(lastPosted!.status).toBe(200);
+  assertSseSequence(lastPosted!.events, ["accepted", "completed"], "subsequence");
+  throw new Error("settleCompleted: expected completed SSE");
 }
 
 /** Isolate tally survives D1 reset (S00-024). Flush then wipe so cron tests start clean. */
@@ -280,12 +345,23 @@ type Sx028State = {
   newId: string;
 };
 
-/** Rebuild SX-028: two Completed settlements; [SEED] age R-old 91d; 03:00 journal purge. */
-async function rebuildSx028(): Promise<Sx028State> {
+/**
+ * One SX-028 build. Settles are one-shot so a failed visit restarts from
+ * `resetE2eState` instead of leaving extra `usage_event` rows (SX-053 rollup).
+ */
+async function rebuildSx028Once(): Promise<Sx028State> {
   await drainRejectionTally();
   const scenario = await provisionHappyPath(undefined, AUGUST_COVERING_NOW);
-  const oldSettled = await settleCompleted(scenario, `idem-sx028-old-${crypto.randomUUID()}`);
-  const newSettled = await settleCompleted(scenario, `idem-sx028-new-${crypto.randomUUID()}`);
+  const oldSettled = await settleCompleted(
+    scenario,
+    `idem-sx028-old-${crypto.randomUUID()}`,
+    1,
+  );
+  const newSettled = await settleCompleted(
+    scenario,
+    `idem-sx028-new-${crypto.randomUUID()}`,
+    1,
+  );
 
   const aged = new Date(Date.now() - 91 * MS_PER_DAY).toISOString();
   // [SEED] journal-horizon backdating (SX-028).
@@ -329,6 +405,19 @@ async function rebuildSx028(): Promise<Sx028State> {
     newRef: newSettled.requestReference,
     newId: newSettled.requestId,
   };
+}
+
+/** Rebuild SX-028: two Completed settlements; [SEED] age R-old 91d; 03:00 journal purge. */
+async function rebuildSx028(): Promise<Sx028State> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < REBUILD_ATTEMPTS; attempt++) {
+    try {
+      return await rebuildSx028Once();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 type Sx024State = {

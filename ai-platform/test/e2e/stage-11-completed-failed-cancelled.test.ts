@@ -18,11 +18,14 @@ import {
   getAttempts,
   getRequestByRef,
   getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
+  isolateConfigCache,
   mintAat,
   newScenario,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   POLICY_VERSION,
   postRequest,
   promotePolicy,
@@ -72,6 +75,50 @@ const JULY_ENTITLE: EntitlePayload = {
   period_start: "2026-07-01T00:00:00.000Z",
   period_end: "2027-01-01T00:00:00.000Z",
 };
+
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preloadâ†’consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError â†’ Failed
+ * instead of the intended terminal). Raise TTL and re-stamp the
+ * just-promoted D1+R2 policy immediately before every POST.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(): Promise<Record<string, unknown>> {
+  const row = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC
+     LIMIT 1`,
+    [POLICY_ID],
+  );
+  expect(row).not.toBeNull();
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
+async function pinServingRoutingPolicyFor(scenario: Scenario): Promise<void> {
+  const policyRow = await loadServingPolicyRow();
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
+}
 
 type FakeModule = typeof import("../../src/provider/fake");
 type CreditModule = typeof import("../../src/credit");
@@ -205,6 +252,7 @@ async function postVisit(
   opts: { idempotencyKey: string; traceId: string },
 ): Promise<InvokeResult> {
   const token = await mintAat(scenario);
+  await pinServingRoutingPolicyFor(scenario);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: opts.idempotencyKey,
@@ -224,6 +272,7 @@ async function clinicPost(
   },
 ): Promise<Response> {
   const token = await mintAat(scenario);
+  await pinServingRoutingPolicyFor(scenario);
   return clinicFetch("/v1/requests", {
     method: "POST",
     token,
@@ -794,82 +843,85 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       policyVersion: "2",
       overrides: [{ exclude_providers: ["fake"] }],
     });
-    const creditMod = await loadCreditModule();
-    const creditSpy = vi.spyOn(creditMod, "creditUsage");
-    const idempotencyKey = `s11-003-${crypto.randomUUID()}`;
+    const active = await getRoutingPolicy(POLICY_ID, "2");
+    expect(active?.status).toBe("active");
 
-    const result = await postVisit(scenario, {
-      idempotencyKey,
-      traceId: "s11-003-trace",
-    });
+      const creditMod = await loadCreditModule();
+      const creditSpy = vi.spyOn(creditMod, "creditUsage");
+      const idempotencyKey = `s11-003-${crypto.randomUUID()}`;
 
-    assertHttpSse(result);
-    const ref = assertAcceptedFailed(result.events, {
-      code: "provider_unavailable",
-      retrySafe: true,
-      traceId: "s11-003-trace",
-    });
+      const result = await postVisit(scenario, {
+        idempotencyKey,
+        traceId: "s11-003-trace",
+      });
 
-    const row = await requireAiRequest(ref);
-    expect(row.state).toBe("Failed");
-    expect(row.completed_at).toBeTruthy();
-    expect(row.terminal_error_code).toBe("provider_unavailable");
+      assertHttpSse(result);
+      const ref = assertAcceptedFailed(result.events, {
+        code: "provider_unavailable",
+        retrySafe: true,
+        traceId: "s11-003-trace",
+      });
 
-    const attempts = await getAttempts(String(row.request_id));
-    expect(attempts).toHaveLength(1);
-    expect(attempts[0]).toMatchObject({
-      attempt_no: 1,
-      provider: "fake",
-      model: "fake-v1",
-      outcome: "terminal_failure",
-      latency_ms: 0,
-      tokens_in: 0,
-      tokens_out: 0,
-      provider_request_id: null,
-      error_code: "provider_unavailable",
-    });
-    expect(costOf(attempts[0], "cost")).toBe(0);
+      const row = await requireAiRequest(ref);
+      expect(row.state).toBe("Failed");
+      expect(row.completed_at).toBeTruthy();
+      expect(row.terminal_error_code).toBe("provider_unavailable");
 
-    const usage = await getUsageEvents(String(row.request_id));
-    expect(usage).toHaveLength(1);
-    expect(usage[0]?.tokens).toBe(0);
-    expect(costOf(usage[0], "cost")).toBe(0);
-    expect(usage[0]?.period).toBe("2026-07");
-    expect(usage[0]?.quota_weight).toBe(1);
+      const attempts = await getAttempts(String(row.request_id));
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]).toMatchObject({
+        attempt_no: 1,
+        provider: "fake",
+        model: "fake-v1",
+        outcome: "terminal_failure",
+        latency_ms: 0,
+        tokens_in: 0,
+        tokens_out: 0,
+        provider_request_id: null,
+        error_code: "provider_unavailable",
+      });
+      expect(costOf(attempts[0], "cost")).toBe(0);
 
-    const envelope = await getR2Json(String(row.payload_pointer));
-    const attemptRaw = envelope.attempts as Array<{
-      payload?: { reason?: string; excluded?: unknown };
-      truncated?: boolean;
-    }>;
-    expect(attemptRaw[0]?.payload?.reason).toBe("no_provider_attempt");
-    expect(Array.isArray(attemptRaw[0]?.payload?.excluded)).toBe(true);
-    expect(attemptRaw[0]?.truncated).toBe(false);
-    const envelopeResult = envelope.result as { finishReason?: string };
-    expect(envelopeResult.finishReason).toBe("provider_unavailable");
+      const usage = await getUsageEvents(String(row.request_id));
+      expect(usage).toHaveLength(1);
+      expect(usage[0]?.tokens).toBe(0);
+      expect(costOf(usage[0], "cost")).toBe(0);
+      expect(usage[0]?.period).toBe("2026-07");
+      expect(usage[0]?.quota_weight).toBe(1);
 
-    expect(creditSpy).toHaveBeenCalledTimes(1);
-    expect(creditInput(creditSpy)).toMatchObject({
-      partial: true,
-      idempotencyState: "failed",
-      usage: { tokens: 0, cost: 0 },
-    });
+      const envelope = await getR2Json(String(row.payload_pointer));
+      const attemptRaw = envelope.attempts as Array<{
+        payload?: { reason?: string; excluded?: unknown };
+        truncated?: boolean;
+      }>;
+      expect(attemptRaw[0]?.payload?.reason).toBe("no_provider_attempt");
+      expect(Array.isArray(attemptRaw[0]?.payload?.excluded)).toBe(true);
+      expect(attemptRaw[0]?.truncated).toBe(false);
+      const envelopeResult = envelope.result as { finishReason?: string };
+      expect(envelopeResult.finishReason).toBe("provider_unavailable");
 
-    const inspect = await inspectState(scenario.installationId);
-    expect(inspect.periodCounters).toMatchObject({
-      requestsUsed: 1,
-      tokensUsed: 0,
-      costUsed: 0,
-      inFlight: 0,
-    });
-    expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+      expect(creditSpy).toHaveBeenCalledTimes(1);
+      expect(creditInput(creditSpy)).toMatchObject({
+        partial: true,
+        idempotencyState: "failed",
+        usage: { tokens: 0, cost: 0 },
+      });
 
-    const got = await getRequestByRef(await mintAat(scenario), ref);
-    expect(got.status).toBe(200);
-    expect(got.json).toEqual({
-      state: "Failed",
-      terminal_error_code: "provider_unavailable",
-    });
+      const inspect = await inspectState(scenario.installationId);
+      expect(inspect.periodCounters).toMatchObject({
+        requestsUsed: 1,
+        tokensUsed: 0,
+        costUsed: 0,
+        inFlight: 0,
+      });
+      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+
+      const got = await getRequestByRef(await mintAat(scenario), ref);
+      expect(got.status).toBe(200);
+      expect(got.json).toEqual({
+        state: "Failed",
+        terminal_error_code: "provider_unavailable",
+      });
   });
 
   it("S11-004 â€” Timeouts settle provider_unavailable", async () => {
@@ -877,87 +929,90 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       policyVersion: "2",
       targets: [policyTarget("fake-v1", { max_attempts: 2, timeout_ms: 50 })],
     });
-    const fakeMod = await loadFakeModule();
-    const original = fakeMod.FakeAdapter;
-    class HangFake extends original {
-      override async invoke(_request: unknown, options?: InvokeOptions) {
-        await hangUntilAbort(options?.signal, 5000);
-        return scriptedSuccess("fake-v1", { input: 10, output: 20, cached: 0 });
+    const active = await getRoutingPolicy(POLICY_ID, "2");
+    expect(active?.status).toBe("active");
+
+      const fakeMod = await loadFakeModule();
+      const original = fakeMod.FakeAdapter;
+      class HangFake extends original {
+        override async invoke(_request: unknown, options?: InvokeOptions) {
+          await hangUntilAbort(options?.signal, 5000);
+          return scriptedSuccess("fake-v1", { input: 10, output: 20, cached: 0 });
+        }
       }
-    }
-    const adapterSpy = vi
-      .spyOn(fakeMod, "FakeAdapter")
-      .mockImplementation(() => new HangFake(["success"]) as never);
-    const creditMod = await loadCreditModule();
-    const creditSpy = vi.spyOn(creditMod, "creditUsage");
-    const idempotencyKey = `s11-004-${crypto.randomUUID()}`;
+      const adapterSpy = vi
+        .spyOn(fakeMod, "FakeAdapter")
+        .mockImplementation(() => new HangFake(["success"]) as never);
+      const creditMod = await loadCreditModule();
+      const creditSpy = vi.spyOn(creditMod, "creditUsage");
+      const idempotencyKey = `s11-004-${crypto.randomUUID()}`;
 
-    try {
-      const started = Date.now();
-      const result = await postVisit(scenario, {
-        idempotencyKey,
-        traceId: "s11-004-trace",
-      });
-      const elapsed = Date.now() - started;
+      try {
+        const started = Date.now();
+        const result = await postVisit(scenario, {
+          idempotencyKey,
+          traceId: "s11-004-trace",
+        });
+        const elapsed = Date.now() - started;
 
-      assertHttpSse(result);
-      const ref = assertAcceptedFailed(result.events, {
-        code: "provider_unavailable",
-        retrySafe: true,
-        traceId: "s11-004-trace",
-      });
-      expect(elapsed).toBeGreaterThanOrEqual(100);
+        assertHttpSse(result);
+        const ref = assertAcceptedFailed(result.events, {
+          code: "provider_unavailable",
+          retrySafe: true,
+          traceId: "s11-004-trace",
+        });
+        expect(elapsed).toBeGreaterThanOrEqual(100);
 
-      const row = await requireAiRequest(ref);
-      expect(row.state).toBe("Failed");
-      expect(row.terminal_error_code).toBe("provider_unavailable");
-      expect(row.terminal_error_code).not.toBe("timeout");
+        const row = await requireAiRequest(ref);
+        expect(row.state).toBe("Failed");
+        expect(row.terminal_error_code).toBe("provider_unavailable");
+        expect(row.terminal_error_code).not.toBe("timeout");
 
-      const attempts = await getAttempts(String(row.request_id));
-      expect(attempts).toHaveLength(2);
-      expect(attempts[0]).toMatchObject({
-        attempt_no: 1,
-        outcome: "timeout",
-        error_code: "timeout",
-        tokens_in: 0,
-        tokens_out: 0,
-        latency_ms: 0,
-      });
-      expect(attempts[1]).toMatchObject({
-        attempt_no: 2,
-        outcome: "timeout",
-        error_code: "timeout",
-        tokens_in: 0,
-        tokens_out: 0,
-        latency_ms: 0,
-      });
-      expect(costOf(attempts[0], "cost")).toBe(0);
-      expect(costOf(attempts[1], "cost")).toBe(0);
+        const attempts = await getAttempts(String(row.request_id));
+        expect(attempts).toHaveLength(2);
+        expect(attempts[0]).toMatchObject({
+          attempt_no: 1,
+          outcome: "timeout",
+          error_code: "timeout",
+          tokens_in: 0,
+          tokens_out: 0,
+          latency_ms: 0,
+        });
+        expect(attempts[1]).toMatchObject({
+          attempt_no: 2,
+          outcome: "timeout",
+          error_code: "timeout",
+          tokens_in: 0,
+          tokens_out: 0,
+          latency_ms: 0,
+        });
+        expect(costOf(attempts[0], "cost")).toBe(0);
+        expect(costOf(attempts[1], "cost")).toBe(0);
 
-      const usage = await getUsageEvents(String(row.request_id));
-      expect(usage).toHaveLength(1);
-      expect(usage[0]?.tokens).toBe(0);
-      expect(costOf(usage[0], "cost")).toBe(0);
+        const usage = await getUsageEvents(String(row.request_id));
+        expect(usage).toHaveLength(1);
+        expect(usage[0]?.tokens).toBe(0);
+        expect(costOf(usage[0], "cost")).toBe(0);
 
-      expect(creditSpy).toHaveBeenCalledTimes(1);
-      expect(creditInput(creditSpy)).toMatchObject({
-        partial: true,
-        idempotencyState: "failed",
-      });
+        expect(creditSpy).toHaveBeenCalledTimes(1);
+        expect(creditInput(creditSpy)).toMatchObject({
+          partial: true,
+          idempotencyState: "failed",
+        });
 
-      const envelope = await getR2Json(String(row.payload_pointer));
-      const attemptRaw = envelope.attempts as unknown[];
-      expect(attemptRaw).toHaveLength(2);
-      expect((envelope.result as { finishReason?: string }).finishReason).toBe(
-        "provider_unavailable",
-      );
+        const envelope = await getR2Json(String(row.payload_pointer));
+        const attemptRaw = envelope.attempts as unknown[];
+        expect(attemptRaw).toHaveLength(2);
+        expect((envelope.result as { finishReason?: string }).finishReason).toBe(
+          "provider_unavailable",
+        );
 
-      const inspect = await inspectState(scenario.installationId);
-      expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
-      expect(inspect.periodCounters?.inFlight).toBe(0);
-    } finally {
-      adapterSpy.mockRestore();
-    }
+        const inspect = await inspectState(scenario.installationId);
+        expect(inspect.idempotency?.[idempotencyKey]?.state).toBe("failed");
+        expect(inspect.periodCounters?.inFlight).toBe(0);
+      } finally {
+        adapterSpy.mockRestore();
+      }
   });
 
   it("S11-005 â€” provider_rejected consumes quota", async () => {
@@ -1228,6 +1283,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     try {
       // Abort while fetch is still pending (S10-013). Awaiting the SSE
       // Response first lets hangUntilAbort's 5s timer resolve as success.
+      await pinServingRoutingPolicyFor(scenario);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -1294,20 +1350,26 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const idempotencyKey = `s11-009-${crypto.randomUUID()}`;
     const controller = new AbortController();
     // Catalog: unmodified FakeAdapter. Abort-immediately-after-dispatch cancels
-    // SELF.fetch before admission. Hold after persistRoutingDecision so abort
-    // lands at the pre-attempt callerSignal check (invocation/index.ts:526-533)
-    // after ai_request exists and before recordAttempt / FakeAdapter.invoke.
+    // SELF.fetch before admission. Hold after persistRoutingDecision (and do
+    // not release until abort()) so the signal is set before runInvocation's
+    // pre-attempt check â€” after ai_request exists, before recordAttempt.
     const journalMod = await import("../../src/journal");
     const originalPersist = journalMod.persistRoutingDecision;
+    let releasePreAttemptHold: () => void = () => {};
+    let inPreAttemptWindow = false;
     const persistSpy = vi
       .spyOn(journalMod, "persistRoutingDecision")
       .mockImplementation(async (...args: Parameters<typeof originalPersist>) => {
         await originalPersist(...args);
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        inPreAttemptWindow = true;
+        await new Promise<void>((resolve) => {
+          releasePreAttemptHold = resolve;
+        });
       });
 
     try {
       const token = await mintAat(scenario);
+      await pinServingRoutingPolicyFor(scenario);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -1319,8 +1381,10 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
         body: visitBody(scenario),
         signal: controller.signal,
       });
+      await waitFor("pre-attempt abort window", () => inPreAttemptWindow);
       await waitForLatestRequestRow(scenario.installationId);
       controller.abort();
+      releasePreAttemptHold();
       await settleAbortedFetch(fetchPromise);
 
       await flushBackgroundWork(350);
@@ -1351,6 +1415,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       expect(inspect.periodCounters?.inFlight).toBe(0);
       expect(inspect.periodCounters?.tokensUsed).toBe(0);
     } finally {
+      releasePreAttemptHold();
       persistSpy.mockRestore();
     }
   });
@@ -1395,6 +1460,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const sseCapture = captureEnqueuedSse();
 
     try {
+      await pinServingRoutingPolicyFor(scenario);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -1502,6 +1568,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const sseCapture = captureEnqueuedSse();
 
     try {
+      await pinServingRoutingPolicyFor(scenario);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,

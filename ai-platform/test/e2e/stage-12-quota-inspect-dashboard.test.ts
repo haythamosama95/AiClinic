@@ -13,10 +13,16 @@ import {
   gatewayObjectJson,
   getAiRequest,
   getEntitlement,
+  getR2Json,
+  getRoutingPolicy,
+  isolateConfigCache,
   mintAat,
   newScenario,
+  POLICY_ID,
+  POLICY_REF,
   postRequest,
   provisionHappyPath,
+  queryOne,
   resetE2eState,
   seedSql,
   visitSummaryInvokeBody,
@@ -217,6 +223,47 @@ async function admitOnce(
   };
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with routing_decision null). Raise TTL and re-stamp the just-promoted
+ * policy immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion?: string,
+): Promise<Record<string, unknown>> {
+  const row = policyVersion
+    ? await getRoutingPolicy(POLICY_ID, policyVersion)
+    : await queryOne(
+        `SELECT * FROM routing_policy
+         WHERE policy_id = ? AND status = 'active'
+         ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+        [POLICY_ID],
+      );
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function settleCompleted(): Promise<{
   scenario: Scenario;
   idempotencyKey: string;
@@ -228,6 +275,8 @@ async function settleCompleted(): Promise<{
   const jti = crypto.randomUUID();
   const idempotencyKey = `idem-s12-057-${crypto.randomUUID()}`;
   const token = await mintAat(scenario, { claims: { jti, ver: "1" } });
+  const policyRow = await loadServingPolicyRow();
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey,

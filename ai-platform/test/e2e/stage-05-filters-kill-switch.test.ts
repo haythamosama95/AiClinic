@@ -14,13 +14,16 @@ import {
   getAudits,
   getR2Json,
   getRoutingPolicy,
+  isolateConfigCache,
   mintAat,
   newScenario,
   OPERATOR_BEARER,
   POLICY_ID,
+  POLICY_REF,
   postRequest,
   promotePolicy,
   publishPolicy,
+  queryOne,
   REQUEST_REFERENCE_PATTERN,
   resetE2eState,
   visitSummaryInvokeBody,
@@ -207,11 +210,54 @@ async function publishAndPromote(
   expect(promoted.status).toBe(200);
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with routing_decision null). Raise TTL and re-stamp the just-promoted
+ * policy immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion?: string,
+): Promise<Record<string, unknown>> {
+  const row = policyVersion
+    ? await getRoutingPolicy(POLICY_ID, policyVersion)
+    : await queryOne(
+        `SELECT * FROM routing_policy
+         WHERE policy_id = ? AND status = 'active'
+         ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+        [POLICY_ID],
+      );
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function invokeVisitSummary(
   scenario: Scenario,
   idempotencyKey: string,
+  policyRow: Record<string, unknown>,
 ): Promise<InvokeResult> {
   const token = await mintAat(scenario);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   return postRequest(scenario, {
     token,
     idempotencyKey,
@@ -221,11 +267,12 @@ async function invokeVisitSummary(
   });
 }
 
-async function invokeAccepted(
+async function invokeAcceptedPinned(
   scenario: Scenario,
   idempotencyKey: string,
+  policyRow: Record<string, unknown>,
 ): Promise<{ result: InvokeResult; ref: string }> {
-  const result = await invokeVisitSummary(scenario, idempotencyKey);
+  const result = await invokeVisitSummary(scenario, idempotencyKey, policyRow);
   expect(result.status).toBe(200);
   expect(result.headers.get("content-type")).toContain("text/event-stream");
   assertSseSequence(result.events, ["accepted"]);
@@ -234,16 +281,53 @@ async function invokeAccepted(
   return { result, ref };
 }
 
+async function invokeAccepted(
+  scenario: Scenario,
+  idempotencyKey: string,
+): Promise<{ result: InvokeResult; ref: string }> {
+  const policyRow = await loadServingPolicyRow();
+  return invokeAcceptedPinned(scenario, idempotencyKey, policyRow);
+}
+
+/**
+ * Routing and Failed settlement run in waitUntil after SSE frames
+ * (worker.ts createProductionEventSource → persistRoutingDecision L987,
+ * recordTerminalState L1204). Poll D1; do not weaken the asserts.
+ */
+async function waitForAiRequest(
+  ref: string,
+  predicate: (row: Record<string, unknown>) => boolean,
+  label: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row && predicate(row)) {
+      return row;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    `timed out waiting for ${label} (last state=${String(row?.state)} routing_decision=${row?.routing_decision == null ? "null" : "set"})`,
+  );
+}
+
 async function loadDecision(ref: string): Promise<{
   row: Record<string, unknown>;
   decision: RoutingDecision;
 }> {
-  const row = await getAiRequest(ref);
+  const row = await waitForAiRequest(
+    ref,
+    (candidate) => Boolean(candidate.routing_decision),
+    `ai_request.routing_decision for ${ref}`,
+  );
   expect(row).not.toBeNull();
-  expect(row?.routing_decision).toBeTruthy();
+  expect(row.routing_decision).toBeTruthy();
   return {
-    row: row as Record<string, unknown>,
-    decision: JSON.parse(String(row?.routing_decision)) as RoutingDecision,
+    row,
+    decision: JSON.parse(String(row.routing_decision)) as RoutingDecision,
   };
 }
 
@@ -264,10 +348,20 @@ async function expectEmptyChainProviderUnavailable(
   expect(failed?.code).toBe("provider_unavailable");
   expect(failed?.code).not.toBe("internal_error");
 
-  const { row, decision } = await loadDecision(ref);
+  const settled = await waitForAiRequest(
+    ref,
+    (candidate) =>
+      candidate.state === "Failed" && Boolean(candidate.routing_decision),
+    `ai_request Failed + routing_decision for ${ref}`,
+  );
+  expect(settled.routing_decision).toBeTruthy();
+  const decision = JSON.parse(
+    String(settled.routing_decision),
+  ) as RoutingDecision;
   expect(decision.chain).toEqual([]);
-  expect(row.state).toBe("Failed");
-  expect(row.terminal_error_code).toBe("provider_unavailable");
+  expect(settled.state).toBe("Failed");
+  expect(settled.terminal_error_code).toBe("provider_unavailable");
+  const row = settled;
 
   const attempts = await getAttempts(String(row.request_id));
   expect(attempts).toHaveLength(1);
@@ -661,33 +755,40 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
       }),
     );
 
-    const a = await invokeAccepted(instA, "idem-s05-075a-0001");
-    const { decision: decisionA } = await loadDecision(a.ref);
-    expect(decisionA.effective_cost_class).toBe("economy");
-    expect(decisionA.cost_class_source).toBe("installation_override");
-    expect(decisionA.excluded).toEqual([
-      {
-        provider_id: "gemini",
-        model_id: "gemini-3.5-flash",
-        reason_code: "cost_class_excluded",
-      },
-    ]);
-    expect(decisionA.chain).toEqual([
-      {
-        ordinal: 0,
-        provider_id: "deepseek",
-        model_id: "deepseek-v4-flash",
-        max_attempts: 2,
-        timeout_ms: 30000,
-      },
-    ]);
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+    try {
+      const policyRow = await loadServingPolicyRow("17");
+      const a = await invokeAcceptedPinned(instA, "idem-s05-075a-0001", policyRow);
+      const { decision: decisionA } = await loadDecision(a.ref);
+      expect(decisionA.effective_cost_class).toBe("economy");
+      expect(decisionA.cost_class_source).toBe("installation_override");
+      expect(decisionA.excluded).toEqual([
+        {
+          provider_id: "gemini",
+          model_id: "gemini-3.5-flash",
+          reason_code: "cost_class_excluded",
+        },
+      ]);
+      expect(decisionA.chain).toEqual([
+        {
+          ordinal: 0,
+          provider_id: "deepseek",
+          model_id: "deepseek-v4-flash",
+          max_attempts: 2,
+          timeout_ms: 30000,
+        },
+      ]);
 
-    const b = await invokeAccepted(instB, "idem-s05-075b-0001");
-    const { decision: decisionB } = await loadDecision(b.ref);
-    expect(decisionB.effective_cost_class).toBe("standard");
-    expect(decisionB.cost_class_source).toBe("manifest");
-    expect(decisionB.excluded ?? []).toEqual([]);
-    expect(decisionB.chain).toEqual(BOTH_FIXTURE_CHAIN);
+      const b = await invokeAcceptedPinned(instB, "idem-s05-075b-0001", policyRow);
+      const { decision: decisionB } = await loadDecision(b.ref);
+      expect(decisionB.effective_cost_class).toBe("standard");
+      expect(decisionB.cost_class_source).toBe("manifest");
+      expect(decisionB.excluded ?? []).toEqual([]);
+      expect(decisionB.chain).toEqual(BOTH_FIXTURE_CHAIN);
+    } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
+    }
   });
 
   it("S05-076 — capability_ids clause skips a non-matching rule", async () => {
@@ -782,20 +883,31 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
       }),
     );
 
-    const { ref } = await invokeAccepted(scenario, "idem-s05-079-0001");
-    const { decision } = await loadDecision(ref);
-    expect(decision.excluded?.[0]).toEqual({
-      provider_id: "deepseek",
-      model_id: "deepseek-v4-flash",
-      reason_code: "context_window_too_small",
-    });
-    expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
-    expect(decision.required_features).toEqual({
-      structured_output_required: false,
-      min_context_window: 32000,
-      languages: ["en"],
-      latency_class: "standard",
-    });
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+    try {
+      const policyRow = await loadServingPolicyRow("21");
+      const { ref } = await invokeAcceptedPinned(
+        scenario,
+        "idem-s05-079-0001",
+        policyRow,
+      );
+      const { decision } = await loadDecision(ref);
+      expect(decision.excluded?.[0]).toEqual({
+        provider_id: "deepseek",
+        model_id: "deepseek-v4-flash",
+        reason_code: "context_window_too_small",
+      });
+      expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
+      expect(decision.required_features).toEqual({
+        structured_output_required: false,
+        min_context_window: 32000,
+        languages: ["en"],
+        latency_class: "standard",
+      });
+    } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
+    }
   });
 
   it("S05-080 — Rule requires structured_output forces the OR floor", async () => {

@@ -22,9 +22,14 @@ import {
   getAttempts,
   getRequestByRef,
   getR2Json,
+  getRoutingPolicy,
+  isolateConfigCache,
   mintAat,
   newScenario,
   parseSseText,
+  POLICY_ID,
+  POLICY_REF,
+  POLICY_VERSION,
   postRequest,
   provisionHappyPath,
   r2Exists,
@@ -175,10 +180,45 @@ function envelopeKey(requestId: string): string {
   return `request/${requestId}/envelope`;
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed,
+ * no SSE `completed`). Raise TTL and re-stamp the promoted policy from
+ * D1+R2 immediately before every clinic POST so the post-accept consult
+ * cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, POLICY_VERSION);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function settleCompleted(): Promise<Settled> {
   const scenario = await newScenario();
   await provisionHappyPath(scenario, DEFAULT_ENTITLE_PAYLOAD);
+  const policyRow = await loadServingPolicyRow();
   const token = await mintAat(scenario);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const posted = await postRequest(scenario, {
     token,
     idempotencyKey: crypto.randomUUID(),
@@ -510,8 +550,10 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
   it("S12-050 — Support lookup of in-flight request returns empty attempts and null envelope", async () => {
     const scenario = await newScenario();
     await provisionHappyPath(scenario, DEFAULT_ENTITLE_PAYLOAD);
+    const policyRow = await loadServingPolicyRow();
     const token = await mintAat(scenario);
     const abort = new AbortController();
+    pinServingRoutingPolicy(policyRow, [scenario.installationId]);
     const response = await clinicFetch("/v1/requests", {
       method: "POST",
       token,

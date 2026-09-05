@@ -13,16 +13,25 @@ import {
   enrollInstallation,
   entitleInstallation,
   env,
+  fakePolicyDocument,
   flushBackgroundWork,
   generateTestKeypair,
+  getAiRequest,
+  getR2Json,
   getRequestByRef,
   isolateConfigCache,
   mintAat,
   newScenario,
   nowSeconds,
+  POLICY_ID,
+  POLICY_REF,
   postRequest,
+  promotePolicy,
   provisionHappyPath,
+  publishPolicy,
+  queryAll,
   queryOne,
+  r2Exists,
   readHttpResult,
   resetE2eState,
   seedSql,
@@ -31,6 +40,7 @@ import {
   visitSummaryInvokeBody,
   type HttpResult,
   type Scenario,
+  type SseEvent,
 } from "./harness";
 
 beforeAll(async () => {
@@ -52,21 +62,224 @@ type SettledGet = {
   ref: string;
 };
 
-async function admitAndSettle(scenario: Scenario): Promise<SettledGet> {
-  const admitToken = await mintAat(scenario);
-  const posted = await postRequest(scenario, {
-    token: admitToken,
-    idempotencyKey: crypto.randomUUID(),
-    body: visitSummaryInvokeBody(scenario),
-  });
-  await flushBackgroundWork(200);
+type RoutingDecisionShape = {
+  chain?: Array<{ provider_id?: string }>;
+};
 
-  expect(posted.status).toBe(200);
-  assertSseSequence(posted.events, ["accepted", "completed"], "subsequence");
-  const accepted = posted.events.find((event) => event.event === "accepted");
-  const ref = String(accepted?.data.request_reference ?? "");
-  assertRequestReferenceShape(ref);
-  return { scenario, ref };
+const SETUP_CACHE_TTL_MS = 30_000;
+const SETUP_ATTEMPTS = 4;
+
+function documentHasFakeProvider(document: Record<string, unknown>): boolean {
+  const rules = document.rules;
+  if (!Array.isArray(rules)) {
+    return false;
+  }
+  return rules.some((rule) => {
+    if (rule === null || typeof rule !== "object" || Array.isArray(rule)) {
+      return false;
+    }
+    const targets = (rule as { targets?: unknown }).targets;
+    if (!Array.isArray(targets)) {
+      return false;
+    }
+    return targets.some(
+      (target) =>
+        target !== null &&
+        typeof target === "object" &&
+        !Array.isArray(target) &&
+        (target as { provider_id?: unknown }).provider_id === "fake",
+    );
+  });
+}
+
+function parseRoutingDecision(raw: unknown): RoutingDecisionShape | null {
+  if (raw == null) {
+    return null;
+  }
+  try {
+    const parsed =
+      typeof raw === "string"
+        ? (JSON.parse(raw) as unknown)
+        : raw;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as RoutingDecisionShape;
+  } catch {
+    return null;
+  }
+}
+
+function chainHasFake(decision: RoutingDecisionShape | null): boolean {
+  return Boolean(
+    decision?.chain?.some((entry) => entry.provider_id === "fake"),
+  );
+}
+
+async function waitForRow(
+  _label: string,
+  pull: () => Promise<Record<string, unknown> | null>,
+  predicate: (row: Record<string, unknown>) => boolean,
+  timeoutMs: number,
+): Promise<Record<string, unknown> | null> {
+  const started = Date.now();
+  let last: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    last = await pull();
+    if (last !== null && predicate(last)) {
+      return last;
+    }
+    await flushBackgroundWork(50);
+  }
+  return last;
+}
+
+async function nextPolicyVersion(): Promise<string> {
+  const rows = await queryAll<{ version: string }>(
+    "SELECT version FROM routing_policy WHERE policy_id = ?",
+    [POLICY_ID],
+  );
+  let max = 0;
+  for (const row of rows) {
+    const parsed = Number.parseInt(String(row.version), 10);
+    if (Number.isFinite(parsed) && parsed > max) {
+      max = parsed;
+    }
+  }
+  return String(max + 1);
+}
+
+async function activeFakePolicyRow(): Promise<Record<string, unknown> | null> {
+  const row = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC
+     LIMIT 1`,
+    [POLICY_ID],
+  );
+  if (row === null) {
+    return null;
+  }
+  const pointer = String(row.content_pointer ?? "");
+  if (!pointer || !(await r2Exists(pointer))) {
+    return null;
+  }
+  try {
+    const document = await getR2Json(pointer);
+    if (!documentHasFakeProvider(document)) {
+      return null;
+    }
+    return { ...row, document };
+  } catch {
+    return null;
+  }
+}
+
+/** Re-publish/promote a fake-provider policy when the active document is missing. */
+async function ensureFakeServingPolicy(): Promise<Record<string, unknown>> {
+  const existing = await activeFakePolicyRow();
+  if (existing !== null) {
+    return existing;
+  }
+  const version = await nextPolicyVersion();
+  const document = fakePolicyDocument(POLICY_ID, version);
+  const published = await publishPolicy(POLICY_ID, version, document);
+  expect(published.status).toBe(200);
+  const promoted = await promotePolicy(POLICY_ID, version);
+  expect(promoted.status).toBe(200);
+  const ready = await waitForRow(
+    "active fake routing policy",
+    activeFakePolicyRow,
+    (row) => row !== null,
+    4000,
+  );
+  expect(ready).not.toBeNull();
+  return ready!;
+}
+
+/**
+ * Pin this installation's routing cache to the fake policy and mark fake as
+ * not kill-switched. Parallel files share isolateConfigCache; a stale global
+ * policy or provider kill-switch is what collapsed S12-001 setup under the
+ * full suite (accepted+failed instead of Completed).
+ */
+function pinFakeRoutingCache(
+  installationId: string,
+  policyRow: Record<string, unknown>,
+): void {
+  isolateConfigCache.setTtlMs(SETUP_CACHE_TTL_MS);
+  isolateConfigCache.remember(
+    "active_routing_policy",
+    `${POLICY_REF}/${installationId}`,
+    policyRow,
+  );
+  isolateConfigCache.remember("kill_switches", "provider:fake", {
+    active: false,
+  });
+}
+
+async function admitAndSettle(scenario: Scenario): Promise<SettledGet> {
+  const previousTtl = isolateConfigCache.getTtlMs();
+  let lastEvents: SseEvent[] = [];
+  try {
+    for (let attempt = 0; attempt < SETUP_ATTEMPTS; attempt += 1) {
+      const policyRow = await ensureFakeServingPolicy();
+      pinFakeRoutingCache(scenario.installationId, policyRow);
+
+      const admitToken = await mintAat(scenario);
+      const posted = await postRequest(scenario, {
+        token: admitToken,
+        idempotencyKey: crypto.randomUUID(),
+        body: visitSummaryInvokeBody(scenario),
+      });
+      expect(posted.status).toBe(200);
+      lastEvents = posted.events;
+
+      const accepted = posted.events.find((event) => event.event === "accepted");
+      const ref = String(accepted?.data.request_reference ?? "");
+      if (ref.length === 0) {
+        await flushBackgroundWork(100);
+        continue;
+      }
+
+      const sseCompleted = posted.events.some(
+        (event) => event.event === "completed",
+      );
+      const sseFailed = posted.events.some((event) => event.event === "failed");
+
+      const routed = await waitForRow(
+        "routing_decision",
+        () => getAiRequest(ref),
+        (row) => Boolean(row.routing_decision),
+        sseFailed && !sseCompleted ? 500 : 3000,
+      );
+      const decision = parseRoutingDecision(routed?.routing_decision);
+      if (!chainHasFake(decision) || !sseCompleted) {
+        await flushBackgroundWork(100);
+        continue;
+      }
+
+      const completed = await waitForRow(
+        "Completed settlement",
+        () => getAiRequest(ref),
+        (row) => row.state === "Completed",
+        4000,
+      );
+      if (completed?.state !== "Completed") {
+        await flushBackgroundWork(100);
+        continue;
+      }
+
+      assertSseSequence(posted.events, ["accepted", "completed"], "subsequence");
+      assertRequestReferenceShape(ref);
+      return { scenario, ref };
+    }
+
+    assertSseSequence(lastEvents, ["accepted", "completed"], "subsequence");
+    throw new Error("admitAndSettle exhausted retries without Completed");
+  } finally {
+    isolateConfigCache.setTtlMs(previousTtl);
+  }
 }
 
 async function settleCompleted(): Promise<SettledGet> {

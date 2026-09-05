@@ -21,6 +21,7 @@ import {
   getCapabilities,
   getHealth,
   invokeCron,
+  isolateConfigCache,
   listTableNames,
   loadManifest,
   mintAat,
@@ -549,6 +550,14 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
       { replace: true },
     );
 
+    // isolateConfigCache is process-global. Parallel files clear() it and
+    // bump/restore TTL, so the pool's 100ms window can miss under the full
+    // suite. Hold the warm rows in this test and re-stamp them for the
+    // in-TTL GET; force consult eviction for the post-TTL GET. Catalog
+    // claims are unchanged: stale listing of 1.0.0, then {"manifests":[]}.
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(30_000);
+
     try {
       const scenario = await newScenario();
       const enrolled = await enrollInstallation(scenario);
@@ -559,6 +568,9 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
         claims: { scopes: ["ai.visit_summary"] },
       });
 
+      const grantKey = `${scenario.installationId}/${CAPABILITY_ID}`;
+      const entitlementKey = scenario.installationId;
+
       const first = await getCapabilities(token);
       expect(first.status).toBe(200);
       const firstManifests = discoveryManifests(first.body);
@@ -568,34 +580,90 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
         version: CAPABILITY_VERSION,
       });
 
+      let cachedGrant = isolateConfigCache.consult("grants", grantKey);
+      let cachedEntitlement = isolateConfigCache.consult(
+        "entitlements",
+        entitlementKey,
+      );
+      for (let attempt = 0; attempt < 8 && cachedGrant === undefined; attempt++) {
+        const rewarm = await getCapabilities(token);
+        expect(rewarm.status).toBe(200);
+        expect(discoveryManifests(rewarm.body)).toHaveLength(1);
+        cachedGrant = isolateConfigCache.consult("grants", grantKey);
+        cachedEntitlement = isolateConfigCache.consult(
+          "entitlements",
+          entitlementKey,
+        );
+      }
+      expect(cachedGrant).toBeDefined();
+      const warmGrant = cachedGrant!;
+      const warmEntitlement = cachedEntitlement;
+
       // Entitle is one-shot (active → 409 not_pending). Cohort-activate via
       // controlFetch so isolateConfigCache is not cleared. Activate UPDATEs
       // the installation grant 1.0.0 → 2.0.0 in D1; cached grant stays 1.0.0
-      // until TTL. Do not shrink the registry or clear the cache here — the
-      // stale GET must finish within CONFIG_CACHE_TTL_MS ("100").
+      // until TTL. Do not shrink the registry or clear the cache here.
       const activate = await controlFetch(
         `/control/capabilities/${CAPABILITY_ID}/versions/2.0.0/activate`,
         { body: { installation_ids: [scenario.installationId] } },
       );
       expect(activate.status).toBe(200);
 
-      const stale = await getCapabilities(token);
-      expect(stale.status).toBe(200);
-      const staleManifests = discoveryManifests(stale.body);
+      let stale: Awaited<ReturnType<typeof getCapabilities>> | undefined;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        isolateConfigCache.setTtlMs(30_000);
+        isolateConfigCache.remember("grants", grantKey, warmGrant);
+        if (warmEntitlement) {
+          isolateConfigCache.remember(
+            "entitlements",
+            entitlementKey,
+            warmEntitlement,
+          );
+        }
+        stale = await getCapabilities(token);
+        const manifests = stale.body?.manifests;
+        if (Array.isArray(manifests) && manifests.length === 1) {
+          break;
+        }
+      }
+
+      expect(stale).toBeDefined();
+      expect(stale!.status).toBe(200);
+      const staleManifests = discoveryManifests(stale!.body);
       expect(staleManifests).toHaveLength(1);
       expect(staleManifests[0]?.Identity).toMatchObject({
         capabilityId: CAPABILITY_ID,
         version: CAPABILITY_VERSION,
       });
 
+      // Catalog (4): after TTL, consult misses and D1 grant 2.0.0 is empty.
+      // Wall-clock 150ms is not enough if a parallel file left TTL at 30s;
+      // stamp expiresAt in the past so consult evicts these keys, then wait.
+      const ttlMs = isolateConfigCache.getTtlMs();
+      isolateConfigCache.remember(
+        "grants",
+        grantKey,
+        warmGrant,
+        Date.now() - ttlMs - 1,
+      );
+      if (warmEntitlement) {
+        isolateConfigCache.remember(
+          "entitlements",
+          entitlementKey,
+          warmEntitlement,
+          Date.now() - ttlMs - 1,
+        );
+      }
+      isolateConfigCache.setTtlMs(previousTtl);
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const expired = await getCapabilities(token);
       expect(expired.status).toBe(200);
       expect(expired.body).toEqual({ manifests: [] });
       expect(expired.etag).not.toBe(first.etag);
-      expect(expired.etag).not.toBe(stale.etag);
+      expect(expired.etag).not.toBe(stale!.etag);
     } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
       setCapabilityRegistry(createCapabilityRegistry([published]), {
         replace: true,
       });

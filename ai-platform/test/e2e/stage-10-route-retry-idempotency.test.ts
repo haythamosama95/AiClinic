@@ -16,13 +16,16 @@ import {
   getAiRequest,
   getAttempts,
   getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
   handleAdapterRequest,
+  isolateConfigCache,
   mintAat,
   newScenario,
   parseSseEvents,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   POLICY_VERSION,
   postRequest,
   promotePolicy,
@@ -52,6 +55,52 @@ afterEach(() => {
 
 const FAKE_SUMMARY = "Fake adapter summary.";
 const YYYY_MM = /^\d{4}-\d{2}$/;
+
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with routing_decision null). Raise TTL and re-stamp the just-promoted
+ * policy immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion?: string,
+): Promise<Record<string, unknown>> {
+  const row = policyVersion
+    ? await getRoutingPolicy(POLICY_ID, policyVersion)
+    : await queryOne(
+        `SELECT * FROM routing_policy
+         WHERE policy_id = ? AND status = 'active'
+         ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+        [POLICY_ID],
+      );
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
+/** Pin the active serving policy immediately before a live clinic POST. */
+async function pinActiveServingPolicy(installationId: string): Promise<void> {
+  pinServingRoutingPolicy(await loadServingPolicyRow(), [installationId]);
+}
 
 type RoutingDecisionJson = {
   policy_id?: string;
@@ -139,8 +188,11 @@ async function setupFresh(options?: {
 async function postVisit(
   scenario: Scenario,
   token: string,
-  opts: { idempotencyKey: string; traceId: string },
+  opts: { idempotencyKey: string; traceId: string; pinPolicy?: boolean },
 ): Promise<InvokeResult> {
+  if (opts.pinPolicy !== false) {
+    await pinActiveServingPolicy(scenario.installationId);
+  }
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: opts.idempotencyKey,
@@ -462,9 +514,12 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
   it("S10-003 — missing routing policy after accepted fails internal_error", async () => {
     const { scenario, token } = await setupFresh({ skipPolicy: true });
 
+    // Catalog: no serving policy. Do not pin — the post-accept consult
+    // must miss `active_routing_policy:routing/standard`.
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-003-idem",
       traceId: "s10-003-trace",
+      pinPolicy: false,
     });
 
     assertHttpSse(result);
@@ -1033,6 +1088,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const controller = new AbortController();
 
     try {
+      await pinActiveServingPolicy(scenario.installationId);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -1121,6 +1177,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const controller = new AbortController();
 
     try {
+      await pinActiveServingPolicy(scenario.installationId);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -1267,9 +1324,11 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     let firstResponse: Response | undefined;
     let secondResponse: Response | undefined;
     try {
+      const firstToken = await mintAat(scenario);
+      await pinActiveServingPolicy(scenario.installationId);
       firstResponse = await clinicFetch("/v1/requests", {
         method: "POST",
-        token: await mintAat(scenario),
+        token: firstToken,
         headers: {
           "x-idempotency-key": "s10-017-idem",
           "x-capability-version": CAPABILITY_VERSION,
@@ -1280,9 +1339,11 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(firstResponse.status).toBe(200);
       await waitFor("first invoke entered", () => invokeEntered);
 
+      const secondToken = await mintAat(scenario);
+      await pinActiveServingPolicy(scenario.installationId);
       secondResponse = await clinicFetch("/v1/requests", {
         method: "POST",
-        token: await mintAat(scenario),
+        token: secondToken,
         headers: {
           "x-idempotency-key": "s10-017-idem",
           "x-capability-version": CAPABILITY_VERSION,
