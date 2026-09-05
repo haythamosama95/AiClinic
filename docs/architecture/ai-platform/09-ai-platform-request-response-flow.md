@@ -875,7 +875,7 @@ Sequence:
 
 ### 3.11 Discovery
 
-**Does.** Returns the capability manifests this installation may invoke, filtered by entitlement and grants. Kill switches are **not** applied here (`killSwitchFlag` on a manifest is informational).
+**Does.** Returns the capability manifests this installation may invoke, filtered by entitlement and grants. The body is the public projection of each manifest (§5.1): Identity, Interaction, Input, Context requirements, Output `mode`/`outputSchemaRef`, and Governance `acceptanceMode` — Access, Prompt binding, Routing, Economics, validation/repair and retention/eval refs are not on the wire. The ETag hashes the projection. Kill switches are **not** applied here (`killSwitchFlag` on a manifest is informational).
 
 **Caller.** Clinic staff Flutter → `DiscoveryClient.fetchCapabilities` (hub composition and `DiscoveryManifestRefreshPort` during context self-heal) → `GET /v1/capabilities` → `handleDiscoveryRequest`.
 

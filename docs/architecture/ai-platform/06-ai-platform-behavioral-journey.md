@@ -543,7 +543,7 @@ Outside the Worker: mint RPC can refuse by RBAC. Inside the Worker, every malfor
 
 ### 10.1 What is happening
 
-`GET /v1/capabilities` tells the client which capabilities this installation may invoke, with the public contract (context keys, output mode, acceptance mode) and **without** prompt text or provider names.
+`GET /v1/capabilities` tells the client which capabilities this installation may invoke, with the public projection of each manifest (Identity including lifecycle state and successor, Interaction, Input, Context requirements, Output mode and schema ref, acceptance mode) and **without** Access, Prompt binding, Routing, Economics, validation/repair refs, retention/eval refs, prompt text, or provider names.
 
 ### 10.2 Inputs
 

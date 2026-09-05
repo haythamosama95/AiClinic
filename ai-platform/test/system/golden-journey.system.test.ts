@@ -226,24 +226,21 @@ describe("golden journey", () => {
     expect(manifests).toHaveLength(1);
     const manifest = manifests[0] as Record<string, Record<string, unknown>>;
     expect(manifest.Identity).toBeTruthy();
-    expect(manifest.Access).toBeTruthy();
     expect(manifest.Interaction).toBeTruthy();
     expect(manifest.Input).toBeTruthy();
-    expect(manifest.Routing).toBeTruthy();
-    expect(manifest.Economics).toBeTruthy();
+    expect(manifest["Context requirements"]).toBeTruthy();
+    expect(manifest.Output).toBeTruthy();
     expect(manifest.Governance).toBeTruthy();
     expect(manifest.Identity.capabilityId).toBe(CAPABILITY_ID);
     expect(manifest.Identity.version).toBe(CAPABILITY_VERSION);
     expect(manifest.Identity.title).toBe("Visit summary");
     expect(manifest.Identity.lifecycleState).toBe("active");
-    expect(manifest.Access.requiredCapabilityScope).toBe("ai.visit_summary");
-    expect(manifest.Access.minimumPlanTier).toBe("standard");
-    expect(manifest.Access.allowedStaffRoles).toEqual(
-      expect.arrayContaining(["clinician", "nurse"]),
-    );
-    expect(manifest.Routing.routingPolicyRef).toBe(POLICY_REF);
-    expect(manifest.Economics.perRequestTokenCeiling).toBe(9024);
+    expect(manifest.Output.mode).toBe("prose");
     expect(manifest.Governance.acceptanceMode).toBe("advisory_display");
+    expect(manifest.Access).toBeUndefined();
+    expect(manifest.Routing).toBeUndefined();
+    expect(manifest.Economics).toBeUndefined();
+    expect(manifest["Prompt binding"]).toBeUndefined();
 
     const cached = await getCapabilities(token, caps.etag!);
     expect(cached.status).toBe(304);

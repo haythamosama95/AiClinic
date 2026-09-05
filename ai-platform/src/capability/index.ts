@@ -1,5 +1,6 @@
 /**
  * Capability registry, resolver stage, and discovery (C1 §4.3.4, §5.5).
+ * Discovery serves a public manifest projection; invoke resolution returns full manifests.
  */
 
 import {
@@ -25,8 +26,17 @@ export type ResolveResult =
     | "forbidden_capability";
   };
 
+export type PublicManifest = {
+  readonly Identity: Manifest["Identity"];
+  readonly Interaction: Manifest["Interaction"];
+  readonly Input: Manifest["Input"];
+  readonly "Context requirements": Manifest["Context requirements"];
+  readonly Output: Readonly<Pick<Manifest["Output"], "mode" | "outputSchemaRef">>;
+  readonly Governance: Readonly<Pick<Manifest["Governance"], "acceptanceMode">>;
+};
+
 export type DiscoveryResult = {
-  manifests: Manifest[];
+  manifests: PublicManifest[];
   etag: string;
 };
 
@@ -427,19 +437,8 @@ async function evaluateCapabilityKillSwitches(
   return { capabilityDisabled: false, killedProviderIds };
 }
 
-function manifestToHashInput(manifest: Manifest): Record<string, unknown> {
-  return {
-    Identity: manifest.Identity,
-    Access: manifest.Access,
-    Interaction: manifest.Interaction,
-    Input: manifest.Input,
-    "Context requirements": manifest["Context requirements"],
-    "Prompt binding": manifest["Prompt binding"],
-    Output: manifest.Output,
-    Routing: manifest.Routing,
-    Economics: manifest.Economics,
-    Governance: manifest.Governance,
-  };
+function manifestToHashInput(manifest: Manifest): PublicManifest {
+  return toPublicManifest(manifest);
 }
 
 function sortManifests(manifests: Manifest[]): Manifest[] {
@@ -463,6 +462,22 @@ function deepFreeze<T extends object>(value: T): T {
 
 function freezeManifest(manifest: Manifest): Manifest {
   return deepFreeze(manifest);
+}
+
+export function toPublicManifest(manifest: Manifest): PublicManifest {
+  return deepFreeze({
+    Identity: manifest.Identity,
+    Interaction: manifest.Interaction,
+    Input: manifest.Input,
+    "Context requirements": manifest["Context requirements"],
+    Output: {
+      mode: manifest.Output.mode,
+      outputSchemaRef: manifest.Output.outputSchemaRef,
+    },
+    Governance: {
+      acceptanceMode: manifest.Governance.acceptanceMode,
+    },
+  });
 }
 
 function unmodifiableRegistry(registry: Map<string, Manifest>): CapabilityRegistry {
@@ -639,8 +654,7 @@ export async function discover(
     );
   } catch (error) {
     if (error instanceof ConfigCacheMissError) {
-      const manifests: Manifest[] = [];
-      const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+      const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
       logger.info("discover_complete", {
         installation_id: installationId,
         manifest_count: 0,
@@ -652,8 +666,7 @@ export async function discover(
   }
 
   if (entitlement.status !== "active") {
-    const manifests: Manifest[] = [];
-    const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+    const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
     logger.info("discover_complete", {
       installation_id: installationId,
       manifest_count: 0,
@@ -664,8 +677,7 @@ export async function discover(
 
   const plan = entitlement.plan;
   if (typeof plan !== "string") {
-    const manifests: Manifest[] = [];
-    const result = { manifests, etag: await computeDiscoveryEtag(manifests) };
+    const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
     logger.info("discover_complete", {
       installation_id: installationId,
       manifest_count: 0,
@@ -758,7 +770,10 @@ export async function discover(
 
   const manifests = evaluated.filter((entry): entry is Manifest => entry !== null);
   const sorted = sortManifests(manifests);
-  const result = { manifests: sorted, etag: await computeDiscoveryEtag(sorted) };
+  const result = {
+    manifests: sorted.map(toPublicManifest),
+    etag: await computeDiscoveryEtag(sorted),
+  };
   logger.info("discover_complete", {
     installation_id: installationId,
     manifest_count: sorted.length,
@@ -853,7 +868,7 @@ function ifNoneMatchMatches(ifNoneMatch: string | null, rawEtag: string): boolea
 
 export function buildDiscoveryResponse(
   request: Request,
-  manifestList: Manifest[],
+  manifestList: readonly PublicManifest[],
   etag: string,
 ): Response {
   const quotedEtag = `"${etag}"`;

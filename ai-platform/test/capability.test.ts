@@ -16,7 +16,9 @@ import {
   discover,
   resolve,
   setCapabilityRegistry,
+  toPublicManifest,
   type CapabilityRegistry,
+  type PublicManifest,
 } from "../src/capability";
 
 type ManifestWire = Record<string, unknown>;
@@ -614,7 +616,9 @@ async function warmDiscoveryCache(
   }
 }
 
-function assertManifestImmutable(manifest: Manifest): void {
+function assertManifestImmutable(
+  manifest: Pick<Manifest, "Identity" | "Context requirements">,
+): void {
   const originalTitle = manifest.Identity.title;
   const originalRequirements = manifest["Context requirements"];
 
@@ -877,6 +881,7 @@ describe("T-C1-08 discovery_etag_not_modified", () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
+    const publicManifests = manifests.map(toPublicManifest);
     const rawEtag = await computeDiscoveryEtag(manifests);
     const wireEtag = quotedEtag(rawEtag);
 
@@ -885,7 +890,7 @@ describe("T-C1-08 discovery_etag_not_modified", () => {
     const matchingRequest = new Request("https://ai.example/discovery", {
       headers: { "If-None-Match": wireEtag },
     });
-    const notModified = buildDiscoveryResponse(matchingRequest, manifests, rawEtag);
+    const notModified = buildDiscoveryResponse(matchingRequest, publicManifests, rawEtag);
     expect(notModified.status).toBe(304);
     expect(notModified.headers.get("ETag")).toBe(wireEtag);
     expect(notModified.headers.get("Cache-Control")).toBe("private, must-revalidate");
@@ -897,11 +902,11 @@ describe("T-C1-08 discovery_etag_not_modified", () => {
     const mismatchedRequest = new Request("https://ai.example/discovery", {
       headers: { "If-None-Match": '"stale-etag"' },
     });
-    const ok = buildDiscoveryResponse(mismatchedRequest, manifests, rawEtag);
+    const ok = buildDiscoveryResponse(mismatchedRequest, publicManifests, rawEtag);
     expect(ok.status).toBe(200);
     expect(ok.headers.get("ETag")).toBe(wireEtag);
     expect(ok.headers.get("Cache-Control")).toBe("private, must-revalidate");
-    expect(await ok.json()).toEqual({ manifests });
+    expect(await ok.json()).toEqual({ manifests: publicManifests });
 
     stringifySpy.mockRestore();
   });
@@ -1781,6 +1786,103 @@ describe("discovery_published_deprecated_included", () => {
   });
 });
 
+describe("discovery_public_projection", () => {
+  let db: D1Database;
+
+  beforeAll(async () => {
+    const workers = await import("cloudflare:test");
+    db = workers.env.DB;
+    await applyPlatformSchema(db, migrationSql);
+  });
+
+  beforeEach(async () => {
+    await clearEntitlementTables(db);
+  });
+
+  it("returns only public manifest keys with trimmed Output and Governance", async () => {
+    buildRegistry(
+      validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION, "active"),
+    );
+
+    await seedInstallation(db);
+    await seedEntitlement(db, {
+      allowedCapabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+    });
+    await seedCapabilityGrant(db, FIXTURE_GRANTED_CAPABILITY_ID);
+
+    const principal = buildPrincipal({
+      installationId: FIXTURE_INSTALLATION_ID,
+      allowedCapabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+    });
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(db);
+    await warmDiscoveryCache(cache, reader, FIXTURE_INSTALLATION_ID, [
+      FIXTURE_GRANTED_CAPABILITY_ID,
+    ]);
+
+    const result = await discover(principal, cache, reader);
+    expect(result.manifests).toHaveLength(1);
+
+    const manifest = result.manifests[0]!;
+    expect(Object.keys(manifest).sort()).toEqual([
+      "Context requirements",
+      "Governance",
+      "Identity",
+      "Input",
+      "Interaction",
+      "Output",
+    ]);
+    expect(manifest).not.toHaveProperty("Access");
+    expect(manifest).not.toHaveProperty("Prompt binding");
+    expect(manifest).not.toHaveProperty("Routing");
+    expect(manifest).not.toHaveProperty("Economics");
+    expect(manifest).not.toHaveProperty("interactionMode");
+
+    expect(Object.keys(manifest.Output).sort()).toEqual(["mode", "outputSchemaRef"]);
+    expect(Object.keys(manifest.Governance).sort()).toEqual(["acceptanceMode"]);
+    expect(Object.keys(manifest.Identity).sort()).toEqual([
+      "capabilityId",
+      "lifecycleState",
+      "successorId",
+      "title",
+      "version",
+    ]);
+  });
+
+  it("deep-freezes projected manifests returned by discover", async () => {
+    buildRegistry(
+      validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION, "active"),
+    );
+
+    await seedInstallation(db);
+    await seedEntitlement(db, {
+      allowedCapabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+    });
+    await seedCapabilityGrant(db, FIXTURE_GRANTED_CAPABILITY_ID);
+
+    const principal = buildPrincipal({
+      installationId: FIXTURE_INSTALLATION_ID,
+      allowedCapabilities: [FIXTURE_GRANTED_CAPABILITY_ID],
+    });
+    const cache = new ConfigCache();
+    const reader = makePlatformD1Reader(db);
+    await warmDiscoveryCache(cache, reader, FIXTURE_INSTALLATION_ID, [
+      FIXTURE_GRANTED_CAPABILITY_ID,
+    ]);
+
+    const result = await discover(principal, cache, reader);
+    const manifest = result.manifests[0] as PublicManifest;
+
+    expect(Object.isFrozen(manifest)).toBe(true);
+    expect(Object.isFrozen(manifest.Identity)).toBe(true);
+    expect(Object.isFrozen(manifest.Interaction)).toBe(true);
+    expect(Object.isFrozen(manifest.Input)).toBe(true);
+    expect(Object.isFrozen(manifest["Context requirements"])).toBe(true);
+    expect(Object.isFrozen(manifest.Output)).toBe(true);
+    expect(Object.isFrozen(manifest.Governance)).toBe(true);
+  });
+});
+
 describe("discovery_etag_order_independent", () => {
   it("yields the same etag for the same set regardless of input order", async () => {
     const first = load(validManifest("clinic.alpha", FIXTURE_CAPABILITY_VERSION));
@@ -1815,24 +1917,53 @@ describe("discovery_etag_content_only_change", () => {
   });
 });
 
+describe("discovery_etag_ignores_internal_only_change", () => {
+  it("yields the same etag when only internal-only fields change", async () => {
+    const wire = validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION);
+    const standardRouting = load(wire);
+    const premiumRouting = load({
+      ...wire,
+      Routing: {
+        ...(wire.Routing as Record<string, unknown>),
+        routingPolicyRef: "routing/premium",
+      },
+    });
+
+    const standardEtag = await computeDiscoveryEtag([standardRouting]);
+    const premiumEtag = await computeDiscoveryEtag([premiumRouting]);
+    expect(premiumEtag).toBe(standardEtag);
+
+    // Sanity: kept-field changes still move the etag (see discovery_etag_content_only_change).
+    const retitled = load({
+      ...wire,
+      Identity: {
+        ...(wire.Identity as Record<string, unknown>),
+        title: "retitled fixture",
+      },
+    });
+    expect(await computeDiscoveryEtag([retitled])).not.toBe(standardEtag);
+  });
+});
+
 describe("discovery_if_none_match_absent_200", () => {
   it("returns 200 with quoted ETag and Cache-Control when If-None-Match is absent", async () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
+    const publicManifests = manifests.map(toPublicManifest);
     const rawEtag = await computeDiscoveryEtag(manifests);
     const wireEtag = quotedEtag(rawEtag);
 
     const response = buildDiscoveryResponse(
       new Request("https://ai.example/discovery"),
-      manifests,
+      publicManifests,
       rawEtag,
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("ETag")).toBe(wireEtag);
     expect(response.headers.get("Cache-Control")).toBe("private, must-revalidate");
-    expect(await response.json()).toEqual({ manifests });
+    expect(await response.json()).toEqual({ manifests: publicManifests });
   });
 });
 
@@ -1841,6 +1972,7 @@ describe("discovery_if_none_match_star_304", () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
+    const publicManifests = manifests.map(toPublicManifest);
     const rawEtag = await computeDiscoveryEtag(manifests);
     const wireEtag = quotedEtag(rawEtag);
 
@@ -1848,7 +1980,7 @@ describe("discovery_if_none_match_star_304", () => {
       new Request("https://ai.example/discovery", {
         headers: { "If-None-Match": "*" },
       }),
-      manifests,
+      publicManifests,
       rawEtag,
     );
 
@@ -1863,6 +1995,7 @@ describe("discovery_if_none_match_list_with_match_304", () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
+    const publicManifests = manifests.map(toPublicManifest);
     const rawEtag = await computeDiscoveryEtag(manifests);
     const wireEtag = quotedEtag(rawEtag);
 
@@ -1870,7 +2003,7 @@ describe("discovery_if_none_match_list_with_match_304", () => {
       new Request("https://ai.example/discovery", {
         headers: { "If-None-Match": `"stale-a", ${wireEtag}, "stale-b"` },
       }),
-      manifests,
+      publicManifests,
       rawEtag,
     );
 
@@ -1885,6 +2018,7 @@ describe("discovery_if_none_match_weak_304", () => {
     const manifests = [
       load(validManifest(FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_CAPABILITY_VERSION)),
     ];
+    const publicManifests = manifests.map(toPublicManifest);
     const rawEtag = await computeDiscoveryEtag(manifests);
     const wireEtag = quotedEtag(rawEtag);
 
@@ -1892,7 +2026,7 @@ describe("discovery_if_none_match_weak_304", () => {
       new Request("https://ai.example/discovery", {
         headers: { "If-None-Match": `W/${wireEtag}` },
       }),
-      manifests,
+      publicManifests,
       rawEtag,
     );
 

@@ -61,7 +61,7 @@ Discovery uses the same isolate-scoped `ConfigCache` as `POST /v1/requests` and
 
 ## 4. Response shape
 
-List of capability manifests the installation may invoke — filtered to entitled, granted, non-retired capabilities.
+List of capability manifests the installation may invoke — filtered to entitled, granted, non-retired capabilities. Each element is the **public projection** of the §5.1 capability bundle (six field groups), not the full internal manifest; internal groups never leave the platform.
 
 **Pending entitlement:** typically `{ "manifests": [] }`.
 
@@ -79,7 +79,7 @@ List of capability manifests the installation may invoke — filtered to entitle
 | Body           | `{ "manifests": [ … ] }` — **only** top-level key   |
 
 
-Each `manifests[]` element is the published §5.1 capability bundle (ten field groups). Visit summary (`clinic.visit_summary@1.0.0`) illustrates every group:
+Each `manifests[]` element is the public projection — six field groups; visit summary (`clinic.visit_summary@1.0.0`) illustrates them:
 
 
 | Group | Field | Type / values | Visit summary example |
@@ -87,12 +87,8 @@ Each `manifests[]` element is the published §5.1 capability bundle (ten field g
 | **Identity** | `capabilityId` | string | `clinic.visit_summary` |
 | | `version` | semver string | `1.0.0` |
 | | `title` | string | `Visit summary` |
-| | `lifecycleState` | `active` \| `deprecated` \| `retired` | `active` |
+| | `lifecycleState` | `active` \| `deprecated` (retired never listed) | `active` |
 | | `successorId` | string \| null | `null` |
-| **Access** | `requiredCapabilityScope` | string | `ai.visit_summary` |
-| | `minimumPlanTier` | plan enum | `standard` |
-| | `allowedStaffRoles` | string[] | `clinician`, `nurse` |
-| | `killSwitchFlag` | boolean | `false` (manifest flag only; D1 kill switches are not applied on discovery) |
 | **Interaction** | `interactionMode` | `single_shot` \| `conversational` | `single_shot` |
 | **Input** | `userIntentShape` | string | `plain_text` |
 | | `priorTurnShape` | object \| null | `null` |
@@ -102,28 +98,28 @@ Each `manifests[]` element is the published §5.1 capability bundle (ten field g
 | | `[].required` | boolean | `true` |
 | | `[].shapeRef` | string | `visit.chief_complaint@v1` |
 | | `[].maxSize` | bytes | `4096` |
-| **Prompt binding** | `systemInstructionArtifactRef` | artifact ref | `clinic.visit_summary/system@v1` |
-| | `businessRuleFragmentRefs` | string[] | `clinic.visit_summary/rules-visit-summary@v1` |
-| | `contextRenderingTemplateRef` | string | `clinic.visit_summary/template-visit-summary@v1` |
-| | `outputFormatInstructionDerivationRule` | string | `derive_from_output_mode` |
 | **Output** | `mode` | `prose` \| structured modes | `prose` |
 | | `outputSchemaRef` | string \| null | `null` |
-| | `businessValidationRuleRefs` | string[] | `[]` |
-| | `repairPolicy.allowed` | boolean | `false` |
-| | `repairPolicy.maxAttempts` | number | `0` |
-| **Routing** | `routingPolicyRef` | policy ref | `routing/standard` |
-| | `requiredProviderFeatures.structuredOutput` | boolean | `false` |
-| | `requiredProviderFeatures.contextWindow` | number | `32000` |
-| | `requiredProviderFeatures.language` | string | `en` |
-| | `latencyClass` | string | `standard` |
-| | `degradedTierPolicy` | string | `fallback_chain` |
-| **Economics** | `maxInputTokens` | number | `8000` |
-| | `maxOutputTokens` | number | `1024` |
-| | `perRequestTokenCeiling` | number | `9024` |
-| | `quotaWeight` | number | `1` |
 | **Governance** | `acceptanceMode` | string | `advisory_display` |
-| | `retentionClass` | string | `diagnostic_30d` |
-| | `evalSuiteRef` | string | `evals/visit-summary@v1` |
+
+
+**Not on the wire.**
+
+
+| Field / group | Why absent |
+| ------------- | ---------- |
+| `Access` (all) | Enforced at invoke; installation-scoped discovery can't apply roles per-user |
+| `Prompt binding` (all) | Invoke-time prompt assembly |
+| `Routing` (all) | Provider selection is platform-internal |
+| `Economics` (all) | Server-side pre-flight; billing internals |
+| `Output.businessValidationRuleRefs` | Server-side validation/repair |
+| `Output.repairPolicy` | Server-side validation/repair |
+| `Governance.retentionClass` | Journal/CI internals |
+| `Governance.evalSuiteRef` | Journal/CI internals |
+| Top-level `interactionMode` | Canonical home is `Interaction.interactionMode` |
+
+
+The `ETag` is computed over the projection — edits to internal-only fields do not revalidate client caches.
 
 
 Stage 8 sends `Identity.capabilityId` as body `capability_id` and `Identity.version` as header `x-capability-version`.
@@ -206,7 +202,7 @@ Every happy and failure claim in this file maps to a probe. Carry them all out.
 | Cache kinds `installations` / `entitlements` / `grants` as in [§3](#3-d1-reads-via-config-cache) | [§6.3.1](#631-reset-to-a-known-pending-installation), [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear) |
 | Same isolate `ConfigCache` as `POST /v1/requests` and `GET /v1/requests/{ref}`; 30 s TTL | [§6.3.7](#637-config-cache-30-s-ttl-and-shared-isolate) |
 | Stage 4 entitle + grants → capability appears | [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear) |
-| 200 body `{ "manifests": [...] }` plus `ETag` / `Cache-Control` / `Content-Type`; every visit-summary field group | [§6.3.5](#635-entitled-happy-path-every-response-field) |
+| 200 body `{ "manifests": [...] }` plus `ETag` / `Cache-Control` / `Content-Type`; the six-group public projection and absence of internal groups | [§6.3.5](#635-entitled-happy-path-every-response-field) |
 | `If-None-Match` matches → HTTP 304, empty body, same `ETag` ([§4.2](#42-conditional-get--http-304-not-modified)) | [§6.3.6](#636-conditional-get-304-not-modified) |
 | Filtered to entitled, granted, non-retired | [§6.3.4](#634-stage-4-entitle-then-discovery-grants-appear), [§6.3.9](#639-what-this-stage-does-not-do) |
 | Kill switches **not** applied on discovery; they apply on invoke ([§1](#1-plain-language)) | [§6.3.8](#638-kill-switches-apply-on-invoke-not-discovery) |
@@ -356,28 +352,31 @@ curl -sS -D - "$GATEWAY/v1/capabilities" \
 jq '.manifests[0]' /tmp/discovery.json
 ```
 
-**Expect:** HTTP **200**. Headers: `Content-Type: application/json`, `Cache-Control: private, must-revalidate`, `ETag` matching `/^".+"$/`. Body key is **`manifests`** (array of length 1). That object is the published visit-summary manifest — every field group listed in [§4.1](#41-success--http-200-and-manifests):
+**Expect:** HTTP **200**. Headers: `Content-Type: application/json`, `Cache-Control: private, must-revalidate`, `ETag` matching `/^".+"$/`. Body key is **`manifests`** (array of length 1). That object is the public projection listed in [§4.1](#41-success--http-200-and-manifests):
 
 - `Identity.capabilityId = "clinic.visit_summary"`
 - `Identity.version = "1.0.0"`
 - `Identity.title = "Visit summary"`
 - `Identity.lifecycleState = "active"`
 - `Identity.successorId = null`
-- `Access.requiredCapabilityScope = "ai.visit_summary"`
-- `Access.minimumPlanTier = "standard"`
-- `Access.allowedStaffRoles` includes `clinician` and `nurse`
-- `Access.killSwitchFlag = false`
 - `Interaction.interactionMode = "single_shot"`
 - `Input.userIntentShape = "plain_text"`
 - `Input.priorTurnShape = null`
 - `Input.sizeLimits.maxChars = 8000`
 - `Input.allowedLanguages = ["en"]`
-- `Context requirements[0].key = "visit.chief_complaint@v1"` (required, `maxSize` 4096)
-- `Prompt binding.systemInstructionArtifactRef = "clinic.visit_summary/system@v1"`
+- `Context requirements[0].key = "visit.chief_complaint@v1"` (required, `shapeRef`, `maxSize` 4096)
 - `Output.mode = "prose"`
-- `Routing.routingPolicyRef = "routing/standard"`
-- `Economics.perRequestTokenCeiling = 9024`
+- `Output.outputSchemaRef = null`
 - `Governance.acceptanceMode = "advisory_display"`
+
+**Absent** (not on the wire):
+
+- No `Access`, `Prompt binding`, `Routing`, or `Economics` groups
+- No top-level `interactionMode`
+- `Output` has no `repairPolicy` or `businessValidationRuleRefs`
+- `Governance` has no `retentionClass` or `evalSuiteRef`
+
+Verify with `jq '.manifests[0] | keys'`, `jq '.manifests[0].Output | keys'`, and `jq '.manifests[0].Governance | keys'`.
 
 No other top-level body keys. Stage 8 will send this `capabilityId` as `capability_id` and this `version` as `x-capability-version`.
 

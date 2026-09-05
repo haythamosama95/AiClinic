@@ -371,17 +371,35 @@ describe("T1 discovery_http_granted_active_manifests", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, must-revalidate");
     expect(response.headers.get("ETag")).toMatch(/^".+"$/);
 
-    const body = (await response.json()) as { manifests: Manifest[] };
-    expect(manifestIds(body.manifests).sort()).toEqual(
+    const body = (await response.json()) as { manifests: Record<string, unknown>[] };
+    expect(manifestIds(body.manifests as Manifest[]).sort()).toEqual(
       [FIXTURE_GRANTED_CAPABILITY_ID, FIXTURE_DEPRECATED_CAPABILITY_ID].sort(),
     );
     expect(
       body.manifests.every(
         (manifest) =>
-          manifest.Identity.lifecycleState === "active" ||
-          manifest.Identity.lifecycleState === "deprecated",
+          (manifest.Identity as { lifecycleState: string }).lifecycleState === "active" ||
+          (manifest.Identity as { lifecycleState: string }).lifecycleState === "deprecated",
       ),
     ).toBe(true);
+
+    for (const manifest of body.manifests) {
+      expect(manifest).not.toHaveProperty("Access");
+      expect(manifest).not.toHaveProperty("Prompt binding");
+      expect(manifest).not.toHaveProperty("Routing");
+      expect(manifest).not.toHaveProperty("Economics");
+      expect(manifest).not.toHaveProperty("interactionMode");
+      expect(manifest).toHaveProperty("Identity");
+      expect(manifest).toHaveProperty("Interaction");
+      expect(manifest).toHaveProperty("Input");
+      expect(manifest).toHaveProperty("Context requirements");
+      expect(manifest).toHaveProperty("Output");
+      expect(manifest).toHaveProperty("Governance");
+      expect(manifest.Output).not.toHaveProperty("repairPolicy");
+      expect(manifest.Output).not.toHaveProperty("businessValidationRuleRefs");
+      expect(manifest.Governance).not.toHaveProperty("retentionClass");
+      expect(manifest.Governance).not.toHaveProperty("evalSuiteRef");
+    }
   });
 });
 
