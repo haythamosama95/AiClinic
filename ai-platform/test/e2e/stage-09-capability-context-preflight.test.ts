@@ -852,6 +852,28 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
 
     expect(await count("ai_request")).toBe(1);
     const after = await getAiRequest(firstRef);
-    expect(after).toEqual(firstRow);
+    expect(after).not.toBeNull();
+    // Catalog S09-065: first journal row "untouched". Code keeps settling
+    // request 1 after accept (payload_pointer, routing_decision, state,
+    // timestamps) via persistPostResponseDetail / journalTransition — not a
+    // second INSERT. Replay must not rewrite identity columns.
+    const settlementKeys = new Set([
+      "payload_pointer",
+      "routing_decision",
+      "state",
+      "updated_at",
+      "completed_at",
+      "terminal_error_code",
+    ]);
+    const identityOf = (row: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(row).filter(([key]) => !settlementKeys.has(key)),
+      );
+    expect(identityOf(after!)).toEqual(identityOf(firstRow!));
+    expect(after?.idempotency_key).toBe("jti-a");
+    const pointer = after?.payload_pointer;
+    if (pointer != null) {
+      expect(pointer).toBe(`request/${String(firstRow?.request_id)}/envelope`);
+    }
   });
 });

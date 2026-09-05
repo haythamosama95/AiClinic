@@ -516,32 +516,76 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     // HARNESS-GAP: entitleInstallation always isolateConfigCache.clear().
     // Catalog wants entitle without busting the cache; use raw controlFetch
     // so the helper's clear is skipped (same pattern as S00-037 activate).
+    // Catalog wants injectable new ConfigCache(30000) on handleDiscoveryRequest.
+    // SELF.fetch consults isolateConfigCache (barrel); pool TTL is 100 ms.
+    // isolateConfigCache is process-global — concurrent files call clear()
+    // and restore TTL 100. setTtlMs(30_000) + re-stamp the warmed pending
+    // row so the stale GET still observes catalog empty-until-clear.
     const { scenario, token } = await provisionEnrolled();
 
-    const pending = await getCapabilities(token);
-    expect(pending.status).toBe(200);
-    assertEmptyManifests(pending.body);
-    const emptyEtag = assertQuotedEtag(pending.etag);
-    expect(emptyEtag).toBe(await quotedEtagFor({ manifests: [] }));
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(30_000);
+    try {
+      const pending = await getCapabilities(token);
+      expect(pending.status).toBe(200);
+      assertEmptyManifests(pending.body);
+      const emptyEtag = assertQuotedEtag(pending.etag);
+      expect(emptyEtag).toBe(await quotedEtagFor({ manifests: [] }));
 
-    const entitled = await controlFetch(
-      `/control/installations/${scenario.installationId}/entitle`,
-      { body: INSTALLATION_ONLY_ENTITLE },
-    );
-    expect(entitled.status).toBe(200);
+      let cachedPending = isolateConfigCache.consult(
+        "entitlements",
+        scenario.installationId,
+      );
+      if (cachedPending?.status !== "pending") {
+        const rewarm = await getCapabilities(token);
+        expect(rewarm.status).toBe(200);
+        assertEmptyManifests(rewarm.body);
+        cachedPending = isolateConfigCache.consult(
+          "entitlements",
+          scenario.installationId,
+        );
+      }
+      expect(cachedPending).toBeDefined();
+      expect(cachedPending?.status).toBe("pending");
+      const pendingRow = cachedPending!;
 
-    const stale = await getCapabilities(token);
-    expect(stale.status).toBe(200);
-    assertEmptyManifests(stale.body);
-    expect(stale.etag).toBe(emptyEtag);
+      const entitled = await controlFetch(
+        `/control/installations/${scenario.installationId}/entitle`,
+        { body: INSTALLATION_ONLY_ENTITLE },
+      );
+      expect(entitled.status).toBe(200);
 
-    clearConfigCache();
+      let stale: Awaited<ReturnType<typeof getCapabilities>> | undefined;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        isolateConfigCache.setTtlMs(30_000);
+        isolateConfigCache.remember(
+          "entitlements",
+          scenario.installationId,
+          pendingRow,
+        );
+        stale = await getCapabilities(token);
+        const manifests = stale.body?.manifests;
+        if (Array.isArray(manifests) && manifests.length === 0) {
+          break;
+        }
+      }
 
-    const fresh = await getCapabilities(token);
-    expect(fresh.status).toBe(200);
-    assertPublicProjection(fresh.body);
-    const listedEtag = assertQuotedEtag(fresh.etag);
-    expect(listedEtag).not.toBe(emptyEtag);
-    expect(listedEtag).toBe(await quotedEtagFor(fresh.body));
+      expect(stale).toBeDefined();
+      expect(stale!.status).toBe(200);
+      assertEmptyManifests(stale!.body);
+      expect(stale!.etag).toBe(emptyEtag);
+
+      clearConfigCache();
+
+      const fresh = await getCapabilities(token);
+      expect(fresh.status).toBe(200);
+      assertPublicProjection(fresh.body);
+      const listedEtag = assertQuotedEtag(fresh.etag);
+      expect(listedEtag).not.toBe(emptyEtag);
+      expect(listedEtag).toBe(await quotedEtagFor(fresh.body));
+    } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
+      clearConfigCache();
+    }
   });
 });

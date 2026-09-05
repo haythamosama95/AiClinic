@@ -14,10 +14,16 @@ import {
   gatewayObjectJson,
   getAiRequest,
   getEntitlement,
+  getR2Json,
+  getRoutingPolicy,
   invokeCron,
+  isolateConfigCache,
   mintAat,
   newScenario,
   OPERATOR_ID,
+  POLICY_ID,
+  POLICY_REF,
+  POLICY_VERSION,
   postRequest,
   provisionHappyPath,
   queryAll,
@@ -55,6 +61,14 @@ const LEDGER_HORIZON_DAYS = 2555;
 const JOURNAL_HORIZON_DAYS = 90;
 const EPHEMERAL_HORIZON_MS = 7_200_000;
 const FAKE_SUMMARY = "Fake adapter summary.";
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → SSE
+ * accepted+failed). Raise TTL and re-stamp the just-promoted policy
+ * immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
 
 const ROLLUP_WINDOW_AUG20 = {
   start: "2026-08-20T00:00:00.000Z",
@@ -371,11 +385,56 @@ function spyFakeInputTokens(
   });
 }
 
+async function waitForUsageEvent(
+  requestId: string,
+  timeoutMs = 4000,
+): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const row = await queryOne(
+      "SELECT request_id FROM usage_event WHERE request_id = ?",
+      [requestId],
+    );
+    if (row) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`timed out waiting for usage_event ${requestId}`);
+}
+
+async function loadServingPolicyRow(
+  policyVersion: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, policyVersion);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function completeVisit(
   scenario: Scenario,
   tag: string,
 ): Promise<{ requestId: string; requestReference: string }> {
   const token = await mintAat(scenario);
+  const policyRow = await loadServingPolicyRow(POLICY_VERSION);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: `${tag}-${crypto.randomUUID()}`,
@@ -739,6 +798,13 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
       const i0b = await completeVisit(i0, "sx037-i0b");
       const i0c = await completeVisit(i0, "sx037-i0c");
       const i1a = await completeVisit(i1, "sx037-i1a");
+      // usage_event is waitUntil post-response detail (journal.writePostResponseDetail);
+      // SSE Completed / ai_request.state can land before the ledger row, especially
+      // I1 which is last and had no follow-on visit to overlap the drain.
+      await waitForUsageEvent(i0a.requestId);
+      await waitForUsageEvent(i0b.requestId);
+      await waitForUsageEvent(i0c.requestId);
+      await waitForUsageEvent(i1a.requestId);
 
       await seedSql([
         {

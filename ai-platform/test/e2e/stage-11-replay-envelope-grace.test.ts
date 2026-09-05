@@ -22,12 +22,15 @@ import {
   getAttempts,
   getRequestByRef,
   getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
+  isolateConfigCache,
   loadManifest,
   mintAat,
   newScenario,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   POLICY_VERSION,
   postRequest,
   promotePolicy,
@@ -305,6 +308,52 @@ async function setupFresh(options?: {
   return scenario;
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with taxonomy internal_error instead of empty-chain provider_unavailable).
+ * Raise TTL and re-stamp the serving policy immediately before POST so the
+ * post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, policyVersion);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+async function loadActiveServingPolicyRow(): Promise<Record<string, unknown>> {
+  const active = await queryOne<{ version: string }>(
+    `SELECT version FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+    [POLICY_ID],
+  );
+  expect(active?.version).toBeTruthy();
+  return loadServingPolicyRow(String(active!.version));
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function postVisit(
   scenario: Scenario,
   opts: {
@@ -314,6 +363,8 @@ async function postVisit(
   },
 ): Promise<InvokeResult> {
   const token = await mintAat(scenario);
+  const policyRow = await loadActiveServingPolicyRow();
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: opts.idempotencyKey,
@@ -583,6 +634,8 @@ async function cancelInFlight(
   const controller = new AbortController();
   try {
     const token = await mintAat(scenario);
+    const policyRow = await loadActiveServingPolicyRow();
+    pinServingRoutingPolicy(policyRow, [scenario.installationId]);
     const fetchPromise = clinicFetch("/v1/requests", {
       method: "POST",
       token,
@@ -634,6 +687,52 @@ async function snapshotSettlement(requestId: string, ref: string) {
     pointer,
     envelopeJson: envelope === null ? null : JSON.stringify(envelope),
   };
+}
+
+function settlementFingerprint(
+  snapshot: Awaited<ReturnType<typeof snapshotSettlement>>,
+): string {
+  return JSON.stringify({
+    attemptCount: snapshot.attemptCount,
+    usageCount: snapshot.usageCount,
+    pointer: snapshot.pointer,
+    envelopeJson: snapshot.envelopeJson,
+    rowJson: snapshot.rowJson,
+  });
+}
+
+/**
+ * S11-008 in-flight cancel writes Cancelled + DO credit before
+ * persistPostResponseDetail inserts the attempt/usage/envelope
+ * (recordTerminalState is fire-and-forget; journal is waitUntil).
+ * Snapshot only after that journal is stable so replay is not blamed
+ * for the original settlement.
+ */
+async function waitForStableCancelledSnapshot(
+  requestId: string,
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Awaited<ReturnType<typeof snapshotSettlement>>> {
+  const started = Date.now();
+  let previous: string | undefined;
+  while (Date.now() - started < timeoutMs) {
+    const current = await snapshotSettlement(requestId, ref);
+    const settled =
+      current.row.state === "Cancelled" &&
+      current.attemptCount === 1 &&
+      current.usageCount === 1 &&
+      current.pointer.length > 0 &&
+      current.envelopeJson !== null;
+    const fingerprint = settlementFingerprint(current);
+    if (settled && previous === fingerprint) {
+      return current;
+    }
+    previous = settled ? fingerprint : undefined;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for stable Cancelled settlement for ${requestId}`,
+  );
 }
 
 describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
@@ -809,7 +908,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       idempotencyKey,
       "s11-015-orig",
     );
-    const snapshot = await snapshotSettlement(requestId, ref);
+    const snapshot = await waitForStableCancelledSnapshot(requestId, ref);
     const doBefore = await inspectState(scenario.installationId);
     expect(doBefore.idempotency?.[idempotencyKey]?.state).toBe("cancelled");
 

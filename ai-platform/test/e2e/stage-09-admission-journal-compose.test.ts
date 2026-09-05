@@ -18,11 +18,14 @@ import {
   getAiRequest,
   getEntitlement,
   getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
+  isolateConfigCache,
   loadManifest,
   mintAat,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   postRequest,
   promotePolicy,
   provisionHappyPath,
@@ -149,6 +152,30 @@ function assertSyntheticCompleted(events: SseEvent[]): SseEvent {
   return completed!;
 }
 
+/**
+ * SSE `failed` closes the stream (adapter.ts terminal enqueue) before
+ * waitUntil `recordTerminalState` writes D1 Failed (worker.ts empty-chain
+ * path). Poll so replay setup sees the journal terminal under suite load.
+ */
+async function waitForAiRequestState(
+  requestReference: string,
+  state: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(requestReference);
+    if (row?.state === state) {
+      return row;
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for ai_request ${requestReference} state ${state} (last=${String(row?.state)})`,
+  );
+}
+
 async function inspectState(
   installationId: string,
   now?: number,
@@ -243,9 +270,64 @@ function restorePublishedRegistry(): void {
   );
 }
 
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with terminal_error_code internal_error). Raise TTL and re-stamp the
+ * serving policy immediately before every POST so the post-accept consult
+ * cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, policyVersion);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
+async function pinActiveServingPolicy(scenario: Scenario): Promise<void> {
+  const active = await queryOne<Record<string, unknown>>(
+    `SELECT version FROM routing_policy
+     WHERE policy_id = ? AND status = 'active'
+     ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+    [POLICY_ID],
+  );
+  expect(active).not.toBeNull();
+  const policyRow = await loadServingPolicyRow(String(active!.version));
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
+}
+
+async function postRequestPinned(
+  scenario: Scenario,
+  opts: Parameters<typeof postRequest>[1] = {},
+): Promise<InvokeResult> {
+  await pinActiveServingPolicy(scenario);
+  return postRequest(scenario, opts);
+}
+
 async function eightSettledHappy(scenario: Scenario): Promise<void> {
   for (let index = 0; index < 8; index += 1) {
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       body: happyVisitBody(scenario),
     });
@@ -264,6 +346,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     // HARNESS-GAP: FakeAdapter hang/scripted-failure is not on the barrel;
     // production always `new FakeAdapter(["success"])`. Hold in-flight by
     // not draining the first SSE body before the second POST.
+    await pinActiveServingPolicy(scenario);
     const first = clinicFetch("/v1/requests", {
       method: "POST",
       token: tokenA,
@@ -315,7 +398,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     const scenario = await provisionHappyPath();
     const body = happyVisitBody(scenario);
 
-    const original = await postRequest(scenario, {
+    const original = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "idem-done",
       traceId: TRACE_ID,
@@ -328,7 +411,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(firstRow).not.toBeNull();
     const firstId = String(firstRow?.request_id);
 
-    const replay = await postRequest(scenario, {
+    const replay = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "idem-done",
       traceId: TRACE_ID,
@@ -364,7 +447,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     const promoted = await promotePolicy(POLICY_ID, "2");
     expect(promoted.status).toBe(200);
 
-    const first = await postRequest(scenario, {
+    const first = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "idem-fail",
       traceId: TRACE_ID,
@@ -372,15 +455,16 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     });
     expect(first.status).toBe(200);
     assertSseSequence(first.events, ["accepted", "failed"], "subsequence");
-    const firstRow = await getAiRequest(
+    const firstRow = await waitForAiRequestState(
       String(first.events[0]?.data.request_reference),
+      "Failed",
     );
     expect(firstRow).not.toBeNull();
-    expect(firstRow?.state).toBe("Failed");
-    expect(firstRow?.terminal_error_code).toBe("provider_unavailable");
+    expect(firstRow.state).toBe("Failed");
+    expect(firstRow.terminal_error_code).toBe("provider_unavailable");
     const journalCount = await count("ai_request");
 
-    const replay = await postRequest(scenario, {
+    const replay = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "idem-fail",
       traceId: TRACE_ID,
@@ -407,6 +491,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     const token = await mintAat(scenario);
     const controller = new AbortController();
 
+    await pinActiveServingPolicy(scenario);
     const response = await clinicFetch("/v1/requests", {
       method: "POST",
       token,
@@ -427,7 +512,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     // Let waitUntil credit cancelled if the abort beat FakeAdapter settle.
     await flushBackgroundWork(400);
 
-    const replay = await postRequest(scenario, {
+    const replay = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "idem-cancel",
       traceId: TRACE_ID,
@@ -448,7 +533,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       request_quota: 0,
     });
 
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -465,7 +550,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       token_budget: 0,
     });
 
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -481,7 +566,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       cost_budget: 0,
     });
 
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -516,7 +601,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     const held = await inspectState(scenario.installationId);
     expect(held.periodCounters?.inFlight).toBe(16);
 
-    const seventeenth = await postRequest(scenario, {
+    const seventeenth = await postRequestPinned(scenario, {
       token: await mintAat(scenario, { claims: { jti: crypto.randomUUID() } }),
       idempotencyKey: crypto.randomUUID(),
       traceId: TRACE_ID,
@@ -555,7 +640,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(before.idempotency?.["idem-old"]?.state).toBe("admitted");
     expect(Object.keys(before.admittedRequests ?? {}).length).toBe(1);
 
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -588,7 +673,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 0,
     });
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       idempotencyKey: "grace-exhausted",
       traceId: TRACE_ID,
@@ -612,7 +697,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     });
     await eightSettledHappy(scenario);
 
-    const ninth = await postRequest(scenario, {
+    const ninth = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -633,7 +718,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     });
     await eightSettledHappy(scenario);
 
-    const ninth = await postRequest(scenario, {
+    const ninth = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       traceId: TRACE_ID,
       body: happyVisitBody(scenario),
@@ -679,7 +764,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     try {
       const { scenario, token } = await entitledJourney();
 
-      const result = await postRequest(scenario, {
+      const result = await postRequestPinned(scenario, {
         token,
         idempotencyKey: "comp-1",
         traceId: TRACE_ID,
@@ -708,7 +793,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
   it("S09-084 — compose observables share prompt_artifact_hash", async () => {
     const scenario = await provisionHappyPath();
 
-    const first = await postRequest(scenario, {
+    const first = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       capabilityVersion: CAPABILITY_VERSION,
       traceId: TRACE_ID,
@@ -726,7 +811,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
         },
       }),
     });
-    const second = await postRequest(scenario, {
+    const second = await postRequestPinned(scenario, {
       token: await mintAat(scenario),
       capabilityVersion: CAPABILITY_VERSION,
       body: happyVisitBody(scenario),
@@ -786,7 +871,7 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
   it("S09-085 — full fresh guard success ends in SSE accepted", async () => {
     const { scenario, token } = await entitledJourney();
 
-    const result = await postRequest(scenario, {
+    const result = await postRequestPinned(scenario, {
       token,
       idempotencyKey: S09_085_KEY,
       capabilityVersion: CAPABILITY_VERSION,

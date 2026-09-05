@@ -14,8 +14,10 @@ import {
   getAudits,
   getR2Json,
   getRoutingPolicy,
+  isolateConfigCache,
   newScenario,
   OPERATOR_ID,
+  POLICY_REF,
   postRequest,
   promotePolicy,
   publishPolicy,
@@ -332,13 +334,81 @@ function parseRoutingDecision(
   return raw as Record<string, unknown>;
 }
 
-async function assertPostAcceptInternalError(ref: string): Promise<void> {
-  const row = await getAiRequest(ref);
+/**
+ * SSE `failed` is pushed (and the stream closed) before waitUntil settlement
+ * finishes (`worker.ts` catch → `pushFailedTerminal` then
+ * `settlePostAcceptInternalError`; `persistRoutingDecision` is likewise in
+ * that background task). Under the parallel suite the harness 150 ms flush
+ * is not always enough; poll D1 rather than weakening assertions.
+ */
+async function waitForAiRequest(
+  ref: string,
+  predicate: (row: Record<string, unknown>) => boolean,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row != null && predicate(row)) {
+      return row;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for ai_request ${ref} (state=${String(row?.state)}, routing_decision=${row?.routing_decision == null ? "null" : "set"})`,
+  );
+}
+
+async function waitForPersistedDecision(
+  ref: string,
+): Promise<Record<string, unknown>> {
+  const row = await waitForAiRequest(
+    ref,
+    (current) => current.routing_decision != null,
+  );
+  const decision = parseRoutingDecision(row);
+  expect(decision).not.toBeNull();
+  return decision as Record<string, unknown>;
+}
+
+/** D1 routing_policy row plus the R2 document `selectCandidateChain` consults. */
+async function routingPolicyCacheRow(
+  version: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, version);
   expect(row).not.toBeNull();
-  expect(row?.state).toBe("Failed");
-  expect(row?.terminal_error_code).toBe("internal_error");
-  expect(row?.routing_decision).toBeNull();
-  const attempts = await getAttempts(String(row?.request_id));
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+/**
+ * Pin both cache keys `selectCandidateChain` consults. Parallel files share
+ * isolateConfigCache; a concurrent `clear()` or 100 ms TTL expiry between
+ * preload and consult throws ConfigCacheMissError for
+ * `active_routing_policy:routing/standard`.
+ */
+function pinActiveRoutingPolicy(
+  installationId: string,
+  policyRow: Record<string, unknown>,
+): void {
+  isolateConfigCache.setTtlMs(30_000);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  isolateConfigCache.remember(
+    "active_routing_policy",
+    `${POLICY_REF}/${installationId}`,
+    policyRow,
+  );
+}
+
+async function assertPostAcceptInternalError(ref: string): Promise<void> {
+  const row = await waitForAiRequest(ref, (current) => current.state === "Failed");
+  expect(row).not.toBeNull();
+  expect(row.state).toBe("Failed");
+  expect(row.terminal_error_code).toBe("internal_error");
+  expect(row.routing_decision).toBeNull();
+  const attempts = await getAttempts(String(row.request_id));
   expect(attempts.length).toBeGreaterThanOrEqual(1);
 }
 
@@ -517,7 +587,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     const refA = assertAccepted(resultA);
     const refB = assertAccepted(resultB);
 
-    const decisionA = parseRoutingDecision(await getAiRequest(refA));
+    const decisionA = await waitForPersistedDecision(refA);
     expect(decisionA).toMatchObject({
       policy_version: 2,
       rule_id: "v2-catch-all",
@@ -532,7 +602,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       ],
     });
 
-    const decisionB = parseRoutingDecision(await getAiRequest(refB));
+    const decisionB = await waitForPersistedDecision(refB);
     expect(decisionB).toMatchObject({
       policy_version: 1,
       rule_id: "platform-default-fallback",
@@ -658,40 +728,55 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
   });
 
   it("S05-059 — Config-cache staleness window after rollback", async () => {
-    // Catalog 30 s DEFAULT_CONFIG_CACHE_TTL_MS is not observable here: the
-    // pool binds CONFIG_CACHE_TTL_MS="100" (README §6; TTL "0" is unsafe on
-    // post-accept consult). postRequest drains SSE (~400 ms) so the warm v2
-    // entry expires before rollback + the next invoke. After rollback the
-    // next consult reads D1 (v1); clearConfigCache() still yields v1.
-    // rollbackPolicy would also isolateConfigCache.clear(); use controlFetch.
-    const instA = await enrollAndEntitle(INST_A);
-    await setupV1SupersededV2Active();
-    await clearConfigCache();
+    // Pool TTL is 100 ms (README §6). Parallel files share isolateConfigCache;
+    // a concurrent clear() or expiry between preload and consult misses
+    // active_routing_policy:routing/standard. Raise TTL and pin/re-stamp
+    // both consult keys so the warm invoke cannot miss v2. Catalog: after
+    // rollback in-TTL still v2; after clear, policy_version 1.
+    // rollbackPolicy would isolateConfigCache.clear(); use controlFetch.
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(30_000);
+    try {
+      const instA = await enrollAndEntitle(INST_A);
+      await setupV1SupersededV2Active();
 
-    const warm = await invokeVisitSummary(instA, "idem-s05-059-warm-0001");
-    const warmRef = assertAccepted(warm);
-    expect(parseRoutingDecision(await getAiRequest(warmRef))?.policy_version).toBe(
-      2,
-    );
+      const v2Cached = await routingPolicyCacheRow("2");
+      expect(v2Cached.document).toMatchObject({ policy_version: 2 });
+      pinActiveRoutingPolicy(instA.installationId, v2Cached);
 
-    const rolled = await controlFetch(rollbackPath("2"), { body: {} });
-    assertOkEmpty(rolled);
-    expect((await getRoutingPolicy(POLICY_ID, "1"))?.status).toBe("active");
-    expect((await getRoutingPolicy(POLICY_ID, "2"))?.status).toBe("superseded");
+      const warm = await invokeVisitSummary(instA, "idem-s05-059-warm-0001");
+      const warmRef = assertAccepted(warm);
+      const warmDecision = await waitForPersistedDecision(warmRef);
+      expect(warmDecision.policy_version).toBe(2);
 
-    const afterRollback = await invokeVisitSummary(instA, "idem-s05-059a-0001");
-    const afterRollbackRef = assertAccepted(afterRollback);
-    expect(
-      parseRoutingDecision(await getAiRequest(afterRollbackRef))?.policy_version,
-    ).toBe(1);
+      const rolled = await controlFetch(rollbackPath("2"), { body: {} });
+      assertOkEmpty(rolled);
+      expect((await getRoutingPolicy(POLICY_ID, "1"))?.status).toBe("active");
+      expect((await getRoutingPolicy(POLICY_ID, "2"))?.status).toBe("superseded");
 
-    await clearConfigCache();
+      pinActiveRoutingPolicy(instA.installationId, v2Cached);
 
-    const fresh = await invokeVisitSummary(instA, "idem-s05-059b-0001");
-    const freshRef = assertAccepted(fresh);
-    expect(
-      parseRoutingDecision(await getAiRequest(freshRef))?.policy_version,
-    ).toBe(1);
+      const afterRollback = await invokeVisitSummary(
+        instA,
+        "idem-s05-059a-0001",
+      );
+      const afterRollbackRef = assertAccepted(afterRollback);
+      const staleDecision = await waitForPersistedDecision(afterRollbackRef);
+      expect(staleDecision.policy_version).toBe(2);
+
+      await clearConfigCache();
+      const v1Cached = await routingPolicyCacheRow("1");
+      expect(v1Cached.document).toMatchObject({ policy_version: 1 });
+      pinActiveRoutingPolicy(instA.installationId, v1Cached);
+
+      const fresh = await invokeVisitSummary(instA, "idem-s05-059b-0001");
+      const freshRef = assertAccepted(fresh);
+      const freshDecision = await waitForPersistedDecision(freshRef);
+      expect(freshDecision.policy_version).toBe(1);
+    } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
+      clearConfigCache();
+    }
   });
 
   it.skip(

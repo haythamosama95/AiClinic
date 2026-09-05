@@ -22,10 +22,13 @@ import {
   getAiRequest,
   getRequestByRef,
   getR2Json,
+  getRoutingPolicy,
+  isolateConfigCache,
   mintAat,
   newScenario,
   parseSseText,
   POLICY_ID,
+  POLICY_REF,
   POLICY_VERSION,
   postRequest,
   promotePolicy,
@@ -70,6 +73,47 @@ const BOGUS_REF = "6HND-4WQC";
 const INFLIGHT_SEED_REF = "1NV0-K1NG";
 
 type FakeModule = typeof import("../../src/provider/fake");
+
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with routing_decision null). Raise TTL and re-stamp the just-promoted
+ * policy immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion?: string,
+): Promise<Record<string, unknown>> {
+  const row = policyVersion
+    ? await getRoutingPolicy(POLICY_ID, policyVersion)
+    : await queryOne(
+        `SELECT * FROM routing_policy
+         WHERE policy_id = ? AND status = 'active'
+         ORDER BY active_from DESC, rowid DESC LIMIT 1`,
+        [POLICY_ID],
+      );
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
 
 /**
  * HARNESS-GAP: FakeAdapter scripting is not on the frozen barrel; catalog
@@ -133,6 +177,33 @@ async function setupFailedScenario(): Promise<Scenario> {
   return scenario;
 }
 
+async function waitForCompletedEnvelope(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<{
+  row: Record<string, unknown>;
+  requestId: string;
+  pointer: string;
+}> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const row = await getAiRequest(ref);
+    if (row?.state === "Completed") {
+      const requestId = String(row.request_id);
+      const expected = `request/${requestId}/envelope`;
+      const pointer =
+        typeof row.payload_pointer === "string" ? row.payload_pointer : null;
+      if (pointer === expected && (await r2Exists(pointer))) {
+        return { row, requestId, pointer };
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for Completed envelope at request/${ref}`,
+  );
+}
+
 async function settleCompleted(): Promise<{
   scenario: Scenario;
   ref: string;
@@ -141,8 +212,11 @@ async function settleCompleted(): Promise<{
   lookup: HttpResult;
 }> {
   const scenario = await provisionHappyPath();
+  const policyRow = await loadServingPolicyRow();
+  const token = await mintAat(scenario);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
-    token: await mintAat(scenario),
+    token,
     idempotencyKey: `s12-completed-${crypto.randomUUID()}`,
     body: visitBody(scenario),
   });
@@ -156,12 +230,14 @@ async function settleCompleted(): Promise<{
   assertRequestReferenceShape(ref);
   await flushBackgroundWork(200);
 
+  const settled = await waitForCompletedEnvelope(ref);
   const row = await getAiRequest(ref);
   expect(row).not.toBeNull();
   expect(row?.state).toBe("Completed");
   const requestId = String(row!.request_id);
   const pointer = String(row!.payload_pointer);
   expect(pointer).toBe(`request/${requestId}/envelope`);
+  expect(pointer).toBe(settled.pointer);
   expect(await r2Exists(pointer)).toBe(true);
 
   const lookup = await getRequestByRef(await mintAat(scenario), ref);
@@ -212,8 +288,11 @@ function assertCanonicalCompletedBody(
 
 async function settleFailed(): Promise<{ scenario: Scenario; ref: string }> {
   const scenario = await setupFailedScenario();
+  const policyRow = await loadServingPolicyRow();
+  const token = await mintAat(scenario);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
-    token: await mintAat(scenario),
+    token,
     idempotencyKey: `s12-failed-${crypto.randomUUID()}`,
     body: visitBody(scenario),
   });
@@ -532,7 +611,9 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     const controller = new AbortController();
 
     try {
+      const policyRow = await loadServingPolicyRow();
       const token = await mintAat(scenario);
+      pinServingRoutingPolicy(policyRow, [scenario.installationId]);
       const fetchPromise = clinicFetch("/v1/requests", {
         method: "POST",
         token,
@@ -608,7 +689,9 @@ describe("Stage 12 — GET /v1/requests lookup (S12-001…S12-018)", () => {
     let response: Response | undefined;
 
     try {
+      const policyRow = await loadServingPolicyRow();
       const token = await mintAat(scenario);
+      pinServingRoutingPolicy(policyRow, [scenario.installationId]);
       response = await clinicFetch("/v1/requests", {
         method: "POST",
         token,

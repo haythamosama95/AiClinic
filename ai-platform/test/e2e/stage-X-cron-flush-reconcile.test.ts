@@ -12,11 +12,16 @@ import {
   getAiRequest,
   getAttempts,
   getEntitlement,
+  getR2Json,
+  getRoutingPolicy,
   getUsageEvents,
   isolateConfigCache,
   invokeCron,
   mintAat,
   newScenario,
+  POLICY_ID,
+  POLICY_REF,
+  POLICY_VERSION,
   postRequest,
   provisionHappyPath,
   queryAll,
@@ -299,6 +304,58 @@ async function admitGracePending(
   return row!;
 }
 
+async function waitForRequestCompleted(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row?.state === "Completed") {
+      return row;
+    }
+    await flushBackgroundWork(50);
+  }
+  expect(row).not.toBeNull();
+  expect(row!.state).toBe("Completed");
+  return row!;
+}
+
+/**
+ * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
+ * clear(); preload→consult can then miss
+ * `active_routing_policy:routing/standard` (ConfigCacheMissError → Failed
+ * with routing_decision null). Raise TTL and re-stamp the just-promoted
+ * policy immediately before POST so the post-accept consult cannot miss.
+ */
+const SERVE_CACHE_TTL_MS = 30_000;
+
+async function loadServingPolicyRow(
+  policyVersion: string,
+): Promise<Record<string, unknown>> {
+  const row = await getRoutingPolicy(POLICY_ID, policyVersion);
+  expect(row?.status).toBe("active");
+  const pointer = String(row!.content_pointer ?? "");
+  const document = await getR2Json(pointer);
+  return { ...row!, document };
+}
+
+function pinServingRoutingPolicy(
+  policyRow: Record<string, unknown>,
+  installationIds: readonly string[],
+): void {
+  isolateConfigCache.setTtlMs(SERVE_CACHE_TTL_MS);
+  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
+  for (const installationId of installationIds) {
+    isolateConfigCache.remember(
+      "active_routing_policy",
+      `${POLICY_REF}/${installationId}`,
+      policyRow,
+    );
+  }
+}
+
 async function completeVisit(
   scenario: Scenario,
   opts: { idempotencyKey?: string; traceId?: string } = {},
@@ -306,21 +363,22 @@ async function completeVisit(
   const fakeMod = await loadFakeModule();
   spyFakeAdapterSuccess(fakeMod);
   const token = await mintAat(scenario);
+  const policyRow = await loadServingPolicyRow(POLICY_VERSION);
+  pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
     token,
     idempotencyKey: opts.idempotencyKey ?? crypto.randomUUID(),
     traceId: opts.traceId,
     body: visitSummaryInvokeBody(scenario),
   });
-  await flushBackgroundWork(200);
   expect(result.status).toBe(200);
   const accepted = result.events.find((event) => event.event === "accepted");
   const ref = String(accepted?.data.request_reference ?? "");
   expect(ref.length).toBeGreaterThan(0);
-  const row = await getAiRequest(ref);
-  expect(row).not.toBeNull();
-  expect(row!.state).toBe("Completed");
-  return { requestId: String(row!.request_id), ref };
+  const row = await waitForRequestCompleted(ref);
+  // Drain waitUntil envelope / usage_event after terminal state is visible.
+  await flushBackgroundWork(200);
+  return { requestId: String(row.request_id), ref };
 }
 
 async function backdateRequest(
