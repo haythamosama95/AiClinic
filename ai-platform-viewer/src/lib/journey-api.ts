@@ -5,6 +5,7 @@ import type {
 } from '@/catalog/journey-types'
 import { buildVisitSummaryContextJson } from '@/catalog/stage-8-ingress'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
+import { prettyJsonValue } from '@/lib/json-format'
 import { sendStage2SupabaseRequest, sendSupabaseRpcRequest } from '@/lib/supabase-api'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
@@ -34,7 +35,7 @@ function parseResponseBody(rawBody: string): FieldRow[] {
           value === null || value === undefined
             ? 'null'
             : typeof value === 'object'
-              ? JSON.stringify(value)
+              ? prettyJsonValue(value)
               : String(value),
       })
     }

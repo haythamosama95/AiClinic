@@ -3100,6 +3100,75 @@ button:disabled {
   word-break: normal;
 }
 
+.raw-panel__split {
+  display: grid;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.raw-panel__headers {
+  margin: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow: auto;
+  white-space: pre;
+}
+
+.raw-panel__json {
+  max-height: 28rem;
+}
+
+.json-block {
+  margin: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.32);
+  overflow: auto;
+  max-height: 24rem;
+}
+
+.json-block code {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre;
+  word-break: normal;
+  color: #e7edf5;
+}
+
+.json-block__key {
+  color: var(--discovery);
+}
+
+.json-block__string {
+  color: var(--ok);
+}
+
+.json-block__number {
+  color: var(--ingress);
+}
+
+.json-block__boolean {
+  color: var(--routing);
+}
+
+.json-block__null {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.field-table__row dd .json-block {
+  width: 100%;
+}
+
 .request-inspector__time {
   color: var(--muted);
   font-family: var(--font-mono);

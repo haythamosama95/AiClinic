@@ -2,6 +2,7 @@ import type { JourneyParamField } from '@/catalog/journey-types'
 import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
 import { STAGE2_OPERATIONS } from '@/catalog/stage-2-clinic-keypair'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
+import { prettyJsonValue } from '@/lib/json-format'
 import {
   callSupabaseRpc,
   resolveSupabaseConfig,
@@ -61,7 +62,7 @@ function flattenRpcResponseBody(payload: unknown, rpcName: string): FieldRow[] {
             dataValue === null || dataValue === undefined
               ? 'null'
               : typeof dataValue === 'object'
-                ? JSON.stringify(dataValue)
+                ? prettyJsonValue(dataValue)
                 : String(dataValue),
           meaning: rpcFieldMeaning(dataName),
         })
@@ -75,7 +76,7 @@ function flattenRpcResponseBody(payload: unknown, rpcName: string): FieldRow[] {
         value === null || value === undefined
           ? 'null'
           : typeof value === 'object'
-            ? JSON.stringify(value)
+            ? prettyJsonValue(value)
             : String(value),
       meaning: rpcFieldMeaning(name),
     })

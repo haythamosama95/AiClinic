@@ -4,6 +4,7 @@ import type {
 } from '@/catalog/stage-3-platform-installation'
 import { STAGE3_PARAM_FIELDS } from '@/catalog/stage-3-platform-installation'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
+import { prettyJsonValue } from '@/lib/json-format'
 import type { ClinicEnrollmentMaterial, FieldRow, HttpExchange } from '@/types'
 
 const GATEWAY_PREFIX = '/gateway'
@@ -27,7 +28,7 @@ function parseResponseBody(rawBody: string): FieldRow[] {
           value === null || value === undefined
             ? 'null'
             : typeof value === 'object'
-              ? JSON.stringify(value)
+              ? prettyJsonValue(value)
               : String(value),
         meaning: responseFieldMeaning(name),
       })

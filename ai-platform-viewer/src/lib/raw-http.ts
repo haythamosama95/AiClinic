@@ -1,10 +1,4 @@
-function prettyJson(raw: string): string {
-  try {
-    return JSON.stringify(JSON.parse(raw) as unknown, null, 2)
-  } catch {
-    return raw
-  }
-}
+import { prettyJsonText } from '@/lib/json-format'
 
 export function buildRawRequest(
   method: string,
@@ -35,6 +29,6 @@ export function buildRawResponse(
     `HTTP/1.1 ${status} ${statusText}`,
     ...headerLines,
     '',
-    prettyJson(rawBody),
+    prettyJsonText(rawBody),
   ].join('\n')
 }

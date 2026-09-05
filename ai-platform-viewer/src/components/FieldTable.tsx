@@ -1,4 +1,6 @@
 import type { FieldRow } from '@/types'
+import { JsonBlock } from '@/components/JsonBlock'
+import { isJsonText } from '@/lib/json-format'
 
 interface FieldListProps {
   rows: FieldRow[]
@@ -12,7 +14,11 @@ export function FieldList({ rows, keyPrefix = 'field' }: FieldListProps) {
         <div key={`${keyPrefix}-${row.name}`} className="field-table__row">
           <dt>{row.name}</dt>
           <dd>
-            <code>{row.value}</code>
+            {isJsonText(row.value) ? (
+              <JsonBlock value={row.value} />
+            ) : (
+              <code>{row.value}</code>
+            )}
             {row.meaning ? (
               <span className="field-table__meaning">{row.meaning}</span>
             ) : null}

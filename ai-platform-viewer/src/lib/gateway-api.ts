@@ -1,5 +1,6 @@
 import type { FieldRow, HttpExchange } from '@/types'
 import { buildRawRequest, buildRawResponse } from '@/lib/raw-http'
+import { prettyJsonValue } from '@/lib/json-format'
 import { ensurePlatformEnrollment } from '@/lib/platform-enroll'
 
 const GATEWAY_PREFIX = '/gateway'
@@ -53,7 +54,7 @@ function parseResponseBody(rawBody: string): FieldRow[] {
           value === null || value === undefined
             ? 'null'
             : typeof value === 'object'
-              ? JSON.stringify(value)
+              ? prettyJsonValue(value)
               : String(value),
         meaning: responseFieldMeaning(name),
       })
