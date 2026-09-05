@@ -153,16 +153,16 @@ Conventions used throughout:
 | Side effects | None. |
 | Code reference | ai-platform/src/control/token-contract.ts:L31-L34 — trim-then-check |
 
-## Scenario S01-013 — begin-rotation with non-string ver throws (no graceful 400)
+## Scenario S01-013 — begin-rotation with non-string ver returns invalid_ver
 
 | Field | Content |
 |-------|---------|
 | ID | S01-013 |
 | Journey setup | S01-001. |
 | Action | `POST /control/token-contract/begin-rotation` with valid operator bearer, body `{"ver":2}` (JSON number). |
-| Expected outcome | The handler throws `TypeError: body.ver.trim is not a function` — `?.` only guards null/undefined, so a number reaches `.trim()`. There is no `invalid_ver` response for wrong-type input; in the vitest pool the `fetch` promise rejects (in production, an unhandled 500). This documents actual code behavior, not a taxonomy outcome. |
-| Side effects | None — the throw happens before the D1 batch. No `control_audit` row. |
-| Code reference | ai-platform/src/control/token-contract.ts:L31 — unguarded `.trim()` on a typed-but-unvalidated payload (`TokenContractBeginPayload.ver` is `string` at compile time only, ai-platform/src/control/types.ts:L65-L67) |
+| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. `requireNonEmptyString` rejects non-string `ver` before any D1 access. |
+| Side effects | None — the rejection happens before the D1 batch. No `control_audit` row. |
+| Code reference | ai-platform/src/control/token-contract.ts — `requireNonEmptyString(body.ver)` guard |
 
 ## Scenario S01-014 — begin-rotation of the already-live seed ver
 
@@ -197,16 +197,16 @@ Conventions used throughout:
 | Side effects | None; `ver='1'` row untouched. |
 | Code reference | ai-platform/src/control/token-contract.ts:L86-L89 |
 
-## Scenario S01-017 — retire with non-string ver throws (no graceful 400)
+## Scenario S01-017 — retire with non-string ver returns invalid_ver
 
 | Field | Content |
 |-------|---------|
 | ID | S01-017 |
 | Journey setup | S01-001. |
 | Action | `POST /control/token-contract/retire` with valid operator bearer, body `{"ver":1}` (JSON number). |
-| Expected outcome | Handler throws `TypeError: body.ver.trim is not a function` (fetch promise rejects in the vitest pool; unhandled 500 in production). Same robustness gap as S01-013. |
+| Expected outcome | HTTP 400, body `{"error":"invalid_ver"}`. Same `requireNonEmptyString` guard as S01-013. |
 | Side effects | None. |
-| Code reference | ai-platform/src/control/token-contract.ts:L86 — unguarded `.trim()` |
+| Code reference | ai-platform/src/control/token-contract.ts — `requireNonEmptyString(body.ver)` guard |
 
 ## Scenario S01-018 — retire of a ver that was never inserted
 
@@ -365,7 +365,7 @@ Conventions used throughout:
 ## Doc-drift observations
 
 1. **Missing failure rows in the doc tables.** The orientation doc's §4.1/§4.2 failure tables omit `400 invalid_json` (malformed body) for both routes and omit `400 invalid_ver` / `401 unauthorized` from the §4.2 retire table (retire performs the same auth, JSON-parse, and `ver` validation as begin-rotation — `ai-platform/src/control/token-contract.ts:L76-L89`). Code is authoritative; the doc under-documents retire's failure surface.
-2. **Wrong-type `ver` crashes instead of rejecting.** Neither the doc nor the taxonomy mentions that a non-string `ver` (e.g. `{"ver":2}`) throws an uncaught `TypeError` at `body.ver?.trim()` (`token-contract.ts:L31`, `L86`) rather than returning `400 invalid_ver`. Documented as S01-013/S01-017; a `typeof` guard (or the existing `requireNonEmptyString` helper in `http.ts`, which token-contract.ts does not use) would close the gap.
+2. **Wrong-type `ver` — fixed (C-05).** Non-string `ver` (e.g. `{"ver":2}`) now returns `400 invalid_ver` via `requireNonEmptyString` (`token-contract.ts`). Previously threw an uncaught `TypeError`; pinned by S01-013/S01-017.
 3. **Stage numbering collision.** The orientation doc §5 calls identity "identity stage 2" (pipeline-internal numbering — `fail(2, …)` in `ai-platform/src/pipeline/index.ts:L344`), while the data-journey/catalog convention numbers the request-ingress guard as Stage 9. Same component, two numbers; readers should map doc "stage 2" = catalog "Stage 9 identity guard".
 4. **Unreachable `invalid_route` branch.** `dispatchControlRequest` contains `reject(400, "invalid_route")` for the token-contract pattern (`ai-platform/src/control/index.ts:L172-L173`), but `TOKEN_CONTRACT_PATTERN` already constrains the action to `begin-rotation|retire`, so the branch is dead code. The doc does not list `invalid_route` for token-contract routes — consistent with behavior, but the dead branch is worth flagging.
 5. **Cache-flush guidance is incomplete.** The doc (§6 intro) says to restart `npm run dev` or wait 30 s after a control mutation before an identity probe. Code exposes `CONFIG_CACHE_TTL_MS` (`ai-platform/src/config-cache/index.ts:L26-L40`), and `0` is accepted (`parsed < 0` is rejected, `0` is not), which disables caching outright — the doc never mentions this lever. Tests should set `CONFIG_CACHE_TTL_MS=0` instead of waiting.
@@ -376,7 +376,7 @@ Conventions used throughout:
 ## Non-automatable notes
 
 1. **Isolate cache staleness between control mutation and identity verify.** `isolateConfigCache` is a module-global with a 30 s default TTL (`config-cache/index.ts:L153`). In `@cloudflare/vitest-pool-workers` the isolate persists across tests in a file, so S01-025/S01-026/S01-029 would flake without intervention. **Automatable seam:** set `CONFIG_CACHE_TTL_MS="0"` in the test environment (`resolveConfigCacheTtlMs` accepts 0), making every `loadConfig` re-read D1. No production seam needed.
-2. **Uncaught-TypeError scenarios (S01-013, S01-017).** In the vitest pool the `fetch` promise rejects rather than returning a Response, so the assertion is "rejects with TypeError", not an HTTP status/body. The production 500 body shape (runtime-generated HTML/text) is not meaningfully assertable and should not be pinned.
+2. **Uncaught-TypeError scenarios (S01-013, S01-017) — resolved by C-05.** These now return HTTP 400 `invalid_ver` and are assertable as normal taxonomy responses.
 3. **Timing-safe compare (S01-003, S01-006).** `timingSafeEqualString` (`auth.ts:L4-L14`) is a side-channel mitigation; its constant-time property is not observable through HTTP and cannot be asserted in this environment. Only the functional outcome (401) is asserted.
 4. **Concurrent begin-rotation race.** Two simultaneous begin-rotation calls with different `ver` values when one slot is open rely on D1 batch atomicity (exactly one succeeds, the other gets `rotation_already_open`). Deterministic concurrent dispatch against a single D1 database is not reliably orchestrable in the vitest pool; proposed seam: invoke the two handler batches directly against the same D1 instance and assert exactly one `meta.changes > 0`. Marked as a candidate rather than a catalog scenario.
 5. **`added_at`/`recorded_at` clock values.** These come from `new Date().toISOString()` at handler time; scenarios assert format and approximate equality, not exact values. Fully deterministic clock control would require a clock-injection seam that does not exist in the current handlers.

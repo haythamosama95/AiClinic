@@ -262,8 +262,8 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | ID | S05-023 |
 | Journey setup | S05-001 completed (`standard@1` published); inst-A `018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f` enrolled per the installation-lifecycle chapter's enroll happy path. |
 | Action | `POST /control/routing-policies/standard/versions/1/canary` with operator bearer; body `{"installation_ids":["018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f"],"cohort_name":"early-adopters"}`. |
-| Expected outcome | HTTP 200, body `{}`. `cohort_name` is accepted by the payload type but never read or stored. |
-| Side effects | D1 `routing_policy` row `standard@1`: `status='canary'`, `canary_installation_ids='["018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f"]'`. `control_audit` row: `action='routing_policy_canary'`, `target='standard@1'`, `before_pointer=NULL` (no prior canary row), `after_pointer='["018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f"]'`. No R2 write. |
+| Expected outcome | HTTP 200, body `{}`. When `cohort_name` is present it is persisted in the audit row `after_pointer` JSON under `details.cohort_name` (the `installation_ids` array is also stored in the same object). |
+| Side effects | D1 `routing_policy` row `standard@1`: `status='canary'`, `canary_installation_ids='["018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f"]'`. `control_audit` row: `action='routing_policy_canary'`, `target='standard@1'`, `before_pointer=NULL` (no prior canary row), `after_pointer='{"installation_ids":["018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f"],"details":{"cohort_name":"early-adopters"}}'`. No R2 write. |
 | Code reference | ai-platform/src/control/routing-policy.ts:L243-L326 — handleRoutingPolicyCanary |
 
 ## Scenario S05-024 — Re-canary replaces the cohort list (before_pointer = prior list)
@@ -431,27 +431,27 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Side effects | None. |
 | Code reference | ai-platform/src/control/routing-policy.ts:L347-L356 — existence check |
 
-## Scenario S05-039 — Promote an already-active version (no status precondition in code)
+## Scenario S05-039 — Promote an already-active version → 409 illegal_policy_transition
 
 | Field | Content |
 |-------|---------|
 | ID | S05-039 |
 | Journey setup | S05-035 completed (`standard@1` active). |
 | Action | `POST /control/routing-policies/standard/versions/1/promote` with operator bearer; no body. |
-| Expected outcome | HTTP 200, body `{}` — promote has **no** source-status gate; only existence is checked. |
-| Side effects | Row `standard@1` stays `active`. Audit row: `before_pointer='standard@1'` (the priorActive query matches the target itself), `after_pointer='standard@1'` — a self-referential audit pair. See Doc-drift observations. |
-| Code reference | ai-platform/src/control/routing-policy.ts:L347-L400 — no status gate between existence check and batch |
+| Expected outcome | HTTP 409, body `{"error":"illegal_policy_transition"}` — promote rejects an already-active version. |
+| Side effects | None — row `standard@1` stays `active`; no audit row (reject happens before the batch). |
+| Code reference | ai-platform/src/control/routing-policy.ts — status gate before batch |
 
-## Scenario S05-040 — Promote a superseded version re-activates it
+## Scenario S05-040 — Promote a superseded version → 409 illegal_policy_transition
 
 | Field | Content |
 |-------|---------|
 | ID | S05-040 |
 | Journey setup | S05-036 completed (`standard@1` superseded, `standard@2` active). |
 | Action | `POST /control/routing-policies/standard/versions/1/promote` with operator bearer; no body. |
-| Expected outcome | HTTP 200, body `{}` — superseded is a legal promote source because no transition gate exists. |
-| Side effects | Row `standard@2`: `status='superseded'`. Row `standard@1`: `status='active'` again. Audit row: `target='standard@1'`, `before_pointer='standard@2'`, `after_pointer='standard@1'`. |
-| Code reference | ai-platform/src/control/routing-policy.ts:L371-L386 — supersede/activate batch |
+| Expected outcome | HTTP 409, body `{"error":"illegal_policy_transition"}` — superseded versions cannot be re-activated via promote. |
+| Side effects | None — rows unchanged (`standard@1` stays `superseded`, `standard@2` stays `active`); no audit row. |
+| Code reference | ai-platform/src/control/routing-policy.ts — status gate before batch |
 
 ## Scenario S05-041 — Promote without operator auth → 401 unauthorized
 
@@ -508,27 +508,27 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Side effects | None — row `standard@1` stays `active`; no audit row (the reject happens before the batch). |
 | Code reference | ai-platform/src/control/routing-policy.ts:L458-L468 — prior-superseded lookup and reject |
 
-## Scenario S05-046 — Rollback a published version → 200 no-op that clears the policy's canary split
+## Scenario S05-046 — Rollback a published version → 409 illegal_policy_transition
 
 | Field | Content |
 |-------|---------|
 | ID | S05-046 |
 | Journey setup | `standard@1` active (S05-035); `standard@2` canary for inst-A; `standard@3` published. |
 | Action | `POST /control/routing-policies/standard/versions/3/rollback` with operator bearer; no body. |
-| Expected outcome | HTTP 200, body `{}` — the `else` branch (published/superseded) performs no status change on the addressed row but still runs the policy-wide canary cleanup. |
-| Side effects | Row `standard@3` unchanged (`published`). Row `standard@2`: `status='published'`, `canary_installation_ids=NULL` (clear-split UPDATE). Audit row: `target='standard@3'`, `before_pointer=NULL` (row's own `canary_installation_ids` is NULL), `after_pointer='standard@1'` (current active). |
-| Code reference | ai-platform/src/control/routing-policy.ts:L485-L500 — else branch; L502-L510 — clear-split statement |
+| Expected outcome | HTTP 409, body `{"error":"illegal_policy_transition"}` — rollback applies only to `canary` or `active` rows; published is rejected. |
+| Side effects | None — all rows unchanged (including `standard@2` canary split); no audit row. |
+| Code reference | ai-platform/src/control/routing-policy.ts — published/superseded rollback branch |
 
-## Scenario S05-047 — Rollback a superseded version → 200 no-op
+## Scenario S05-047 — Rollback a superseded version → 409 illegal_policy_transition
 
 | Field | Content |
 |-------|---------|
 | ID | S05-047 |
 | Journey setup | S05-036 completed (`standard@1` superseded, `standard@2` active). |
 | Action | `POST /control/routing-policies/standard/versions/1/rollback` with operator bearer; no body. |
-| Expected outcome | HTTP 200, body `{}` — superseded falls into the `else` branch; nothing changes. |
-| Side effects | No status changes. Audit row: `target='standard@1'`, `before_pointer=NULL`, `after_pointer='standard@2'`. |
-| Code reference | ai-platform/src/control/routing-policy.ts:L485-L500 — else branch |
+| Expected outcome | HTTP 409, body `{"error":"illegal_policy_transition"}` — superseded rows cannot be rolled back. |
+| Side effects | None — no status changes; no audit row. |
+| Code reference | ai-platform/src/control/routing-policy.ts — published/superseded rollback branch |
 
 ## Scenario S05-048 — Rollback an unknown policy version → 404 policy_version_not_found
 
@@ -780,7 +780,7 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | S05-069 setup plus a second [SEED] row `('provider','gemini',1,'2026-09-05T03:01:00.000Z','platform-operator')` — both fixture providers killed. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-070-0001`) → read the SSE stream; inspect D1. |
 | Expected outcome | HTTP 202 → SSE `failed` terminal with code `provider_unavailable` (empty chain, not `internal_error`). `routing_decision.chain = []`; `excluded` lists both targets with `reason_code: "kill_switch"`. D1: one `ai_attempt` row with `outcome='terminal_failure'`, `error_code='provider_unavailable'`, `rawBody.payload.reason='no_provider_attempt'` and `rawBody.payload.excluded` echoing both exclusions (failed settlement always persists an attempt). |
-| Side effects | `ai_request` terminal state `Failed`; failed-settlement writes per the settlement chapter's behavior. |
+| Side effects | `ai_request` terminal state `Failed` with `terminal_error_code='provider_unavailable'`; journal + ledger writes per the settlement chapter's failed-settlement behavior (same persisted terminal settlement as the empty-chain path). |
 | Code reference | ai-platform/src/worker.ts:L381-L411 — attemptsForFailedSettlement no_provider_attempt; L956-L979 — provider_unavailable terminal path |
 
 ## Scenario S05-071 — All targets feature-excluded → empty chain → provider_unavailable (not internal_error)
@@ -791,7 +791,7 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 | Journey setup | Publish + promote `standard@13`: catch-all whose only target is `deepseek/deepseek-v4-flash` with `features.min_context_window: 8000` (below the 32000 floor). Inst-A entitled. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-071-0001`) → read the SSE stream; inspect D1. |
 | Expected outcome | HTTP 202 → SSE `failed`/`provider_unavailable`. `chain = []`; `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"context_window_too_small"}]`. Synthetic `ai_attempt` row as in S05-070 with the exclusion echoed. |
-| Side effects | As S05-070. |
+| Side effects | `ai_request` terminal state `Failed` with `terminal_error_code='provider_unavailable'`; journal + ledger writes per S05-070 (persisted terminal settlement, not left `Accepted`). |
 | Code reference | ai-platform/src/router/index.ts:L570-L580 — chain construction (empty); ai-platform/src/worker.ts:L956-L966 — taxonomy fallback |
 
 ## Scenario S05-072 — Installation override exclude_providers → installation_excluded
@@ -951,11 +951,11 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 ## Doc-drift observations
 
 1. **Post-accept routing failures all surface as `internal_error`, not router codes.** Doc §8 (`07-stage-5-routing-policy.md` L932–L947) lists `policy_identity_mismatch` and `no_matching_rule` in a way that implies distinct terminal codes. Code: every throw from the routing block (`ConfigCacheMissError`, any `RoutingPolicyError`) is caught by the `runFreshEventSource` `.catch` (`worker.ts` L685–L697) and pushed as SSE `failed`/`internal_error`. Router error codes are never on the wire. Scenarios S05-050, S05-053–S05-058 encode the code behavior.
-2. **The post-accept routing catch path skips settlement.** `worker.ts` L685–L697 pushes the failed terminal but never calls `settleTerminal`/`recordTerminalState` — a request whose routing throws (missing policy, missing R2 doc, identity mismatch, bad schema, missing catch-all) is left without terminal-state persistence, no `ai_attempt`, and no ledger entry. Doc §8 does not mention this. (Contrast the empty-chain path, which *does* settle — S05-070/S05-071.)
+2. **The post-accept routing catch path skips settlement.** ~~`worker.ts` L685–L697 pushes the failed terminal but never calls `settleTerminal`/`recordTerminalState` — a request whose routing throws (missing policy, missing R2 doc, identity mismatch, bad schema, missing catch-all) is left without terminal-state persistence, no `ai_attempt`, and no ledger entry. Doc §8 does not mention this. (Contrast the empty-chain path, which *does* settle — S05-070/S05-071.)~~ **Fixed (C-01):** post-accept routing / missing-policy / missing-handoff failures now settle the request as `Failed`/`internal_error` with journal + terminal-state persistence (`recordTerminalState`, `ai_attempt`, ledger entry), mirroring the empty-chain path. The SSE `failed`/`internal_error` event on the wire is unchanged; scenarios S05-050, S05-053–S05-058 should pin the persisted terminal state alongside the stream event.
 3. **`no_matching_rule` is dead code on the production path.** `validatePolicyDocument` (catch-all requirement) runs before rule matching, and a catch-all matches everything, so `document.rules.find(...)` can never return undefined. Doc §8 lists it as a live failure path. Recorded as S05-058.
-4. **Promote has no status precondition; rollback of published/superseded is a 200 no-op.** Doc §6.3–6.4 describe only the happy transitions. Code: promote requires only existence (S05-039 self-promote yields a self-referential audit pair; S05-040 re-activates a superseded version); rollback's `else` branch (published/superseded) succeeds without touching the addressed row (S05-046, S05-047).
+4. **Promote has no status precondition; rollback of published/superseded is a 200 no-op.** ~~Doc §6.3–6.4 describe only the happy transitions. Code: promote requires only existence (S05-039 self-promote yields a self-referential audit pair; S05-040 re-activates a superseded version); rollback's `else` branch (published/superseded) succeeds without touching the addressed row (S05-046, S05-047).~~ **Fixed (C-13):** promote rejects `active` and `superseded` sources with 409 `illegal_policy_transition`; rollback of `published`/`superseded` rows returns 409 (S05-039, S05-040, S05-046, S05-047).
 5. **Doc §6.2 canary failure table is incomplete.** It omits 400 `invalid_json` (S05-029) and 404 `policy_version_not_found` (S05-026), and documents `missing_installation_ids` only for the empty array — code also rejects absent and non-array values (S05-030, S05-032).
-6. **`cohort_name` is accepted but discarded.** Doc §6.2 shows it in the canary body; `CohortPayload.cohort_name` is never read or stored (S05-023).
+6. **`cohort_name` is accepted but discarded.** ~~Doc §6.2 shows it in the canary body; `CohortPayload.cohort_name` is never read or stored (S05-023).~~ **Fixed (C-20):** when present, `cohort_name` is persisted in the canary audit row `after_pointer` JSON under `details.cohort_name` (S05-023).
 7. **Two canary versions can coexist; audit before_pointer can name another version's cohort.** The canary handler updates only the addressed row (S05-025), and `priorCanary` reads the latest canary row of the *policy*, so a v2 canary's audit `before_pointer` is v1's cohort list. Neither doc §6.2 nor §5 mentions multi-canary coexistence or the serving order (`active_from DESC, rowid DESC` scan in the config-cache reader).
 8. **Canary R2 miss does not fall back to active.** The config-cache reader returns `"miss"` directly from the canary branch when the R2 object is gone (`config-cache/index.ts` L357–L363); doc §9.3.13 covers a missing R2 document generally but not this no-fallback asymmetry (S05-054).
 9. **`invalid_route` rejections in the routing-policy handlers are unreachable via the dispatcher.** `dispatchControlRequest` (`control/index.ts` L146–L163) pre-filters with regexes that only match `publish`/`canary`/`promote`/`rollback` shapes, so `parseRoutingPolicyRoute` cannot fail inside a handler reached through the Worker. The 400 `invalid_route` branches exist only for direct handler invocation. Not documented either way; noted here so no chapter invents a trigger.

@@ -193,6 +193,7 @@ export async function dispatchControlRequest(
     case "entitle":
       return handleEntitle(request, bindings, operatorAuth);
     default:
+      // Fires only if an action is added to the route pattern without a handler; defensive.
       logger.debug("control_route_not_found", { pathname });
       return new Response("Not Found", { status: 404 });
   }

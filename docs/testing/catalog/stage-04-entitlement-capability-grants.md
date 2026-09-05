@@ -798,16 +798,16 @@ Source files read: `ai-platform/src/control/entitle.ts`, `ai-platform/src/contro
 | Side effects | I0's grant row UPDATEd to `2.0.0`; new INSERT grant row for I1 at `2.0.0`; one `control_audit` row — `target = 'clinic.visit_summary@2.0.0:pilot-clinics'`, `before_pointer = '{"0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b":"1.0.0","1b2e5d3f-8c4e-5f6a-ab7c-2d3e4f5a6b7c":null}'`, `after_pointer = '2.0.0'`. |
 | Code reference | `ai-platform/src/control/cohort.ts:L119-L156` — per-installation UPDATE-or-INSERT loop |
 
-## Scenario S04-070 — Cohort activate with duplicate installation ids writes duplicate live grants
+## Scenario S04-070 — Cohort activate dedupes duplicate installation ids
 
 | Field | Content |
 |-------|---------|
 | ID | S04-070 |
 | Journey setup | Stage 3 enroll happy path → pending I1 with zero grant rows. |
 | Action | `POST /control/capabilities/clinic.visit_summary/versions/1.0.0/activate`, operator bearer, body `{"installation_ids":["1b2e5d3f-8c4e-5f6a-ab7c-2d3e4f5a6b7c","1b2e5d3f-8c4e-5f6a-ab7c-2d3e4f5a6b7c"]}`. |
-| Expected outcome | HTTP 200, body exactly `{}`. Documented behavior gap: both per-id existence SELECTs run before the batch executes, so both iterations take the INSERT branch and two live grant rows for the same `scope` + `capability_id` are written (no UNIQUE constraint on `capability_grant(scope, capability_id)`). |
-| Side effects | Two identical `capability_grant` rows (`scope = 'installation:1b2e5d3f-…'`, version `1.0.0`, `revoked_at NULL`); one audit row whose `before_pointer` is NULL. Downstream readers use `ORDER BY changed_at DESC LIMIT 1`, so the duplicates are benign but observable in D1. |
-| Code reference | `ai-platform/src/control/cohort.ts:L119-L156` — SELECT-then-buffer loop; `ai-platform/src/control/cohort.ts:L179` — single batch at the end |
+| Expected outcome | HTTP 200, body exactly `{}` — duplicate installation ids in the request are deduped before the grant loop runs, so only one live grant row is written per installation. |
+| Side effects | One `capability_grant` row (`scope = 'installation:1b2e5d3f-…'`, version `1.0.0`, `revoked_at NULL`); one audit row whose `before_pointer` is NULL. |
+| Code reference | `ai-platform/src/control/cohort.ts` — `[...new Set(body.installation_ids)]` dedup before the per-installation loop; `runControlBatch` at the end |
 
 ## Scenario S04-071 — Cohort activate onto the already-current version succeeds and re-stamps the grant
 
@@ -1029,16 +1029,16 @@ Source files read: `ai-platform/src/control/entitle.ts`, `ai-platform/src/contro
 | Side effects | None. |
 | Code reference | `ai-platform/src/control/capability-lifecycle.ts:L108-L111` — `lifecycle_state === "retired"` check |
 
-## Scenario S04-091 — Deprecate with a truthy non-string successor_id throws an unhandled 500
+## Scenario S04-091 — Deprecate with a truthy non-string successor_id returns invalid_payload
 
 | Field | Content |
 |-------|---------|
 | ID | S04-091 |
 | Journey setup | Registry default; no overlay rows. |
 | Action | `POST /control/capabilities/clinic.visit_summary/versions/1.0.0/deprecate`, operator bearer, body `{"successor_id":123}`. |
-| Expected outcome | HTTP 500 with the Workers default error page (not a JSON taxonomy body) — `123` passes the falsy check, then `successorId.includes("@")` throws `TypeError: successorId.includes is not a function`, which no handler catches. Documented robustness gap; see Doc-drift observations. (Note: an array successor such as `["clinic.visit_summary"]` does NOT throw — `Array.prototype.includes` exists — and falls through to 400 `unknown_successor`.) |
-| Side effects | None: the throw happens before any D1 statement executes. |
-| Code reference | `ai-platform/src/control/capability-lifecycle.ts:L100-L105` — falsy check then `isSuccessorRegistered`; `ai-platform/src/capability/index.ts:L545-L548` — `.includes` on a non-string |
+| Expected outcome | HTTP 400, body exactly `{"error":"invalid_payload"}` — `requireNonEmptyString` rejects any non-string `successor_id` before registry lookup. (Truthy non-strings such as `123` or `["clinic.visit_summary"]` both receive `invalid_payload`; only missing/null/empty-string values receive `missing_successor_id`.) |
+| Side effects | None: the rejection happens before any D1 statement executes. |
+| Code reference | `ai-platform/src/control/capability-lifecycle.ts` — `requireNonEmptyString(body.successor_id)` type guard |
 
 ## Scenario S04-092 — Retire rejects a missing operator bearer
 
@@ -1187,12 +1187,12 @@ Source files read: `ai-platform/src/control/entitle.ts`, `ai-platform/src/contro
 
 Orientation doc: `docs/architecture/ai-platform/data-journey/06-stage-4-entitlement-and-capability-grants.md`. Code is authoritative; the following divergences were found:
 
-1. **`500 storage_error` listed for activate / promote / deprecate / retire — not in code.** The doc failure tables (§7 activate, §8 promote, §9 deprecate, §10 retire) all list `500 storage_error`. Only `handleEntitle` wraps its batch in `runControlBatch` (`entitle.ts:L29-L37`). `cohort.ts:L179` / `cohort.ts:L382` and `capability-lifecycle.ts:L129` / `L203` call `DB.batch(...)` unguarded, so a D1 failure there surfaces as an unhandled exception (Workers default 500, non-JSON body), never as `{"error":"storage_error"}`.
+1. **~~`500 storage_error` listed for activate / promote / deprecate / retire — not in code.~~** **Partially fixed (C-08):** `cohort.ts` and `capability-lifecycle.ts` now route `DB.batch` through `runControlBatch`, so D1 failures on those handlers return `{"error":"storage_error"}`. `routing-policy.ts` canary/promote/rollback batches remain unguarded (separate C-08 workstream).
 2. **Retire failure table lists `400 invalid_json` "(if body sent)" — unreachable.** `handleRetire` never parses the request body (`capability-lifecycle.ts:L159-L230`); any body, valid or malformed, is ignored (S04-100). Same for promote (S04-079), which the doc handles correctly ("No body required") but does not state that malformed JSON is also accepted.
 3. **Entitle failure table (doc §5) omits two reachable codes.** `401 unauthorized` (S04-001–S04-005) and `400 invalid_json` (S04-006) are reachable entitle outcomes but absent from the §5 table (they appear only in §11 probe text).
 4. **Doc §3 "INSERT capability_grant per grant item" omits the plan-scope dedup.** When a grant has `scope: "plan"` and a live plan grant for the same capability already exists, the insert is silently skipped (`entitle.ts:L239-L243`) while activation proceeds (S04-054).
-5. **Duplicate installation ids in one activate produce duplicate live grant rows** (`cohort.ts:L119-L156` SELECT-then-buffer loop; S04-070). Not mentioned in the doc; benign only because readers use `ORDER BY changed_at DESC LIMIT 1`.
-6. **Truthy non-string `successor_id` crashes deprecate** with an unhandled TypeError → non-JSON 500 (S04-091). The doc's failure table has no entry for this; the falsy check (`!body.successor_id`) is not a type check.
+5. **~~Duplicate installation ids in one activate produce duplicate live grant rows~~** **Fixed (C-19):** the activate handler dedupes `installation_ids` with `[...new Set(...)]` before the grant loop (S04-070).
+6. **~~Truthy non-string `successor_id` crashes deprecate~~** **Fixed (C-06):** `requireNonEmptyString` rejects non-string values with `400 invalid_payload` before registry lookup (S04-091).
 7. **`invalid_route` branches in the Stage 4 handlers are unreachable via the worker.** `worker.ts:L1353-L1357` gates on `isControlRoute`, whose regexes (`control/index.ts:L69-L88`) are identical in shape to the handlers' own route parsers (`entitle.ts:L21-L27`, `capability-lifecycle.ts:L21-L33`, `cohort.ts:L57-L72`), and the dispatcher (`control/index.ts:L124-L144`, `L175-L196`) only calls each handler when the action already matched. The `reject(400, "invalid_route")` branches are defensive dead code in the production topology. Likewise, non-POST methods on these paths are never dispatched (POST-only gate) and fall through to the Stage 8 ingress 404.
 8. **Doc §11.2 "Unprobeable" labels that ARE automatable under `@cloudflare/vitest-pool-workers`:** the cohort split onto a second version, deprecate-with-different-successor, and the full retire state machine are all reachable by installing a two-version in-memory registry (`setCapabilityRegistry(..., { replace: true })`, `worker.ts:L157-L159` shows the seam) and by seeding `retire_after` via SQL. The doc's "Unprobeable" tag reflects the single-manifest local dev deployment, not the test harness.
 9. **Doc §10 says the retire request body is "Empty JSON `{}`"** — code accepts any body or none; see S04-100.

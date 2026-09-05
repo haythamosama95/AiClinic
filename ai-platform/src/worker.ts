@@ -8,6 +8,7 @@ import {
 } from "./adapter";
 import {
   createCapabilityRegistry,
+  resolve as resolveCapability,
   setCapabilityRegistry,
 } from "./capability";
 import {
@@ -32,7 +33,7 @@ import {
   isControlRoute,
   isQuotaInspectRoute,
 } from "./control";
-import { EnrolledKeyVerifier } from "./identity";
+import { EnrolledKeyVerifier, type Principal } from "./identity";
 import {
   authenticateGetRequest,
   getRequest,
@@ -148,14 +149,21 @@ configureIsolateConfigCache(
   resolveConfigCacheTtlMs((env as Env).CONFIG_CACHE_TTL_MS),
 );
 
+const bootLog = createWorkerLogFactory(env as Env)("worker.ts");
 try {
   setCapabilityRegistry(
     createCapabilityRegistry([
       load(visitSummaryPublished as Record<string, unknown>),
     ]),
   );
-} catch {
-  // Test harness may install the registry first with { replace: true }.
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("already installed")) {
+    // Test harness may install the registry first with { replace: true }.
+  } else {
+    bootLog.error("boot_registry_install_failed", { error: message });
+    throw error;
+  }
 }
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -355,7 +363,7 @@ function resolveProviderPort(providerId: string): ProviderPort {
       },
     } as never);
   }
-  return new FakeAdapter(["terminal:provider_unavailable"]);
+  return new FakeAdapter(["retryable:provider_unavailable"]);
 }
 
 function buildAttemptInput(record: AttemptRecord): AttemptInput {
@@ -408,6 +416,173 @@ function attemptsForFailedSettlement(
       },
     },
   ];
+}
+
+const EMPTY_ROUTING_DECISION: RoutingDecision = {
+  policy_id: "",
+  policy_version: 0,
+  rule_id: "",
+  effective_cost_class: "standard",
+  cost_class_source: "manifest",
+  routing_tier: "standard",
+  required_features: {
+    structured_output_required: false,
+    min_context_window: 0,
+    languages: [],
+    latency_class: "standard",
+  },
+  chain: [],
+  excluded: [],
+};
+
+function placeholderComposedRequest(
+  requestReference: string,
+  traceId: string,
+): CanonicalRequest {
+  return {
+    parts: [{ role: "user", content: "" }],
+    formatDirective: {},
+    samplingConstraints: {},
+    maxOutputTokens: 1,
+    stopConditions: [],
+    toolDeclarations: [],
+    stream: true,
+    deadline: null,
+    correlationIds: {
+      request_reference: requestReference,
+      trace_id: traceId,
+    },
+  };
+}
+
+type PostAcceptInternalErrorInput = {
+  requestId: string;
+  installationId: string;
+  requestReference: string;
+  manifest: Manifest;
+  filteredContext: Record<string, unknown>;
+  composed: CanonicalRequest;
+  periodStart: string;
+  entitlement?: EntitlementSnapshot;
+  routing?: RoutingDecision;
+};
+
+async function settlePostAcceptInternalError(
+  runtimeEnv: Env,
+  input: PostAcceptInternalErrorInput,
+  logger: Logger,
+): Promise<void> {
+  const code: TaxonomyCode = "internal_error";
+  const routing = input.routing ?? EMPTY_ROUTING_DECISION;
+  await settleTerminal(
+    runtimeEnv,
+    {
+      installationId: input.installationId,
+      requestId: input.requestId,
+      requestReference: input.requestReference,
+      manifest: input.manifest,
+      filteredContext: input.filteredContext,
+      composed: input.composed,
+      attempts: attemptsForFailedSettlement([], routing, code),
+      periodStart: input.periodStart,
+      entitlement: input.entitlement,
+      code,
+      idempotencyState: "failed",
+    },
+    logger,
+  );
+  await recordTerminalState(
+    input.requestId,
+    "Failed",
+    code,
+    new Date().toISOString(),
+    runtimeEnv.DB,
+    input.manifest.interactionMode,
+  );
+}
+
+async function settleMissingHandoffInternalError(
+  runtimeEnv: Env,
+  streamContext: { traceId: string; requestReference: string },
+  makeLog: LoggerFactory,
+): Promise<void> {
+  const log = makeLog("worker.ts", {
+    trace_id: streamContext.traceId,
+    request_reference: streamContext.requestReference,
+  });
+  const row = await runtimeEnv.DB.prepare(
+    `SELECT request_id, installation_id, actor_id, branch_id,
+            capability_id, capability_version, trace_id
+     FROM ai_request WHERE request_reference = ?`,
+  )
+    .bind(streamContext.requestReference)
+    .first<{
+      request_id: string;
+      installation_id: string;
+      actor_id: string;
+      branch_id: string;
+      capability_id: string;
+      capability_version: string;
+      trace_id: string;
+    }>();
+
+  if (!row) {
+    log.error("missing_handoff_settle_no_row");
+    return;
+  }
+
+  const principal: Principal = {
+    installationId: row.installation_id,
+    organizationId: "",
+    branchId: row.branch_id,
+    actorId: row.actor_id,
+    role: "",
+    scopes: [],
+    jti: "",
+    iat: 0,
+    exp: 0,
+    ver: "",
+  };
+  const resolved = await resolveCapability(
+    principal,
+    row.capability_id,
+    row.capability_version,
+    isolateConfigCache,
+    createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2),
+    log,
+  );
+  if (!resolved.ok) {
+    log.error("missing_handoff_settle_capability_unresolved", {
+      code: resolved.code,
+    });
+    await recordTerminalState(
+      row.request_id,
+      "Failed",
+      "internal_error",
+      new Date().toISOString(),
+      runtimeEnv.DB,
+      "single_shot",
+    );
+    return;
+  }
+
+  const traceId = streamContext.traceId || row.trace_id;
+  await settlePostAcceptInternalError(
+    runtimeEnv,
+    {
+      requestId: row.request_id,
+      installationId: row.installation_id,
+      requestReference: streamContext.requestReference,
+      manifest: resolved.manifest,
+      filteredContext: {},
+      composed: placeholderComposedRequest(
+        streamContext.requestReference,
+        traceId,
+      ),
+      periodStart: new Date().toISOString(),
+    },
+    log,
+  );
 }
 
 function placeholderTerminalResult(
@@ -519,6 +694,9 @@ async function settleTerminal(
         usage,
         partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
         idempotencyState: input.idempotencyState,
+        ...(input.idempotencyState === "failed"
+          ? { terminalErrorCode: input.code }
+          : {}),
         entitlement: input.entitlement,
       },
       { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
@@ -620,7 +798,7 @@ function replayIdempotentTerminal(
     },
     signal: new AbortController().signal,
   };
-  if (prior.state === "completed" || prior.state === "admitted") {
+  if (prior.state === "completed") {
     pushTerminalEvent(sink, streamCtx, "completed", "single_shot", {
       result: {
         finalContent: { text: "Prior request completed.", authoritative: true },
@@ -628,8 +806,17 @@ function replayIdempotentTerminal(
     });
     return;
   }
+  if (prior.state === "admitted") {
+    // In-flight replay: leave the stream open after `accepted` — no fabricated terminal.
+    return;
+  }
   if (prior.state === "failed") {
-    pushFailedTerminal(sink, guard.requestReference, traceId, "internal_error");
+    const code =
+      prior.terminalErrorCode !== undefined &&
+      isTaxonomyCode(prior.terminalErrorCode)
+        ? prior.terminalErrorCode
+        : "internal_error";
+    pushFailedTerminal(sink, guard.requestReference, traceId, code);
     return;
   }
   if (prior.state === "cancelled") {
@@ -659,6 +846,17 @@ function createProductionEventSource(
         streamContext.requestReference,
         streamContext.traceId,
         "internal_error",
+      );
+      scheduleBackground(
+        settleMissingHandoffInternalError(
+          runtimeEnv,
+          streamContext,
+          makeLog,
+        ).catch((error) => {
+          log.error("event_source_missing_handoff_settle_failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
       );
       return;
     }
@@ -695,6 +893,31 @@ function createProductionEventSource(
           streamContext.traceId,
           "internal_error",
         );
+        return settlePostAcceptInternalError(
+          runtimeEnv,
+          {
+            requestId: freshGuard.requestId,
+            installationId: freshGuard.principal.installationId,
+            requestReference: streamContext.requestReference,
+            manifest: freshGuard.manifest,
+            filteredContext: freshGuard.filteredContext,
+            composed: freshGuard.composed,
+            periodStart:
+              freshGuard.entitlementSnapshot.period_bounds.period_start,
+            entitlement: freshGuard.entitlementSnapshot,
+          },
+          makeLog("journal/index.ts", {
+            trace_id: streamContext.traceId,
+            request_id: freshGuard.requestId,
+          }),
+        ).catch((settleError) => {
+          log.error("event_source_fresh_settle_failed", {
+            error:
+              settleError instanceof Error
+                ? settleError.message
+                : String(settleError),
+          });
+        });
       }),
     );
     return {
@@ -929,6 +1152,7 @@ async function runFreshEventSource(
       await brokerRun;
       await brokerCredit;
       if (brokerTerminal === undefined) {
+        // Defensive: client disconnect always journals cancelled via the broker first.
         await settleTerminal(runtimeEnv, {
           ...terminalBase,
           usage: partialUsage.getPartialUsage?.(),
@@ -1086,6 +1310,7 @@ function createProductionPreAccept(
     );
     if (!guard.ok) {
       const code = isTaxonomyCode(guard.code) ? guard.code : "internal_error";
+      // Latent: `cancelled` maps to HTTP 500 at the adapter (no taxonomy status); unreachable for current non-conversational capabilities.
       log.info("guard_rejected", { code });
       return {
         ok: false,
@@ -1455,40 +1680,64 @@ export default {
     log.info("scheduled_cron_start", { cron });
 
     // FR-011 — flush in-isolate guard rejection tallies before other jobs.
-    await flushRejectionCounters(
-      { DB: runtimeEnv.DB },
-      makeLog("rate-limit/index.ts"),
-    );
+    try {
+      await flushRejectionCounters(
+        { DB: runtimeEnv.DB },
+        makeLog("rate-limit/index.ts"),
+      );
+    } catch (error) {
+      log.error("scheduled_flush_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     // FR-013 / §15 #3 — reconcile grace admissions once the Quota DO may be reachable.
-    await reconcileGraceUsage(
-      { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
-      undefined,
-      makeLog("credit/index.ts"),
-    );
+    try {
+      await reconcileGraceUsage(
+        { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
+        undefined,
+        makeLog("credit/index.ts"),
+      );
+    } catch (error) {
+      log.error("scheduled_reconcile_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     if (cron === "0 3 * * *") {
       log.info("scheduled_retention_purge_start");
-      await runRetentionPurge({
-        db: runtimeEnv.DB,
-        r2: runtimeEnv.R2,
-        resolveRetentionClass: createManifestRetentionClassResolver(),
-        logger: makeLog("retention/index.ts"),
-      });
-      log.info("scheduled_retention_purge_complete");
+      try {
+        await runRetentionPurge({
+          db: runtimeEnv.DB,
+          r2: runtimeEnv.R2,
+          resolveRetentionClass: createManifestRetentionClassResolver(),
+          logger: makeLog("retention/index.ts"),
+        });
+        log.info("scheduled_retention_purge_complete");
+      } catch (error) {
+        log.error("scheduled_retention_purge_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     } else if (cron === "0 4 * * *") {
       log.info("scheduled_rollup_start");
       const rollupLog = makeLog("rollup/index.ts");
-      const result = await runRollupAndReconciliation(
-        { db: runtimeEnv.DB },
-        rollupLog,
-      );
-      log.info("usage_rollup_reconciliation", {
-        rollups_written: result.rollupsWritten,
-        missing_attempt_rows: result.report.missingAttemptRows.length,
-        missing_usage_credit: result.report.missingUsageCredit.length,
-        window: result.report.window,
-      });
-      log.debug("usage_rollup_reconciliation_detail", { report: result.report });
+      try {
+        const result = await runRollupAndReconciliation(
+          { db: runtimeEnv.DB },
+          rollupLog,
+        );
+        log.info("usage_rollup_reconciliation", {
+          rollups_written: result.rollupsWritten,
+          missing_attempt_rows: result.report.missingAttemptRows.length,
+          missing_usage_credit: result.report.missingUsageCredit.length,
+          window: result.report.window,
+        });
+        log.debug("usage_rollup_reconciliation_detail", { report: result.report });
+      } catch (error) {
+        log.error("scheduled_rollup_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     log.debug("scheduled_cron_complete", { cron });

@@ -53,16 +53,16 @@ Conventions used throughout:
 | Side effects | One `UPDATE ai_request SET routing_decision = ?` ordered before the first `FakeAdapter.invoke` call; otherwise identical to S10-001. |
 | Code reference | ai-platform/src/worker.ts:L764-L767 — `persistRoutingDecision` call before `runInvocation`; ai-platform/src/journal/index.ts:L289-L299 — `persistRoutingDecision`; ai-platform/src/router/index.ts:L583-L680 — `selectCandidateChain` |
 
-## Scenario S10-003 — Missing routing policy after accepted → failed internal_error, request left Accepted
+## Scenario S10-003 — Missing routing policy after accepted → failed internal_error with terminal settlement
 
 | Field | Content |
 |-------|---------|
 | ID | S10-003 |
 | Journey setup | Setup FRESH but **skip** policy publish/promote (no `active` or canary `routing_policy` row for `standard`). |
 | Action | `POST /v1/requests`, idempotency key `s10-003-idem`, trace `s10-003-trace`. |
-| Expected outcome | HTTP 200 SSE. Events: `accepted` → `failed` with `data.code: "internal_error"`, `data.request_reference` = this connection's reference, `data.trace_id: "s10-003-trace"`, `data.retry_safe: true`. No `text_delta`. Mechanism: `preloadRoutingPolicyForInstallation` → `loadConfig` throws `ConfigCacheMissError`; the `runFreshEventSource` rejection is caught in `createProductionEventSource` and mapped to `pushFailedTerminal(..., "internal_error")`. |
-| Side effects | **Code-authoritative (doc drift — see observations):** the catch path only pushes the SSE event. D1 `ai_request` remains `state Accepted` with `routing_decision NULL` and `terminal_error_code NULL` — no `recordTerminalState`, no `settleTerminal`. No `ai_attempt`, no `usage_event`, no R2 envelope. No Quota DO `credit` (the admission stays `admitted` until the DO's own sweep — Stage 11/DO territory). |
-| Code reference | ai-platform/src/worker.ts:L686-L698 — `event_source_fresh_failed` catch; ai-platform/src/worker.ts:L731-L735 — `preloadRoutingPolicyForInstallation`; ai-platform/src/config-cache/index.ts:L387-L413 — `loadConfig` miss throw |
+| Expected outcome | HTTP 200 SSE. Events: `accepted` → `failed` with `data.code: "internal_error"`, `data.request_reference` = this connection's reference, `data.trace_id: "s10-003-trace"`, `data.retry_safe: true`. No `text_delta`. Mechanism: `preloadRoutingPolicyForInstallation` → `loadConfig` throws `ConfigCacheMissError`; the `runFreshEventSource` rejection is caught in `createProductionEventSource`, mapped to `pushFailedTerminal(..., "internal_error")`, then `settlePostAcceptInternalError` journals and records terminal state. |
+| Side effects | D1 `ai_request` → `Failed` / `terminal_error_code "internal_error"`. Exactly 1 **synthetic** `ai_attempt` row from `attemptsForFailedSettlement` with empty routing (`reason: "no_provider_attempt"`). Quota DO `credit` once, `partial: true`, idempotency `failed`, zero usage. One `usage_event`; one R2 envelope. |
+| Code reference | ai-platform/src/worker.ts — `event_source_fresh_failed` catch + `settlePostAcceptInternalError`; ai-platform/src/worker.ts:L731-L735 — `preloadRoutingPolicyForInstallation`; ai-platform/src/config-cache/index.ts:L387-L413 — `loadConfig` miss throw |
 
 ## Scenario S10-004 — Empty candidate chain → failed provider_unavailable with synthetic attempt row
 
@@ -75,15 +75,15 @@ Conventions used throughout:
 | Side effects | `routing_decision` persisted with `chain: []` and `excluded: [{provider_id: "fake", model_id: "fake-v1", reason_code: "context_window_too_small"}]`. D1 `ai_request` → `Failed` / `terminal_error_code "provider_unavailable"`. Exactly 1 **synthetic** `ai_attempt` row from `attemptsForFailedSettlement`: `attempt_no 1`, `provider "fake"`, `model "fake-v1"` (hint = `excluded[0]`), `outcome "terminal_failure"`, `error_code "provider_unavailable"`, `latency_ms/tokens_in/tokens_out/cost` all 0; the R2 envelope attempt payload is `{reason: "no_provider_attempt", excluded: [...]}`, `truncated: false`. Quota DO `credit` once, `partial: true` (`provider_unavailable` consumesQuota is "Partially, recorded" → `partial = consumesQuota !== "Yes"`), idempotency `failed`, zero usage. One `usage_event` (tokens 0). |
 | Code reference | ai-platform/src/invocation/index.ts:L451-L457 — empty-chain early return; ai-platform/src/worker.ts:L382-L411 — `attemptsForFailedSettlement`; ai-platform/src/router/index.ts:L464-L581 — `filterTargets` |
 
-## Scenario S10-005 — Unknown provider_id → FakeAdapter terminal:provider_unavailable fallback, retry, chain exhaustion
+## Scenario S10-005 — Unknown provider_id → FakeAdapter retryable:provider_unavailable fallback, retry, chain exhaustion
 
 | Field | Content |
 |-------|---------|
 | ID | S10-005 |
-| Journey setup | Setup FRESH. Policy document: catch-all, single target `{provider_id: "bogus-primary", model_id: "bogus-v1", max_attempts: 2, timeout_ms: 30000}` with visit-summary-valid features. No spy — production `resolveProviderPort` maps the unknown id to `new FakeAdapter(["terminal:provider_unavailable"])`. |
+| Journey setup | Setup FRESH. Policy document: catch-all, single target `{provider_id: "bogus-primary", model_id: "bogus-v1", max_attempts: 2, timeout_ms: 30000}` with visit-summary-valid features. No spy — production `resolveProviderPort` maps the unknown id to `new FakeAdapter(["retryable:provider_unavailable"])`. |
 | Action | `POST /v1/requests`, idempotency key `s10-005-idem`, trace `s10-005-trace`. Measure wall-clock elapsed. |
-| Expected outcome | Events: `accepted` → `failed` `provider_unavailable`, `retry_safe: true`. Despite the `terminal:` script token, `setRetryabilityFromClassification` recomputes from the taxonomy (`provider_unavailable` retryable "Yes"), so `processInvokeResult` records **retryable_failure** and the loop retries: attempt 1 `error_code "provider_unavailable"` (script token), attempt 2 `error_code "internal_error"` (script queue exhausted → FakeAdapter empty-queue branch). Elapsed ≥ ~100 ms (jittered backoff `100×2^0` + up to 50% jitter, via `wallClockSleeper`). Chain exhausted → `provider_unavailable`. |
-| Side effects | D1 `ai_attempt`: 2 rows — `(attempt_no 1, provider "bogus-primary", outcome "retryable_failure", error_code "provider_unavailable")`, `(attempt_no 2, outcome "retryable_failure", error_code "internal_error")`. `ai_request` → `Failed/provider_unavailable`. Credit once, `partial: true`, idempotency `failed`. One envelope; attempt payloads `{fake: true, outcome: "terminal:provider_unavailable"}` and `{fake: true, outcome: undefined}`-class internal error body. |
+| Expected outcome | Events: `accepted` → `failed` `provider_unavailable`, `retry_safe: true`. `setRetryabilityFromClassification` recomputes from the taxonomy (`provider_unavailable` retryable "Yes"), so `processInvokeResult` records **retryable_failure** and the loop retries: attempt 1 `error_code "provider_unavailable"` (script token), attempt 2 `error_code "internal_error"` (script queue exhausted → FakeAdapter empty-queue branch). Elapsed ≥ ~100 ms (jittered backoff `100×2^0` + up to 50% jitter, via `wallClockSleeper`). Chain exhausted → `provider_unavailable`. |
+| Side effects | D1 `ai_attempt`: 2 rows — `(attempt_no 1, provider "bogus-primary", outcome "retryable_failure", error_code "provider_unavailable")`, `(attempt_no 2, outcome "retryable_failure", error_code "internal_error")`. `ai_request` → `Failed/provider_unavailable`. Credit once, `partial: true`, idempotency `failed`. One envelope; attempt payloads `{fake: true, outcome: "retryable:provider_unavailable"}` and `{fake: true, outcome: undefined}`-class internal error body. |
 | Code reference | ai-platform/src/worker.ts:L343-L359 — `resolveProviderPort` unknown-id fallback; ai-platform/src/provider/fake.ts:L92-L99 — empty-queue `internal_error`; ai-platform/src/provider/classify.ts:L10-L13 — `classifyFailure`; ai-platform/src/invocation/index.ts:L755-L761 — all-providers-exhausted return |
 
 ## Scenario S10-006 — Retryable provider error → jittered backoff → same-target retry succeeds
@@ -193,7 +193,7 @@ Conventions used throughout:
 | Journey setup | Setup FRESH (policy as S10-001). No spy. |
 | Action | `SELF.fetch` the `POST /v1/requests` with an **already-aborted** `AbortController.signal`, idempotency key `s10-015-idem`. Tolerate a rejected fetch promise; flush background work. |
 | Expected outcome | The adapter's `abortedAtEntry` branch runs: `markCancelledWithoutEnqueue()` + `notifyDisconnect("client_close")` + close — the event-source factory is **never invoked**, so the accept-context entry is never consumed, no broker exists, no provider is called, and no terminal event is produced anywhere. |
-| Side effects | D1 `ai_request` row exists (guard INSERT) and remains `state Accepted` with `routing_decision NULL` — nothing in Stage 10 ever touches it. No `ai_attempt`, no `usage_event`, no envelope, no Quota DO `credit` (the admission stays `admitted` until the DO sweep — outside this stage). |
+| Side effects | D1 `ai_request` row exists (guard INSERT) and remains `state Accepted` with `routing_decision NULL` — the event-source factory is never invoked (C-01 settlement does not apply). No `ai_attempt`, no `usage_event`, no envelope, no Quota DO `credit` (the admission stays `admitted` until the DO sweep — outside this stage). |
 | Code reference | ai-platform/src/adapter.ts:L470-L470 — `abortedAtEntry`; ai-platform/src/adapter.ts:L527-L532 — abort-at-entry short-circuit before `eventSource(...)` |
 
 ## Scenario S10-016 — Idempotent replay of a completed prior request → placeholder completed
@@ -207,16 +207,16 @@ Conventions used throughout:
 | Side effects | None. No new `ai_request` row, no `ai_attempt`, no `usage_event`, envelope not rewritten, no credit. |
 | Code reference | ai-platform/src/worker.ts:L606-L640 — `replayIdempotentTerminal` (`completed`/`admitted` branch); ai-platform/src/worker.ts:L666-L673 — idempotent dispatch |
 
-## Scenario S10-017 — Idempotent replay of an admitted (still in-flight) prior request → placeholder completed
+## Scenario S10-017 — Idempotent replay of an admitted (still in-flight) prior request → accepted only (no fabricated terminal)
 
 | Field | Content |
 |-------|---------|
 | ID | S10-017 |
 | Journey setup | Setup FRESH. Spy `FakeAdapter` subclass whose `invoke` hangs ~5 s signal-aware, then succeeds. First `POST /v1/requests` with idempotency key `s10-017-idem` still in-flight (DO state `admitted`). |
 | Action | While the first request is mid-invoke, second `POST /v1/requests` with the same key `s10-017-idem`, trace `s10-017-trace`. Then let the first request finish. |
-| Expected outcome | Second connection: `accepted` → `completed` with placeholder `"Prior request completed."` (DO prior state `admitted` maps to the same placeholder as `completed`). First connection: normal `accepted` → `text_delta` → `completed` with real fake text once the hang resolves. |
+| Expected outcome | Second connection: `accepted` only — **no** terminal frame (stream stays open; `replayIdempotentTerminal` returns without fabricating `completed`). Client polls `GET /v1/requests/{prior_request_reference}` or waits on the first connection for the real outcome. First connection: normal `accepted` → `text_delta` → `completed` with real fake text once the hang resolves. |
 | Side effects | Exactly one `ai_request` row total; one `ai_attempt`; one credit (`partial: false`) from the first request only. The replay connection writes nothing. |
-| Code reference | ai-platform/src/worker.ts:L623-L629 — `admitted` → placeholder `completed` |
+| Code reference | ai-platform/src/worker.ts — `replayIdempotentTerminal` `admitted` branch (no terminal emission) |
 
 ## Scenario S10-018 — Idempotent replay of a failed prior request → failed internal_error (not the original code)
 
@@ -401,19 +401,19 @@ Conventions used throughout:
 | ID | S10-034 |
 | Journey setup | Setup FRESH (policy as S10-001). [SEED] The accept-context store is a request-scoped `Map` inside `handleLivePostRequest`; no client behavior can drop the entry between pre-accept and event-source. Seam: `vi.spyOn(Map.prototype, "get")` returning `undefined` once for the event-source lookup (or invoke the unexported factory path via module internals). Justification: covers the defensive `event_source_missing_accept_context` branch that is otherwise unreachable end-to-end. |
 | Action | `POST /v1/requests`, key `s10-034-idem`, trace `s10-034-trace`, with the seam armed. |
-| Expected outcome | `accepted` → `failed` with `data.code: "internal_error"`, `retry_safe: true`. Log `event_source_missing_accept_context`. No routing, no provider call, no broker. |
-| Side effects | None beyond the guard's INSERT: `ai_request` stays `Accepted` (this path writes nothing — no `recordTerminalState`, no settlement, no credit). |
-| Code reference | ai-platform/src/worker.ts:L653-L664 — missing-accept-context branch in `createProductionEventSource` |
+| Expected outcome | `accepted` → `failed` with `data.code: "internal_error"`, `retry_safe: true`. Log `event_source_missing_accept_context`. No routing, no provider call, no broker. Background `settleMissingHandoffInternalError` settles the request. |
+| Side effects | D1 `ai_request` → `Failed` / `terminal_error_code "internal_error"`. One synthetic `ai_attempt`; Quota DO `credit` once (`partial: true`, idempotency `failed`); one `usage_event`; one R2 envelope. |
+| Code reference | ai-platform/src/worker.ts — missing-accept-context branch + `settleMissingHandoffInternalError` |
 
 ## Doc-drift observations
 
-1. **Missing-policy failure leaves `ai_request` Accepted — doc claims Failed.** `12-stage-10-accept-route-invoke-stream.md` §19.3.2 and §16 say the missing-routing-policy path sets D1 `state = Failed`, `terminal_error_code = internal_error`. Code (`worker.ts:L686-L698`) only pushes the SSE `failed` event from the `runFreshEventSource` rejection catch — no `recordTerminalState`, no settlement, no credit, no envelope (S10-003). Code followed.
-2. **"Missing guard handoff … D1 unchanged or Failed depending on timing" (§16).** Code: always unchanged. Neither the missing-accept-context branch (`worker.ts:L653-L664`) nor `replayIdempotentTerminal` writes any journal state; the row stays `Accepted` from the guard INSERT (S10-015, S10-034).
+1. **Missing-policy / missing-handoff post-accept failures — fixed (C-01).** `settlePostAcceptInternalError` / `settleMissingHandoffInternalError` now journal, credit, and `recordTerminalState` for the `runFreshEventSource` catch and missing-accept-context branches (S10-003, S10-034).
+2. **Abort-at-entry (S10-015) unchanged.** The adapter short-circuits before the event-source factory runs; the row stays `Accepted` — distinct from the missing-handoff settlement paths above.
 3. **`ai_attempt.selection_reason` is not a D1 column.** §14 presents `primary` / `fallback_after_retryable_error` / `fallback_after_timeout` as `D1 ai_attempt.selection_reason`; the migration (`20260731120000_platform_schema.sql:L86-L100`) has no such column — the values exist only on the in-memory `AttemptRecord` (`invocation/index.ts:L21-L24`). §19.3.10 self-flags this, but the §14 table still drifts (S10-008, S10-011, S10-030).
 4. **`text_delta.data` omits `trace_id`.** §4.1 and §11.4 claim every `data` object includes `trace_id`; the broker puts `trace_id` on the event wrapper and `encodeSseEvent` serializes only `event.data`, so `text_delta.data` is `{text, sequence, provisional}` only. §19.3.5 acknowledges the gap; the §4.1/§11.4 contract tables were not updated (S10-001).
 5. **Structured relay path is documented as live but is never wired.** §10 says "structured JSON capabilities use a separate relay path"; `createStructuredStreamBroker` (`stream/structured.ts:L177`) and `validateAndRepair` (`validate/index.ts:L87`) have **no caller in `worker.ts`** — the prose broker is created unconditionally (`worker.ts:L814-L866`). `progress` / `partial_structured` events, commit-time schema/business validation, and `repairPolicy` reask are unreachable on `POST /v1/requests` regardless of manifest `Output.mode`. Conversely, `regenerating` **is** reachable for visit summary despite `repairPolicy.allowed: false`, because regenerating originates in the invocation loop (partial-stream retry/fallback), not in validation repair (S10-029/030/031).
 6. **`AdapterDisconnectReason "network_drop"` is dead.** Defined at `adapter.ts:L31` and accepted by the broker, but all three adapter call sites pass `"client_close"` (`adapter.ts:L529, L543, L555`). No scenario can produce `network_drop`.
-7. **Unknown-provider fallback token is misnamed but behavior-correct.** `resolveProviderPort` scripts `terminal:provider_unavailable` for unknown ids (`worker.ts:L358`), yet `setRetryabilityFromClassification` recomputes retryability from the taxonomy (`provider_unavailable` = retryable "Yes"), so the invocation loop treats it as `retryable_failure` and retries/falls back (S10-005). Doc §19 preamble describes the behavior correctly; flagging the token-name semantics so catalog readers do not script `terminal:provider_unavailable` expecting fail-fast.
+7. **Unknown-provider fallback token renamed (C-23).** `resolveProviderPort` now scripts `retryable:provider_unavailable` for unknown ids, matching retryable semantics (S10-005).
 8. **`cancelled` on a true client drop is emitted into a dead stream.** §11.7 shows the `cancelled` frame without noting it is unobservable on the dropped connection (adapter `markCancelledWithoutEnqueue`, `adapter.ts:L472-L474`); §19.3.12 documents the replay-based observation. S10-013/014 (drop) + S10-019 (replay) encode the code behavior.
 
 ## Non-automatable notes

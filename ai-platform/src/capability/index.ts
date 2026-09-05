@@ -11,6 +11,7 @@ import {
 } from "../config-cache";
 import type { Principal } from "../identity";
 import { noopLogger, type Logger } from "../logger";
+import { recordGuardRejection } from "../rate-limit";
 import { hashManifest, type Manifest } from "../manifest";
 
 export type CapabilityRegistry = Map<string, Manifest>;
@@ -569,6 +570,10 @@ export async function resolve(
       version,
       code: "capability_unknown",
     });
+    recordGuardRejection({
+      error_code: "capability_unknown",
+      installation_id: principal.installationId,
+    });
     return { ok: false, code: "capability_unknown" };
   }
 
@@ -580,6 +585,10 @@ export async function resolve(
       capability_id: capabilityId,
       version,
       code: "capability_retired",
+    });
+    recordGuardRejection({
+      error_code: "capability_retired",
+      installation_id: principal.installationId,
     });
     return { ok: false, code: "capability_retired" };
   }
@@ -599,6 +608,10 @@ export async function resolve(
       code: allowance.code,
       installation_id: principal.installationId,
     });
+    recordGuardRejection({
+      error_code: allowance.code,
+      installation_id: principal.installationId,
+    });
     return allowance;
   }
 
@@ -614,6 +627,10 @@ export async function resolve(
       capability_id: capabilityId,
       version,
       code: "capability_disabled",
+      installation_id: principal.installationId,
+    });
+    recordGuardRejection({
+      error_code: "capability_disabled",
       installation_id: principal.installationId,
     });
     return { ok: false, code: "capability_disabled" };

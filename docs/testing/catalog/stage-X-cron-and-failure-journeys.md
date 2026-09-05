@@ -56,16 +56,16 @@ Conventions used throughout:
 | Side effects | Writes: `platform_counter` only. Must NOT delete any `ai_request`/`ai_attempt`/R2 object; must NOT write `usage_rollup`. |
 | Code reference | ai-platform/src/worker.ts:L1469-L1492 — `if/else if` cron-string dispatch with no else branch |
 
-## Scenario SX-004 — A flush failure aborts the whole tick (no try/catch in the scheduled handler)
+## Scenario SX-004 — One cron job failure does not abort the others (per-job try/catch)
 
 | Field | Content |
 |-------|---------|
 | ID | SX-004 |
 | Journey setup | I0 entitled. One rejection tallied. One pending grace row `grace-sx004`. One `[SEED]` 91-day-old Completed request. Env DB replaced by a proxy shim around the real D1 binding that throws only when the SQL contains `INSERT INTO platform_counter` (real D1 cannot fail on demand — see Non-automatable notes). |
 | Action | Run cron tick `"0 3 * * *"`. |
-| Expected outcome | `scheduled()` rejects with the shim's error. `reconcileGraceUsage` and `runRetentionPurge` never run: `grace-sx004` still `status='pending'` with `reconcile_attempts=0`; the aged request row still present; no `scheduled_retention_purge_start` log. The in-isolate tally was already cleared by snapshot-and-clear, so a later healthy tick does not double-apply (see SX-008). |
-| Side effects | No D1 writes at all (the single failing INSERT is the first write attempted). No R2 deletes. |
-| Code reference | ai-platform/src/worker.ts:L1457-L1467 — sequential `await`s with no error isolation; ai-platform/src/rate-limit/index.ts:L165-L171 — snapshot-and-clear before writing |
+| Expected outcome | `scheduled_flush_failed` is logged; the tick **continues**. `reconcileGraceUsage` runs (`grace-sx004` may reconcile or remain pending per its own rules); `runRetentionPurge` runs and deletes the aged request. The in-isolate tally was already cleared by snapshot-and-clear before the failing INSERT, so a later healthy flush tick does not double-apply (see SX-008). |
+| Side effects | No `platform_counter` row (flush INSERT failed). Grace reconcile and retention purge side effects proceed independently. |
+| Code reference | ai-platform/src/worker.ts — `scheduled()` per-job try/catch; ai-platform/src/rate-limit/index.ts:L165-L171 — snapshot-and-clear before writing |
 
 ## Scenario SX-005 — Flush with tallies present upserts bucketed `platform_counter` rows
 
@@ -733,7 +733,7 @@ Verified doc-15 failure journeys against code (each is a scenario here or belong
 - **No injection through the scheduled handler.** `runRetentionPurge`'s `bindings.now`, `RollupBindings.window`, and `ReconcileGraceContext.now` are unreachable via cron (worker.ts passes none); docs don't state this. Scheduled-handler tests must backdate `[SEED]` rows against real wall clock; only direct job-function calls can inject time (SX-026, SX-029, SX-033…SX-035, SX-038, SX-044).
 - **No DO alarm.** `quota-do/index.ts` defines no `alarm()` handler; all sweeps are lazy, driven by the next RPC (or read-only via `inspect`, SX-050). Doc 18 does not claim an alarm — recorded here per mission, not as drift.
 - **`kill_switch` is immortal under cron** (no `DELETE FROM kill_switch` anywhere in retention) — docs silent; SX-036.
-- **No try/catch in `scheduled()`** — a flush failure aborts reconcile and the cron-specific job (SX-004); docs silent.
+- **Per-job try/catch in `scheduled()` — fixed (C-15).** A flush failure is logged (`scheduled_flush_failed`) and does not starve reconcile, retention, or rollup for that tick (SX-004).
 - `request-lifecycle-brief.md` L106/L266-L267 (tally flush on cron, grace queue writers) — consistent with code; no drift.
 
 ## Non-automatable notes

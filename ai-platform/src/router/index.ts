@@ -616,6 +616,7 @@ export function selectCandidateChain({
     ruleMatches(rule, context, effectiveCostClass),
   );
 
+  // Catch-all validation runs before matching, so `rules.find` cannot miss; kept as a defensive safety net.
   if (!matchedRule) {
     throw new RoutingPolicyError(
       "no_matching_rule",

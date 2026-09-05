@@ -72,16 +72,16 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 | Side effects | None. |
 | Code reference | `ai-platform/src/worker.ts:L343-L359` — `resolveProviderPort` and its `secretStore.getSecret` env lookup |
 
-## Scenario S00-007 — Bundled manifest failing validation is swallowed at boot; worker serves with an empty registry
+## Scenario S00-007 — Bundled manifest failing validation aborts isolate boot (fail closed)
 
 | Field | Content |
 |-------|---------|
 | ID | S00-007 |
-| Journey setup | Hypothetical build in which the statically imported `manifests/published/clinic.visit_summary@1.0.0.json` is valid JSON but fails `load()` validation (e.g. the `Economics` group is deleted, so `validate` throws `Missing manifest group: Economics`). Reachability: in production this is blocked by the `verifyManifestTree` build gate (S00-032); the runtime path exists only as defense-in-depth because the boot sequence wraps registry installation in `try { … } catch { }`. In the test environment the equivalent end-state is produced via the harness seam: `setCapabilityRegistry(new Map(), { replace: true })` before the worker module is evaluated (the boot `setCapabilityRegistry` then throws "already installed" and is caught — the same catch clause). |
-| Action | Boot the worker, then drive two real requests: (1) `GET /health`; (2) `GET /v1/capabilities` with a valid AAT (Stage 3 enrollment happy path for `I0`, Stage 4 entitle happy path with `allowed_capabilities: ["clinic.visit_summary"]`, Stage 6 AAT mint with scopes `[ai.visit_summary]`). |
-| Expected outcome | (1) HTTP 200 `{"build":"local","environment":"development"}` — manifest load failure does not abort the isolate. (2) HTTP 200 with body `{"manifests":[]}` and a valid `ETag` — the registry is empty, so discovery finds no candidates. A subsequent `POST /v1/requests` naming `capability_id: "clinic.visit_summary"` is rejected at the capability-resolution guard stage with taxonomy code `capability_unknown` (HTTP 404 per the taxonomy; exact envelope owned by the guard-stage chapter). |
-| Side effects | None. No D1/DO/R2 writes; the entitlement and grant rows built during setup are read-only inputs here. |
-| Code reference | `ai-platform/src/worker.ts:L150-L159` — boot `try/catch` around `setCapabilityRegistry(createCapabilityRegistry([load(…)]))`; `ai-platform/src/capability/index.ts:L515-L531` — `setCapabilityRegistry` throw-without-`replace`; `ai-platform/src/capability/index.ts:L558-L573` — `resolve` returning `capability_unknown` on registry miss |
+| Journey setup | Hypothetical build in which the statically imported `manifests/published/clinic.visit_summary@1.0.0.json` is valid JSON but fails `load()` validation (e.g. the `Economics` group is deleted, so `validate` throws `Missing manifest group: Economics`). Reachability: in production this is blocked by the `verifyManifestTree` build gate (S00-032); the runtime path exists only as defense-in-depth. In the test environment the equivalent **degraded end-state** (empty registry, `capability_unknown` everywhere) is still produced via the harness seam: `setCapabilityRegistry(new Map(), { replace: true })` before the worker module is evaluated. |
+| Action | (a) Boot the worker with a throwing `load()` manifest (hypothetical). (b) Harness seam: install an empty registry before worker eval, then drive `GET /health` and `GET /v1/capabilities`. |
+| Expected outcome | (a) Isolate boot aborts after a V0 `boot_registry_install_failed` log — the worker does **not** serve with a silently empty registry (C-18). (b) Harness seam: HTTP 200 `/health`; discovery `{"manifests":[]}`; `POST /v1/requests` → `capability_unknown` at the guard stage. |
+| Side effects | (a) No requests served. (b) None beyond Stage 3/4 setup reads. |
+| Code reference | `ai-platform/src/worker.ts` — boot `try/catch` rethrows on `load()` failure; `ai-platform/src/capability/index.ts:L558-L573` — `resolve` returning `capability_unknown` on registry miss |
 
 ## Scenario S00-008 — Pre-installed registry is retained when boot installation throws (replace semantics)
 
@@ -90,7 +90,7 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 | ID | S00-008 |
 | Journey setup | Test harness installs a registry containing only a harness manifest (e.g. `test.echo@9.9.9`, loaded via `load()` and installed with `createCapabilityRegistry` + `setCapabilityRegistry`) **before** the worker module is evaluated. This is the documented reason for the boot `try/catch` ("Test harness may install the registry first with { replace: true }"). |
 | Action | Evaluate the worker module (boot attempts `setCapabilityRegistry` without `{ replace: true }`, which throws `CapabilityRegistry is already installed; pass { replace: true } to replace`; the catch swallows it). Then `GET /v1/capabilities` with a valid AAT whose entitlement allows `test.echo` (Stage 3/4/6 happy paths with `allowed_capabilities: ["test.echo"]`). |
-| Expected outcome | Boot completes; the harness registry survives. Discovery HTTP 200 lists `test.echo@9.9.9` and does **not** list `clinic.visit_summary@1.0.0`. Requests naming `clinic.visit_summary` resolve to `capability_unknown`. |
+| Expected outcome | Boot completes; the harness registry survives (the "already installed" throw is caught and swallowed — this is the **only** boot catch that does not rethrow). Discovery HTTP 200 lists `test.echo@9.9.9` and does **not** list `clinic.visit_summary@1.0.0`. Requests naming `clinic.visit_summary` resolve to `capability_unknown`. |
 | Side effects | None beyond Stage 3/4 setup rows. |
 | Code reference | `ai-platform/src/worker.ts:L150-L159` — boot try/catch; `ai-platform/src/capability/index.ts:L515-L531` — `setCapabilityRegistry` |
 
@@ -416,7 +416,7 @@ Boot-failure scenarios (S00-001…S00-014) are ordered first per blocker escalat
 ## Doc-drift observations
 
 - **`/health` accepts any method.** The orientation doc (§5, §8.3.3) describes only `GET /health`; `worker.ts` branches on pathname alone, so `POST /health` (and any other method) returns the same 200 body (S00-034). No doc mentions this.
-- **Boot registry-install failure mode is undocumented.** The doc's boot table lists `setCapabilityRegistry(...)` as a load action, but no doc describes the `try/catch` around it: a manifest that fails `load()` at runtime (or a pre-installed registry) is silently swallowed and the worker serves with whatever registry exists — potentially empty, degrading every capability resolution to `capability_unknown` while `/health` stays 200 (S00-007, S00-008). The doc's §8 gates imply awareness ("did not abort the isolate") but never state the degraded empty-registry end-state.
+- **Boot registry-install failure mode — fixed (C-18).** A bundled manifest that fails `load()` at runtime now logs `boot_registry_install_failed` and rethrows (isolate boot aborts). The harness empty-registry seam (S00-007 variant b) remains the way to test the degraded discovery end-state without a throwing manifest. The "already installed" catch for harness pre-install (S00-008) is unchanged.
 - **`CONFIG_CACHE_TTL_MS` parsing rules are undocumented.** The doc (§3.3) lists the var but not `resolveConfigCacheTtlMs` semantics: unset/empty/non-numeric/negative all fall back to 30 000 ms, and `"0"` is accepted and disables caching (S00-010, S00-011).
 - **`LOG_VERBOSITY` parsing rules are undocumented.** The doc lists `0/1/2` but not the `V0/V1/V2` aliases, case-insensitivity, invalid-value fallback to V0, or the code-level default of V2 when `ENVIRONMENT=development` and the var is absent (S00-012…S00-014).
 - **Schema bootstrap section conflates migrations.** Doc §4 says "Creates 14 tables" citing the §7.3 baseline, but `20260731120000_platform_schema.sql` creates 12; `token_contract` (+seed), `kill_switch`, `grace_admission_queue`, and `idx_entitlement_installation_id` arrive in four later migrations. The end state the doc asserts is correct (verified in S00-027); the attribution to a single bootstrap step is loose.

@@ -374,7 +374,7 @@ export async function runGuard(
     });
   }
 
-  // Stage 5 — capability resolve
+  // Stage 5 — capability resolve (stage 3 evaluates the same D1 kill-switch rows first; kept as defense against future pipeline reordering).
   const resolved = await resolve(
     principal,
     input.capabilityId,
@@ -465,6 +465,7 @@ export async function runGuard(
     };
   }
 
+  // Safety net for future DO admission outcomes; currently unreachable.
   if (admission.outcome !== "admitted" && admission.outcome !== "grace_admitted") {
     return fail(8, "internal_error", started, logger);
   }
@@ -525,6 +526,11 @@ export async function runGuard(
       bindings.DB,
       manifest.interactionMode,
     );
+    await releaseAdmissionReservation(bindings, principal.installationId, {
+      requestId,
+      idempotencyKey: input.idempotencyKey,
+      jti: principal.jti,
+    });
     return fail(10, composed.code, started, logger);
   }
 

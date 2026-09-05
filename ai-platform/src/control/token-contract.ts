@@ -4,6 +4,7 @@ import {
   ok,
   parseJsonBody,
   reject,
+  requireNonEmptyString,
   requireOperator,
 } from "./http";
 import type {
@@ -28,10 +29,11 @@ export async function handleTokenContractBeginRotation(
     return body;
   }
 
-  const ver = body.ver?.trim();
-  if (!ver) {
+  const verRaw = requireNonEmptyString(body.ver);
+  if (verRaw === null) {
     return reject(400, "invalid_ver");
   }
+  const ver = verRaw.trim();
 
   const { DB } = bindings;
   const addedAt = nowIso();
@@ -84,10 +86,11 @@ export async function handleTokenContractRetire(
     return body;
   }
 
-  const ver = body.ver?.trim();
-  if (!ver) {
+  const verRaw = requireNonEmptyString(body.ver);
+  if (verRaw === null) {
     return reject(400, "invalid_ver");
   }
+  const ver = verRaw.trim();
 
   const { DB } = bindings;
   const retiredAt = nowIso();

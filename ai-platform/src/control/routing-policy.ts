@@ -86,6 +86,18 @@ function isUniqueConstraint(err: unknown): boolean {
   return /UNIQUE constraint failed|SQLITE_CONSTRAINT/i.test(message);
 }
 
+async function runControlBatch(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<Response | null> {
+  try {
+    await db.batch(statements);
+    return null;
+  } catch {
+    return reject(500, "storage_error");
+  }
+}
+
 function latencyMismatchWarnings(
   document: Record<string, unknown>,
   policyId: string,
@@ -161,6 +173,7 @@ export async function handleRoutingPolicyPublish(
 
   const route = parseRoutingPolicyRoute(request);
   if (!route || route.action !== "publish") {
+    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -252,6 +265,7 @@ export async function handleRoutingPolicyCanary(
 
   const route = parseRoutingPolicyRoute(request);
   if (!route || route.action !== "canary") {
+    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -300,14 +314,20 @@ export async function handleRoutingPolicyCanary(
     .first<{ canary_installation_ids: string | null }>();
 
   const beforePointer = priorCanary?.canary_installation_ids ?? null;
-  const afterPointer = JSON.stringify(body.installation_ids);
+  const afterPointer =
+    typeof body.cohort_name === "string" && body.cohort_name.length > 0
+      ? JSON.stringify({
+          installation_ids: body.installation_ids,
+          details: { cohort_name: body.cohort_name },
+        })
+      : JSON.stringify(body.installation_ids);
 
-  await DB.batch([
+  const batchError = await runControlBatch(DB, [
     DB.prepare(
       `UPDATE routing_policy
        SET status = 'canary', canary_installation_ids = ?
        WHERE policy_id = ? AND version = ?`,
-    ).bind(afterPointer, route.policyId, route.version),
+    ).bind(JSON.stringify(body.installation_ids), route.policyId, route.version),
     DB.prepare(
       `INSERT INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
@@ -321,6 +341,9 @@ export async function handleRoutingPolicyCanary(
       recordedAt,
     ),
   ]);
+  if (batchError) {
+    return batchError;
+  }
 
   return ok();
 }
@@ -337,6 +360,7 @@ export async function handleRoutingPolicyPromote(
 
   const route = parseRoutingPolicyRoute(request);
   if (!route || route.action !== "promote") {
+    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -355,6 +379,10 @@ export async function handleRoutingPolicyPromote(
     return reject(404, "policy_version_not_found");
   }
 
+  if (existing.status === "active" || existing.status === "superseded") {
+    return reject(409, "illegal_policy_transition");
+  }
+
   const priorActive = await DB.prepare(
     `SELECT version FROM routing_policy
      WHERE policy_id = ? AND status = 'active'
@@ -368,7 +396,7 @@ export async function handleRoutingPolicyPromote(
     : null;
   const afterPointer = target;
 
-  await DB.batch([
+  const batchError = await runControlBatch(DB, [
     DB.prepare(
       `UPDATE routing_policy
        SET status = 'superseded', canary_installation_ids = NULL
@@ -397,6 +425,9 @@ export async function handleRoutingPolicyPromote(
       recordedAt,
     ),
   ]);
+  if (batchError) {
+    return batchError;
+  }
 
   return ok();
 }
@@ -413,6 +444,7 @@ export async function handleRoutingPolicyRollback(
 
   const route = parseRoutingPolicyRoute(request);
   if (!route || route.action !== "rollback") {
+    // Unreachable via HTTP: dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -483,20 +515,7 @@ export async function handleRoutingPolicyRollback(
     );
     afterPointer = `${route.policyId}@${prior.version}`;
   } else {
-    // published (or other): succeed, clear any canary split on this policy
-    beforePointer = existing.canary_installation_ids
-      ? `${route.policyId}@${route.version}`
-      : null;
-    const active = await DB.prepare(
-      `SELECT version FROM routing_policy
-       WHERE policy_id = ? AND status = 'active'
-       ORDER BY active_from DESC, rowid DESC LIMIT 1`,
-    )
-      .bind(route.policyId)
-      .first<{ version: string }>();
-    afterPointer = active
-      ? `${route.policyId}@${active.version}`
-      : null;
+    return reject(409, "illegal_policy_transition");
   }
 
   // Always clear canary split on this policy_id.
@@ -524,6 +543,9 @@ export async function handleRoutingPolicyRollback(
     ),
   );
 
-  await DB.batch(statements);
+  const batchError = await runControlBatch(DB, statements);
+  if (batchError) {
+    return batchError;
+  }
   return ok();
 }

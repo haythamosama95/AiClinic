@@ -100,6 +100,9 @@ export async function handleDiscoveryRequest(
     reader,
     logger,
   );
+  // discover() defensive guards (revoked-grant skip, non-string plan, non-string
+  // registry identity) are unreachable via production paths; kept against malformed
+  // D1/registry rows — do not invent test chapters for them.
   const ifNoneMatch = request.headers.get("If-None-Match");
   logger.info("discovery_succeeded", {
     installation_id: verifyResult.principal.installationId,

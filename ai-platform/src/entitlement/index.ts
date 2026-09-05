@@ -37,6 +37,10 @@ export type EntitlementResult =
     ok: false;
     code: "forbidden_capability" | "capability_disabled";
     path: EntitlementRejectionPath;
+  }
+  | {
+    ok: false;
+    code: "internal_error";
   };
 
 function parseAllowedCapabilities(entitlement: Record<string, unknown>): string[] | null {
@@ -151,13 +155,28 @@ export async function evaluateEntitlement(
 ): Promise<EntitlementResult> {
   const installationId = principal.installationId;
 
-  const entitlement = await loadConfig(
-    cache,
-    reader,
-    "entitlements",
-    installationId,
-    logger,
-  );
+  let entitlement: Record<string, unknown>;
+  try {
+    entitlement = await loadConfig(
+      cache,
+      reader,
+      "entitlements",
+      installationId,
+      logger,
+    );
+  } catch (error) {
+    if (error instanceof ConfigCacheMissError) {
+      logger.error("entitlement_config_miss", {
+        installation_id: installationId,
+      });
+      recordGuardRejection({
+        error_code: "internal_error",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "internal_error" };
+    }
+    throw error;
+  }
 
   const entitlementStatus = entitlement.status;
   if (entitlementStatus !== "active") {

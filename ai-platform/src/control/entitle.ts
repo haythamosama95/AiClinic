@@ -161,6 +161,7 @@ export async function handleEntitle(
 
   const installationId = parseInstallationId(request);
   if (!installationId) {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 

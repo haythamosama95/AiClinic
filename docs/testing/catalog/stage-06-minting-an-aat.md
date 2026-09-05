@@ -530,16 +530,16 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | Side effects | Platform guard-rejection metric only. |
 | Code reference | `ai-platform/src/identity/index.ts:L286-L291 — iat/exp window` |
 
-## Scenario S06-043 — Minted-then-rejected: default 900 s lifetime exceeds the platform's 600 s cap
+## Scenario S06-043 — Default lifetime within platform cap: seed-default tokens are accepted
 
 | Field | Content |
 |-------|---------|
 | ID | S06-043 |
-| Journey setup | S06-019 end state (AAT0 with seed defaults: `exp − iat = 900`, unexpired; I0/K0 enrolled platform-side). |
+| Journey setup | S06-019 end state (AAT0 minted with seed defaults: `exp − iat = 600`, unexpired; I0/K0 enrolled platform-side). Seed `ai.aat.lifetime_minutes = 10` (10 min → 600 s). |
 | Action | Present AAT0 to the platform (Stage 9 guard identity verification). |
-| Expected outcome | Stage 9 rejects as `unauthenticated`: `payload.exp − payload.iat > MAX_AAT_LIFETIME_SECONDS (600)`. **The seeded issuer default (15 min) produces tokens the platform always rejects** — clinics must set `ai.aat.lifetime_minutes ≤ 10` for end-to-end success (see Doc-drift). Contrast S06-032 (exactly 600 → accepted shape). |
-| Side effects | Platform guard-rejection metric only. |
-| Code reference | `backend/supabase/migrations/20260801120000_ai_keystore_schema.sql:L40 — lifetime seed 15; ai-platform/src/identity/index.ts:L42, L292-L294 — lifetime cap` |
+| Expected outcome | Stage 9 accepts the token's lifetime shape: `payload.exp − payload.iat = 600` equals `MAX_AAT_LIFETIME_SECONDS (600)` — the strict `>` check does not fire. Default-configured clinics mint platform-compatible tokens without tuning `ai.aat.lifetime_minutes`. Contrast S06-032 (explicit 10-minute setting reaches the same boundary). |
+| Side effects | None beyond normal guard admission. |
+| Code reference | `backend/supabase/migrations/20260905120000_fix_aat_lifetime_minutes_seed.sql — seed 10 min (600 s platform ceiling); ai-platform/src/identity/index.ts:L42, L292-L294 — lifetime cap` |
 
 ## Scenario S06-044 — Minted-then-rejected: kid unknown to the platform
 
@@ -600,12 +600,11 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
    `CANNOT_REVOKE_LAST_ACTIVE_KEY` — the zero-active keystore must instead be reached by a `[SEED]` direct
    `UPDATE ... SET revoked_at` on the key row; and S06-029's recovery re-enroll is valid only from a
    zero-active keystore (with an active key present, enroll fails `ALREADY_ENROLLED` — matching S02-012/S02-022).
-2. **Seed default lifetime is platform-incompatible.** `app_settings` seeds
-   `ai.aat.lifetime_minutes = 15` (→ `exp − iat = 900`), while `EnrolledKeyVerifier` rejects
-   `exp − iat > 600`. A default-configured clinic mints tokens the platform always rejects
-   (S06-043). The stage-6 doc works around this in probes (§7.3.11 lowers lifetime to 10) but never
-   flags the default as broken; the contract (§4, T12) caps `exp − iat` at the configured lifetime
-   but is silent on the 600 s platform ceiling relative to the seed.
+2. **Seed default lifetime aligned with platform ceiling (C-03).** Migration
+   `20260905120000_fix_aat_lifetime_minutes_seed.sql` sets `ai.aat.lifetime_minutes = 10`
+   (→ `exp − iat = 600`), matching `MAX_AAT_LIFETIME_SECONDS`. Default-configured clinics mint
+   platform-compatible tokens (S06-043). The contract (§4, T12) caps `exp − iat` at the configured
+   lifetime; operators must still keep `lifetime_minutes ≤ 10` if they override the seed.
 3. **Stage-6 doc §5 error table is incomplete.** It lists only `INSTALLATION_NOT_ENROLLED`,
    `AI_ACCESS_DENIED`, `BRANCH_NOT_FOUND`, `RATE_LIMITED`. The issuer also raises
    `UNAUTHENTICATED`, `SESSION_EXPIRED`, and `STAFF_NOT_FOUND` (all covered here; contract §9.2

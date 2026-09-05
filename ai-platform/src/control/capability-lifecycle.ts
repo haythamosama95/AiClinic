@@ -9,6 +9,7 @@ import {
   ok,
   parseJsonBody,
   reject,
+  requireNonEmptyString,
   requireOperator,
 } from "./http";
 import type {
@@ -69,6 +70,18 @@ function overlapWindowStillActive(retireAfter: string, now: string): boolean {
   return nowMs < retireAfterMs;
 }
 
+async function runControlBatch(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<Response | null> {
+  try {
+    await db.batch(statements);
+    return null;
+  } catch {
+    return reject(500, "storage_error");
+  }
+}
+
 export async function handleDeprecate(
   request: Request,
   bindings: ControlBindings,
@@ -81,6 +94,7 @@ export async function handleDeprecate(
 
   const route = parseCapabilityRoute(request);
   if (!route || route.action !== "deprecate") {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -97,10 +111,14 @@ export async function handleDeprecate(
     return body;
   }
 
-  if (!body.successor_id) {
-    return reject(400, "missing_successor_id");
+  const successorId = requireNonEmptyString(body.successor_id);
+  if (!successorId) {
+    if (body.successor_id == null || body.successor_id === "") {
+      return reject(400, "missing_successor_id");
+    }
+    return reject(400, "invalid_payload");
   }
-  if (!isSuccessorRegistered(body.successor_id)) {
+  if (!isSuccessorRegistered(successorId)) {
     return reject(400, "unknown_successor");
   }
 
@@ -110,7 +128,7 @@ export async function handleDeprecate(
     return reject(409, "already_retired");
   }
   if (overlay?.lifecycle_state === "deprecated") {
-    if (overlay.successor_id === body.successor_id) {
+    if (overlay.successor_id === successorId) {
       return ok();
     }
     return reject(409, "already_deprecated");
@@ -126,7 +144,7 @@ export async function handleDeprecate(
   // Overlay rows are not live grants: stamp revoked_at = changed_at so
   // `revoked_at IS NULL` grant readers never treat them as active grants.
   // granted_at remains NOT NULL on the A5 schema, so it mirrors changed_at.
-  await DB.batch([
+  const batchError = await runControlBatch(DB, [
     DB.prepare(
       `INSERT INTO capability_grant (
          grant_id, scope, capability_id, capability_version,
@@ -141,7 +159,7 @@ export async function handleDeprecate(
       deprecatedAt,
       deprecatedAt,
       auth.operatorId,
-      body.successor_id,
+      successorId,
       deprecatedAt,
       retireAfter,
     ),
@@ -149,8 +167,11 @@ export async function handleDeprecate(
       `INSERT INTO control_audit
          (audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at)
        VALUES (?, ?, 'deprecate', ?, NULL, ?, ?)`,
-    ).bind(newId(), auth.operatorId, target, body.successor_id, deprecatedAt),
+    ).bind(newId(), auth.operatorId, target, successorId, deprecatedAt),
   ]);
+  if (batchError) {
+    return batchError;
+  }
 
   return ok();
 }
@@ -167,6 +188,7 @@ export async function handleRetire(
 
   const route = parseCapabilityRoute(request);
   if (!route || route.action !== "retire") {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -200,7 +222,7 @@ export async function handleRetire(
   const grantId = newId();
   const target = `${route.capabilityId}@${route.version}`;
 
-  await DB.batch([
+  const batchError = await runControlBatch(DB, [
     DB.prepare(
       `INSERT INTO capability_grant (
          grant_id, scope, capability_id, capability_version,
@@ -225,6 +247,9 @@ export async function handleRetire(
        VALUES (?, ?, 'retire', ?, NULL, ?, ?)`,
     ).bind(newId(), auth.operatorId, target, overlay.successor_id, recordedAt),
   ]);
+  if (batchError) {
+    return batchError;
+  }
 
   return ok();
 }

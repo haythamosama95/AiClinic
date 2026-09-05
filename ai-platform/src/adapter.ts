@@ -4,6 +4,7 @@ import {
   supplementaryFieldsForCode,
   type TaxonomyCode,
 } from "./errors";
+import { buildContextRequiredResponse, type ContextRequiredFailure } from "./context/validator";
 import { noopLogger, type LoggerFactory } from "./logger";
 import { validateContextRequest } from "./context/context-request";
 import type { InteractionMode } from "./manifest";
@@ -17,6 +18,7 @@ export const TERMINAL_EVENT_KINDS = [
   "completed",
   "failed",
   "cancelled",
+  // Conversational-only/latent — unreachable until a conversational capability ships.
   "context_requested",
 ] as const;
 
@@ -28,7 +30,7 @@ export interface AdapterSseEvent {
   trace_id: string;
 }
 
-export type AdapterDisconnectReason = "client_close" | "network_drop";
+export type AdapterDisconnectReason = "client_close";
 
 export interface AdapterStreamContext {
   traceId: string;
@@ -66,7 +68,12 @@ export type AdapterEventSourceFactory = (
 
 export type PreAcceptResult =
   | { ok: true; degradedNotice?: boolean }
-  | { ok: false; code: TaxonomyCode; retryAfter?: number };
+  | {
+      ok: false;
+      code: TaxonomyCode;
+      retryAfter?: number;
+      contextRequired?: ContextRequiredFailure;
+    };
 
 export interface PreAcceptInput {
   request: Request;
@@ -127,6 +134,7 @@ export function pushTerminalEvent(
   payload?: Record<string, unknown>,
 ): void {
   if (kind === "context_requested" && interactionMode !== "conversational") {
+    // Conversational-only/latent — unreachable until a conversational capability ships.
     throw new Error("context_requested is conversational-only");
   }
 
@@ -167,6 +175,7 @@ export function pushTerminalEvent(
   if (contextRequest === undefined) {
     throw new Error("context_requested requires a context_request payload");
   }
+  // Conversational-only/latent — unreachable until a conversational capability ships.
   const validation = validateContextRequest(contextRequest);
   if (!validation.ok) {
     throw new Error(
@@ -215,11 +224,15 @@ function preAcceptFailureResponse(
   requestReference: string,
   traceId: string,
   retryAfter?: number,
+  contextRequired?: ContextRequiredFailure,
 ): Response {
-  const body = {
-    ...buildErrorBody({ code, requestReference, traceId }),
-    ...supplementaryFieldsForCode(code, { retryAfter }),
-  };
+  const body =
+    code === "context_required" && contextRequired !== undefined
+      ? buildContextRequiredResponse(contextRequired, requestReference, traceId)
+      : {
+          ...buildErrorBody({ code, requestReference, traceId }),
+          ...supplementaryFieldsForCode(code, { retryAfter }),
+        };
   const status = liveHttpStatusForCode(code);
   return new Response(JSON.stringify(body), {
     status: status ?? 500,
@@ -388,7 +401,8 @@ export async function handleAdapterRequest(
     return adapterParseFailureResponse();
   }
 
-  if (parseRequestBody(bodyResult.text) === null) {
+  const parsedBody = parseRequestBody(bodyResult.text);
+  if (parsedBody === null) {
     ingressLog.error("ingress_body_parse_failed");
     return adapterParseFailureResponse();
   }
@@ -405,12 +419,6 @@ export async function handleAdapterRequest(
   log.debug("ingress_headers_parsed", {
     capability_version: parsedHeaders.capabilityVersion,
   });
-
-  const parsedBody = parseRequestBody(bodyResult.text);
-  if (parsedBody === null) {
-    log.error("ingress_body_parse_failed");
-    return adapterParseFailureResponse();
-  }
 
   let requestReference: string | undefined;
   let degradedNotice: boolean | undefined;
@@ -435,6 +443,7 @@ export async function handleAdapterRequest(
         requestReference,
         parsedHeaders.traceId,
         gate.retryAfter,
+        gate.contextRequired,
       );
     }
     degradedNotice = gate.degradedNotice;

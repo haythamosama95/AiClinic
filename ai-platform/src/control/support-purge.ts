@@ -11,6 +11,21 @@ import { writeAudit } from "./audit";
 import { ok, reject, requireOperator } from "./http";
 import type { ControlBindings, OperatorAuth } from "./types";
 
+const INSTALLATION_DELETED_STATUS = "deleted";
+
+async function runPurge(
+  installationId: string,
+  operatorId: string,
+  bindings: { db: D1Database; r2: R2Bucket },
+): Promise<Response | null> {
+  try {
+    await purgeByInstallationId(installationId, operatorId, bindings);
+    return null;
+  } catch {
+    return reject(500, "storage_error");
+  }
+}
+
 export async function handleSupportLookup(
   request: Request,
   bindings: ControlBindings,
@@ -72,7 +87,21 @@ export async function handleInstallationPurge(
   );
   const targetId = match?.[1];
   if (!targetId) {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
+  }
+
+  const installation = await bindings.DB.prepare(
+    "SELECT status FROM installation WHERE installation_id = ?",
+  )
+    .bind(targetId)
+    .first<{ status: string }>();
+
+  if (
+    installation &&
+    installation.status !== INSTALLATION_DELETED_STATUS
+  ) {
+    return reject(409, "illegal_lifecycle_transition");
   }
 
   // Intent-to-purge audit before retention deletes: retention/index.ts still
@@ -85,10 +114,13 @@ export async function handleInstallationPurge(
     targetId,
   );
 
-  await purgeByInstallationId(targetId, auth.operatorId, {
+  const purgeError = await runPurge(targetId, auth.operatorId, {
     db: bindings.DB,
     r2: bindings.R2,
   });
+  if (purgeError) {
+    return purgeError;
+  }
 
   return ok();
 }

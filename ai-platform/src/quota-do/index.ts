@@ -1,3 +1,4 @@
+import type { TaxonomyCode } from "../errors";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 
@@ -25,6 +26,7 @@ export interface IdempotencyEntry extends EphemeralEntry {
   requestReference: string;
   state: IdempotencyRequestState;
   requestId: string;
+  terminalErrorCode?: TaxonomyCode;
 }
 
 export interface EntitlementSnapshot {
@@ -77,6 +79,7 @@ export interface IdempotencyPriorState {
   requestReference: string;
   state: IdempotencyRequestState;
   requestId: string;
+  terminalErrorCode?: TaxonomyCode;
 }
 
 export interface AdmissionAdmitted {
@@ -133,6 +136,7 @@ export interface CreditRequest {
   usage: UsageActual;
   partial: boolean;
   idempotencyState?: CreditIdempotencyState;
+  terminalErrorCode?: TaxonomyCode;
   entitlement?: EntitlementSnapshot;
 }
 
@@ -342,6 +346,7 @@ function markIdempotencyOnCredit(
   partial: boolean,
   now: number,
   idempotencyState?: CreditIdempotencyState,
+  terminalErrorCode?: TaxonomyCode,
 ): void {
   const nextState: IdempotencyRequestState =
     idempotencyState ?? (partial ? "cancelled" : "completed");
@@ -350,6 +355,9 @@ function markIdempotencyOnCredit(
     if (entry.requestId === requestId) {
       entry.state = nextState;
       entry.expiresAt = now + EPHEMERAL_HORIZON_MS;
+      if (nextState === "failed" && terminalErrorCode !== undefined) {
+        entry.terminalErrorCode = terminalErrorCode;
+      }
       break;
     }
   }
@@ -395,6 +403,9 @@ export async function admissionRPC(
           requestReference: existingIdempotency.requestReference,
           state: existingIdempotency.state,
           requestId: existingIdempotency.requestId,
+          ...(existingIdempotency.terminalErrorCode !== undefined
+            ? { terminalErrorCode: existingIdempotency.terminalErrorCode }
+            : {}),
         },
       };
     }
@@ -520,6 +531,7 @@ export async function creditRPC(
       request.partial,
       timestamp,
       request.idempotencyState,
+      request.terminalErrorCode,
     );
 
     await storage.put(STATE_KEY, state);

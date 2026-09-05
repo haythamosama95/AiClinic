@@ -11,6 +11,7 @@ import {
 import { buildErrorBody } from "../errors";
 import type { Principal } from "../identity";
 import { noopLogger, type Logger } from "../logger";
+import { recordGuardRejection } from "../rate-limit";
 import type { Manifest } from "../manifest";
 import {
   validateContextRequest,
@@ -33,6 +34,11 @@ export type TranscriptTurn =
 
 export type Transcript = readonly TranscriptTurn[];
 
+export type ContextRequiredFailure = Extract<
+  ValidateResult,
+  { ok: false; code: "context_required" }
+>;
+
 export type ValidateResult =
   | {
       ok: true;
@@ -50,6 +56,13 @@ export type ValidateResult =
   | { ok: false; code: "context_invalid" }
   | { ok: false; code: "conversation_budget_exhausted" }
   | { ok: false; code: "internal_error" };
+
+function tallyContextRejection(code: string, installationId: string): void {
+  recordGuardRejection({
+    error_code: code,
+    installation_id: installationId,
+  });
+}
 
 export type ConversationalValidateOptions = {
   /** Required on the wire for conversational legs; omission is `context_invalid`. */
@@ -436,6 +449,7 @@ export function validateContext(
 ): ValidateResult {
   if (manifest.interactionMode === "conversational") {
     if (conversational === undefined) {
+      tallyContextRejection("context_invalid", principal.installationId);
       logger.info("context_validation_failed", { code: "context_invalid" });
       return { ok: false, code: "context_invalid" };
     }
@@ -446,6 +460,7 @@ export function validateContext(
       conversational,
     );
     if (!result.ok) {
+      tallyContextRejection(result.code, principal.installationId);
       const level = result.code === "internal_error" ? "error" : "info";
       logger[level]("context_validation_failed", { code: result.code });
     }
@@ -454,6 +469,7 @@ export function validateContext(
 
   const contextRequirements = manifest["Context requirements"];
   if (!Array.isArray(contextRequirements)) {
+    tallyContextRejection("context_invalid", principal.installationId);
     logger.info("context_validation_failed", { code: "context_invalid" });
     return { ok: false, code: "context_invalid" };
   }
@@ -463,6 +479,7 @@ export function validateContext(
     const key = String(entry.key);
     if (typeof entry.required !== "boolean") {
       // Malformed required flag is a platform/manifest defect.
+      tallyContextRejection("internal_error", principal.installationId);
       logger.error("context_validation_failed", { code: "internal_error" });
       return { ok: false, code: "internal_error" };
     }
@@ -475,6 +492,7 @@ export function validateContext(
   }
 
   if (missingKeys.length > 0) {
+    tallyContextRejection("context_required", principal.installationId);
     logger.info("context_validation_failed", {
       code: "context_required",
       missing_keys: missingKeys,
@@ -490,6 +508,7 @@ export function validateContext(
   }
 
   if (!contextMatchesPrincipal(suppliedContext, principal)) {
+    tallyContextRejection("context_invalid", principal.installationId);
     logger.info("context_validation_failed", { code: "context_invalid" });
     return { ok: false, code: "context_invalid" };
   }
@@ -507,20 +526,24 @@ export function validateContext(
         // Keys without a published shape pass the shape check (A5 owns publication).
       } else if (PLATFORM_KEY_FAILURE_CODES.has(payloadResult.code)) {
         // Manifest declared an unpublished/malformed key — platform defect.
+        tallyContextRejection("internal_error", principal.installationId);
         logger.error("context_validation_failed", { code: "internal_error" });
         return { ok: false, code: "internal_error" };
       } else {
         // Client-remediable shape/field violation.
+        tallyContextRejection("context_invalid", principal.installationId);
         logger.info("context_validation_failed", { code: "context_invalid" });
         return { ok: false, code: "context_invalid" };
       }
     }
 
     if (!isFiniteNumber(entry.maxSize)) {
+      tallyContextRejection("internal_error", principal.installationId);
       logger.error("context_validation_failed", { code: "internal_error" });
       return { ok: false, code: "internal_error" };
     }
     if (jsonByteLength(value) > entry.maxSize) {
+      tallyContextRejection("context_invalid", principal.installationId);
       logger.info("context_validation_failed", { code: "context_invalid" });
       return { ok: false, code: "context_invalid" };
     }
@@ -538,7 +561,7 @@ export function validateContext(
 }
 
 export function buildContextRequiredResponse(
-  result: Extract<ValidateResult, { ok: false; code: "context_required" }>,
+  result: ContextRequiredFailure,
   requestReference: string,
   traceId: string,
 ): Record<string, unknown> {

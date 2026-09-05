@@ -46,6 +46,7 @@ function requireValidInstallationId(
   installationId: string | null,
 ): string | Response {
   if (!installationId) {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
   if (!isCanonicalUuid(installationId)) {

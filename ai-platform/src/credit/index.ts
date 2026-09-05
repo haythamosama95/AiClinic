@@ -12,6 +12,7 @@ import type {
   EntitlementSnapshot,
   PeriodCounters,
 } from "../quota-do/index";
+import type { TaxonomyCode } from "../errors";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
@@ -28,6 +29,7 @@ export type CreditInput = {
   usage: { tokens: number; cost: number };
   partial: boolean;
   idempotencyState?: CreditIdempotencyState;
+  terminalErrorCode?: TaxonomyCode;
   entitlement?: EntitlementSnapshot;
 };
 
@@ -158,6 +160,7 @@ async function invokeCreditRpc(
   bindings: CreditBindings,
   idempotencyState?: CreditIdempotencyState,
   entitlement?: EntitlementSnapshot,
+  terminalErrorCode?: TaxonomyCode,
 ): Promise<CreditRpcOutcome> {
   const id = bindings.DO.idFromName(installationId);
   const stub = bindings.DO.get(id);
@@ -175,6 +178,7 @@ async function invokeCreditRpc(
         usage,
         partial,
         ...(idempotencyState !== undefined ? { idempotencyState } : {}),
+        ...(terminalErrorCode !== undefined ? { terminalErrorCode } : {}),
         ...(entitlement !== undefined ? { entitlement } : {}),
       }),
     });
@@ -227,6 +231,7 @@ export async function creditUsage(
     bindings,
     input.idempotencyState,
     input.entitlement,
+    input.terminalErrorCode,
   );
 
   if (outcome.ok) {

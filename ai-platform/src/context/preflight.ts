@@ -1,5 +1,6 @@
 import type { Manifest } from "../manifest";
 import { noopLogger, type Logger } from "../logger";
+import { recordGuardRejection } from "../rate-limit";
 
 /** §13.6.2 — platform constant for byte-to-token conversion. */
 export const TOKENS_PER_BYTE_DIVISOR = 4;
@@ -64,11 +65,22 @@ export function runCostPreflight(
   serializedInput: string,
   promptArtifactByteLength = 0,
   logger: Logger = noopLogger,
+  installationId?: string,
 ): PreflightResult {
+  const tallyRejection = (): void => {
+    if (installationId !== undefined) {
+      recordGuardRejection({
+        error_code: "request_too_large",
+        installation_id: installationId,
+      });
+    }
+  };
+
   if (
     !isFiniteNumber(promptArtifactByteLength) ||
     promptArtifactByteLength < 0
   ) {
+    tallyRejection();
     logger.info("preflight_rejected", { code: "request_too_large" });
     return { ok: false, code: "request_too_large" };
   }
@@ -83,6 +95,7 @@ export function runCostPreflight(
     !isFiniteNumber(maxInputTokens) ||
     !isFiniteNumber(perRequestTokenCeiling)
   ) {
+    tallyRejection();
     logger.info("preflight_rejected", { code: "request_too_large" });
     return { ok: false, code: "request_too_large" };
   }
@@ -103,6 +116,7 @@ export function runCostPreflight(
     estimatedInputTokens + maxOutputTokens > perRequestTokenCeiling ||
     estimatedInputTokens > maxInputTokens
   ) {
+    tallyRejection();
     logger.info("preflight_rejected", {
       code: "request_too_large",
       estimated_input_tokens: estimatedInputTokens,

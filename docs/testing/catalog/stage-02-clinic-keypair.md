@@ -151,6 +151,8 @@ All `rpc_result` expectations below name the four columns of the composite type 
 | Side effects | None. |
 | Code reference | backend/supabase/migrations/20260802140000_ai_availability_flag.sql:L10-L26 — `auth_internal.get_ai_availability`; backend/supabase/migrations/20260902120000_enroll_installation_keypair_already_enrolled_guard.sql:L4-L97 — enroll body contains no `app_settings` write |
 
+**Availability write path (C-16):** `public.set_ai_availability(p_enrolled, p_platform_base_url)` (migration `20260905120100_set_ai_availability_rpc.sql`) closes the former manual `UPDATE ai_internal.app_settings` gap — administrators call it after Stage 3 platform enrollment. Enroll/rotate/revoke still do not touch the flag (this scenario unchanged).
+
 ## Scenario S02-012 — Second enroll while an active key exists fails with ALREADY_ENROLLED
 
 | Field | Content |
@@ -336,7 +338,7 @@ All `rpc_result` expectations below name the four columns of the composite type 
 3. **`SINGLE_INSTALLATION_VIOLATION` is not an envelope error.** Doc §3/§5 list it among enroll "errors" in the same table as `rpc_result` codes. The trigger RAISEs it (P0001) and the enroll/revoke/rotate exception handlers re-raise anything whose SQLERRM ≠ 'FORBIDDEN' — clients see a raised Postgres error, never `error_code = 'SINGLE_INSTALLATION_VIOLATION'`. It is also unreachable via any RPC (S02-021).
 4. **Revoke success payload timestamp.** Doc §3.2/§8.3.7 imply `data.revoked_at` is "when revocation took effect." On the fresh-revoke path the code returns a NEW `clock_timestamp()` evaluated after the UPDATE (`20260902130100...sql:L55`), which can differ by microseconds from the stored `revoked_at`; only the idempotent path returns the stored value. Assertions should compare against the row.
 5. **"Owner" terminology.** Doc §5/§8 say the gate is "owner or administrator." The `owner` role was removed (`20260611150000`); the final `auth_internal.assert_owner_or_administrator` accepts `role = 'administrator'` OR `is_bootstrap_admin = true`. The doc's §8 gate paragraph is accurate; the §3/§5 error tables still say "not owner or administrator."
-6. **Confirmed (not drift):** no `set_ai_availability` write RPC exists in any migration — doc §4's "manual step" gap is real. Enroll/rotate/revoke never write `app_settings` (verified in the function bodies; scenario S02-011).
+6. **`set_ai_availability` write RPC added (C-16).** Migration `20260905120100_set_ai_availability_rpc.sql` adds an administrator-gated write path; doc §4's manual step is closed for RPC callers. Enroll/rotate/revoke still never write `app_settings` (scenario S02-011).
 7. **Guard ordering (undocumented, code-derived):** the role check precedes ALL other validation in every keypair RPC — a doctor with a blank kid gets `FORBIDDEN`, not `INVALID_INPUT` (S02-006); a doctor rotating an empty keystore gets `FORBIDDEN`, not `INSTALLATION_NOT_ENROLLED` (S02-005); an administrator enrolling with an active key gets `ALREADY_ENROLLED` only after passing the role gate (S02-012).
 
 ## Non-automatable notes

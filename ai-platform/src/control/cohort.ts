@@ -55,6 +55,18 @@ function parseAllowedCapabilities(raw: unknown): string[] {
   return [];
 }
 
+async function runControlBatch(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<Response | null> {
+  try {
+    await db.batch(statements);
+    return null;
+  } catch {
+    return reject(500, "storage_error");
+  }
+}
+
 export function parseCohortCapabilityRoute(
   request: Request,
 ): CohortCapabilityRoute | null {
@@ -83,6 +95,7 @@ export async function handleCohortActivate(
 
   const route = parseCohortCapabilityRoute(request);
   if (!route || route.action !== "activate") {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -99,10 +112,12 @@ export async function handleCohortActivate(
     return reject(400, "missing_installation_ids");
   }
 
+  const installationIds = [...new Set(body.installation_ids)];
+
   const { DB } = bindings;
   const missingInstallations = await assertInstallationsExist(
     DB,
-    body.installation_ids,
+    installationIds,
   );
   if (missingInstallations) {
     return missingInstallations;
@@ -116,7 +131,7 @@ export async function handleCohortActivate(
   const priorVersions: Record<string, string | null> = {};
   const statements: D1PreparedStatement[] = [];
 
-  for (const installationId of body.installation_ids) {
+  for (const installationId of installationIds) {
     const existing = await DB.prepare(
       `SELECT grant_id, capability_version FROM capability_grant
        WHERE scope = ? AND capability_id = ? AND revoked_at IS NULL
@@ -176,7 +191,10 @@ export async function handleCohortActivate(
     ),
   );
 
-  await DB.batch(statements);
+  const batchError = await runControlBatch(DB, statements);
+  if (batchError) {
+    return batchError;
+  }
   return ok();
 }
 
@@ -192,6 +210,7 @@ export async function handleCohortPromote(
 
   const route = parseCohortCapabilityRoute(request);
   if (!route || route.action !== "promote") {
+    // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
 
@@ -379,6 +398,9 @@ export async function handleCohortPromote(
     ),
   );
 
-  await DB.batch(statements);
+  const batchError = await runControlBatch(DB, statements);
+  if (batchError) {
+    return batchError;
+  }
   return ok();
 }
