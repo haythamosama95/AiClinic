@@ -36,10 +36,10 @@ export default defineWorkersConfig({
           bindings: {
             OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
             OPERATOR_ID: "platform-operator",
-            // Do not use "0": selectCandidateChain only consults the isolate
-            // cache after preloadRoutingPolicyForInstallation; TTL 0 expires
-            // the preload in the same request (catalog S00-011 vs code).
-            CONFIG_CACHE_TTL_MS: "100",
+            // TTL 0: no cross-request caching. Same-request preload still
+            // serves consult (`now > expiresAt`) and the worker passes the
+            // preloaded policy row through so routing never re-consults.
+            CONFIG_CACHE_TTL_MS: "0",
           },
         },
       },

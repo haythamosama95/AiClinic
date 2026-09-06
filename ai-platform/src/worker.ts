@@ -933,7 +933,7 @@ async function runFreshEventSource(
   const cache = isolateConfigCache;
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
   const policyRef = String(manifest.Routing.routingPolicyRef);
-  await preloadRoutingPolicyForInstallation(
+  const preloadedPolicy = await preloadRoutingPolicyForInstallation(
     cache,
     reader,
     policyRef,
@@ -947,6 +947,7 @@ async function runFreshEventSource(
   const routing = selectCandidateChain({
     cache,
     policyCacheKey: policyRef,
+    preloadedPolicy,
     context: {
       installationId: guard.principal.installationId,
       capabilityId: manifest.Identity.capabilityId,

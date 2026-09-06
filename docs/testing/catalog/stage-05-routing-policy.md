@@ -704,7 +704,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | Journey setup | S05-036 completed (v2 active, v1 superseded); inst-A entitled. First: `POST /v1/requests` as inst-A and confirm `routing_decision.policy_version: 2` (warms cache key `active_routing_policy:routing/standard/<inst-A>` with the v2 row). Then roll back v2 (S05-044) so v1 is active in D1. |
 | Action | Within 30 s of the warm-up request, `POST /v1/requests` again as inst-A (`x-idempotency-key: idem-s05-059a-0001`). Then wait 31 s (or restart the Worker / clear the isolate cache) and `POST /v1/requests` a third time (`x-idempotency-key: idem-s05-059b-0001`). |
 | Expected outcome | Second request: `routing_decision.policy_version: 2` — the cached row is served until `expiresAt` (`DEFAULT_CONFIG_CACHE_TTL_MS = 30_000`, overridable via `CONFIG_CACHE_TTL_MS`). Third request: `routing_decision.policy_version: 1` — TTL expiry forces a D1 reload that sees the rollback. Same window applies after promote and canary changes. |
-| Side effects | Cache entry evicted at expiry (`consult` deletes on `now >= expiresAt`). |
+| Side effects | Cache entry evicted at expiry (`consult` deletes on `now > expiresAt`). |
 | Code reference | ai-platform/src/config-cache/index.ts:L26-L28 — default TTL; L89-L103 — consult expiry; ai-platform/src/router/index.ts:L594-L601 — consult order |
 
 ## Scenario S05-060 — Legacy @vN suffix on the policy cache key is tolerated and stripped

@@ -635,7 +635,7 @@ Both return `401 unauthenticated`.
 | ID | S07-051 |
 | Journey setup | S07-042 completed against a `handleDiscoveryRequest` invoked with an explicit `new ConfigCache(30000)` (the production default TTL), warming `entitlements`/`grants` for I0. Then revoke the installation grant directly in D1 (as in S07-033) **without** clearing the cache. |
 | Action | Within 30 s of the warm-up: `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` (same injected cache instance) |
-| Expected outcome | HTTP `200`, body **still lists** `clinic.visit_summary` — the cached grant row is served until `now >= expiresAt`. After `cache.clear()` (the test analogue of TTL expiry / isolate eviction), the same request returns `{"manifests":[]}`. This is the documented 30 s staleness window: discovery, `POST /v1/requests`, and `GET /v1/requests/{ref}` share `isolateConfigCache` in production. |
+| Expected outcome | HTTP `200`, body **still lists** `clinic.visit_summary` — the cached grant row is served until `now > expiresAt`. After TTL expiry (or isolate eviction), the same request returns `{"manifests":[]}`. This is the documented 30 s staleness window: discovery, `POST /v1/requests`, and `GET /v1/requests/{ref}` share `isolateConfigCache` in production. |
 | Side effects | Second request performs no D1 reads for the cached kinds. No writes. |
 | Code reference | `ai-platform/src/config-cache/index.ts:L89-L103 — ConfigCache.consult (TTL)`; `ai-platform/src/config-cache/index.ts:L153 — isolateConfigCache`; `ai-platform/src/config-cache/index.ts:L388-L413 — loadConfig`; `ai-platform/src/discovery/index.ts:L36-L40 — handleDiscoveryRequest (injectable cache)` |
 

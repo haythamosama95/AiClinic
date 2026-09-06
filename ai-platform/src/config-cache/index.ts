@@ -95,7 +95,9 @@ export class ConfigCache {
     if (!entry) {
       return undefined;
     }
-    if (now >= entry.expiresAt) {
+    // Inclusive at expiresAt so TTL 0 (`expiresAt === remember-now`) still
+    // serves same-request consults. Cross-request clocks tick past and miss.
+    if (now > entry.expiresAt) {
       this.storeFor(kind).delete(key);
       return undefined;
     }
@@ -407,7 +409,9 @@ export async function loadConfig(
       throw new ConfigCacheMissError(kind, key);
     }
 
-    cache.remember(kind, key, row, now);
+    // Stamp expiry from store time, not the pre-read `now`. TTL 0 plus an
+    // async D1 read would otherwise expire before the same-request consult.
+    cache.remember(kind, key, row);
     return cloneRow(row);
   });
 }

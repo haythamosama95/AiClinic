@@ -585,14 +585,22 @@ export function selectCandidateChain({
   policyCacheKey,
   context,
   logger = noopLogger,
+  preloadedPolicy,
 }: {
   cache: ConfigCache;
   policyCacheKey: string;
   context: RouterContext;
   logger?: Logger;
+  /**
+   * Row just returned by `preloadRoutingPolicyForInstallation`. Same-request
+   * consumers must not re-consult: TTL 0 stamps `expiresAt === remember-now`,
+   * and an async D1 read can tick the clock before this call.
+   */
+  preloadedPolicy?: Record<string, unknown>;
 }): RouterOutcome {
   const installationPolicyKey = `${policyCacheKey}/${context.installationId}`;
-  let row = cache.consult("active_routing_policy", installationPolicyKey);
+  let row =
+    preloadedPolicy ?? cache.consult("active_routing_policy", installationPolicyKey);
   if (row === undefined) {
     row = cache.consult("active_routing_policy", policyCacheKey);
   }
@@ -691,8 +699,8 @@ export async function preloadRoutingPolicyForInstallation(
   reader: D1Reader,
   policyCacheKey: string,
   installationId: string,
-): Promise<void> {
-  await loadConfig(
+): Promise<Record<string, unknown>> {
+  return loadConfig(
     cache,
     reader,
     "active_routing_policy",

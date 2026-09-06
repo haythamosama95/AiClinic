@@ -17,7 +17,6 @@ import {
   isolateConfigCache,
   newScenario,
   OPERATOR_ID,
-  POLICY_REF,
   postRequest,
   promotePolicy,
   publishPolicy,
@@ -372,36 +371,6 @@ async function waitForPersistedDecision(
   return decision as Record<string, unknown>;
 }
 
-/** D1 routing_policy row plus the R2 document `selectCandidateChain` consults. */
-async function routingPolicyCacheRow(
-  version: string,
-): Promise<Record<string, unknown>> {
-  const row = await getRoutingPolicy(POLICY_ID, version);
-  expect(row).not.toBeNull();
-  const pointer = String(row!.content_pointer ?? "");
-  const document = await getR2Json(pointer);
-  return { ...row!, document };
-}
-
-/**
- * Pin both cache keys `selectCandidateChain` consults. Parallel files share
- * isolateConfigCache; a concurrent `clear()` or 100 ms TTL expiry between
- * preload and consult throws ConfigCacheMissError for
- * `active_routing_policy:routing/standard`.
- */
-function pinActiveRoutingPolicy(
-  installationId: string,
-  policyRow: Record<string, unknown>,
-): void {
-  isolateConfigCache.setTtlMs(30_000);
-  isolateConfigCache.remember("active_routing_policy", POLICY_REF, policyRow);
-  isolateConfigCache.remember(
-    "active_routing_policy",
-    `${POLICY_REF}/${installationId}`,
-    policyRow,
-  );
-}
-
 async function assertPostAcceptInternalError(ref: string): Promise<void> {
   const row = await waitForAiRequest(ref, (current) => current.state === "Failed");
   expect(row).not.toBeNull();
@@ -728,21 +697,15 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
   });
 
   it("S05-059 — Config-cache staleness window after rollback", async () => {
-    // Pool TTL is 100 ms (README §6). Parallel files share isolateConfigCache;
-    // a concurrent clear() or expiry between preload and consult misses
-    // active_routing_policy:routing/standard. Raise TTL and pin/re-stamp
-    // both consult keys so the warm invoke cannot miss v2. Catalog: after
-    // rollback in-TTL still v2; after clear, policy_version 1.
-    // rollbackPolicy would isolateConfigCache.clear(); use controlFetch.
+    // Pool TTL is 0 (no cross-request cache). Raise a short TTL so the v2
+    // warm entry survives rollback, then wait it out — real expiry, not
+    // setTtlMs(30_000) + clearConfigCache(). Window must cover SSE drain.
+    const staleTtlMs = 2_000;
     const previousTtl = isolateConfigCache.getTtlMs();
-    isolateConfigCache.setTtlMs(30_000);
+    isolateConfigCache.setTtlMs(staleTtlMs);
     try {
       const instA = await enrollAndEntitle(INST_A);
       await setupV1SupersededV2Active();
-
-      const v2Cached = await routingPolicyCacheRow("2");
-      expect(v2Cached.document).toMatchObject({ policy_version: 2 });
-      pinActiveRoutingPolicy(instA.installationId, v2Cached);
 
       const warm = await invokeVisitSummary(instA, "idem-s05-059-warm-0001");
       const warmRef = assertAccepted(warm);
@@ -754,8 +717,6 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       expect((await getRoutingPolicy(POLICY_ID, "1"))?.status).toBe("active");
       expect((await getRoutingPolicy(POLICY_ID, "2"))?.status).toBe("superseded");
 
-      pinActiveRoutingPolicy(instA.installationId, v2Cached);
-
       const afterRollback = await invokeVisitSummary(
         instA,
         "idem-s05-059a-0001",
@@ -764,10 +725,7 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       const staleDecision = await waitForPersistedDecision(afterRollbackRef);
       expect(staleDecision.policy_version).toBe(2);
 
-      await clearConfigCache();
-      const v1Cached = await routingPolicyCacheRow("1");
-      expect(v1Cached.document).toMatchObject({ policy_version: 1 });
-      pinActiveRoutingPolicy(instA.installationId, v1Cached);
+      await new Promise((resolve) => setTimeout(resolve, staleTtlMs + 50));
 
       const fresh = await invokeVisitSummary(instA, "idem-s05-059b-0001");
       const freshRef = assertAccepted(fresh);
@@ -775,7 +733,6 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
       expect(freshDecision.policy_version).toBe(1);
     } finally {
       isolateConfigCache.setTtlMs(previousTtl);
-      clearConfigCache();
     }
   });
 

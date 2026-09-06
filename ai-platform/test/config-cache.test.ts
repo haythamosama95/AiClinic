@@ -153,6 +153,49 @@ describe("T-A5-19 config_cache_ttl_expiry_one_refetch", () => {
 
     expect(reader.readCount()).toBe(1);
   });
+
+  it("TTL 0 still serves a same-timestamp consult after remember", () => {
+    const cache = new ConfigCache(0);
+    const now = 1_000;
+    const row = sampleRow("installations");
+    cache.remember("installations", TEST_INSTALLATION_KEY, row, now);
+
+    expect(cache.consult("installations", TEST_INSTALLATION_KEY, now)).toEqual(
+      row,
+    );
+    expect(
+      cache.consult("installations", TEST_INSTALLATION_KEY, now + 1),
+    ).toBeUndefined();
+  });
+
+  it("positive TTL remains live at expiresAt and misses on the next millisecond", () => {
+    const cache = new ConfigCache(30_000);
+    const row = sampleRow("installations");
+    cache.remember("installations", TEST_INSTALLATION_KEY, row, 0);
+
+    expect(cache.consult("installations", TEST_INSTALLATION_KEY, 30_000)).toEqual(
+      row,
+    );
+    expect(
+      cache.consult("installations", TEST_INSTALLATION_KEY, 30_001),
+    ).toBeUndefined();
+  });
+
+  it("TTL 0 loadConfig hits on the same tick and refetches after the clock ticks", async () => {
+    const cache = new ConfigCache(0);
+    const reader = makeReader(sampleRow("installations"));
+
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    expect(reader.readCount()).toBe(1);
+    reader.read.mockClear();
+
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    expect(reader.readCount()).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    await loadConfig(cache, reader, "installations", TEST_INSTALLATION_KEY);
+    expect(reader.readCount()).toBe(1);
+  });
 });
 
 describe("T-A5-20 config_cache_entity_kind_<kind>", () => {

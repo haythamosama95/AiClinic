@@ -462,16 +462,16 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
   });
 
   it("S07-051 — Revoked grant stays listed while isolate cache is warm", async () => {
-    // Catalog wants injectable new ConfigCache(30000) on handleDiscoveryRequest.
-    // SELF.fetch consults isolateConfigCache (barrel); pool TTL is 100 ms.
-    // setTtlMs(30_000) before warm GET so remember() stamps catalog TTL, then restore.
+    // Pool TTL is 0. Raise a short TTL, revoke in D1 without clearing, then
+    // wait for real expiry instead of setTtlMs(30_000) / clearConfigCache().
     const { scenario, token } = await provisionEntitled();
     expect(
       await getGrants(`plan:professional`),
     ).toEqual([]);
 
+    const staleTtlMs = 400;
     const previousTtl = isolateConfigCache.getTtlMs();
-    isolateConfigCache.setTtlMs(30_000);
+    isolateConfigCache.setTtlMs(staleTtlMs);
     try {
       const warm = await getCapabilities(token);
 
@@ -499,7 +499,7 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
       assertPublicProjection(stale.body);
       expect(stale.etag).toBe(warmEtag);
 
-      clearConfigCache();
+      await new Promise((resolve) => setTimeout(resolve, staleTtlMs + 50));
 
       const fresh = await getCapabilities(token);
       expect(fresh.status).toBe(200);
@@ -508,7 +508,6 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
       expect(fresh.etag).not.toBe(warmEtag);
     } finally {
       isolateConfigCache.setTtlMs(previousTtl);
-      clearConfigCache();
     }
   });
 

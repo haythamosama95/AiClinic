@@ -217,10 +217,9 @@ instead of `SELF.fetch`.
 - Default entitle window in this harness is 2026-01-01 … 2027-01-01 so
   wall-clock “now” (2026-09) is inside the period. Catalog examples that use
   2026-07-01 … 2026-09-01 are past `period_end` as of 2026-09-05.
-- Catalog S00-011 / Register 5 #7 recommend `CONFIG_CACHE_TTL_MS="0"` so every
-  consult misses. **Do not use `"0"` in this pool.**
-  `preloadRoutingPolicyForInstallation` → `remember(now+0)` then
-  `selectCandidateChain` `consult` sees `now >= expiresAt` and throws
-  `ConfigCacheMissError` in the same request. Tests use `"100"` plus
-  `clearConfigCache()` after control mutations (already called by enroll /
-  entitle / publish / promote helpers).
+- Catalog S00-011 / Register 5 #7 recommend `CONFIG_CACHE_TTL_MS="0"` so
+  cross-request consults miss. The pool uses `"0"`: same-request preload still
+  serves (`consult` uses `now > expiresAt`; the worker passes the preloaded
+  policy row into `selectCandidateChain`). `clearConfigCache()` after control
+  mutations remains available (already called by enroll / entitle / publish /
+  promote helpers).
