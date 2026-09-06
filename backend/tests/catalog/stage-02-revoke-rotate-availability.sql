@@ -448,6 +448,7 @@ DECLARE
   v_active_count int;
   v_k0_revoked boolean;
   v_k1_revoked boolean;
+  v_k1_revoked_at timestamptz;
   v_k2_active boolean;
   v_k2_created_by uuid;
   v_k1_updated_by uuid;
@@ -484,10 +485,11 @@ BEGIN
   SELECT ik.revoked_at IS NOT NULL INTO STRICT v_k0_revoked
   FROM ai_internal.installation_keys ik
   WHERE ik.kid = v_k0 AND ik.is_deleted = false;
-  SELECT ik.revoked_at IS NOT NULL, ik.updated_by
-  INTO STRICT v_k1_revoked, v_k1_updated_by
+  SELECT ik.revoked_at, ik.updated_by
+  INTO STRICT v_k1_revoked_at, v_k1_updated_by
   FROM ai_internal.installation_keys ik
   WHERE ik.kid = v_k1 AND ik.is_deleted = false;
+  v_k1_revoked := v_k1_revoked_at IS NOT NULL;
   SELECT ik.revoked_at IS NULL, ik.created_by
   INTO STRICT v_k2_active, v_k2_created_by
   FROM ai_internal.installation_keys ik
@@ -506,6 +508,9 @@ BEGIN
     AND v_revoke.error_message IS NULL
     AND (v_revoke.data ->> 'kid') = v_k1
     AND v_revoke.data ? 'revoked_at'
+    AND v_k1_revoked_at IS NOT NULL
+    AND (v_revoke.data ->> 'revoked_at')::timestamptz IS NOT DISTINCT FROM v_k1_revoked_at
+    AND v_revoke.data = jsonb_build_object('kid', v_k1, 'revoked_at', v_k1_revoked_at)
     AND v_row_count = 3
     AND v_distinct_install = 1
     AND v_active_count = 1

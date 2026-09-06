@@ -7,7 +7,8 @@ Source files read:
 - `backend/supabase/migrations/20260803140000_b1_review_resolution.sql` (idempotent re-apply of the same routines; confirms final shape)
 - `backend/supabase/migrations/20260821120000_fix_get_ai_availability_security_definer.sql` (SECURITY DEFINER fix on the public wrapper)
 - `backend/supabase/migrations/20260902120000_enroll_installation_keypair_already_enrolled_guard.sql` (final `enroll_installation_keypair` with `ALREADY_ENROLLED` guard)
-- `backend/supabase/migrations/20260902130100_revoke_last_active_key_guard.sql` (final `revoke_installation_key` with `CANNOT_REVOKE_LAST_ACTIVE_KEY` guard)
+- `backend/supabase/migrations/20260902130100_revoke_last_active_key_guard.sql` (`revoke_installation_key` with `CANNOT_REVOKE_LAST_ACTIVE_KEY` guard)
+- `backend/supabase/migrations/20260905120600_revoke_fresh_return_stored_revoked_at.sql` (fresh-revoke payload returns stored `revoked_at`)
 - `backend/supabase/migrations/20260903180000_grant_ai_visit_summary_administrator.sql` (`ai.visit_summary` grant)
 - `backend/supabase/migrations/20260905120100_set_ai_availability_rpc.sql` (`set_ai_availability`, administrator-gated write path)
 - `backend/supabase/migrations/20260516100000_auth_rbac_schema.sql` (`rpc_result` type, `staff_members.is_bootstrap_admin`)
@@ -191,9 +192,9 @@ All `rpc_result` expectations below name the four columns of the composite type 
 | ID | S02-014 |
 | Journey setup | S02-013 completed (K0 and K1 both active). |
 | Action | As BOOT: `SELECT public.revoke_installation_key('<K0>');` |
-| Expected outcome | `success = true`, `error_code = NULL`, `error_message = NULL`, `data = {"kid": "<K0>", "revoked_at": "<timestamp ≈ now>"}`. Note: the payload's `revoked_at` is a freshly evaluated `clock_timestamp()`, which can differ by microseconds from the stored value — assert on the ROW for exact equality (see Doc-drift observations). |
+| Expected outcome | `success = true`, `error_code = NULL`, `error_message = NULL`, `data = {"kid": "<K0>", "revoked_at": "<T0>"}` where T0 is EXACTLY the `revoked_at` stored on the K0 row (the fresh-revoke path re-SELECTs after UPDATE and returns `v_row.revoked_at`, matching the idempotent branch). |
 | Side effects | The K0 row is UPDATEd: `revoked_at` set, `updated_at` set, `updated_by = a0000000-0000-4000-8000-000000000001`. The K1 row is untouched (`revoked_at IS NULL`). No row is deleted; no other table written. |
-| Code reference | backend/supabase/migrations/20260902130100_revoke_last_active_key_guard.sql:L46-L56 — UPDATE and success return of `auth_internal.revoke_installation_key` |
+| Code reference | backend/supabase/migrations/20260905120600_revoke_fresh_return_stored_revoked_at.sql — UPDATE, re-SELECT, and success return of `auth_internal.revoke_installation_key` |
 
 ## Scenario S02-015 — Re-revoking an already-revoked key is idempotent
 
@@ -257,7 +258,7 @@ All `rpc_result` expectations below name the four columns of the composite type 
 | ID | S02-020 |
 | Journey setup | S02-019 completed (K1 sole active key, guard observed). This is the documented production order: rotate first, revoke the superseded key second. |
 | Action | As ADMIN: `SELECT public.rotate_installation_key();` → save new kid as K2. Then as BOOT: `SELECT public.revoke_installation_key('<K1>');` |
-| Expected outcome | Rotate: `success = true`, `data.installation_id = I0`, `data.kid = K2` (≠ K0, K1). Revoke of K1 now succeeds because two active keys existed at guard time: `success = true`, `data = {"kid": "<K1>", "revoked_at": "<≈ now>"}`. |
+| Expected outcome | Rotate: `success = true`, `data.installation_id = I0`, `data.kid = K2` (≠ K0, K1). Revoke of K1 now succeeds because two active keys existed at guard time: `success = true`, `data = {"kid": "<K1>", "revoked_at": "<T1>"}` where T1 is EXACTLY the `revoked_at` stored on the K1 row. |
 | Side effects | New row K2 (`revoked_at IS NULL`, `created_by` = ADMIN's auth user). K1 row UPDATEd (`revoked_at`, `updated_at`, `updated_by` = BOOT's auth user). End state: K0 revoked, K1 revoked, K2 active — exactly one active key, three non-deleted rows, all sharing I0. |
 | Code reference | backend/supabase/migrations/20260801120100_ai_installation_keypair_routines.sql:L89-L172 — `auth_internal.rotate_installation_key`; backend/supabase/migrations/20260902130100_revoke_last_active_key_guard.sql:L35-L56 — guard passes with count = 2, then UPDATE |
 
@@ -345,7 +346,7 @@ All `rpc_result` expectations below name the four columns of the composite type 
 1. **~~`rotate_installation_key` guard scope~~ — Fixed (D-24).** Code looks up any non-deleted row with no `revoked_at` filter; rotate succeeds when all keys are revoked but rows remain (S02-023). `INSTALLATION_NOT_ENROLLED` only with an empty/fully-soft-deleted keystore (S02-003). Documented in Common journey setup.
 2. **~~`issue_ai_token` error shape misdescribed~~ — Fixed (D-24).** The function returns `text` and RAISEs contract codes (P0001), not an `rpc_result` envelope; Stage 6 catalog documents the full error table including `UNAUTHENTICATED`, `SESSION_EXPIRED`, and `STAFF_NOT_FOUND`.
 3. **~~`SINGLE_INSTALLATION_VIOLATION` is not an envelope error~~ — Fixed (D-24).** Trigger-level only (S02-021); excluded from the keypair envelope error list in Common journey setup.
-4. **Revoke success payload timestamp.** Doc §3.2/§8.3.7 imply `data.revoked_at` is "when revocation took effect." On the fresh-revoke path the code returns a NEW `clock_timestamp()` evaluated after the UPDATE (`20260902130100…sql:L55`), which can differ by microseconds from the stored `revoked_at`; only the idempotent path returns the stored value. Assertions should compare against the row.
+4. **~~Revoke success payload timestamp~~ — Fixed (BUG-11).** Fresh-revoke re-SELECTs after UPDATE and returns the stored `revoked_at` (`20260905120600…sql`), matching the idempotent branch (S02-014, S02-015, S02-020).
 5. **~~"Owner" terminology~~ — Fixed (D-24).** Catalog uses **BOOT** (bootstrap administrator: `role = 'administrator'`, `is_bootstrap_admin = true`); the `owner` role was removed (`20260611150000`).
 6. **~~`set_ai_availability` write RPC / guard ordering~~ — Fixed (D-24).** Migration `20260905120100_set_ai_availability_rpc.sql` adds an administrator-gated write path (S02-024); enroll/rotate/revoke still never write `app_settings` (S02-011). Role check precedes all validation — documented in Common journey setup and S02-005/S02-006/S02-012.
 

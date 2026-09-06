@@ -820,9 +820,9 @@ BEGIN
       AND (v_result.data ->> 'kid') = v_k0
       AND v_result.data ? 'revoked_at'
       AND v_payload_revoked_at IS NOT NULL
-      AND v_payload_revoked_at > clock_timestamp() - interval '5 seconds'
-      AND v_payload_revoked_at < clock_timestamp() + interval '5 seconds'
       AND v_k0_row.revoked_at IS NOT NULL
+      AND v_payload_revoked_at IS NOT DISTINCT FROM v_k0_row.revoked_at
+      AND v_result.data = jsonb_build_object('kid', v_k0, 'revoked_at', v_k0_row.revoked_at)
       AND v_k0_row.revoked_at > clock_timestamp() - interval '5 seconds'
       AND v_k0_row.revoked_at < clock_timestamp() + interval '5 seconds'
       AND v_k0_row.updated_at IS NOT NULL
