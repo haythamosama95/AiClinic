@@ -589,7 +589,7 @@ async function failTruncationExhausted(
   try {
     const result = await postVisit(scenario, { idempotencyKey, traceId });
     assertHttpSse(result);
-    // Truncation-exhausted may omit text_delta (stage-10 S10-028).
+    // Truncation-exhausted relays provisional text_delta then failed (S10-028).
     const ref = assertAcceptedEvent(result.events[0], traceId);
     const failed = result.events.find((event) => event.event === "failed");
     expect(failed).toBeDefined();

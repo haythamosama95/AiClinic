@@ -993,16 +993,19 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
         traceId: "s10-028-trace",
       });
       assertHttpSse(result);
-      // CODE: truncation-exhausted path arms ignoreBrokerSettlement and
-      // pushFailedTerminal before the broker can relay truncation prose.
-      const ref = assertAcceptedFailed(result.events, {
+      expect(sseEventNames(result.events)).toEqual([
+        "accepted",
+        "text_delta",
+        "failed",
+      ]);
+      const ref = assertAcceptedEvent(result.events[0], "s10-028-trace");
+      assertTextDeltaEvent(result.events[1], "Partial output…");
+      assertFailedTerminal(result.events[2], {
         code: "validation_failed",
         retrySafe: true,
         traceId: "s10-028-trace",
+        requestReference: ref,
       });
-      expect(result.events.some((event) => event.event === "text_delta")).toBe(
-        false,
-      );
       expect(creditSpy).toHaveBeenCalledTimes(1);
 
       const row = await requireAiRequest(ref);

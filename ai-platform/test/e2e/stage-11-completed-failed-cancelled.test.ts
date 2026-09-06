@@ -1124,11 +1124,20 @@ describe("Stage 11 — terminal settlement completed/failed/cancelled (S11-001�
       });
 
       assertHttpSse(result);
-      // Known: truncation-exhausted path may omit text_delta (stage-10 S10-028).
-      const ref = assertAcceptedFailed(result.events, {
+      expect(sseEventNames(result.events)).toEqual([
+        "accepted",
+        "text_delta",
+        "failed",
+      ]);
+      const ref = assertAcceptedEvent(result.events[0], "s11-006-trace");
+      expect(result.events[1]?.data.text).toBe("Partial output…");
+      expect(result.events[1]?.data.sequence).toBe(0);
+      expect(result.events[1]?.data.provisional).toBe(true);
+      assertFailedTerminal(result.events[2], {
         code: "validation_failed",
         retrySafe: true,
         traceId: "s11-006-trace",
+        requestReference: ref,
       });
       expect(result.events.some((event) => event.event === "completed")).toBe(
         false,

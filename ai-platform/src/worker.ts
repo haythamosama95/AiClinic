@@ -1162,9 +1162,11 @@ async function runFreshEventSource(
     }
     const taxonomy = isTaxonomyCode(code) ? code : "provider_unavailable";
     log.error("invocation_failed", { code: taxonomy });
-    // Tear down the waiting broker without treating provider failure as cancel.
+    // Drain buffered provisional chunks (truncation prose) before the worker
+    // failed terminal. Disconnecting first aborts the broker and drops those
+    // chunks; ignoreBrokerSettlement (armed before pushable.end()) already
+    // suppresses the broker's own failed event, credit, and journal.
     ignoreBrokerSettlement = true;
-    broker.disconnect("client_close");
     await brokerRun;
     pushFailedTerminal(
       sink,
