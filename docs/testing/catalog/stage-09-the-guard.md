@@ -780,11 +780,11 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-066 |
-| Journey setup | Baseline B0. One happy-path POST with idempotency key `idem-inflight` admitted and **not yet settled** (FakeAdapter seam configured to hang, or simply re-POST before the Stage 11 settle completes) — DO idempotency state is `admitted`. |
+| Journey setup | Baseline B0. One happy-path POST with idempotency key `idem-inflight` admitted and **not yet settled** (FakeAdapter seam configured to hang) — DO idempotency state is `admitted`. |
 | Action | Second `POST /v1/requests` with a **fresh** happy AAT (new jti), the **same** idempotency key `idem-inflight`, body H0. |
-| Expected outcome | HTTP 200 SSE. First event `accepted` with the **new** request reference; then the worker replays the prior state: a terminal `completed` event whose `data.result.finalContent` is `{"text":"Prior request completed.","authoritative":true}` — the worker maps both `admitted` and `completed` prior states to this synthetic completion (doc drift: the client cannot distinguish an in-flight replay from a real completion). Guard skips stages 9–10: no second journal row, no recompose. |
+| Expected outcome | HTTP 200 SSE. First event `accepted` with the **new** request reference. In-flight replay leaves the stream open after `accepted`; no fabricated `completed` and no `"Prior request completed."` payload. Client waits on the first connection (or polls GET) for the real outcome. Guard skips stages 9–10: no second journal row, no recompose. |
 | Side effects | `ai_request` count unchanged; DO `idempotency["idem-inflight"]` unchanged (still `admitted`); no second `requestId`; no quota consumed twice. |
-| Code reference | `ai-platform/src/quota-do/index.ts:L383-L400` — idempotency hit; `ai-platform/src/pipeline/index.ts:L452-L466` — `GuardIdempotentSuccess` short-circuit; `ai-platform/src/worker.ts:L623-L630` — admitted/completed replay mapping |
+| Code reference | `ai-platform/src/quota-do/index.ts:L383-L400` — idempotency hit; `ai-platform/src/pipeline/index.ts:L452-L466` — `GuardIdempotentSuccess` short-circuit; `ai-platform/src/worker.ts:L791-L794` — admitted replay leaves the stream open |
 
 ## Scenario S09-067 — Stage 8 admission: idempotent replay after completed
 

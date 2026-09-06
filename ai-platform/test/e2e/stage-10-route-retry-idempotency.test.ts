@@ -256,24 +256,45 @@ async function waitFor(
 /**
  * Read SSE frames without waiting for the stream to close. `postRequest`
  * drains via `response.text()` and cannot observe in-flight / mid-abort.
+ * Pass `drainAfterStopMs` so a later fabricated terminal cannot hide
+ * behind the first `accepted` chunk on an admitted replay.
  */
 async function readSseUntil(
   response: Response,
   stop: (events: SseEvent[]) => boolean,
+  options: { drainAfterStopMs?: number } = {},
 ): Promise<SseEvent[]> {
   expect(response.body).not.toBeNull();
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let events: SseEvent[] = [];
+  let stoppedAt: number | undefined;
+  const drainMs = options.drainAfterStopMs;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const drainRemaining =
+        stoppedAt !== undefined && drainMs !== undefined
+          ? drainMs - (Date.now() - stoppedAt)
+          : undefined;
+      if (drainRemaining !== undefined && drainRemaining <= 0) {
+        break;
+      }
+      const { done, value } =
+        drainRemaining === undefined
+          ? await reader.read()
+          : await readChunkWithTimeout(reader, drainRemaining);
       if (value) {
         buffer += decoder.decode(value, { stream: true });
         events = parseSseText(buffer);
       }
-      if (stop(events) || done) {
+      if (stoppedAt === undefined && stop(events)) {
+        stoppedAt = Date.now();
+        if (drainMs === undefined) {
+          break;
+        }
+      }
+      if (done) {
         break;
       }
     }
@@ -285,6 +306,25 @@ async function readSseUntil(
     }
   }
   return events;
+}
+
+async function readChunkWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<ReadableStreamReadResult<Uint8Array>>(
+      (resolve) => {
+        timer = setTimeout(() => resolve({ done: true, value: undefined }), ms);
+      },
+    );
+    return await Promise.race([reader.read(), timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 async function cancelResponseBody(response: Response | undefined): Promise<void> {
@@ -1355,12 +1395,17 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(secondResponse.headers.get("content-type")).toContain(
         "text/event-stream",
       );
-      const secondEvents = await readSseUntil(secondResponse, (seen) =>
-        seen.some((event) => event.event === "accepted"),
+      const secondEvents = await readSseUntil(
+        secondResponse,
+        (seen) => seen.some((event) => event.event === "accepted"),
+        { drainAfterStopMs: 250 },
       );
-      assertSseSequence(secondEvents, ["accepted"]);
+      assertSseSequence(secondEvents, ["accepted"], "exact");
       assertAcceptedEvent(secondEvents[0], "s10-017-trace");
       expect(terminalEventTypes(secondEvents)).toEqual([]);
+      expect(JSON.stringify(secondEvents)).not.toContain(
+        "Prior request completed.",
+      );
 
       const firstEvents = await parseSseEvents(firstResponse);
       await flushBackgroundWork(200);

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import publishedVisitSummary from "../../manifests/published/clinic.visit_summary@1.0.0.json";
 import {
   assertRequestReferenceShape,
@@ -34,6 +34,7 @@ import {
   r2Exists,
   resetE2eState,
   setCapabilityRegistry,
+  terminalEventTypes,
   visitSummaryInvokeBody,
   VISIT_CHIEF_COMPLAINT_V1,
   type InvokeResult,
@@ -47,6 +48,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetE2eState();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -216,27 +221,85 @@ async function entitlementSnapshot(
   };
 }
 
+type FakeModule = typeof import("../../src/provider/fake");
+
+async function loadFakeModule(): Promise<FakeModule> {
+  return import("../../src/provider/fake");
+}
+
+function hangUntilAbort(
+  signal: AbortSignal | undefined,
+  ms: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    const abort = (): void => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function waitFor(
+  label: string,
+  predicate: () => boolean,
+  timeoutMs = 4000,
+): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(`timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 /**
- * Read SSE frames without waiting for the stream to close. FakeAdapter hang
- * is not on the barrel; in-flight / admitted-replay streams may stay open.
+ * Read SSE frames without waiting for the stream to close. In-flight /
+ * admitted-replay streams stay open; pass `drainAfterStopMs` so a later
+ * fabricated terminal cannot hide behind the first `accepted` chunk.
  */
 async function readSseUntil(
   response: Response,
   stop: (events: SseEvent[]) => boolean,
+  options: { drainAfterStopMs?: number } = {},
 ): Promise<SseEvent[]> {
   expect(response.body).not.toBeNull();
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let events: SseEvent[] = [];
+  let stoppedAt: number | undefined;
+  const drainMs = options.drainAfterStopMs;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const drainRemaining =
+        stoppedAt !== undefined && drainMs !== undefined
+          ? drainMs - (Date.now() - stoppedAt)
+          : undefined;
+      if (drainRemaining !== undefined && drainRemaining <= 0) {
+        break;
+      }
+      const { done, value } =
+        drainRemaining === undefined
+          ? await reader.read()
+          : await readChunkWithTimeout(reader, drainRemaining);
       if (value) {
         buffer += decoder.decode(value, { stream: true });
         events = parseSseText(buffer);
       }
-      if (stop(events) || done) {
+      if (stoppedAt === undefined && stop(events)) {
+        stoppedAt = Date.now();
+        if (drainMs === undefined) {
+          break;
+        }
+      }
+      if (done) {
         break;
       }
     }
@@ -248,6 +311,25 @@ async function readSseUntil(
     }
   }
   return events;
+}
+
+async function readChunkWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<ReadableStreamReadResult<Uint8Array>>(
+      (resolve) => {
+        timer = setTimeout(() => resolve({ done: true, value: undefined }), ms);
+      },
+    );
+    return await Promise.race([reader.read(), timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 async function cancelResponseBody(response: Response | undefined): Promise<void> {
@@ -340,57 +422,69 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
   it("S09-066 — idempotent replay while prior admitted in-flight", async () => {
     const scenario = await provisionHappyPath();
     const body = happyVisitBody(scenario);
-    const tokenA = await mintAat(scenario);
-    const tokenB = await mintAat(scenario);
+    const fakeMod = await loadFakeModule();
+    const original = fakeMod.FakeAdapter;
+    let invokeEntered = false;
+    class HangThenSuccess extends original {
+      override async invoke(
+        request: never,
+        options?: { signal?: AbortSignal },
+      ) {
+        invokeEntered = true;
+        await hangUntilAbort(options?.signal, 5000);
+        return super.invoke(request, options);
+      }
+    }
+    const adapterSpy = vi
+      .spyOn(fakeMod, "FakeAdapter")
+      .mockImplementation(() => new HangThenSuccess(["success"]) as never);
 
-    // HARNESS-GAP: FakeAdapter hang/scripted-failure is not on the barrel;
-    // production always `new FakeAdapter(["success"])`. Hold in-flight by
-    // not draining the first SSE body before the second POST.
-    await pinActiveServingPolicy(scenario);
-    const first = clinicFetch("/v1/requests", {
-      method: "POST",
-      token: tokenA,
-      headers: clinicPostHeaders({
-        "x-idempotency-key": "idem-inflight",
-        "x-trace-id": TRACE_ID,
-      }),
-      body,
-    });
-    const second = clinicFetch("/v1/requests", {
-      method: "POST",
-      token: tokenB,
-      headers: clinicPostHeaders({
-        "x-idempotency-key": "idem-inflight",
-        "x-trace-id": TRACE_ID,
-      }),
-      body,
-    });
-
-    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+    let firstResponse: Response | undefined;
+    let secondResponse: Response | undefined;
     try {
+      await pinActiveServingPolicy(scenario);
+      firstResponse = await clinicFetch("/v1/requests", {
+        method: "POST",
+        token: await mintAat(scenario),
+        headers: clinicPostHeaders({
+          "x-idempotency-key": "idem-inflight",
+          "x-trace-id": TRACE_ID,
+        }),
+        body,
+      });
+      expect(firstResponse.status).toBe(200);
+      await waitFor("first invoke entered", () => invokeEntered);
+
+      await pinActiveServingPolicy(scenario);
+      secondResponse = await clinicFetch("/v1/requests", {
+        method: "POST",
+        token: await mintAat(scenario),
+        headers: clinicPostHeaders({
+          "x-idempotency-key": "idem-inflight",
+          "x-trace-id": TRACE_ID,
+        }),
+        body,
+      });
       expect(secondResponse.status).toBe(200);
       expect(secondResponse.headers.get("content-type")).toContain(
         "text/event-stream",
       );
-      const events = await readSseUntil(secondResponse, (seen) =>
-        seen.some((event) => event.event === "accepted"),
+      const events = await readSseUntil(
+        secondResponse,
+        (seen) => seen.some((event) => event.event === "accepted"),
+        { drainAfterStopMs: 250 },
       );
-      assertSseSequence(events, ["accepted"]);
+      assertSseSequence(events, ["accepted"], "exact");
       const accepted = events[0];
       assertRequestReferenceShape(String(accepted?.data.request_reference));
       expect(accepted?.data.trace_id).toBe(TRACE_ID);
-      // Catalog maps admitted+completed prior to synthetic completed.
-      // Code (replayIdempotentTerminal): `admitted` leaves the stream open
-      // after accepted — no fabricated terminal. Assert synthetic completed
-      // when the stream produced one (settle race → completed prior).
-      const completed = events.find((event) => event.event === "completed");
-      if (completed) {
-        assertSyntheticCompleted(events);
-      }
+      expect(terminalEventTypes(events)).toEqual([]);
+      expect(JSON.stringify(events)).not.toContain("Prior request completed.");
       expect(await count("ai_request")).toBe(1);
     } finally {
       await cancelResponseBody(firstResponse);
       await cancelResponseBody(secondResponse);
+      adapterSpy.mockRestore();
     }
   });
 
