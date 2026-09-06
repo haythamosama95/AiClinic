@@ -864,7 +864,6 @@ BEGIN
   WHERE s.key = 'ai.availability'
     AND s.is_deleted = false;
 
-  -- CODE: ON CONFLICT updates value_json/updated_by only; seeded created_by may stay NULL.
   v_ok := (v_set.success IS TRUE)
     AND v_set.error_code IS NULL
     AND v_set.error_message IS NULL
@@ -872,7 +871,7 @@ BEGIN
     AND v_get = v_expected
     AND v_value = v_expected
     AND v_updated_after = v_boot_auth
-    AND v_created_after IS NOT DISTINCT FROM v_created_before;
+    AND v_created_after = v_boot_auth;
 
   v_detail := 'set_success=' || COALESCE(v_set.success::text, '<null>')
     || ' set_data=' || COALESCE(v_set.data::text, '<null>')
