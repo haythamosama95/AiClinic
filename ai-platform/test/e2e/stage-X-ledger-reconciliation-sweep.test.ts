@@ -31,6 +31,7 @@ import {
   resetE2eState,
   seedSql,
   visitSummaryInvokeBody,
+  type EntitlePayload,
   type Scenario,
 } from "./harness";
 
@@ -40,9 +41,6 @@ import { runRetentionPurge } from "../../src/retention";
 // HARNESS-GAP: runRollupAndReconciliation is not on the frozen barrel; catalog
 // SX-038 / SX-044 inject `window` (scheduled cron cannot).
 import { runRollupAndReconciliation } from "../../src/rollup";
-// HARNESS-GAP: FakeAdapter scripting is not on the barrel; SX-037 needs
-// per-request token/cost totals that the default fake script does not emit.
-import { FakeAdapter } from "../../src/provider/fake";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -60,7 +58,27 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const LEDGER_HORIZON_DAYS = 2555;
 const JOURNAL_HORIZON_DAYS = 90;
 const EPHEMERAL_HORIZON_MS = 7_200_000;
-const FAKE_SUMMARY = "Fake adapter summary.";
+/** Default fake-v1 settlement: 10 in + 20 out. Bundled table: (10/1000)*0.1 + (20/1000)*0.2. */
+const FAKE_V1_SETTLEMENT_TOKENS = 30;
+const FAKE_V1_SETTLEMENT_COST = 0.005;
+
+/** Catalog P2 window after P1 admissions (SX-051 / SX-052). */
+const P2_ENTITLE: EntitlePayload = {
+  ...DEFAULT_ENTITLE_PAYLOAD,
+  period_start: "2026-09-01T00:00:00.000Z",
+  period_end: "2026-10-01T00:00:00.000Z",
+};
+
+/**
+ * Wall-clock-covering entitle whose `period_start` month is catalog 2026-08
+ * (DEFAULT_ENTITLE_PAYLOAD is 2026-01…2027-01; period string would be 2026-01).
+ */
+const AUGUST_COVERING_NOW: EntitlePayload = {
+  ...DEFAULT_ENTITLE_PAYLOAD,
+  period_start: "2026-08-01T00:00:00.000Z",
+  period_end: "2027-01-01T00:00:00.000Z",
+};
+
 /**
  * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
  * clear(); preload→consult can then miss
@@ -79,8 +97,6 @@ const RECON_WINDOW_SX044 = {
   start: "2026-08-10T00:00:00.000Z",
   end: "2026-09-05T00:00:00.000Z",
 } as const;
-
-type FakeModule = typeof import("../../src/provider/fake");
 
 type QuotaInspectState = {
   periodCounters?: { inFlight?: number };
@@ -124,11 +140,34 @@ async function enrollOnly(): Promise<Scenario> {
   return scenario;
 }
 
-async function enrollAndEntitle(): Promise<Scenario> {
+async function enrollAndEntitle(
+  entitle: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+): Promise<Scenario> {
   const scenario = await enrollOnly();
-  const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
+  const entitled = await entitleInstallation(scenario, entitle);
   expect(entitled.status).toBe(200);
   return scenario;
+}
+
+/**
+ * Entitle is one-shot (`409 not_pending` while active). Re-open pending so
+ * `entitleInstallation(P2)` writes the September `period_start` the same way
+ * SX-051/052 roll the entitlement — do not rewrite `usage_event.period`.
+ */
+async function rollEntitlementToP2(scenario: Scenario): Promise<void> {
+  await seedSql([
+    {
+      sql: "UPDATE entitlement SET status = 'pending' WHERE installation_id = ?",
+      params: [scenario.installationId],
+    },
+  ]);
+  const entitled = await entitleInstallation(scenario, P2_ENTITLE);
+  expect(entitled.status).toBe(200);
+  const rolled = await entitlementSnapshot(scenario.installationId);
+  expect(
+    (rolled.period_bounds as { period_start: string; period_end: string })
+      .period_start,
+  ).toBe(P2_ENTITLE.period_start);
 }
 
 async function entitlementSnapshot(
@@ -325,64 +364,6 @@ async function seedAttempt(requestId: string): Promise<void> {
       params: [`attempt-${requestId}`, requestId, `prov-${requestId}`],
     },
   ]);
-}
-
-async function loadFakeModule(): Promise<FakeModule> {
-  return import("../../src/provider/fake");
-}
-
-type InvokeOptions = {
-  onStreamChunk?: (chunk: {
-    sequenceNumber: number;
-    kind: string;
-    payload: { text: string };
-    terminal: boolean;
-  }) => void;
-};
-
-function spyFakeInputTokens(
-  fakeMod: FakeModule,
-  original: typeof FakeAdapter,
-  inputs: number[],
-) {
-  const queue = [...inputs];
-  return vi.spyOn(fakeMod, "FakeAdapter").mockImplementation(() => {
-    const input = queue.shift() ?? 10;
-    class Scripted extends original {
-      override async invoke(_request: unknown, options?: InvokeOptions) {
-        options?.onStreamChunk?.({
-          sequenceNumber: 0,
-          kind: "text_delta",
-          payload: { text: FAKE_SUMMARY },
-          terminal: true,
-        });
-        return {
-          kind: "success" as const,
-          result: {
-            finalContent: { type: "text" as const, text: FAKE_SUMMARY },
-            usage: { input, output: 0, cached: 0 },
-            providerModel: { provider: "fake", model: "fake-v1" },
-            finishReason: "stop" as const,
-            providerRequestId: "fake-req-001",
-            timing: { queue_ms: 1, provider_ms: 5, total_ms: 6 },
-          },
-          chunks: [
-            {
-              sequenceNumber: 0,
-              kind: "text_delta" as const,
-              payload: { text: FAKE_SUMMARY },
-              terminal: true,
-            },
-          ],
-          rawBody: {
-            payload: { fake: true, outcome: "success" },
-            truncated: false,
-          },
-        };
-      }
-    }
-    return new Scripted(["success"]) as never;
-  });
 }
 
 async function waitForUsageEvent(
@@ -788,128 +769,107 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
   });
 
   it("SX-037 — Rollup aggregates full ledger per (installation, period); re-run upserts", async () => {
-    const i0 = await provisionHappyPath();
-    const i1 = await enrollAndEntitle();
-    const fakeMod = await loadFakeModule();
-    const adapterSpy = spyFakeInputTokens(fakeMod, FakeAdapter, [30, 40, 10, 5]);
+    const i0 = await provisionHappyPath(undefined, AUGUST_COVERING_NOW);
+    const i1 = await enrollAndEntitle(AUGUST_COVERING_NOW);
 
-    try {
-      const i0a = await completeVisit(i0, "sx037-i0a");
-      const i0b = await completeVisit(i0, "sx037-i0b");
-      const i0c = await completeVisit(i0, "sx037-i0c");
-      const i1a = await completeVisit(i1, "sx037-i1a");
-      // usage_event is waitUntil post-response detail (journal.writePostResponseDetail);
-      // SSE Completed / ai_request.state can land before the ledger row, especially
-      // I1 which is last and had no follow-on visit to overlap the drain.
-      await waitForUsageEvent(i0a.requestId);
-      await waitForUsageEvent(i0b.requestId);
-      await waitForUsageEvent(i0c.requestId);
-      await waitForUsageEvent(i1a.requestId);
+    const i0a = await completeVisit(i0, "sx037-i0a");
+    const i0b = await completeVisit(i0, "sx037-i0b");
+    await waitForUsageEvent(i0a.requestId);
+    await waitForUsageEvent(i0b.requestId);
 
-      await seedSql([
-        {
-          sql: `UPDATE usage_event SET period = '2026-08', recorded_at = '2026-08-10T00:00:00.000Z'
-                WHERE request_id = ?`,
-          params: [i0a.requestId],
-        },
-        {
-          sql: `UPDATE usage_event SET period = '2026-08', recorded_at = '2026-08-20T00:00:00.000Z'
-                WHERE request_id = ?`,
-          params: [i0b.requestId],
-        },
-        {
-          sql: `UPDATE usage_event SET period = '2026-09', recorded_at = '2026-09-02T00:00:00.000Z'
-                WHERE request_id = ?`,
-          params: [i0c.requestId],
-        },
-        {
-          sql: `UPDATE usage_event SET period = '2026-08', recorded_at = '2026-08-15T00:00:00.000Z'
-                WHERE request_id = ?`,
-          params: [i1a.requestId],
-        },
-      ]);
+    await rollEntitlementToP2(i0);
 
-      const usage = await queryAll<{ tokens: number; cost: number; request_id: string }>(
-        "SELECT tokens, cost, request_id FROM usage_event",
-      );
-      const byId = Object.fromEntries(
-        usage.map((row) => [row.request_id, row]),
-      );
-      expect(byId[i0a.requestId]?.tokens).toBe(30);
-      expect(Number(byId[i0a.requestId]?.cost)).toBeCloseTo(0.003, 6);
-      expect(byId[i0b.requestId]?.tokens).toBe(40);
-      expect(Number(byId[i0b.requestId]?.cost)).toBeCloseTo(0.004, 6);
-      expect(byId[i0c.requestId]?.tokens).toBe(10);
-      expect(Number(byId[i0c.requestId]?.cost)).toBeCloseTo(0.001, 6);
-      expect(byId[i1a.requestId]?.tokens).toBe(5);
-      expect(Number(byId[i1a.requestId]?.cost)).toBeCloseTo(0.0005, 6);
+    const i0c = await completeVisit(i0, "sx037-i0c");
+    const i1a = await completeVisit(i1, "sx037-i1a");
+    // usage_event is waitUntil post-response detail (journal.writePostResponseDetail);
+    // SSE Completed / ai_request.state can land before the ledger row, especially
+    // I1 which is last and had no follow-on visit to overlap the drain.
+    await waitForUsageEvent(i0c.requestId);
+    await waitForUsageEvent(i1a.requestId);
 
-      await invokeCron(CRON_ROLLUP);
-      const first = await queryAll<{
-        rollup_id: string;
-        dimensions: string;
-        request_count: number;
-        tokens: number;
-        cost: number;
-      }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
-      expect(first).toHaveLength(3);
+    const usage = await queryAll<{
+      tokens: number;
+      cost: number;
+      period: string;
+      request_id: string;
+    }>("SELECT tokens, cost, period, request_id FROM usage_event");
+    const byId = Object.fromEntries(usage.map((row) => [row.request_id, row]));
+    expect(byId[i0a.requestId]?.period).toBe("2026-08");
+    expect(byId[i0a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
+    expect(Number(byId[i0a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
+    expect(byId[i0b.requestId]?.period).toBe("2026-08");
+    expect(byId[i0b.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
+    expect(Number(byId[i0b.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
+    expect(byId[i0c.requestId]?.period).toBe("2026-09");
+    expect(byId[i0c.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
+    expect(Number(byId[i0c.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
+    expect(byId[i1a.requestId]?.period).toBe("2026-08");
+    expect(byId[i1a.requestId]?.tokens).toBe(FAKE_V1_SETTLEMENT_TOKENS);
+    expect(Number(byId[i1a.requestId]?.cost)).toBeCloseTo(FAKE_V1_SETTLEMENT_COST, 6);
 
-      const expected = [
-        {
-          installation_id: i0.installationId,
-          period: "2026-08",
-          request_count: 2,
-          tokens: 70,
-          cost: 0.007,
-        },
-        {
-          installation_id: i0.installationId,
-          period: "2026-09",
-          request_count: 1,
-          tokens: 10,
-          cost: 0.001,
-        },
-        {
-          installation_id: i1.installationId,
-          period: "2026-08",
-          request_count: 1,
-          tokens: 5,
-          cost: 0.0005,
-        },
-      ];
-      for (const row of expected) {
-        const dims = JSON.stringify({
-          installation_id: row.installation_id,
-          period: row.period,
-        });
-        const found = first.find((entry) => entry.dimensions === dims);
-        expect(found, dims).toBeDefined();
-        expect(found!.request_count).toBe(row.request_count);
-        expect(found!.tokens).toBe(row.tokens);
-        expect(Number(found!.cost)).toBeCloseTo(row.cost, 6);
-        expect(found!.rollup_id).toBe(await sha256Hex(dims));
-      }
+    await invokeCron(CRON_ROLLUP);
+    const first = await queryAll<{
+      rollup_id: string;
+      dimensions: string;
+      request_count: number;
+      tokens: number;
+      cost: number;
+    }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
+    expect(first).toHaveLength(3);
 
-      await invokeCron(CRON_ROLLUP);
-      const second = await queryAll<{
-        rollup_id: string;
-        dimensions: string;
-        request_count: number;
-        tokens: number;
-        cost: number;
-      }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
-      expect(second).toHaveLength(3);
-      expect(second.map((row) => row.rollup_id).sort()).toEqual(
-        first.map((row) => row.rollup_id).sort(),
-      );
-      for (const prior of first) {
-        const again = second.find((row) => row.rollup_id === prior.rollup_id);
-        expect(again?.request_count).toBe(prior.request_count);
-        expect(again?.tokens).toBe(prior.tokens);
-        expect(Number(again?.cost)).toBeCloseTo(Number(prior.cost), 6);
-      }
-    } finally {
-      adapterSpy.mockRestore();
+    const expected = [
+      {
+        installation_id: i0.installationId,
+        period: "2026-08",
+        request_count: 2,
+        tokens: FAKE_V1_SETTLEMENT_TOKENS * 2,
+        cost: FAKE_V1_SETTLEMENT_COST * 2,
+      },
+      {
+        installation_id: i0.installationId,
+        period: "2026-09",
+        request_count: 1,
+        tokens: FAKE_V1_SETTLEMENT_TOKENS,
+        cost: FAKE_V1_SETTLEMENT_COST,
+      },
+      {
+        installation_id: i1.installationId,
+        period: "2026-08",
+        request_count: 1,
+        tokens: FAKE_V1_SETTLEMENT_TOKENS,
+        cost: FAKE_V1_SETTLEMENT_COST,
+      },
+    ];
+    for (const row of expected) {
+      const dims = JSON.stringify({
+        installation_id: row.installation_id,
+        period: row.period,
+      });
+      const found = first.find((entry) => entry.dimensions === dims);
+      expect(found, dims).toBeDefined();
+      expect(found!.request_count).toBe(row.request_count);
+      expect(found!.tokens).toBe(row.tokens);
+      expect(Number(found!.cost)).toBeCloseTo(row.cost, 6);
+      expect(found!.rollup_id).toBe(await sha256Hex(dims));
+    }
+
+    await invokeCron(CRON_ROLLUP);
+    const second = await queryAll<{
+      rollup_id: string;
+      dimensions: string;
+      request_count: number;
+      tokens: number;
+      cost: number;
+    }>("SELECT rollup_id, dimensions, request_count, tokens, cost FROM usage_rollup");
+    expect(second).toHaveLength(3);
+    expect(second.map((row) => row.rollup_id).sort()).toEqual(
+      first.map((row) => row.rollup_id).sort(),
+    );
+    for (const prior of first) {
+      const again = second.find((row) => row.rollup_id === prior.rollup_id);
+      expect(again?.request_count).toBe(prior.request_count);
+      expect(again?.tokens).toBe(prior.tokens);
+      expect(Number(again?.cost)).toBeCloseTo(Number(prior.cost), 6);
     }
   });
 

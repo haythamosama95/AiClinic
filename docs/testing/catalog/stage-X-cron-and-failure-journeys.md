@@ -499,9 +499,9 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-037 |
-| Journey setup | Real Stage 11 settlements: I0 period `2026-08` two Completed requests (tokens 30+40, cost 0.003+0.004); I0 period `2026-09` one (tokens 10, cost 0.001 — entitlement period rolled, Stage 8/DO behavior); I1 period `2026-08` one (tokens 5, cost 0.0005). |
+| Journey setup | Real Stage 11 settlements (default fake-v1 10+20 tokens, bundled price `(10/1000)*0.1 + (20/1000)*0.2` = **0.005**): I0 period `2026-08` two Completed requests (tokens 30+30, cost 0.005+0.005); I0 period `2026-09` one (tokens 30, cost 0.005 — entitlement rolled to P2 via `entitleInstallation` after the August visits, Stage 8/DO behavior); I1 period `2026-08` one (tokens 30, cost 0.005). |
 | Action | Run cron tick `"0 4 * * *"`. Capture `usage_rollup`. Run the same tick again. |
-| Expected outcome | First run: `rollups_written=3`; rows `(I0,2026-08): count=2, tokens=70, cost=0.007`, `(I0,2026-09): count=1, tokens=10, cost=0.001`, `(I1,2026-08): count=1, tokens=5, cost=0.0005`; each `rollup_id` = SHA-256 hex of the dimensions JSON. Second run: `rollups_written=3` again, still exactly 3 rows, identical values (`ON CONFLICT(rollup_id) DO UPDATE` — no duplicates, no drift). The scheduled path passes no window → full-ledger `GROUP BY installation_id, period`. |
+| Expected outcome | First run: `rollups_written=3`; rows `(I0,2026-08): count=2, tokens=60, cost=0.010`, `(I0,2026-09): count=1, tokens=30, cost=0.005`, `(I1,2026-08): count=1, tokens=30, cost=0.005`; each `rollup_id` = SHA-256 hex of the dimensions JSON. Second run: `rollups_written=3` again, still exactly 3 rows, identical values (`ON CONFLICT(rollup_id) DO UPDATE` — no duplicates, no drift). The scheduled path passes no window → full-ledger `GROUP BY installation_id, period`. |
 | Side effects | Writes: 3 `usage_rollup` upserts per run. No other table touched. |
 | Code reference | ai-platform/src/rollup/index.ts:L70-L82 — unwindowed aggregate; L97-L126 — upsert; ai-platform/src/worker.ts:L1731-L1734 — no window passed |
 
