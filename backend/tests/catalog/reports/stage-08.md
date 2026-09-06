@@ -32,8 +32,11 @@ Local `pg_temp.set_clinic_session` overlays `organization_id`,
 and `staff_has_visit_clinical_access` work.
 
 [SEED] only where no public RPC can create the state: pin `created_at` for
-recorded_at, NULL-complaint note, soft-deleted note, North-branch staff
-assignment, appointment `status = completed` after each `create_visit`.
+recorded_at (S08-061/063; `save_visit_documentation` stamps `now()`),
+soft-deleted note, North-branch staff assignment, appointment
+`status = completed` after each `create_visit`.
+S08-063's NULL-complaint note is created via
+`save_visit_documentation(visit, NULL, …)`, not a full-row INSERT.
 
 S08-061/062/067 assert RPC outcomes only; `detail` notes Worker S08-049/046.
 S08-069 asserts SQLSTATE `42501` (Register 5 #12), not PostgREST HTTP.

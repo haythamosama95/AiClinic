@@ -411,17 +411,34 @@ BEGIN
   WHERE vcn.visit_id = v_visit
     AND vcn.is_deleted = false;
 
-  -- [SEED] S08-063: note with complaint NULL (no RPC creates that row shape).
-  INSERT INTO public.visit_clinical_notes (
-    visit_id, complaint, created_by, updated_by, created_at
-  )
-  VALUES (
-    pg_temp.s08_id('visit_063'),
-    NULL,
-    v_doctor_auth,
-    v_doctor_auth,
-    '2026-09-05T09:00:00.000Z'::timestamptz
+  -- S08-063 live NULL complaint via RPC, then [SEED] pin created_at (save uses now()).
+  v_visit := pg_temp.s08_id('visit_063');
+  PERFORM pg_temp.set_clinic_session(
+    v_doctor_auth, v_org, v_branch, v_doctor, 'doctor'
   );
+  SELECT v.updated_at INTO STRICT v_updated_at
+  FROM public.visits v
+  WHERE v.id = v_visit;
+  v_result := public.save_visit_documentation(
+    v_visit,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    v_updated_at
+  );
+  IF NOT v_result.success THEN
+    RAISE EXCEPTION 'save_visit_documentation 063 failed: % — %',
+      COALESCE(v_result.error_code, '<null>'),
+      COALESCE(v_result.error_message, '');
+  END IF;
+
+  PERFORM pg_temp.reset_postgres();
+  UPDATE public.visit_clinical_notes vcn
+  SET created_at = '2026-09-05T09:00:00.000Z'::timestamptz
+  WHERE vcn.visit_id = v_visit
+    AND vcn.is_deleted = false;
 
   -- [SEED] S08-064: only note is soft-deleted.
   INSERT INTO public.visit_clinical_notes (

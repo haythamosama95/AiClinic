@@ -744,7 +744,7 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | Field | Content |
 |-------|---------|
 | ID | S08-063 |
-| Journey setup | As S08-061, but the note row has `complaint = NULL`, `created_at = 2026-09-05T09:00:00.000Z`. |
+| Journey setup | As S08-061, but the note is created via `save_visit_documentation` with `p_complaint = NULL` (other sections NULL). `[SEED]` pin `created_at = 2026-09-05T09:00:00.000Z` only — the RPC stamps `now()`. |
 | Action | Call the RPC. |
 | Expected outcome | `success = true`, `data = {"visit_id":"…","recorded_at":"2026-09-05T09:00:00.000Z"}` — `recorded_at` present (note row exists), `complaint` absent (NULL guard). The two payload fields are gated independently. |
 | Side effects | None. |
