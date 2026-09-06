@@ -22,8 +22,17 @@ export function captureRawProviderBody(
       return { payload: text, truncated: false };
     }
   }
-  const sliced = new TextDecoder().decode(encoded.slice(0, byteLimit));
-  return { payload: sliced, truncated: true };
+  // Slice-then-decode can split a multi-byte UTF-8 sequence. The decoder
+  // inserts U+FFFD, and re-encoding that replacement can exceed byteLimit.
+  let decoded = new TextDecoder().decode(encoded.slice(0, byteLimit));
+  decoded = decoded.replace(/\uFFFD+$/, "");
+  while (
+    decoded.length > 0 &&
+    new TextEncoder().encode(decoded).byteLength > byteLimit
+  ) {
+    decoded = decoded.slice(0, -1);
+  }
+  return { payload: decoded, truncated: true };
 }
 
 export function withRawBody<T extends { rawBody?: CapturedRawBody }>(

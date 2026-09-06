@@ -1112,6 +1112,11 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     const captured = captureRawProviderBody(oversized);
     expect(captured.truncated).toBe(true);
     expect(typeof captured.payload).toBe("string");
+    const capturedPayload = String(captured.payload);
+    expect(new TextEncoder().encode(capturedPayload).byteLength).toBeLessThanOrEqual(
+      ENVELOPE_RAW_BODY_BYTE_LIMIT,
+    );
+    expect(capturedPayload.endsWith("\uFFFD")).toBe(false);
     class RawBodyFake extends original {
       override async invoke() {
         return {
@@ -1144,12 +1149,12 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       expect(attempts).toHaveLength(1);
       expect(attempts[0]?.truncated).toBe(true);
       expect(typeof attempts[0]?.payload).toBe("string");
-      // Catalog-vs-code (S11-018): production slices then decodes without
-      // re-clamp. U+2026 split → U+FFFD, so re-encoded length is 16386.
-      expect(attempts[0]?.payload).toBe(captured.payload);
-      const storedBytes = new TextEncoder().encode(String(attempts[0]?.payload));
-      const helperBytes = new TextEncoder().encode(String(captured.payload));
-      expect(storedBytes.byteLength).toBe(helperBytes.byteLength);
+      const storedPayload = String(attempts[0]?.payload);
+      expect(storedPayload).toBe(captured.payload);
+      expect(new TextEncoder().encode(storedPayload).byteLength).toBeLessThanOrEqual(
+        16384,
+      );
+      expect(storedPayload.endsWith("\uFFFD")).toBe(false);
 
       const attemptRows = await getAttempts(requestId);
       expect(attemptRows).toHaveLength(1);

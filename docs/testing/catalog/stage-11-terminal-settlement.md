@@ -239,9 +239,9 @@ Chain exhaustion after per-attempt `timeout` rows settles `ai_request.terminal_e
 | ID | S11-018 |
 | Journey setup | Fresh scenario; standard policy. FakeAdapter seam: success result plus `rawBody = captureRawProviderBody("".padStart(40_000, "…"))` — i.e. route a > 16 KiB provider body through the real `captureRawProviderBody` (the production adapter path via `withRawBody`). |
 | Action | `POST /v1/requests`, `x-idempotency-key: s11-018-<uuid>`; read SSE to `completed`; drain; fetch `request/<request_id>/envelope` from R2. |
-| Expected outcome | Settlement identical to S11-001 except `envelope.attempts[0].truncated === true` and `attempts[0].payload` is a STRING of at most 16 384 bytes (first 16 KiB of the body, decoded after the byte slice — not parsed JSON). The envelope itself remains valid JSON with the four canonical top-level keys; `ai_attempt` row is unaffected (cap applies to the R2 diagnostic copy only). |
+| Expected outcome | Settlement identical to S11-001 except `envelope.attempts[0].truncated === true` and `attempts[0].payload` is a STRING whose UTF-8 encoding is at most 16 384 bytes (a complete-codepoint prefix of the body — not parsed JSON — with no trailing U+FFFD from a mid-codepoint slice). The envelope itself remains valid JSON with the four canonical top-level keys; `ai_attempt` row is unaffected (cap applies to the R2 diagnostic copy only). |
 | Side effects | MUST: cap is per-attempt raw body (`ENVELOPE_RAW_BODY_BYTE_LIMIT = 16 * 1024`), applied at capture time; `truncated: false` exactly when `byteLength <= 16384`. MUST NOT: no second envelope object for the overflow; the cap never changes `ai_attempt` columns or credit usage. |
-| Code reference | ai-platform/src/provider/raw-body.ts:6-27 — ENVELOPE_RAW_BODY_BYTE_LIMIT/captureRawProviderBody; ai-platform/src/journal/index.ts:183-191 — buildEnvelope (attempts map to rawBody); ai-platform/src/worker.ts:362-375 — buildAttemptInput rawBody passthrough |
+| Code reference | ai-platform/src/provider/raw-body.ts:6-36 — ENVELOPE_RAW_BODY_BYTE_LIMIT/captureRawProviderBody (re-clamp after UTF-8 slice); ai-platform/src/journal/index.ts:183-191 — buildEnvelope (attempts map to rawBody); ai-platform/src/worker.ts:362-375 — buildAttemptInput rawBody passthrough |
 
 ## Scenario S11-019 — Envelope stores a non-JSON provider raw body as a string payload
 

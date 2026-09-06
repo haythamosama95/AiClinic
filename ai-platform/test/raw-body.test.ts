@@ -28,4 +28,16 @@ describe("captureRawProviderBody", () => {
     const bytes = new TextEncoder().encode(String(captured.payload));
     expect(bytes.byteLength).toBeLessThanOrEqual(ENVELOPE_RAW_BODY_BYTE_LIMIT);
   });
+
+  it("re-clamps a mid-codepoint UTF-8 slice so the stored payload stays within the cap", () => {
+    const text = "".padStart(40_000, "…");
+    const captured = captureRawProviderBody(text);
+    expect(captured.truncated).toBe(true);
+    expect(typeof captured.payload).toBe("string");
+    const payload = String(captured.payload);
+    expect(new TextEncoder().encode(payload).byteLength).toBeLessThanOrEqual(
+      ENVELOPE_RAW_BODY_BYTE_LIMIT,
+    );
+    expect(payload.endsWith("\uFFFD")).toBe(false);
+  });
 });
