@@ -812,9 +812,9 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | ID | S08-069 |
 | Journey setup | PostgREST request with the `anon` key (no authenticated staff session). |
 | Action | `POST /rest/v1/rpc/get_visit_chief_complaint` with `{"p_visit_id":"5a1f9c2e-7b3d-4e8f-9a0b-1c2d3e4f5a6b"}` as `anon`. |
-| Expected outcome | Permission denied (PostgreSQL `42501` surfaced by PostgREST as HTTP 401/403 depending on configuration) — `GRANT EXECUTE … TO authenticated` only. The context provider path requires an authenticated staff session before any AI ingress call is assembled. |
+| Expected outcome | Permission denied (PostgreSQL `42501` `permission denied for function get_visit_chief_complaint`, surfaced by PostgREST as HTTP 401/403 depending on configuration) — `REVOKE EXECUTE … FROM PUBLIC, anon` plus `GRANT EXECUTE … TO authenticated` only. The context provider path requires an authenticated staff session before any AI ingress call is assembled. |
 | Side effects | None. |
-| Code reference | `backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql:L56-L66` — wrapper + grant |
+| Code reference | `backend/supabase/migrations/20260802120000_context_provider_chief_complaint.sql:L56-L65` — wrapper + grant to authenticated; `backend/supabase/migrations/20260905120500_revoke_get_visit_chief_complaint_public_anon.sql` — REVOKE FROM PUBLIC/anon |
 
 ## Doc-drift observations
 

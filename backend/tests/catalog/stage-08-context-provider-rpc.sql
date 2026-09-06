@@ -6,12 +6,10 @@
 --   public.create_visit.
 -- CONFLICT: catalog S08-061/062/067 also describe Worker ingress POST
 --   (S08-049 / S08-046). This file asserts the RPC half only (no HTTP).
--- CONFLICT: catalog S08-069 names PostgREST HTTP 401/403 and a
---   function-level deny from GRANT EXECUTE … TO authenticated only
---   (S02-002 class). Register 5 #12 requires SQLSTATE 42501 here, not
---   HTTP. CODE grants EXECUTE to authenticated without REVOKE FROM
---   PUBLIC, so anon enters the SECURITY INVOKER wrapper and is denied
---   with 42501 `permission denied for schema auth_internal`.
+-- CONFLICT: catalog S08-069 names PostgREST HTTP 401/403. Register 5 #12
+--   requires SQLSTATE 42501 here, not HTTP. After
+--   20260905120500_revoke_get_visit_chief_complaint_public_anon.sql, anon
+--   is denied at function EXECUTE (S02-002 class).
 -- CODE: recorded_at is to_char(created_at AT TIME ZONE 'UTC',
 --   'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') after 20260805120000.
 
@@ -799,9 +797,8 @@ $$;
 
 -- -----------------------------------------------------------------------------
 -- S08-069 — RPC is not callable by anonymous clients
--- CODE: no REVOKE FROM PUBLIC on public.get_visit_chief_complaint, so
---   anon enters the invoker wrapper and is denied on schema
---   auth_internal (42501), not at function EXECUTE.
+-- CODE: REVOKE EXECUTE FROM PUBLIC, anon — function-level 42501
+--   `permission denied for function get_visit_chief_complaint`.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -832,13 +829,10 @@ BEGIN
   END;
 
   PERFORM pg_temp.reset_postgres();
-  -- CODE deny: 42501 permission denied for schema auth_internal.
-  -- Do not require ILIKE '%get_visit_chief_complaint%' (S02-002
-  -- REVOKE-FROM-PUBLIC shape). Call must RAISE; no rpc_result.
   v_ok := v_raised
     AND v_sqlstate = '42501'
     AND COALESCE(v_msg, '') ILIKE '%permission denied%'
-    AND COALESCE(v_msg, '') ILIKE '%auth_internal%'
+    AND COALESCE(v_msg, '') ILIKE '%get_visit_chief_complaint%'
     AND v_result IS NULL;
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' msg=' || COALESCE(v_msg, '<none>')
