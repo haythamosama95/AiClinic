@@ -524,8 +524,8 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 | ID | S03-036 |
 | Journey setup | None. D1 has no rows for `I2`/`ORG2`. |
 | Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/enroll`, operator bearer, body `{"org_id":"8B2C3D4E-5F6A-4B7C-8D9E-0F1A2B3C4D5E","display_name":"Boundary Clinic","region":"eu-central","plan":"starter","public_key":"dGhJkLzXcVbNm2QeRtYuIoPaSd8f7a9b0c1d2e3f4","algorithm":"EdDSA","kid":"1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D"}` (all UUIDs uppercase). |
-| Expected outcome | HTTP 200, body exactly `{"platform_base_url":"http://localhost:8787"}`. `CANONICAL_UUID_RE` carries the `/i` flag, so uppercase hex passes and the strings are stored verbatim (uppercase) in D1. Note: later scenarios reference `I2`/`KI2` by their lowercase forms only for readability — all D1 assertions for this installation use the uppercase stored values. |
-| Side effects | `installation` row for the uppercase id with `status = active`; `installation_key` row `1A2B3C4D-…` with `revoked_at = NULL`; `entitlement` row `plan = starter`, `status = pending`; `control_audit` row `action = enroll`, `operator_id = platform-operator`. |
+| Expected outcome | HTTP 200, body exactly `{"platform_base_url":"http://localhost:8787"}`. `CANONICAL_UUID_RE` carries the `/i` flag, so uppercase hex passes; enroll persists path `installation_id` and body `kid` in lowercase. `org_id` is stored as submitted (uppercase in this request). Later scenarios look up `I2`/`KI2` by those canonical lowercase stored ids. |
+| Side effects | `installation` row for the canonical lowercase id with `status = active`; `installation_key` row `1a2b3c4d-…` with `revoked_at = NULL`; `entitlement` row `plan = starter`, `status = pending`; `control_audit` row `action = enroll`, `operator_id = platform-operator`, targeting the canonical lowercase `I2` id. |
 | Code reference | ai-platform/src/platform-vocabulary.ts:L20-L22 — CANONICAL_UUID_RE with /i; ai-platform/src/control/lifecycle.ts:L199-L291 — handleEnroll |
 
 ## Scenario S03-037 — Enroll happy path registers installation, key, pending entitlement, and audit
@@ -646,7 +646,7 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 | Journey setup | S03-036 enrolled `I2` (`status = active`). |
 | Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/suspend`, operator bearer, `Content-Type: text/plain`, body `this is not json at all`. |
 | Expected outcome | HTTP 200, body exactly `{}`. `handleSuspend` (like `handleResume` and `handleDelete`) never calls `parseJsonBody`; the body is unread, so malformed JSON, wrong content type, or an empty body all succeed identically. |
-| Side effects | `installation.status` for the `I2` row becomes `suspended`; `control_audit` gains an `action = suspend` row targeting the uppercase `I2` id. |
+| Side effects | `installation.status` for the canonical lowercase `I2` row becomes `suspended`; `control_audit` gains an `action = suspend` row targeting the canonical lowercase `I2` id. |
 | Code reference | ai-platform/src/control/lifecycle.ts:L466-L516 — handleSuspend (no body read) |
 
 ## Scenario S03-048 — Rotate rejects a non-JSON body
@@ -778,7 +778,7 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 | Journey setup | S03-036 enrolled `I2`; S03-047 suspended `I2`. |
 | Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/rotate`, operator bearer, body `{"kid":"e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8a9b","public_key":"mZx1QwErTyUiOp9sDfGhJkLzXcVbNm2QeRtYuIoPaSd","algorithm":"EdDSA"}`. |
 | Expected outcome | HTTP 200, body exactly `{}`. `handleRotate` rejects only `status = deleted`; `suspended` is not blocked. |
-| Side effects | `installation_key` gains row `K2` for the `I2` id with `revoked_at = NULL`; `control_audit` gains `action = rotate` targeting the uppercase `I2` id. `installation.status` stays `suspended`. |
+| Side effects | `installation_key` gains row `K2` for the canonical lowercase `I2` id with `revoked_at = NULL`; `control_audit` gains `action = rotate` targeting the canonical lowercase `I2` id. `installation.status` stays `suspended`. |
 | Code reference | ai-platform/src/control/lifecycle.ts:L335-L337 — rotate blocks only deleted status |
 
 ## Scenario S03-060 — Revoke-key rejects a non-JSON body
@@ -987,7 +987,7 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 | Journey setup | S03-036 enrolled `I2`; S03-047 suspended it; S03-059/S03-070 managed its keys. `I2` is `suspended`. |
 | Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/delete`, operator bearer, body `{}`. |
 | Expected outcome | HTTP 200, body exactly `{}` — `suspended → deleted` is a legal transition (only `deleted → delete` is blocked). |
-| Side effects | `installation.status` for the `I2` row becomes `deleted`; `control_audit` gains `action = delete` targeting the uppercase `I2` id. Keys and entitlement rows remain. |
+| Side effects | `installation.status` for the canonical lowercase `I2` row becomes `deleted`; `control_audit` gains `action = delete` targeting the canonical lowercase `I2` id. Keys and entitlement rows remain. |
 | Code reference | ai-platform/src/control/lifecycle.ts:L595-L597 — delete status guard (only deleted blocked) |
 
 ## Scenario S03-079 — Purge happy path removes the full installation footprint from D1 and R2

@@ -26,8 +26,10 @@ const K0 = "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f";
 const X0 = "n4bQgYhMfWWaL-qgxVrQ1O91g3Z2Q4u2Zz8v0m5p8xk";
 
 const I2_UPPER = "AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D";
+const I2_STORED = I2_UPPER.toLowerCase();
 const ORG2_UPPER = "8B2C3D4E-5F6A-4B7C-8D9E-0F1A2B3C4D5E";
 const KI2_UPPER = "1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D";
+const KI2_STORED = KI2_UPPER.toLowerCase();
 // Catalog XI2 is 30 bytes; S03-036 uses generateTestKeypair() (32 bytes).
 
 const I_ORG_DUP = "4a5b6c7d-8e9f-4a0b-bc1d-2e3f4a5b6c7d";
@@ -354,39 +356,57 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
 
     const installation = await queryOne<InstallationRow>(
       "SELECT * FROM installation WHERE installation_id = ?",
-      [I2_UPPER],
+      [I2_STORED],
     );
     expect(installation).not.toBeNull();
-    expect(installation?.installation_id).toBe(I2_UPPER);
+    expect(installation?.installation_id).toBe(I2_STORED);
     expect(installation?.org_id).toBe(ORG2_UPPER);
     expect(installation?.display_name).toBe("Boundary Clinic");
     expect(installation?.status).toBe("active");
     expect(installation?.region).toBe("eu-central");
+    expect(
+      await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
+        I2_UPPER,
+      ]),
+    ).toBeNull();
 
     const key = await queryOne<InstallationKeyRow>(
       "SELECT * FROM installation_key WHERE key_id = ?",
-      [KI2_UPPER],
+      [KI2_STORED],
     );
     expect(key).not.toBeNull();
-    expect(key?.key_id).toBe(KI2_UPPER);
-    expect(key?.installation_id).toBe(I2_UPPER);
+    expect(key?.key_id).toBe(KI2_STORED);
+    expect(key?.installation_id).toBe(I2_STORED);
     expect(key?.public_key).toBe(publicKeyB64);
     expect(key?.revoked_at).toBeNull();
+    expect(
+      await queryOne("SELECT * FROM installation_key WHERE key_id = ?", [
+        KI2_UPPER,
+      ]),
+    ).toBeNull();
 
     const entitlement = await queryOne<EntitlementRow>(
       "SELECT * FROM entitlement WHERE installation_id = ?",
-      [I2_UPPER],
+      [I2_STORED],
     );
     expect(entitlement).not.toBeNull();
+    expect(entitlement?.installation_id).toBe(I2_STORED);
     expect(entitlement?.plan).toBe("starter");
     expect(entitlement?.status).toBe("pending");
 
     const audits = await queryAll<ControlAuditRow>(
       "SELECT * FROM control_audit WHERE action = ? AND target = ?",
-      ["enroll", I2_UPPER],
+      ["enroll", I2_STORED],
     );
     expect(audits).toHaveLength(1);
     expect(audits[0]?.operator_id).toBe("platform-operator");
+    expect(audits[0]?.target).toBe(I2_STORED);
+    expect(
+      await queryAll(
+        "SELECT * FROM control_audit WHERE action = ? AND target = ?",
+        ["enroll", I2_UPPER],
+      ),
+    ).toHaveLength(0);
   });
 
   it("S03-037 — Enroll happy path registers installation, key, pending entitlement, and audit", async () => {

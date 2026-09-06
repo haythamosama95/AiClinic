@@ -25,6 +25,7 @@ beforeEach(async () => {
 const I0 = "3f6b2a1c-9d4e-4f7a-8b1c-2e5d6a7b8c9d";
 const IUNKNOWN = "00000000-0000-4000-8000-000000000099";
 const I2_UPPER = "AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D";
+const I2_STORED = I2_UPPER.toLowerCase();
 const K0 = "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f";
 const K1 = "d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f8a";
 const K2 = "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8a9b";
@@ -323,16 +324,16 @@ describe("Stage 03 — lifecycle suspend/resume/rotate (S03-041…S03-060)", () 
 
     const installation = await queryOne<{ status: string }>(
       "SELECT status FROM installation WHERE installation_id = ?",
-      [I2_UPPER],
+      [I2_STORED],
     );
     expect(installation?.status).toBe("suspended");
 
-    const suspendAudits = await getAudits("suspend", I2_UPPER);
+    const suspendAudits = await getAudits("suspend", I2_STORED);
     expect(suspendAudits).toHaveLength(1);
     expect(suspendAudits[0]?.action).toBe("suspend");
-    expect(suspendAudits[0]?.target).toBe(I2_UPPER);
+    expect(suspendAudits[0]?.target).toBe(I2_STORED);
     assertNullPointers(suspendAudits[0]);
-    expect(await getAudits("suspend", I2_UPPER.toLowerCase())).toHaveLength(0);
+    expect(await getAudits("suspend", I2_UPPER)).toHaveLength(0);
   });
 
   it("S03-048 — Rotate rejects a non-JSON body", async () => {
@@ -530,7 +531,7 @@ describe("Stage 03 — lifecycle suspend/resume/rotate (S03-041…S03-060)", () 
 
     const installation = await queryOne<{ status: string }>(
       "SELECT status FROM installation WHERE installation_id = ?",
-      [I2_UPPER],
+      [I2_STORED],
     );
     expect(installation?.status).toBe("suspended");
 
@@ -542,15 +543,15 @@ describe("Stage 03 — lifecycle suspend/resume/rotate (S03-041…S03-060)", () 
     }>("SELECT * FROM installation_key WHERE key_id = ?", [K2]);
     expect(k2).toMatchObject({
       key_id: K2,
-      installation_id: I2_UPPER,
+      installation_id: I2_STORED,
       public_key: X2,
       revoked_at: null,
     });
 
-    const rotateAudits = await getAudits("rotate", I2_UPPER);
+    const rotateAudits = await getAudits("rotate", I2_STORED);
     expect(rotateAudits).toHaveLength(1);
     expect(rotateAudits[0]?.action).toBe("rotate");
-    expect(rotateAudits[0]?.target).toBe(I2_UPPER);
+    expect(rotateAudits[0]?.target).toBe(I2_STORED);
     assertNullPointers(rotateAudits[0]);
   });
 

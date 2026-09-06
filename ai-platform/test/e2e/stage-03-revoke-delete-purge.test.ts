@@ -508,9 +508,9 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     assertControlError(result, 404, "key_not_found");
     await assertLifecycleUnchanged(before);
 
-    const ki2 = await keyRow(KI2_STORED);
+    const ki2 = await keyRow(KI2_CATALOG);
     expect(ki2).not.toBeNull();
-    expect(ki2?.installation_id).toBe(I2_PATH);
+    expect(ki2?.installation_id).toBe(I2_STORED);
     expect(ki2?.revoked_at).toBeNull();
   });
 
@@ -716,24 +716,24 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
       body: { kid: KI2_STORED },
     });
     expect(revoke.status).toBe(200);
-    expect(await installationStatus(I2_PATH)).toBe("suspended");
+    expect(await installationStatus(I2_STORED)).toBe("suspended");
     const keyCountBefore = await count("installation_key", "installation_id = ?", [
-      I2_PATH,
+      I2_STORED,
     ]);
-    const entitlementBefore = await getEntitlement(I2_PATH);
+    const entitlementBefore = await getEntitlement(I2_STORED);
 
     const result = await controlFetch(actionPath(I2_PATH, "delete"), {
       body: {},
     });
 
     assertOkEmpty(result);
-    expect(await installationStatus(I2_PATH)).toBe("deleted");
+    expect(await installationStatus(I2_STORED)).toBe("deleted");
     expect(
-      await count("installation_key", "installation_id = ?", [I2_PATH]),
+      await count("installation_key", "installation_id = ?", [I2_STORED]),
     ).toBe(keyCountBefore);
-    expect(await getEntitlement(I2_PATH)).toEqual(entitlementBefore);
+    expect(await getEntitlement(I2_STORED)).toEqual(entitlementBefore);
 
-    const deleteAudits = await getAudits("delete", I2_PATH);
+    const deleteAudits = await getAudits("delete", I2_STORED);
     expect(deleteAudits).toHaveLength(1);
     expect(deleteAudits[0]?.operator_id).toBe(OPERATOR_ID);
   });
@@ -753,17 +753,17 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     );
     expect(historyBefore.length).toBeGreaterThan(0);
     const i2Before = await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
-      I2_PATH,
+      I2_STORED,
     ]);
     expect(i2Before).not.toBeNull();
 
     const i2KeysBefore = await queryAll(
       "SELECT * FROM installation_key WHERE installation_id = ? ORDER BY key_id",
-      [I2_PATH],
+      [I2_STORED],
     );
     const i2EntitlementBefore = await queryOne(
       "SELECT * FROM entitlement WHERE installation_id = ?",
-      [I2_PATH],
+      [I2_STORED],
     );
     expect(i2KeysBefore.length).toBeGreaterThan(0);
     expect(i2EntitlementBefore).not.toBeNull();
@@ -868,18 +868,18 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
 
     expect(
       await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
-        I2_PATH,
+        I2_STORED,
       ]),
     ).toEqual(i2Before);
     expect(
       await queryAll(
         "SELECT * FROM installation_key WHERE installation_id = ? ORDER BY key_id",
-        [I2_PATH],
+        [I2_STORED],
       ),
     ).toEqual(i2KeysBefore);
     expect(
       await queryOne("SELECT * FROM entitlement WHERE installation_id = ?", [
-        I2_PATH,
+        I2_STORED,
       ]),
     ).toEqual(i2EntitlementBefore);
   });
