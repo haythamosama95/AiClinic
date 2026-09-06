@@ -756,6 +756,17 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
     ]);
     expect(i2Before).not.toBeNull();
 
+    const i2KeysBefore = await queryAll(
+      "SELECT * FROM installation_key WHERE installation_id = ? ORDER BY key_id",
+      [I2_PATH],
+    );
+    const i2EntitlementBefore = await queryOne(
+      "SELECT * FROM entitlement WHERE installation_id = ?",
+      [I2_PATH],
+    );
+    expect(i2KeysBefore.length).toBeGreaterThan(0);
+    expect(i2EntitlementBefore).not.toBeNull();
+
     const footprintBefore = {
       ai_attempt: await count("ai_attempt", "request_id IN (?, ?)", [R1, R2_REQ]),
       usage_event: await count("usage_event", "installation_id = ?", [I0]),
@@ -777,64 +788,68 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
         I0,
       ]),
       entitlement: await count("entitlement", "installation_id = ?", [I0]),
+      grace_admission_queue: await count(
+        "grace_admission_queue",
+        "installation_id = ?",
+        [I0],
+      ),
       installation: await count("installation", "installation_id = ?", [I0]),
     };
+    expect(footprintBefore.ai_attempt).toBeGreaterThan(0);
+    expect(footprintBefore.usage_event).toBeGreaterThan(0);
+    expect(footprintBefore.ai_request).toBeGreaterThan(0);
+    expect(footprintBefore.usage_rollup).toBeGreaterThan(0);
+    expect(footprintBefore.platform_counter).toBeGreaterThan(0);
+    expect(footprintBefore.capability_grant).toBeGreaterThan(0);
+    expect(footprintBefore.installation_key).toBeGreaterThan(0);
+    expect(footprintBefore.entitlement).toBeGreaterThan(0);
+    expect(footprintBefore.grace_admission_queue).toBeGreaterThan(0);
+    expect(footprintBefore.installation).toBeGreaterThan(0);
 
     const result = await controlFetch(actionPath(I0, "purge"), { body: {} });
 
-    // Catalog: HTTP 200 {}. Code: grace_admission_queue FK blocks DELETE
-    // installation (purge never deletes grace) → 500 storage_error.
-    assertControlError(result, 500, "storage_error");
+    assertOkEmpty(result);
 
     const purgeAudits = await getAudits("purge_installation", I0);
-    expect(purgeAudits).toHaveLength(1);
-    expect(purgeAudits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(purgeAudits[0]?.target).toBe(I0);
-    expect(purgeAudits[0]?.before_pointer).toBeNull();
-    expect(purgeAudits[0]?.after_pointer).toBeNull();
+    expect(purgeAudits).toHaveLength(2);
+    for (const row of purgeAudits) {
+      expect(row.operator_id).toBe(OPERATOR_ID);
+      expect(row.target).toBe(I0);
+      expect(row.before_pointer).toBeNull();
+      expect(row.after_pointer).toBeNull();
+    }
 
     expect(await r2Exists(R1_ENVELOPE)).toBe(false);
     expect(await r2Exists(R2_ENVELOPE)).toBe(false);
 
     expect(await count("ai_attempt", "request_id IN (?, ?)", [R1, R2_REQ])).toBe(
-      footprintBefore.ai_attempt,
+      0,
     );
-    expect(await count("usage_event", "installation_id = ?", [I0])).toBe(
-      footprintBefore.usage_event,
-    );
-    expect(await count("ai_request", "installation_id = ?", [I0])).toBe(
-      footprintBefore.ai_request,
-    );
+    expect(await count("usage_event", "installation_id = ?", [I0])).toBe(0);
+    expect(await count("ai_request", "installation_id = ?", [I0])).toBe(0);
     expect(
       await count(
         "usage_rollup",
         "json_extract(dimensions, '$.installation_id') = ?",
         [I0],
       ),
-    ).toBe(footprintBefore.usage_rollup);
+    ).toBe(0);
     expect(
       await count(
         "platform_counter",
         "json_extract(dimension_set, '$.installation_id') = ?",
         [I0],
       ),
-    ).toBe(footprintBefore.platform_counter);
+    ).toBe(0);
     expect(
       await count("capability_grant", "scope = ?", [`installation:${I0}`]),
-    ).toBe(footprintBefore.capability_grant);
-    expect(await count("installation_key", "installation_id = ?", [I0])).toBe(
-      footprintBefore.installation_key,
-    );
-    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(
-      footprintBefore.entitlement,
-    );
-    expect(await count("installation", "installation_id = ?", [I0])).toBe(
-      footprintBefore.installation,
-    );
-
-    expect(await count("grace_admission_queue", "installation_id = ?", [I0])).toBe(
-      1,
-    );
+    ).toBe(0);
+    expect(await count("installation_key", "installation_id = ?", [I0])).toBe(0);
+    expect(await count("entitlement", "installation_id = ?", [I0])).toBe(0);
+    expect(
+      await count("grace_admission_queue", "installation_id = ?", [I0]),
+    ).toBe(0);
+    expect(await count("installation", "installation_id = ?", [I0])).toBe(0);
 
     const historyAfter = await queryAll<ControlAuditRow>(
       `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
@@ -855,9 +870,17 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
         I2_PATH,
       ]),
     ).toEqual(i2Before);
-    expect(await count("installation_key", "installation_id = ?", [I2_PATH])).toBe(
-      1,
-    );
+    expect(
+      await queryAll(
+        "SELECT * FROM installation_key WHERE installation_id = ? ORDER BY key_id",
+        [I2_PATH],
+      ),
+    ).toEqual(i2KeysBefore);
+    expect(
+      await queryOne("SELECT * FROM entitlement WHERE installation_id = ?", [
+        I2_PATH,
+      ]),
+    ).toEqual(i2EntitlementBefore);
   });
 
   it("S03-080 — Purge rejects a non-deleted installation", async () => {
