@@ -8,7 +8,7 @@ import {
 } from "./adapter";
 import {
   createCapabilityRegistry,
-  resolve as resolveCapability,
+  getRegisteredManifest,
   setCapabilityRegistry,
 } from "./capability";
 import {
@@ -33,7 +33,7 @@ import {
   isControlRoute,
   isQuotaInspectRoute,
 } from "./control";
-import { EnrolledKeyVerifier, type Principal } from "./identity";
+import { EnrolledKeyVerifier } from "./identity";
 import {
   authenticateGetRequest,
   getRequest,
@@ -511,16 +511,14 @@ async function settleMissingHandoffInternalError(
     request_reference: streamContext.requestReference,
   });
   const row = await runtimeEnv.DB.prepare(
-    `SELECT request_id, installation_id, actor_id, branch_id,
-            capability_id, capability_version, trace_id
+    `SELECT request_id, installation_id, capability_id, capability_version,
+            trace_id
      FROM ai_request WHERE request_reference = ?`,
   )
     .bind(streamContext.requestReference)
     .first<{
       request_id: string;
       installation_id: string;
-      actor_id: string;
-      branch_id: string;
       capability_id: string;
       capability_version: string;
       trace_id: string;
@@ -531,29 +529,13 @@ async function settleMissingHandoffInternalError(
     return;
   }
 
-  const principal: Principal = {
-    installationId: row.installation_id,
-    organizationId: "",
-    branchId: row.branch_id,
-    actorId: row.actor_id,
-    role: "",
-    scopes: [],
-    jti: "",
-    iat: 0,
-    exp: 0,
-    ver: "",
-  };
-  const resolved = await resolveCapability(
-    principal,
+  const manifest = getRegisteredManifest(
     row.capability_id,
     row.capability_version,
-    isolateConfigCache,
-    createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2),
-    log,
   );
-  if (!resolved.ok) {
+  if (manifest === undefined) {
     log.error("missing_handoff_settle_capability_unresolved", {
-      code: resolved.code,
+      code: "capability_unknown",
     });
     await recordTerminalState(
       row.request_id,
@@ -573,7 +555,7 @@ async function settleMissingHandoffInternalError(
       requestId: row.request_id,
       installationId: row.installation_id,
       requestReference: streamContext.requestReference,
-      manifest: resolved.manifest,
+      manifest,
       filteredContext: {},
       composed: placeholderComposedRequest(
         streamContext.requestReference,

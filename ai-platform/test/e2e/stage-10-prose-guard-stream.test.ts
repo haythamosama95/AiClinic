@@ -12,6 +12,7 @@ import {
   fakePolicyDocument,
   fakePolicyTarget,
   flushBackgroundWork,
+  gatewayObjectJson,
   getAiRequest,
   getAttempts,
   getR2Json,
@@ -425,6 +426,38 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
   const row = await getAiRequest(ref);
   expect(row).not.toBeNull();
   return row!;
+}
+
+/**
+ * Missing-handoff settlement runs in waitUntil after SSE `failed`. Poll until
+ * the synthetic attempt, usage_event, and R2 envelope are all present.
+ */
+async function waitForMissingHandoffSettlement(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row != null && row.state === "Failed") {
+      const requestId = String(row.request_id);
+      const attempts = await getAttempts(requestId);
+      const usage = await getUsageEvents(requestId);
+      const pointer = row.payload_pointer;
+      const envelopeReady =
+        typeof pointer === "string" &&
+        pointer.length > 0 &&
+        (await r2Exists(pointer));
+      if (attempts.length === 1 && usage.length === 1 && envelopeReady) {
+        return row;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `timed out waiting for missing-handoff settlement of ${ref} (state=${String(row?.state)})`,
+  );
 }
 
 async function assertValidationFailedSettlement(ref: string): Promise<void> {
@@ -1295,22 +1328,34 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       );
       expect(missedOnce).toBe(true);
 
-      const row = await requireAiRequest(ref);
+      const row = await waitForMissingHandoffSettlement(ref);
       expect(row.state).toBe("Failed");
       expect(row.terminal_error_code).toBe("internal_error");
       expect(row.routing_decision).toBeNull();
 
-      // CODE: settleMissingHandoffInternalError rebuilds Principal with empty
-      // scopes/role, so resolveCapability returns forbidden_capability and
-      // recordTerminalState returns without journaling a synthetic attempt.
       const attempts = await getAttempts(String(row.request_id));
-      expect(attempts).toHaveLength(0);
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]?.outcome).toBe("terminal_failure");
+      expect(attempts[0]?.error_code).toBe("internal_error");
+
       const usage = await getUsageEvents(String(row.request_id));
-      expect(usage).toHaveLength(0);
-      const pointer = row.payload_pointer;
-      if (typeof pointer === "string" && pointer.length > 0) {
-        expect(await r2Exists(pointer)).toBe(false);
-      }
+      expect(usage).toHaveLength(1);
+
+      expect(row.payload_pointer).toBeTruthy();
+      expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+
+      const inspect = await gatewayObjectJson(scenario.installationId, {
+        kind: "inspect",
+      });
+      expect(inspect.status).toBe(200);
+      const json = inspect.json as {
+        kind?: string;
+        state?: { creditedRequests?: Record<string, unknown> };
+      };
+      expect(json.kind).toBe("inspect");
+      const credited = json.state?.creditedRequests ?? {};
+      expect(Object.keys(credited)).toHaveLength(1);
+      expect(credited[String(row.request_id)]).toBeTruthy();
     } finally {
       mapSpy.mockRestore();
     }

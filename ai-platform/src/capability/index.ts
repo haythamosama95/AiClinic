@@ -540,6 +540,17 @@ export function isCapabilityVersionRegistered(
 }
 
 /**
+ * Direct registry lookup by `capability_id@version`. Skips access control —
+ * for post-admit settlement that already passed entitlement at accept.
+ */
+export function getRegisteredManifest(
+  capabilityId: string,
+  version: string,
+): Manifest | undefined {
+  return capabilityRegistry.get(registryKey(capabilityId, version));
+}
+
+/**
  * True when successor identity is known to the registry.
  * Accepts either `capabilityId` (any version) or `capabilityId@version`.
  */
