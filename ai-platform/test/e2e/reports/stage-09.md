@@ -101,11 +101,11 @@ Catalog: flip the final JWS character (`${AAT%?}x`) → `crypto.subtle.verify` f
 
 Code: Ed25519 signatures are 64 bytes / 86 base64url chars with unused trailing bits. A↔B (or some last-char-only mutations) can decode to the same 64 bytes. Variant (a) also flips an earlier signature character so decoded bytes change. Variant (b) (foreign keypair, enrolled `kid`) is unchanged.
 
-### 5.2 S09-027 — restore via entitle duplicates live grants
+### 5.2 S09-027 — restore via entitle is idempotent on live grants
 
 Catalog: after `[SEED] DELETE FROM entitlement`, restore with Stage 4 entitle.
 
-Code: `provisionHappyPath` already wrote installation grants. Re-entitle `INSERT`s `capability_grant` again → UNIQUE → control `storage_error` 500. POST assertions stay HTTP 500 `internal_error`. Teardown relies on `resetE2eState()`.
+Code: live installation-scope grants are skipped like plan-scope duplicates. Teardown re-inserts a pending entitlement row, then `entitleInstallation` returns HTTP 200 without a second live grant. POST assertions stay HTTP 500 `internal_error`.
 
 ### 5.3 S09-068 — failed idempotent replay uses stored terminal code
 

@@ -3,8 +3,8 @@
 ## S09-027
 
 - **Catalog claim:** After `[SEED] DELETE FROM entitlement`, restore via the Stage 4 entitle operation afterwards.
-- **Code behavior:** `provisionHappyPath` already inserted live installation-scope grants. `entitleInstallation` `INSERT`s `capability_grant` again; UNIQUE on the live installation grant (`idx_capability_grant_live_installation`) maps to control `storage_error` HTTP 500. The catalog POST (HTTP 500 `internal_error`) is unchanged. Teardown omits re-entitle; `beforeEach` `resetE2eState()` isolates the next test.
-- **File:line:** `ai-platform/src/control/entitle.ts` (grant INSERT / unique → `storage_error`); `ai-platform/test/e2e/stage-09-entitlement-ratelimit.test.ts` S09-027.
+- **Code behavior:** Entitle skips live installation-scope grants the same way it already skipped plan-scope duplicates, so re-entitle of surviving grants is HTTP 200 (idempotent). Teardown re-inserts a pending entitlement row, then `entitleInstallation`; grant ids are unchanged.
+- **File:line:** `ai-platform/src/control/entitle.ts` (installation-scope live-grant skip); `ai-platform/test/e2e/stage-09-entitlement-ratelimit.test.ts` S09-027.
 
 ## S09-073
 

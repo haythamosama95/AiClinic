@@ -351,7 +351,7 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-027 |
-| Journey setup | Baseline B0. [SEED] `DELETE FROM entitlement WHERE installation_id = '7f3a9c1e-…'` — justification: no control-plane operation deletes an entitlement row. ConfigCache cleared. Restore via the Stage 4 entitle operation afterwards. |
+| Journey setup | Baseline B0. [SEED] `DELETE FROM entitlement WHERE installation_id = '7f3a9c1e-…'` — justification: no control-plane operation deletes an entitlement row. ConfigCache cleared. Restore via the Stage 4 entitle operation afterwards: [SEED] a pending entitlement row, then POST entitle. Live installation-scope grants that survived the delete are skipped (idempotent; not a unique-index `500 storage_error`). |
 | Action | `POST /v1/requests` with a signed happy AAT; body H0. |
 | Expected outcome | HTTP 500 `{"code":"internal_error",…,"retry_safe":true}` — stage-3 `internal_error` GuardFailure envelope via `runGuard` → `preAcceptFailureResponse`. `evaluateEntitlement` catches `ConfigCacheMissError` on the entitlement row and returns `{ ok: false, code: "internal_error" }`; no uncaught throw reaches the worker `fetch`. The stage-8 entitlement-miss → `quota_exhausted` branch remains unreachable in the ordered pipeline (stage 3 fails first). |
 | Side effects | D1 reads only. Tally +1 `internal_error` / real installation id. No journal/admission writes. |

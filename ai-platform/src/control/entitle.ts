@@ -203,6 +203,7 @@ export async function handleEntitle(
   const recordedAt = nowIso();
   const allowedCapabilitiesJson = JSON.stringify(body.allowed_capabilities);
   const planScope = `plan:${entitlement.plan}`;
+  const installationScope = `installation:${installationId}`;
   const existingLivePlanGrantCapabilityIds = new Set<string>();
   if (body.grants.some((grant) => grant.scope === "plan")) {
     const existingPlanGrants = await DB.prepare(
@@ -213,6 +214,18 @@ export async function handleEntitle(
       .all<{ capability_id: string }>();
     for (const row of existingPlanGrants.results ?? []) {
       existingLivePlanGrantCapabilityIds.add(row.capability_id);
+    }
+  }
+  const existingLiveInstallationGrantCapabilityIds = new Set<string>();
+  if (body.grants.some((grant) => grant.scope !== "plan")) {
+    const existingInstallationGrants = await DB.prepare(
+      `SELECT capability_id FROM capability_grant
+       WHERE scope = ? AND revoked_at IS NULL`,
+    )
+      .bind(installationScope)
+      .all<{ capability_id: string }>();
+    for (const row of existingInstallationGrants.results ?? []) {
+      existingLiveInstallationGrantCapabilityIds.add(row.capability_id);
     }
   }
 
@@ -236,10 +249,16 @@ export async function handleEntitle(
 
   for (const grant of body.grants) {
     const scope =
-      grant.scope === "plan" ? planScope : `installation:${installationId}`;
+      grant.scope === "plan" ? planScope : installationScope;
     if (
       grant.scope === "plan" &&
       existingLivePlanGrantCapabilityIds.has(grant.capability_id)
+    ) {
+      continue;
+    }
+    if (
+      grant.scope !== "plan" &&
+      existingLiveInstallationGrantCapabilityIds.has(grant.capability_id)
     ) {
       continue;
     }
