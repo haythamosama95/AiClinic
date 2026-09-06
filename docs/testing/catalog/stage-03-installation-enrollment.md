@@ -898,8 +898,8 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 | ID | S03-070 |
 | Journey setup | S03-036 enrolled `I2` (`KI2`); S03-047 suspended `I2`; S03-059 rotated `K2` onto suspended `I2` (two active keys). |
 | Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/revoke-key`, operator bearer, body `{"kid":"1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}`. |
-| Expected outcome | HTTP 200, body exactly `{}`. `handleRevokeKey` blocks only `status = deleted`; suspension does not restrict key management. |
-| Side effects | `KI2` row gets `revoked_at` set; `K2` stays active; `control_audit` gains `action = revoke-key`, `after_pointer = KI2`, targeting the uppercase `I2` id. `installation.status` stays `suspended`. |
+| Expected outcome | HTTP 200, body exactly `{}`. `handleRevokeKey` blocks only `status = deleted`; suspension does not restrict key management. Enroll/rotate persist `kid` and path installation ids in lowercase, so this catalog lowercase revoke matches the uppercase-enrolled `KI2`. |
+| Side effects | Canonical lowercase `KI2` row gets `revoked_at` set; `K2` stays active; `control_audit` gains `action = revoke-key`, `after_pointer = KI2`, targeting the canonical lowercase `I2` id. `installation.status` stays `suspended`. |
 | Code reference | ai-platform/src/control/lifecycle.ts:L414-L416 — revoke blocks only deleted status |
 
 ## Scenario S03-071 — Delete of an unknown installation returns installation_not_found
@@ -1054,7 +1054,7 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 3. **Suspend/resume/delete body convention — fixed (D-09).** [§4.3](#43-post-controlinstallationsinstallation_idsuspend)–[§4.5](#45-post-controlinstallationsinstallation_iddelete) state that these handlers ignore the request body entirely (S03-047).
 4. **Rotate and revoke-key on suspended installations — fixed (D-10).** [§4](#4-post-enroll-lifecycle-apis) documents that only `deleted` blocks key management (S03-059, S03-070).
 5. **Delete and purge preconditions — fixed (D-10 / C-14).** [§4.5](#45-post-controlinstallationsinstallation_iddelete) documents no suspend precondition; [§4.6](#46-post-controlinstallationsinstallation_idpurge) documents the `status = deleted` purge precondition (S03-072, S03-078, S03-080).
-6. **"Canonical UUID" is case-insensitive in code.** `CANONICAL_UUID_RE` uses the `/i` flag, so uppercase hex UUIDs pass validation and are stored verbatim (S03-036). Docs imply lowercase canonical form.
+6. **"Canonical UUID" is accepted case-insensitively and stored lowercase.** `CANONICAL_UUID_RE` uses the `/i` flag, so uppercase hex UUIDs pass validation; enroll/rotate persist `kid` and path installation ids in lowercase so revoke/verify lookups match (S03-036, S03-070).
 7. **Purge audit cardinality — fixed (D-10).** [§4.6](#46-post-controlinstallationsinstallation_idpurge) documents exactly two `purge_installation` rows per call (S03-079, S03-081, S03-082).
 8. **Purge preserves `control_audit` history; `grace_admission_queue` rows for the purged installation are deleted.** [§4.6](#46-post-controlinstallationsinstallation_idpurge) and S03-079 side effects document audit survival and grace-row deletion.
 9. **No drift on enroll semantics.** Enroll dedup on `installation_id OR org_id` (S03-038/S03-039), `duplicate_kid` via batch UNIQUE (S03-040), the pending/zero-quota entitlement, `valid_until = +365d`, and the `{platform_base_url}`-only success body all match the doc exactly.

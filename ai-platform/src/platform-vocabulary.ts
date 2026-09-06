@@ -36,6 +36,11 @@ export function isCanonicalUuid(value: string): boolean {
   return isWithinIdentifierLength(value) && CANONICAL_UUID_RE.test(value);
 }
 
+/** RFC 4122 hex is case-insensitive; persist and look up the lowercase form. */
+export function toCanonicalUuid(value: string): string {
+  return value.toLowerCase();
+}
+
 export function decodeBase64url(segment: string): Uint8Array | null {
   try {
     const padded = segment + "=".repeat((4 - (segment.length % 4)) % 4);

@@ -37,6 +37,7 @@ const K0 = "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f";
 const X0 = "n4bQgYhMfWWaL-qgxVrQ1O91g3Z2Q4u2Zz8v0m5p8xk";
 
 const I2_PATH = "AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D";
+const I2_STORED = I2_PATH.toLowerCase();
 const ORG2 = "8B2C3D4E-5F6A-4B7C-8D9E-0F1A2B3C4D5E";
 const KI2_STORED = "1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D";
 const KI2_CATALOG = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
@@ -586,34 +587,34 @@ describe("Stage 03 — revoke/delete/purge (S03-061…S03-083)", () => {
 
   it("S03-070 — Revoke-key succeeds on a suspended installation", async () => {
     await prepareSuspendedI2DualKey();
-    expect(await installationStatus(I2_PATH)).toBe("suspended");
+    expect(await installationStatus(I2_STORED)).toBe("suspended");
 
-    // Catalog Action body uses lowercase KI2; S03-036 stores the kid uppercase.
-    // Lookup is exact-match TEXT (lifecycle.ts:419-424), so send the stored kid.
+    // Catalog Action: lowercase KI2 against an uppercase-enrolled kid.
+    // Enroll/rotate persist canonical lowercase, so the revoke matches.
     const result = await controlFetch(actionPath(I2_PATH, "revoke-key"), {
-      body: { kid: KI2_STORED },
+      body: { kid: KI2_CATALOG },
     });
 
     assertOkEmpty(result);
 
-    const ki2 = await keyRow(KI2_STORED);
+    const ki2 = await keyRow(KI2_CATALOG);
     expect(ki2).not.toBeNull();
     assertIsoApproxNow(ki2?.revoked_at);
 
     const k2 = await keyRow(K2);
     expect(k2).not.toBeNull();
     expect(k2?.revoked_at).toBeNull();
-    expect(await installationStatus(I2_PATH)).toBe("suspended");
+    expect(await installationStatus(I2_STORED)).toBe("suspended");
 
     const revokeAudits = await queryAll<ControlAuditRow>(
       `SELECT audit_id, operator_id, action, target, before_pointer, after_pointer, recorded_at
        FROM control_audit WHERE action = 'revoke-key' AND target = ?`,
-      [I2_PATH],
+      [I2_STORED],
     );
     expect(revokeAudits).toHaveLength(1);
     expect(revokeAudits[0]?.operator_id).toBe(OPERATOR_ID);
     expect(revokeAudits[0]?.before_pointer).toBeNull();
-    expect(revokeAudits[0]?.after_pointer).toBe(KI2_STORED);
+    expect(revokeAudits[0]?.after_pointer).toBe(KI2_CATALOG);
   });
 
   it("S03-071 — Delete of an unknown installation returns installation_not_found", async () => {

@@ -4,6 +4,7 @@ import {
   isImportableEd25519PublicKeyBase64url,
   isKnownPlanTier,
   isSupportedInstallationKeyAlgorithm,
+  toCanonicalUuid,
 } from "../platform-vocabulary";
 import {
   newId,
@@ -52,7 +53,7 @@ function requireValidInstallationId(
   if (!isCanonicalUuid(installationId)) {
     return reject(400, "invalid_payload");
   }
-  return installationId;
+  return toCanonicalUuid(installationId);
 }
 
 async function requireValidPublicKey(publicKey: string): Promise<Response | null> {
@@ -79,7 +80,7 @@ function validateRevokeKeyPayload(
   if (!isCanonicalUuid(kid)) {
     return reject(400, "invalid_payload");
   }
-  return { kid };
+  return { kid: toCanonicalUuid(kid) };
 }
 
 function validateEnrollPayload(
@@ -125,7 +126,7 @@ function validateEnrollPayload(
     plan,
     public_key,
     algorithm,
-    kid,
+    kid: toCanonicalUuid(kid),
   };
 }
 
@@ -150,7 +151,7 @@ function validateRotatePayload(
   if (!isEd25519PublicKeyByteLength(public_key)) {
     return reject(400, "invalid_payload");
   }
-  return { kid, public_key, algorithm };
+  return { kid: toCanonicalUuid(kid), public_key, algorithm };
 }
 
 function d1ErrorMessage(err: unknown): string {

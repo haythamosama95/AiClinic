@@ -8,6 +8,7 @@ import {
   type D1Reader,
   loadConfig,
 } from "../config-cache";
+import { toCanonicalUuid } from "../platform-vocabulary";
 import { recordGuardRejection } from "../rate-limit";
 
 export interface Principal {
@@ -294,9 +295,12 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
+    const installationId = toCanonicalUuid(payload.iss);
+    const kid = toCanonicalUuid(header.kid);
+
     let installation: Record<string, unknown>;
     try {
-      installation = await loadConfig(ctx.cache, ctx.reader, "installations", payload.iss);
+      installation = await loadConfig(ctx.cache, ctx.reader, "installations", installationId);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         return rejectUnauthenticated();
@@ -306,7 +310,7 @@ export class EnrolledKeyVerifier implements TokenVerifier {
 
     let keyRow: Record<string, unknown>;
     try {
-      keyRow = await loadConfig(ctx.cache, ctx.reader, "keys", header.kid);
+      keyRow = await loadConfig(ctx.cache, ctx.reader, "keys", kid);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         return rejectUnauthenticated();
@@ -323,7 +327,7 @@ export class EnrolledKeyVerifier implements TokenVerifier {
     }
 
     // Key selected by iss AND kid (§4.3.2) — bind ownership before verify.
-    if (keyRow.installation_id !== payload.iss) {
+    if (keyRow.installation_id !== installationId) {
       return rejectUnauthenticated();
     }
 
@@ -350,8 +354,6 @@ export class EnrolledKeyVerifier implements TokenVerifier {
     }
 
     // Signature verified — installation_id attribution is safe from here (§4.7).
-    const installationId = payload.iss;
-
     // Fail closed on lifecycle: only `active` authenticates (§4.3.2 / B2 delete).
     if (installation.status === "suspended") {
       return rejectSuspended(installationId);
@@ -374,6 +376,9 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated(installationId);
     }
 
-    return { ok: true, principal: buildPrincipal(payload) };
+    return {
+      ok: true,
+      principal: buildPrincipal({ ...payload, iss: installationId }),
+    };
   }
 }
