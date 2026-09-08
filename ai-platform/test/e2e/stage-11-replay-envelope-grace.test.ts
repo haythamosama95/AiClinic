@@ -144,8 +144,8 @@ async function loadFakeModule(): Promise<FakeModule> {
 }
 
 /**
- * HARNESS-GAP: creditUsage is NOT on the barrel. Catalog S11-021 Action
- * calls it with a stubbed DO; S11-012 notes the wrapper mapping.
+ * HARNESS-GAP: creditUsage is NOT on the barrel. S11-012 asserts the
+ * wrapper mapping via this import; S11-021 Action calls it with a stubbed DO.
  */
 async function loadCreditModule(): Promise<CreditModule> {
   return import("../../src/credit");
@@ -761,6 +761,9 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     expect(afterComplete.idempotency?.[idempotencyKey]?.state).toBe("completed");
     expect(await count("usage_event", "request_id = ?", [requestId])).toBe(1);
 
+    const usage = { tokens: 30, cost: 0.005 };
+    const creditMod = await loadCreditModule();
+
     const doubleCredit = await gatewayObjectJson(
       scenario.installationId,
       {
@@ -768,7 +771,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
         installationId: scenario.installationId,
         requestId,
         requestReference: ref,
-        usage: { tokens: 30, cost: 0.005 },
+        usage,
         partial: false,
       },
       { now },
@@ -779,6 +782,18 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       ok: false,
       code: "unknown_request",
     });
+
+    const wrappedDouble = await creditMod.creditUsage(
+      {
+        installationId: scenario.installationId,
+        requestId,
+        requestReference: ref,
+        usage,
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(wrappedDouble).toEqual({ ok: false, code: "unknown_request" });
 
     const afterDouble = await inspectState(scenario.installationId, now);
     expect(afterDouble.periodCounters).toMatchObject({
@@ -799,7 +814,7 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
         installationId: scenario.installationId,
         requestId: unknownId,
         requestReference: ref,
-        usage: { tokens: 30, cost: 0.005 },
+        usage,
         partial: false,
       },
       { now },
@@ -809,6 +824,18 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
       ok: false,
       code: "unknown_request",
     });
+
+    const wrappedUnknown = await creditMod.creditUsage(
+      {
+        installationId: scenario.installationId,
+        requestId: unknownId,
+        requestReference: ref,
+        usage,
+        partial: false,
+      },
+      { DO: env.DO },
+    );
+    expect(wrappedUnknown).toEqual({ ok: false, code: "unknown_request" });
 
     const afterUnknown = await inspectState(scenario.installationId, now);
     expect(Object.keys(afterUnknown.creditedRequests ?? {})).toHaveLength(1);
