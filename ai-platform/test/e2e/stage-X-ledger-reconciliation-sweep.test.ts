@@ -742,9 +742,8 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     try {
       await invokeCron(CRON_RETENTION);
       const purged = parseLogPayload(logs.lines, "retention_purge_complete");
-      if (purged) {
-        expect(purged.counter_deleted).toBe(1);
-      }
+      expect(purged).toBeDefined();
+      expect(purged!.counter_deleted).toBe(1);
     } finally {
       logs.restore();
     }
@@ -914,11 +913,10 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     try {
       await invokeCron(CRON_ROLLUP);
       const payload = parseLogPayload(logs.lines, "usage_rollup_reconciliation");
-      if (payload) {
-        expect(payload.rollups_written).toBe(0);
-        expect(payload.missing_attempt_rows).toBe(0);
-        expect(payload.missing_usage_credit).toBe(0);
-      }
+      expect(payload).toBeDefined();
+      expect(payload!.rollups_written).toBe(0);
+      expect(payload!.missing_attempt_rows).toBe(0);
+      expect(payload!.missing_usage_credit).toBe(0);
     } finally {
       logs.restore();
     }
