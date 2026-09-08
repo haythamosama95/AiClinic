@@ -53,7 +53,7 @@ All contract failures are raised in this order (`20260801120200…sql:L143-L238`
 | 6 | `RATE_LIMITED` | Per-actor mint count ≥ ceiling within window (L214-L223) |
 | 7 | `AI_ACCESS_DENIED` | Role has no granted `ai.*` permission (L225-L238) |
 
-Non-contract failures (e.g. invalid `ai.issuer.rate_limit.ceiling` JSON → `22P02` cast error, S06-033) surface as uncoded Postgres errors.
+Non-contract failures (e.g. invalid `ai.issuer.rate_limit.ceiling` JSON → `22023` cast error, S06-033) surface as uncoded Postgres errors.
 
 ### 1.2 Branch selection and scope ordering
 
@@ -78,12 +78,12 @@ Non-contract failures (e.g. invalid `ai.issuer.rate_limit.ceiling` JSON → `22P
 **Baseline B0** (built once; scenarios reference it plus deltas):
 
 1. Fresh local Supabase, all migrations applied (seeded bootstrap admin, `roles_permissions`
-   matrix, `ai_internal.app_settings` AI keys at defaults: lifetime 15, audience `ai-platform`,
+   matrix, `ai_internal.app_settings` AI keys at defaults: lifetime 10, audience `ai-platform`,
    ver `1`, ceiling 100, window 3600).
 2. As BOOT: `SELECT public.bootstrap_finish_setup('Sunrise Dental Clinic', 'Main Branch',
-   '[{"username":"nadia.h","password":"Cl1nic!pass","full_name":"Nadia Haddad","role":"doctor"},
-     {"username":"lina.k","password":"Cl1nic!pass","full_name":"Lina Khoury","role":"administrator"},
-     {"username":"rami.s","password":"Cl1nic!pass","full_name":"Rami Saleh","role":"receptionist"}]'::jsonb);`
+   '[{"username":"nadia_h","password":"Cl1nic!pass","full_name":"Nadia Haddad","role":"doctor"},
+     {"username":"lina_k","password":"Cl1nic!pass","full_name":"Lina Khoury","role":"administrator"},
+     {"username":"rami_s","password":"Cl1nic!pass","full_name":"Rami Saleh","role":"receptionist"}]'::jsonb);`
    → ORG, BR-A, staff rows DOC/ADM/REC each primarily assigned to BR-A.
 3. Stage 2 enroll happy path, as BOOT: `SELECT public.enroll_installation_keypair();`
    → `rpc_success` with `kid` K0, `installation_id` I0, `public_jwk`; one active
@@ -152,7 +152,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | Field | Content |
 |-------|---------|
 | ID | S06-006 |
-| Journey setup | Baseline B0. As ADM, delete the doctor via the production delete path (`public.delete_staff_member`, migration `20260613210000`), which soft-deletes the `staff_members` row. Inject claims for DOC-AUTH. |
+| Journey setup | Baseline B0. As ADM, deactivate the doctor via `public.set_staff_active('<DOC>', false)`, then delete via the production delete path (`public.delete_staff_member`, migration `20260613210000`), which soft-deletes the `staff_members` row. (Delete of an still-active staff member raises `STAFF_STILL_ACTIVE`.) Inject claims for DOC-AUTH. |
 | Action | `SELECT public.issue_ai_token();` |
 | Expected outcome | `ERROR:  STAFF_NOT_FOUND` (SQLSTATE `P0001`) — `is_deleted = false` filter in `build_staff_claims`. |
 | Side effects | Only the setup soft-delete. No issuance row. |
@@ -297,7 +297,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-019 |
 | Journey setup | Baseline B0, pristine ledger. Inject claims for DOC-AUTH. Pre-compute expectations: doctor staff id DOC, primary active branch BR-A, org ORG, doctor `ai.*` grants (`ai.access` only), active signing key K0 of installation I0. |
 | Action | `SELECT public.issue_ai_token();` |
-| Expected outcome | Returns `text`: a compact JWS `<b64url(header)>.<b64url(payload)>.<b64url(signature)>` — exactly three non-empty segments, no JSON envelope, no key material. Decoded header is exactly `{"alg":"EdDSA","kid":"<K0>"}` (two members, no more). Decoded payload has **exactly** these 11 claims: `iss = "<I0>"`; `aud = "ai-platform"`; `sub = "<DOC>"`; `org = "<ORG>"`; `branch = "<BR-A>"`; `role = "doctor"`; `scopes = ["ai.access"]`; `jti = <fresh UUID text>`; `iat = <unix seconds, ≈ now>`; `exp = iat + 900` (seed `ai.aat.lifetime_minutes = 15`); `ver = "1"`. `iat`/`exp` are JSON numbers. **Absent:** any patient identifier, `quota`, `provider`/`model`/`routing_tier` hint. The signature verifies against K0's public key (proven in S06-034). |
+| Expected outcome | Returns `text`: a compact JWS `<b64url(header)>.<b64url(payload)>.<b64url(signature)>` — exactly three non-empty segments, no JSON envelope, no key material. Decoded header is exactly `{"alg":"EdDSA","kid":"<K0>"}` (two members, no more). Decoded payload has **exactly** these 11 claims: `iss = "<I0>"`; `aud = "ai-platform"`; `sub = "<DOC>"`; `org = "<ORG>"`; `branch = "<BR-A>"`; `role = "doctor"`; `scopes = ["ai.access"]`; `jti = <fresh UUID text>`; `iat = <unix seconds, ≈ now>`; `exp = iat + 600` (seed `ai.aat.lifetime_minutes = 10`); `ver = "1"`. `iat`/`exp` are JSON numbers. **Absent:** any patient identifier, `quota`, `provider`/`model`/`routing_tier` hint. The signature verifies against K0's public key (proven in S06-034). |
 | Side effects | Exactly one new row in `ai_internal.ai_token_issuance`: `installation_id = I0`, `jti = <payload jti>`, `actor_staff_id = DOC`, `iat = to_timestamp(<payload iat>)`, `created_by = updated_by = DOC-AUTH`. **No** writes to `installation_keys`, `app_settings`, `audit_log`, or any `public.*` table (the issuer does not audit-log mints). |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L240-L292 — claim assembly, EdDSA sign, ledger insert` |
 
@@ -308,7 +308,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-020 |
 | Journey setup | Baseline B0. Inject claims for ADM-AUTH. The seeded matrix plus migration `20260903180000` grant `administrator` both `ai.access` and `ai.visit_summary`. |
 | Action | `SELECT public.issue_ai_token();` |
-| Expected outcome | Compact JWS; payload `role = "administrator"`, `scopes = ["ai.access","ai.visit_summary"]` — the aggregate's `ORDER BY permission_key` guarantees deterministic alphabetical ordering. All other claims shaped as in S06-019 (`sub = ADM`, `branch = BR-A`, `org = ORG`, `iss = I0`, `kid = K0`, `exp − iat = 900`, `ver = "1"`). |
+| Expected outcome | Compact JWS; payload `role = "administrator"`, `scopes = ["ai.access","ai.visit_summary"]` — the aggregate's `ORDER BY permission_key` guarantees deterministic alphabetical ordering. All other claims shaped as in S06-019 (`sub = ADM`, `branch = BR-A`, `org = ORG`, `iss = I0`, `kid = K0`, `exp − iat = 600`, `ver = "1"`). |
 | Side effects | One `ai_token_issuance` row with `actor_staff_id = ADM`. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L225-L238 — jsonb_agg ORDER BY; backend/supabase/migrations/20260903180000_grant_ai_visit_summary_administrator.sql:L1-L7 — ai.visit_summary grant` |
 
@@ -440,7 +440,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-032 |
 | Journey setup | Baseline B0. As `postgres`: `UPDATE ai_internal.app_settings SET value_json = '10'::jsonb WHERE key = 'ai.aat.lifetime_minutes';` Inject claims for DOC-AUTH. |
 | Action | `SELECT public.issue_ai_token();` |
-| Expected outcome | Payload satisfies `exp − iat = 600` exactly (`iat + (10 * 60)`). The issuer itself imposes **no** cap — any positive `lifetime_minutes` mints. The boundary matters downstream: the platform verifier rejects only `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`), so a 600-second token is the largest the platform accepts; Stage 9 guard identity verification accepts this token's lifetime shape. Fractional values also work (`0.5` → 30 s). Restore lifetime to `15` afterwards. |
+| Expected outcome | Payload satisfies `exp − iat = 600` exactly (`iat + (10 * 60)`). The issuer itself imposes **no** cap — any positive `lifetime_minutes` mints. The boundary matters downstream: the platform verifier rejects only `exp − iat > 600` (`MAX_AAT_LIFETIME_SECONDS`), so a 600-second token is the largest the platform accepts; Stage 9 guard identity verification accepts this token's lifetime shape. Fractional values also work (`0.5` → 30 s). Restore lifetime to `10` afterwards. |
 | Side effects | One issuance row. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L201-L201 — lifetime read; L242 — exp computation; ai-platform/src/identity/index.ts:L42 and L292-L294 — platform cap` |
 
@@ -451,7 +451,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-033 |
 | Journey setup | Baseline B0. As `postgres`: `UPDATE ai_internal.app_settings SET value_json = '"abc"'::jsonb WHERE key = 'ai.issuer.rate_limit.ceiling';` — [SEED]: no RPC writes these settings, so no input validation ever guards them. Inject claims for DOC-AUTH. |
 | Action | `SELECT public.issue_ai_token();` |
-| Expected outcome | SQLSTATE `22P02` `invalid input syntax for type numeric: "abc"` — the `value_json::numeric` cast in `ai_app_setting_numeric` throws **before** any coded gate. Not a contract error code; surfaces as a generic PostgREST 400. Restore the ceiling to `'100'` afterwards. |
+| Expected outcome | SQLSTATE `22023` `invalid input syntax for type numeric: "abc"` — the `value_json::numeric` cast in `ai_app_setting_numeric` throws **before** any coded gate. Not a contract error code; surfaces as a generic PostgREST 400. Restore the ceiling to `'100'` afterwards. |
 | Side effects | None. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L31-L50 — ai_app_setting_numeric cast` |
 
@@ -528,7 +528,7 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | ID | S06-040 |
 | Journey setup | Baseline B0 with `ai.aat.lifetime_minutes` set to a tiny value (`'0.01'` → 0.6 s, rounds to `exp = iat`). Mint as DOC-AUTH, then `SELECT pg_sleep(2);` so the token is unambiguously past `exp`. |
 | Action | `SELECT auth_internal.verify_aat('<expired token>');` |
-| Expected outcome | `true` — the clinic self-test deliberately skips expiry (code comment: "platform verifier (B3) enforces expiry"). The same token is rejected downstream: Stage 9 guard identity verification returns `unauthenticated` for `now > exp + clockSkewSeconds`. Expiry enforcement is exclusively platform-side. Restore lifetime to `15`. |
+| Expected outcome | `true` — the clinic self-test deliberately skips expiry (code comment: "platform verifier (B3) enforces expiry"). The same token is rejected downstream: Stage 9 guard identity verification returns `unauthenticated` for `now > exp + clockSkewSeconds`. Expiry enforcement is exclusively platform-side. Restore lifetime to `10`. |
 | Side effects | One issuance row from the setup mint. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L369-L369 — exp comment; ai-platform/src/identity/index.ts:L286-L291 — platform expiry check` |
 

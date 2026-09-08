@@ -9,7 +9,7 @@ Source files read: `ai-platform/src/control/routing-policy.ts`, `ai-platform/src
 - Reference policy document: `ai-platform/control/routing-policy/platform-default/1.json` — `policy_id: "standard"`, `policy_version: 1`, single catch-all rule `platform-default-fallback` with targets `deepseek/deepseek-v4-flash` then `gemini/gemini-3.5-flash` (both: structured_output true, min_context_window 128000, languages `["en"]`, latency_class `"standard"`, cost_class `"standard"`, max_attempts 2, timeout_ms 30000), `overrides: []`.
 - The only published capability manifest is `clinic.visit_summary@1.0.0` with `Routing.routingPolicyRef = "routing/standard"` and `Routing.latencyClass = "standard"` — this drives the publish-warning matrix (`latencyMismatchWarnings` matches manifests by policy id only).
 - Installations used below: `018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f` ("inst-A", canary cohort member) and `018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a` ("inst-B", non-canary). Both are honestly built via the installation-lifecycle chapter's enroll happy path plus the entitlement chapter's entitle happy path (grant for `clinic.visit_summary@1.0.0`).
-- Invoke journeys use `POST /v1/requests` per Stage 10 (request ingress) accepted-request behavior: headers `Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0yMDI2LTA4In0.eyJvcmdfaWQiOiJvcmctN2YzYSIsInNjb3BlIjoiYWkudmlzaXRfc3VtbWFyeSJ9.c2lnbmF0dXJl` (AAT minted per Stage 6 — AAT minting behavior), `Content-Type: application/json`, `x-idempotency-key: idem-s05-<suffix>`, `x-capability-version: 1.0.0`; body `{"capability_id":"clinic.visit_summary","user_intent":"Summarize today's visit for the chart.","context":{"org":"org-7f3a","branch":"branch-01","visit.chief_complaint@v1":"Patient reports headache for 3 days."}}`. Expected accept: HTTP 202 with a Crockford `request_reference`; post-accept outcomes are observed on the request's SSE stream and in D1 (`ai_request.state`, `ai_request.routing_decision`, `ai_attempt`).
+- Invoke journeys use `POST /v1/requests` per Stage 10 (request ingress) accepted-request behavior: headers `Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0yMDI2LTA4In0.eyJvcmdfaWQiOiJvcmctN2YzYSIsInNjb3BlIjoiYWkudmlzaXRfc3VtbWFyeSJ9.c2lnbmF0dXJl` (AAT minted per Stage 6 — AAT minting behavior), `Content-Type: application/json`, `x-idempotency-key: idem-s05-<suffix>`, `x-capability-version: 1.0.0`; body `{"capability_id":"clinic.visit_summary","user_intent":"Summarize today's visit for the chart.","context":{"org":"org-7f3a","branch":"branch-01","visit.chief_complaint@v1":"Patient reports headache for 3 days."}}`. Expected accept: HTTP 200 `text/event-stream` with SSE `accepted` carrying a Crockford `request_reference` (not 202); post-accept outcomes are observed on the request's SSE stream and in D1 (`ai_request.state`, `ai_request.routing_decision`, `ai_attempt`).
 - Invoke-path hardwiring (from `worker.ts` L754–L755, code is truth): `manifestCostClass` is always `"standard"`, `entitlementMaxCostClass` is always `"premium"`; therefore the effective cost class on any un-overridden invoke is `standard` with `cost_class_source: "manifest"`.
 - Routing errors thrown post-accept (`ConfigCacheMissError`, any `RoutingPolicyError`) are caught by the `runFreshEventSource` `.catch` (`worker.ts` L886–L913) and surface on the wire only as SSE `failed`/`internal_error` — router internal codes never reach the client. The catch also settles the request as `Failed`/`internal_error` via `settlePostAcceptInternalError` (journal + `recordTerminalState` + synthetic `ai_attempt`; C-01). Malformed routing-policy control paths → worker 404, not `400 invalid_route` (dispatch pre-filters; A-01).
 
@@ -604,7 +604,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-050 |
 | Journey setup | S05-001 completed (`standard@1` `published`, never promoted); inst-A fully entitled and AAT-minted per Conventions. |
 | Action | `POST /v1/requests` with the Conventions invoke headers/body for inst-A (`x-idempotency-key: idem-s05-050-0001`), then read the SSE stream for the returned `request_reference`. |
-| Expected outcome | HTTP 202 accept (Stage 10 behavior — guards do not touch routing policy). On the stream: a `failed` terminal event with code `internal_error`. Root cause: `preloadRoutingPolicyForInstallation` → reader finds no `canary` row naming inst-A and no `active` row → `ConfigCacheMissError("active_routing_policy", "routing/standard/…")` → caught by the `runFreshEventSource` catch-all. |
+| Expected outcome | HTTP 200 accept (Stage 10 behavior — guards do not touch routing policy). On the stream: a `failed` terminal event with code `internal_error`. Root cause: `preloadRoutingPolicyForInstallation` → reader finds no `canary` row naming inst-A and no `active` row → `ConfigCacheMissError("active_routing_policy", "routing/standard/…")` → caught by the `runFreshEventSource` catch-all. |
 | Side effects | `ai_request` row exists from accept. No `ai_request.routing_decision` write (routing never resolved). Terminal settlement: `state = 'Failed'`, `terminal_error_code = 'internal_error'`, synthetic `ai_attempt` + ledger per `settlePostAcceptInternalError` (C-01). |
 | Code reference | ai-platform/src/config-cache/index.ts:L366-L378 — active-row lookup returns "miss"; ai-platform/src/worker.ts:L731-L736 — preload; L886-L913 — catch → `internal_error` + settlement |
 
@@ -615,7 +615,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-051 |
 | Journey setup | `standard@1` active (S05-035) with the fixture's two targets; `standard@2` published with a single-target document (`gemini/gemini-3.5-flash` only, rule_id `v2-catch-all`) and canaried for inst-A (S05-023 shape on v2). Both installations entitled; config cache cold (cleared or TTL elapsed). |
 | Action | Two invoke journeys: (a) `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-051a-0001`); (b) `POST /v1/requests` as inst-B (`x-idempotency-key: idem-s05-051b-0001`). |
-| Expected outcome | Both HTTP 202 and eventually `completed`. D1 `ai_request.routing_decision` for (a): `policy_version: 2`, `rule_id: "v2-catch-all"`, chain `[{ordinal:0, provider_id:"gemini", model_id:"gemini-3.5-flash", max_attempts:2, timeout_ms:30000}]`. For (b): `policy_version: 1`, `rule_id: "platform-default-fallback"`, chain `[deepseek/deepseek-v4-flash (ordinal 0), gemini/gemini-3.5-flash (ordinal 1)]`. |
+| Expected outcome | Both HTTP 200 and eventually `completed`. D1 `ai_request.routing_decision` for (a): `policy_version: 2`, `rule_id: "v2-catch-all"`, chain `[{ordinal:0, provider_id:"gemini", model_id:"gemini-3.5-flash", max_attempts:2, timeout_ms:30000}]`. For (b): `policy_version: 1`, `rule_id: "platform-default-fallback"`, chain `[deepseek/deepseek-v4-flash (ordinal 0), gemini/gemini-3.5-flash (ordinal 1)]`. |
 | Side effects | Config cache gains key `active_routing_policy:routing/standard/018e4f2a-…e2f` holding the v2 row+document, and `…/018e4f2a-…f3a` holding the v1 row+document. Two `routing_decision` UPDATEs on the respective `ai_request` rows (Stage 10 persistence behavior). |
 | Code reference | ai-platform/src/config-cache/index.ts:L349-L364 — canary scan before active fallback; ai-platform/src/router/index.ts:L594-L601 — installation key consulted first |
 
@@ -626,7 +626,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-052 |
 | Journey setup | `standard@1` active (S05-035); `standard@2` published. [SEED] `UPDATE routing_policy SET status='canary', canary_installation_ids='not-json{' WHERE policy_id='standard' AND version='2'` — justified: the control API only ever writes `JSON.stringify` output, so a malformed list is reachable only via out-of-band D1 edits or partial migrations; the reader's `parseCanaryIds` fail-closed path exists precisely for this. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-052-0001`); observe `ai_request.routing_decision`. |
-| Expected outcome | HTTP 202 → `completed`; `routing_decision.policy_version: 1` (active v1 served). `parseCanaryIds('not-json{')` returns `[]`, so inst-A matches no canary row and the reader falls through to the active row. |
+| Expected outcome | HTTP 200 → `completed`; `routing_decision.policy_version: 1` (active v1 served). `parseCanaryIds('not-json{')` returns `[]`, so inst-A matches no canary row and the reader falls through to the active row. |
 | Side effects | Cache key for inst-A holds the v1 document. |
 | Code reference | ai-platform/src/config-cache/index.ts:L160-L173 — parseCanaryIds fail-closed; L357-L364 — canary scan skip |
 
@@ -637,7 +637,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-053 |
 | Journey setup | S05-035 completed (`standard@1` active). [SEED] delete the R2 object `control/routing-policy/standard/1.json` directly via the R2 binding — justified: models R2 object loss/tombstoning outside the control plane; no control API deletes R2 objects. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-053-0001`); read the SSE stream. |
-| Expected outcome | HTTP 202 → SSE `failed` terminal with code `internal_error`. The reader logs `routing_policy_r2_miss` with `content_pointer='control/routing-policy/standard/1.json'` and returns "miss", which becomes `ConfigCacheMissError`. |
+| Expected outcome | HTTP 200 → SSE `failed` terminal with code `internal_error`. The reader logs `routing_policy_r2_miss` with `content_pointer='control/routing-policy/standard/1.json'` and returns "miss", which becomes `ConfigCacheMissError`. |
 | Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). Error log `routing_policy_r2_miss` emitted. |
 | Code reference | ai-platform/src/config-cache/index.ts:L176-L194 — loadRoutingPolicyDocument R2 miss; ai-platform/src/worker.ts:L886-L913 — catch → internal_error + settlement |
 
@@ -648,7 +648,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-054 |
 | Journey setup | S05-051 setup (v1 active, v2 canary for inst-A). [SEED] delete R2 object `control/routing-policy/standard/2.json` only. Config cache cold. |
 | Action | (a) `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-054a-0001`); (b) `POST /v1/requests` as inst-B (`x-idempotency-key: idem-s05-054b-0001`). |
-| Expected outcome | (a) HTTP 202 → SSE `failed`/`internal_error`: the reader returns `"miss"` directly from the canary branch when the R2 get fails — it does **not** fall through to the active row. (b) HTTP 202 → `completed` on v1 (inst-B never consults the canary row's document). |
+| Expected outcome | (a) HTTP 200 → SSE `failed`/`internal_error`: the reader returns `"miss"` directly from the canary branch when the R2 get fails — it does **not** fall through to the active row. (b) HTTP 200 → `completed` on v1 (inst-B never consults the canary row's document). |
 | Side effects | (a) error log `routing_policy_r2_miss` for the v2 pointer; no routing_decision. (b) normal v1 routing_decision. |
 | Code reference | ai-platform/src/config-cache/index.ts:L357-L363 — canary branch returns loadRoutingPolicyDocument result directly |
 
@@ -659,7 +659,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-055 |
 | Journey setup | S05-035 completed (`standard@1` active). [SEED] overwrite R2 object `control/routing-policy/standard/1.json` with a document whose header reads `"policy_id":"standard","policy_version":2` (identity tamper) — justified: models an out-of-band R2 edit; the control plane never rewrites a published pointer (S05-004). Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-055-0001`); read the SSE stream. |
-| Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. `validatePolicyDocument` throws `RoutingPolicyError` code `policy_identity_mismatch` ("Document identity standard@2 does not match row standard@1"); the worker catch-all maps it to `internal_error` — the router code never reaches the wire. |
+| Expected outcome | HTTP 200 → SSE `failed`/`internal_error`. `validatePolicyDocument` throws `RoutingPolicyError` code `policy_identity_mismatch` ("Document identity standard@2 does not match row standard@1"); the worker catch-all maps it to `internal_error` — the router code never reaches the wire. |
 | Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
 | Code reference | ai-platform/src/router/index.ts:L246-L255 — identity check; ai-platform/src/worker.ts:L886-L913 — catch → internal_error + settlement |
 
@@ -670,7 +670,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-056 |
 | Journey setup | Publish `standard@3` with `"schema_version": 2` (otherwise identical to the fixture) — publish accepts it (identity-only validation, S05-022); promote it (S05-035 shape). Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-056-0001`); read the SSE stream. |
-| Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `unsupported_schema_version` ("Unsupported routing policy schema_version 2"); mapped to `internal_error` on the wire. |
+| Expected outcome | HTTP 200 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `unsupported_schema_version` ("Unsupported routing policy schema_version 2"); mapped to `internal_error` on the wire. |
 | Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
 | Code reference | ai-platform/src/router/index.ts:L257-L263 — schema version gate; L214 — SUPPORTED_SCHEMA_VERSIONS = {1}; ai-platform/src/worker.ts:L886-L913 |
 
@@ -681,7 +681,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-057 |
 | Journey setup | S05-022 completed (`standard@9` published; its only rule matches `capability_ids:["clinic.nonexistent"]` — not a catch-all); promote `standard@9`. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-057-0001`); read the SSE stream. |
-| Expected outcome | HTTP 202 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `missing_catch_all` ("Routing policy document must end with a catch-all rule (empty/absent match)") before any rule matching. |
+| Expected outcome | HTTP 200 → SSE `failed`/`internal_error`. Router throws `RoutingPolicyError` code `missing_catch_all` ("Routing policy document must end with a catch-all rule (empty/absent match)") before any rule matching. |
 | Side effects | No `routing_decision` write. Terminal settlement: `Failed`/`internal_error` + synthetic `ai_attempt` (C-01). |
 | Code reference | ai-platform/src/router/index.ts:L229-L240 — isCatchAllMatch; L265-L270 — missing_catch_all throw; ai-platform/src/worker.ts:L886-L913 |
 
@@ -735,7 +735,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 |-------|---------|
 | ID | S05-062 |
 | Journey setup | Publish + promote `standard@5`: catch-all with T1 `deepseek/deepseek-v4-flash` whose `features.min_context_window` is the string `"128000"` (pairwise variant: key absent; variant: `NaN`-producing non-finite), T2 `gemini/gemini-3.5-flash` as fixture. Inst-A entitled; invoke journey per Conventions. |
-| Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-062-0001`) → HTTP 202 → `completed`; inspect `ai_request.routing_decision`. |
+| Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-062-0001`) → HTTP 200 → `completed`; inspect `ai_request.routing_decision`. |
 | Expected outcome | `excluded[0] = {provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"feature_unsupported"}` — a missing/unknown window fails closed rather than throwing or being treated as infinite. Chain contains only gemini. |
 | Side effects | `ai_request.routing_decision` JSON persisted with the exclusion (Stage 10 persistence behavior). |
 | Code reference | ai-platform/src/router/index.ts:L499-L507 — isFiniteNumber fail-closed gate |
@@ -813,7 +813,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-069 |
 | Journey setup | S05-035 completed (`standard@1` active, fixture targets deepseek→gemini). Arm provider kill via `POST /control/kill-switches/arm` with operator bearer, body `{"scope":"provider","target":"deepseek"}` (C-17) — or **[SEED]** `INSERT INTO kill_switch …` when testing without the control route. Inst-A entitled; config cache cold so the guard reloads kill switches. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-069-0001`) per Stage 10 accepted-request behavior → stream to completion; inspect `ai_request.routing_decision`. |
-| Expected outcome | HTTP 202 → `completed` (served by gemini). Guard stage 5 collects `killedProviderIds: ["deepseek"]` (capability resolve behavior of the guard chapter); the router excludes deepseek: `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"kill_switch"}]`; `chain = [{ordinal:0, provider_id:"gemini", model_id:"gemini-3.5-flash", ...}]`. |
+| Expected outcome | HTTP 200 → `completed` (served by gemini). Guard stage 5 collects `killedProviderIds: ["deepseek"]` (capability resolve behavior of the guard chapter); the router excludes deepseek: `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"kill_switch"}]`; `chain = [{ordinal:0, provider_id:"gemini", model_id:"gemini-3.5-flash", ...}]`. |
 | Side effects | Persisted routing_decision showing the kill_switch exclusion; settlement proceeds against gemini (invocation/settlement chapters' behavior). |
 | Code reference | ai-platform/src/capability/index.ts:L380-L400 — collectActiveProviderKillSwitches; ai-platform/src/router/index.ts:L477-L485 — kill_switch filter; L447-L463 — mergeKilledProviderIds |
 
@@ -826,7 +826,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-070 |
 | Journey setup | S05-069 setup with a second provider kill: arm `gemini` via `POST /control/kill-switches/arm` (body `{"scope":"provider","target":"gemini"}`) or equivalent `[SEED]`. Config cache cold. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-070-0001`) → read the SSE stream; inspect D1. |
-| Expected outcome | HTTP 202 → SSE `failed` terminal with code `provider_unavailable` (empty chain, not `internal_error`). `routing_decision.chain = []`; `excluded` lists both targets with `reason_code: "kill_switch"`. D1: one `ai_attempt` row with `outcome='terminal_failure'`, `error_code='provider_unavailable'`, `rawBody.payload.reason='no_provider_attempt'` and `rawBody.payload.excluded` echoing both exclusions (failed settlement always persists an attempt). |
+| Expected outcome | HTTP 200 → SSE `failed` terminal with code `provider_unavailable` (empty chain, not `internal_error`). `routing_decision.chain = []`; `excluded` lists both targets with `reason_code: "kill_switch"`. D1: one `ai_attempt` row with `outcome='terminal_failure'`, `error_code='provider_unavailable'`, `rawBody.payload.reason='no_provider_attempt'` and `rawBody.payload.excluded` echoing both exclusions (failed settlement always persists an attempt). |
 | Side effects | `ai_request` terminal state `Failed` with `terminal_error_code='provider_unavailable'`; journal + ledger writes per the settlement chapter's failed-settlement behavior (same persisted terminal settlement as the empty-chain path). |
 | Code reference | ai-platform/src/worker.ts:L381-L411 — attemptsForFailedSettlement no_provider_attempt; L956-L979 — provider_unavailable terminal path |
 
@@ -837,7 +837,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-071 |
 | Journey setup | Publish + promote `standard@13`: catch-all whose only target is `deepseek/deepseek-v4-flash` with `features.min_context_window: 8000` (below the 32000 floor). Inst-A entitled. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-071-0001`) → read the SSE stream; inspect D1. |
-| Expected outcome | HTTP 202 → SSE `failed`/`provider_unavailable`. `chain = []`; `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"context_window_too_small"}]`. Synthetic `ai_attempt` row as in S05-070 with the exclusion echoed. |
+| Expected outcome | HTTP 200 → SSE `failed`/`provider_unavailable`. `chain = []`; `excluded = [{provider_id:"deepseek", model_id:"deepseek-v4-flash", reason_code:"context_window_too_small"}]`. Synthetic `ai_attempt` row as in S05-070 with the exclusion echoed. |
 | Side effects | `ai_request` terminal state `Failed` with `terminal_error_code='provider_unavailable'`; journal + ledger writes per S05-070 (persisted terminal settlement, not left `Accepted`). |
 | Code reference | ai-platform/src/router/index.ts:L570-L580 — chain construction (empty); ai-platform/src/worker.ts:L956-L966 — taxonomy fallback |
 
@@ -870,7 +870,7 @@ Router error codes are **never** on the wire. `no_matching_rule` is unreachable 
 | ID | S05-074 |
 | Journey setup | Publish + promote `standard@16`: fixture document plus `overrides: [{"installation_id":"018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f","pin_target":{"provider_id":"openai","model_id":"gpt-6"}}]` — the pin matches no rule target. Inst-A entitled. |
 | Action | `POST /v1/requests` as inst-A (`x-idempotency-key: idem-s05-074-0001`) → read the SSE stream. |
-| Expected outcome | HTTP 202 → SSE `failed`/`provider_unavailable`. Both real targets excluded with `installation_excluded`; `pinned` lookup finds nothing → `chain = []`. Synthetic `ai_attempt` row per S05-070. |
+| Expected outcome | HTTP 200 → SSE `failed`/`provider_unavailable`. Both real targets excluded with `installation_excluded`; `pinned` lookup finds nothing → `chain = []`. Synthetic `ai_attempt` row per S05-070. |
 | Side effects | As S05-070. |
 | Code reference | ai-platform/src/router/index.ts:L395-L415 — pinned find + remaining = [] |
 

@@ -8,7 +8,7 @@ Shared concrete values used throughout this chapter:
 - Operator credential: `Authorization: Bearer op-token-9f8e7d6c5b4a` (env `OPERATOR_BEARER_TOKEN`); wrong token: `op-token-WRONG`.
 - Operator id written to audit rows: `platform-operator` (env `OPERATOR_ID`).
 - Primary installation `I0` = `3f6b2a1c-9d4e-4f7a-8b1c-2e5d6a7b8c9d`, org `ORG0` = `7a1b2c3d-4e5f-4a6b-9c8d-0e1f2a3b4c5d`, enroll key `K0` = `c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f` with public key `X0` = `n4bQgYhMfWWaL-qgxVrQ1O91g3Z2Q4u2Zz8v0m5p8xk` (base64url of 32 Ed25519 bytes).
-- Second installation `I2` = `aa10c4d2-5e6f-4a7b-8c9d-0e1f2a3b4c5d`, org `ORG2` = `8b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e`, enroll key `KI2` = `1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d` with public key `XI2` = `dGhJkLzXcVbNm2QeRtYuIoPaSd8f7a9b0c1d2e3f4`.
+- Second installation `I2` = `aa10c4d2-5e6f-4a7b-8c9d-0e1f2a3b4c5d`, org `ORG2` = `8b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e`, enroll key `KI2` = `1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d` with public key `XI2` = `ESIzRFVmd4iZqrvM3e7_AAECAwQFBgcICQoLDA0ODxA` (base64url of 32 Ed25519 bytes).
 - Third installation `I3` = `bb20d5e3-6f7a-4b8c-9d0e-1f2a3b4c5d6e`, org `ORG3` = `9c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f`, enroll key `KI3` = `2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e` with public key `XI3` = `PqRsTuVwXyZ0123456789aBcDeFgHiJkLmNoPqRsTuV`.
 - Rotation keys for `I0`: `K1` = `d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f8a` / `X1` = `Aq7RtY2mZxCvB8nM3kLpQwErTyUiOpAsDfGhJkLzXcV`; for `I2`: `K2` = `e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8a9b` / `X2` = `mZx1QwErTyUiOp9sDfGhJkLzXcVbNm2QeRtYuIoPaSd`.
 - Never-enrolled installation id `IUNKNOWN` = `00000000-0000-4000-8000-000000000099`; never-registered kid `KUNKNOWN` = `f7a8b9c0-1d2e-4f3a-ab4c-5d6e7f8a9b0c`.
@@ -523,7 +523,7 @@ the D1 batch (`writePurgeAudit` in `purgeByInstallationId`).
 |-------|---------|
 | ID | S03-036 |
 | Journey setup | None. D1 has no rows for `I2`/`ORG2`. |
-| Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/enroll`, operator bearer, body `{"org_id":"8B2C3D4E-5F6A-4B7C-8D9E-0F1A2B3C4D5E","display_name":"Boundary Clinic","region":"eu-central","plan":"starter","public_key":"dGhJkLzXcVbNm2QeRtYuIoPaSd8f7a9b0c1d2e3f4","algorithm":"EdDSA","kid":"1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D"}` (all UUIDs uppercase). |
+| Action | `POST http://localhost:8787/control/installations/AA10C4D2-5E6F-4A7B-8C9D-0E1F2A3B4C5D/enroll`, operator bearer, body `{"org_id":"8B2C3D4E-5F6A-4B7C-8D9E-0F1A2B3C4D5E","display_name":"Boundary Clinic","region":"eu-central","plan":"starter","public_key":"ESIzRFVmd4iZqrvM3e7_AAECAwQFBgcICQoLDA0ODxA","algorithm":"EdDSA","kid":"1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D"}` (all UUIDs uppercase). |
 | Expected outcome | HTTP 200, body exactly `{"platform_base_url":"http://localhost:8787"}`. `CANONICAL_UUID_RE` carries the `/i` flag, so uppercase hex passes; enroll persists path `installation_id` and body `kid` in lowercase. `org_id` is stored as submitted (uppercase in this request). Later scenarios look up `I2`/`KI2` by those canonical lowercase stored ids. |
 | Side effects | `installation` row for the canonical lowercase id with `status = active`; `installation_key` row `1a2b3c4d-…` with `revoked_at = NULL`; `entitlement` row `plan = starter`, `status = pending`; `control_audit` row `action = enroll`, `operator_id = platform-operator`, targeting the canonical lowercase `I2` id. |
 | Code reference | ai-platform/src/platform-vocabulary.ts:L20-L22 — CANONICAL_UUID_RE with /i; ai-platform/src/control/lifecycle.ts:L199-L291 — handleEnroll |

@@ -21,14 +21,14 @@ verified to exist in the chapter files; every GAP was double-checked against the
 |------|------|------------------------|--------------|
 | `unauthenticated` | 401 | S00-019, S00-020, S00-022; S01-025, S01-026, S01-029; S06-041…S06-047 (minted-then-rejected, platform half); S07-003…S07-022, S07-024…S07-026, S07-049; S08-035…S08-039; S09-004…S09-022, S09-024…S09-026, S09-065; S12-019…S12-034, S12-036…S12-038, S12-040; SX-048 | Reachable |
 | `installation_suspended` | 403 | S07-023; S08-040; S09-023; S12-035 | Reachable |
-| `forbidden_capability` | 403 | S08-041; S09-028…S09-034, S09-048, S09-049 | Reachable |
+| `forbidden_capability` | 403 | S08-034, S08-041, S08-042, S08-043; S09-028…S09-034, S09-048, S09-049 | Reachable — non-granted unknown/unpublished ids fail stage 3 before registry |
 | `rate_limited` | 429 | S08-044; S09-040…S09-043, S09-077 | Reachable |
 | `quota_exhausted` | 429 | S08-045; S09-070…S09-073, S09-078; SX-014 (reconcile-time, internal retry — never on the wire) | Reachable. Note: never carries `period_reset` on the live path (`worker.ts:L1087-L1096` forwards only `retryAfter`; `errors.ts:L193-L200`) — see Register 4 #30 |
 | `request_too_large` | 413 | S08-003…S08-008; S09-001, S09-062, S09-064 | Reachable |
 | `context_required` | 422 | S08-046, S08-062; S09-052 | Reachable. Live body omits `missing_keys`/`shapes`/`manifest_version` (`adapter.ts:L213-L229`; `buildContextRequiredResponse` at `context/validator.ts:L541-L557` has no caller) — Register 4 #34 |
 | `context_invalid` | 422 | S08-047, S08-048; S09-053…S09-060 | Reachable |
 | `conversation_budget_exhausted` | 409 | **none** — mentioned only in S09-085 (exhaustiveness context) | **UNREACHABLE (dead path)** — confirmed. Only produced inside `validateConversationalContext` (`context/validator.ts:L378, L412, L416, L420`), entered only when `manifest.interactionMode === "conversational"` (`context/validator.ts:L437-L452`); the guard passes conversational options only when the manifest is conversational **and** `turn_ordinal` is present (`pipeline/index.ts:L394-L395`). The sole published manifest `clinic.visit_summary@1.0.0` is `single_shot` (`manifests/published/clinic.visit_summary@1.0.0.json:L19-L21`). Reachable only after a conversational capability ships. Stage 9 claim **confirmed** |
-| `capability_unknown` | 404 | S00-007, S00-008 (empty-registry degraded end-state); S08-042, S08-043; S09-044, S09-045 | Reachable |
+| `capability_unknown` | 404 | S00-007, S00-008 (entitlement passed, registry miss); S09-044, S09-045 | Reachable only when entitlement passes and the registry misses. Non-granted unknown/unpublished ids are 403 `forbidden_capability` (S08-034, S08-042, S08-043) |
 | `capability_retired` | 404 | S09-046 | Reachable |
 | `capability_disabled` | 503 | S09-036…S09-039, S09-050 | Reachable |
 | `provider_unavailable` | 503 | S05-070, S05-071, S05-074; S10-004, S10-005, S10-008, S10-012; S11-003, S11-004 | Reachable |

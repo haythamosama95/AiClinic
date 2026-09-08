@@ -391,7 +391,7 @@ Both return `401 unauthenticated`.
 | Field | Content |
 |-------|---------|
 | ID | S07-029 |
-| Journey setup | Baseline B0, but the Stage 4 entitle payload carried `allowed_capabilities: []` (D1 `'[]'`) and no grant rows. Fresh config cache. |
+| Journey setup | Baseline B0, but the Stage 4 entitle payload carried `allowed_capabilities: []` (D1 `'[]'`). Entitle rejects `grants: []` with 400 `invalid_payload` (S04-040), so the payload includes a dummy installation-scope grant that is never consulted — `allowed_capabilities: []` short-circuits the registry loop before grant evaluation. Fresh config cache. |
 | Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` |
 | Expected outcome | HTTP `200`, body `{"manifests":[]}`. The registry loop skips `clinic.visit_summary` because `allowedCapabilities.includes(capabilityId)` is false; grants are never consulted. |
 | Side effects | D1 reads: `installation`, `installation_key`, `token_contract`, `entitlement`. No grant reads (loop skips before grant evaluation). No writes. |
@@ -479,7 +479,7 @@ Both return `401 unauthenticated`.
 | Field | Content |
 |-------|---------|
 | ID | S07-037 |
-| Journey setup | Baseline B0, except Stage 4 entitled with `allowed_capabilities = ["clinic.visit_summary"]` but a `grants: []` payload — no installation-scope and no plan-scope grant rows. Fresh config cache. |
+| Journey setup | Baseline B0, except Stage 4 entitled with `allowed_capabilities = ["clinic.visit_summary"]`. Entitle rejects `grants: []` with 400 `invalid_payload` (S04-040), so the payload carries a dummy unpublished-capability installation grant; both `clinic.visit_summary` grant lookups miss (installation miss → plan miss → skip). Fresh config cache. |
 | Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` |
 | Expected outcome | HTTP `200`, body `{"manifests":[]}`. Entitlement alone does not advertise; both grant lookups miss → skip. |
 | Side effects | D1 reads: standard set plus both grant queries (misses). No writes. |
@@ -512,7 +512,7 @@ Both return `401 unauthenticated`.
 | Field | Content |
 |-------|---------|
 | ID | S07-040 |
-| Journey setup | Baseline B0, then [SEED] `INSERT INTO kill_switch (scope, target, active, changed_at, changed_by) VALUES ('capability', 'clinic.visit_summary', 1, '2026-09-05T00:00:00.000Z', 'verify')` — justified: there is no HTTP API that writes kill-switch rows; control-plane persistence is an A5 concern. Fresh config cache. |
+| Journey setup | Baseline B0, then the real kill-switch arm: `POST /control/kill-switches/arm` with body `{"scope":"capability","target":"clinic.visit_summary"}` (C-17). Fresh config cache. |
 | Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` |
 | Expected outcome | HTTP `200`, body lists `clinic.visit_summary` exactly as the happy path. `discover()` never loads `kill_switches` — advertising killed capabilities is intentional; the same token invoking the capability (Stage 8) would get `503 capability_disabled`. |
 | Side effects | D1 reads: standard set plus grants. No `kill_switch` read from this request. No writes. |

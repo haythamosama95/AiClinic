@@ -114,9 +114,9 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-002 |
-| Journey setup | I0 entitled (P1). Stage 11 Completed settlement produced request **R1** with `usage_event` (tokens 30, cost 0.003, period `2026-08`) and one `ai_attempt`. No pending grace rows, no rejections. |
+| Journey setup | I0 entitled (P1). Stage 11 Completed settlement produced request **R1** with `usage_event` (tokens 30, cost 0.005, period `2026-08`) and one `ai_attempt`. No pending grace rows, no rejections. |
 | Action | Run cron tick `"0 4 * * *"`. |
-| Expected outcome | Log order: flush → `grace_reconcile_batch_start{pending_count:0}` → `scheduled_rollup_start` → `rollup_start`/`rollup_complete` → `reconcile_start`/`reconcile_complete` → `usage_rollup_reconciliation{rollups_written:1, missing_attempt_rows:0, missing_usage_credit:0, window:{start:<now−30d ISO>, end:<now ISO>}}` → `scheduled_cron_complete`. D1: one `usage_rollup` row, `dimensions={"installation_id":I0,"period":"2026-08"}`, `request_count=1`, `tokens=30`, `cost=0.003`. The window is the default trailing 30 days of wall clock — the scheduled handler cannot inject it. |
+| Expected outcome | Log order: flush → `grace_reconcile_batch_start{pending_count:0}` → `scheduled_rollup_start` → `rollup_start`/`rollup_complete` → `reconcile_start`/`reconcile_complete` → `usage_rollup_reconciliation{rollups_written:1, missing_attempt_rows:0, missing_usage_credit:0, window:{start:<now−30d ISO>, end:<now ISO>}}` → `scheduled_cron_complete`. D1: one `usage_rollup` row, `dimensions={"installation_id":I0,"period":"2026-08"}`, `request_count=1`, `tokens=30`, `cost=0.005`. The window is the default trailing 30 days of wall clock — the scheduled handler cannot inject it. |
 | Side effects | Writes: `usage_rollup` upsert only. Must NOT write: `ai_request`, `ai_attempt`, `usage_event`, `platform_counter` (empty tally), R2 (no deletes). |
 | Code reference | ai-platform/src/worker.ts:L1727-L1747 — rollup dispatch + report log; ai-platform/src/rollup/index.ts:L202-L209 — `runRollupAndReconciliation`; L28-L33 — `defaultReconciliationWindow` |
 
@@ -246,7 +246,7 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-014 |
-| Journey setup | Pending row `grace-sx014` whose `entitlement_json` has `request_quota=0` (installation exhausted its ledger during the outage — Stage 8 `isLedgerQuotaExhausted` behavior). **Real** DO (healthy). |
+| Journey setup | `[SEED]` pending row `grace-sx014` whose `entitlement_json` has `request_quota=0`. Justification: `admitUnderGrace` / `runAdmission` refuses `request_quota=0` via `isLedgerQuotaExhausted` (0 >= 0), so a real grace admit cannot produce this snapshot; mutate `entitlement_json` after insert. **Real** DO (healthy). |
 | Action | Run cron tick `"0 4 * * *"`. |
 | Expected outcome | The re-presented admission returns `outcome:"quota_exhausted"` from the real DO. Reconcile treats any non-`admitted`, non-`idempotent`, non-`replay` outcome as retryable: row stays `status='pending'`, `reconcile_attempts=1`, first-seen stamped; `reconciled:0`; no drop journal entry. The entry will churn on every tick until TTL (SX-020) or max-attempts (SX-019) drops it — its usage is never credited. |
 | Side effects | Writes: retry-stamp UPDATE only. DO storage unchanged (quota_exhausted path puts state but mutates nothing observable: no jti/idempotency/counter writes). |
@@ -400,7 +400,7 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-028 |
-| Journey setup | Stage 11 Completed settlement produced request **R-old** with one `ai_attempt` (tokens 30, cost 0.003), one `usage_event` (period `2026-08`, same totals), envelope at `request/<R-old>/envelope`. `[SEED]` backdate `created_at=completed_at=<now − 91 days>` (retention backdating — permitted). A second, non-aged Completed request **R-new** exists as a control. |
+| Journey setup | Stage 11 Completed settlement produced request **R-old** with one `ai_attempt` (tokens 30, cost 0.005), one `usage_event` (period `2026-08`, same totals), envelope at `request/<R-old>/envelope`. `[SEED]` backdate `created_at=completed_at=<now − 91 days>` (retention backdating — permitted). A second, non-aged Completed request **R-new** exists as a control. |
 | Action | Run cron tick `"0 3 * * *"`. |
 | Expected outcome | `retention_purge_complete{diagnostic_deleted:0, journal_deleted:2, ledger_deleted:0, counter_deleted:0}` (journal_deleted = 1 `ai_attempt` + 1 `ai_request`). D1: R-old's `ai_request` and `ai_attempt` rows gone; its `usage_event` row **present** with `request_id=NULL`, tokens/cost unchanged (money kept). R2: `request/<R-old>/envelope` gone (deleted by stored pointer **before** the row delete, so long diagnostic classes cannot orphan PII). R-new fully intact, pointer set, envelope present. |
 | Side effects | Writes: R2 delete (R-old), `usage_event` NULL update, `ai_attempt` + `ai_request` deletes. Must NOT delete R-old's `usage_event`; must NOT touch R-new or `usage_rollup`. |
@@ -477,7 +477,7 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-035 |
-| Journey setup | `[SEED]` (7-year aging): one `control_audit` row `recorded_at = NOW − 2556 days`; one live installation-scoped `capability_grant` `changed_at = NOW − 2556 days`; one global overlay grant `lifecycle_state='retired'`, `changed_at = NOW − 2556 days`; plus fresh counterparts of each as controls. |
+| Journey setup | `[SEED]` (7-year aging): one `control_audit` row `recorded_at = NOW − 2556 days`; one live installation-scoped `capability_grant` `changed_at = NOW − 2556 days`; one global overlay grant `lifecycle_state='retired'`, `changed_at = NOW − 2556 days`; plus fresh counterparts of each as controls. Unique index `idx_capability_grant_live_installation` forbids two live installation-scope grants for the same installation+capability, so the fresh live control is seeded under a different `capability_id` (`clinic.sx035.fresh`). |
 | Action | Direct call `runRetentionPurge({db, r2, now: NOW})`. |
 | Expected outcome | `ledger_deleted=3`: all three aged rows deleted (`recorded_at < cutoff`, `changed_at < cutoff` respectively); fresh controls survive. Retention does not distinguish live grants from retired overlays — any grant untouched for 2555 days is purged. |
 | Side effects | Writes: one `control_audit` delete, two `capability_grant` deletes. |
@@ -675,9 +675,9 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | Field | Content |
 |-------|---------|
 | ID | SX-053 |
-| Journey setup | SX-028 end state (R-old purged at the 03:00 tick; its `usage_event` — period `2026-08`, tokens 30, cost 0.003, `request_id=NULL` — survives). R-new (fresh Completed, tokens 40, same period) intact. |
+| Journey setup | SX-028 end state (R-old purged at the 03:00 tick; its `usage_event` — period `2026-08`, tokens 30, cost 0.005, `request_id=NULL` — survives). R-new (fresh Completed, tokens 30, cost 0.005, same period) intact. |
 | Action | Run cron tick `"0 4 * * *"` (the next scheduled run after the purge). |
-| Expected outcome | `rollups_written=1`: `(I0,2026-08)` aggregates **both** usage rows — `request_count=2, tokens=70, cost=0.007` — because rollup groups by `installation_id, period` and never touches `request_id`; retention-NULLed money still closes the month. Reconciliation: `missing_usage_credit=0` — R-old no longer exists request-side and its NULLed usage can never join (SX-045); R-new is fully wired. The two crons compose: purge shrinks reconciliation coverage, never rollup coverage. |
+| Expected outcome | `rollups_written=1`: `(I0,2026-08)` aggregates **both** usage rows — `request_count=2, tokens=60, cost=0.010` — because rollup groups by `installation_id, period` and never touches `request_id`; retention-NULLed money still closes the month. Reconciliation: `missing_usage_credit=0` — R-old no longer exists request-side and its NULLed usage can never join (SX-045); R-new is fully wired. The two crons compose: purge shrinks reconciliation coverage, never rollup coverage. |
 | Side effects | Writes: one `usage_rollup` upsert. |
 | Code reference | ai-platform/src/rollup/index.ts:L70-L82 — request-id-agnostic aggregation; ai-platform/src/retention/index.ts:L211-L222 — the NULLing that precedes it |
 
@@ -710,7 +710,7 @@ Horizon: `EPHEMERAL_HORIZON_MS` = 7_200_000 ms (2 h). Injectable via DO RPC body
 | ID | SX-056 |
 | Journey setup | Combined realistic state: (1) two `quota_exhausted` rejections tallied this minute; (2) pending grace row `grace-sx056` with attached usage (tokens 7, cost 0.007, partial 0), real healthy DO; (3) `[SEED]` 91-day-old Completed request R-old with attempts/usage/envelope; (4) `[SEED]` 31-day-old Completed request R-diag with envelope; (5) fresh Completed request R-new as control. |
 | Action | Run cron tick `"0 3 * * *"` once. |
-| Expected outcome | Single run, ordered logs per SX-001. Final state: `platform_counter` one row count=2; `grace-sx056.status='reconciled'` and DO counters `{requestsUsed:1, tokensUsed:7, costUsed:0.007, inFlight:0}`; R-old journal-purged (usage NULLed, envelope gone); R-diag diagnostic-purged (row kept, pointer NULL, envelope gone); R-new untouched. `retention_purge_complete{diagnostic_deleted:1, journal_deleted:2, ledger_deleted:0, counter_deleted:0}`. No rollup rows (not this cron). |
+| Expected outcome | Single run, ordered logs per SX-001. Final state: `platform_counter` one row count=2; `grace-sx056.status='reconciled'` and DO counters `{requestsUsed:4, tokensUsed:97, costUsed:0.022, inFlight:0}` (three settlements 3 × 30/0.005 plus the grace attach 7/0.007); R-old journal-purged (usage NULLed, envelope gone); R-diag diagnostic-purged (row kept, pointer NULL, envelope gone); R-new untouched. `retention_purge_complete{diagnostic_deleted:1, journal_deleted:2, ledger_deleted:0, counter_deleted:0}`. No rollup rows (not this cron). |
 | Side effects | Writes: exactly the union of the three jobs' writes listed above; nothing else in D1/DO/R2 changes. |
 | Code reference | ai-platform/src/worker.ts:L1678-L1726 — `scheduled` (full 03:00 path) |
 

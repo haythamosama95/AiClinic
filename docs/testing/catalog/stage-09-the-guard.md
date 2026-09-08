@@ -297,7 +297,7 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 |-------|---------|
 | ID | S09-022 |
 | Journey setup | Baseline B0. |
-| Action | `POST /v1/requests` with a happy AAT whose final signature character is flipped (`${AAT%?}x`); body H0. Pairwise variant: a token signed by a **different** Ed25519 keypair with header `kid: "kid-2026-09-a"`. |
+| Action | `POST /v1/requests` with a happy AAT whose signature is flipped in an **earlier** character as well as the last (`${AAT%?}x` alone is not enough: Ed25519 signatures are 64 B = 86 base64url chars with unused trailing bits, so a last-char-only flip can decode identically); body H0. Pairwise variant: a token signed by a **different** Ed25519 keypair with header `kid: "kid-2026-09-a"`. |
 | Expected outcome | Both HTTP 401 `unauthenticated` — `crypto.subtle.verify` returns false. All claim, key, and window checks passed; only the signature fails. |
 | Side effects | D1 reads only. Tally +1 per call, `unauthenticated` / `unverified` (attribution stays unverified because the signature failed). |
 | Code reference | `ai-platform/src/identity/index.ts:L330-L350` — signature decode, key import, `crypto.subtle.verify` |
@@ -549,9 +549,9 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-045 |
-| Journey setup | Baseline B0. |
+| Journey setup | Baseline B0. [SEED] pin the live grant(s) to `capability_version = '9.9.9'` so stage 3's version check passes and stage 5 is genuinely reached. (The column is `TEXT NOT NULL`; a grant row without `capability_version` is schema-impossible, and an empty string still mismatches `9.9.9`.) ConfigCache cleared. |
 | Action | `POST /v1/requests` with a signed happy AAT; header `x-capability-version: 9.9.9`; body H0. |
-| Expected outcome | HTTP 404 `capability_unknown` — the registry key is `clinic.visit_summary@9.9.9`, which does not exist. (Stage 3 passes because the installation grant's `capability_version` check compares against the requested version only when the grant pins one; with the B0 grant pinned at `1.0.0`, stage 3 actually rejects first with 403 `forbidden_capability` version-mismatch — run this scenario with a version-unpinned grant [SEED: grant row without `capability_version`] so stage 5 is genuinely reached.) |
+| Expected outcome | HTTP 404 `capability_unknown` — the registry key is `clinic.visit_summary@9.9.9`, which does not exist. (Stage 3 would otherwise reject first with 403 `forbidden_capability` version-mismatch when the B0 grant is pinned at `1.0.0`.) |
 | Side effects | D1 reads only. Tally +1 `capability_unknown` / installation id. |
 | Code reference | `ai-platform/src/capability/index.ts:L141-L143` — `registryKey`; `ai-platform/src/capability/index.ts:L565-L577` — registry miss |
 
@@ -571,9 +571,9 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-047 |
-| Journey setup | Baseline B0 plus a lifecycle overlay row as in S09-046 but with `lifecycle_state = 'deprecated'` and `successor_id = 'clinic.visit_summary_v2'`. ConfigCache cleared. |
+| Journey setup | Baseline B0 plus a lifecycle overlay row as in S09-046 but with `lifecycle_state = 'deprecated'` and `successor_id = 'clinic.visit_summary'` (a registered successor — self is accepted; an unregistered id such as `clinic.visit_summary_v2` is 400 `unknown_successor`, S04-086). ConfigCache cleared. |
 | Action | `POST /v1/requests` with a signed happy AAT; body H0; fresh idempotency key. |
-| Expected outcome | Guard passes — only `retired` rejects. HTTP 200 SSE with first event `event: accepted`, `data: {"request_reference":"<XXXX-XXXX>","trace_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV"}` (no `degraded_notice`). The journaled manifest identity carries the effective `lifecycleState: "deprecated"` / successor overlay. |
+| Expected outcome | Guard passes — only `retired` rejects. HTTP 200 SSE with first event `event: accepted`, `data: {"request_reference":"<XXXX-XXXX>","trace_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV"}` (no `degraded_notice`). The D1 overlay row carries `lifecycle_state: "deprecated"` / `successor_id: "clinic.visit_summary"`; the journaled `ai_request` row exists for the new reference (capability id unchanged). |
 | Side effects | Full happy-path side effects (S09-085). Delete the overlay afterwards. |
 | Code reference | `ai-platform/src/capability/index.ts:L576-L585` — only `retired` rejects; `ai-platform/src/capability/index.ts:L119-L138` — `manifestWithEffectiveIdentity` |
 
@@ -771,8 +771,8 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | ID | S09-065 |
 | Journey setup | Baseline B0. First, one full happy-path POST (happy AAT with `jti: "9e7f0a1b-…"`, idempotency key `jti-a`) that is admitted (S09-085 behavior) — this records the jti in the DO's `jtiReplay` map. |
 | Action | Second `POST /v1/requests` reusing the **same AAT** (same jti) with a **new** idempotency key `jti-b`; body H0. |
-| Expected outcome | HTTP 401, body `{"code":"unauthenticated",…,"retry_safe":true}`. The DO returns `outcome: "replay"`; admission maps it to `unauthenticated`. The first request's journal row is untouched. |
-| Side effects | No second `ai_request` row; no new DO `requestId`; the DO state is persisted unchanged apart from the ephemeral sweep. Tally +1 `unauthenticated` / installation id. |
+| Expected outcome | HTTP 401, body `{"code":"unauthenticated",…,"retry_safe":true}`. The DO returns `outcome: "replay"`; admission maps it to `unauthenticated`. Replay writes no second journal row; request 1's own settlement may still mutate its row after `accepted` (`persistPostResponseDetail`, `persistRoutingDecision`, `journalTransition`). |
+| Side effects | No second `ai_request` row; no new DO `requestId`; the first row's identity columns (`idempotency_key`, `request_id`, …) stay those of request 1. Tally +1 `unauthenticated` / installation id. |
 | Code reference | `ai-platform/src/quota-do/index.ts:L374-L381` — jti replay check; `ai-platform/src/admission/index.ts:L452-L456` — replay → `unauthenticated` |
 
 ## Scenario S09-066 — Stage 8 admission: idempotent replay while the prior request is in-flight (admitted)
@@ -804,7 +804,7 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | ID | S09-068 |
 | Journey setup | Baseline B0. One full journey with idempotency key `idem-fail` that reached a terminal `Failed` state (Stage 11 failure behavior — e.g. FakeAdapter scripted failure settled with `idempotencyState: "failed"`; DO idempotency state `failed`). |
 | Action | Second `POST /v1/requests`, fresh happy AAT, same key `idem-fail`, body H0. |
-| Expected outcome | HTTP 200 SSE: `accepted` then a terminal `failed` event whose data is the `internal_error` taxonomy body (`{"code":"internal_error","request_reference":"<new XXXX-XXXX>","trace_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","retry_safe":true}`). No new journal row. |
+| Expected outcome | HTTP 200 SSE: `accepted` then a terminal `failed` event whose data is the **stored** taxonomy code from the prior (`terminalErrorCode` on the DO idempotency entry — e.g. `provider_unavailable` after an empty-chain Failed), not canned `internal_error`. No new journal row. |
 | Side effects | No new D1/DO writes beyond the admission read-persist; no quota consumed. |
 | Code reference | `ai-platform/src/worker.ts:L631-L634` — failed replay mapping; `ai-platform/src/quota-do/index.ts:L383-L400` — idempotency hit |
 
@@ -819,12 +819,12 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Side effects | No new D1/DO writes beyond the admission read-persist; no quota consumed. |
 | Code reference | `ai-platform/src/worker.ts:L635-L638` — cancelled replay mapping; `ai-platform/src/quota-do/index.ts:L383-L400` — idempotency hit |
 
-## Scenario S09-070 — Stage 8 admission: request quota exhausted is quota_exhausted without period_reset on the wire
+## Scenario S09-070 — Stage 8 admission: request quota exhausted is quota_exhausted with period_reset on the wire
 
 | Field | Content |
 |-------|---------|
 | ID | S09-070 |
-| Journey setup | Baseline B0, then a real Stage 4 entitle update keeping the same period bounds but setting `request_quota: 0` (same period ⇒ DO counters are **not** reset by `maybeResetPeriod`; with zero quota the check trips immediately). ConfigCache cleared. Restore `request_quota: 1000` afterwards. |
+| Journey setup | Baseline B0 entitled from the start with `request_quota: 0` (same period bounds). Re-entitle of an active entitlement is 409 `not_pending` (S04-049/051), so there is no later "update then restore" — `resetE2eState` restores the fixture. ConfigCache cleared. |
 | Action | `POST /v1/requests` with a fresh signed happy AAT; body H0. |
 | Expected outcome | HTTP 429, body `{"code":"quota_exhausted","request_reference":"<XXXX-XXXX>","trace_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","retry_safe":true,"period_reset":"2026-10-01T00:00:00.000Z"}` — admission maps `period_end` to `periodReset` and `runGuard`'s `fail()` plus the worker preAccept path forward it to `supplementaryFieldsForCode` (**C-09**). |
 | Side effects | No `ai_request` row; DO `periodCounters` unchanged (rejection persists state but consumes nothing); no idempotency/jti entries created. Tally +1 `quota_exhausted` / installation id. |
@@ -835,7 +835,7 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-071 |
-| Journey setup | Baseline B0, then a real Stage 4 entitle update (same period) setting `token_budget: 0` — `tokensUsed (0) >= 0` trips immediately. ConfigCache cleared. Restore afterwards. Mid-period variant (budget > 0 already consumed): run real settled happy-path journeys (Stage 11 behavior) until `tokensUsed` reaches the budget — no seeding required. |
+| Journey setup | Baseline B0 entitled from the start with `token_budget: 0` — `tokensUsed (0) >= 0` trips immediately. Re-entitle of an active entitlement is 409 `not_pending`. ConfigCache cleared. Mid-period variant (budget > 0 already consumed): run real settled happy-path journeys (Stage 11 behavior) until `tokensUsed` reaches the budget — no seeding required. |
 | Action | `POST /v1/requests` with a fresh signed happy AAT; body H0. |
 | Expected outcome | HTTP 429 `quota_exhausted`, same wire body shape as S09-070 (includes `period_reset`). |
 | Side effects | As S09-070. Tally +1 `quota_exhausted`. |
@@ -846,7 +846,7 @@ Clients correlating journaled rows or SSE envelopes to clinic-side telemetry sho
 | Field | Content |
 |-------|---------|
 | ID | S09-072 |
-| Journey setup | Baseline B0, then a real Stage 4 entitle update (same period) setting `cost_budget: 0` — `costUsed (0) >= 0` trips immediately. ConfigCache cleared. Restore afterwards. |
+| Journey setup | Baseline B0 entitled from the start with `cost_budget: 0` — `costUsed (0) >= 0` trips immediately. Re-entitle of an active entitlement is 409 `not_pending`. ConfigCache cleared. |
 | Action | `POST /v1/requests` with a fresh signed happy AAT; body H0. |
 | Expected outcome | HTTP 429 `quota_exhausted`, same wire body shape as S09-070 (includes `period_reset`). |
 | Side effects | As S09-070. Tally +1 `quota_exhausted`. |

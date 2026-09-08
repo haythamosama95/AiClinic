@@ -317,7 +317,7 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | ID | S08-024 |
 | Journey setup | None. |
 | Action | `POST /v1/requests` with `x-idempotency-key: x` (one character), `x-capability-version: not-a-published-version`, body `{"capability_id":"clinic.visit_summary"}`, no `Authorization`. |
-| Expected outcome | Not 422. Ingress has no length/charset/semver checks — any non-empty strings pass (§1.1). Identity fails first → HTTP 401 `unauthenticated`. (With a valid AAT this same header set would reach manifest resolution and return 404 `capability_unknown` — Stage 9 stage-5 behavior; see S08-042.) |
+| Expected outcome | Not 422. Ingress has no length/charset/semver checks — any non-empty strings pass (§1.1). Identity fails first → HTTP 401 `unauthenticated`. (With a valid AAT this same unpublished version is 403 `forbidden_capability` at stage 3 — entitlement version-mismatch — not 404 `capability_unknown`; see S08-042.) |
 | Side effects | No D1/DO writes. |
 | Code reference | `ai-platform/src/adapter.ts:L242-L268` — `parseRequiredHeaders` (trim-only validation) |
 
@@ -427,7 +427,7 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | ID | S08-034 |
 | Journey setup | Enrolled + entitled installation (see chapter preamble); real AAT exported as `$AAT`. |
 | Action | `POST /v1/requests` with `Authorization: Bearer $AAT`, valid required headers, body `{"capability_id":"clinic.not_a_capability","capability":"clinic.visit_summary","context":{"org":"c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f","branch":"b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e","visit.chief_complaint@v1":"Patient reports headache for 3 days."}}`. |
-| Expected outcome | HTTP 404 `{"code":"capability_unknown",…,"retry_safe":false}` — the primary key's (unknown) value drove manifest resolution, proving `capability_id` takes precedence over the alias. Registry pairing is Stage 9 stage-5 behavior. |
+| Expected outcome | HTTP 403 `{"code":"forbidden_capability",…,"retry_safe":false}` — the primary key's (unknown) value drove extraction, proving `capability_id` takes precedence over the alias. Guard stage 3 (entitlement) runs **before** stage 5 resolve: a non-granted unknown id is `forbidden_capability`. 404 `capability_unknown` is reachable only when entitlement passes and the registry misses (S09-044/045). |
 | Side effects | No SSE; no Quota DO admission for the unknown capability (Stage 9 behavior). |
 | Code reference | `ai-platform/src/worker.ts:L251-L254` — primary key checked first |
 
@@ -508,25 +508,25 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | Side effects | No SSE; no D1 journal row (Stage 9 behavior). |
 | Code reference | `ai-platform/src/adapter.ts:L213-L229` — `preAcceptFailureResponse` |
 
-## Scenario S08-042 — preAccept failure mapping: unpublished `x-capability-version` → 404 `capability_unknown`
+## Scenario S08-042 — preAccept failure mapping: unpublished `x-capability-version` → 403 `forbidden_capability`
 
 | Field | Content |
 |-------|---------|
 | ID | S08-042 |
 | Journey setup | Enrolled + entitled installation; valid AAT. |
 | Action | `POST /v1/requests` with `x-capability-version: not-a-published-version` (non-empty, so ingress accepts it), valid visit-summary body with matching org/branch. |
-| Expected outcome | HTTP 404 `{"code":"capability_unknown",…,"retry_safe":false}`. Ingress validated only non-emptiness; the registry key `{capability_id}@{version}` missed (Stage 9 stage-5 behavior). |
+| Expected outcome | HTTP 403 `{"code":"forbidden_capability",…,"retry_safe":false}`. Ingress validated only non-emptiness; stage 3 entitlement rejects the version mismatch as not granted **before** stage 5 registry lookup. 404 `capability_unknown` is reachable only when entitlement passes and the registry misses (S09-045 pins the grant to the requested unpublished version). |
 | Side effects | No SSE. |
 | Code reference | `ai-platform/src/adapter.ts:L248-L251` (ingress accepts); `ai-platform/src/adapter.ts:L213-L229` (mapping) |
 
-## Scenario S08-043 — preAccept failure mapping: unknown `capability_id` → 404 `capability_unknown`
+## Scenario S08-043 — preAccept failure mapping: unknown `capability_id` → 403 `forbidden_capability`
 
 | Field | Content |
 |-------|---------|
 | ID | S08-043 |
 | Journey setup | Enrolled + entitled installation; valid AAT. |
 | Action | `POST /v1/requests` body `{"capability_id":"clinic.not_a_capability","context":{"org":"c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f","branch":"b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e","visit.chief_complaint@v1":"Patient reports headache for 3 days."}}`, `x-capability-version: 1.0.0`. |
-| Expected outcome | HTTP 404 `capability_unknown` taxonomy JSON. Distinct from S08-029: a non-empty unknown string reaches the guard; only missing/non-string/empty capability fails at preAccept with 500. |
+| Expected outcome | HTTP 403 `forbidden_capability` taxonomy JSON. Distinct from S08-029: a non-empty unknown string reaches the guard; stage 3 entitlement rejects the unknown id as not granted before stage 5 would return 404 `capability_unknown`. Only missing/non-string/empty capability fails at preAccept with 500. |
 | Side effects | No SSE. |
 | Code reference | `ai-platform/src/worker.ts:L1043-L1047` (extraction succeeds); `ai-platform/src/adapter.ts:L213-L229` (mapping) |
 
@@ -548,9 +548,9 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | ID | S08-045 |
 | Journey setup | Enrolled installation entitled with `request_quota: 1` for the current period; one visit-summary request already driven to a terminal state (S08-049 journey, Stage 10 completion), consuming the quota. Valid AAT. |
 | Action | `POST /v1/requests` with a fresh idempotency key, valid visit-summary body. |
-| Expected outcome | HTTP 429 `{"code":"quota_exhausted","request_reference":"<Crockford>","trace_id":"<echoed>","retry_safe":true}` — **no** `retry_after` field, and no `period_reset` either: `createProductionPreAccept` forwards only `retryAfter` to the adapter, and `supplementaryFieldsForCode("quota_exhausted", {retryAfter})` omits an undefined/empty `periodReset`. No SSE. Admission arithmetic is Stage 9 behavior. |
+| Expected outcome | HTTP 429 `{"code":"quota_exhausted","request_reference":"<Crockford>","trace_id":"<echoed>","retry_safe":true,"period_reset":"<entitlement period_end>"}` — **no** `retry_after` field. Admission computes `periodReset` from the entitlement snapshot and the worker forwards it (`C-09`); `supplementaryFieldsForCode("quota_exhausted", {periodReset})` emits `period_reset`. No SSE. Admission arithmetic is Stage 9 behavior. |
 | Side effects | No SSE; no additional quota debit (Stage 9 behavior). |
-| Code reference | `ai-platform/src/worker.ts:L1087-L1096` — only `retryAfter` forwarded; `ai-platform/src/errors.ts:L193-L199` — `period_reset` omission rule |
+| Code reference | `ai-platform/src/worker.ts:L1321-L1323` — `periodReset` forwarded; `ai-platform/src/errors.ts:L193-L199` — `period_reset` when `periodReset` is present |
 
 ## Scenario S08-046 — Guard taxonomy 422 (`context_required`) is JSON, unlike the adapter's bare 422
 
@@ -636,7 +636,7 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 | ID | S08-053 |
 | Journey setup | S08-049's request driven to a terminal `completed` state (Stage 10 behavior) under idempotency key `8c9d0e1f-2a3b-4c5d-6e7f-8a9b0c1d2e3f`. |
 | Action | Repeat the exact S08-049 POST with the **same** idempotency key and same body. |
-| Expected outcome | HTTP 200 SSE. First event is a **new** `accepted` (fresh reference, echoed trace id); the stream then immediately replays the prior terminal: `event: completed` with `data.result.finalContent.text = "Prior request completed."` and `authoritative: true`. Admission's idempotent outcome and journal skip are Stage 9 behavior; the adapter-side observation is `accepted` followed by a terminal event and stream close. |
+| Expected outcome | HTTP 200 SSE. First event is a **new** `accepted` (fresh reference, echoed trace id); the stream then immediately replays the prior terminal: `event: completed` with `data.result.finalContent = {"text":"Prior request completed.","authoritative":true}` (`authoritative: true` lives on `result.finalContent`, not the `completed` data root). Admission's idempotent outcome and journal skip are Stage 9 behavior; the adapter-side observation is `accepted` followed by a terminal event and stream close. |
 | Side effects | No second Quota DO debit, no second `ai_request` row (Stage 9 behavior — asserted there, referenced here). |
 | Code reference | `ai-platform/src/worker.ts:L1098-L1104` — idempotent accept context; `ai-platform/src/worker.ts:L607-L640` — `replayIdempotentTerminal` |
 
@@ -822,7 +822,7 @@ through to the `intent` alias** — it does not default to `""` while ignoring `
 2. **No header length/charset/format bounds — fixed (D-23).** §1.1 documents trim-only validation in `parseRequiredHeaders` (`adapter.ts:L258-L284`); S08-024/S08-025 pin the behavior.
 3. **Doc probe 8.3.9 `user_intent` fall-through — fixed (D-23).** §1.3 documents that a non-string `user_intent` falls through to the `intent` alias (S08-054 case c); orientation doc probe §8.3.9 still needs a separate edit.
 4. **Unreachable branch: second parse check.** `adapter.ts:409-413` re-parses the body after `adapter.ts:390-393` already proved it parses; the `parsedBody === null` branch at L410-413 is dead code. Not a scenario (unreachable); flagged for cleanup.
-5. **`quota_exhausted` never carries `period_reset` from the live ingress path.** `createProductionPreAccept` forwards only `retryAfter` (`worker.ts:1087-1096`), and `supplementaryFieldsForCode` omits undefined/empty `periodReset` (`errors.ts:193-199`). The `errors.ts` comment says concurrency-mapped refusals "must populate periodReset from the entitlement snapshot (F4)" — the live POST path cannot. Neither the orientation doc nor this chapter's scenarios can observe `period_reset` on `POST /v1/requests`; flagged for the Stage 9 chapter.
+5. **`quota_exhausted` carries `period_reset` on the live ingress path (C-09).** Admission computes `periodReset` from the entitlement snapshot and the worker forwards it (`worker.ts:1321-1323`); `supplementaryFieldsForCode` emits `period_reset` when that value is present (S08-045). `retry_after` is still omitted for this code.
 6. **`cancelled` would map to HTTP 500 at preAccept.** `liveHttpStatusForCode("cancelled")` returns `null` and `preAcceptFailureResponse` falls back to 500 (`adapter.ts:224`). The guard never returns `cancelled` from preAccept in production, so this is a latent, unreachable mapping — recorded, not scenarized.
 7. **`context_requested` / `AwaitingContext` are not reachable at Stage 8.** `validateContextRequest` (`context/context-request.ts`) runs only inside `pushTerminalEvent` for conversational terminal emission (Stage 10 behavior); nothing at ingress produces or validates a context request. The orientation doc correctly scopes conversational fields to later stages.
 8. **Doc §8.2 unprobeable list vs. this catalog.** The doc lists "guard stage-1 size re-check as a second 413" as unprobeable; agreed — the adapter never forwards an oversize body, so only one 413 exists on the live path. S08-003…S08-008 cover the adapter gate exhaustively.
