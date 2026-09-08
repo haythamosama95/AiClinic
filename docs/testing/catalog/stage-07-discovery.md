@@ -501,9 +501,9 @@ Both return `401 unauthenticated`.
 | Field | Content |
 |-------|---------|
 | ID | S07-039 |
-| Journey setup | Baseline B0, then the control-plane deprecate operation: global lifecycle row `scope = 'global'`, `capability_id = 'clinic.visit_summary'`, `capability_version = '1.0.0'`, `lifecycle_state = 'deprecated'`, `successor_id = 'clinic.visit_summary'`, `deprecated_at = '2026-09-01T00:00:00.000Z'`. Fresh config cache. |
-| Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` |
-| Expected outcome | HTTP `200`. The single manifest's `Identity.lifecycleState = "deprecated"` and `Identity.successorId = "clinic.visit_summary"` (overlay values win over the published `"active"`/`null`); all other projection fields unchanged. Deprecated remains listed through the OD-9 overlap window; only `active` and `deprecated` pass the lifecycle filter — any other overlay value (e.g. `lifecycle_state = 'sunset'`) is also excluded. |
+| Journey setup | Baseline B0, then the control-plane deprecate operation: global lifecycle row `scope = 'global'`, `capability_id = 'clinic.visit_summary'`, `capability_version = '1.0.0'`, `lifecycle_state = 'deprecated'`, `successor_id = 'clinic.visit_summary'`, `deprecated_at = '2026-09-01T00:00:00.000Z'`. Fresh config cache. Pairwise arm: [SEED] `UPDATE capability_grant SET lifecycle_state = 'sunset' WHERE scope = 'global' AND capability_id = 'clinic.visit_summary' AND capability_version = '1.0.0'` on that successor overlay — justified: there is no control-plane sunset route; `lifecycle_state` has no CHECK constraint. Fresh config cache again. |
+| Action | `GET /v1/capabilities`, `Authorization: Bearer <AAT0>` after deprecate, then the same GET after the sunset seed. |
+| Expected outcome | HTTP `200`. After deprecate, the single manifest's `Identity.lifecycleState = "deprecated"` and `Identity.successorId = "clinic.visit_summary"` (overlay values win over the published `"active"`/`null`); all other projection fields unchanged. Deprecated remains listed through the OD-9 overlap window. After the sunset seed: HTTP `200`, body `{"manifests":[]}`, empty-list ETag — only `active` and `deprecated` pass the lifecycle filter; `lifecycle_state = 'sunset'` is excluded. |
 | Side effects | D1 reads: standard set plus installation grant and global lifecycle row. No writes. |
 | Code reference | `ai-platform/src/capability/index.ts:L760-L766 — discover (lifecycle filter)`; `ai-platform/src/capability/index.ts:L119-L138 — manifestWithEffectiveIdentity` |
 

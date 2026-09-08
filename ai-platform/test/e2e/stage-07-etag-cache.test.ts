@@ -285,15 +285,30 @@ describe("Stage 07 — discovery ETag, cache, lifecycle overlay (S07-038…S07-0
     await deprecateVisitSummary();
     clearConfigCache();
 
-    const result = await fetchDiscovery(token);
-    assert200DiscoveryHeaders(result);
-    assertPublicProjection(result.json, {
+    const listed = await fetchDiscovery(token);
+    assert200DiscoveryHeaders(listed);
+    assertPublicProjection(listed.json, {
       lifecycleState: "deprecated",
       successorId: CAPABILITY_ID,
     });
-    // Pairwise overlay lifecycle_state = "sunset" is also excluded (only
-    // active|deprecated pass). No control-plane sunset route exists; reaching
-    // it would need an unlabeled D1 UPDATE, so that pairing is not exercised.
+
+    // Pairwise: only active|deprecated pass. No sunset control route; [SEED] D1.
+    await seedSql([
+      {
+        sql: `UPDATE capability_grant
+              SET lifecycle_state = ?
+              WHERE scope = 'global'
+                AND capability_id = ?
+                AND capability_version = ?`,
+        params: ["sunset", CAPABILITY_ID, CAPABILITY_VERSION],
+      },
+    ]);
+    clearConfigCache();
+
+    const sunset = await fetchDiscovery(token);
+    const etag = assert200DiscoveryHeaders(sunset);
+    assertEmptyManifests(sunset.json);
+    expect(etag).toBe(await quotedEtagFor({ manifests: [] }));
   });
 
   it("S07-040 — Active kill switch does not remove the capability from discovery", async () => {
