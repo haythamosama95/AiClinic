@@ -14,6 +14,7 @@ import {
   getAiRequest,
   getAttempts,
   getAudits,
+  getUsageEvents,
   getR2Json,
   getRoutingPolicy,
   isolateConfigCache,
@@ -378,6 +379,11 @@ async function expectEmptyChainProviderUnavailable(
   expect(attempts).toHaveLength(1);
   expect(attempts[0]?.outcome).toBe("terminal_failure");
   expect(attempts[0]?.error_code).toBe("provider_unavailable");
+
+  const usage = await getUsageEvents(String(row.request_id));
+  expect(usage).toHaveLength(1);
+  expect(usage[0]?.tokens).toBe(0);
+  expect(Number(usage[0]?.cost)).toBe(0);
   return { row, decision, attempts };
 }
 
