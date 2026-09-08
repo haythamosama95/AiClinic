@@ -404,6 +404,43 @@ async function requireAiRequest(
   return row!;
 }
 
+function envelopePointer(row: Record<string, unknown>): string {
+  if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
+    return row.payload_pointer;
+  }
+  return `request/${String(row.request_id)}/envelope`;
+}
+
+/**
+ * Completed settlement writes the R2 pointer in waitUntil after SSE close.
+ * Flush then poll so envelope assertions fail closed if the object never lands.
+ */
+async function waitForCompletedEnvelope(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  await flushBackgroundWork();
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row?.state === "Completed") {
+      const pointer = envelopePointer(row);
+      if (
+        typeof row.payload_pointer === "string" &&
+        row.payload_pointer.length > 0 &&
+        (await r2Exists(pointer))
+      ) {
+        return row;
+      }
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for Completed envelope of ${ref} (pointer=${String(row?.payload_pointer)})`,
+  );
+}
+
 async function waitForLatestRequestState(
   installationId: string,
   state: string,
@@ -530,7 +567,7 @@ async function completeHappyRequest(
   const ref = assertAcceptedEvent(result.events[0], traceId);
   const completed = result.events.find((event) => event.event === "completed");
   expect(completed).toBeDefined();
-  const row = await requireAiRequest(ref);
+  const row = await waitForCompletedEnvelope(ref);
   expect(row.state).toBe("Completed");
   return { ref, requestId: String(row.request_id), row };
 }
@@ -1232,8 +1269,10 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
         scenario,
         `s11-019-${crypto.randomUUID()}`,
       );
-      const row = await requireAiRequest(ref);
+      const row = await waitForCompletedEnvelope(ref);
       expect(row.state).toBe("Completed");
+      expect(row.payload_pointer).toBeTruthy();
+      expect(await r2Exists(String(row.payload_pointer))).toBe(true);
       const envelope = await getR2Json(String(row.payload_pointer));
       const attempts = envelope.attempts as EnvelopeAttempt[];
       expect(attempts[0]).toEqual({

@@ -617,6 +617,83 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
   return row!;
 }
 
+function envelopePointer(row: Record<string, unknown>): string {
+  if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
+    return row.payload_pointer;
+  }
+  return `request/${String(row.request_id)}/envelope`;
+}
+
+/**
+ * Completed settlement writes the R2 pointer in waitUntil after SSE close.
+ * Flush then poll so ledger assertions fail closed if the envelope never lands.
+ */
+async function waitForCompletedEnvelope(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  await flushBackgroundWork();
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row?.state === "Completed") {
+      const pointer = envelopePointer(row);
+      if (
+        typeof row.payload_pointer === "string" &&
+        row.payload_pointer.length > 0 &&
+        (await r2Exists(pointer))
+      ) {
+        return row;
+      }
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for Completed envelope of ${ref} (pointer=${String(row?.payload_pointer)})`,
+  );
+}
+
+/**
+ * Abort-in-flight Cancelled is written before persistPostResponseDetail
+ * journals the synthetic attempt. Poll until the attempt, usage_event,
+ * and R2 envelope are all present.
+ */
+async function waitForCancelledJournal(
+  requestId: string,
+  ref: string,
+  timeoutMs = 8000,
+): Promise<{
+  row: Record<string, unknown>;
+  attempts: Record<string, unknown>[];
+}> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  let attempts: Record<string, unknown>[] = [];
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    attempts = await getAttempts(requestId);
+    const usage = await getUsageEvents(requestId);
+    const pointer = row != null ? envelopePointer(row) : "";
+    const envelopeReady =
+      typeof row?.payload_pointer === "string" &&
+      row.payload_pointer.length > 0 &&
+      (await r2Exists(pointer));
+    if (
+      row?.state === "Cancelled" &&
+      attempts.length === 1 &&
+      usage.length === 1 &&
+      envelopeReady
+    ) {
+      return { row, attempts };
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for cancelled journal of ${requestId} (attempts=${attempts.length})`,
+  );
+}
+
 async function waitForLatestRequestState(
   installationId: string,
   state: string,
@@ -669,7 +746,7 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
     const completed = result.events.find((event) => event.event === "completed");
     assertCompletedEvent(completed, FAKE_SUMMARY, "s11-001-trace");
 
-    const row = await requireAiRequest(ref);
+    const row = await waitForCompletedEnvelope(ref);
     expect(row.state).toBe("Completed");
     expect(String(row.completed_at)).toMatch(ISO_INSTANT);
     expect(row.terminal_error_code).toBeNull();
@@ -1311,14 +1388,16 @@ describe("Stage 11 â€” terminal settlement completed/failed/cancelled (S11-001â€
       expect(events.some((event) => event.event === "cancelled")).toBe(false);
 
       await flushBackgroundWork(350);
-      const row = await waitForLatestRequestState(
+      const cancelled = await waitForLatestRequestState(
         scenario.installationId,
         "Cancelled",
       );
+      const { row, attempts } = await waitForCancelledJournal(
+        String(cancelled.request_id),
+        String(cancelled.request_reference),
+      );
       expect(row.completed_at).toBeTruthy();
       expect(row.terminal_error_code).toBeNull();
-
-      const attempts = await getAttempts(String(row.request_id));
       expect(attempts).toHaveLength(1);
       expect(attempts[0]).toMatchObject({
         outcome: "terminal_failure",

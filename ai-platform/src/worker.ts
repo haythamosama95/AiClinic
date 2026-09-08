@@ -548,6 +548,24 @@ async function settleMissingHandoffInternalError(
     return;
   }
 
+  const entitlementRow = await runtimeEnv.DB.prepare(
+    `SELECT period_start FROM entitlement WHERE installation_id = ?`,
+  )
+    .bind(row.installation_id)
+    .first<{ period_start: string }>();
+  if (!entitlementRow?.period_start) {
+    log.error("missing_handoff_settle_entitlement_missing");
+    await recordTerminalState(
+      row.request_id,
+      "Failed",
+      "internal_error",
+      new Date().toISOString(),
+      runtimeEnv.DB,
+      "single_shot",
+    );
+    return;
+  }
+
   const traceId = streamContext.traceId || row.trace_id;
   await settlePostAcceptInternalError(
     runtimeEnv,
@@ -561,7 +579,7 @@ async function settleMissingHandoffInternalError(
         streamContext.requestReference,
         traceId,
       ),
-      periodStart: new Date().toISOString(),
+      periodStart: entitlementRow.period_start,
     },
     log,
   );

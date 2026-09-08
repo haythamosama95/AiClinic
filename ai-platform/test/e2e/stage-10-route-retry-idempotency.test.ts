@@ -446,6 +446,32 @@ async function requireAiRequest(ref: string): Promise<Record<string, unknown>> {
   return row!;
 }
 
+/**
+ * SSE `failed` closes before waitUntil `recordTerminalState` / journal land.
+ * Poll Failed + usage_event so suite-pool load cannot read Accepted.
+ */
+async function waitForFailedSettlement(
+  ref: string,
+  timeoutMs = 8000,
+): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row?.state === "Failed") {
+      const attempts = await getAttempts(String(row.request_id));
+      const usage = await getUsageEvents(String(row.request_id));
+      if (attempts.length === 2 && usage.length === 1) {
+        return row;
+      }
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for Failed settlement of ${ref} (state=${String(row?.state)})`,
+  );
+}
+
 describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () => {
   it("S10-001 — single-target chain success settles completed", async () => {
     const { scenario, token } = await setupFresh();
@@ -975,7 +1001,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       });
       expect(elapsed).toBeGreaterThanOrEqual(150);
 
-      const row = await requireAiRequest(ref);
+      const row = await waitForFailedSettlement(ref);
       expect(row.state).toBe("Failed");
       expect(row.terminal_error_code).toBe("provider_unavailable");
       const attempts = await getAttempts(String(row.request_id));
