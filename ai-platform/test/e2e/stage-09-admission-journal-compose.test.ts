@@ -812,17 +812,97 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(before.idempotency?.["idem-old"]?.state).toBe("admitted");
     expect(Object.keys(before.admittedRequests ?? {}).length).toBe(1);
 
-    const result = await postRequestPinned(scenario, {
-      token: await mintAat(scenario),
-      traceId: TRACE_ID,
-      body: happyVisitBody(scenario),
+    // Hang FakeAdapter so settlement cannot race the guard-boundary journal
+    // read. postRequest drains the SSE to close and flushBackgroundWork, which
+    // would let the row leave Accepted before we assert it.
+    const fakeMod = await loadFakeModule();
+    const original = fakeMod.FakeAdapter;
+    let releaseHang: () => void = () => {};
+    const hangReleased = new Promise<void>((resolve) => {
+      releaseHang = resolve;
     });
-    assertAcceptedSse(result, { traceId: TRACE_ID });
+    class HangThenSuccess extends original {
+      override async invoke(
+        request: never,
+        options?: { signal?: AbortSignal },
+      ) {
+        await Promise.race([
+          hangReleased,
+          hangUntilAbort(options?.signal, 5000),
+        ]);
+        return super.invoke(request, options);
+      }
+    }
+    const adapterSpy = vi
+      .spyOn(fakeMod, "FakeAdapter")
+      .mockImplementation(() => new HangThenSuccess(["success"]) as never);
 
-    const after = await inspectState(scenario.installationId);
-    expect(after.admittedRequests?.[String(seedBody.requestId)]).toBeUndefined();
-    expect(after.idempotency?.["idem-old"]?.state).toBe("failed");
-    expect(await count("ai_request")).toBe(1);
+    const idempotencyKey = crypto.randomUUID();
+    let response: Response | undefined;
+    try {
+      await pinActiveServingPolicy(scenario);
+      response = await clinicFetch("/v1/requests", {
+        method: "POST",
+        token: await mintAat(scenario),
+        headers: clinicPostHeaders({
+          "x-idempotency-key": idempotencyKey,
+          "x-trace-id": TRACE_ID,
+        }),
+        body: happyVisitBody(scenario),
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain(
+        "text/event-stream",
+      );
+      const events = await readSseUntil(response, (seen) =>
+        seen.some((event) => event.event === "accepted"),
+      );
+      const accepted = assertAcceptedSse(
+        {
+          status: response.status,
+          headers: response.headers,
+          body: null,
+          events,
+          text: "",
+        },
+        { traceId: TRACE_ID },
+      );
+      const ref = String(accepted.data.request_reference);
+
+      // Guard-boundary journal: createRequestRow INSERT. routing_decision is
+      // persistRoutingDecision after accept (invocation start), not settlement.
+      const row = await getAiRequest(ref);
+      expect(row).not.toBeNull();
+      expect(row?.state).toBe("Accepted");
+      expect(row?.request_reference).toBe(ref);
+      expect(row?.installation_id).toBe(scenario.installationId);
+      expect(row?.actor_id).toBe(scenario.actorId);
+      expect(row?.branch_id).toBe(scenario.branchId);
+      expect(row?.capability_id).toBe(CAPABILITY_ID);
+      expect(row?.capability_version).toBe(CAPABILITY_VERSION);
+      expect(String(row?.prompt_artifact_hash)).toMatch(PROMPT_HASH);
+      expect(row?.idempotency_key).toBe(idempotencyKey);
+      expect(row?.trace_id).toBe(TRACE_ID);
+      expect(row?.created_at).toBeTruthy();
+      expect(row?.updated_at).toBeTruthy();
+      expect(row?.conversation_id).toBeNull();
+      expect(row?.turn_ordinal).toBeNull();
+      expect(row?.routing_tier).toBe("standard");
+      expect(row?.completed_at).toBeNull();
+      expect(row?.terminal_error_code).toBeNull();
+      expect(row?.payload_pointer).toBeNull();
+      expect(await count("ai_request")).toBe(1);
+
+      const after = await inspectState(scenario.installationId);
+      expect(
+        after.admittedRequests?.[String(seedBody.requestId)],
+      ).toBeUndefined();
+      expect(after.idempotency?.["idem-old"]?.state).toBe("failed");
+    } finally {
+      releaseHang();
+      await cancelResponseBody(response);
+      adapterSpy.mockRestore();
+    }
   });
 
   it.skip(
