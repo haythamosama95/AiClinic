@@ -156,6 +156,11 @@ export {
   type Manifest,
 } from "../../../src/manifest";
 export { isolateConfigCache } from "../../../src/config-cache";
+export { promptScaffoldByteLength } from "../../../src/prompt/composer";
+export {
+  estimateInputTokens,
+  serializePreflightInput,
+} from "../../../src/context/preflight";
 
 /** Direct handler / quota RPC seams (Register 5). Not for ordinary full-path tests. */
 export { handleAdapterRequest } from "../../../src/adapter";

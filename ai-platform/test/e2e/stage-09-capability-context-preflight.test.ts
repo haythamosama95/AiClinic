@@ -12,6 +12,7 @@ import {
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
   env,
+  estimateInputTokens,
   fakePolicyDocument,
   fakePolicyTarget,
   getAiRequest,
@@ -20,11 +21,13 @@ import {
   POLICY_ID,
   postRequest,
   promotePolicy,
+  promptScaffoldByteLength,
   provisionHappyPath,
   publishPolicy,
   queryOne,
   resetE2eState,
   seedSql,
+  serializePreflightInput,
   setCapabilityRegistry,
   visitSummaryInvokeBody,
   VISIT_CHIEF_COMPLAINT_V1,
@@ -52,7 +55,11 @@ const H0_COMPLAINT = "Patient reports headache for 3 days.";
 const DEPRECATE_PATH = `/control/capabilities/${CAPABILITY_ID}/versions/${CAPABILITY_VERSION}/deprecate`;
 const RETIRE_PATH = `/control/capabilities/${CAPABILITY_ID}/versions/${CAPABILITY_VERSION}/retire`;
 const PAST_RETIRE_AFTER = "2020-01-01T00:00:00.000Z";
+/** Catalog S09-063: utf8(serialized context+intent) + scaffold = 27,824 → 7,999.4 tokens. */
+const PREFLIGHT_PASS_TOTAL_BYTES = 27_824;
+/** Catalog S09-064: one more byte → 8,000.55 tokens, strict `>` on maxInputTokens. */
 const PREFLIGHT_FAIL_TOTAL_BYTES = 27_825;
+const VISIT_SUMMARY_MAX_INPUT_TOKENS = 8000;
 
 const PUBLISHED_VISIT_SUMMARY_JSON: Record<string, unknown> = {
   Identity: {
@@ -191,22 +198,41 @@ function complaintValueOfJsonBytes(
   return { visit_id: visitId, complaint: "x".repeat(pad) };
 }
 
-function serializePreflightInput(
-  filteredContext: Record<string, unknown>,
-  userIntent: string,
-): string {
-  return JSON.stringify({ filteredContext, userIntent });
-}
-
 function intentForPreflightTotal(
   filteredContext: Record<string, unknown>,
-  targetTotalBytes: number,
+  targetSerializedBytes: number,
 ): string {
   const emptyBytes = new TextEncoder().encode(
-    serializePreflightInput(filteredContext, ""),
+    serializePreflightInput({ filteredContext, userIntent: "" }),
   ).byteLength;
-  const pad = Math.max(0, targetTotalBytes - emptyBytes);
+  const pad = Math.max(0, targetSerializedBytes - emptyBytes);
   return "x".repeat(pad);
+}
+
+/**
+ * Size `user_intent` so utf8(serializePreflightInput) + promptScaffoldByteLength
+ * equals the catalog byte total (27,824 under / 27,825 over).
+ */
+function padIntentToPreflightTotal(
+  filteredContext: Record<string, unknown>,
+  targetTotalBytes: number,
+): { userIntent: string; estimatedInputTokens: number; scaffoldBytes: number } {
+  const scaffoldBytes = promptScaffoldByteLength(
+    loadManifest(publishedVisitSummaryWire()),
+  );
+  expect(scaffoldBytes).toBeGreaterThan(0);
+  const serializedTarget = targetTotalBytes - scaffoldBytes;
+  expect(serializedTarget).toBeGreaterThan(0);
+  const userIntent = intentForPreflightTotal(filteredContext, serializedTarget);
+  const serialized = serializePreflightInput({ filteredContext, userIntent });
+  expect(
+    new TextEncoder().encode(serialized).byteLength + scaffoldBytes,
+  ).toBe(targetTotalBytes);
+  return {
+    userIntent,
+    estimatedInputTokens: estimateInputTokens(serialized, scaffoldBytes),
+    scaffoldBytes,
+  };
 }
 
 function assertJsonTaxonomy(
@@ -795,17 +821,28 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
   });
 
   it("S09-063 — preflight just under maxInputTokens accepts", async () => {
-    // HARNESS-GAP: promptScaffoldByteLength not on barrel. Catalog wants
-    // B0+intent+S = 27824; without S this POSTs the short H0 intent that
-    // clearly passes. Exact 27824 needs the composer scaffold helper.
     const { scenario, token } = await entitledJourney();
+    const visitId = crypto.randomUUID();
+    const complaint = complaintObject(visitId);
+    const filteredContext = { [VISIT_CHIEF_COMPLAINT_V1]: complaint };
+    const { userIntent, estimatedInputTokens, scaffoldBytes } =
+      padIntentToPreflightTotal(filteredContext, PREFLIGHT_PASS_TOTAL_BYTES);
+
+    expect(estimatedInputTokens).toBeLessThanOrEqual(
+      VISIT_SUMMARY_MAX_INPUT_TOKENS,
+    );
+    expect(estimatedInputTokens).toBeGreaterThan(
+      VISIT_SUMMARY_MAX_INPUT_TOKENS - 1,
+    );
+    expect(scaffoldBytes).toBeGreaterThan(0);
 
     const result = await postH0(scenario, token, {
       body: happyVisitBody(scenario, {
+        user_intent: userIntent,
         context: {
           org: scenario.orgId,
           branch: scenario.branchId,
-          [VISIT_CHIEF_COMPLAINT_V1]: complaintObject(crypto.randomUUID()),
+          [VISIT_CHIEF_COMPLAINT_V1]: complaint,
         },
       }),
     });
@@ -813,16 +850,17 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
   });
 
   it("S09-064 — one byte over the preflight boundary is request_too_large", async () => {
-    // HARNESS-GAP: promptScaffoldByteLength not on barrel. Pad so
-    // B0+intentBytes = 27825 (S treated as 0); fixer can subtract measured S.
     const { scenario, token } = await entitledJourney();
     const visitId = crypto.randomUUID();
     const complaint = complaintObject(visitId);
     const filteredContext = { [VISIT_CHIEF_COMPLAINT_V1]: complaint };
-    const userIntent = intentForPreflightTotal(
-      filteredContext,
-      PREFLIGHT_FAIL_TOTAL_BYTES,
+    const { userIntent, estimatedInputTokens, scaffoldBytes } =
+      padIntentToPreflightTotal(filteredContext, PREFLIGHT_FAIL_TOTAL_BYTES);
+
+    expect(estimatedInputTokens).toBeGreaterThan(
+      VISIT_SUMMARY_MAX_INPUT_TOKENS,
     );
+    expect(scaffoldBytes).toBeGreaterThan(0);
 
     const result = await postH0(scenario, token, {
       body: happyVisitBody(scenario, {
