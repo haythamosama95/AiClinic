@@ -78,8 +78,8 @@ Non-contract failures (e.g. invalid `ai.issuer.rate_limit.ceiling` JSON → `220
 **Baseline B0** (built once; scenarios reference it plus deltas):
 
 1. Fresh local Supabase, all migrations applied (seeded bootstrap admin, `roles_permissions`
-   matrix, `ai_internal.app_settings` AI keys at defaults: lifetime 10, audience `ai-platform`,
-   ver `1`, ceiling 100, window 3600).
+   matrix). B0 pins only `ai.aat.lifetime_minutes` = 10 (600 s). Audience, ver, ceiling, and
+   window stay at whatever the seed migration wrote — B0 does not overwrite them.
 2. As BOOT: `SELECT public.bootstrap_finish_setup('Sunrise Dental Clinic', 'Main Branch',
    '[{"username":"nadia_h","password":"Cl1nic!pass","full_name":"Nadia Haddad","role":"doctor"},
      {"username":"lina_k","password":"Cl1nic!pass","full_name":"Lina Khoury","role":"administrator"},

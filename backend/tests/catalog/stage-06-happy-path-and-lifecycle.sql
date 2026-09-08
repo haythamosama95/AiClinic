@@ -185,15 +185,12 @@ BEGIN
 
   PERFORM pg_temp.reset_keystore();
 
-  -- CODE B0 defaults (20260905120000 seed 10 min → 600 s). Pin here so a
-  -- drifted local row cannot change S06-019/S06-020 lifetime assertions.
+  -- Pin only lifetime (20260905120000 seed 10 min → 600 s) so a drifted local
+  -- row cannot change S06-019/S06-020 lifetime assertions. Do not pin
+  -- audience/ver/ceiling/window — overwriting them would mask seed drift.
   INSERT INTO ai_internal.app_settings (key, value_json)
   VALUES
-    ('ai.aat.lifetime_minutes', '10'::jsonb),
-    ('ai.aat.audience', '"ai-platform"'::jsonb),
-    ('ai.aat.ver', '"1"'::jsonb),
-    ('ai.issuer.rate_limit.ceiling', '100'::jsonb),
-    ('ai.issuer.rate_limit.window_seconds', '3600'::jsonb)
+    ('ai.aat.lifetime_minutes', '10'::jsonb)
   ON CONFLICT (key) DO UPDATE
   SET
     value_json = EXCLUDED.value_json,
