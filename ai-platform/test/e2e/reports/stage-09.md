@@ -138,7 +138,7 @@ Code: `inFlight >= 16` is the gate. The barrel has no FakeAdapter hang; overlapp
 | S09-082 | Register 5 #29: in-pool `env.DB` frozen; `wrapD1` / `prepare` patch does not reach `SELF.fetch`. `it.skip`. |
 | S09-073 | No FakeAdapter hang on the barrel. Setup uses `gatewayObjectRpc` admission ×16 (conflict 5.4). |
 | S09-083 | `__setArtifactContentForTest` is not on the barrel. Test uses `setCapabilityRegistry` with a broken fragment pin instead. |
-| S09-084 | Composed `CanonicalRequest` neutralization is asserted from the R2 envelope when present. |
+| S09-084 | `leakNeedlesFromSystemInstruction` / `indexedArtifactContent` are not on the barrel. Test imports them from `src/` (same as S10-023), flushes, then polls `r2Exists`. |
 
 ## 7. Remaining failures
 

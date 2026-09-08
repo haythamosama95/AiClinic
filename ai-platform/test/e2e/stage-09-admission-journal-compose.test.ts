@@ -50,6 +50,10 @@ import {
 // (same seam as SX-013/017). Neither helper is on the frozen barrel.
 import { runAdmission } from "../../src/admission";
 import { createD1ConfigReader } from "../../src/config-cache";
+// HARNESS-GAP: leakNeedlesFromSystemInstruction / indexedArtifactContent are
+// not on the barrel (same as S10-023).
+import { leakNeedlesFromSystemInstruction } from "../../src/prompt/composer";
+import { indexedArtifactContent } from "../../src/prompt/registry";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -68,6 +72,8 @@ const PERIOD_RESET = DEFAULT_ENTITLE_PAYLOAD.period_end;
 const PROMPT_HASH = /^[0-9a-f]{8}$/;
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 const S09_085_KEY = "6f5e4d3c-2b1a-4098-87f6-5e4d3c2b1a09";
+const SYSTEM_ARTIFACT_REF = "clinic.visit_summary/system@v1";
+const LEAK_NEEDLE_LENGTH = 48;
 
 type QuotaInspectState = {
   periodCounters?: {
@@ -187,6 +193,47 @@ async function waitForAiRequestState(
   }
   throw new Error(
     `timed out waiting for ai_request ${requestReference} state ${state} (last=${String(row?.state)})`,
+  );
+}
+
+function jwtPayload(token: string): Record<string, unknown> {
+  const segment = token.split(".")[1] ?? "";
+  const padded = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = "=".repeat((4 - (padded.length % 4)) % 4);
+  return JSON.parse(atob(padded + pad)) as Record<string, unknown>;
+}
+
+function envelopePointer(row: Record<string, unknown>): string {
+  if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
+    return row.payload_pointer;
+  }
+  return `request/${String(row.request_id)}/envelope`;
+}
+
+/**
+ * Stage 11 writes the R2 envelope in waitUntil after SSE close. Flush then
+ * poll so compose-observable assertions fail closed if settlement never lands.
+ */
+async function waitForR2Envelope(
+  requestReference: string,
+  timeoutMs = 8000,
+): Promise<{ row: Record<string, unknown>; pointer: string }> {
+  await flushBackgroundWork();
+  const started = Date.now();
+  let row: Record<string, unknown> | null = null;
+  let pointer = "";
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(requestReference);
+    if (row != null) {
+      pointer = envelopePointer(row);
+      if (await r2Exists(pointer)) {
+        return { row, pointer };
+      }
+    }
+    await flushBackgroundWork(50);
+  }
+  throw new Error(
+    `timed out waiting for R2 envelope of ${requestReference} (pointer=${pointer || "unset"})`,
   );
 }
 
@@ -955,9 +1002,13 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
 
   it("S09-084 — compose observables share prompt_artifact_hash", async () => {
     const scenario = await provisionHappyPath();
+    const tokenA = await mintAat(scenario);
+    const jtiA = String(jwtPayload(tokenA).jti ?? "");
+    expect(jtiA.length).toBeGreaterThan(0);
+    expect(jtiA).not.toBe(TRACE_ID);
 
     const first = await postRequestPinned(scenario, {
-      token: await mintAat(scenario),
+      token: tokenA,
       capabilityVersion: CAPABILITY_VERSION,
       traceId: TRACE_ID,
       body: happyVisitBody(scenario, {
@@ -982,9 +1033,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
 
     assertAcceptedSse(first, { traceId: TRACE_ID });
     assertAcceptedSse(second);
-    const rowA = await getAiRequest(
-      String(first.events[0]?.data.request_reference),
-    );
+    const refA = String(first.events[0]?.data.request_reference);
+    const rowA = await getAiRequest(refA);
     const rowB = await getAiRequest(
       String(second.events[0]?.data.request_reference),
     );
@@ -993,42 +1043,59 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(String(rowA?.prompt_artifact_hash)).toMatch(PROMPT_HASH);
     expect(rowA?.prompt_artifact_hash).toBe(rowB?.prompt_artifact_hash);
 
-    const pointer =
-      typeof rowA?.payload_pointer === "string" && rowA.payload_pointer.length > 0
-        ? rowA.payload_pointer
-        : `request/${String(rowA?.request_id)}/envelope`;
-    if (await r2Exists(pointer)) {
-      const envelope = await getR2Json(pointer);
-      const prompt = envelope.prompt as {
-        parts?: Array<{ role?: string; content?: string }>;
-        stopConditions?: unknown;
-        stream?: boolean;
-        maxOutputTokens?: number;
-        formatDirective?: { mode?: string; outputSchemaRef?: unknown };
-        samplingConstraints?: { allowedLanguages?: string[] };
-        toolDeclarations?: unknown[];
-        deadline?: unknown;
-      };
-      const userPart = prompt.parts?.find((part) => part.role === "user");
-      const dataPart = prompt.parts?.find((part) => part.role === "data");
-      // Catalog neutralization is the six-char escape `\u003c/` — a JS
-      // `"\u003c/system>"` literal decodes to `"</system>"` and misses.
-      expect(String(userPart?.content ?? "")).toContain("\\u003c/system>");
-      expect(String(dataPart?.content ?? "")).toContain("\\u003c/key>");
-      expect(prompt.stopConditions).toEqual([]);
-      expect(prompt.stream).toBe(true);
-      expect(prompt.maxOutputTokens).toBe(1024);
-      expect(prompt.formatDirective).toEqual({
-        mode: "prose",
-        outputSchemaRef: null,
-      });
-      expect(prompt.samplingConstraints?.allowedLanguages).toEqual(["en"]);
-      expect(prompt.toolDeclarations).toEqual([]);
-      expect(prompt.deadline).toBeNull();
-    } else {
-      // HARNESS-GAP: composed CanonicalRequest is not observable before
-      // settlement if R2 envelope is missing. Journal hash + accepted stand.
+    const settled = await waitForR2Envelope(refA);
+    const envelope = await getR2Json(settled.pointer);
+    const prompt = envelope.prompt as {
+      parts?: Array<{ role?: string; content?: string }>;
+      stopConditions?: unknown;
+      stream?: boolean;
+      maxOutputTokens?: number;
+      formatDirective?: { mode?: string; outputSchemaRef?: unknown };
+      samplingConstraints?: { allowedLanguages?: string[] };
+      toolDeclarations?: unknown[];
+      deadline?: unknown;
+      correlationIds?: { request_reference?: string; trace_id?: string };
+    };
+    const userPart = prompt.parts?.find((part) => part.role === "user");
+    const dataPart = prompt.parts?.find((part) => part.role === "data");
+    // Catalog neutralization is the six-char escape `\u003c/` — a JS
+    // `"\u003c/system>"` literal decodes to `"</system>"` and misses.
+    expect(String(userPart?.content ?? "")).toContain("\\u003c/system>");
+    expect(String(dataPart?.content ?? "")).toContain("\\u003c/key>");
+    expect(prompt.stopConditions).toEqual([]);
+    expect(prompt.stream).toBe(true);
+    expect(prompt.maxOutputTokens).toBe(1024);
+    expect(prompt.formatDirective).toEqual({
+      mode: "prose",
+      outputSchemaRef: null,
+    });
+    expect(prompt.samplingConstraints?.allowedLanguages).toEqual(["en"]);
+    expect(prompt.toolDeclarations).toEqual([]);
+    expect(prompt.deadline).toBeNull();
+
+    const system = indexedArtifactContent(SYSTEM_ARTIFACT_REF);
+    expect(system).toBeTruthy();
+    const trimmedSystem = system!.trim();
+    expect(trimmedSystem.length).toBeGreaterThan(LEAK_NEEDLE_LENGTH);
+    const needles = leakNeedlesFromSystemInstruction(system!);
+    expect(needles[0]).toBe(trimmedSystem.slice(0, LEAK_NEEDLE_LENGTH));
+    expect(needles).toContain(trimmedSystem.slice(-LEAK_NEEDLE_LENGTH));
+    const systemPart = prompt.parts?.find((part) => part.role === "system");
+    expect(systemPart?.content).toBeTruthy();
+    expect(leakNeedlesFromSystemInstruction(String(systemPart!.content))).toEqual(
+      needles,
+    );
+    const composedText = (prompt.parts ?? [])
+      .map((part) => String(part.content ?? ""))
+      .join("\n");
+    for (const needle of needles) {
+      expect(needle.length).toBe(LEAK_NEEDLE_LENGTH);
+      expect(composedText).toContain(needle);
     }
+
+    expect(prompt.correlationIds?.request_reference).toBe(refA);
+    expect(prompt.correlationIds?.trace_id).toBe(jtiA);
+    expect(prompt.correlationIds?.trace_id).not.toBe(TRACE_ID);
   });
 
   it("S09-085 — full fresh guard success ends in SSE accepted", async () => {
