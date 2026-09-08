@@ -928,8 +928,13 @@ DECLARE
   v_br_a uuid;
   v_br_b uuid;
   v_create public.rpc_result;
-  v_token text;
-  v_payload jsonb;
+  v_token_primary text;
+  v_payload_primary jsonb;
+  v_token_tie text;
+  v_payload_tie jsonb;
+  v_name_a text;
+  v_name_b text;
+  v_live_primary int;
   v_schedule jsonb := '{
     "days": [
       {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
@@ -961,18 +966,13 @@ BEGIN
     NULL
   );
 
-  IF v_create.success THEN
-    v_br_b := (v_create.data ->> 'branch_id')::uuid;
-  ELSE
-    PERFORM pg_temp.reset_postgres();
-    INSERT INTO public.branches (
-      organization_id, name, code, working_schedule, created_by, updated_by
-    )
-    VALUES (
-      v_org, 'North Branch', 'NORTH', v_schedule, v_adm_auth, v_adm_auth
-    )
-    RETURNING id INTO v_br_b;
+  IF NOT v_create.success THEN
+    RAISE EXCEPTION 'S06-024 manage_create_branch failed: % — %',
+      COALESCE(v_create.error_code, '<null>'),
+      COALESCE(v_create.error_message, '');
   END IF;
+
+  v_br_b := (v_create.data ->> 'branch_id')::uuid;
 
   PERFORM pg_temp.reset_postgres();
   INSERT INTO public.staff_branch_assignments (
@@ -982,22 +982,60 @@ BEGIN
 
   PERFORM pg_temp.s06_stash_setup('branch_b', v_br_b);
 
+  SELECT b.name INTO STRICT v_name_a FROM public.branches b WHERE b.id = v_br_a;
+  SELECT b.name INTO STRICT v_name_b FROM public.branches b WHERE b.id = v_br_b;
+
   PERFORM pg_temp.set_authenticated_session(v_doc_auth);
-  v_token := public.issue_ai_token();
-  v_payload := pg_temp.decode_jws_payload(v_token);
+  v_token_primary := public.issue_ai_token();
+  v_payload_primary := pg_temp.decode_jws_payload(v_token_primary);
+
+  -- Catalog tie-break: with no primary flag, "Main Branch" wins over "North Branch".
+  PERFORM pg_temp.reset_postgres();
+  UPDATE public.staff_branch_assignments
+  SET is_primary = false
+  WHERE staff_member_id = v_doc
+    AND is_deleted = false;
+
+  SELECT count(*)::int INTO v_live_primary
+  FROM public.staff_branch_assignments
+  WHERE staff_member_id = v_doc
+    AND is_deleted = false
+    AND is_primary;
+
+  PERFORM pg_temp.set_authenticated_session(v_doc_auth);
+  v_token_tie := public.issue_ai_token();
+  v_payload_tie := pg_temp.decode_jws_payload(v_token_tie);
   PERFORM pg_temp.reset_postgres();
 
-  v_ok := v_br_b IS NOT NULL
+  UPDATE public.staff_branch_assignments
+  SET is_primary = true
+  WHERE staff_member_id = v_doc
+    AND branch_id = v_br_a
+    AND is_deleted = false;
+
+  v_ok := v_create.success
+    AND v_br_b IS NOT NULL
     AND v_br_b IS DISTINCT FROM v_br_a
-    AND v_token IS NOT NULL
-    AND array_length(string_to_array(v_token, '.'), 1) = 3
-    AND (v_payload ->> 'branch') = v_br_a::text
-    AND (v_payload ->> 'branch') IS DISTINCT FROM v_br_b::text;
+    AND v_name_a = 'Main Branch'
+    AND v_name_b = 'North Branch'
+    AND v_name_a < v_name_b
+    AND v_token_primary IS NOT NULL
+    AND array_length(string_to_array(v_token_primary, '.'), 1) = 3
+    AND (v_payload_primary ->> 'branch') = v_br_a::text
+    AND (v_payload_primary ->> 'branch') IS DISTINCT FROM v_br_b::text
+    AND v_live_primary = 0
+    AND v_token_tie IS NOT NULL
+    AND array_length(string_to_array(v_token_tie, '.'), 1) = 3
+    AND (v_payload_tie ->> 'branch') = v_br_a::text
+    AND (v_payload_tie ->> 'branch') IS DISTINCT FROM v_br_b::text;
 
   v_detail := 'create=' || COALESCE(v_create.error_code, 'ok')
     || ' br_a=' || v_br_a::text
     || ' br_b=' || COALESCE(v_br_b::text, '<null>')
-    || ' claim=' || COALESCE(v_payload ->> 'branch', '<null>');
+    || ' names=' || COALESCE(v_name_a, '<null>') || '/' || COALESCE(v_name_b, '<null>')
+    || ' primary_claim=' || COALESCE(v_payload_primary ->> 'branch', '<null>')
+    || ' tie_claim=' || COALESCE(v_payload_tie ->> 'branch', '<null>')
+    || ' live_primary=' || v_live_primary::text;
 
   PERFORM pg_temp.record(
     'S06-024 — Branch claim is the primary active branch, not an arbitrary one',
