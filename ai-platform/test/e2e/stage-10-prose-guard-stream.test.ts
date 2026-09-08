@@ -42,9 +42,11 @@ import {
 } from "./harness";
 import {
   assertCreditUsage,
+  assertUsageEventPeriod,
   COMPLETED_CREDIT,
   NO_CREDIT,
   spyCreditUsage,
+  STAGE10_ENTITLE,
   VALIDATION_FAILED_CREDIT,
   VALIDATION_FAILED_SINGLE_CREDIT,
 } from "./stage-10-credit-spy";
@@ -65,7 +67,6 @@ afterEach(async () => {
 });
 
 const FAKE_SUMMARY = "Fake adapter summary.";
-const YYYY_MM = /^\d{4}-\d{2}$/;
 const SYSTEM_ARTIFACT_REF = "clinic.visit_summary/system@v1";
 
 type FakeModule = typeof import("../../src/provider/fake");
@@ -108,13 +109,13 @@ async function setupFresh(options?: {
   targets?: Record<string, unknown>[];
 }): Promise<Scenario> {
   if (options?.targets === undefined) {
-    return provisionHappyPath();
+    return provisionHappyPath(undefined, STAGE10_ENTITLE);
   }
 
   const scenario = await newScenario();
   const enrolled = await enrollInstallation(scenario);
   expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario);
+  const entitled = await entitleInstallation(scenario, STAGE10_ENTITLE);
   expect(entitled.status).toBe(200);
   const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION, {
     targets: options.targets,
@@ -473,7 +474,7 @@ async function assertValidationFailedSettlement(ref: string): Promise<void> {
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  expect(String(usage[0]?.period)).toMatch(YYYY_MM);
+  assertUsageEventPeriod(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
 }
 
@@ -486,7 +487,7 @@ async function assertCompletedSettlement(ref: string): Promise<Record<string, un
   expect(usage).toHaveLength(1);
   expect(usage[0]?.tokens).toBe(30);
   expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
-  expect(String(usage[0]?.period)).toMatch(YYYY_MM);
+  assertUsageEventPeriod(usage);
   expect(await r2Exists(String(row.payload_pointer))).toBe(true);
   return row;
 }
@@ -1042,6 +1043,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
+      assertUsageEventPeriod(usage);
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     } finally {
       adapterSpy.mockRestore();
@@ -1370,6 +1372,7 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
 
       const usage = await getUsageEvents(String(row.request_id));
       expect(usage).toHaveLength(1);
+      assertUsageEventPeriod(usage);
 
       expect(row.payload_pointer).toBeTruthy();
       expect(await r2Exists(String(row.payload_pointer))).toBe(true);

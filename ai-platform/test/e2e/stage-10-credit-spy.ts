@@ -1,5 +1,27 @@
 import { expect, vi } from "vitest";
 import type { CreditIdempotencyState } from "../../src/quota-do";
+import {
+  DEFAULT_ENTITLE_PAYLOAD,
+  type EntitlePayload,
+} from "./harness";
+
+/**
+ * Catalog Setup FRESH: period_start 2026-07-01, period_end covering wall clock.
+ * `usage_event.period` is `periodFromIso(period_start)` → `"2026-07"`.
+ */
+export const STAGE10_ENTITLE: EntitlePayload = {
+  ...DEFAULT_ENTITLE_PAYLOAD,
+  period_start: "2026-07-01T00:00:00.000Z",
+  period_end: "2027-01-01T00:00:00.000Z",
+};
+
+export const STAGE10_USAGE_PERIOD = "2026-07";
+
+export function assertUsageEventPeriod(
+  usage: ReadonlyArray<Record<string, unknown>>,
+): void {
+  expect(usage[0]?.period).toBe(STAGE10_USAGE_PERIOD);
+}
 
 /**
  * Catalog-pinned creditUsage profile. Omit `partial` / `idempotencyState` /

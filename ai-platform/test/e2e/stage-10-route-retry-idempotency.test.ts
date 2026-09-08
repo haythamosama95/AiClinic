@@ -42,6 +42,7 @@ import {
 } from "./harness";
 import {
   assertCreditUsage,
+  assertUsageEventPeriod,
   CANCELLED_STREAMED,
   CANCELLED_ZERO,
   COMPLETED_CREDIT,
@@ -51,6 +52,7 @@ import {
   FAILED_PARTIAL_ZERO,
   NO_CREDIT,
   spyCreditUsage,
+  STAGE10_ENTITLE,
 } from "./stage-10-credit-spy";
 
 beforeAll(async () => {
@@ -66,7 +68,6 @@ afterEach(() => {
 });
 
 const FAKE_SUMMARY = "Fake adapter summary.";
-const YYYY_MM = /^\d{4}-\d{2}$/;
 
 /**
  * Pool TTL is 100 ms. Parallel files share isolateConfigCache and call
@@ -174,7 +175,7 @@ async function setupFresh(options?: {
   targets?: Record<string, unknown>[];
 }): Promise<{ scenario: Scenario; token: string }> {
   if (!options?.skipPolicy && options?.targets === undefined) {
-    const scenario = await provisionHappyPath();
+    const scenario = await provisionHappyPath(undefined, STAGE10_ENTITLE);
     const token = await mintAat(scenario);
     return { scenario, token };
   }
@@ -182,7 +183,7 @@ async function setupFresh(options?: {
   const scenario = await newScenario();
   const enrolled = await enrollInstallation(scenario);
   expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario);
+  const entitled = await entitleInstallation(scenario, STAGE10_ENTITLE);
   expect(entitled.status).toBe(200);
   if (!options?.skipPolicy) {
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION, {
@@ -490,7 +491,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     expect(usage[0]?.tokens).toBe(30);
     expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
     expect(usage[0]?.quota_weight).toBe(1);
-    expect(String(usage[0]?.period)).toMatch(YYYY_MM);
+    assertUsageEventPeriod(usage);
 
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     const envelope = await getR2Json(String(row.payload_pointer));
@@ -596,6 +597,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
 
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
+    assertUsageEventPeriod(usage);
 
     expect(row.payload_pointer).toBeTruthy();
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
@@ -655,6 +657,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
     expect(usage[0]?.tokens).toBe(0);
+    assertUsageEventPeriod(usage);
 
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     const envelope = await getR2Json(String(row.payload_pointer));
@@ -713,7 +716,9 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       error_code: "provider_unavailable",
     });
 
-    expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
+    const usage = await getUsageEvents(String(row.request_id));
+    expect(usage).toHaveLength(1);
+    assertUsageEventPeriod(usage);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     assertCreditUsage(creditSpy, FAILED_PARTIAL);
   });
@@ -767,6 +772,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
+      assertUsageEventPeriod(usage);
       assertCreditUsage(creditSpy, COMPLETED_CREDIT);
     } finally {
       adapterSpy.mockRestore();
@@ -869,6 +875,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
     expect(usage[0]?.tokens).toBe(30);
+    assertUsageEventPeriod(usage);
     assertCreditUsage(creditSpy, COMPLETED_CREDIT);
   });
 
@@ -914,7 +921,9 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     expect(costOf(attempts[0], "cost")).toBe(0);
     expect(attempts.some((attempt) => attempt.provider === "fake")).toBe(false);
 
-    expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
+    const usage = await getUsageEvents(String(row.request_id));
+    expect(usage).toHaveLength(1);
+    assertUsageEventPeriod(usage);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     assertCreditUsage(creditSpy, FAILED_FULL_CONSUME);
   });
@@ -986,6 +995,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
+      assertUsageEventPeriod(usage);
 
       assertCreditUsage(creditSpy, FAILED_PARTIAL);
     } finally {
@@ -1062,6 +1072,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
+      assertUsageEventPeriod(usage);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -1113,7 +1124,9 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       error_code: "provider_unavailable",
     });
 
-    expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
+    const usage = await getUsageEvents(String(row.request_id));
+    expect(usage).toHaveLength(1);
+    assertUsageEventPeriod(usage);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
     assertCreditUsage(creditSpy, FAILED_PARTIAL);
   });
@@ -1218,6 +1231,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(8);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.0016, 5);
+      assertUsageEventPeriod(usage);
       expect(await r2Exists(String(row?.payload_pointer))).toBe(true);
       assertCreditUsage(creditSpy, CANCELLED_STREAMED);
     } finally {
@@ -1303,6 +1317,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
+      assertUsageEventPeriod(usage);
       expect(await r2Exists(String(row?.payload_pointer))).toBe(true);
       assertCreditUsage(creditSpy, CANCELLED_ZERO);
     } finally {
@@ -1464,6 +1479,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       const usage = await getUsageEvents(String(row?.request_id));
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
+      assertUsageEventPeriod(usage);
     } finally {
       await cancelResponseBody(secondResponse);
       adapterSpy.mockRestore();
