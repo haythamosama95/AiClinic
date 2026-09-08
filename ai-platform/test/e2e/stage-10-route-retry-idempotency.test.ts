@@ -964,7 +964,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
         retrySafe: true,
         traceId: "s10-010-trace",
       });
-      expect(elapsed).toBeGreaterThanOrEqual(100);
+      expect(elapsed).toBeGreaterThanOrEqual(150);
 
       const row = await requireAiRequest(ref);
       expect(row.state).toBe("Failed");
@@ -981,6 +981,12 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
         outcome: "timeout",
         error_code: "timeout",
       });
+
+      const usage = await getUsageEvents(String(row.request_id));
+      expect(usage).toHaveLength(1);
+      expect(usage[0]?.tokens).toBe(0);
+      expect(costOf(usage[0], "cost")).toBe(0);
+
       assertCreditUsage(creditSpy, FAILED_PARTIAL);
     } finally {
       adapterSpy.mockRestore();
