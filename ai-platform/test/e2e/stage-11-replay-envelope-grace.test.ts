@@ -1372,18 +1372,34 @@ describe("Stage 11 — replay, envelope, grace (S11-012…S11-021)", () => {
     expect(Number(attached?.usage_cost)).toBeCloseTo(0.005, 5);
     expect(attached?.partial).toBe(0);
 
+    // Distinct payload so a silent request_reference miss cannot reuse the
+    // first-call attach values.
+    const fallbackUsage = { tokens: 8, cost: 0.0016 };
     const second = await creditMod.creditUsage(
       {
         installationId: scenario.installationId,
         requestId: crypto.randomUUID(),
         requestReference: ref,
-        usage,
+        usage: fallbackUsage,
         partial: false,
         entitlement: snapshot as never,
       },
       { DO: stubDown, DB: env.DB },
     );
     expect(second).toEqual({ ok: false, code: "unavailable" });
+
+    const attachedByRef = await queryOne<{
+      usage_tokens: number;
+      usage_cost: number;
+      partial: number;
+    }>(
+      `SELECT usage_tokens, usage_cost, partial FROM grace_admission_queue
+       WHERE request_reference = ?`,
+      [ref],
+    );
+    expect(attachedByRef?.usage_tokens).toBe(8);
+    expect(Number(attachedByRef?.usage_cost)).toBeCloseTo(0.0016, 5);
+    expect(attachedByRef?.partial).toBe(0);
 
     const doAfterCredit = await inspectState(scenario.installationId);
     expect(doAfterCredit.periodCounters).toEqual(doBefore.periodCounters);
