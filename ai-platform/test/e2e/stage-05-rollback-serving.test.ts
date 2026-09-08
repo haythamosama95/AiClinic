@@ -14,6 +14,7 @@ import {
   getAudits,
   getR2Json,
   getRoutingPolicy,
+  getUsageEvents,
   isolateConfigCache,
   newScenario,
   OPERATOR_ID,
@@ -371,14 +372,60 @@ async function waitForPersistedDecision(
   return decision as Record<string, unknown>;
 }
 
+function envelopePointer(row: Record<string, unknown>): string {
+  if (typeof row.payload_pointer === "string" && row.payload_pointer.length > 0) {
+    return row.payload_pointer;
+  }
+  return `request/${String(row.request_id)}/envelope`;
+}
+
+/**
+ * Post-accept `internal_error` settlement runs in waitUntil after SSE `failed`.
+ * Poll until the C-01 synthetic attempt, usage_event, and R2 envelope are all
+ * present — the same gap class that let missing-handoff settlement drop them.
+ */
 async function assertPostAcceptInternalError(ref: string): Promise<void> {
-  const row = await waitForAiRequest(ref, (current) => current.state === "Failed");
+  const started = Date.now();
+  const timeoutMs = 8000;
+  let row: Record<string, unknown> | null = null;
+  let attempts: Record<string, unknown>[] = [];
+  let usage: Record<string, unknown>[] = [];
+  let pointer = "";
+  let envelopeReady = false;
+  while (Date.now() - started < timeoutMs) {
+    row = await getAiRequest(ref);
+    if (row != null && row.state === "Failed") {
+      const requestId = String(row.request_id);
+      attempts = await getAttempts(requestId);
+      usage = await getUsageEvents(requestId);
+      pointer = envelopePointer(row);
+      envelopeReady = await r2Exists(pointer);
+      if (attempts.length === 1 && usage.length === 1 && envelopeReady) {
+        break;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
   expect(row).not.toBeNull();
-  expect(row.state).toBe("Failed");
-  expect(row.terminal_error_code).toBe("internal_error");
-  expect(row.routing_decision).toBeNull();
-  const attempts = await getAttempts(String(row.request_id));
-  expect(attempts.length).toBeGreaterThanOrEqual(1);
+  expect(row!.state).toBe("Failed");
+  expect(row!.terminal_error_code).toBe("internal_error");
+  expect(row!.routing_decision).toBeNull();
+
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0]?.outcome).toBe("terminal_failure");
+  expect(attempts[0]?.error_code).toBe("internal_error");
+
+  expect(usage).toHaveLength(1);
+  expect(usage[0]?.tokens).toBe(0);
+  expect(Number(usage[0]?.cost)).toBe(0);
+
+  expect(envelopeReady).toBe(true);
+  const envelope = await getR2Json(pointer);
+  const envelopeAttempts = envelope.attempts as Array<{
+    payload?: { reason?: string };
+  }>;
+  expect(envelopeAttempts[0]?.payload?.reason).toBe("no_provider_attempt");
 }
 
 describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-042…S05-062)", () => {
