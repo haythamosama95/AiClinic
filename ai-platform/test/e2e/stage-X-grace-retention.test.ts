@@ -653,6 +653,9 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
     expect(row?.queued_at).toMatch(ISO_INSTANT);
   });
 
+  // Substitution (Register 5 #28): wrapDurableObjectNamespace does not reach
+  // SELF.fetch, so cap fill / blocked admit / re-open use runAdmission + throwing
+  // DO instead of POST /v1/requests. Catalog SX-022 labels this substitution.
   it("SX-022 — reconciling cap-full queue re-opens grace admission", async () => {
     const scenario = await provisionHappyPath();
     const keys: string[] = [];
@@ -685,7 +688,11 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
     const blocked = await graceAdmit(scenario, {
       idempotencyKey: `sx022-blocked-${crypto.randomUUID()}`,
     });
-    expect(blocked).toMatchObject({ ok: false, code: "rate_limited" });
+    expect(blocked).toMatchObject({
+      ok: false,
+      code: "rate_limited",
+      retryAfter: 60,
+    });
 
     await invokeCron(CRON_ROLLUP);
     expect(

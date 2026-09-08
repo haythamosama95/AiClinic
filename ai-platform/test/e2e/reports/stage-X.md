@@ -49,7 +49,7 @@ Register 5 #28 implemented rather than skipped (cron `invokeCron(cron, runtimeEn
 
 Implemented (real `it`): SX-017 … SX-032 (16).
 
-Skipped: **none**. SX-017 / SX-018 / SX-022 use `wrapDurableObjectNamespace` on `invokeCron` (not skipped like S09-075 `SELF.fetch`). SX-031 AwaitingContext implemented via labeled `[SEED]` (Register 5 #36).
+Skipped: **none**. SX-017 / SX-018 use `wrapDurableObjectNamespace` on `invokeCron` (not skipped like S09-075 `SELF.fetch`). SX-022 uses the same throwing-DO seam for cap fill, blocked admit, and re-open via `runAdmission` — **substitution:** Register 5 #28 wrappers do not reach `SELF.fetch`, so the catalog's real `POST /v1/requests` re-open is component-level (`graceAdmit` → `runAdmission` + `fetchThrow`), not the HTTP journey. SX-031 AwaitingContext implemented via labeled `[SEED]` (Register 5 #36).
 
 ### 2.3 Writer 3 — `stage-X-ledger-reconciliation-sweep.test.ts`
 
@@ -111,6 +111,7 @@ Harness was not modified. Tests import production modules with `HARNESS-GAP` com
 - FakeAdapter spy (`../../src/provider/fake`)
 - SX-057: `gatewayObjectRpc` always attaches a body; GET uses `env.DO.get(id).fetch(new Request(QUOTA_DO_RPC_URL, { method: "GET" }))`
 - SX-014: `request_quota=0` cannot be produced via `runAdmission` (`isLedgerQuotaExhausted`); entitlement_json mutated after a real grace insert (catalog did not label `[SEED]`)
+- SX-022: post-reconcile re-open is `runAdmission` + throwing DO, not `POST /v1/requests` (Register 5 #28: wrappers do not reach `SELF.fetch`; same documented seam as SX-013/017/018)
 
 Register 5 seams that **do** reach cron (unlike S09-075 `SELF.fetch`): `wrapD1` / `wrapDurableObjectNamespace` passed as `invokeCron` `runtimeEnv`.
 
