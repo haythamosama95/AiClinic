@@ -707,10 +707,7 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
         },
       }),
     });
-    expect(atLimit.status).not.toBe(422);
-    if (atLimit.status === 200) {
-      assertAcceptedSse(atLimit, { traceId: TRACE_ID });
-    }
+    assertAcceptedSse(atLimit, { traceId: TRACE_ID });
   });
 
   it("S09-060 — malformed recorded_at iso8601 is context_invalid", async () => {
@@ -753,10 +750,7 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
         },
       }),
     });
-    expect(valid.status).not.toBe(422);
-    if (valid.status === 200) {
-      assertAcceptedSse(valid, { traceId: TRACE_ID });
-    }
+    assertAcceptedSse(valid, { traceId: TRACE_ID });
   });
 
   it("S09-061 — extra context keys are dropped; client routing keys ignored", async () => {
