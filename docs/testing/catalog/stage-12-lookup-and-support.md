@@ -644,7 +644,7 @@ Other exports (`dashboardAvgAttemptLatencyByProvider`, `dashboardValidationFailu
 | Field | Content |
 |-------|---------|
 | ID | S12-050 |
-| Journey setup | S12-009's in-flight row (state `Accepted`/`Invoking`, no `ai_attempt` rows yet, `payload_pointer` NULL, no R2 object). |
+| Journey setup | Same live in-flight race as S12-009: `POST /v1/requests` with AAT(I0), hang FakeAdapter, capture REF4 from SSE `accepted`, then lookup immediately (row is non-terminal, no `ai_attempt` rows yet, `payload_pointer` NULL, no R2 object). If timing proves flaky, [SEED] a row with `state='Invoking'` — justified only as a determinism fallback; prefer the live race. |
 | Action | `POST /control/support/lookup?reference=<REF4>` with the operator bearer |
 | Expected outcome | HTTP 200. `request.state` is the in-flight state, `completedAt`=null, `payloadPointer`=null. `attempts` = `[]` (LEFT JOIN rows with NULL `attempt_no` are skipped). `envelope` = null — fallback key `request/{RID}/envelope` misses in R2. |
 | Side effects | D1 read; one R2 `get` (miss) on the derived fallback key. |
@@ -912,4 +912,4 @@ Other exports (`dashboardAvgAttemptLatencyByProvider`, `dashboardValidationFailu
 4. **Config-cache TTL scenarios (S12-039/S12-040)** are automatable but time-sensitive: use `CONFIG_CACHE_TTL_MS` set to a few hundred milliseconds in the test environment rather than waiting out the 30 s default; the shared module-scope `isolateConfigCache` also means test ordering must avoid cross-test cache pollution (clear the cache between unrelated auth scenarios — but *not* between S12-039's warm and revoke steps).
 5. **Isolate-identity claim** (GET and POST share the same module-scope `isolateConfigCache` object) is a code-identity property, not HTTP-observable — same limitation the orientation doc records as unprobeable.
 6. **S12-060 (verbose truncation)** is automatable but slow (501 direct DO admissions); consider marking it as an extended/slow suite case.
-7. **S12-009 (pending in-flight)** prefers a live race (GET between `accepted` and settlement); if the test runner proves too fast/flaky, the documented [SEED] fallback (insert a row in `Invoking`) preserves the assertion at the cost of journey fidelity.
+7. **S12-009 (pending in-flight) and S12-050 (support lookup of in-flight)** prefer a live race (GET/lookup between `accepted` and settlement, with FakeAdapter hung); if the test runner proves too fast/flaky, the documented [SEED] fallback (insert a row in `Invoking`) preserves the assertion at the cost of journey fidelity.

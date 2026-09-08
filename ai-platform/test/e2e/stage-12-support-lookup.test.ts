@@ -5,7 +5,15 @@
  * note only; same `dispatchControlRequest` seam as S03-083). Not implemented —
  * do not invent an extra scenario ID.
  */
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   assertRequestReferenceShape,
   bootstrapE2e,
@@ -38,6 +46,7 @@ import {
   visitSummaryInvokeBody,
   type HttpResult,
   type Scenario,
+  type SseEvent,
 } from "./harness";
 
 beforeAll(async () => {
@@ -46,6 +55,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetE2eState();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const STORED_AMBIGUOUS_REF = "81S0-1MNP";
@@ -213,6 +226,103 @@ function pinServingRoutingPolicy(
   }
 }
 
+type FakeModule = typeof import("../../src/provider/fake");
+
+/**
+ * HARNESS-GAP: FakeAdapter scripting is not on the frozen barrel; catalog
+ * (Stage 11 §1 / S12-009, S12-050) documents vi.spyOn(fakeMod, "FakeAdapter").
+ */
+async function loadFakeModule(): Promise<FakeModule> {
+  return import("../../src/provider/fake");
+}
+
+function hangUntilAbort(
+  signal: AbortSignal | undefined,
+  ms: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    const abort = (): void => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function waitFor(
+  label: string,
+  predicate: () => boolean,
+  timeoutMs = 4000,
+): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(`timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function cancelResponseBody(
+  response: Response | undefined,
+): Promise<void> {
+  if (!response?.body) {
+    return;
+  }
+  try {
+    await response.body.cancel();
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Keep reading SSE without cancelling on a stop predicate. Cancelling the
+ * reader would settle Cancelled before support lookup can observe in-flight.
+ */
+function startSsePump(response: Response): {
+  events: () => SseEvent[];
+  close: () => Promise<void>;
+} {
+  expect(response.body).not.toBeNull();
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let events: SseEvent[] = [];
+  const run = (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          events = parseSseText(buffer);
+        }
+        if (done) {
+          break;
+        }
+      }
+    } catch {
+      // Client abort / cancel.
+    }
+  })();
+  return {
+    events: () => events,
+    close: async () => {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+      await run;
+    },
+  };
+}
+
 async function settleCompleted(): Promise<Settled> {
   const scenario = await newScenario();
   await provisionHappyPath(scenario, DEFAULT_ENTITLE_PAYLOAD);
@@ -346,45 +456,6 @@ async function assertHappyLookupBody(
     expect(body.envelope!.result).toEqual(options.clinicResult);
   }
   return body;
-}
-
-async function readAcceptedReference(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error("SSE response has no body");
-  }
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const deadline = Date.now() + 4000;
-  for (;;) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      throw new Error("timed out waiting for accepted");
-    }
-    const chunk = await Promise.race([
-      reader.read(),
-      new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error("timed out waiting for accepted")),
-          remaining,
-        );
-      }),
-    ]);
-    if (chunk.value) {
-      buffer += decoder.decode(chunk.value, { stream: true });
-    }
-    const accepted = parseSseText(buffer).find(
-      (event) => event.event === "accepted",
-    );
-    if (accepted) {
-      const ref = String(accepted.data.request_reference ?? "");
-      assertRequestReferenceShape(ref);
-      return ref;
-    }
-    if (chunk.done) {
-      throw new Error("stream ended before accepted");
-    }
-  }
 }
 
 function isCatalogInFlight(body: LookupBody): boolean {
@@ -548,60 +619,87 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
   });
 
   it("S12-050 — Support lookup of in-flight request returns empty attempts and null envelope", async () => {
+    // Register 5 #10 / S12-009: live in-flight race — prefer POST → accepted
+    // → lookup before settlement; hang FakeAdapter so the window is
+    // deterministic. [SEED] state='Invoking' is the catalog-justified
+    // fallback if the live lookup already settled.
     const scenario = await newScenario();
     await provisionHappyPath(scenario, DEFAULT_ENTITLE_PAYLOAD);
-    const policyRow = await loadServingPolicyRow();
-    const token = await mintAat(scenario);
-    const abort = new AbortController();
-    pinServingRoutingPolicy(policyRow, [scenario.installationId]);
-    const response = await clinicFetch("/v1/requests", {
-      method: "POST",
-      token,
-      headers: {
-        "x-idempotency-key": crypto.randomUUID(),
-        "x-capability-version": CAPABILITY_VERSION,
-      },
-      body: visitSummaryInvokeBody(scenario),
-      signal: abort.signal,
-    });
-
-    let liveRef: string | null = null;
-    try {
-      liveRef = await readAcceptedReference(response);
-    } catch {
-      liveRef = null;
-    }
-
-    let result: HttpResult | null = null;
-    let body: LookupBody | null = null;
-    if (liveRef) {
-      result = await supportLookup(liveRef);
-      if (result.status === 200) {
-        body = asLookupBody(result.json);
+    const fakeMod = await loadFakeModule();
+    const original = fakeMod.FakeAdapter;
+    class HangFake extends original {
+      override async invoke(
+        _request: unknown,
+        options?: { signal?: AbortSignal },
+      ) {
+        await hangUntilAbort(options?.signal, 8000);
+        return super.invoke(_request as never, options as never);
       }
     }
-    abort.abort();
+    const adapterSpy = vi
+      .spyOn(fakeMod, "FakeAdapter")
+      .mockImplementation(() => new HangFake(["success"]) as never);
+    const controller = new AbortController();
+    let pump: ReturnType<typeof startSsePump> | undefined;
+    let response: Response | undefined;
 
-    if (!result || !body || !isCatalogInFlight(body)) {
-      // Live race lost: fake adapter often settles before lookup. Catalog
-      // S12-009 fallback (justified for S12-050's in-flight row): [SEED]
-      // Invoking with payload_pointer NULL and no ai_attempt rows.
-      const seeded = await seedInvokingRow(scenario);
-      result = await supportLookup(seeded.ref);
+    try {
+      const policyRow = await loadServingPolicyRow();
+      const token = await mintAat(scenario);
+      pinServingRoutingPolicy(policyRow, [scenario.installationId]);
+      response = await clinicFetch("/v1/requests", {
+        method: "POST",
+        token,
+        headers: {
+          "x-idempotency-key": `s12-050-${crypto.randomUUID()}`,
+          "x-capability-version": CAPABILITY_VERSION,
+        },
+        body: visitSummaryInvokeBody(scenario),
+        signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      pump = startSsePump(response);
+      await waitFor("accepted SSE", () =>
+        pump!.events().some((event) => event.event === "accepted"),
+      );
+      const ref = String(
+        pump
+          .events()
+          .find((event) => event.event === "accepted")?.data.request_reference ??
+          "",
+      );
+      assertRequestReferenceShape(ref);
+
+      let result: HttpResult | null = null;
+      let body: LookupBody | null = null;
+      const live = await supportLookup(ref);
+      if (live.status === 200) {
+        result = live;
+        body = asLookupBody(live.json);
+      }
+
+      if (!result || !body || !isCatalogInFlight(body)) {
+        // [SEED] catalog-justified fallback: live lookup already left the
+        // non-terminal window (Register 5 #10 / S12-050 Journey setup).
+        const seeded = await seedInvokingRow(scenario);
+        result = await supportLookup(seeded.ref);
+        expect(result.status).toBe(200);
+        body = asLookupBody(result.json);
+      }
+
       expect(result.status).toBe(200);
-      body = asLookupBody(result.json);
+      expect(Object.keys(body).sort()).toEqual([...LOOKUP_BODY_KEYS]);
+      expect(NON_TERMINAL_STATES.has(body.request.state)).toBe(true);
+      expect(body.request.completedAt).toBeNull();
+      expect(body.request.payloadPointer).toBeNull();
+      expect(body.attempts).toEqual([]);
+      expect(body.envelope).toBeNull();
+    } finally {
+      controller.abort();
+      await pump?.close();
+      await cancelResponseBody(response);
+      adapterSpy.mockRestore();
     }
-
-    if (!result || !body) {
-      throw new Error("S12-050: expected in-flight lookup body");
-    }
-    expect(result.status).toBe(200);
-    expect(Object.keys(body).sort()).toEqual([...LOOKUP_BODY_KEYS]);
-    expect(NON_TERMINAL_STATES.has(body.request.state)).toBe(true);
-    expect(body.request.completedAt).toBeNull();
-    expect(body.request.payloadPointer).toBeNull();
-    expect(body.attempts).toEqual([]);
-    expect(body.envelope).toBeNull();
   });
 
   it("S12-051 — Support lookup outside diagnostic retention returns null envelope", async () => {
