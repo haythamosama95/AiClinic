@@ -170,16 +170,37 @@ function expectLogOrder(lines: string[], events: string[]): void {
   let from = 0;
   for (const event of events) {
     const idx = names.slice(from).findIndex((name) => name.includes(event));
-    if (idx < 0) {
-      // HARNESS-GAP: scheduled_cron_complete is debug; wrangler development LOG_VERBOSITY=2.
-      // If an expected log name is missing, side-effect assertions still stand.
-      if (event === "scheduled_cron_complete") {
-        continue;
-      }
-    }
     expect(idx, `missing log event ${event}`).toBeGreaterThanOrEqual(0);
     from += idx + 1;
   }
+}
+
+/** Pool is wrangler development (`LOG_VERBOSITY=2`): payloads are a JSON blob. */
+function parseLogPayload(
+  lines: string[],
+  message: string,
+): Record<string, unknown> {
+  const line = lines.find(
+    (entry) =>
+      entry.includes(`] ${message} `) || entry.includes(`] ${message}{`),
+  );
+  expect(line, `missing log event ${message}`).toBeDefined();
+  const idx = line!.indexOf("{");
+  expect(idx, `missing JSON payload for ${message}`).toBeGreaterThanOrEqual(0);
+  return JSON.parse(line!.slice(idx)) as Record<string, unknown>;
+}
+
+function expectTrailing30dWindow(window: unknown): void {
+  expect(window).toEqual({
+    start: expect.any(String),
+    end: expect.any(String),
+  });
+  const { start, end } = window as { start: string; end: string };
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  expect(Number.isNaN(startMs)).toBe(false);
+  expect(Number.isNaN(endMs)).toBe(false);
+  expect(endMs - startMs).toBe(30 * MS_PER_DAY);
 }
 
 function currentTimeBucket(now = new Date()): string {
@@ -436,8 +457,9 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
 
     const logs = captureLogs();
     await invokeCron(CRON_RETENTION);
+    const lines = logs.lines();
 
-    expectLogOrder(logs.lines(), [
+    expectLogOrder(lines, [
       "scheduled_cron_start",
       "Flushing guard rejection counters",
       "grace_reconcile_batch_start",
@@ -447,6 +469,12 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
       "scheduled_retention_purge_complete",
       "scheduled_cron_complete",
     ]);
+    expect(parseLogPayload(lines, "scheduled_cron_start").cron).toBe(
+      CRON_RETENTION,
+    );
+    expect(parseLogPayload(lines, "scheduled_cron_complete").cron).toBe(
+      CRON_RETENTION,
+    );
 
     expect(await count("platform_counter")).toBeGreaterThanOrEqual(1);
     const graceAfter = await queryOne<GraceQueueRow>(
@@ -489,8 +517,9 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
 
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
+    const lines = logs.lines();
 
-    expectLogOrder(logs.lines(), [
+    expectLogOrder(lines, [
       "scheduled_cron_start",
       "grace_reconcile_batch_start",
       "scheduled_rollup_start",
@@ -501,6 +530,17 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
       "usage_rollup_reconciliation",
       "scheduled_cron_complete",
     ]);
+    expect(parseLogPayload(lines, "grace_reconcile_batch_start").pending_count).toBe(
+      0,
+    );
+    const recon = parseLogPayload(lines, "usage_rollup_reconciliation");
+    expect(recon.rollups_written).toBe(1);
+    expect(recon.missing_attempt_rows).toBe(0);
+    expect(recon.missing_usage_credit).toBe(0);
+    expectTrailing30dWindow(recon.window);
+    expect(parseLogPayload(lines, "scheduled_cron_complete").cron).toBe(
+      CRON_ROLLUP,
+    );
 
     const rollups = await queryAll<UsageRollupRow>(`SELECT * FROM usage_rollup`);
     expect(rollups).toHaveLength(1);
@@ -530,16 +570,19 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     // [SEED] 91-day-old Completed request (would purge on 0 3 * * *).
     await backdateRequest(completed.requestId, JOURNAL_HORIZON_DAYS + 1);
 
-    for (const cron of ["0 5 * * *", "", "* * * * *"] as const) {
+    for (const [index, cron] of (
+      ["0 5 * * *", "", "* * * * *"] as const
+    ).entries()) {
       const logs = captureLogs();
       await invokeCron(cron);
-      const names = logEventNames(logs.lines());
-      expect(names.some((name) => name.includes("scheduled_cron_start"))).toBe(
-        true,
-      );
-      expect(
-        names.some((name) => name.includes("grace_reconcile_batch_")),
-      ).toBe(true);
+      const lines = logs.lines();
+      expect(parseLogPayload(lines, "scheduled_cron_start").cron).toBe(cron);
+      expect(parseLogPayload(lines, "scheduled_cron_complete").cron).toBe(cron);
+      expectLogContains(lines, "grace_reconcile_batch_");
+      if (index === 0) {
+        expectLogContains(lines, "Flushing guard rejection counters");
+      }
+      const names = logEventNames(lines);
       expect(
         names.some((name) => name.includes("scheduled_retention_purge_start")),
       ).toBe(false);
@@ -610,8 +653,12 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
 
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
-
-    expectLogContains(logs.lines(), "Flushing guard rejection counters");
+    const flush = parseLogPayload(
+      logs.lines(),
+      "Flushing guard rejection counters",
+    );
+    expect(flush.bucket_count).toBe(2);
+    expect(flush.rejection_count).toBe(4);
     const rows = await queryAll<PlatformCounterRow>(
       `SELECT * FROM platform_counter ORDER BY dimension_set`,
     );
@@ -715,7 +762,11 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
 
     const logs = captureLogs();
     await invokeCron(CRON_RETENTION);
-    expectLogContains(logs.lines(), "retention_purge_complete");
+    const purged = parseLogPayload(logs.lines(), "retention_purge_complete");
+    expect(purged.counter_deleted).toBe(1);
+    expect(parseLogPayload(logs.lines(), "scheduled_cron_complete").cron).toBe(
+      CRON_RETENTION,
+    );
     expect(await count("platform_counter")).toBe(0);
     const rateAfter = await dashboardQuotaRejectionRate(env.DB);
     expect(rateAfter).toBe(0);
@@ -728,8 +779,13 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     const before = await inspectState(scenario.installationId);
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
-    expectLogContains(logs.lines(), "grace_reconcile_batch_start");
-    expectLogContains(logs.lines(), "grace_reconcile_batch_end");
+    const lines = logs.lines();
+    expect(parseLogPayload(lines, "grace_reconcile_batch_start").pending_count).toBe(
+      0,
+    );
+    const batchEnd = parseLogPayload(lines, "grace_reconcile_batch_end");
+    expect(batchEnd.pending_count).toBe(0);
+    expect(batchEnd.reconciled).toBe(0);
     const after = await inspectState(scenario.installationId);
     expect(after).toEqual(before);
     expect(await count("grace_admission_queue")).toBe(0);
@@ -751,7 +807,9 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     );
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
-    expectLogContains(logs.lines(), "grace_reconcile_batch_end");
+    const batchEnd = parseLogPayload(logs.lines(), "grace_reconcile_batch_end");
+    expect(batchEnd.pending_count).toBe(1);
+    expect(batchEnd.reconciled).toBe(1);
 
     const after = await queryOne<GraceQueueRow>(
       `SELECT * FROM grace_admission_queue WHERE grace_request_id = ?`,

@@ -266,26 +266,32 @@ function captureConsole(): { lines: string[]; restore: () => void } {
   };
 }
 
+/** Pool is wrangler development (`LOG_VERBOSITY=2`): payloads are a JSON blob. */
 function parseLogPayload(
   lines: string[],
   message: string,
-): Record<string, unknown> | undefined {
+): Record<string, unknown> {
   const line = lines.find(
     (entry) =>
       entry.includes(`] ${message} `) || entry.includes(`] ${message}{`),
   );
-  if (!line) {
-    return undefined;
-  }
-  const idx = line.indexOf("{");
-  if (idx < 0) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(line.slice(idx)) as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
+  expect(line, `missing log event ${message}`).toBeDefined();
+  const idx = line!.indexOf("{");
+  expect(idx, `missing JSON payload for ${message}`).toBeGreaterThanOrEqual(0);
+  return JSON.parse(line!.slice(idx)) as Record<string, unknown>;
+}
+
+function expectTrailing30dWindow(window: unknown): void {
+  expect(window).toEqual({
+    start: expect.any(String),
+    end: expect.any(String),
+  });
+  const { start, end } = window as { start: string; end: string };
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  expect(Number.isNaN(startMs)).toBe(false);
+  expect(Number.isNaN(endMs)).toBe(false);
+  expect(endMs - startMs).toBe(30 * MS_PER_DAY);
 }
 
 async function seedUsageEvent(opts: {
@@ -742,8 +748,10 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     try {
       await invokeCron(CRON_RETENTION);
       const purged = parseLogPayload(logs.lines, "retention_purge_complete");
-      expect(purged).toBeDefined();
-      expect(purged!.counter_deleted).toBe(1);
+      expect(purged.counter_deleted).toBe(1);
+      expect(parseLogPayload(logs.lines, "scheduled_cron_complete").cron).toBe(
+        CRON_RETENTION,
+      );
     } finally {
       logs.restore();
     }
@@ -913,10 +921,13 @@ describe("Stage X — ledger purge, rollup reconciliation, DO sweep (SX-033…SX
     try {
       await invokeCron(CRON_ROLLUP);
       const payload = parseLogPayload(logs.lines, "usage_rollup_reconciliation");
-      expect(payload).toBeDefined();
-      expect(payload!.rollups_written).toBe(0);
-      expect(payload!.missing_attempt_rows).toBe(0);
-      expect(payload!.missing_usage_credit).toBe(0);
+      expect(payload.rollups_written).toBe(0);
+      expect(payload.missing_attempt_rows).toBe(0);
+      expect(payload.missing_usage_credit).toBe(0);
+      expectTrailing30dWindow(payload.window);
+      expect(parseLogPayload(logs.lines, "scheduled_cron_complete").cron).toBe(
+        CRON_ROLLUP,
+      );
     } finally {
       logs.restore();
     }
