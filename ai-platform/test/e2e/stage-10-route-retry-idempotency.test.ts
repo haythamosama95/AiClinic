@@ -40,6 +40,18 @@ import {
   type Scenario,
   type SseEvent,
 } from "./harness";
+import {
+  assertCreditUsage,
+  CANCELLED_STREAMED,
+  CANCELLED_ZERO,
+  COMPLETED_CREDIT,
+  COMPLETED_PARTIAL_FALSE,
+  FAILED_FULL_CONSUME,
+  FAILED_PARTIAL,
+  FAILED_PARTIAL_ZERO,
+  NO_CREDIT,
+  spyCreditUsage,
+} from "./stage-10-credit-spy";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -437,6 +449,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
   it("S10-001 — single-target chain success settles completed", async () => {
     const { scenario, token } = await setupFresh();
     const jti = String(jwtPayload(token).jti ?? "");
+    const creditSpy = await spyCreditUsage();
 
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-001-idem",
@@ -496,6 +509,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     }>;
     expect(attemptPayload[0]?.payload).toEqual({ fake: true, outcome: "success" });
     expect(attemptPayload[0]?.truncated).toBe(false);
+    assertCreditUsage(creditSpy, COMPLETED_CREDIT);
   });
 
   it("S10-002 — routing decision is persisted before provider I/O", async () => {
@@ -553,6 +567,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
 
   it("S10-003 — missing routing policy after accepted fails internal_error", async () => {
     const { scenario, token } = await setupFresh({ skipPolicy: true });
+    const creditSpy = await spyCreditUsage();
 
     // Catalog: no serving policy. Do not pin — the post-accept consult
     // must miss `active_routing_policy:routing/standard`.
@@ -591,12 +606,14 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     }>;
     expect(attemptRaw[0]?.payload?.reason).toBe("no_provider_attempt");
     expect(attemptRaw[0]?.truncated).toBe(false);
+    assertCreditUsage(creditSpy, FAILED_PARTIAL_ZERO);
   });
 
   it("S10-004 — empty candidate chain fails provider_unavailable", async () => {
     const { scenario, token } = await setupFresh({
       targets: [policyTarget("fake-v1", {}, { minContextWindow: 1000 })],
     });
+    const creditSpy = await spyCreditUsage();
 
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-004-idem",
@@ -648,6 +665,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     expect(attemptRaw[0]?.payload?.reason).toBe("no_provider_attempt");
     expect(attemptRaw[0]?.payload?.excluded).toEqual(decision.excluded);
     expect(attemptRaw[0]?.truncated).toBe(false);
+    assertCreditUsage(creditSpy, FAILED_PARTIAL_ZERO);
   });
 
   it("S10-005 — unknown provider_id retries then exhausts", async () => {
@@ -661,6 +679,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       ],
     });
 
+    const creditSpy = await spyCreditUsage();
     const started = Date.now();
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-005-idem",
@@ -696,6 +715,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
 
     expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+    assertCreditUsage(creditSpy, FAILED_PARTIAL);
   });
 
   it("S10-006 — retryable rate_limited then same-target success", async () => {
@@ -708,6 +728,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       "retryable:rate_limited",
       "success",
     ]);
+    const creditSpy = await spyCreditUsage();
 
     try {
       const started = Date.now();
@@ -746,6 +767,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage).toHaveLength(1);
       expect(usage[0]?.tokens).toBe(30);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.005, 5);
+      assertCreditUsage(creditSpy, COMPLETED_CREDIT);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -761,6 +783,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       "malformed",
       "success",
     ]);
+    const creditSpy = await spyCreditUsage();
 
     try {
       const result = await postVisit(scenario, token, {
@@ -781,6 +804,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
         error_code: "internal_error",
       });
       expect(attempts[1]?.outcome).toBe("success");
+      assertCreditUsage(creditSpy, COMPLETED_PARTIAL_FALSE);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -798,6 +822,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       ],
     });
 
+    const creditSpy = await spyCreditUsage();
     const started = Date.now();
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-008-idem",
@@ -844,6 +869,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const usage = await getUsageEvents(String(row.request_id));
     expect(usage).toHaveLength(1);
     expect(usage[0]?.tokens).toBe(30);
+    assertCreditUsage(creditSpy, COMPLETED_CREDIT);
   });
 
   it("S10-009 — missing DeepSeek key is terminal provider_rejected with no fallback", async () => {
@@ -858,6 +884,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       ],
     });
 
+    const creditSpy = await spyCreditUsage();
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-009-idem",
       traceId: "s10-009-trace",
@@ -889,6 +916,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
 
     expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+    assertCreditUsage(creditSpy, FAILED_FULL_CONSUME);
   });
 
   it("S10-010 — attempt timeouts retry then exhaust as provider_unavailable", async () => {
@@ -920,6 +948,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const adapterSpy = vi
       .spyOn(fakeMod, "FakeAdapter")
       .mockImplementation(() => new HangFake(["success"]) as never);
+    const creditSpy = await spyCreditUsage();
 
     try {
       const started = Date.now();
@@ -952,6 +981,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
         outcome: "timeout",
         error_code: "timeout",
       });
+      assertCreditUsage(creditSpy, FAILED_PARTIAL);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -1047,6 +1077,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       ],
     });
 
+    const creditSpy = await spyCreditUsage();
     const result = await postVisit(scenario, token, {
       idempotencyKey: "s10-012-idem",
       traceId: "s10-012-trace",
@@ -1078,6 +1109,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
 
     expect(await getUsageEvents(String(row.request_id))).toHaveLength(1);
     expect(await r2Exists(String(row.payload_pointer))).toBe(true);
+    assertCreditUsage(creditSpy, FAILED_PARTIAL);
   });
 
   it("S10-013 — client disconnect mid-stream credits partial streamed chars", async () => {
@@ -1125,6 +1157,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const adapterSpy = vi
       .spyOn(fakeMod, "FakeAdapter")
       .mockImplementation(() => new PartialHangFake(["success"]) as never);
+    const creditSpy = await spyCreditUsage();
     const controller = new AbortController();
 
     try {
@@ -1180,6 +1213,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage[0]?.tokens).toBe(8);
       expect(costOf(usage[0], "cost")).toBeCloseTo(0.0016, 5);
       expect(await r2Exists(String(row?.payload_pointer))).toBe(true);
+      assertCreditUsage(creditSpy, CANCELLED_STREAMED);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -1214,6 +1248,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     const adapterSpy = vi
       .spyOn(fakeMod, "FakeAdapter")
       .mockImplementation(() => new HangFake(["success"]) as never);
+    const creditSpy = await spyCreditUsage();
     const controller = new AbortController();
 
     try {
@@ -1263,6 +1298,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
       expect(usage[0]?.tokens).toBe(0);
       expect(costOf(usage[0], "cost")).toBe(0);
       expect(await r2Exists(String(row?.payload_pointer))).toBe(true);
+      assertCreditUsage(creditSpy, CANCELLED_ZERO);
     } finally {
       adapterSpy.mockRestore();
     }
@@ -1325,6 +1361,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     expect(firstRow.state).toBe("Completed");
     expect(await count("ai_request")).toBe(1);
 
+    const creditSpy = await spyCreditUsage();
     const replay = await postVisit(scenario, await mintAat(scenario), {
       idempotencyKey: "s10-001-idem",
       traceId: "s10-016-trace",
@@ -1339,6 +1376,7 @@ describe("Stage 10 — accept, route, invoke, stream (S10-001…S10-017)", () =>
     expect(await count("ai_request")).toBe(1);
     const after = await requireAiRequest(firstRef);
     expect(after.request_id).toBe(firstRow.request_id);
+    assertCreditUsage(creditSpy, NO_CREDIT);
   });
 
   it("S10-017 — in-flight idempotent replay stays accepted-only", async () => {
