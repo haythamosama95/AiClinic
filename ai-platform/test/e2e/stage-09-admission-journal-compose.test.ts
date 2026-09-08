@@ -1190,6 +1190,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
 
   it("S09-085 — full fresh guard success ends in SSE accepted", async () => {
     const { scenario, token } = await entitledJourney();
+    const jti = String(jwtPayload(token).jti ?? "");
+    expect(jti.length).toBeGreaterThan(0);
 
     const result = await postRequestPinned(scenario, {
       token,
@@ -1233,5 +1235,16 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     if (row?.state === "Accepted") {
       expect(await getUsageEvents(String(row.request_id))).toEqual([]);
     }
+
+    // Inspect applies the in-memory ephemeral sweep. Catalog S09-085 pins
+    // jtiReplay[jti] at admission; after the 2 h horizon the snapshot must
+    // no longer hold that jti.
+    const afterAdmit = await inspectState(scenario.installationId);
+    expect(afterAdmit.jtiReplay?.[jti]).toBeTruthy();
+    const afterSweep = await inspectState(
+      scenario.installationId,
+      Date.now() + THREE_HOURS_MS,
+    );
+    expect(afterSweep.jtiReplay?.[jti]).toBeUndefined();
   });
 });
