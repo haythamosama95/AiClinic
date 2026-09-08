@@ -39,6 +39,9 @@ import {
 } from "./harness";
 // HARNESS-GAP: recordGuardRejection is not on the frozen barrel (SX-056).
 import { recordGuardRejection } from "../../src/rate-limit";
+// HARNESS-GAP: runRollupAndReconciliation is not on the frozen barrel; SX-053
+// asserts the production report (scheduled cron cannot return it).
+import { runRollupAndReconciliation } from "../../src/rollup";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -743,18 +746,8 @@ describe("Stage X — credit, inspect, retention joinability, GatewayObject RPC 
       5,
     );
 
-    const windowStart = new Date(Date.now() - 30 * MS_PER_DAY).toISOString();
-    const windowEnd = new Date().toISOString();
-    const missing = await queryOne<{ n: number }>(
-      `SELECT COUNT(*) AS n
-       FROM ai_request r
-       LEFT JOIN usage_event u ON u.request_id = r.request_id
-       WHERE r.state IN ('Completed', 'Failed', 'Cancelled')
-         AND r.completed_at >= ? AND r.completed_at <= ?
-         AND u.usage_event_id IS NULL`,
-      [windowStart, windowEnd],
-    );
-    expect(Number(missing?.n ?? -1)).toBe(0);
+    const report = await runRollupAndReconciliation({ db: env.DB });
+    expect(report.report.missingUsageCredit).toEqual([]);
   });
 
   it("SX-054 — journal-purged reference 404s for clinic GET and support lookup", async () => {

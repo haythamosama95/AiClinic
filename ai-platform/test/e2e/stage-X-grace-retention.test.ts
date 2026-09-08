@@ -18,6 +18,9 @@ import {
   createManifestRetentionClassResolver,
   runRetentionPurge,
 } from "../../src/retention";
+// HARNESS-GAP: runRollupAndReconciliation is not on the frozen barrel; SX-031
+// asserts the production report (scheduled cron cannot return it).
+import { runRollupAndReconciliation } from "../../src/rollup";
 import {
   bootstrapE2e,
   CAPABILITY_ID,
@@ -1034,32 +1037,27 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
 
     expect(await getAiRequest(acceptedRef)).not.toBeNull();
     expect(await getAiRequest(awaitingRef)).not.toBeNull();
-    const windowStart = daysAgoIso(30);
-    const windowEnd = new Date().toISOString();
-    const missingAttempts = await queryAll<{ request_id: string }>(
-      `SELECT r.request_id FROM ai_request r
-       LEFT JOIN ai_attempt a ON a.request_id = r.request_id
-       WHERE r.state IN ('Completed', 'Failed')
-         AND r.completed_at >= ? AND r.completed_at <= ?
-         AND a.attempt_id IS NULL`,
-      [windowStart, windowEnd],
-    );
-    const missingUsage = await queryAll<{ request_id: string }>(
-      `SELECT r.request_id FROM ai_request r
-       LEFT JOIN usage_event u ON u.request_id = r.request_id
-       WHERE r.state IN ('Completed', 'Failed', 'Cancelled')
-         AND r.completed_at >= ? AND r.completed_at <= ?
-         AND u.usage_event_id IS NULL`,
-      [windowStart, windowEnd],
-    );
-    expect(missingAttempts.map((row) => row.request_id)).not.toContain(
-      acceptedId,
-    );
-    expect(missingAttempts.map((row) => row.request_id)).not.toContain(
-      awaitingId,
-    );
-    expect(missingUsage.map((row) => row.request_id)).not.toContain(acceptedId);
-    expect(missingUsage.map((row) => row.request_id)).not.toContain(awaitingId);
+    const report = await runRollupAndReconciliation({ db: env.DB });
+    expect(
+      report.report.missingAttemptRows.some(
+        (row) => row.requestId === acceptedId,
+      ),
+    ).toBe(false);
+    expect(
+      report.report.missingAttemptRows.some(
+        (row) => row.requestId === awaitingId,
+      ),
+    ).toBe(false);
+    expect(
+      report.report.missingUsageCredit.some(
+        (row) => row.requestId === acceptedId,
+      ),
+    ).toBe(false);
+    expect(
+      report.report.missingUsageCredit.some(
+        (row) => row.requestId === awaitingId,
+      ),
+    ).toBe(false);
 
     await invokeCron(CRON_RETENTION);
     expect(await getAiRequest(acceptedRef)).toBeNull();
