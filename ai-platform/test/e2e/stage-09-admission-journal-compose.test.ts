@@ -55,8 +55,13 @@ import { createD1ConfigReader } from "../../src/config-cache";
 import { leakNeedlesFromSystemInstruction } from "../../src/prompt/composer";
 import { indexedArtifactContent } from "../../src/prompt/registry";
 
+// Pool default after BUG-06 (`CONFIG_CACHE_TTL_MS=0`). Captured in
+// beforeAll after Worker boot so a 30 s pin is never stored as default.
+let poolConfigCacheTtlMs = 0;
+
 beforeAll(async () => {
   await bootstrapE2e();
+  poolConfigCacheTtlMs = isolateConfigCache.getTtlMs();
 });
 
 beforeEach(async () => {
@@ -65,6 +70,9 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // W-34: pinServingRoutingPolicy raises TTL; restore so later tests
+  // (this file and later files sharing the isolate) do not inherit 30 s.
+  isolateConfigCache.setTtlMs(poolConfigCacheTtlMs);
 });
 
 const TRACE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
