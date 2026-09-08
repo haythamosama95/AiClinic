@@ -1053,6 +1053,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     });
     try {
       const { scenario, token } = await entitledJourney();
+      const jti = String(jwtPayload(token).jti ?? "");
+      expect(jti.length).toBeGreaterThan(0);
 
       const result = await postRequestPinned(scenario, {
         token,
@@ -1071,10 +1073,18 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
       expect(row?.terminal_error_code).toBe("internal_error");
       expect(row?.completed_at).toBeTruthy();
 
+      // Inspect applies the in-memory ephemeral sweep. Compose-failure
+      // release must leave admission maps empty (catalog S09-083).
       const state = await inspectState(scenario.installationId);
       expect(state.periodCounters?.inFlight ?? 0).toBe(0);
+      expect(state.admittedRequests ?? {}).toEqual({});
+      expect(state.idempotency ?? {}).toEqual({});
+      expect(state.jtiReplay ?? {}).toEqual({});
       expect(state.idempotency?.["comp-1"]).toBeUndefined();
+      expect(state.jtiReplay?.[jti]).toBeUndefined();
       expect(await count("usage_event")).toBe(0);
+      await flushBackgroundWork();
+      expect(await r2Exists(envelopePointer(row!))).toBe(false);
     } finally {
       restorePublishedRegistry();
     }
