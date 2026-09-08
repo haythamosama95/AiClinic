@@ -646,8 +646,8 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     const result = await invokeVisitSummary(instA, "idem-s05-052-0001");
 
     const ref = assertAccepted(result);
-    const decision = parseRoutingDecision(await getAiRequest(ref));
-    expect(decision?.policy_version).toBe(1);
+    const decision = await waitForPersistedDecision(ref);
+    expect(decision.policy_version).toBe(1);
   });
 
   it("S05-053 — Active row whose R2 object is missing", async () => {
@@ -680,9 +680,9 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     await assertPostAcceptInternalError(refA);
 
     const refB = assertAccepted(resultB);
-    const decisionB = parseRoutingDecision(await getAiRequest(refB));
-    expect(decisionB?.policy_version).toBe(1);
-    expect(decisionB?.rule_id).toBe("platform-default-fallback");
+    const decisionB = await waitForPersistedDecision(refB);
+    expect(decisionB.policy_version).toBe(1);
+    expect(decisionB.rule_id).toBe("platform-default-fallback");
     // HARNESS-GAP: isolate console is not captured; routing_policy_r2_miss is not asserted.
   });
 
