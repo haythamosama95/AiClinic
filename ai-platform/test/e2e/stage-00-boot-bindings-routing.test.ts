@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_CONFIG_CACHE_TTL_MS,
+  resolveConfigCacheTtlMs,
+} from "../../src/config-cache";
+import {
   assertRequestReferenceShape,
   assertTaxonomyBody,
   assertUlidShape,
@@ -375,30 +379,17 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
   });
 
   it("S00-010 — CONFIG_CACHE_TTL_MS unset/empty/invalid → 30_000 default", () => {
-    // HARNESS-GAP: cannot reconfigure CONFIG_CACHE_TTL_MS per isolate /
-    // resolveConfigCacheTtlMs not exported. Catalog variants (a)–(d) all
-    // resolve to DEFAULT_CONFIG_CACHE_TTL_MS = 30_000. The live pool isolate
-    // is already booted with CONFIG_CACHE_TTL_MS="100" (Phase 0 conflict).
-    const variants: ReadonlyArray<{
-      raw: string | undefined;
-      label: string;
-      expectedTtlMs: number;
-    }> = [
-      { raw: undefined, label: "unset", expectedTtlMs: 30_000 },
-      { raw: "", label: "empty", expectedTtlMs: 30_000 },
-      { raw: "abc", label: "non-numeric", expectedTtlMs: 30_000 },
-      { raw: "-50", label: "negative", expectedTtlMs: 30_000 },
-    ];
-    for (const variant of variants) {
-      expect(variant.expectedTtlMs).toBe(30_000);
-    }
-    expect(variants.map((variant) => variant.raw)).toEqual([
-      undefined,
-      "",
-      "abc",
-      "-50",
-    ]);
-    expect(typeof isolateConfigCache.getTtlMs()).toBe("number");
+    expect(resolveConfigCacheTtlMs(undefined)).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("abc")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+    expect(resolveConfigCacheTtlMs("-50")).toBe(DEFAULT_CONFIG_CACHE_TTL_MS);
+
+    // Pool binding is CONFIG_CACHE_TTL_MS="0" (BUG-06). Pin the live isolate
+    // TTL to that resolved value, not a local constant table.
+    expect(env.CONFIG_CACHE_TTL_MS).toBe("0");
+    expect(isolateConfigCache.getTtlMs()).toBe(
+      resolveConfigCacheTtlMs(env.CONFIG_CACHE_TTL_MS),
+    );
   });
 
   it("S00-011 — CONFIG_CACHE_TTL_MS = \"0\" disables caching", async () => {
