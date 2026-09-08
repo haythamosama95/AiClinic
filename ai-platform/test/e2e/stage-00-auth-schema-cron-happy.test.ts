@@ -468,6 +468,16 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     const manifest: Manifest = loadManifest(aliased);
     expect(manifest.Economics.perRequestTokenCeiling).toBe(9024);
     expect("perRequestCostCeiling" in manifest.Economics).toBe(false);
+
+    const bothKeys = cloneJson(publishedVisitSummary);
+    bothKeys.Economics = {
+      ...(bothKeys.Economics as Record<string, unknown>),
+      perRequestTokenCeiling: 9024,
+      perRequestCostCeiling: 1,
+    };
+    const bothKeysManifest: Manifest = loadManifest(bothKeys);
+    expect(bothKeysManifest.Economics.perRequestTokenCeiling).toBe(9024);
+    expect("perRequestCostCeiling" in bothKeysManifest.Economics).toBe(false);
   });
 
   it("S00-034 — /health answers any HTTP method", async () => {
