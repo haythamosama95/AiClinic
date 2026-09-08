@@ -636,27 +636,44 @@ describe("Stage 09 — capability, context, preflight (S09-044…S09-065)", () =
     });
     assertJsonTaxonomy(over, 422, "context_invalid", false);
     expect(over.body?.trace_id).toBe(TRACE_ID);
+    await assertNoGuardWrites();
 
-    const atLimit = await postH0(scenario, await mintAat(scenario), {
+    // Catalog: 10_000 passes maxLength (strict >). The same JSON value still
+    // exceeds manifest maxSize 4096, so this at-maxSize arm is exactly 422
+    // context_invalid — not 200, and not a family of 4xx statuses.
+    const atMaxSizeValue = {
+      visit_id: crypto.randomUUID(),
+      complaint: "x".repeat(10_000),
+    };
+    expect(jsonUtf8Bytes(atMaxSizeValue)).toBeGreaterThan(4096);
+    const atMaxSize = await postH0(scenario, await mintAat(scenario), {
       body: happyVisitBody(scenario, {
         context: {
           org: scenario.orgId,
           branch: scenario.branchId,
-          [VISIT_CHIEF_COMPLAINT_V1]: {
-            visit_id: crypto.randomUUID(),
-            complaint: "x".repeat(10_000),
-          },
+          [VISIT_CHIEF_COMPLAINT_V1]: atMaxSizeValue,
         },
       }),
     });
-    // Catalog: 10000 passes maxLength (strict >). Manifest maxSize 4096 still
-    // maps the same 422 context_invalid — not a distinct cardinality code.
-    expect(atLimit.status).not.toBe(413);
-    if (atLimit.status === 200) {
-      assertAcceptedSse(atLimit, { traceId: TRACE_ID });
-    } else {
-      assertJsonTaxonomy(atLimit, 422, "context_invalid", false);
-    }
+    assertJsonTaxonomy(atMaxSize, 422, "context_invalid", false);
+    expect(atMaxSize.body?.trace_id).toBe(TRACE_ID);
+    await assertNoGuardWrites();
+
+    // Same maxLength check admits a value that fits the maxSize budget.
+    const visitAccepted = crypto.randomUUID();
+    const acceptedValue = complaintValueOfJsonBytes(visitAccepted, 4096);
+    expect(jsonUtf8Bytes(acceptedValue)).toBe(4096);
+    expect(String(acceptedValue.complaint).length).toBeLessThanOrEqual(10_000);
+    const accepted = await postH0(scenario, await mintAat(scenario), {
+      body: happyVisitBody(scenario, {
+        context: {
+          org: scenario.orgId,
+          branch: scenario.branchId,
+          [VISIT_CHIEF_COMPLAINT_V1]: acceptedValue,
+        },
+      }),
+    });
+    assertAcceptedSse(accepted, { traceId: TRACE_ID });
   });
 
   it("S09-059 — context value over maxSize is context_invalid", async () => {
