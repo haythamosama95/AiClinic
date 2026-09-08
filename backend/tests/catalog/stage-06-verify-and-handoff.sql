@@ -521,14 +521,18 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- S06-038 — verify_aat rejects unknown and revoked kids
--- Rebuilds S06-028 (rotate then revoke K0). Restores keystore afterwards.
+-- S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids
+-- Rebuilds S06-028 (rotate then revoke K0). Soft-deletes K1 for the
+-- deleted-kid arm. Restores keystore afterwards.
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
   v_boot_auth uuid;
   v_k0 text;
+  v_k1 text;
   v_token text;
+  v_k1_token text;
+  v_k1_header jsonb;
   v_payload_part text;
   v_sig_part text;
   v_rotate public.rpc_result;
@@ -538,6 +542,7 @@ DECLARE
   v_unknown_token text;
   v_revoked boolean;
   v_unknown boolean;
+  v_soft_deleted boolean;
   v_ok boolean;
   v_detail text;
 BEGIN
@@ -553,7 +558,7 @@ BEGIN
   IF NOT v_rotate.success THEN
     PERFORM pg_temp.reset_postgres();
     PERFORM pg_temp.record(
-      'S06-038 — verify_aat rejects unknown and revoked kids',
+      'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
       false,
       'rotate failed: ' || COALESCE(v_rotate.error_code, '<null>')
         || ' — ' || COALESCE(v_rotate.error_message, '')
@@ -562,11 +567,13 @@ BEGIN
     RETURN;
   END IF;
 
+  v_k1 := v_rotate.data ->> 'kid';
+
   v_revoke := public.revoke_installation_key(v_k0);
   IF NOT v_revoke.success THEN
     PERFORM pg_temp.reset_postgres();
     PERFORM pg_temp.record(
-      'S06-038 — verify_aat rejects unknown and revoked kids',
+      'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
       false,
       'revoke(K0) failed: ' || COALESCE(v_revoke.error_code, '<null>')
         || ' — ' || COALESCE(v_revoke.error_message, '')
@@ -585,18 +592,34 @@ BEGIN
     || '.' || v_payload_part || '.' || v_sig_part;
   v_unknown := auth_internal.verify_aat(v_unknown_token);
 
+  -- Soft-deleted K1: mint under the rotated kid, then [SEED] hide the row.
+  -- No RPC soft-deletes keystore rows; lookup filters is_deleted = false.
+  v_k1_token := pg_temp.s06_mint_as_doc();
+  v_k1_header := pg_temp.decode_jws_header(v_k1_token);
+  UPDATE ai_internal.installation_keys
+  SET is_deleted = true,
+      deleted_at = now()
+  WHERE kid = v_k1;
+  v_soft_deleted := auth_internal.verify_aat(v_k1_token);
+
   v_ok := v_rotate.success
     AND v_revoke.success
     AND v_revoked IS FALSE
     AND v_unknown IS FALSE
-    AND v_unknown_kid::text IS DISTINCT FROM v_k0;
+    AND v_unknown_kid::text IS DISTINCT FROM v_k0
+    AND v_k1 IS NOT NULL
+    AND v_k1 IS DISTINCT FROM v_k0
+    AND (v_k1_header ->> 'kid') = v_k1
+    AND v_soft_deleted IS FALSE;
 
   v_detail := 'revoked_kid_verify=' || COALESCE(v_revoked::text, '<null>')
     || ' unknown_kid_verify=' || COALESCE(v_unknown::text, '<null>')
-    || ' rotated=' || COALESCE(v_rotate.data ->> 'kid', '<null>');
+    || ' soft_deleted_k1_verify=' || COALESCE(v_soft_deleted::text, '<null>')
+    || ' rotated=' || COALESCE(v_k1, '<null>')
+    || ' k1_mint_kid=' || COALESCE(v_k1_header ->> 'kid', '<null>');
 
   PERFORM pg_temp.record(
-    'S06-038 — verify_aat rejects unknown and revoked kids',
+    'S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids',
     v_ok,
     v_detail
   );

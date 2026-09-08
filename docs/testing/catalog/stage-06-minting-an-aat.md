@@ -499,15 +499,15 @@ scopes); the happy path follows, then key-lifecycle, config, self-test, and hand
 | Side effects | None. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L339-L342 — alg/kid gate` |
 
-## Scenario S06-038 — verify_aat rejects unknown and revoked kids
+## Scenario S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids
 
 | Field | Content |
 |-------|---------|
 | ID | S06-038 |
-| Journey setup | S06-028 end state (K0 revoked; AAT0 under K0 saved). Also hand-build a token whose header kid is a random uuid `f47ac10b-58cc-4372-a567-0e02b2c3d999` with AAT0's payload/signature. |
-| Action | `SELECT auth_internal.verify_aat('<AAT0>');` `SELECT auth_internal.verify_aat('<unknown-kid token>');` |
-| Expected outcome | Both `false`: the key lookup requires a non-deleted `installation_keys` row with `revoked_at IS NULL` — unknown kid misses, revoked kid is filtered. (A soft-deleted key row behaves like unknown.) |
-| Side effects | None. |
+| Journey setup | S06-028 end state (K0 revoked; AAT0 under K0 saved). Mint under K1 (signing continues on the rotated kid). Also hand-build a token whose header kid is a random uuid `f47ac10b-58cc-4372-a567-0e02b2c3d999` with AAT0's payload/signature. Then as `postgres`: `UPDATE ai_internal.installation_keys SET is_deleted = true, deleted_at = now() WHERE kid = '<K1>';` — [SEED]: no RPC soft-deletes keystore rows. |
+| Action | `SELECT auth_internal.verify_aat('<AAT0>');` `SELECT auth_internal.verify_aat('<unknown-kid token>');` `SELECT auth_internal.verify_aat('<K1 token>');` |
+| Expected outcome | All `false`: the key lookup requires a non-deleted `installation_keys` row with `revoked_at IS NULL` — unknown kid misses, revoked kid is filtered, and a soft-deleted K1 row is invisible (`is_deleted = false`), the same reject as an unknown kid. |
+| Side effects | None beyond the setup mint and the setup soft-delete of K1. |
 | Code reference | `backend/supabase/migrations/20260801120200_ai_token_issuer_rpc.sql:L344-L353 — key lookup and revocation check` |
 
 ## Scenario S06-039 — verify_aat rejects an iss that does not match the key's installation
