@@ -447,7 +447,7 @@ describe("Stage X — grace reconcile and retention (SX-017…SX-032)", () => {
         }),
       ]),
     );
-    expect(await getAttempts(graceId)).toHaveLength(0);
+    expect(await count("usage_event")).toBe(0);
   });
 
   it("SX-018 — credit unavailable then replay-drop leaks in-flight until sweep", async () => {
