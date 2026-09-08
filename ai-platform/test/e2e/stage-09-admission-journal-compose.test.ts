@@ -12,6 +12,8 @@ import {
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
   entitleInstallation,
+  enrollInstallation,
+  env,
   fakePolicyDocument,
   flushBackgroundWork,
   gatewayObjectJson,
@@ -23,6 +25,7 @@ import {
   isolateConfigCache,
   loadManifest,
   mintAat,
+  newScenario,
   parseSseText,
   POLICY_ID,
   POLICY_REF,
@@ -37,10 +40,16 @@ import {
   terminalEventTypes,
   visitSummaryInvokeBody,
   VISIT_CHIEF_COMPLAINT_V1,
+  wrapDurableObjectNamespace,
   type InvokeResult,
   type Scenario,
   type SseEvent,
 } from "./harness";
+// HARNESS-GAP: Register 5 #28 — wrapDurableObjectNamespace does not reach
+// SELF.fetch. S09-078 injects the grace ledger via runAdmission + throwing DO
+// (same seam as SX-013/017). Neither helper is on the frozen barrel.
+import { runAdmission } from "../../src/admission";
+import { createD1ConfigReader } from "../../src/config-cache";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -194,6 +203,28 @@ async function inspectState(
   const json = result.json as { kind?: string; state?: QuotaInspectState };
   expect(json.kind).toBe("inspect");
   return json.state ?? {};
+}
+
+function throwingQuotaDo(): DurableObjectNamespace {
+  return wrapDurableObjectNamespace(env.DO, {
+    fetchThrow: new Error("quota DO unavailable"),
+  });
+}
+
+function admissionPrincipal(scenario: Scenario) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  return {
+    installationId: scenario.installationId,
+    organizationId: scenario.orgId,
+    branchId: scenario.branchId,
+    actorId: scenario.actorId,
+    role: "clinician",
+    scopes: ["ai.visit_summary", "ai.access"] as const,
+    jti: crypto.randomUUID(),
+    iat: nowSec,
+    exp: nowSec + 330,
+    ver: "1",
+  };
 }
 
 async function entitlementSnapshot(
@@ -760,22 +791,60 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
   );
 
   it("S09-078 — grace path with exhausted ledger is quota_exhausted", async () => {
-    // Register 5 #28: DO fetch injection does not reach SELF.fetch. With
-    // request_quota 0 the live DO isQuotaExhausted path is the same 429
-    // quota_exhausted observable as grace ledger exhaustion.
-    const scenario = await provisionHappyPath(undefined, {
+    // Register 5 #28: wrapDurableObjectNamespace does not reach SELF.fetch.
+    // Inject admitUnderGrace the same way SX-013/017 do: runAdmission + throwing DO.
+    // A second installation with default quota proves the throwing DO actually
+    // enters grace (live entitle cannot restore request_quota — 409 not_pending).
+    const throwingDo = throwingQuotaDo();
+    const reader = createD1ConfigReader(env.DB, env.R2);
+
+    const control = await provisionHappyPath();
+    const admitted = await runAdmission(
+      {
+        principal: admissionPrincipal(control),
+        idempotencyKey: "grace-control",
+        requestReference: "7K2Q-CTRL",
+        cache: isolateConfigCache,
+        reader,
+      },
+      { DB: env.DB, DO: throwingDo },
+    );
+    expect(admitted.ok).toBe(true);
+    if (admitted.ok) {
+      expect(admitted.outcome).toBe("grace_admitted");
+    }
+    expect(await count("grace_admission_queue")).toBe(1);
+
+    const scenario = await newScenario();
+    const enrolled = await enrollInstallation(scenario);
+    expect(enrolled.status).toBe(200);
+    const entitled = await entitleInstallation(scenario, {
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 0,
     });
-    const result = await postRequestPinned(scenario, {
-      token: await mintAat(scenario),
-      idempotencyKey: "grace-exhausted",
-      traceId: TRACE_ID,
-      body: happyVisitBody(scenario),
-    });
+    expect(entitled.status).toBe(200);
+    const exhausted = await runAdmission(
+      {
+        principal: admissionPrincipal(scenario),
+        idempotencyKey: "grace-exhausted",
+        requestReference: "7K2Q-EXH0",
+        cache: isolateConfigCache,
+        reader,
+      },
+      { DB: env.DB, DO: throwingDo },
+    );
 
-    assertQuotaExhausted(result);
-    expect(await count("grace_admission_queue")).toBe(0);
+    expect(exhausted).toEqual({
+      ok: false,
+      code: "quota_exhausted",
+      periodReset: PERIOD_RESET,
+    });
+    const exhaustedGrace = await queryOne(
+      `SELECT grace_request_id FROM grace_admission_queue
+       WHERE installation_id = ?`,
+      [scenario.installationId],
+    );
+    expect(exhaustedGrace).toBeNull();
     expect(await count("ai_request")).toBe(0);
   });
 
