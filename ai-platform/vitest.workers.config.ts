@@ -1,4 +1,5 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-date";
 
 export default defineWorkersConfig({
   test: {
@@ -42,7 +43,10 @@ export default defineWorkersConfig({
           environment: "development",
         },
         miniflare: {
-          compatibilityDate: "2026-05-03",
+          // wrangler.toml keeps 2026-05-03 for production Cloudflare.
+          // Pin local workerd to the date it actually runs so the
+          // 2026-05-03 → 2025-09-06 fallback cannot stay silent.
+          compatibilityDate: pinWorkerdCompatibilityDate(),
           d1Databases: ["DB"],
           r2Buckets: ["R2"],
           ratelimits: {

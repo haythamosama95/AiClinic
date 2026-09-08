@@ -89,7 +89,7 @@ export interface StructuredStreamBrokerOptions {
 
 export interface StreamBrokerController {
   run(): Promise<void>;
-  disconnect(reason: "client_close" | "network_drop"): void;
+  disconnect(reason: "client_close"): void;
   fetchSignal: AbortSignal;
 }
 
@@ -454,7 +454,7 @@ export function createStructuredStreamBroker(
 
   return {
     run,
-    disconnect(reason: "client_close" | "network_drop") {
+    disconnect(reason: "client_close") {
       if (terminalEmitted) {
         return;
       }

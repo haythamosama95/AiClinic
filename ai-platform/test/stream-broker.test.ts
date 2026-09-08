@@ -407,9 +407,10 @@ async function runBrokerHarness(
   ) {
     const afterMs = options.disconnect.afterMs ?? 25;
     await delay(afterMs);
-    controller.disconnect(
-      options.disconnect.kind === "network_drop" ? "network_drop" : "client_close",
-    );
+    // Production never distinguishes network drop from client close
+    // (AdapterDisconnectReason is "client_close" only). T-D4-16 still
+    // drives a network_drop-labelled scenario through this same path.
+    controller.disconnect("client_close");
   }
 
   await runPromise;
