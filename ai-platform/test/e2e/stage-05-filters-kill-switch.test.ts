@@ -2,12 +2,14 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSseSequence,
   bootstrapE2e,
+  CAPABILITY_ID,
   clearConfigCache,
   controlFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
   enrollInstallation,
   entitleInstallation,
+  env,
   generateTestKeypair,
   getAiRequest,
   getAttempts,
@@ -31,6 +33,15 @@ import {
   type InvokeResult,
   type Scenario,
 } from "./harness";
+
+// HARNESS-GAP: Register 5 #26 — createD1ConfigReader / selectCandidateChain
+// are production exports but not on the frozen harness barrel.
+import { createD1ConfigReader } from "../../src/config-cache";
+import {
+  selectCandidateChain,
+  type CostClass,
+  type RouterContext,
+} from "../../src/router";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -392,6 +403,52 @@ async function armProviderKill(target: string): Promise<HttpResult> {
   expect(result.status).toBe(200);
   clearConfigCache();
   return result;
+}
+
+const CONVENTIONS_REQUIREMENTS = {
+  structured_output_required: false,
+  min_context_window: 32000,
+  languages: ["en"] as readonly string[],
+  latency_class: "standard",
+};
+
+async function loadActivePolicyFromReader(
+  installationId: string,
+): Promise<Record<string, unknown>> {
+  const reader = createD1ConfigReader(env.DB, env.R2);
+  const row = await reader.read(
+    `active_routing_policy:${POLICY_REF}/${installationId}`,
+  );
+  expect(row).not.toBe("miss");
+  return row as Record<string, unknown>;
+}
+
+function selectChainViaSeam(
+  preloadedPolicy: Record<string, unknown>,
+  overrides: {
+    installationId: string;
+    requirements?: Partial<RouterContext["requirements"]>;
+    manifestCostClass?: CostClass;
+    entitlementMaxCostClass?: CostClass;
+  },
+) {
+  return selectCandidateChain({
+    cache: isolateConfigCache,
+    policyCacheKey: POLICY_REF,
+    preloadedPolicy,
+    context: {
+      installationId: overrides.installationId,
+      capabilityId: CAPABILITY_ID,
+      routingTier: "standard",
+      requirements: {
+        ...CONVENTIONS_REQUIREMENTS,
+        ...overrides.requirements,
+      },
+      manifestCostClass: overrides.manifestCostClass ?? "standard",
+      entitlementMaxCostClass: overrides.entitlementMaxCostClass ?? "premium",
+      killedProviderIds: [],
+    },
+  });
 }
 
 describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…S05-085)", () => {
@@ -857,10 +914,37 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     expect(degradedDecision.rule_id).toBe("platform-default-fallback");
   });
 
-  it.skip(
-    "S05-078 — Inputs the bundled manifest set cannot produce (multi-language match clause; Register 5 #26 router-seam; selectCandidateChain is not on the frozen harness barrel)",
-    () => {},
-  );
+  it("S05-078 — Rule match: languages clause requires every required language", async () => {
+    const instA = await scenarioWithId(INST_A);
+    await enrollAndEntitle(instA);
+    await publishAndPromote(
+      policyDocument(20, {
+        rules: [
+          catchAllRule([DEEPSEEK_FLASH], {
+            ruleId: "en-only",
+            match: { languages: ["en"] },
+          }),
+          catchAllRule([DEEPSEEK_FLASH, GEMINI_FLASH]),
+        ],
+      }),
+    );
+
+    const preloadedPolicy = await loadActivePolicyFromReader(INST_A);
+
+    const multiLanguage = selectChainViaSeam(preloadedPolicy, {
+      installationId: INST_A,
+      requirements: { languages: ["en", "ar"] },
+    });
+    expect(multiLanguage.routing_decision.rule_id).toBe(
+      "platform-default-fallback",
+    );
+
+    const englishOnly = selectChainViaSeam(preloadedPolicy, {
+      installationId: INST_A,
+      requirements: { languages: ["en"] },
+    });
+    expect(englishOnly.routing_decision.rule_id).toBe("en-only");
+  });
 
   it("S05-079 — Rule requires floor raises min_context_window", async () => {
     const scenario = await newScenario();
@@ -970,10 +1054,95 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     expect(decision.chain).toEqual(GEMINI_ONLY_CHAIN);
   });
 
-  it.skip(
-    "S05-082 — Inputs the bundled manifest set cannot produce (non-hardwired cost sources; Register 5 #26 router-seam; selectCandidateChain is not on the frozen harness barrel)",
-    () => {},
-  );
+  it("S05-082 — Effective cost class: three-source minimum with source-priority tie-break", async () => {
+    const instA = await scenarioWithId(INST_A);
+    await enrollAndEntitle(instA);
+    const threeCostTargets = [
+      fixtureTarget("deepseek", "econ", { cost_class: "economy" }),
+      fixtureTarget("gemini", "std", { cost_class: "standard" }),
+      fixtureTarget("anthropic", "prem", { cost_class: "premium" }),
+    ];
+    await publishAndPromote(policyDocument(24, { targets: threeCostTargets }));
+
+    const preloadedPolicy = await loadActivePolicyFromReader(INST_A);
+    const expectedChain = [
+      {
+        ordinal: 0,
+        provider_id: "deepseek",
+        model_id: "econ",
+        max_attempts: 2,
+        timeout_ms: 30000,
+      },
+      {
+        ordinal: 1,
+        provider_id: "gemini",
+        model_id: "std",
+        max_attempts: 2,
+        timeout_ms: 30000,
+      },
+    ];
+    const premiumExcluded = [
+      {
+        provider_id: "anthropic",
+        model_id: "prem",
+        reason_code: "cost_class_excluded",
+      },
+    ];
+
+    const manifestWins = selectChainViaSeam(preloadedPolicy, {
+      installationId: INST_A,
+      manifestCostClass: "standard",
+      entitlementMaxCostClass: "premium",
+    });
+    expect(manifestWins.routing_decision.effective_cost_class).toBe("standard");
+    expect(manifestWins.routing_decision.cost_class_source).toBe("manifest");
+    expect(manifestWins.routing_decision.chain).toEqual(expectedChain);
+    expect(manifestWins.routing_decision.excluded).toEqual(premiumExcluded);
+
+    const entitlementCap = selectChainViaSeam(preloadedPolicy, {
+      installationId: INST_A,
+      manifestCostClass: "premium",
+      entitlementMaxCostClass: "standard",
+    });
+    expect(entitlementCap.routing_decision.effective_cost_class).toBe(
+      "standard",
+    );
+    expect(entitlementCap.routing_decision.cost_class_source).toBe(
+      "entitlement_cap",
+    );
+    expect(entitlementCap.routing_decision.chain).toEqual(expectedChain);
+
+    const tied = selectChainViaSeam(preloadedPolicy, {
+      installationId: INST_A,
+      manifestCostClass: "standard",
+      entitlementMaxCostClass: "standard",
+    });
+    expect(tied.routing_decision.effective_cost_class).toBe("standard");
+    expect(tied.routing_decision.cost_class_source).toBe("entitlement_cap");
+    expect(tied.routing_decision.chain).toEqual(expectedChain);
+
+    await publishAndPromote(
+      policyDocument(25, {
+        targets: threeCostTargets,
+        overrides: [
+          { installation_id: INST_A, force_cost_class: "premium" },
+        ],
+      }),
+    );
+    const withOverride = await loadActivePolicyFromReader(INST_A);
+    const overrideCannotRaise = selectChainViaSeam(withOverride, {
+      installationId: INST_A,
+      manifestCostClass: "standard",
+      entitlementMaxCostClass: "premium",
+    });
+    expect(overrideCannotRaise.routing_decision.effective_cost_class).toBe(
+      "standard",
+    );
+    expect(overrideCannotRaise.routing_decision.chain).toEqual(expectedChain);
+    expect(overrideCannotRaise.routing_decision.excluded).toEqual(
+      premiumExcluded,
+    );
+  });
 
   it("S05-083 — Chain ordinals and routing_decision persistence", async () => {
     const scenario = await newScenario();

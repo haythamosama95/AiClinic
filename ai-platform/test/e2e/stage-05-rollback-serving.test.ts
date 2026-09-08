@@ -3,6 +3,7 @@ import {
   assertSseSequence,
   bootstrapE2e,
   canaryPolicy,
+  CAPABILITY_ID,
   clearConfigCache,
   controlFetch,
   count,
@@ -31,6 +32,11 @@ import {
   type InvokeResult,
   type Scenario,
 } from "./harness";
+
+// HARNESS-GAP: Register 5 #26 — createD1ConfigReader / selectCandidateChain
+// are production exports but not on the frozen harness barrel.
+import { createD1ConfigReader } from "../../src/config-cache";
+import { selectCandidateChain } from "../../src/router";
 
 beforeAll(async () => {
   await bootstrapE2e();
@@ -783,15 +789,125 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     }
   });
 
-  it.skip(
-    "S05-060 — Register 5 #26: createD1ConfigReader/selectCandidateChain are not exported by the frozen harness barrel; README does not document calling them from tests",
-    () => {},
-  );
+  it("S05-060 — Legacy @vN suffix on the policy cache key is tolerated and stripped", async () => {
+    await publishThenPromote(platformDefaultAt(1));
+    const reader = createD1ConfigReader(env.DB, env.R2);
 
-  it.skip(
-    "S05-061 — Register 5 #26: selectCandidateChain is not exported by the frozen harness barrel; visit-summary Output.mode is prose so structured_output_required cannot be driven on POST /v1/requests",
-    () => {},
-  );
+    const globalSuffixed = await reader.read(
+      "active_routing_policy:routing/standard@v1",
+    );
+    const installationSuffixed = await reader.read(
+      `active_routing_policy:routing/standard@v1/${INST_A}`,
+    );
+    const unsuffixed = await reader.read(
+      "active_routing_policy:routing/standard",
+    );
+    const neverPins = await reader.read(
+      "active_routing_policy:routing/standard@v99",
+    );
+
+    expect(globalSuffixed).not.toBe("miss");
+    expect(installationSuffixed).not.toBe("miss");
+    expect(unsuffixed).not.toBe("miss");
+    expect(neverPins).not.toBe("miss");
+
+    const globalRow = globalSuffixed as Record<string, unknown>;
+    const installationRow = installationSuffixed as Record<string, unknown>;
+    expect(globalRow.policy_id).toBe("standard");
+    expect(globalRow.version).toBe("1");
+    expect(globalRow.status).toBe("active");
+    expect(globalRow.document).toEqual(platformDefaultAt(1));
+    expect(installationRow.policy_id).toBe(globalRow.policy_id);
+    expect(installationRow.version).toBe(globalRow.version);
+    expect(installationRow.content_pointer).toBe(globalRow.content_pointer);
+    expect(installationRow.document).toEqual(globalRow.document);
+    expect((unsuffixed as Record<string, unknown>).version).toBe("1");
+    expect((neverPins as Record<string, unknown>).version).toBe("1");
+    expect((neverPins as Record<string, unknown>).document).toEqual(
+      globalRow.document,
+    );
+  });
+
+  it("S05-061 — Target without structured_output excluded as feature_unsupported", async () => {
+    await enrollAndEntitle(INST_A);
+    await publishThenPromote({
+      schema_version: 1,
+      policy_id: "standard",
+      policy_version: 4,
+      defaults: { cost_class: "standard", max_parallel_attempts: 1 },
+      rules: [
+        {
+          rule_id: "platform-default-fallback",
+          match: {},
+          requires: {
+            structured_output: false,
+            min_context_window: 0,
+            languages: [] as string[],
+          },
+          targets: [
+            {
+              provider_id: "deepseek",
+              model_id: "deepseek-v4-flash",
+              features: {
+                structured_output: false,
+                min_context_window: 128000,
+                languages: ["en"],
+                latency_class: "standard",
+                cost_class: "standard",
+              },
+              max_attempts: 2,
+              timeout_ms: 30000,
+            },
+            GEMINI_FIXTURE_TARGET,
+          ],
+        },
+      ],
+      overrides: [],
+    });
+
+    const reader = createD1ConfigReader(env.DB, env.R2);
+    const preloadedPolicy = await reader.read(
+      `active_routing_policy:routing/standard/${INST_A}`,
+    );
+    expect(preloadedPolicy).not.toBe("miss");
+
+    const { routing_decision } = selectCandidateChain({
+      cache: isolateConfigCache,
+      policyCacheKey: "routing/standard",
+      preloadedPolicy: preloadedPolicy as Record<string, unknown>,
+      context: {
+        installationId: INST_A,
+        capabilityId: CAPABILITY_ID,
+        routingTier: "standard",
+        requirements: {
+          structured_output_required: true,
+          min_context_window: 32000,
+          languages: ["en"],
+          latency_class: "standard",
+        },
+        manifestCostClass: "standard",
+        entitlementMaxCostClass: "premium",
+        killedProviderIds: [],
+      },
+    });
+
+    expect(routing_decision.chain).toEqual([
+      {
+        ordinal: 0,
+        provider_id: "gemini",
+        model_id: "gemini-3.5-flash",
+        max_attempts: 2,
+        timeout_ms: 30000,
+      },
+    ]);
+    expect(routing_decision.excluded).toEqual([
+      {
+        provider_id: "deepseek",
+        model_id: "deepseek-v4-flash",
+        reason_code: "feature_unsupported",
+      },
+    ]);
+  });
 
   it("S05-062 — Missing/non-numeric min_context_window fails closed as feature_unsupported", async () => {
     const instA = await enrollAndEntitle(INST_A);
