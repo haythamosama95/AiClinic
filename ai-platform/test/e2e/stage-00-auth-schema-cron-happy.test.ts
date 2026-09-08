@@ -20,6 +20,7 @@ import {
   env,
   getCapabilities,
   getHealth,
+  hashManifest,
   invokeCron,
   isolateConfigCache,
   listTableNames,
@@ -33,6 +34,7 @@ import {
   resetE2eState,
   seedSql,
   setCapabilityRegistry,
+  verifyManifestTree,
   type Manifest,
 } from "./harness";
 
@@ -90,44 +92,32 @@ function cloneJson(value: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 }
 
-function canonicalStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => canonicalStringify(entry)).join(",")}]`;
-  }
-  const object = value as Record<string, unknown>;
-  const keys = Object.keys(object).sort();
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${canonicalStringify(object[key])}`)
-    .join(",")}}`;
-}
+const PUBLISHED_MANIFEST_FILE = "clinic.visit_summary@1.0.0.json";
+const PUBLISHED_MANIFESTS_DIR = "manifests/published";
+const PUBLISHED_REGISTRY_PATH = "manifests/published-registry.json";
 
-/** Stand-in for barrel-missing `hashManifest` (canonical SHA-256). */
-async function hashCanonical(json: Record<string, unknown>): Promise<string> {
-  const encoded = new TextEncoder().encode(canonicalStringify(json));
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/** Stand-in for barrel-missing `verifyPublishedRegistry`. */
-function verifyPublishedRegistryEntry(
-  capabilityKey: string,
-  onDiskHash: string,
-  registry: Record<string, string>,
-): void {
-  const publishedHash = registry[capabilityKey];
-  if (publishedHash === undefined) {
-    throw new Error(`No published registry entry for ${capabilityKey}`);
-  }
-  if (onDiskHash !== publishedHash) {
-    throw new Error(
-      `Published manifest hash mismatch for ${capabilityKey}: on-disk ${onDiskHash}, registry ${publishedHash}`,
-    );
-  }
+function publishedManifestTreeIo(
+  files: Record<string, Record<string, unknown>> = {
+    [PUBLISHED_MANIFEST_FILE]: cloneJson(publishedVisitSummary),
+  },
+) {
+  return {
+    manifestsDir: PUBLISHED_MANIFESTS_DIR,
+    registryPath: PUBLISHED_REGISTRY_PATH,
+    readFile: async (filePath: string) => {
+      if (filePath === PUBLISHED_REGISTRY_PATH) {
+        return JSON.stringify(publishedRegistry);
+      }
+      const name = filePath.slice(PUBLISHED_MANIFESTS_DIR.length + 1);
+      const json = files[name];
+      if (json === undefined) {
+        throw new Error(`No published manifest for ${filePath}`);
+      }
+      return JSON.stringify(json);
+    },
+    readdir: async () => Object.keys(files),
+    join: (...parts: string[]) => parts.join("/"),
+  };
 }
 
 function filterCatalogTables(names: string[]): string[] {
@@ -383,27 +373,18 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
   });
 
   it("S00-030 — Build gate accepts published manifest tree", async () => {
-    // HARNESS-GAP: verifyManifestTree and hashManifest are not exported from
-    // the harness barrel. loadManifest covers load(); hash is a local
-    // canonical SHA-256 stand-in matching src/manifest hashManifest.
     const published = cloneJson(publishedVisitSummary);
     expect(() => loadManifest(published)).not.toThrow();
 
-    const hash = await hashCanonical(published);
+    const hash = await hashManifest(published);
     expect(hash).toBe(PUBLISHED_HASH);
-    expect(() =>
-      verifyPublishedRegistryEntry(
-        "clinic.visit_summary@1.0.0",
-        hash,
-        publishedRegistry as Record<string, string>,
-      ),
-    ).not.toThrow();
+
+    await expect(
+      verifyManifestTree(publishedManifestTreeIo()),
+    ).resolves.toBeUndefined();
   });
 
   it("S00-031 — Build gate rejects tampered published manifest", async () => {
-    // HARNESS-GAP: verifyManifestTree is not on the harness barrel. Tamper
-    // in-memory (do not write the committed file) and assert the catalog
-    // mismatch throw shape using the local hash stand-in.
     const tampered = cloneJson(publishedVisitSummary);
     const economics = {
       ...(tampered.Economics as Record<string, unknown>),
@@ -413,16 +394,16 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
 
     expect(() => loadManifest(tampered)).not.toThrow();
 
-    const onDiskHash = await hashCanonical(tampered);
+    const onDiskHash = await hashManifest(tampered);
     expect(onDiskHash).not.toBe(PUBLISHED_HASH);
 
-    expect(() =>
-      verifyPublishedRegistryEntry(
-        "clinic.visit_summary@1.0.0",
-        onDiskHash,
-        publishedRegistry as Record<string, string>,
+    await expect(
+      verifyManifestTree(
+        publishedManifestTreeIo({
+          [PUBLISHED_MANIFEST_FILE]: tampered,
+        }),
       ),
-    ).toThrow(
+    ).rejects.toThrow(
       `Published manifest hash mismatch for clinic.visit_summary@1.0.0: on-disk ${onDiskHash}, registry ${PUBLISHED_HASH}`,
     );
   });

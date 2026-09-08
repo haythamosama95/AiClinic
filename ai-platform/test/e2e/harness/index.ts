@@ -149,7 +149,12 @@ export {
   createCapabilityRegistry,
   setCapabilityRegistry,
 } from "../../../src/capability";
-export { load as loadManifest, type Manifest } from "../../../src/manifest";
+export {
+  hashManifest,
+  load as loadManifest,
+  verifyManifestTree,
+  type Manifest,
+} from "../../../src/manifest";
 export { isolateConfigCache } from "../../../src/config-cache";
 
 /** Direct handler / quota RPC seams (Register 5). Not for ordinary full-path tests. */
