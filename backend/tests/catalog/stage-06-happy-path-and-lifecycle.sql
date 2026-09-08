@@ -119,6 +119,25 @@ BEGIN
 END;
 $$;
 
+-- Full-row fingerprint of user columns only (`t.*`). row::text excludes
+-- system columns, so xmax is not part of the hash (ledger INSERT KEY SHARE
+-- on staff_members would otherwise false-positive).
+CREATE OR REPLACE FUNCTION pg_temp.row_md5(p_rel regclass)
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_hash text;
+BEGIN
+  EXECUTE format(
+    $q$SELECT md5(string_agg(r::text, E'\n' ORDER BY r::text))
+       FROM (SELECT t.* FROM %s t) r$q$,
+    p_rel
+  ) INTO v_hash;
+  RETURN v_hash;
+END;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- Stage 06 Baseline B0 (Nadia/Lina/Rami personas; do not call catalog_common_setup)
 -- -----------------------------------------------------------------------------
@@ -477,33 +496,18 @@ BEGIN
   SELECT count(*)::int INTO v_issuance_before FROM ai_internal.ai_token_issuance;
   SELECT count(*)::int INTO v_audit_before FROM public.audit_log;
 
-  -- Issuer does not UPDATE installation_keys. Omit xmax: a KEY SHARE / xmin
-  -- visibility fingerprint is not a business write (see conflicts.md).
-  SELECT md5(string_agg(
-    ik.kid || '|' || COALESCE(ik.revoked_at::text, '') || '|'
-      || COALESCE(ik.updated_at::text, ''),
-    ',' ORDER BY ik.kid
-  ))
-  INTO v_keys_before
-  FROM ai_internal.installation_keys ik;
-
-  SELECT md5(string_agg(
-    s.key || '|' || s.value_json::text || '|' || COALESCE(s.updated_at::text, ''),
-    ',' ORDER BY s.key
-  ))
-  INTO v_settings_before
-  FROM ai_internal.app_settings s;
-
-  -- Row counts only: max(updated_at) is unobservable for "no public write"
-  -- (issuer only SELECTs public.*).
-  SELECT md5(
-    (SELECT count(*)::text FROM public.staff_members) || '|'
-    || (SELECT count(*)::text FROM public.staff_branch_assignments) || '|'
-    || (SELECT count(*)::text FROM public.branches) || '|'
-    || (SELECT count(*)::text FROM public.organizations) || '|'
-    || (SELECT count(*)::text FROM public.roles_permissions)
-  )
-  INTO v_pub_before;
+  -- Full-row md5(string_agg(r::text …)) over user columns. Do not hash xmax
+  -- (KEY SHARE on the ledger FK is not a business write; see conflicts.md).
+  v_keys_before := pg_temp.row_md5('ai_internal.installation_keys'::regclass);
+  v_settings_before := pg_temp.row_md5('ai_internal.app_settings'::regclass);
+  v_pub_before := md5(concat_ws(
+    E'\n',
+    pg_temp.row_md5('public.staff_members'::regclass),
+    pg_temp.row_md5('public.staff_branch_assignments'::regclass),
+    pg_temp.row_md5('public.branches'::regclass),
+    pg_temp.row_md5('public.organizations'::regclass),
+    pg_temp.row_md5('public.roles_permissions'::regclass)
+  ));
 
   PERFORM pg_temp.set_authenticated_session(v_doc_auth);
   v_now_epoch := extract(epoch FROM now())::bigint;
@@ -533,29 +537,16 @@ BEGIN
   WHERE i.jti = v_jti::uuid;
   SELECT count(*)::int INTO v_audit_after FROM public.audit_log;
 
-  SELECT md5(string_agg(
-    ik.kid || '|' || COALESCE(ik.revoked_at::text, '') || '|'
-      || COALESCE(ik.updated_at::text, ''),
-    ',' ORDER BY ik.kid
-  ))
-  INTO v_keys_after
-  FROM ai_internal.installation_keys ik;
-
-  SELECT md5(string_agg(
-    s.key || '|' || s.value_json::text || '|' || COALESCE(s.updated_at::text, ''),
-    ',' ORDER BY s.key
-  ))
-  INTO v_settings_after
-  FROM ai_internal.app_settings s;
-
-  SELECT md5(
-    (SELECT count(*)::text FROM public.staff_members) || '|'
-    || (SELECT count(*)::text FROM public.staff_branch_assignments) || '|'
-    || (SELECT count(*)::text FROM public.branches) || '|'
-    || (SELECT count(*)::text FROM public.organizations) || '|'
-    || (SELECT count(*)::text FROM public.roles_permissions)
-  )
-  INTO v_pub_after;
+  v_keys_after := pg_temp.row_md5('ai_internal.installation_keys'::regclass);
+  v_settings_after := pg_temp.row_md5('ai_internal.app_settings'::regclass);
+  v_pub_after := md5(concat_ws(
+    E'\n',
+    pg_temp.row_md5('public.staff_members'::regclass),
+    pg_temp.row_md5('public.staff_branch_assignments'::regclass),
+    pg_temp.row_md5('public.branches'::regclass),
+    pg_temp.row_md5('public.organizations'::regclass),
+    pg_temp.row_md5('public.roles_permissions'::regclass)
+  ));
 
   v_ok_jws := v_token IS NOT NULL
     AND array_length(string_to_array(v_token, '.'), 1) = 3

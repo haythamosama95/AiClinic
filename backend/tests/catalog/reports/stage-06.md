@@ -79,7 +79,7 @@ Conflicts (tests follow CODE): `backend/tests/catalog/reports/stage-06-conflicts
 | --- | --- | --- |
 | B0 usernames | `nadia.h` / `lina.k` / `rami.s` | `assert_valid_username` is `[a-z0-9_-]` only → `nadia_h` / `lina_k` / `rami_s` |
 | S06-019 / 020 / 026 / 032 / 043 | `exp − iat = 900` (seed 15) or restore to 15 | Seed + fallback **10 min → 600 s** |
-| S06-019 fingerprints | No public.* / keystore writes | `xmax` / `max(updated_at)` are not issuer writes; counts + ledger kept |
+| S06-019 fingerprints | No public.* / keystore writes | Full-row `md5(string_agg(r::text …))` on keys/settings/five `public.*` tables; no `xmax` |
 | S06-033 | SQLSTATE `22P02` | jsonb string `::numeric` → **`22023`** |
 
 **Harness gaps**
