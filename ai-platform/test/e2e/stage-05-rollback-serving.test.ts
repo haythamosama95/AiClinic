@@ -601,35 +601,67 @@ describe("Stage 05 — rollback, serving, and post-accept routing failures (S05-
     const instA = await enrollAndEntitle(INST_A);
     const instB = await enrollAndEntitle(INST_B);
     await setupV1ActiveV2CanaryA(V2_CANARY_DOCUMENT);
-    await clearConfigCache();
 
-    const resultA = await invokeVisitSummary(instA, "idem-s05-051a-0001");
-    const resultB = await invokeVisitSummary(instB, "idem-s05-051b-0001");
+    // Pool TTL is 0: remember stamps expiresAt === now, so consult after SSE
+    // drain evicts the entry (`now > expiresAt`). Raise TTL so both
+    // installation-scoped keys stay inspectable post-invoke (same consult
+    // seam as S07-052 / S00-037). Restore in finally (W-34).
+    const previousTtl = isolateConfigCache.getTtlMs();
+    isolateConfigCache.setTtlMs(30_000);
+    try {
+      await clearConfigCache();
 
-    const refA = assertAccepted(resultA);
-    const refB = assertAccepted(resultB);
+      const resultA = await invokeVisitSummary(instA, "idem-s05-051a-0001");
+      const resultB = await invokeVisitSummary(instB, "idem-s05-051b-0001");
 
-    const decisionA = await waitForPersistedDecision(refA);
-    expect(decisionA).toMatchObject({
-      policy_version: 2,
-      rule_id: "v2-catch-all",
-      chain: [
-        {
-          ordinal: 0,
-          provider_id: "gemini",
-          model_id: "gemini-3.5-flash",
-          max_attempts: 2,
-          timeout_ms: 30000,
-        },
-      ],
-    });
+      const refA = assertAccepted(resultA);
+      const refB = assertAccepted(resultB);
 
-    const decisionB = await waitForPersistedDecision(refB);
-    expect(decisionB).toMatchObject({
-      policy_version: 1,
-      rule_id: "platform-default-fallback",
-      chain: FIXTURE_V1_CHAIN,
-    });
+      const decisionA = await waitForPersistedDecision(refA);
+      expect(decisionA).toMatchObject({
+        policy_version: 2,
+        rule_id: "v2-catch-all",
+        chain: [
+          {
+            ordinal: 0,
+            provider_id: "gemini",
+            model_id: "gemini-3.5-flash",
+            max_attempts: 2,
+            timeout_ms: 30000,
+          },
+        ],
+      });
+
+      const decisionB = await waitForPersistedDecision(refB);
+      expect(decisionB).toMatchObject({
+        policy_version: 1,
+        rule_id: "platform-default-fallback",
+        chain: FIXTURE_V1_CHAIN,
+      });
+
+      const cachedA = isolateConfigCache.consult(
+        "active_routing_policy",
+        `routing/standard/${INST_A}`,
+      );
+      const cachedB = isolateConfigCache.consult(
+        "active_routing_policy",
+        `routing/standard/${INST_B}`,
+      );
+      expect(cachedA).toMatchObject({
+        policy_id: "standard",
+        version: "2",
+        status: "canary",
+      });
+      expect(cachedA?.document).toEqual(V2_CANARY_DOCUMENT);
+      expect(cachedB).toMatchObject({
+        policy_id: "standard",
+        version: "1",
+        status: "active",
+      });
+      expect(cachedB?.document).toEqual(PLATFORM_DEFAULT_DOCUMENT);
+    } finally {
+      isolateConfigCache.setTtlMs(previousTtl);
+    }
   });
 
   it("S05-052 — Malformed canary_installation_ids JSON falls through to active", async () => {
