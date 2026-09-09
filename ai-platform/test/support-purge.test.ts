@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import { assertControlAudit } from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
@@ -157,12 +158,14 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM usage_rollup"),
     env.DB.prepare("DELETE FROM platform_counter"),
+    env.DB.prepare("DELETE FROM grace_admission_queue"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
 
 beforeAll(async () => {
   await applySql(env.DB, migrationSql);
+  await applySql(env.DB, graceQueueMigrationSql);
 });
 
 beforeEach(async () => {
@@ -258,6 +261,29 @@ describe("installation_purge_dispatch_wiring", () => {
       .bind(FIXTURE_INSTALLATION_A)
       .first<{ count: number }>();
     expect(remaining?.count ?? 0).toBe(0);
+
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR_ID,
+      action: "purge_installation",
+      target: FIXTURE_INSTALLATION_A,
+    });
+  });
+});
+
+describe("installation_purge_canonicalizes_uppercase_installation_id", () => {
+  it("purges a lowercase-stored installation when the path id is uppercase", async () => {
+    await seedInstallation(FIXTURE_INSTALLATION_A, "deleted");
+    await seedRequestWithEnvelope("req-purge-case", FIXTURE_INSTALLATION_A);
+
+    const { handleInstallationPurge } = await loadPurgeHandlers();
+    const response = await handleInstallationPurge(
+      buildPurgeRequest(FIXTURE_INSTALLATION_A.toUpperCase()),
+      bindings(),
+      createFakeOperatorAuth(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({});
 
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR_ID,

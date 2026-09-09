@@ -1,4 +1,5 @@
 import { isCapabilityVersionRegistered } from "../capability";
+import { toCanonicalUuid } from "../platform-vocabulary";
 import {
   newId,
   nowIso,
@@ -112,7 +113,9 @@ export async function handleCohortActivate(
     return reject(400, "missing_installation_ids");
   }
 
-  const installationIds = [...new Set(body.installation_ids)];
+  const installationIds = [
+    ...new Set(body.installation_ids.map((id) => toCanonicalUuid(String(id)))),
+  ];
 
   const { DB } = bindings;
   const missingInstallations = await assertInstallationsExist(

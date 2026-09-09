@@ -6,6 +6,8 @@ Local DB: `127.0.0.1:54322` (user `postgres`; password from `backend/local/.env`
 Runner iteration: 2  
 `psql -v ON_ERROR_STOP=1` per file. No test/harness/migration/Worker files were modified. No commit.
 
+S06-038 `catalog_results` dump refreshed 2026-09-09 by re-running only `stage-06-verify-and-handoff.sql` against local Supabase so the embedded dump matches current SQL (C-01: unknown, revoked, and soft-deleted kids). Other files' dumps and runner-2 counts/branch metadata are historical.
+
 ## Counts
 
 | Scope | Passed | Skipped | Failed | Missing |
@@ -434,14 +436,14 @@ DO
  S06-035 — verify_aat rejects a tampered payload                                  | t      | verified=false role=administrator
  S06-036 — verify_aat rejects malformed tokens without throwing                   | t      | all six inputs returned false without exception
  S06-037 — verify_aat rejects alg ≠ EdDSA or a missing kid                        | t      | hs256=false missing_kid=false
- S06-038 — verify_aat rejects unknown and revoked kids                            | t      | revoked_kid_verify=false unknown_kid_verify=false rotated=9e74fd51-5393-477f-9fb6-90ac4fe31119
+ S06-038 — verify_aat rejects unknown, revoked, and soft-deleted kids             | t      | revoked_kid_verify=false unknown_kid_verify=false soft_deleted_k1_verify=false rotated=8113b3a8-5014-4171-8241-0cae26874f41 k1_mint_kid=8113b3a8-5014-4171-8241-0cae26874f41
  S06-039 — verify_aat rejects an iss that does not match the key's installation   | t      | verified=false iss_ne_i0=true kid_match=true
- S06-040 — verify_aat does not evaluate exp                                       | t      | verified=true exp=1788708786 clock=1788708787 exp_lt_clock=true
+ S06-040 — verify_aat does not evaluate exp                                       | t      | verified=true exp=1788925093 clock=1788925094 exp_lt_clock=true
  S06-041 — Minted-then-rejected: wrong audience                                   | t      | aud=clinic-portal iss_match=true compact_jws=true kid_in_keystore=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
- S06-042 — Minted-then-rejected: expired AAT                                      | t      | clinic_verify=true exp=1788708786 exp_lt_clock=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
+ S06-042 — Minted-then-rejected: expired AAT                                      | t      | clinic_verify=true exp=1788925093 exp_lt_clock=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
  S06-043 — Default lifetime within platform cap: seed-default tokens are accepted | t      | exp_minus_iat=600 unexpired=true kid_active=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
- S06-044 — Minted-then-rejected: kid unknown to the platform                      | t      | kid=478c0cdb-107b-4b02-bf9b-e929793e9ab8 kid_is_k1=true iss_match=true clinic_verify=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection); platform would reject unknown K1
- S06-045 — Minted-then-rejected: kid revoked platform-side                        | t      | mint_kid=981438e1-8280-4add-95b8-aa38c94b892a kid_was_k0=true after_revoke_verify=false | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
+ S06-044 — Minted-then-rejected: kid unknown to the platform                      | t      | kid=55639547-822f-46d3-9801-12c2a2f92325 kid_is_k1=true iss_match=true clinic_verify=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection); platform would reject unknown K1
+ S06-045 — Minted-then-rejected: kid revoked platform-side                        | t      | mint_kid=c50fe709-9905-4d86-9f74-4c3522611b6b kid_was_k0=true after_revoke_verify=false | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
  S06-046 — Minted-then-rejected: ver unknown or retired platform-side             | t      | ver=2 clinic_verify=true kid_active=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection)
  S06-047 — Minted-then-rejected: installation unknown to the platform             | t      | iss_match=true compact_jws=true kid_bound_to_i0=true | platform HTTP half is skipped — Register 5 #17 (Stage 7/9 execute identity rejection); minting does not register platform D1 state
 (15 rows)

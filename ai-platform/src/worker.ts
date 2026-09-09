@@ -1203,6 +1203,7 @@ async function runFreshEventSource(
       usage: partialUsage.getPartialUsage?.(),
       code: taxonomy,
       idempotencyState: "failed",
+      skipCredit: brokerTerminal !== undefined,
     }, journalLog);
     await recordTerminalState(
       guard.requestId,

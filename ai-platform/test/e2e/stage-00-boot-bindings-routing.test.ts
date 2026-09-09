@@ -190,15 +190,15 @@ async function assertCapabilityUnknown(
 
 describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)", () => {
   it.skip(
-    "S00-001 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test",
+    "S00-001 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test (Register 5 #1)",
   );
 
   it.skip(
-    "S00-002 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test",
+    "S00-002 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test (Register 5 #1)",
   );
 
   it.skip(
-    "S00-003 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test",
+    "S00-003 — The pool always supplies the bindings declared in the test wrangler.toml; a binding cannot be removed per-test (Register 5 #1)",
   );
 
   it("S00-004 — Missing rate-limiter bindings do not block boot", async () => {
@@ -266,7 +266,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
   });
 
   it.skip(
-    "S00-007 throwing-load arm — The manifest is a static JSON import baked at build time; cannot become malformed in a running isolate",
+    "S00-007 throwing-load arm — The manifest is a static JSON import baked at build time; cannot become malformed in a running isolate (Register 5 #3)",
   );
 
   it("S00-007 — Bundled manifest failing validation aborts isolate boot (harness empty-registry seam)", async () => {
@@ -436,15 +436,15 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
   });
 
   it.skip(
-    "S00-012 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate",
+    "S00-012 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate (Register 5 #5)",
   );
 
   it.skip(
-    "S00-013 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate",
+    "S00-013 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate (Register 5 #5)",
   );
 
   it.skip(
-    "S00-014 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate",
+    "S00-014 — Requires capturing the worker isolate's console output, which the pool may not expose per-isolate (Register 5 #5)",
   );
 
   it("S00-015 — Unknown path plain-text 404", async () => {

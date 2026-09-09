@@ -59,11 +59,14 @@ function createFakeDoNamespace(
 ): {
   namespace: DurableObjectNamespace;
   fetchCalls: DoFetchCall[];
+  idFromNameCalls: string[];
 } {
   const fetchCalls: DoFetchCall[] = [];
+  const idFromNameCalls: string[] = [];
 
   const namespace = {
     idFromName(name: string) {
+      idFromNameCalls.push(name);
       return { name } as DurableObjectId;
     },
     get(_id: DurableObjectId) {
@@ -81,7 +84,7 @@ function createFakeDoNamespace(
     },
   } as unknown as DurableObjectNamespace;
 
-  return { namespace, fetchCalls };
+  return { namespace, fetchCalls, idFromNameCalls };
 }
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
@@ -226,6 +229,29 @@ describe("quota_inspect_installation_not_found", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "installation_not_found" });
+  });
+});
+
+describe("quota_inspect_canonicalizes_uppercase_installation_id", () => {
+  it("inspects a lowercase-stored installation when the path id is uppercase", async () => {
+    await seedInstallation();
+    await seedEntitlement();
+
+    const { namespace, idFromNameCalls } = createFakeDoNamespace(
+      buildQuotaDoState(),
+    );
+
+    const response = await handleInstallationQuotaGet(
+      quotaRequest(FIXTURE_INSTALLATION_ID.toUpperCase()),
+      bindings(namespace),
+      createFakeOperatorAuth(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      installation_id: FIXTURE_INSTALLATION_ID,
+    });
+    expect(idFromNameCalls).toEqual([FIXTURE_INSTALLATION_ID]);
   });
 });
 

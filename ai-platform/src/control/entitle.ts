@@ -1,3 +1,4 @@
+import { toCanonicalUuid } from "../platform-vocabulary";
 import {
   coerceSoftThreshold,
   isSoftThresholdFraction,
@@ -159,11 +160,12 @@ export async function handleEntitle(
     return auth;
   }
 
-  const installationId = parseInstallationId(request);
-  if (!installationId) {
+  const rawId = parseInstallationId(request);
+  if (!rawId) {
     // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
+  const installationId = toCanonicalUuid(rawId);
 
   const rawBody = await parseJsonBody<EntitlePayload>(request);
   if (rawBody instanceof Response) {

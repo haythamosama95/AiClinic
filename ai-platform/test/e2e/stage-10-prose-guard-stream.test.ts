@@ -1393,4 +1393,82 @@ describe("Stage 10 — prose guards, regenerating, heartbeat (S10-018…S10-034)
       mapSpy.mockRestore();
     }
   });
+
+  it("M-01 — broker prose-guard terminal then independent invocation failure credits once", async () => {
+    const scenario = await setupFresh({
+      targets: [policyTarget("fake-v1", { max_attempts: 1 })],
+    });
+    const fakeMod = await loadFakeModule();
+    const original = fakeMod.FakeAdapter;
+    class RefusalThenTerminalError extends original {
+      override async invoke(_request: unknown, options?: InvokeOptions) {
+        emitDelta(options, "I'm sorry, I can't help with that");
+        // Yield so the broker can trip (credit + journal) while
+        // ignoreBrokerSettlement is still false.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          kind: "error" as const,
+          error: {
+            taxonomyCode: "provider_rejected" as const,
+            retryability: false,
+            providerNative: {
+              code: "FAKE_ERROR",
+              message: "Simulated provider_rejected from fake adapter",
+            },
+            consumedBudget: true,
+          },
+        };
+      }
+    }
+    const adapterSpy = vi
+      .spyOn(fakeMod, "FakeAdapter")
+      .mockImplementation(() => new RefusalThenTerminalError(["success"]) as never);
+    const creditSpy = await spyCreditUsage();
+    try {
+      const result = await postVisit(scenario, {
+        idempotencyKey: "m-01-idem",
+        traceId: "m-01-trace",
+      });
+      assertHttpSse(result);
+      const names = sseEventNames(result.events);
+      expect(names[0]).toBe("accepted");
+      expect(names).toContain("failed");
+      const ref = assertAcceptedEvent(result.events[0], "m-01-trace");
+      const failedEvents = result.events.filter((event) => event.event === "failed");
+      expect(failedEvents.length).toBeGreaterThanOrEqual(1);
+      assertFailedTerminal(failedEvents[0], {
+        code: "validation_failed",
+        retrySafe: true,
+        traceId: "m-01-trace",
+        requestReference: ref,
+      });
+      // Adapter sink drops a second terminal (terminalEmitted). Worker
+      // pushFailedTerminal therefore must not appear on the wire.
+      expect(failedEvents).toHaveLength(1);
+      expect(names.filter((name) => name === "failed")).toHaveLength(1);
+
+      // Broker credits from streamed-char estimate (refusal text length 33),
+      // not FakeAdapter success usage (30 / 0.005). Error path never notes
+      // provider usage.
+      assertCreditUsage(creditSpy, {
+        times: 1,
+        partial: false,
+        idempotencyState: "failed",
+        usage: { tokens: 33, cost: 0.0066 },
+      });
+
+      const row = await requireAiRequest(ref);
+      expect(row.state).toBe("Failed");
+      expect(row.terminal_error_code).toBe("validation_failed");
+      const usage = await getUsageEvents(String(row.request_id));
+      expect(usage).toHaveLength(1);
+      expect(usage[0]?.tokens).toBe(33);
+      expect(costOf(usage[0], "cost")).toBeCloseTo(0.0066, 5);
+      assertUsageEventPeriod(usage);
+      expect(await count("usage_event")).toBe(1);
+    } finally {
+      adapterSpy.mockRestore();
+      creditSpy.mockRestore();
+    }
+  });
 });

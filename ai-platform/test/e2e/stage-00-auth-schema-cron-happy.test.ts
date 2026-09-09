@@ -334,7 +334,7 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
   });
 
   it.skip(
-    "S00-028 — The pool applies migrations once per test database; d1_migrations tracking is platform behavior, not worker code",
+    "S00-028 — The pool applies migrations once per test database; d1_migrations tracking is platform behavior, not worker code (Register 5 #4)",
     () => {},
   );
 

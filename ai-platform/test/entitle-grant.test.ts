@@ -373,6 +373,26 @@ describe("entitle_activate_writes_entitlement_grant_and_audit", () => {
   });
 });
 
+describe("entitle_canonicalizes_uppercase_installation_id", () => {
+  it("entitles a lowercase-stored installation when the path id is uppercase", async () => {
+    const handlers = await loadControlHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    await enrollFixture(handlers, operatorAuth);
+
+    const response = await handlers.handleEntitle(
+      buildEntitleRequest(FIXTURE_INSTALLATION_ID.toUpperCase()),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      installation_id: FIXTURE_INSTALLATION_ID,
+      status: "active",
+    });
+  });
+});
+
 describe("entitle_sets_budget_fields_admission_reads", () => {
   it("writes budget fields and moves status to active", async () => {
     const handlers = await loadControlHandlers();

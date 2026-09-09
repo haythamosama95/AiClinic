@@ -1,3 +1,4 @@
+import { toCanonicalUuid } from "../platform-vocabulary";
 import type { InspectResponse } from "../quota-do";
 import { ok, reject, requireOperator } from "./http";
 import type { ControlBindings, OperatorAuth } from "./types";
@@ -33,11 +34,12 @@ export async function handleInstallationQuotaGet(
   const match = new URL(request.url).pathname.match(
     /^\/control\/installations\/([^/]+)\/quota$/,
   );
-  const installationId = match?.[1];
-  if (!installationId) {
+  const rawId = match?.[1];
+  if (!rawId) {
     // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
+  const installationId = toCanonicalUuid(rawId);
 
   if (!bindings.DO) {
     return reject(503, "quota_do_unavailable");

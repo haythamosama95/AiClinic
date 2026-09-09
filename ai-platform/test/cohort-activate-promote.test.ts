@@ -743,6 +743,30 @@ describe("cohort_control_rejection_branches", () => {
     expect(await promote.json()).toEqual({ error: "capability_not_found" });
   });
 
+  it("canonicalizes uppercase installation_ids against lowercase-stored rows", async () => {
+    await seedInstallation(env.DB, COHORT_INSTALLATION_ID);
+    await seedEntitlement(env.DB, COHORT_INSTALLATION_ID);
+    await seedInstallationGrant(
+      env.DB,
+      COHORT_INSTALLATION_ID,
+      FIXTURE_VERSION_V1,
+    );
+
+    const { handleCohortActivate } = await loadCohortControlHandlers();
+    const response = await handleCohortActivate(
+      buildActivateRequest(FIXTURE_VERSION_V2, [
+        COHORT_INSTALLATION_ID.toUpperCase(),
+      ]),
+      { DB: env.DB },
+      createFakeOperatorAuth(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await discoverGrantedVersion(COHORT_INSTALLATION_ID)).toBe(
+      FIXTURE_VERSION_V2,
+    );
+  });
+
   it("rejects unknown installation on activate with 404", async () => {
     const { handleCohortActivate } = await loadCohortControlHandlers();
     const response = await handleCohortActivate(

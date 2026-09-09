@@ -1,3 +1,4 @@
+import { toCanonicalUuid } from "../platform-vocabulary";
 import {
   isValidRequestReference,
   normalizeRequestReference,
@@ -85,11 +86,12 @@ export async function handleInstallationPurge(
   const match = new URL(request.url).pathname.match(
     /^\/control\/installations\/([^/]+)\/purge$/,
   );
-  const targetId = match?.[1];
-  if (!targetId) {
+  const rawId = match?.[1];
+  if (!rawId) {
     // Unreachable via HTTP because dispatch pre-filters with identical regexes; reachable via direct handler invocation in tests; kept as a safety net.
     return reject(400, "invalid_route");
   }
+  const targetId = toCanonicalUuid(rawId);
 
   const installation = await bindings.DB.prepare(
     "SELECT status FROM installation WHERE installation_id = ?",
