@@ -583,4 +583,4 @@ Each directory has `quickstart.md` with slice-scoped commands. Use this runbook 
 1. Hub-page live invoke adapters (AAT mint + HTTPS submit) are not composed — `/ai` visit summary stays idle by design.
 2. HTTP discovery route is not wired.
 3. F2 clinical accept, H3 chat, and J2 self-heal are library + test proven; product screens / host wiring follow later integration work.
-4. Band G (commercial) and band K (explicitly later) remain out of scope per `03-ai-platform-delivery-plan` §4.
+4. Band G (commercial) is decomposed per `03-ai-platform-delivery-plan` §3.13 but not yet implemented; band K (explicitly later) remains out of scope per §4.

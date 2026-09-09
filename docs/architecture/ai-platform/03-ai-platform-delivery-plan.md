@@ -7,8 +7,11 @@
 - Not covered here: any architectural decision. This document sequences decisions made in `01-ai-platform.md`; it never makes new ones. Where the two appear to conflict, `01-ai-platform.md` wins and this document is wrong.
 
 > **Status:** Delivery plan. Bands A–J are sliced and largely implemented as modules and suites;
-> band I wires those modules onto the live Worker and Flutter request paths. Section references of
-> the form §N.M refer to `docs/architecture/ai-platform/01-ai-platform.md` unless stated otherwise.
+> band I wires those modules onto the live Worker and Flutter request paths, band G (the commercial
+> surface) is sliced now that amendment A15 has settled its product inputs, and band V covers the
+> verification tooling around the platform (scenario catalog suite and viewer). Section references
+> of the form §N.M refer to `docs/architecture/ai-platform/01-ai-platform.md` unless stated
+> otherwise.
 
 ---
 
@@ -19,7 +22,7 @@
 1. [Purpose and Operating Assumptions](#1-purpose-and-operating-assumptions)
 2. [What a Slice Is](#2-what-a-slice-is)
 3. [The Slice Sequence](#3-the-slice-sequence)
-4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed)
+4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed) (band K only; band G decomposed in [§3.13](#313-band-g--commercial-surface))
 5. [Review Checkpoints](#5-review-checkpoints)
 6. [Spec Authoring Protocol](#6-spec-authoring-protocol)
 7. [Dependencies Outside the Platform](#7-dependencies-outside-the-platform)
@@ -72,7 +75,7 @@ These supersede the phase model previously carried in §12.2 of the architecture
 | DP-5 | **Compatibility machinery is deferred, but its contract surface is not**                                                                                 | There are no deployed clients, so overlap windows, deprecation flows, staged prompt rollout, and the `context_required` self-healing *behaviour* have no audience yet. The error codes, lifecycle states, and journal columns they need are cheap now and expensive to retrofit, so those land early and stay unused; the behaviour is sliced as band J ([§3.9](#39-band-j--deferred-compatibility-machinery)) |
 | DP-6 | **The client architecture guard (R-12) lands before any client AI code**, not at hardening time                                                          | The guard exists to stop prompt text, provider names, and model identifiers from entering the Flutter app. With generated client code, that is the expected outcome rather than a tail risk, so the guard must precede the code it guards                                                                                                                                   |
 | DP-7 | **The walking-skeleton thread is retained as a falsification checkpoint**, not as a release                                                              | Without shipping pressure, the failure mode is fifty well-tested slices that have never run together. One end-to-end thread through a fake provider is the earliest point at which the contract slices can be proven wrong ([§5](#5-review-checkpoints)). Band I is the slice set that makes that thread run on the live Worker and Flutter paths rather than only in harnesses |
-| DP-8 | **Everything the architecture decides is sliced (bands A–J plus band I).** Only band G and band K stay coarse                                            | Band G is blocked on product decisions rather than architectural ones, and band K is deliberately undesigned — slicing either would encode a default or a deferral as a commitment ([§4](#4-bands-not-yet-decomposed)). Band I adds no new §4 component: it composes modules already frozen by A–J onto `POST /v1/requests`, discovery HTTP, and the first client invoke path |
+| DP-8 | **Everything the architecture decides is sliced (bands A–J plus bands G and I).** Only band K stays coarse                                               | Band G was blocked on product decisions rather than architectural ones; amendment A15 settled them (credit-denominated monthly quota, declared per-capability prices, a small plan catalogue, no overage, platform-issued invoices, gauge usage surface), and the band is decomposed in [§3.13](#313-band-g--commercial-surface). Band K remains deliberately undesigned — slicing it would encode a deferral as a commitment ([§4](#4-bands-not-yet-decomposed)). Band I adds no new §4 component: it composes modules already frozen by A–J onto `POST /v1/requests`, discovery HTTP, and the first client invoke path. Band V is verification tooling traced to §13.5 and the scenario catalog, not a §4 component group ([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)) |
 
 
 ---
@@ -87,7 +90,9 @@ These supersede the phase model previously carried in §12.2 of the architecture
 
 A slice is one Spec Kit feature: one `specs/<NNN>-<name>/` directory, one branch, one review. It
 implements *named parts* of `01-ai-platform.md` — one component group from §4 or the contracts from
-§5 that group needs — and nothing else.
+§5 that group needs — and nothing else. The single exception is band V
+([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)): verification tooling that
+traces to §13.5 and the scenario catalog rather than to a §4 component group.
 
 Slice identifiers in this document (`A1`, `D3`, `D4`, …) are stable and do not change when a slice
 is started. The three-digit Spec Kit number is assigned at that moment from the next free number in
@@ -168,6 +173,10 @@ condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility
 is the live-composition band: it starts after the modules named in each slice's `Needs` column exist,
 and it freezes no new contract — it only attaches already-built stages and client libraries to the
 Worker fetch handler and the first Flutter AI surface ([§3.10](#310-band-i--live-composition-and-request-path-wiring)).
+Band G is the commercial band: it may start as soon as its `Needs` are met and runs in parallel with
+the later bands — nothing in bands H, I, or J depends on it ([§3.13](#313-band-g--commercial-surface)).
+Band V is verification tooling — the E2E scenario catalog suite and the viewer app — and is ordered
+by what it verifies rather than by platform dependencies ([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)).
 
 ### 3.2 Band A — Foundations and frozen contracts
 
@@ -450,6 +459,98 @@ prior suite green, not just the latest.
 | **I3** | Flutter widget + integration | *Live host:* enrolled + reachable installation mints an AAT, resolves context keys, submits over HTTPS to the Worker, renders provisional draft, enables no commit control before `completed`, and shows the request reference on failure. *Degraded:* non-enrolled still makes no Worker probe; unreachable still renders the normal-state banner. *Spy:* production mint and submit ports are the ones composed on the hub (not test fakes left wired by default) |
 | **I4** | Integration + Flutter | *Entitle:* operator activate/grant writes entitlement and grant rows and a `control_audit` entry with operator identity; pending enroll still fails entitlement until activated; non-operator rejected. *Self-heal:* live submit path refreshes on first `context_required`, resubmits once with the same idempotency key, and surfaces the reference on a second `context_required`; conversational capabilities never take this path |
 
+#### 3.12.10 Band G
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **G1** | SQL / migration + integration | *Catalogue:* migrations apply cleanly to an empty database and the schema snapshot matches, including `plan`, `credit_price`, and the `entitlement` credit-budget column; one case per plan CRUD mutation asserting the `control_audit` row and operator identity; non-operator rejected. *Assignment:* assigning a plan populates credit budget, request guard, `max_cost_class`, soft threshold, and capability set in one audited mutation; an explicit per-installation override of a plan value is recorded as such. *Cache:* plans and entitlements are served through the config cache with the A5 read pattern — one D1 read cold, zero warm |
+| **G2** | DO unit + integration (spy) | *Debit:* settlement debits exactly the manifest's declared `quota_weight`; a conversational leg debits per leg; a cancelled request debits the full declared weight; a guard rejection debits nothing and writes no journal row. *Admission:* exhausted credit budget → `quota_exhausted` with `reset_at`; crossing the soft threshold on the credit ratio sets the `degraded` flag F4 routes on. *Invariants:* token and cost counters still settle actuals unchanged; exactly two Durable Object round trips per request; the credit RPC gains fields without changing the meaning of any existing field (§2.3) |
+| **G3** | Workers integration + Flutter widget (spy) | *Endpoint:* an authenticated installation reads current-period credits consumed against budget, sourced live from the Quota DO, and prior periods from `usage_rollup`; unauthenticated → taxonomy unauthorized; the response carries credits only — no provider prices, no token or cost actuals. *Client:* the gauge renders consumed-versus-budget; a non-enrolled installation hides it with no network probe; platform unreachability renders as a normal state, not an error dialog |
+| **G4** | Scheduled job + integration | *Close:* period close writes exactly one immutable `invoice` row per active installation, priced through the `credit_price` version active for that period; a re-run is idempotent; a zero-consumption period issues no invoice. *Price list:* activating a new price-list version is an audited operator mutation and never reprices a closed period. *Evidence:* an invoice resolves to its `usage_rollup` rows, and any line can be traced to request references; payment collection is out of scope and no payment-provider call exists |
+
+#### 3.12.11 Band V
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **V1** | E2E (Worker + SQL) | Every automatable scenario ID in `docs/testing/catalog/` has exactly one test named `Sxx-yyy — <title>`; every non-automatable ID is an `it.skip` citing its Register 5 row; no test without an ID and no ID without a test; `[SEED]` setup only where the scenario's journey justifies it; the full suites (`vitest.e2e`, `backend/tests/catalog/run.sh`) are green |
+| **V2** | E2E + code fixes | Every item in `docs/testing/catalog/implementation-work-order.md` lands as code fix + test rewrite + catalog text in one commit per item; no test is weakened to go green; the work order's own definition of done (its §12) is met, including the skip-count reduction and both full suites green |
+| **V3** | Viewer build + smoke | The viewer builds (`tsc -b && vite build`); every stage 00–12 page, the guard-pipeline view, and the secrets page render against the dev plugin; each operation card executes its real control-plane or gateway call against a running local stack and shows the raw request/response |
+| **V4** | Viewer build + smoke | *Commercial pages:* plan catalogue CRUD drives the real G1 control mutations; the per-installation credit gauge renders the G3 endpoint's consumed-versus-budget; the invoice list and detail render G4's invoices with their rollup evidence. *Stage X:* the cron and failure-journey operations are drivable from the viewer. All of it against the local stack, with raw request/response visible |
+
+
+### 3.13 Band G — Commercial surface
+
+**What this band does:** Builds the commercial layer the product decisions recorded in amendment
+A15 define: a small plan catalogue mapping a plan name to its economics, credit-denominated monthly
+quota debited at each capability's declared `quota_weight`, a usage-summary endpoint with a simple
+in-app gauge, and billing period close with platform-issued invoices. Payment collection stays
+outside the platform.
+
+**Useful to know:** This band was held coarse under DP-8 until its product inputs existed; A15
+settled them (OD-2, OD-15, and the §12.3 billing row). G2 **extends** B4's frozen admission
+contract — the entitlement snapshot gains `credit_budget`, the credit RPC gains a `credits` debit,
+and the period counters gain `creditsUsed` — which [§2.3](#23-the-no-rework-rule) permits, because
+adding a field is extension and no existing field changes meaning; the token and cost counters
+remain for reconciliation and billing evidence. G1 and G2 are sequential; G3 and G4 may proceed in
+parallel once their `Needs` are met. Nothing here is on the request path's latency budget: G2 rides
+the existing two Durable Object round trips, and G3/G4 are read surfaces and scheduled jobs.
+
+**Code sync (verified against `ai-platform/` as of 2026-09):**
+- The `entitlement` table (`migrations/20260731120000_platform_schema.sql`) carries `request_quota`,
+  `token_budget`, `cost_budget`, period bounds, and `plan` as a free string — **no** credit column,
+  and no `plan` / `credit_price` / `invoice` tables exist. G1's migrations are greenfield and
+  forward-only per A5's rule.
+- `usage_event.quota_weight INTEGER` already exists — the ledger needed no change, as A15 states.
+- `src/pricing/` is the **bundled token-rate artifact** (`control/pricing/platform-default/1.json`)
+  that prices provider-reported tokens into ledger cost units. It is *not* the A15 `credit_price`
+  list; G4 must keep the two apart (A15 item 5 says which answers which question).
+- G1 extends I4's entitle endpoint (`src/control/entitle.ts`,
+  `POST /control/installations/:id/entitle`) with plan-catalogue assignment; the entitlement stage
+  (`src/entitlement/`) reads `entitlement.plan` as a string via `planTierMeetsMinimum`, so the
+  catalogue changes what entitlement *management* reads, not the guard — exactly as OD-15 promised.
+- G3's endpoint is **installation-authenticated and client-facing** — a different audience from the
+  existing operator-only `GET /control/installations/:id/quota` (`src/control/quota-inspect.ts`),
+  whose DO inspect path it may reuse. The operator endpoint stays operator-only.
+- G4 consumes F3's `src/rollup/` output; the close is a new scheduled job, not a rollup change.
+
+| ID     | Slice                                              | Canonical                              | Needs        | Done when                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | -------------------------------------------------- | -------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **G1** | Plan catalogue and credit-denominated entitlement  | §4.5, §7.3, §4.3.2, A15                | A5, B2       | Forward-only migrations create `plan`, `credit_price`, and the `entitlement` monthly credit-budget column, pinned by a schema snapshot test; operator plan CRUD and plan-based entitlement assignment are audited control-plane mutations; assignment from a plan populates every economics field in one mutation; plans and entitlements are served through the config cache with the A5 warm/cold read pattern                                                            |
+| **G2** | Declared-weight credit debit in admission          | §4.3.3, §5.1, §8.8, A15                | G1, B4, F4   | The stage-15 credit call debits the manifest's declared `quota_weight` (per leg for `conversational`), cancelled requests debit in full, guard rejections debit nothing; admission answers credit-budget exhaustion with `quota_exhausted` and crosses the soft threshold on the credit ratio into the `degraded` flag; token and cost counters settle actuals unchanged; the two-round-trip and no-journal-on-rejection invariants hold                                     |
+| **G3** | Usage summary endpoint and in-app gauge            | §7.6, §4.1, A11, A15                   | G2, E4       | An authenticated installation reads current-period credits consumed against budget (live from the Quota DO) and prior periods from `usage_rollup`; the response carries credits only; the Flutter client renders a simple gauge, hides it for non-enrolled installations without probing, and renders platform unreachability as a normal state                                                                                                                              |
+| **G4** | Billing period close and invoice generation        | §7.3, §4.5, §12.3, A15                 | G1, F3       | A scheduled close freezes the period's `usage_rollup` and writes exactly one immutable `invoice` per active installation, priced through the `credit_price` version active for that period; re-runs are idempotent; zero-consumption periods issue no invoice; price-list activation is an audited operator mutation that never reprices a closed period; every invoice line traces to request references; no payment-provider integration exists                          |
+
+
+### 3.14 Band V — Verification tooling: scenario catalog and viewer
+
+**What this band does:** Builds and maintains the two verification surfaces that sit *around* the
+platform rather than inside it: the E2E scenario catalog suite (`docs/testing/catalog/`, 818
+scenarios across stages 00–X, implemented under `ai-platform/test/e2e/` and
+`backend/tests/catalog/`), and the `ai-platform-viewer/` dev console that lets a human drive every
+stage of the journey against a running local stack.
+
+**Why this band is different:** every other band implements named components of
+`01-ai-platform.md` §4. Band V traces to **§13.5 (testing strategy)** and to the catalog documents
+themselves, which are the spec for V1–V2. The viewer is development and operator tooling: it
+freezes no platform contract, ships to no clinic, and appears in no architecture component group —
+its slices cite the control-plane and HTTP surfaces they drive rather than a §4 component. It is
+sliced here so the work is visible in one sequence, not because the architecture owns it.
+
+**Useful to know (code-verified 2026-09):** V1 is **implemented** — phase 15 declared the suite
+green with coverage complete (707 tests, 40 files, 0 gaps; `ai-platform/test/e2e/reports/phase-15.md`).
+V2 is **implemented** — the work order's code fixes are in the source (spot-verified: BUG-01's
+`grace_admission_queue` purge delete in `src/retention/index.ts`, BUG-03's manifest-loading
+`settleMissingHandoffInternalError` in `src/worker.ts`). V3 is **largely implemented** —
+`ai-platform-viewer/` already covers stage pages 00–12, the guard-pipeline view, and secrets;
+V4 adds what Band G and stage X need.
+
+| ID     | Slice                                            | Canonical                            | Needs          | Done when                                                                                                                                                                                                                                                                                                                                                          |
+| ------ | ------------------------------------------------ | ------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **V1** | E2E scenario catalog suite                       | §13.5; `docs/testing/catalog/`       | I1, I2         | Every automatable scenario in the catalog has exactly one ID-tagged test; every Register 5 non-automatable ID is a cited `it.skip`; `[SEED]` discipline holds; both full suites (`vitest.e2e`, `backend/tests/catalog/run.sh`) are green. **Status: implemented** (phase-15 report)                                                                                |
+| **V2** | Scenario catalog remediation and coverage close  | §13.5; the catalog work order        | V1             | `docs/testing/catalog/implementation-work-order.md` is executed to its own definition of done: every code bug fixed with its pinning test rewritten in the same commit, weak tests strengthened, coverage gaps closed, catalog text sweep applied, no test weakened to go green, both full suites green. **Status: implemented** (code fixes spot-verified at HEAD) |
+| **V3** | Viewer foundations and stage pages               | — (tooling; drives §4.5, §5.5)       | B2, I1, I2     | The `ai-platform-viewer/` app builds and lets a developer drive stages 00–12, the guard pipeline, and secrets against the local stack, with raw request/response visible for every operation. **Status: largely implemented** — remaining work is whatever the smoke pass in [§3.12.11](#31211-band-v) surfaces                                                    |
+| **V4** | Viewer commercial surface and stage-X page       | — (tooling; drives A15 surfaces)     | V3, G1, G3, G4 | The viewer gains plan-catalogue CRUD against G1's control mutations, a per-installation credit gauge reading G3's endpoint, and an invoice list/detail view over G4's output; the stage-X cron and failure journeys are drivable; everything runs against the local stack with raw request/response visible                                                          |
+
 
 ---
 
@@ -457,25 +558,13 @@ prior suite green, not just the latest.
 
 ## 4. Bands Not Yet Decomposed
 
-Two bands are deliberately left coarse, for two different reasons. Neither reason is "the
-architecture has not decided" — everything the architecture owns is decided and sliced in bands A–J
-plus the live-composition band I; only G and K stay coarse.
+One band is deliberately left coarse. The reason is not "the architecture has not decided" —
+everything the architecture owns is decided and sliced in bands A–J plus the live-composition band I
+and the commercial band G; only K stays coarse. (Band G was held here until amendment A15 settled
+its product inputs — quota unit and period, plan structure, overage policy, and the billing
+boundary — and is now decomposed in [§3.13](#313-band-g--commercial-surface).)
 
-### 4.1 Band G — Commercial surface
-
-Usage summary endpoint and in-app quota display; plan catalogue and entitlement management in the
-control plane; billing period close from the `usage_event` ledger; overage policies; per-installation
-capability grants.
-
-Not decomposed because the missing inputs are **product decisions, not architectural ones**: the
-quota unit and period are Open Decision 2, plan structure and overage policy have no owner yet, and
-invoice generation is explicitly outside this platform (§12.3). Decomposing now would encode a
-recommended default as a commitment. Nothing here is on the critical path — its only claim on earlier
-slices is that entitlement and quota are consulted inside the guard, and stages 3 and 8 of §6.1
-already reserve that position. Band I's entitle-and-grant operator path (I4) activates those existing
-entities for a runnable installation; it does not absorb Band G's commercial surface.
-
-### 4.2 Band K — Explicitly later
+### 4.1 Band K — Explicitly later
 
 Held under §12.5 and §9.14 of the architecture document, each with its own written trigger:
 health-based provider routing, out-of-band cancellation and stream resume, region-aware routing, D1

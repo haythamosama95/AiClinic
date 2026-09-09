@@ -7,6 +7,13 @@ the no-rework rule applies (Delivery Plan §2.3). A later slice may **extend** (
 `degraded` from the admission response) but may not **rewrite** the field set, discriminant
 values, or transport shape below.
 
+**Scheduled extension (A15 / slice G2):** amendment A15 of `01-ai-platform.md` denominates the
+per-installation budget in monthly **AI credits** at each capability's declared `quota_weight`.
+Slice G2 (Delivery Plan §3.13) will extend this contract additively: the entitlement snapshot gains
+`credit_budget`, the credit RPC gains a `credits` debit, and `PeriodCounters` gains `creditsUsed`.
+The existing token/cost fields keep their meanings and remain for reconciliation and billing
+evidence. Until G2 lands, the shapes below are complete as frozen.
+
 **Source of truth in code:** `ai-platform/src/quota-do/index.ts` (RPC handlers and ephemeral entry
 types); `ai-platform/src/admission/index.ts` and `ai-platform/src/credit/index.ts` (callers);
 `GatewayObject` dispatch in `ai-platform/src/worker.ts`.
