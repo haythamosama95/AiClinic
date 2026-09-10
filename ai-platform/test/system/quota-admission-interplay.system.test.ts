@@ -360,7 +360,11 @@ describe("quota admission interplay", () => {
       targets: [
         {
           ...fakePolicyTarget("bogus-v1", { providerId: "bogus-primary" }),
-          max_attempts: 2,
+          // Enough retry attempts that the invocation is still inside
+          // backoff when the client abort lands below: the loop-top
+          // callerSignal check then journals Cancelled instead of losing
+          // the race to a terminal provider_unavailable (Failed).
+          max_attempts: 5,
         },
       ],
     });
@@ -402,15 +406,23 @@ describe("quota admission interplay", () => {
     expect(acceptedInJournal).toBe(true);
     controller.abort();
     await cancelFetch.catch(() => undefined);
-    await flushBackgroundWork();
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
-    const cancelledRow = await env.DB.prepare(
-      `SELECT state, idempotency_key FROM ai_request
-       WHERE installation_id = ? AND idempotency_key = ?`,
-    )
-      .bind(cancelledScenario.installationId, cancelledKey)
-      .first<{ state: string; idempotency_key: string }>();
+    // Wait for a stably terminal journal row (same robustness pattern as the
+    // e2e waitForCancelledJournal helper) instead of a fixed sleep: under
+    // full-pool load the cancel settlement can lag the client abort.
+    let cancelledRow: { state: string; idempotency_key: string } | null = null;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      await flushBackgroundWork();
+      cancelledRow = await env.DB.prepare(
+        `SELECT state, idempotency_key FROM ai_request
+         WHERE installation_id = ? AND idempotency_key = ?`,
+      )
+        .bind(cancelledScenario.installationId, cancelledKey)
+        .first<{ state: string; idempotency_key: string }>();
+      if (cancelledRow != null && cancelledRow.state !== "Accepted") {
+        break;
+      }
+    }
     expect(cancelledRow?.idempotency_key).toBe(cancelledKey);
     expect(cancelledRow?.state).toBe("Cancelled");
 
