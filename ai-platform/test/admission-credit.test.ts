@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
+import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   ConfigCache,
   type ConfigEntityKind,
@@ -74,6 +75,7 @@ type CreditInput = {
   requestId: string;
   requestReference: string;
   usage: { tokens: number; cost: number };
+  credits?: number;
   partial: boolean;
 };
 
@@ -86,6 +88,7 @@ type PeriodCounters = {
   requestsUsed: number;
   tokensUsed: number;
   costUsed: number;
+  creditsUsed: number;
   inFlight: number;
 };
 
@@ -321,20 +324,22 @@ async function seedEntitlement(
     requestQuota?: number;
     tokenBudget?: number;
     costBudget?: number;
+    creditBudget?: number;
   } = {},
 ): Promise<void> {
   const {
     requestQuota = 1_000,
     tokenBudget = 1_000_000,
     costBudget = 100,
+    creditBudget = 10_000,
   } = options;
 
   await env.DB.prepare(
     `INSERT INTO entitlement (
       entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
+      request_quota, token_budget, cost_budget, credit_budget, allowed_capabilities,
       soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `ent-${installationId}`,
@@ -345,6 +350,7 @@ async function seedEntitlement(
       requestQuota,
       tokenBudget,
       costBudget,
+      creditBudget,
       JSON.stringify(["ai.visit_summary"]),
       0.8,
       "active",
@@ -377,8 +383,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         const row = await db
           .prepare(
             `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, allowed_capabilities,
-                    soft_threshold, status
+                    request_quota, token_budget, cost_budget, credit_budget,
+                    allowed_capabilities, soft_threshold, status
              FROM entitlement WHERE installation_id = ?`,
           )
           .bind(key)
@@ -454,6 +460,7 @@ function assertAdmitted(
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, graceQueueMigrationSql);
+  await applyPlatformSchema(env.DB, planCatalogueMigrationSql);
 });
 
 beforeEach(async () => {
@@ -1385,5 +1392,88 @@ describe("admission_missing_entitlement_fail_closed", () => {
 
     expect(result).toEqual({ ok: false, code: "quota_exhausted" });
     expect(await peekPendingGrace(admission)).toHaveLength(0);
+  });
+});
+
+describe("guard_rejection_debits_nothing_and_writes_no_journal_row", () => {
+  it("does not invoke credit or write ai_request when credit budget is exhausted at admission", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const creditBudget = 5;
+    const W = 5;
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
+      creditBudget,
+      requestQuota: 100,
+    });
+
+    const first = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: env.DO },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(first);
+
+    await credit.creditUsage(
+      {
+        installationId,
+        requestId: first.requestId,
+        requestReference: uniqueRequestReference(),
+        usage: { tokens: 1, cost: 0.001 },
+        partial: false,
+        credits: W,
+      },
+      { DO: env.DO },
+    );
+
+    const aiRequestsBefore = await readAiRequestCount();
+    const doSpy = createDoSpy(env.DO);
+
+    const rejected = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader),
+      { DB: env.DB, DO: doSpy },
+      { now: FIXTURE_NOW_MS },
+    );
+
+    expect(rejected).toEqual({
+      ok: false,
+      code: "quota_exhausted",
+      periodReset: "2026-09-01T00:00:00.000Z",
+    });
+    expect(doSpy.fetchCount()).toBe(1);
+    expect(await readAiRequestCount()).toBe(aiRequestsBefore);
+  });
+});
+
+describe("exactly_two_durable_object_round_trips_per_request", () => {
+  it("makes exactly two DO fetches for admission then credit", async () => {
+    const admission = await loadAdmissionModule();
+    const credit = await loadCreditModule();
+    const installationId = freshInstallationId();
+    const { cache, reader } = await seedInstallationAndEntitlement(installationId);
+    const doSpy = createDoSpy(env.DO);
+    const requestReference = uniqueRequestReference();
+
+    const admitted = await admission.runAdmission(
+      defaultAdmissionInput(installationId, cache, reader, { requestReference }),
+      { DB: env.DB, DO: doSpy },
+      { now: FIXTURE_NOW_MS },
+    );
+    assertAdmitted(admitted);
+    expect(doSpy.fetchCount()).toBe(1);
+
+    await credit.creditUsage(
+      {
+        installationId,
+        requestId: admitted.requestId,
+        requestReference,
+        usage: { tokens: 10, cost: 0.01 },
+        partial: false,
+        credits: 3,
+      },
+      { DO: doSpy },
+    );
+
+    expect(doSpy.fetchCount()).toBe(2);
   });
 });
