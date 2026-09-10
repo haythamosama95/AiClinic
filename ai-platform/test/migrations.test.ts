@@ -360,3 +360,41 @@ describe("T-A5-16 conversation_id_and_turn_ordinal_nullable", () => {
     expect(turnOrdinal?.notnull).toBe(0);
   });
 });
+
+/** G1 catalogue entities — tables and entitlement columns the forward-only migration must add. */
+const G1_CATALOGUE_TABLES = ["plan", "credit_price"] as const;
+
+async function tableColumnNames(table: string): Promise<Set<string>> {
+  const rows = await query<{ name: string }>(`PRAGMA table_info(${table})`);
+  return new Set(rows.map((row) => row.name));
+}
+
+describe("migrations_apply_cleanly_empty_database", () => {
+  it("applies forward-only migrations cleanly and includes G1 catalogue schema", async () => {
+    const { stderr } = await applyMigrations();
+    expect(stderr).not.toMatch(/error/i);
+
+    const tables = await tableNames();
+    for (const entity of G1_CATALOGUE_TABLES) {
+      expect(tables.has(entity)).toBe(true);
+    }
+
+    const entitlementColumns = await tableColumnNames("entitlement");
+    expect(entitlementColumns.has("credit_budget")).toBe(true);
+  });
+});
+
+describe("schema_snapshot_matches", () => {
+  it("post-migration snapshot matches DDL and includes G1 catalogue entities", async () => {
+    await applyMigrations();
+
+    const expectedDdl = await readFile(SCHEMA_SNAPSHOT_PATH, "utf8");
+    expect(expectedDdl).toMatch(/CREATE TABLE\s+plan\b/i);
+    expect(expectedDdl).toMatch(/CREATE TABLE\s+credit_price\b/i);
+    expect(expectedDdl).toMatch(/\bcredit_budget\b/i);
+    expect(expectedDdl).toMatch(/\bmax_cost_class\b/i);
+
+    const actualDdl = await dumpCreateTableDdl();
+    expect(actualDdl.trim()).toBe(expectedDdl.trim());
+  });
+});
