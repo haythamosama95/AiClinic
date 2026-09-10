@@ -159,6 +159,12 @@ export type EntitlePayload = {
   request_quota: number;
   token_budget: number;
   cost_budget: number;
+  /**
+   * G2 (057): optional catalogue-plan credit budget override. The entitle
+   * endpoint ignores unknown body fields; this only steers `seedCataloguePlan`.
+   * Defaults to the G1 live-plan default (10_000) when omitted.
+   */
+  credit_budget?: number;
   soft_threshold: number;
   allowed_capabilities: string[];
   grants: Array<{
@@ -206,6 +212,14 @@ const MIGRATION_SQL = [
 
 const CATALOGUE_PLAN_NAME = "standard";
 
+/**
+ * G1 live-plan default credit budget (mirrors `DEFAULT_PLAN_PAYLOAD` in
+ * `test/plan-catalogue.test.ts`). G2 admission treats `creditsUsed >=
+ * credit_budget` as exhausted, so a live plan must seed a positive budget;
+ * `0` would fail admission immediately (`0 >= 0`).
+ */
+const DEFAULT_PLAN_CREDIT_BUDGET = 10_000;
+
 async function seedCataloguePlan(
   db: D1Database,
   payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
@@ -220,7 +234,7 @@ async function seedCataloguePlan(
     )
     .bind(
       planName,
-      0,
+      payload.credit_budget ?? DEFAULT_PLAN_CREDIT_BUDGET,
       payload.request_quota,
       "",
       payload.soft_threshold,

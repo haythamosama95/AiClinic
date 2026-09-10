@@ -69,6 +69,7 @@ import canaryMigrationSql from "../migrations/20260803100000_routing_policy_cana
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
+import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -477,9 +478,9 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
     .prepare(
       `INSERT INTO entitlement (
         entitlement_id, installation_id, plan, period_start, period_end,
-        request_quota, token_budget, cost_budget, allowed_capabilities,
-        soft_threshold, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        request_quota, token_budget, cost_budget, credit_budget,
+        allowed_capabilities, soft_threshold, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       `ent-${installationId}`,
@@ -490,6 +491,9 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
       10_000,
       10_000_000,
       1_000,
+      // G2: positive credit budget so admission is not immediately exhausted
+      // (`creditsUsed >= credit_budget`; G1 pending DEFAULT is 0).
+      10_000,
       JSON.stringify([FIXTURE_CAPABILITY_ID]),
       0.8,
       "active",
@@ -634,6 +638,8 @@ beforeAll(async () => {
     // I2 production config readers query kill_switch; apply so live guard can warm/miss.
     await applySql(env.DB, killSwitchMigrationSql);
     await applySql(env.DB, graceQueueMigrationSql);
+    // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
+    await applySql(env.DB, planCatalogueMigrationSql);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
@@ -1730,9 +1736,12 @@ async function waitForLatestAttempt(): Promise<{
 async function seedSoftThresholdTieredFixture(): Promise<void> {
   await env.DB.prepare("DELETE FROM routing_policy").run();
   await seedRoutingPolicy(env.DB, env.R2, tieredRoutingPolicyDocument());
+  // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
+  // credit_budget 2 + one settled credit (quotaWeight 1) crosses the 0.5
+  // threshold while leaving budget for the second admission.
   await env.DB
     .prepare(
-      `UPDATE entitlement SET request_quota = 2, soft_threshold = 0.5
+      `UPDATE entitlement SET request_quota = 2, soft_threshold = 0.5, credit_budget = 2
        WHERE installation_id = ?`,
     )
     .bind(FIXTURE_INSTALLATION_ID)

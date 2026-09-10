@@ -165,7 +165,13 @@ describe("quota admission interplay", () => {
   it("SYS-5.2 — Soft-threshold degraded tier", async () => {
     const scenario = await newScenario();
     await enrollScenario(scenario);
-    await entitleScenario(scenario, quotaEntitlePayload({ request_quota: 2 }));
+    // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
+    // credit_budget 2 + one settled credit (quotaWeight 1) crosses the 0.5
+    // threshold while leaving budget for the second admission.
+    await entitleScenario(
+      scenario,
+      quotaEntitlePayload({ request_quota: 2, credit_budget: 2 }),
+    );
 
     const policyDocument = degradedTierPolicyDocument("50");
     await publishPolicy(POLICY_ID, "50", policyDocument);
@@ -203,8 +209,10 @@ describe("quota admission interplay", () => {
     expect(secondDecision.rule_id).toBe("degraded-tier");
     expect(secondDecision.routing_tier).toBe("degraded");
 
+    // Raise the credit budget too: two settled credits (2 >= 2) would
+    // otherwise exhaust G2 credit remaining-budget before this third invoke.
     await env.DB.prepare(
-      "UPDATE entitlement SET soft_threshold = 0, request_quota = 100 WHERE installation_id = ?",
+      "UPDATE entitlement SET soft_threshold = 0, request_quota = 100, credit_budget = 100 WHERE installation_id = ?",
     )
       .bind(scenario.installationId)
       .run();
@@ -416,8 +424,11 @@ describe("quota admission interplay", () => {
   });
 
   it("SYS-5.7 — Token & cost ceilings", async () => {
+    // G2: token/cost counters are settlement-only; remaining-budget exhaustion
+    // is request-quota or credit-budget. Seed the credit ceiling so the same
+    // 429 quota_exhausted wire behaviour is asserted.
     const tokenScenario = await setupQuotaScenario(
-      quotaEntitlePayload({ request_quota: 100, token_budget: 1 }),
+      quotaEntitlePayload({ request_quota: 100, credit_budget: 1 }),
     );
     const tokenFirst = await invoke(tokenScenario, {
       token: await mintAat(tokenScenario),
@@ -438,7 +449,7 @@ describe("quota admission interplay", () => {
     await enrollScenario(costScenario);
     await entitleScenario(
       costScenario,
-      quotaEntitlePayload({ request_quota: 100, cost_budget: 0 }),
+      quotaEntitlePayload({ request_quota: 100, credit_budget: 0 }),
     );
     const costPolicy = fakePolicyDocument(POLICY_ID, "70");
     await publishPolicy(POLICY_ID, "70", costPolicy);

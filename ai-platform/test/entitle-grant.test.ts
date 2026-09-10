@@ -314,7 +314,9 @@ async function seedCataloguePlan(): Promise<void> {
   )
     .bind(
       DEFAULT_ENROLL_PAYLOAD.plan,
-      0,
+      // G1 live-plan default (plan-catalogue DEFAULT_PLAN_PAYLOAD); G2 admission
+      // treats credit_budget 0 as immediately exhausted, so seed a live budget.
+      10_000,
       DEFAULT_ENTITLE_PAYLOAD.request_quota,
       "",
       DEFAULT_ENTITLE_PAYLOAD.soft_threshold,

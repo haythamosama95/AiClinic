@@ -7,6 +7,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import conversationIndexSql from "../migrations/20260805180000_h3_conversation_index.sql?raw";
+import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -260,8 +261,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         const row = await db
           .prepare(
             `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, allowed_capabilities,
-                    soft_threshold, status
+                    request_quota, token_budget, cost_budget, credit_budget,
+                    allowed_capabilities, soft_threshold, status
              FROM entitlement WHERE installation_id = ?`,
           )
           .bind(key)
@@ -333,14 +334,15 @@ async function seedEntitlement(
     requestQuota?: number;
     softThreshold?: number;
     allowedCapabilities?: string[];
+    creditBudget?: number;
   } = {},
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO entitlement (
       entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      request_quota, token_budget, cost_budget, credit_budget,
+      allowed_capabilities, soft_threshold, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `ent-${installationId}`,
@@ -351,6 +353,9 @@ async function seedEntitlement(
       overrides.requestQuota ?? 10_000,
       10_000_000,
       1_000,
+      // G2: positive default so admission is not immediately exhausted
+      // (`creditsUsed >= credit_budget`; G1 pending DEFAULT is 0).
+      overrides.creditBudget ?? 10_000,
       JSON.stringify(
         overrides.allowedCapabilities ?? [
           FIXTURE_CAPABILITY_ID,
@@ -393,6 +398,7 @@ async function prepareInstallation(
     requestQuota?: number;
     softThreshold?: number;
     capabilities?: string[];
+    creditBudget?: number;
   } = {},
 ): Promise<{ cache: ConfigCache; reader: D1Reader }> {
   await seedInstallation(installationId);
@@ -401,6 +407,7 @@ async function prepareInstallation(
     requestQuota: options.requestQuota,
     softThreshold: options.softThreshold,
     allowedCapabilities: options.capabilities,
+    creditBudget: options.creditBudget,
   });
   const caps =
     options.capabilities ?? [FIXTURE_CAPABILITY_ID, FIXTURE_CHAT_CAPABILITY_ID];
@@ -621,6 +628,8 @@ async function countAiRequests(): Promise<number> {
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, conversationIndexSql);
+  // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
+  await applyPlatformSchema(env.DB, planCatalogueSql);
 });
 
 beforeEach(async () => {
@@ -1258,9 +1267,13 @@ describe("pipeline_compose_stream_flag", () => {
 describe("pipeline_soft_threshold_exposes_degraded_routing_tier", () => {
   it("returns routingTier degraded on GuardFreshSuccess after usage crosses soft_threshold", async () => {
     const installationId = env.DO.newUniqueId().toString();
+    // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
+    // creditBudget 2 + one settled credit (quotaWeight 1) crosses the 0.5
+    // threshold while leaving budget for the second admission.
     const { cache, reader } = await prepareInstallation(installationId, {
       requestQuota: 2,
       softThreshold: 0.5,
+      creditBudget: 2,
     });
     const rateLimit = createAlwaysAllowRateLimitBindings(env.DB);
 
@@ -1282,6 +1295,7 @@ describe("pipeline_soft_threshold_exposes_degraded_routing_tier", () => {
         requestReference: first.requestReference,
         usage: { tokens: 1, cost: 0.001 },
         partial: false,
+        credits: 1,
       },
       { DO: env.DO },
     );

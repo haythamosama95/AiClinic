@@ -202,6 +202,11 @@ Stop condition 5 is satisfied: one §4 component, ~16–20 tasks.
 | `ai-platform/test/quota-do.test.ts` | Modified — eight G2 DO unit describes; `buildEntitlementSnapshot` default `credit_budget`; existing `PeriodCounters` equality includes `creditsUsed`; request-quota exhaustion kept; token/cost remaining-budget cases retargeted to settlement-only; existing soft-threshold unit case seeds the credit ratio | Test Layout / SC-001–SC-005; FR-012 |
 | `ai-platform/test/admission-credit.test.ts` | Modified — two G2 spy describes using `createDoSpy(env.DO)`; apply G1 migration so `credit_budget` exists; `seedEntitlement` gains a positive `creditBudget` default | Test Layout / SC-002, SC-005 |
 | `ai-platform/test/soft-threshold-routing.test.ts` | Modified (fixture only) — seed `credit_budget` / `creditsUsed` so F4 routing cases still cross the flag G2 now sets from the credit ratio. Routing assertions (`routing_tier`, `degraded_notice`) unchanged | FR-009 (do not rewrite F4 routing) |
+| `ai-platform/test/system/harness.ts` | Modified (fixture only) — `EntitlePayload` gains optional `credit_budget`; `seedCataloguePlan` binds `payload.credit_budget ?? 10_000` (G1 live-plan default, `plan-catalogue.test.ts` `DEFAULT_PLAN_PAYLOAD`) instead of the leftover `0` that G2 remaining-budget (`creditsUsed >= credit_budget`) treats as immediately exhausted. Every `test/system/**/*.system.test.ts` suite admits through this seed | FR-001, FR-003, FR-008 (prior-suite §3.10 green) |
+| `ai-platform/test/entitle-grant.test.ts` | Modified (fixture only) — `seedCataloguePlan` binds the G1 live-plan default `10_000` instead of `0` | FR-001 (prior-suite §3.10 green) |
+| `ai-platform/test/pipeline.test.ts` | Modified (fixture only) — apply G1 `plan_catalogue` migration in `beforeAll`; entitlements reader SELECT and `seedEntitlement` gain `credit_budget` (positive default 10_000, `creditBudget` override); `pipeline_soft_threshold_exposes_degraded_routing_tier` seeds `creditBudget: 2` and settles `credits: 1` so the second guard crosses the 0.5 credit ratio. `routingTier` / `degraded` assertions unchanged | FR-009 (prior-suite §3.10 green) |
+| `ai-platform/test/worker-request-orchestrator.test.ts` | Modified (fixture only) — apply G1 `plan_catalogue` migration in `beforeAll`; `seedInstallationFixture` entitlement INSERT gains `credit_budget: 10_000`; `seedSoftThresholdTieredFixture` sets `credit_budget = 2` so one settled credit (quotaWeight 1) crosses the 0.5 credit ratio. `degraded_notice` / `routing_tier` / provider-failure assertions unchanged | FR-009 (prior-suite §3.10 green) |
+| `ai-platform/test/system/quota-admission-interplay.system.test.ts` | Modified (fixture only) — SYS-5.2 seeds `credit_budget: 2` (credit-ratio degraded on second invoke) and its phase-three UPDATE raises `credit_budget = 100` alongside `request_quota`; SYS-5.7 seeds credit ceilings (`credit_budget: 1` admitted-then-exhausted; `credit_budget: 0` immediately exhausted) because token/cost counters are settlement-only under G2. All status / `quota_exhausted` / `routing_tier` assertions unchanged | FR-003, FR-008, FR-009, FR-015 (prior-suite §3.10 green) |
 | `specs/057-credit-debit/contracts/credit-budget-admission.md` | Created | Freezes → credit-budget admission, `quota_exhausted` `{ reset_at }`, credit-ratio `degraded` |
 | `specs/057-credit-debit/contracts/credit-rpc-debit.md` | Created | Freezes → declared-weight `credits` debit, `creditsUsed`, cancelled full, guard non-debit, token/cost unchanged |
 | `specs/057-credit-debit/quickstart.md` | Created (implement phase) | — template-mandated review surface; sections named above |
@@ -226,6 +231,43 @@ The spec’s `### Test plan` names ten tests (delivery plan §3.12.10 G2; §13.5
 | `exactly_two_durable_object_round_trips_per_request` | `ai-platform/test/admission-credit.test.ts` | Pipeline (Integration spy) | FR-013 / SC-005 — admitted then credited: `createDoSpy(env.DO).fetchCount() === 2` (admission + credit); no third trip |
 
 Every named test from the spec is placeable in §13.5. No named test is orphaned. Inherited §6.4 prohibitions (no second DO trip; no guard-rejection journal) are asserted by the two spy cases. `rate_limited` remains B3 and is not emitted here.
+
+**Prior-suite fixture amendments (§3.10 scope — full workers pool).** Delivery plan §3.10
+is **not** narrower than the full workers pool: every prior suite in
+`npx vitest run --config vitest.workers.config.ts` must stay green under G2 semantics.
+G2 remaining-budget (`creditsUsed >= credit_budget`, with `0` exhausted — correct because
+G1's pending entitlement DEFAULT is `0`) and credit-ratio `degraded`
+(`creditsUsed / credit_budget` when `credit_budget > 0`) change what prior fixtures must
+seed. The strategy is fixture-only amendment — the same pattern as T016 — with no
+assertion weakening, no `.skip`, and no production change:
+
+- **Live-plan catalogue seeds must be positive.** `test/system/harness.ts`
+  `seedCataloguePlan` and `test/entitle-grant.test.ts` `seedCataloguePlan` bound
+  `credit_budget: 0` (a leftover default); both now bind the G1 live-plan default
+  `10_000` (`plan-catalogue.test.ts` `DEFAULT_PLAN_PAYLOAD`), and the harness accepts an
+  optional `EntitlePayload.credit_budget` override for budget-sensitive cases.
+- **Direct entitlement INSERTs must name `credit_budget`.** `test/pipeline.test.ts`
+  (`seedEntitlement` + entitlements reader SELECT + G1 migration in `beforeAll`) and
+  `test/worker-request-orchestrator.test.ts` (`seedInstallationFixture` + G1 migration in
+  `beforeAll`) seed a positive default (10_000) so admitted paths stay admitted.
+- **Soft-threshold cases seed a credit-ratio crossing.** `test/pipeline.test.ts`
+  (`pipeline_soft_threshold_exposes_degraded_routing_tier`),
+  `test/worker-request-orchestrator.test.ts` (`seedSoftThresholdTieredFixture`), and
+  `test/system/quota-admission-interplay.system.test.ts` (SYS-5.2) seed
+  `credit_budget: 2` with `soft_threshold: 0.5` so one settled credit (quotaWeight 1)
+  crosses the ratio while leaving budget for the next admission; SYS-5.2's phase-three
+  UPDATE also raises `credit_budget` so the raised-quota third invoke stays admitted.
+- **Token/cost ceiling cases seed credit ceilings.** SYS-5.7's token/cost exhaustion
+  fixtures become `credit_budget: 1` (admit-then-exhaust) and `credit_budget: 0`
+  (immediately exhausted); token/cost counters are settlement-only under G2 (FR-015).
+
+The 12 workers-pool files covered by this amendment set: `test/pipeline.test.ts`,
+`test/worker-request-orchestrator.test.ts`, `test/system/harness.ts` (shared by all
+`test/system/**/*.system.test.ts`), `test/entitle-grant.test.ts`, and the system suites
+`capability-lifecycle`, `cron-retention-interplay`, `entitlement-grant-interplay`,
+`failure-taxonomy-matrix`, `golden-journey`, `lifecycle-interplay`,
+`quota-admission-interplay`, `routing-policy-traffic`, `settlement-integrity`, and
+`token-contract-rotation`.
 
 ## Sequencing
 
