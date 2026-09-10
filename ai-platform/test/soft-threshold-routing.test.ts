@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   ADAPTER_ROUTING_BODY_FIELDS,
   buildAcceptedSseEvent,
@@ -54,12 +55,14 @@ const FIXTURE_POLICY_KEY = "routing-policy-f4";
 const FIXTURE_PERIOD_END = "2026-09-01T00:00:00.000Z";
 
 const REQUEST_QUOTA = 100;
+const CREDIT_BUDGET = 100;
 const SOFT_THRESHOLD = 0.8;
-const SOFT_CROSS_REQUESTS_USED = 80;
-const JUST_BELOW_SOFT_REQUESTS_USED = 79;
-const BELOW_SOFT_REQUESTS_USED = 10;
+const SOFT_CROSS_CREDITS_USED = 80;
+const JUST_BELOW_SOFT_CREDITS_USED = 79;
+const BELOW_SOFT_CREDITS_USED = 10;
 const TOKEN_BUDGET = 1_000_000;
 const COST_BUDGET = 100;
+const QUOTA_WEIGHT = 1;
 
 type D1Row = Record<string, unknown>;
 
@@ -106,6 +109,7 @@ type CreditInput = {
   requestReference: string;
   usage: { tokens: number; cost: number };
   partial: boolean;
+  credits: number;
 };
 
 type CreditBindings = {
@@ -269,6 +273,7 @@ async function seedEntitlement(
     requestQuota?: number;
     tokenBudget?: number;
     costBudget?: number;
+    creditBudget?: number;
     softThreshold?: number;
   } = {},
 ): Promise<void> {
@@ -276,15 +281,16 @@ async function seedEntitlement(
     requestQuota = REQUEST_QUOTA,
     tokenBudget = TOKEN_BUDGET,
     costBudget = COST_BUDGET,
+    creditBudget = CREDIT_BUDGET,
     softThreshold = SOFT_THRESHOLD,
   } = options;
 
   await env.DB.prepare(
     `INSERT INTO entitlement (
       entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
+      request_quota, token_budget, cost_budget, credit_budget, allowed_capabilities,
       soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `ent-${installationId}`,
@@ -295,6 +301,7 @@ async function seedEntitlement(
       requestQuota,
       tokenBudget,
       costBudget,
+      creditBudget,
       JSON.stringify([FIXTURE_CAPABILITY_ID]),
       softThreshold,
       "active",
@@ -327,8 +334,8 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
         const row = await db
           .prepare(
             `SELECT entitlement_id, installation_id, plan, period_start, period_end,
-                    request_quota, token_budget, cost_budget, allowed_capabilities,
-                    soft_threshold, status
+                    request_quota, token_budget, cost_budget, credit_budget,
+                    allowed_capabilities, soft_threshold, status
              FROM entitlement WHERE installation_id = ?`,
           )
           .bind(key)
@@ -554,23 +561,26 @@ function toAdmissionAllow(result: AdmissionSuccess): AdmissionAllowResult {
   };
 }
 
-async function seedRequestsUsed(
+async function seedCreditsUsed(
   installationId: string,
   cache: ConfigCache,
   reader: D1Reader,
-  requestsUsed: number,
+  creditsUsed: number,
   usage: { tokens: number; cost: number } = { tokens: 1, cost: 0.001 },
+  creditsPerRequest: number = QUOTA_WEIGHT,
 ): Promise<void> {
   const admission = await loadAdmissionModule();
   const credit = await loadCreditModule();
 
-  for (let index = 0; index < requestsUsed; index += 1) {
+  let remaining = creditsUsed;
+  while (remaining > 0) {
     const admitted = await admission.runAdmission(
       defaultAdmissionInput(installationId, cache, reader),
       { DB: env.DB, DO: env.DO },
       { now: FIXTURE_NOW_MS },
     );
     assertAdmitted(admitted);
+    const debit = Math.min(creditsPerRequest, remaining);
     await credit.creditUsage(
       {
         installationId,
@@ -578,9 +588,11 @@ async function seedRequestsUsed(
         requestReference: uniqueRequestReference(),
         usage,
         partial: false,
+        credits: debit,
       },
       { DO: env.DO },
     );
+    remaining -= debit;
   }
 }
 
@@ -604,8 +616,9 @@ async function runSoftThresholdPipeline(options: {
   installationId: string;
   cache: ConfigCache;
   reader: D1Reader;
-  requestsUsed: number;
-  creditUsage?: { tokens: number; cost: number };
+  creditsUsed: number;
+  settlementUsage?: { tokens: number; cost: number };
+  creditsPerRequest?: number;
   doNamespace?: DurableObjectNamespace;
   persistRow?: boolean;
 }): Promise<PipelineOutcome> {
@@ -613,18 +626,20 @@ async function runSoftThresholdPipeline(options: {
     installationId,
     cache,
     reader,
-    requestsUsed,
-    creditUsage = { tokens: 1, cost: 0.001 },
+    creditsUsed,
+    settlementUsage = { tokens: 1, cost: 0.001 },
+    creditsPerRequest = QUOTA_WEIGHT,
     doNamespace = env.DO,
     persistRow = false,
   } = options;
 
-  await seedRequestsUsed(
+  await seedCreditsUsed(
     installationId,
     cache,
     reader,
-    requestsUsed,
-    creditUsage,
+    creditsUsed,
+    settlementUsage,
+    creditsPerRequest,
   );
 
   const admission = await loadAdmissionModule();
@@ -733,6 +748,7 @@ async function readAiRequestCount(): Promise<number> {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, planCatalogueMigrationSql);
 });
 
 beforeEach(async () => {
@@ -751,7 +767,7 @@ describe("soft_threshold_selects_degraded_target", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: SOFT_CROSS_REQUESTS_USED,
+      creditsUsed: SOFT_CROSS_CREDITS_USED,
     });
 
     expect(outcome.kind).toBe("accepted");
@@ -779,7 +795,7 @@ describe("hard_exhaustion_quota_exhausted_admin_path_no_lock", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: REQUEST_QUOTA,
+      creditsUsed: REQUEST_QUOTA,
     });
 
     expect(outcome.kind).toBe("refused");
@@ -806,7 +822,7 @@ describe("below_threshold_traffic_unaffected", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: BELOW_SOFT_REQUESTS_USED,
+      creditsUsed: BELOW_SOFT_CREDITS_USED,
     });
 
     expect(outcome.kind).toBe("accepted");
@@ -861,7 +877,7 @@ describe("soft_threshold_persists_routing_tier", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: SOFT_CROSS_REQUESTS_USED,
+      creditsUsed: SOFT_CROSS_CREDITS_USED,
       persistRow: true,
     });
     expect(degraded.kind).toBe("accepted");
@@ -876,7 +892,7 @@ describe("soft_threshold_persists_routing_tier", () => {
       installationId: belowInstallationId,
       cache: belowSeed.cache,
       reader: belowSeed.reader,
-      requestsUsed: BELOW_SOFT_REQUESTS_USED,
+      creditsUsed: BELOW_SOFT_CREDITS_USED,
       persistRow: true,
     });
     expect(below.kind).toBe("accepted");
@@ -891,7 +907,7 @@ describe("soft_threshold_no_second_quota_do_round_trip", () => {
   it("uses exactly one Quota DO fetch for soft-threshold admission", async () => {
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId);
-    await seedRequestsUsed(installationId, cache, reader, SOFT_CROSS_REQUESTS_USED);
+    await seedCreditsUsed(installationId, cache, reader, SOFT_CROSS_CREDITS_USED);
 
     const admission = await loadAdmissionModule();
     const doSpy = createDoSpy(env.DO);
@@ -917,7 +933,7 @@ describe("quota_exhausted_only_error_code_on_hard_exhaustion", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: SOFT_CROSS_REQUESTS_USED,
+      creditsUsed: SOFT_CROSS_CREDITS_USED,
     });
     expect(soft.kind).toBe("accepted");
 
@@ -927,7 +943,7 @@ describe("quota_exhausted_only_error_code_on_hard_exhaustion", () => {
       installationId: hardInstallationId,
       cache: hardSeed.cache,
       reader: hardSeed.reader,
-      requestsUsed: REQUEST_QUOTA,
+      creditsUsed: REQUEST_QUOTA,
     });
 
     expect(hard.kind).toBe("refused");
@@ -952,7 +968,7 @@ describe("soft_threshold_zero_never_degrades", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: BELOW_SOFT_REQUESTS_USED,
+      creditsUsed: BELOW_SOFT_CREDITS_USED,
     });
 
     expect(outcome.kind).toBe("accepted");
@@ -966,15 +982,14 @@ describe("soft_threshold_zero_never_degrades", () => {
 });
 
 describe("soft_threshold_zero_budget_dimension_never_contributes", () => {
-  it("ignores a zero token_budget dimension even when tokensUsed is large", async () => {
-    // Hard exhaustion treats budget 0 as exhausted (B4), so soft evaluation for a
-    // zero-budget dimension is asserted on the exported predicate directly.
+  it("ignores a zero credit_budget dimension even when creditsUsed is large", async () => {
     const { isSoftThresholdCrossed } = await import("../src/quota-do/index");
     const crossed = isSoftThresholdCrossed(
       {
-        requestsUsed: BELOW_SOFT_REQUESTS_USED,
+        requestsUsed: BELOW_SOFT_CREDITS_USED,
         tokensUsed: 999_999,
         costUsed: 0.001,
+        creditsUsed: 999_999,
         inFlight: 0,
       },
       {
@@ -984,7 +999,8 @@ describe("soft_threshold_zero_budget_dimension_never_contributes", () => {
           period_end: FIXTURE_PERIOD_END,
         },
         request_quota: REQUEST_QUOTA,
-        token_cost_budget: { token_budget: 0, cost_budget: COST_BUDGET },
+        token_cost_budget: { token_budget: TOKEN_BUDGET, cost_budget: COST_BUDGET },
+        credit_budget: 0,
         allowed_capabilities: [FIXTURE_CAPABILITY_ID],
         soft_threshold: SOFT_THRESHOLD,
         status: "active",
@@ -995,21 +1011,21 @@ describe("soft_threshold_zero_budget_dimension_never_contributes", () => {
 });
 
 describe("soft_threshold_token_dimension_selects_degraded", () => {
-  it("crosses soft threshold on tokensUsed / token_budget and routes degraded", async () => {
+  it("crosses soft threshold on creditsUsed / credit_budget and routes degraded", async () => {
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
       requestQuota: 1_000_000,
-      tokenBudget: 1_000,
+      creditBudget: 100,
       softThreshold: SOFT_THRESHOLD,
     });
 
-    // One credit: tokens 800/1000 = 0.8; requests 1/1e6 far below soft
     const outcome = await runSoftThresholdPipeline({
       installationId,
       cache,
       reader,
-      requestsUsed: 1,
-      creditUsage: { tokens: 800, cost: 0.001 },
+      creditsUsed: 80,
+      settlementUsage: { tokens: 800, cost: 0.001 },
+      creditsPerRequest: 80,
     });
 
     expect(outcome.kind).toBe("accepted");
@@ -1023,11 +1039,11 @@ describe("soft_threshold_token_dimension_selects_degraded", () => {
 });
 
 describe("soft_threshold_cost_dimension_selects_degraded", () => {
-  it("crosses soft threshold on costUsed / cost_budget and routes degraded", async () => {
+  it("crosses soft threshold on creditsUsed / credit_budget and routes degraded", async () => {
     const installationId = freshInstallationId();
     const { cache, reader } = await seedInstallationAndEntitlement(installationId, {
       requestQuota: 1_000_000,
-      costBudget: 100,
+      creditBudget: 100,
       softThreshold: SOFT_THRESHOLD,
     });
 
@@ -1035,8 +1051,9 @@ describe("soft_threshold_cost_dimension_selects_degraded", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: 1,
-      creditUsage: { tokens: 1, cost: 80 },
+      creditsUsed: 80,
+      settlementUsage: { tokens: 1, cost: 80 },
+      creditsPerRequest: 80,
     });
 
     expect(outcome.kind).toBe("accepted");
@@ -1058,7 +1075,7 @@ describe("soft_threshold_just_below_boundary_unaffected", () => {
       installationId,
       cache,
       reader,
-      requestsUsed: JUST_BELOW_SOFT_REQUESTS_USED,
+      creditsUsed: JUST_BELOW_SOFT_CREDITS_USED,
     });
 
     expect(outcome.kind).toBe("accepted");

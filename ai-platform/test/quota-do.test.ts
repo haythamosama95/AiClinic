@@ -495,53 +495,57 @@ describe("admission_budget_exhaustion_rejected", () => {
 });
 
 describe("admission_token_budget_exhaustion_rejected", () => {
-  it("rejects admission when token budget is exhausted", async () => {
+  it("still admits when token budget is exhausted at settlement only", async () => {
     const installationId = freshInstallationId();
     const entitlement = buildEntitlementSnapshot({
       request_quota: 10_000,
       token_budget: 100,
       cost_budget: 50.0,
+      credit_budget: 10_000,
     });
 
     const admitted = await admitFresh(installationId, { entitlement });
     await callCreditRPC(installationId, {
       requestId: admitted.requestId,
+      credits: 1,
       usage: { tokens: 100, cost: 0.01 },
     });
 
-    const exhausted = await callAdmissionRPC(installationId, { entitlement });
+    const next = await callAdmissionRPC(installationId, { entitlement });
 
-    expect(exhausted.response.ok).toBe(true);
-    expect(exhausted.body).toEqual({
+    expect(next.response.ok).toBe(true);
+    expect(next.body).toMatchObject({
       kind: "admission",
-      outcome: "quota_exhausted",
-      period_end: entitlement.period_bounds.period_end,
+      outcome: "admitted",
+      requestId: expect.any(String),
     });
   });
 });
 
 describe("admission_cost_budget_exhaustion_rejected", () => {
-  it("rejects admission when cost budget is exhausted", async () => {
+  it("still admits when cost budget is exhausted at settlement only", async () => {
     const installationId = freshInstallationId();
     const entitlement = buildEntitlementSnapshot({
       request_quota: 10_000,
       token_budget: 500_000,
       cost_budget: 1.0,
+      credit_budget: 10_000,
     });
 
     const admitted = await admitFresh(installationId, { entitlement });
     await callCreditRPC(installationId, {
       requestId: admitted.requestId,
+      credits: 1,
       usage: { tokens: 10, cost: 1.0 },
     });
 
-    const exhausted = await callAdmissionRPC(installationId, { entitlement });
+    const next = await callAdmissionRPC(installationId, { entitlement });
 
-    expect(exhausted.response.ok).toBe(true);
-    expect(exhausted.body).toEqual({
+    expect(next.response.ok).toBe(true);
+    expect(next.body).toMatchObject({
       kind: "admission",
-      outcome: "quota_exhausted",
-      period_end: entitlement.period_bounds.period_end,
+      outcome: "admitted",
+      requestId: expect.any(String),
     });
   });
 });
@@ -626,6 +630,7 @@ describe("credit_adjusts_counters_with_actual_usage", () => {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
         costUsed: usage.cost,
+        creditsUsed: 0,
         inFlight: 0,
       },
     });
@@ -655,6 +660,7 @@ describe("credit_adjusts_counters_with_partial_usage", () => {
         requestsUsed: 1,
         tokensUsed: usage.tokens,
         costUsed: usage.cost,
+        creditsUsed: 0,
         inFlight: 0,
       },
     });
@@ -1098,6 +1104,7 @@ describe("parallel_admissions_exact_final_count", () => {
         requestsUsed: parallelCount + 1,
         tokensUsed: tokensSum,
         costUsed: expect.closeTo(expectedCost, 5),
+        creditsUsed: 0,
         inFlight: 0,
       },
     });
@@ -1173,16 +1180,18 @@ describe("admission_soft_threshold_sets_degraded", () => {
     const installationId = freshInstallationId();
     const entitlement = buildEntitlementSnapshot({
       soft_threshold: 0.5,
-      request_quota: 2,
+      credit_budget: 100,
+      request_quota: 10_000,
     });
 
     const first = await admitFresh(installationId, { entitlement });
     await callCreditRPC(installationId, {
       requestId: first.requestId,
+      credits: 50,
       usage: { tokens: 1, cost: 0.001 },
     });
 
-    // requestsUsed=1 / request_quota=2 = 0.5 >= soft_threshold 0.5
+    // creditsUsed=50 / credit_budget=100 = 0.5 >= soft_threshold 0.5
     const { body } = await callAdmissionRPC(installationId, { entitlement });
 
     expect(body).toMatchObject({
@@ -1306,6 +1315,7 @@ describe("inspect_rpc", () => {
       requestsUsed: 0,
       tokensUsed: 0,
       costUsed: 0,
+      creditsUsed: 0,
       inFlight: 0,
     });
     expect(body.state.jtiReplay).toEqual({});
@@ -1369,6 +1379,7 @@ describe("inspect_rpc", () => {
       requestsUsed: 1,
       tokensUsed: usage.tokens,
       costUsed: usage.cost,
+      creditsUsed: 0,
       inFlight: 0,
     });
     expect(body.state.admittedRequests).toEqual({});
@@ -1489,10 +1500,10 @@ describe("conversational_leg_debits_per_leg", () => {
     expectPeriodCounters(body.periodCounters, {
       requestsUsed: 2,
       tokensUsed: 22,
+      costUsed: 0.003,
       creditsUsed: 2 * W,
       inFlight: 0,
     });
-    expect(body.periodCounters.costUsed).toBeCloseTo(0.003, 5);
   });
 });
 

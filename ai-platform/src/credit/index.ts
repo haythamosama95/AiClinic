@@ -28,6 +28,7 @@ export type CreditInput = {
   requestReference: string;
   usage: { tokens: number; cost: number };
   partial: boolean;
+  credits: number;
   idempotencyState?: CreditIdempotencyState;
   terminalErrorCode?: TaxonomyCode;
   entitlement?: EntitlementSnapshot;
@@ -157,6 +158,7 @@ async function invokeCreditRpc(
   requestReference: string,
   usage: { tokens: number; cost: number },
   partial: boolean,
+  credits: number,
   bindings: CreditBindings,
   idempotencyState?: CreditIdempotencyState,
   entitlement?: EntitlementSnapshot,
@@ -177,6 +179,7 @@ async function invokeCreditRpc(
         requestReference,
         usage,
         partial,
+        credits,
         ...(idempotencyState !== undefined ? { idempotencyState } : {}),
         ...(terminalErrorCode !== undefined ? { terminalErrorCode } : {}),
         ...(entitlement !== undefined ? { entitlement } : {}),
@@ -228,6 +231,7 @@ export async function creditUsage(
     input.requestReference,
     input.usage,
     input.partial,
+    input.credits,
     bindings,
     input.idempotencyState,
     input.entitlement,
@@ -325,6 +329,7 @@ export async function reconcileGraceUsage(
       entry.requestReference,
       entry.usage ?? { tokens: 0, cost: 0 },
       entry.partial ?? false,
+      0,
       bindings,
       undefined,
       entry.entitlement,

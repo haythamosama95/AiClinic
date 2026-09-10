@@ -693,6 +693,7 @@ async function settleTerminal(
         requestReference: input.requestReference,
         usage,
         partial: getTaxonomyEntry(input.code).consumesQuota !== "Yes",
+        credits: Number(input.manifest.Economics.quotaWeight) || 1,
         idempotencyState: input.idempotencyState,
         ...(input.idempotencyState === "failed"
           ? { terminalErrorCode: input.code }
@@ -745,6 +746,7 @@ async function settleCompletedRequest(
       requestReference: input.requestReference,
       usage,
       partial: false,
+      credits: Number(input.manifest.Economics.quotaWeight) || 1,
       entitlement: input.entitlement,
     },
     { DO: runtimeEnv.DO, DB: runtimeEnv.DB },
@@ -1057,6 +1059,7 @@ async function runFreshEventSource(
           requestReference: streamContext.requestReference,
           usage: input.usage,
           partial: input.partial,
+          credits: Number(manifest.Economics.quotaWeight) || 1,
           idempotencyState: input.idempotencyState,
           entitlement: guard.entitlementSnapshot,
         },

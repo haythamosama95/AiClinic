@@ -642,6 +642,7 @@ export async function settleHappyPath(
       requestReference: input.requestReference,
       usage,
       partial: false,
+      credits: input.quotaWeight,
     },
     { DO: bindings.DO } satisfies CreditBindings,
   );

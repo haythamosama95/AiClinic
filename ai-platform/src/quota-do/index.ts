@@ -40,6 +40,7 @@ export interface EntitlementSnapshot {
     token_budget: number;
     cost_budget: number;
   };
+  credit_budget: number;
   allowed_capabilities: string[];
   soft_threshold: number;
   status: string;
@@ -49,6 +50,7 @@ export interface PeriodCounters {
   requestsUsed: number;
   tokensUsed: number;
   costUsed: number;
+  creditsUsed: number;
   inFlight: number;
 }
 
@@ -135,6 +137,7 @@ export interface CreditRequest {
   requestReference: string;
   usage: UsageActual;
   partial: boolean;
+  credits: number;
   idempotencyState?: CreditIdempotencyState;
   terminalErrorCode?: TaxonomyCode;
   entitlement?: EntitlementSnapshot;
@@ -181,6 +184,7 @@ function initialPeriodCounters(): PeriodCounters {
     requestsUsed: 0,
     tokensUsed: 0,
     costUsed: 0,
+    creditsUsed: 0,
     inFlight: 0,
   };
 }
@@ -283,8 +287,7 @@ function isQuotaExhausted(
 ): boolean {
   return (
     counters.requestsUsed >= entitlement.request_quota ||
-    counters.tokensUsed >= entitlement.token_cost_budget.token_budget ||
-    counters.costUsed >= entitlement.token_cost_budget.cost_budget
+    counters.creditsUsed >= entitlement.credit_budget
   );
 }
 
@@ -314,24 +317,9 @@ export function isSoftThresholdCrossed(
     return false;
   }
 
-  if (entitlement.request_quota > 0) {
-    const ratio = counters.requestsUsed / entitlement.request_quota;
-    if (ratio >= threshold) {
-      return true;
-    }
-  }
-
-  const tokenBudget = entitlement.token_cost_budget.token_budget;
-  if (tokenBudget > 0) {
-    const ratio = counters.tokensUsed / tokenBudget;
-    if (ratio >= threshold) {
-      return true;
-    }
-  }
-
-  const costBudget = entitlement.token_cost_budget.cost_budget;
-  if (costBudget > 0) {
-    const ratio = counters.costUsed / costBudget;
+  const creditBudget = entitlement.credit_budget;
+  if (creditBudget > 0) {
+    const ratio = counters.creditsUsed / creditBudget;
     if (ratio >= threshold) {
       return true;
     }
@@ -517,6 +505,7 @@ export async function creditRPC(
 
     state.periodCounters.tokensUsed += request.usage.tokens;
     state.periodCounters.costUsed += request.usage.cost;
+    state.periodCounters.creditsUsed += request.credits;
     state.periodCounters.requestsUsed += 1;
     state.periodCounters.inFlight = Math.max(0, state.periodCounters.inFlight - 1);
 
@@ -542,6 +531,7 @@ export async function creditRPC(
       partial: request.partial,
       tokens: request.usage.tokens,
       cost: request.usage.cost,
+      credits: request.credits,
     });
 
     return {

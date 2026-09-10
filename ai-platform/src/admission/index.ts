@@ -157,6 +157,7 @@ function mapEntitlementSnapshot(row: D1Row): EntitlementSnapshot {
       token_budget: row.token_budget as number,
       cost_budget: row.cost_budget as number,
     },
+    credit_budget: row.credit_budget as number,
     allowed_capabilities: parseAllowedCapabilities(row),
     // Out-of-range values coerce to 0 (never degrade); write path must keep [0, 1].
     soft_threshold: coerceSoftThreshold(row.soft_threshold as number),
