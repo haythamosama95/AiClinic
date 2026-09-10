@@ -29,6 +29,7 @@ export default defineWorkersConfig({
       "test/load/load-and-cost.test.ts",
       "test/worker-request-orchestrator.test.ts",
       "test/entitle-grant.test.ts",
+      "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
       "test/system/**/*.system.test.ts",
     ],
