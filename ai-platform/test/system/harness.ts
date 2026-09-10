@@ -71,6 +71,7 @@ import statusMigrationSql from "../../migrations/20260805190000_routing_policy_s
 import killSwitchMigrationSql from "../../migrations/20260807120000_kill_switch.sql?raw";
 import graceQueueMigrationSql from "../../migrations/20260821120000_grace_admission_queue.sql?raw";
 import entitlementUniqueSql from "../../migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import planCatalogueSql from "../../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -200,7 +201,34 @@ const MIGRATION_SQL = [
   killSwitchMigrationSql,
   graceQueueMigrationSql,
   entitlementUniqueSql,
+  planCatalogueSql,
 ];
+
+const CATALOGUE_PLAN_NAME = "standard";
+
+async function seedCataloguePlan(
+  db: D1Database,
+  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  planName: string = CATALOGUE_PLAN_NAME,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO plan (
+         name, credit_budget, request_quota, max_cost_class,
+         soft_threshold, allowed_capabilities, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      planName,
+      0,
+      payload.request_quota,
+      "",
+      payload.soft_threshold,
+      JSON.stringify(payload.allowed_capabilities),
+      "active",
+    )
+    .run();
+}
 
 let migrationsApplied = false;
 
@@ -250,6 +278,7 @@ export async function applyAllMigrations(db: D1Database): Promise<void> {
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
     )
     .run();
+  await seedCataloguePlan(db);
   migrationsApplied = true;
 }
 
@@ -269,6 +298,8 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM installation_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM token_contract"),
+    env.DB.prepare("DELETE FROM plan"),
+    env.DB.prepare("DELETE FROM credit_price"),
   ]);
 
   await env.DB
@@ -277,6 +308,7 @@ export async function resetPlatformState(): Promise<void> {
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
     )
     .run();
+  await seedCataloguePlan(env.DB);
 }
 
 export function visitSummaryManifest(): Manifest {
@@ -903,6 +935,7 @@ export async function entitleScenario(
   scenario: Scenario,
   payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  await seedCataloguePlan(env.DB, payload, CATALOGUE_PLAN_NAME);
   const result = await operatorFetch(
     `/control/installations/${scenario.installationId}/entitle`,
     payload as unknown as Record<string, unknown>,
