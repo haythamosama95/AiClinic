@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   ConfigCache,
   createD1ConfigReader,
@@ -201,6 +202,7 @@ async function clearCatalogueTables(): Promise<void> {
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM installation_key"),
     env.DB.prepare("DELETE FROM installation"),
+    env.DB.prepare("DELETE FROM plan"),
   ]);
 }
 
@@ -365,9 +367,9 @@ async function seedEntitlementForCacheTest(
   await env.DB.prepare(
     `INSERT INTO entitlement (
       entitlement_id, installation_id, plan, period_start, period_end,
-      request_quota, token_budget, cost_budget, allowed_capabilities,
-      soft_threshold, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      request_quota, token_budget, cost_budget, credit_budget, max_cost_class,
+      allowed_capabilities, soft_threshold, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `ent-${installationId}`,
@@ -378,6 +380,8 @@ async function seedEntitlementForCacheTest(
       1_000,
       500_000,
       50,
+      DEFAULT_PLAN_PAYLOAD.credit_budget,
+      DEFAULT_PLAN_PAYLOAD.max_cost_class,
       JSON.stringify([FIXTURE_CAPABILITY_ID]),
       0.8,
       "active",
@@ -407,6 +411,7 @@ async function warmConfigEntry(
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, uniqueEntitlementSql);
+  await applyPlatformSchema(env.DB, planCatalogueSql);
 });
 
 beforeEach(async () => {
@@ -794,6 +799,8 @@ describe("assignment_non_operator_rejected", () => {
 
 describe("config_cache_plan_cold_one_d1_read", () => {
   it("serves a plan from a cold isolate with exactly one D1 read", async () => {
+    await seedCataloguePlan();
+
     const cache = new ConfigCache();
     const reader = spiedProductionReader(env.DB);
 
@@ -807,6 +814,8 @@ describe("config_cache_plan_cold_one_d1_read", () => {
 
 describe("config_cache_plan_warm_zero_io", () => {
   it("serves a warm plan entry with zero reader I/O", async () => {
+    await seedCataloguePlan();
+
     const cache = new ConfigCache();
     const reader = spiedProductionReader(env.DB);
 

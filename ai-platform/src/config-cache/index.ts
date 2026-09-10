@@ -13,7 +13,8 @@ export type ConfigEntityKind =
   | "grants"
   | "kill_switches"
   | "active_routing_policy"
-  | "token_contracts";
+  | "token_contracts"
+  | "plans";
 
 type D1Row = Record<string, unknown>;
 
@@ -234,6 +235,13 @@ export function createD1ConfigReader(
         case "token_contracts": {
           const row = await db
             .prepare("SELECT * FROM token_contract WHERE ver = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "plans": {
+          const row = await db
+            .prepare("SELECT * FROM plan WHERE name = ?")
             .bind(key)
             .first<D1Row>();
           return row ?? "miss";

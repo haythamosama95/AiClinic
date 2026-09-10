@@ -8,7 +8,12 @@ export {
   handleRotate,
   handleSuspend,
 } from "./lifecycle";
-export { handleEntitle } from "./entitle";
+export { handleEntitle, handleOverride } from "./entitle";
+export {
+  handlePlanCreate,
+  handlePlanDelete,
+  handlePlanUpdate,
+} from "./plan";
 export { handleDeprecate, handleRetire } from "./capability-lifecycle";
 export { handleCohortActivate, handleCohortPromote } from "./cohort";
 export {
@@ -38,7 +43,7 @@ import {
   handleCohortPromote,
   parseCohortCapabilityRoute,
 } from "./cohort";
-import { handleEntitle } from "./entitle";
+import { handleEntitle, handleOverride } from "./entitle";
 import { reject } from "./http";
 import {
   handleDelete,
@@ -62,11 +67,22 @@ import {
 import { handleInstallationQuotaGet } from "./quota-inspect";
 import { handleKillSwitchArm, handleKillSwitchDisarm } from "./kill-switch";
 import {
+  handlePlanCreate,
+  handlePlanDelete,
+  handlePlanUpdate,
+} from "./plan";
+import {
   handleTokenContractBeginRotation,
   handleTokenContractRetire,
 } from "./token-contract";
-import type { ControlBindings, OperatorAuth } from "./types";
 import { noopLogger, type Logger } from "../logger";
+
+import type { ControlBindings, OperatorAuth } from "./types";
+
+const PLAN_CREATE_PATTERN = /^\/control\/plans\/create$/;
+const PLAN_UPDATE_PATTERN = /^\/control\/plans\/[^/]+\/update$/;
+const PLAN_DELETE_PATTERN = /^\/control\/plans\/[^/]+\/delete$/;
+const OVERRIDE_PATTERN = /^\/control\/installations\/[^/]+\/override$/;
 
 const CONTROL_ACTION_PATTERN =
   /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge|entitle)$/;
@@ -104,7 +120,11 @@ export function isControlRoute(pathname: string): boolean {
     TOKEN_CONTRACT_PATTERN.test(pathname) ||
     SUPPORT_LOOKUP_PATTERN.test(pathname) ||
     QUOTA_INSPECT_PATTERN.test(pathname) ||
-    KILL_SWITCH_PATTERN.test(pathname)
+    KILL_SWITCH_PATTERN.test(pathname) ||
+    PLAN_CREATE_PATTERN.test(pathname) ||
+    PLAN_UPDATE_PATTERN.test(pathname) ||
+    PLAN_DELETE_PATTERN.test(pathname) ||
+    OVERRIDE_PATTERN.test(pathname)
   );
 }
 
@@ -187,6 +207,22 @@ export async function dispatchControlRequest(
       return handleKillSwitchDisarm(request, bindings, operatorAuth);
     }
     return reject(400, "invalid_route");
+  }
+
+  if (PLAN_CREATE_PATTERN.test(pathname)) {
+    return handlePlanCreate(request, bindings, operatorAuth);
+  }
+
+  if (PLAN_UPDATE_PATTERN.test(pathname)) {
+    return handlePlanUpdate(request, bindings, operatorAuth);
+  }
+
+  if (PLAN_DELETE_PATTERN.test(pathname)) {
+    return handlePlanDelete(request, bindings, operatorAuth);
+  }
+
+  if (OVERRIDE_PATTERN.test(pathname)) {
+    return handleOverride(request, bindings, operatorAuth);
   }
 
   const installAction = pathname.split("/").pop();

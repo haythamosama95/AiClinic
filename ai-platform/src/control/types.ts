@@ -86,3 +86,23 @@ export type EntitlePayload = {
   allowed_capabilities: string[];
   grants: EntitleGrantInput[];
 };
+
+export type PlanPayload = {
+  name: string;
+  credit_budget: number;
+  request_quota: number;
+  max_cost_class: string;
+  soft_threshold: number;
+  allowed_capabilities: string[];
+  status: string;
+};
+
+export type OverridePayload = {
+  credit_budget?: number;
+  request_quota?: number;
+  token_budget?: number;
+  cost_budget?: number;
+  period_start?: string;
+  period_end?: string;
+  soft_threshold?: number;
+};

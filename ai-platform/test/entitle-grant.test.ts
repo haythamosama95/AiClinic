@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import {
   ConfigCache,
   type ConfigEntityKind,
@@ -178,6 +179,7 @@ async function clearLifecycleTables(): Promise<void> {
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM installation_key"),
     env.DB.prepare("DELETE FROM installation"),
+    env.DB.prepare("DELETE FROM plan"),
   ]);
 }
 
@@ -303,13 +305,34 @@ function makePlatformD1Reader(db: D1Database): D1Reader {
   };
 }
 
+async function seedCataloguePlan(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO plan (
+       name, credit_budget, request_quota, max_cost_class,
+       soft_threshold, allowed_capabilities, status
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      DEFAULT_ENROLL_PAYLOAD.plan,
+      0,
+      DEFAULT_ENTITLE_PAYLOAD.request_quota,
+      "",
+      DEFAULT_ENTITLE_PAYLOAD.soft_threshold,
+      JSON.stringify(DEFAULT_ENTITLE_PAYLOAD.allowed_capabilities),
+      "active",
+    )
+    .run();
+}
+
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, uniqueEntitlementSql);
+  await applyPlatformSchema(env.DB, planCatalogueSql);
 });
 
 beforeEach(async () => {
   await clearLifecycleTables();
+  await seedCataloguePlan();
 });
 
 describe("entitle_activate_writes_entitlement_grant_and_audit", () => {

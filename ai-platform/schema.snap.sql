@@ -60,6 +60,14 @@ CREATE TABLE control_audit (
   recorded_at TEXT NOT NULL
 );
 
+CREATE TABLE credit_price (
+  version TEXT PRIMARY KEY NOT NULL,
+  price_per_credit REAL NOT NULL,
+  currency TEXT NOT NULL,
+  active_from TEXT NOT NULL,
+  activated_by TEXT NOT NULL
+);
+
 CREATE TABLE entitlement (
   entitlement_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,
@@ -71,7 +79,7 @@ CREATE TABLE entitlement (
   cost_budget REAL NOT NULL,
   allowed_capabilities TEXT NOT NULL,
   soft_threshold REAL NOT NULL,
-  status TEXT NOT NULL,
+  status TEXT NOT NULL, credit_budget INTEGER NOT NULL DEFAULT 0, max_cost_class TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
 
@@ -120,6 +128,16 @@ CREATE TABLE kill_switch (
   changed_at TEXT NOT NULL,
   changed_by TEXT NOT NULL,
   PRIMARY KEY (scope, target)
+);
+
+CREATE TABLE plan (
+  name TEXT PRIMARY KEY NOT NULL,
+  credit_budget INTEGER NOT NULL,
+  request_quota INTEGER NOT NULL,
+  max_cost_class TEXT NOT NULL,
+  soft_threshold REAL NOT NULL,
+  allowed_capabilities TEXT NOT NULL,
+  status TEXT NOT NULL
 );
 
 CREATE TABLE platform_counter (
