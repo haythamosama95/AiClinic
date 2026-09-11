@@ -106,3 +106,10 @@ export type OverridePayload = {
   period_end?: string;
   soft_threshold?: number;
 };
+
+export type CreditPriceActivatePayload = {
+  version: string;
+  price_per_credit: number;
+  currency: string;
+  active_from: string;
+};

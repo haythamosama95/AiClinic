@@ -53,11 +53,14 @@ const EXPECTED_PLATFORM_TABLES = [
   "ai_request",
   "capability_grant",
   "control_audit",
+  "credit_price",
   "entitlement",
   "grace_admission_queue",
   "installation",
   "installation_key",
+  "invoice",
   "kill_switch",
+  "plan",
   "platform_counter",
   "routing_policy",
   "token_contract",
@@ -315,7 +318,7 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
     await assertEmptyAirport();
   });
 
-  it("S00-027 — Fresh migration apply: 14 tables + token_contract seed", async () => {
+  it("S00-027 — Fresh migration apply: platform tables + token_contract seed", async () => {
     const names = filterCatalogTables(await listTableNames()).sort();
     expect(names).toEqual([...EXPECTED_PLATFORM_TABLES]);
 

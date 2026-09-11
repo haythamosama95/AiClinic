@@ -8,6 +8,9 @@ import statusMigrationSql from "../../../migrations/20260805190000_routing_polic
 import killSwitchMigrationSql from "../../../migrations/20260807120000_kill_switch.sql?raw";
 import graceQueueMigrationSql from "../../../migrations/20260821120000_grace_admission_queue.sql?raw";
 import entitlementUniqueSql from "../../../migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import planCatalogueSql from "../../../migrations/20260911120000_plan_catalogue.sql?raw";
+import quotaWeightMigrationSql from "../../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import invoiceMigrationSql from "../../../migrations/20260911200000_invoice.sql?raw";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { env, PLATFORM_TABLES } from "./env";
 
@@ -23,6 +26,9 @@ export const MIGRATION_SQL: readonly string[] = [
   killSwitchMigrationSql,
   graceQueueMigrationSql,
   entitlementUniqueSql,
+  planCatalogueSql,
+  quotaWeightMigrationSql,
+  invoiceMigrationSql,
 ];
 
 const TOKEN_CONTRACT_SEED = {
@@ -127,6 +133,9 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM entitlement"),
     db.prepare("DELETE FROM installation_key"),
     db.prepare("DELETE FROM installation"),
+    db.prepare("DELETE FROM invoice"),
+    db.prepare("DELETE FROM credit_price"),
+    db.prepare("DELETE FROM plan"),
     db.prepare("DELETE FROM token_contract"),
   ]);
   await reseedTokenContract(db);

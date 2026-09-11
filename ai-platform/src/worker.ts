@@ -67,6 +67,7 @@ import {
   runRetentionPurge,
 } from "./retention";
 import { runRollupAndReconciliation } from "./rollup";
+import { runPeriodClose } from "./period-close";
 import {
   preloadRoutingPolicyForInstallation,
   selectCandidateChain,
@@ -1761,6 +1762,22 @@ export default {
         log.debug("usage_rollup_reconciliation_detail", { report: result.report });
       } catch (error) {
         log.error("scheduled_rollup_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } else if (cron === "0 5 1 * *") {
+      log.info("scheduled_period_close_start");
+      const scheduledDate = new Date(controller.scheduledTime);
+      const previousMonth = new Date(
+        Date.UTC(scheduledDate.getUTCFullYear(), scheduledDate.getUTCMonth() - 1, 1),
+      );
+      const period = `${previousMonth.getUTCFullYear()}-${String(previousMonth.getUTCMonth() + 1).padStart(2, "0")}`;
+      try {
+        await runPeriodClose({ db: runtimeEnv.DB, period });
+        log.info("scheduled_period_close_complete", { period });
+      } catch (error) {
+        log.error("scheduled_period_close_failed", {
+          period,
           error: error instanceof Error ? error.message : String(error),
         });
       }

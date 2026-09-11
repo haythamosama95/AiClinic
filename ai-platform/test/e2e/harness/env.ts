@@ -54,7 +54,10 @@ export const PLATFORM_TABLES = [
   "usage_rollup",
   "platform_counter",
   "control_audit",
+  "credit_price",
   "grace_admission_queue",
+  "invoice",
+  "plan",
 ] as const;
 
 export const TAXONOMY_BODY_KEYS = [

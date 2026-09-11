@@ -73,6 +73,7 @@ import graceQueueMigrationSql from "../../migrations/20260821120000_grace_admiss
 import entitlementUniqueSql from "../../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import invoiceMigrationSql from "../../migrations/20260911200000_invoice.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -120,6 +121,7 @@ export const PLATFORM_TABLES = [
   "platform_counter",
   "control_audit",
   "grace_admission_queue",
+  "invoice",
 ] as const;
 
 export type SseEvent = { event: string; data: Record<string, unknown> };
@@ -210,6 +212,7 @@ const MIGRATION_SQL = [
   entitlementUniqueSql,
   planCatalogueSql,
   quotaWeightMigrationSql,
+  invoiceMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -316,6 +319,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM token_contract"),
     env.DB.prepare("DELETE FROM plan"),
     env.DB.prepare("DELETE FROM credit_price"),
+    env.DB.prepare("DELETE FROM invoice"),
   ]);
 
   await env.DB
