@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect } from "vitest";
-import { buildRawRequest, buildRawResponse } from "../src/lib/raw-http.ts";
-import type { HttpExchange } from "../src/types.ts";
+import { buildRawRequest, buildRawResponse } from "../../src/lib/raw-http.ts";
+import type { HttpExchange } from "../../src/types.ts";
 
 export const GATEWAY_ORIGIN = "http://127.0.0.1:8787";
 

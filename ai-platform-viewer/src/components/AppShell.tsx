@@ -13,7 +13,11 @@ import { Stage9GuardPage } from '@/components/Stage9GuardPage'
 import { Stage10StreamPage } from '@/components/Stage10StreamPage'
 import { Stage11SettlementPage } from '@/components/Stage11SettlementPage'
 import { GuardPipelinePage } from '@/components/GuardPipelinePage'
+import { InvoicesPage } from '@/components/InvoicesPage'
+import { PlansPage } from '@/components/PlansPage'
 import { Stage12LookupSupportPage } from '@/components/Stage12LookupSupportPage'
+import { StageXPage } from '@/components/StageXPage'
+import { UsageGaugePage } from '@/components/UsageGaugePage'
 import { ToastStack } from '@/components/ToastStack'
 import { useSession } from '@/context/SessionContext'
 import type { NavSection } from '@/types'
@@ -34,6 +38,10 @@ const STAGE_PAGES: Record<Exclude<NavSection, 'secrets'>, ReactNode> = {
   'stage-11': <Stage11SettlementPage />,
   'stage-12': <Stage12LookupSupportPage />,
   'guard-pipeline': <GuardPipelinePage />,
+  plans: <PlansPage />,
+  usage: <UsageGaugePage />,
+  invoices: <InvoicesPage />,
+  'stage-x': <StageXPage />,
 }
 
 export function AppShell() {

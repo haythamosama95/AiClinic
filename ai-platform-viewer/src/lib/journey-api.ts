@@ -14,6 +14,13 @@ import type { Stage2OperationId } from '@/catalog/stage-2-clinic-keypair'
 const GATEWAY_PREFIX = '/gateway'
 const GATEWAY_ORIGIN = 'http://127.0.0.1:8787'
 
+function journeyFetchUrl(pathWithQuery: string): string {
+  if (typeof window === 'undefined') {
+    return `${GATEWAY_ORIGIN}${pathWithQuery}`
+  }
+  return `${GATEWAY_PREFIX}${pathWithQuery}`
+}
+
 function maskBearer(token: string, emptyLabel: string): string {
   if (!token) return emptyLabel
   if (token.length <= 12) return 'Bearer ••••••••'
@@ -296,7 +303,9 @@ function buildRequestHeaders(
 
   switch (operation.auth) {
     case 'operator':
-      headers.Authorization = `Bearer ${operatorBearer}`
+      if (operatorBearer) {
+        headers.Authorization = `Bearer ${operatorBearer}`
+      }
       break
     case 'aat':
       headers.Authorization = `Bearer ${aat}`
@@ -384,16 +393,13 @@ export async function sendJourneyRequest(
     throw new Error(validationError)
   }
 
-  if (operation.auth === 'operator' && !credentials.operatorBearer) {
-    throw new Error('Operator bearer not loaded. Open Secrets or check ai-platform/.dev.vars.')
-  }
   if (operation.auth === 'aat' && !credentials.aat) {
     throw new Error('Clinic AAT not loaded. Mint one from Secrets first.')
   }
 
   const querySuffix = buildQueryString(operation.fields, params)
   const pathWithQuery = resolvePath(operation.path, params) + querySuffix
-  const url = `${GATEWAY_PREFIX}${pathWithQuery}`
+  const url = journeyFetchUrl(pathWithQuery)
   const displayPath = querySuffix ? `${operation.path}${querySuffix}` : operation.path
   const sentAt = new Date().toISOString()
   const requestHeaders = buildRequestHeaders(
@@ -471,7 +477,7 @@ export async function sendJourneyRequest(
   }
 
   const rawRequestHeaders = { ...requestHeaders }
-  if (operation.auth === 'operator') {
+  if (operation.auth === 'operator' && credentials.operatorBearer) {
     rawRequestHeaders.Authorization = `Bearer ${credentials.operatorBearer}`
   } else if (operation.auth === 'aat') {
     rawRequestHeaders.Authorization = `Bearer ${credentials.aat}`

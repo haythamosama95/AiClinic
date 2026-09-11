@@ -3,6 +3,10 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import type { Plugin } from 'vite'
 import { VIEWER_AAT_LIFETIME_MINUTES } from '../src/lib/viewer-aat-config.ts'
+import {
+  fetchInvoiceDetailEvidence,
+  listIssuedInvoices,
+} from './d1-inspect.ts'
 
 const AI_PLATFORM_DIR = path.resolve(import.meta.dirname, '../../ai-platform')
 const BACKEND_ENV_PATH = path.resolve(import.meta.dirname, '../../backend/local/.env')
@@ -443,6 +447,41 @@ export function devApiPlugin(): Plugin {
                 error instanceof Error
                   ? error.message
                   : 'Clinic enrollment material query failed',
+            })
+          }
+          return
+        }
+
+        if (req.method === 'GET' && req.url === '/api/dev/invoices') {
+          try {
+            const exchange = await listIssuedInvoices()
+            sendJson(res, 200, exchange)
+          } catch (error) {
+            sendJson(res, 500, {
+              error:
+                error instanceof Error ? error.message : 'Invoice list inspect failed',
+            })
+          }
+          return
+        }
+
+        if (req.method === 'GET' && req.url?.startsWith('/api/dev/invoices/detail')) {
+          try {
+            const url = new URL(req.url, 'http://127.0.0.1')
+            const installationId = url.searchParams.get('installation_id')?.trim() ?? ''
+            const period = url.searchParams.get('period')?.trim() ?? ''
+            if (!installationId || !period) {
+              sendJson(res, 400, { error: 'installation_id and period are required' })
+              return
+            }
+            const exchange = await fetchInvoiceDetailEvidence(installationId, period)
+            sendJson(res, 200, exchange)
+          } catch (error) {
+            sendJson(res, 500, {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Invoice detail inspect failed',
             })
           }
           return

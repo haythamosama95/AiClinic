@@ -1,4 +1,13 @@
-import type { ClinicEnrollmentMaterial, DevConfig, ResetResult } from '@/types'
+import type { ClinicEnrollmentMaterial, DevConfig, HttpExchange, ResetResult } from '@/types'
+
+async function fetchInspectExchange(url: string): Promise<HttpExchange> {
+  const response = await fetch(url)
+  const payload = (await response.json()) as HttpExchange & { error?: string }
+  if (!response.ok) {
+    throw new Error(payload.error ?? 'Invoice inspect failed')
+  }
+  return payload
+}
 
 export async function loadDevConfig(): Promise<DevConfig> {
   const response = await fetch('/api/dev/config')
@@ -44,4 +53,19 @@ export async function resetInstallations(): Promise<ResetResult> {
     throw new Error(payload.error ?? 'Installation reset failed')
   }
   return payload
+}
+
+export async function fetchIssuedInvoices(): Promise<HttpExchange> {
+  return fetchInspectExchange('/api/dev/invoices')
+}
+
+export async function fetchInvoiceDetail(
+  installationId: string,
+  period: string,
+): Promise<HttpExchange> {
+  const query = new URLSearchParams({
+    installation_id: installationId,
+    period,
+  })
+  return fetchInspectExchange(`/api/dev/invoices/detail?${query.toString()}`)
 }

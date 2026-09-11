@@ -108,6 +108,34 @@ const NAV_ITEMS: Array<{
       note: 'Checkpoint spine and error codes',
       accentClass: 'side-nav__item--guard',
     },
+    {
+      id: 'plans',
+      label: 'Plans',
+      short: 'P',
+      note: 'G1 plan catalogue CRUD',
+      accentClass: 'side-nav__item--entitlement',
+    },
+    {
+      id: 'usage',
+      label: 'Usage',
+      short: 'U',
+      note: 'G3 credits-only gauge',
+      accentClass: 'side-nav__item--platform',
+    },
+    {
+      id: 'invoices',
+      label: 'Invoices',
+      short: 'I',
+      note: 'G4 issued invoice inspect',
+      accentClass: 'side-nav__item--settlement',
+    },
+    {
+      id: 'stage-x',
+      label: 'Stage X',
+      short: 'X',
+      note: 'Cron and failure journeys',
+      accentClass: 'side-nav__item--boot',
+    },
   ]
 
 export function SideNav() {
