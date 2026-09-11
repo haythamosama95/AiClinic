@@ -17,6 +17,7 @@ type UsageAggregate = {
   request_count: number;
   tokens: number;
   cost: number;
+  quota_weight: number;
 };
 
 type TerminalRequestRow = {
@@ -51,7 +52,8 @@ async function aggregateUsageEvents(
         `SELECT ue.installation_id, ue.period,
                 COUNT(*) AS request_count,
                 SUM(ue.tokens) AS tokens,
-                SUM(ue.cost) AS cost
+                SUM(ue.cost) AS cost,
+                SUM(ue.quota_weight) AS quota_weight
          FROM usage_event ue
          WHERE EXISTS (
            SELECT 1 FROM usage_event touched
@@ -73,7 +75,8 @@ async function aggregateUsageEvents(
       `SELECT installation_id, period,
               COUNT(*) AS request_count,
               SUM(tokens) AS tokens,
-              SUM(cost) AS cost
+              SUM(cost) AS cost,
+              SUM(quota_weight) AS quota_weight
        FROM usage_event
        GROUP BY installation_id, period`,
     )
@@ -106,12 +109,13 @@ export async function runRollup(
 
     await bindings.db
       .prepare(
-        `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO usage_rollup (rollup_id, dimensions, request_count, tokens, cost, quota_weight)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(rollup_id) DO UPDATE SET
            request_count = excluded.request_count,
            tokens = excluded.tokens,
-           cost = excluded.cost`,
+           cost = excluded.cost,
+           quota_weight = excluded.quota_weight`,
       )
       .bind(
         rollupId,
@@ -119,6 +123,7 @@ export async function runRollup(
         agg.request_count,
         agg.tokens,
         agg.cost,
+        agg.quota_weight,
       )
       .run();
     rollupsWritten += 1;

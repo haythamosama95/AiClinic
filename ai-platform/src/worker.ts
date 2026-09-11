@@ -27,6 +27,7 @@ import {
   type TaxonomyCode,
 } from "./errors";
 import { handleDiscoveryRequest } from "./discovery";
+import { handleUsageSummaryRequest } from "./usage-summary";
 import {
   createSecretOperatorAuth,
   dispatchControlRequest,
@@ -1582,6 +1583,18 @@ export default {
         DB: runtimeEnv.DB,
         R2: runtimeEnv.R2,
       }, makeLog("discovery/index.ts"));
+    }
+
+    if (url.pathname === "/v1/usage" && request.method === "GET") {
+      return handleUsageSummaryRequest(
+        request,
+        {
+          DB: runtimeEnv.DB,
+          DO: runtimeEnv.DO,
+          R2: runtimeEnv.R2,
+        },
+        makeLog("usage-summary/index.ts"),
+      );
     }
 
     if (url.pathname === "/v1/requests" && request.method === "POST") {

@@ -9,6 +9,7 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import { isolateConfigCache } from "../src/config-cache";
 import { liveHttpStatusForCode } from "../src/errors";
 import { runRollup } from "../src/rollup";
@@ -35,10 +36,6 @@ const ROLLUP_WINDOW = {
   start: "2026-08-01T00:00:00.000Z",
   end: "2026-09-30T23:59:59.999Z",
 };
-
-// T010 will extract this DDL to migrations/20260911180000_usage_rollup_quota_weight.sql.
-const QUOTA_WEIGHT_MIGRATION_SQL =
-  "ALTER TABLE usage_rollup ADD COLUMN quota_weight INTEGER NOT NULL DEFAULT 0";
 
 type AatClaims = {
   iss: string;
@@ -206,7 +203,7 @@ async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
 
 async function applyQuotaWeightMigration(db: D1Database): Promise<void> {
   try {
-    await applyPlatformSchema(db, QUOTA_WEIGHT_MIGRATION_SQL);
+    await applyPlatformSchema(db, quotaWeightMigrationSql);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.includes("duplicate column name")) {

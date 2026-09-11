@@ -1,16 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:ai_clinic/core/ai/ai_client_sdk.dart';
 import 'package:ai_clinic/core/ai/context_provider_port.dart';
 import 'package:ai_clinic/core/ai/context_required_self_heal.dart';
 import 'package:ai_clinic/core/ai/context_resolver.dart';
+import 'package:ai_clinic/core/ai/usage_summary_client.dart';
 
 import '../availability/ai_availability.dart';
 import '../degraded/ai_degraded_mode.dart';
 import '../degraded/ai_degraded_view.dart';
 import '../surface/first_ai_feature_surface.dart';
+import '../surface/usage_gauge.dart';
 
 /// Tracks AI-platform network calls for widget spies (T8; FR-009).
 abstract class PlatformNetworkSpy {
@@ -55,6 +60,8 @@ class AiFeatureHostDependencies {
     this.networkSpy,
     this.persistenceProbe,
     this.exportProbe,
+    this.mintPort,
+    this.usageSummaryClient,
     this.skipReachabilityProbe = false,
     this.autoInvoke = true,
   });
@@ -69,6 +76,8 @@ class AiFeatureHostDependencies {
   final PlatformNetworkSpy? networkSpy;
   final AiPersistenceProbe? persistenceProbe;
   final AiExportProbe? exportProbe;
+  final AatMintPort? mintPort;
+  final UsageSummaryClient? usageSummaryClient;
   final bool skipReachabilityProbe;
 
   /// When false, [FirstAiFeatureSurface] stays idle until the caller triggers invoke.
@@ -93,6 +102,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
   var _loading = true;
   ContextResolver? _resolver;
   bool _platformReachable = false;
+  int? _creditsUsed;
+  int? _creditBudget;
 
   @override
   void initState() {
@@ -132,6 +143,14 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
 
       final mode = resolveDegradedMode(availability: availability, platformReachable: reachable);
 
+      int? creditsUsed;
+      int? creditBudget;
+      if (mode == AiDegradedMode.ready && baseUrl != null && baseUrl.isNotEmpty) {
+        final summary = await _fetchUsageSummary(baseUrl);
+        creditsUsed = summary?.creditsUsed;
+        creditBudget = summary?.creditBudget;
+      }
+
       if (!mounted) {
         return;
       }
@@ -139,6 +158,8 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _loading = false;
         _mode = mode;
         _platformReachable = reachable;
+        _creditsUsed = creditsUsed;
+        _creditBudget = creditBudget;
         if (mode == AiDegradedMode.ready) {
           _resolver = ContextResolver(providerPort: widget.dependencies.contextProvider);
         }
@@ -155,6 +176,57 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
         _platformReachable = false;
         _resolver = null;
       });
+    }
+  }
+
+  UsageSummaryClient _resolveUsageSummaryClient() {
+    final override = widget.dependencies.usageSummaryClient;
+    if (override != null) {
+      return override;
+    }
+    if (widget.dependencies.networkSpy != null) {
+      return UsageSummaryClient(
+        httpClient: MockClient((request) async {
+          widget.dependencies.networkSpy?.recordPlatformCall(request.url.toString());
+          if (request.url.path.endsWith('/v1/usage')) {
+            return http.Response(
+              jsonEncode({
+                'current_period': {
+                  'period': '2026-09',
+                  'credits_used': 42,
+                  'credit_budget': 10000,
+                },
+                'prior_periods': <Object>[],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response('not found', 404);
+        }),
+      );
+    }
+    return UsageSummaryClient();
+  }
+
+  Future<UsageSummaryFetchResult?> _fetchUsageSummary(String platformBaseUrl) async {
+    final mintPort = widget.dependencies.mintPort;
+    final aat = mintPort != null
+        ? await mintPort.mint()
+        : (widget.dependencies.networkSpy != null ? 'widget-test-aat' : null);
+    if (aat == null) {
+      return null;
+    }
+    try {
+      return await _resolveUsageSummaryClient().fetchUsage(
+        platformBaseUrl: platformBaseUrl,
+        aat: aat,
+      );
+    } on UsageSummaryAuthFailure {
+      return null;
+    } catch (e, st) {
+      debugPrint('Usage summary fetch failed: $e\n$st');
+      return null;
     }
   }
 
@@ -205,26 +277,41 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
 
     final hideSurface = _hidesSurface(_mode);
 
+    final showUsageGauge =
+        _mode == AiDegradedMode.ready && _creditsUsed != null && _creditBudget != null;
+
     return Padding(
       padding: widget.embedded ? EdgeInsets.zero : const EdgeInsets.all(16),
-      child: AiDegradedView(
-        mode: _mode,
-        onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
-        child: hideSurface
-            ? const Text('Clinical workflows remain available.')
-            : _resolver != null
-            ? FirstAiFeatureSurface(
-                sdk: widget.dependencies.sdk,
-                resolver: _resolver!,
-                manifestRefreshPort: widget.dependencies.manifestRefreshPort,
-                visitId: widget.dependencies.visitId,
-                requiredContextKeys: widget.dependencies.requiredContextKeys,
-                persistenceProbe: widget.dependencies.persistenceProbe,
-                exportProbe: widget.dependencies.exportProbe,
-                onTerminalFailure: _onTerminalFailure,
-                autoInvoke: widget.dependencies.autoInvoke,
-              )
-            : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showUsageGauge) ...[
+            UsageGauge(creditsUsed: _creditsUsed!, creditBudget: _creditBudget!),
+            const SizedBox(height: 16),
+          ],
+          if (_mode == AiDegradedMode.unreachable) const UsageGaugeUnreachableMarker(),
+          Expanded(
+            child: AiDegradedView(
+              mode: _mode,
+              onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
+              child: hideSurface
+                  ? const Text('Clinical workflows remain available.')
+                  : _resolver != null
+                  ? FirstAiFeatureSurface(
+                      sdk: widget.dependencies.sdk,
+                      resolver: _resolver!,
+                      manifestRefreshPort: widget.dependencies.manifestRefreshPort,
+                      visitId: widget.dependencies.visitId,
+                      requiredContextKeys: widget.dependencies.requiredContextKeys,
+                      persistenceProbe: widget.dependencies.persistenceProbe,
+                      exportProbe: widget.dependencies.exportProbe,
+                      onTerminalFailure: _onTerminalFailure,
+                      autoInvoke: widget.dependencies.autoInvoke,
+                    )
+                  : null,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -239,7 +326,7 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
       return Scaffold(body: body);
     }
     if (_mode == AiDegradedMode.nonEnrolled) {
-      return Scaffold(body: body);
+      return Scaffold(body: const UsageGaugeGate());
     }
     return Scaffold(
       appBar: AppBar(title: const Text('AI Feature')),
