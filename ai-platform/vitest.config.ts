@@ -48,6 +48,8 @@ export default defineConfig({
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
       "test/usage-summary.test.ts",
+      "test/period-close.test.ts",
+      "test/price-list-activation.test.ts",
       "test/system/**/*.system.test.ts",
       "test/e2e/**",
     ],
