@@ -181,6 +181,5 @@ CREATE TABLE usage_rollup (
   dimensions TEXT NOT NULL,
   request_count INTEGER NOT NULL,
   tokens INTEGER NOT NULL,
-  cost REAL NOT NULL,
-  quota_weight INTEGER NOT NULL DEFAULT 0
-);
+  cost REAL NOT NULL
+, quota_weight INTEGER NOT NULL DEFAULT 0);

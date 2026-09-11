@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
+import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import {
   logReconciliationReport,
   runReconciliation,
@@ -147,6 +148,7 @@ async function clearTables(): Promise<void> {
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
+  await applyPlatformSchema(env.DB, quotaWeightMigrationSql);
 });
 
 beforeEach(async () => {

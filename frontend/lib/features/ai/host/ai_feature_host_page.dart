@@ -280,37 +280,55 @@ class _AiFeatureHostPageState extends State<AiFeatureHostPage> {
     final showUsageGauge =
         _mode == AiDegradedMode.ready && _creditsUsed != null && _creditBudget != null;
 
+    final degradedView = AiDegradedView(
+      mode: _mode,
+      onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
+      child: hideSurface
+          ? const Text('Clinical workflows remain available.')
+          : _resolver != null
+          ? FirstAiFeatureSurface(
+              sdk: widget.dependencies.sdk,
+              resolver: _resolver!,
+              manifestRefreshPort: widget.dependencies.manifestRefreshPort,
+              visitId: widget.dependencies.visitId,
+              requiredContextKeys: widget.dependencies.requiredContextKeys,
+              persistenceProbe: widget.dependencies.persistenceProbe,
+              exportProbe: widget.dependencies.exportProbe,
+              onTerminalFailure: _onTerminalFailure,
+              autoInvoke: widget.dependencies.autoInvoke,
+            )
+          : null,
+    );
+
+    final chrome = <Widget>[
+      if (showUsageGauge) ...[
+        UsageGauge(creditsUsed: _creditsUsed!, creditBudget: _creditBudget!),
+        const SizedBox(height: 16),
+      ],
+      if (_mode == AiDegradedMode.unreachable) const UsageGaugeUnreachableMarker(),
+    ];
+
+    if (widget.embedded) {
+      return Padding(
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...chrome,
+            degradedView,
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: widget.embedded ? EdgeInsets.zero : const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (showUsageGauge) ...[
-            UsageGauge(creditsUsed: _creditsUsed!, creditBudget: _creditBudget!),
-            const SizedBox(height: 16),
-          ],
-          if (_mode == AiDegradedMode.unreachable) const UsageGaugeUnreachableMarker(),
-          Expanded(
-            child: AiDegradedView(
-              mode: _mode,
-              onRetry: _mode == AiDegradedMode.providerUnavailable ? _onRetry : null,
-              child: hideSurface
-                  ? const Text('Clinical workflows remain available.')
-                  : _resolver != null
-                  ? FirstAiFeatureSurface(
-                      sdk: widget.dependencies.sdk,
-                      resolver: _resolver!,
-                      manifestRefreshPort: widget.dependencies.manifestRefreshPort,
-                      visitId: widget.dependencies.visitId,
-                      requiredContextKeys: widget.dependencies.requiredContextKeys,
-                      persistenceProbe: widget.dependencies.persistenceProbe,
-                      exportProbe: widget.dependencies.exportProbe,
-                      onTerminalFailure: _onTerminalFailure,
-                      autoInvoke: widget.dependencies.autoInvoke,
-                    )
-                  : null,
-            ),
-          ),
+          ...chrome,
+          Expanded(child: degradedView),
         ],
       ),
     );
