@@ -47,6 +47,7 @@ export default defineConfig({
       "test/entitle-grant.test.ts",
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
+      "test/usage-summary.test.ts",
       "test/system/**/*.system.test.ts",
       "test/e2e/**",
     ],
