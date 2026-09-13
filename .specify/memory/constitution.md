@@ -1,22 +1,16 @@
 <!--
 Sync Impact Report
-Version change: template -> 1.0.0
+Version change: 1.0.0 -> 1.1.0
 Modified principles:
-- Template principle 1 -> I. Product Fit and Simplicity
-- Template principle 2 -> II. Replaceable Layer Boundaries
-- Template principle 3 -> III. Backend Authority and Data Integrity
-- Template principle 4 -> IV. Secure and Human-Gated Operations
-- Template principle 5 -> V. Operational Continuity
+- None
 Added sections:
-- Operating Constraints
-- Change Guardrails
+- Operating Constraints: Vendor-side control services (single vendor-operated
+  AI Billing Orchestrator permitted for commercial provisioning; no clinic business data,
+  no write path into clinic Supabase, no queue infrastructure)
 Removed sections:
 - None
 Templates requiring updates:
-- ✅ `.specify/templates/plan-template.md`
-- ✅ `.specify/templates/spec-template.md`
-- ✅ `.specify/templates/tasks-template.md`
-- ⚠ pending: `.specify/templates/commands/*.md` (directory not present in repository)
+- None (no template references vendor-side services)
 Follow-up TODOs:
 - None
 -->
@@ -100,6 +94,16 @@ MUST NOT introduce a second architecture.
 
 The system SHOULD run within modest clinic hardware limits and RAM-conscious service choices.
 
+**Vendor-side control services.** A single vendor-operated control service is permitted outside
+the clinic deployment for commercial provisioning of platform features: the AI Billing Orchestrator
+(`ai-billing-orchestrator/`, Cloudflare Worker + D1, outbox table + Cron Triggers — no queue infrastructure).
+Such a service MUST remain vendor-side control plane only: it holds no clinic business data, has
+no write path into any clinic's Supabase, and is never on the clinic's request path for domain
+operations. Clinic-side authority stays in PostgreSQL (receipt-verified RPCs under deny-all
+RLS); the AI platform stays additive and never learns about money. Adding any further
+vendor-side service requires its own amendment. (Registered 2026-09-11 for the AI billing
+orchestration architecture, `docs/architecture/ai-billing-orchestration/`.)
+
 Workflow automation, when implemented, MUST remain lightweight and understandable:
 - simple trigger-action rules
 - narrow scope
@@ -154,4 +158,4 @@ Constitution compliance MUST be checked in feature plans before research, re-che
 after design, and reflected in implementation tasks whenever security, data integrity,
 or operational continuity are affected.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-13 | **Last Amended**: 2026-05-13
+**Version**: 1.1.0 | **Ratified**: 2026-05-13 | **Last Amended**: 2026-09-11

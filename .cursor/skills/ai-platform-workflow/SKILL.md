@@ -34,18 +34,18 @@ Execute the complete AI Platform specification workflow for the provided specifi
 ## Execution Rules
 
 - Execute the workflow **strictly in order**.
-- Assign **each workflow stage** to a dedicated **Cursor Grok 4.5** subagent (`model: "cursor-grok-4.5-medium"`, `subagent_type: "generalPurpose"`).
+- Assign **each workflow stage** to a dedicated **Cursor Grok 4.6** subagent (`model: "cursor-grok-4.6-medium"`, `subagent_type: "generalPurpose"`).
 - Do **not** begin the next stage until the current stage has completed successfully.
 
 ### Escalation Handling
 
 When any stage reports an escalation:
 
-1. Spawn a dedicated **Claude Opus 5.0 (low thinking)** subagent (`model: "claude-opus-5-thinking-low"`, `subagent_type: "generalPurpose"`) to resolve the escalation.
+1. Spawn a dedicated **Kimi K3 (high thinking)** subagent (`model: "kimi-k3-high"`, `subagent_type: "generalPurpose"`) to resolve the escalation.
 2. After the escalation is resolved, **re-run the stage** that reported it.
 3. Only proceed to the next stage once that stage completes successfully without a new escalation.
 
-Do **not** stop the workflow on escalation unless the Opus subagent cannot resolve it after a reasonable attempt.
+Do **not** stop the workflow on escalation unless the Kimi subagent cannot resolve it after a reasonable attempt.
 
 ---
 
@@ -78,7 +78,7 @@ Read and follow `.cursor/skills/ai-platform-clarify/SKILL.md`.
 Rules:
 
 - The skill may ask up to **5 clarification questions**.
-- Answer **each question** using a dedicated **Cursor Grok 4.5** subagent (`model: "cursor-grok-4.5-medium"`).
+- Answer **each question** using a dedicated **Cursor Grok 4.6** subagent (`model: "cursor-grok-4.6-medium"`).
 - Wait until all questions have been answered before allowing the clarification stage to complete.
 
 If the skill reports an escalation, follow **Escalation Handling** above.
@@ -118,7 +118,7 @@ If the skill reports an escalation:
 
 ### Stage 5 — Implementation
 
-Assign a dedicated **Composer 2.5 (non-fast)** subagent (`model: "composer-2.5"`, `subagent_type: "generalPurpose"`) to run:
+Assign a dedicated **Grok 4.6 (high effort)** subagent (`model: "cursor-grok-4.6-high"`, `subagent_type: "generalPurpose"`) to run:
 
 ```text
 /ai-platform-implement-all-tasks <specifications path>
@@ -136,11 +136,11 @@ If the skill reports an escalation, follow **Escalation Handling** above.
 
 ## Failure Handling
 
-When a stage reports an escalation, follow **Escalation Handling** above: spawn a Claude Opus 5.0 (low thinking) subagent to fix it, then re-run that stage.
+When a stage reports an escalation, follow **Escalation Handling** above: spawn a Kimi K3 (high thinking) subagent to fix it, then re-run that stage.
 
 For the task-count escalation during **Generate Tasks**, first try combining related tasks and regenerating the task list before invoking escalation handling.
 
-Stop the workflow only if the Opus subagent cannot resolve the escalation.
+Stop the workflow only if the Kimi subagent cannot resolve the escalation.
 
 ---
 

@@ -34,11 +34,13 @@
   - [2.3 Amendment A3: "rate limiting should be applied" is underspecified](#23-amendment-a3-rate-limiting-should-be-applied-is-underspecified)
   - [2.4 Amendment A4: "the platform determines what additional data is required" must not mean "the platform knows the clinic schema"](#24-amendment-a4-the-platform-determines-what-additional-data-is-required-must-not-mean-the-platform-knows-the-clinic-schema)
   - [2.5 Amendment A14: an open chat surface is a declared capability, not an inferred one](#25-amendment-a14-an-open-chat-surface-is-a-declared-capability-not-an-inferred-one)
-  - [2.6 Amendment A15: the commercial surface — credit-denominated quota, a plan catalogue, and platform-issued invoices](#26-amendment-a15-the-commercial-surface--credit-denominated-quota-a-plan-catalogue-and-platform-issued-invoices)
+  - [2.6 Amendment A15: the commercial surface — credit-denominated quota, a plan catalogue, and platform-issued invoices](#26-amendment-a15-the-commercial-surface-credit-denominated-quota-a-plan-catalogue-and-platform-issued-invoices)
   - [2.7 Requirements that should be added](#27-requirements-that-should-be-added)
   - [2.8 Conflict with the existing local-Ollama assumption](#28-conflict-with-the-existing-local-ollama-assumption)
   - [2.9 Requirement accepted as-is: no PHI redaction](#29-requirement-accepted-as-is-no-phi-redaction)
-  - [2.10 Amendment summary](#210-amendment-summary)
+  - [2.10 Amendment A16: control-plane caller identity, purchase-proof-gated grants, and the provisioning receipt](#210-amendment-a16-control-plane-caller-identity-purchase-proof-gated-grants-and-the-provisioning-receipt)
+  - [2.11 Amendment A17: a single plan and pricing catalogue](#211-amendment-a17-a-single-plan-and-pricing-catalogue)
+  - [2.12 Amendment summary](#212-amendment-summary)
 3. [High-Level Architecture](#3-high-level-architecture)
   - [3.1 Architecture style, and why this one](#31-architecture-style-and-why-this-one)
     - [3.1.1 Layered architecture](#311-layered-architecture)
@@ -467,7 +469,9 @@ they are recorded here as a contract change rather than inside a slice spec:
    credit budget, request-count guard, `max_cost_class`, soft threshold, and capability set
    ([§7.3](#73-d1-logical-model)). Entitlement assignment reads the catalogue; enroll still writes
    the plan name only and leaves the row `pending` ([§8.1](#81-clinic-enrollment-and-trust-bootstrap)).
-   This settles OD-15 against its default.
+   This settles OD-15 against its default. **Updated by A17 ([§2.11](#211-amendment-a17-a-single-plan-and-pricing-catalogue)):**
+   the catalogue also carries the subscription price and display copy, it is the *only* pricing
+   catalogue, and it is served publicly at `GET /v1/plans`.
 5. **Invoice generation moves inside the platform** — reversing the billing row of
    [§12.3](#123-where-each-future-growth-requirement-plugs-in). A scheduled period close freezes the
    month's `usage_rollup`, prices the consumed credits through a versioned credit price list, and
@@ -483,7 +487,12 @@ they are recorded here as a contract change rather than inside a slice spec:
    The bundled token-rate pricing artifact that normalizes provider-reported tokens into ledger
    cost units ([§13.6.2](#1362-pre-flight-token-estimation)) is a **different table with a
    different job** and is unchanged: it answers "what did this request cost us", while
-   `credit_price` answers "what does the clinic pay per credit".
+   `credit_price` answers "what does the clinic pay per credit". **Updated by A17
+   ([§2.11](#211-amendment-a17-a-single-plan-and-pricing-catalogue)):** the `credit_price` list is
+   withdrawn — under the subscription model the clinic pays the plan price per period, never a
+   metered credit total. The catalogue holds the single sell price; period close prices the
+   invoice from the paid amount carried by the period's purchase proof, with credits consumed
+   recorded as usage evidence.
 6. **The usage surface is a gauge.** A usage-summary read endpoint answers current-period credits
    consumed against budget — live from the Quota DO, history from `usage_rollup`
    ([§7.6](#76-read-paths)) — and the client renders it as a simple gauge. No analytics dashboard
@@ -567,7 +576,107 @@ future afternoon of work and a rewrite. No redaction is built now.
 
 
 
-### 2.10 Amendment summary
+### 2.10 Amendment A16: control-plane caller identity, purchase-proof-gated grants, and the provisioning receipt
+
+**Why this amendment exists.** The deferral in [§12.5](#125-explicitly-not-to-be-built-yet) named
+its trigger verbatim: *"a verified sign-up flow with payment exists."* That flow now exists —
+`docs/architecture/ai-billing-orchestration/01-proposal.md` (agreed) and
+`docs/architecture/ai-billing-orchestration/02-architecture.md` (the buildable design, cited as
+**ABO** below). The changes below are the platform-side half of it. They are recorded here as a
+contract change because they alter who may call the control plane, what a grant requires, and
+what the platform signs.
+
+1. **Control-plane callers authenticate with personal keys, not a shared bearer.** A
+   `control_operator` table (per-caller Ed25519 public keys, action scopes, revocation) backs a
+   new `OperatorAuth` factory that verifies a short-lived Control Action Token (CAT: compact
+   Ed25519 JWS carrying `iss`, `aud`, `iat`/`exp` ≤ 120 s, single-use `jti`, the action, its
+   target, and a SHA-256 hash of the request body — ABO §5.6). The `OperatorAuth` port is the
+   injection point, wired once in `worker.ts`; its `resolve` becomes asynchronous and gains the
+   action argument. `control_audit.operator_id` becomes the CAT `iss` — real per-caller
+   attribution. The legacy `OPERATOR_BEARER_TOKEN` is demoted to break-glass scope
+   (`suspend`/`resume`/`rotate`/`revoke-key`/`delete`/`purge`/`kill-switch-*`): **humans can
+   stop abuse but can never grant service.**
+2. **Grants require a Purchase Proof.** `enroll`, `entitle`, the new `renew`, and
+   `override` each require a valid purchase proof signed by the vendor AI Billing Orchestrator (Ed25519
+   JWS; claims bind `order_id`, `installation_id`, clinic key material, plan, and period —
+   ABO §5.7). Key material, plan, and quotas are taken from or validated against the
+   purchase proof, never trusted from the caller; the plan name still resolves through the A15/G1
+   catalogue, and G1's one-mutation assignment logic is reused as-is. Purchase proofs are
+   single-use: a `purchase_proof` table is inserted in the same D1 batch as the grant, so a
+   replay rolls the grant back. `entitlement` gains `order_id` (UNIQUE — one payment entitles
+   one installation) and `purchase_proof_id`; `control_audit` gains `order_id`, so every
+   entitlement traces to a payment.
+3. **Two actions are added, one status is added.** `POST /control/v1/installations/{id}/renew`
+   extends period/quotas on a fresh purchase proof (current `entitle` stays one-shot,
+   `409 not_pending`) and is the **only** path that moves entitlement `suspended → active`.
+   `POST /control/v1/installations/{id}/entitlement-suspend` moves `active → suspended` under CAT
+   alone (suspending grants nothing). The entitlement status set becomes
+   `pending | active | suspended`; the guard already rejects any non-`active` status, so no
+   guard change is needed. Installation-level suspend/resume are untouched and remain the
+   human incident-response tools.
+4. **Enroll dedup tightens to `installation_id` only.** The `org_id` OR-clause is removed:
+   `org_id` is unique only within one clinic deployment (Stage 3 documents the collision risk)
+   and remains stored metadata. This also unblocks disaster-recovery re-enrollment of a clinic
+   under a new installation id.
+5. **The platform signs Provisioning Receipts.** A new platform receipt key (the Worker's first
+   production signing key) signs short-lived receipts; `GET /v1/installation/status` —
+   AAT-authenticated through the existing `EnrolledKeyVerifier` pattern — returns one when the
+   installation and entitlement are both active (ABO §5.8, §5.9). Clinics verify receipts
+   against a clinic-side key set seeded from `GET /v1/platform-keys`; rotation is `kid`-based
+   with validity windows (ABO §3.5). Receipts activate the clinic UI flag only — the guard
+   remains the enforcement point.
+6. **What the platform still never does.** No payment-provider integration, no money in the
+   request path, no clinic credentials held, no write path into clinic Supabase. A15's
+   collection boundary is preserved: collection lives in the AI Billing Orchestrator; the platform
+   learns about payment only as purchase proofs at the control plane.
+
+**Why this is extension, not rework.** The guard pipeline, Quota DO admission contract, Band G
+economics, and the `/v1/*` data path are untouched. The control plane gains a table-backed
+authenticator behind an existing port, two routes added to an existing dispatch pattern, and
+columns added to existing tables by forward-only migration. Enroll's D1 writes keep their shape;
+only the source of the values changes (purchase proof claims instead of caller-supplied fields).
+
+**Constitution check.** The AI Billing Orchestrator is the single vendor-side control service permitted
+by the constitution amendment recorded alongside this amendment (Operating Constraints). The
+platform itself gains no deployable, no queue, and no clinic business data; the §14 boundary
+stands.
+
+### 2.11 Amendment A17: a single plan and pricing catalogue
+
+**Why this amendment exists.** A15 created two pricing artifacts — the `plan` catalogue
+(economics) and the versioned `credit_price` list (per-credit invoicing) — and the AI Billing
+Orchestrator design initially added a third, its own `plan_price` table, with the plan name as a
+shared key kept in sync by convention. Three stores of overlapping commercial truth drift, and
+the drift failure mode — a paid order that wedges at `enroll` because a name exists in only one
+store — is unacceptable. This amendment consolidates to **one catalogue and one price**.
+
+1. **The `plan` catalogue is the only catalogue and the only price list.** It gains the
+   subscription price (`price_cents`, `currency`) and display copy (`display_name`,
+   `description`). Prices are configuration, not money movement: A15's collection boundary is
+   untouched (collection lives in the AI Billing Orchestrator; no provider integration, no money in the
+   request path), and the platform already held a price list under A15.
+2. **`credit_price` is removed before Band G completes.** Per-credit invoicing contradicts the
+   subscription model: the clinic pays the plan price per period, never a metered credit total.
+   The in-flight G-band code (`plan_catalogue` migration, `period-close`) is amended now rather
+   than finished-then-refactored.
+3. **The invoice prices from what was paid, not from a catalogue lookup.** The purchase proof
+   carries billing-signed `amount_cents`/`currency` claims (ABO §5.7); the platform stores them
+   on the `purchase_proof` row at consumption, and period close (G4) writes the invoice from
+   that amount with credits consumed recorded as usage evidence. Price changes therefore need no
+   versioning on the platform: the catalogue holds the *current* sell price; the invoice records
+   the *paid* price. A period with no paid grant closes with no invoice.
+4. **The catalogue is served at `GET /v1/plans`** — unauthenticated, cacheable
+   (`Cache-Control: public, max-age=300`), edge rate-limited; prices are not secrets (they
+   appear on the provider's hosted checkout page). Flutter renders plan pickers from it; the
+   AI Billing Orchestrator validates `POST /v1/orders` against a cached server-side fetch of it (ABO §5.3,
+   §5.10). No plan name, price, or copy is hardcoded client-side, and no plan table exists in
+   the AI Billing Orchestrator.
+
+**Why this is extension, not rework.** The catalogue keeps its G1 shape and CRUD; it gains
+columns and one read endpoint. The AI Billing Orchestrator loses a table and an entire drift class. The guard
+never reads prices.
+
+### 2.12 Amendment summary
 
 
 | ID     | Amendment                                                                                                                   | Type           | Affects                       |
@@ -579,6 +688,8 @@ future afternoon of work and a rewrite. No redaction is built now.
 | A5–A13 | Human acceptance, cost ceilings, idempotency, kill switches, evals, retention, degraded mode, versioning, request reference | Added          | throughout                    |
 | A14    | Interaction mode on the manifest; the chat surface is a declared capability with bounded context negotiation                | Added          | §5.1, §6.7, §8.10, §9.19      |
 | A15    | Commercial surface: monthly credit-denominated quota with declared per-capability prices, a small plan catalogue, no overage, platform-issued invoices, gauge usage surface | Added          | §4.3.3, §4.5, §5.1, §7.3, §12.3, §15 |
+| A16    | Control-plane caller identity (CAT, `control_operator`), purchase-proof-gated grants (`enroll`/`entitle`/`renew`/`override`), entitlement `suspended` status, platform-signed provisioning receipts | Added          | §4.5, §7.3, §8.1, §12.5 |
+| A17    | Single plan and pricing catalogue: `plan` gains the subscription price and display copy, `credit_price` withdrawn, invoices priced from the paid amount, catalogue served at `GET /v1/plans` | Changed        | §2.6, §7.3, §7.6        |
 | —      | Retire local-Ollama AI service assumption                                                                                   | Removed        | `03-deployment-networking.md` |
 | —      | No PHI redaction                                                                                                            | Accepted as-is | §11 R-9                       |
 
@@ -1586,7 +1697,7 @@ A small internal surface, separate from the client-facing API and separately aut
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Installation lifecycle  | Enroll, rotate keys, suspend, resume, delete                                                                                                                                                                                 |
 | Entitlement management  | Assign plan, set quota and budget, grant/revoke capabilities, set period bounds and soft threshold; maintain the plan catalogue (A15)                                                                                          |
-| Billing                 | Period close and invoice generation from the usage ledger and the versioned credit price list (A15); payment collection remains external                                                                                       |
+| Billing                 | Period close and invoice generation priced from the paid amount recorded at grant (A17), with the usage ledger as evidence; payment collection remains external (AI Billing Orchestrator, A16)                                                                  |
 | Kill switches           | Global, per capability, per installation, per provider (A8) — every one of these writes a `kill_switch` row ([§7.3](#73-d1-logical-model))                                                                                    |
 | Capability availability | Grant, gate, deprecate, or retire a capability version for a plan or installation — every one of these writes a `capability_grant` row ([§7.3](#73-d1-logical-model)); deprecate and retire write it at `global` scope       |
 | Token contract rotation | Begin a rotation (add a `ver` to the accepted set) or retire a `ver` (remove it) — the only two writers of the global `token_contract` record ([§5.7](#57-versioning-and-compatibility-rules), [§7.3](#73-d1-logical-model)) |
@@ -2374,9 +2485,8 @@ schema definition.
 | `installation`     | An enrolled clinic deployment                                                                                                    | installation id, org id, display name, status, region, enrolled_at                                                                                                                                                                                                                                                                                                                                                                                                                                 | Tens–thousands of rows   | Life of customer                        |
 | `installation_key` | Verification material and rotation history                                                                                       | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                                                                                                                                                                                                                                        | Few per installation     | History kept for audit                  |
 | `entitlement`      | What this installation may use and how much                                                                                      | installation id, plan, period bounds, request quota, token/cost budget, monthly credit budget (A15), allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                                                                                                                                                                                                | One current + history    | History kept for billing disputes       |
-| `plan`             | The commercial catalogue: what a named plan includes (A15)                                                                       | plan name, monthly credit budget, request-count guard, `max_cost_class`, soft threshold, capability set, status                                                                                                                                                                                                                                                                                                                                                                                  | A handful of rows        | Full history                            |
-| `credit_price`     | The versioned credit price list (A15); the version active for a period is the latest row with `active_from` at or before the period start (A15 item 5)                                                                                            | version, price per credit, currency, active_from, activated_by                                                                                                                                                                                                                                                                                                                                                                                                                                   | A handful of rows ever   | Full history                            |
-| `invoice`          | One issued invoice per installation per period (A15)                                                                             | installation, period, credits consumed, credit price list version, total, status, issued_at                                                                                                                                                                                                                                                                                                                                                                                                      | One per installation per month | Long — billing evidence            |
+| `plan`             | The commercial catalogue: what a named plan includes (A15), its subscription price and display copy (A17) — the only pricing catalogue                              | plan name, monthly credit budget, request-count guard, `max_cost_class`, soft threshold, capability set, status, `price_cents`, `currency`, `display_name`, `description`                                                                                                                                                                                                                                                                                                                        | A handful of rows        | Full history                            |
+| `invoice`          | One issued invoice per installation per period (A15); the subscription charge document, priced from the paid amount recorded on the period's purchase proof (A17) | installation, period, plan, amount, currency, credits consumed (usage evidence), status, issued_at                                                                                                                                                                                                                                                                                                                                                                                               | One per installation per month | Long — billing evidence            |
 | `capability_grant` | Which capability versions a plan or installation may use, **and** the current lifecycle of a capability version (scope `global`) | scope (`global` / `plan` / `installation`), capability id, version, granted/revoked, lifecycle state (`active` / `deprecated` / `retired`), successor id, deprecated_at, retire_after, changed_at, changed_by                                                                                                                                                                                                                                                                                      | Low                      | Full history                            |
 | `token_contract`   | The platform-global set of accepted AAT `ver` values                                                                             | accepted `ver` value, added_at, retired_at, changed_by — one row per `ver`; the accepted set is the rows with no `retired_at`                                                                                                                                                                                                                                                                                                                                                                      | A handful of rows ever   | Full history                            |
 | `kill_switch`      | Active kill-switch state for the four control-plane scopes (A8)                                                                  | scope (`global` / `capability` / `installation` / `provider`), target (literal `"global"` at global scope; otherwise the capability / installation / provider id), active, changed_at, changed_by — one current row per (`scope`, `target`); config-cache kind `kill_switches` with key `global` or `{scope}:{target}`                                                                                                                                                                              | Low                      | Full history                            |
@@ -2384,7 +2494,7 @@ schema definition.
 | `ai_request`       | One row per request: the journal spine                                                                                           | request id, **request reference**, installation, actor, branch, capability id+version, prompt artifact hash, idempotency key, state, the three milestone timestamps `created_at` / `updated_at` / `completed_at` ([§6.3](#63-request-state-machine)), terminal error code, trace id, payload pointers, `routing_tier` (`standard` / `degraded`), `routing_decision` ([§4.3.7](#437-provider-router-and-policy-engine)), plus nullable `conversation_id` and `turn_ordinal` for conversational legs | **The dominant table**   | Retention class (A10)                   |
 | `ai_attempt`       | One row per provider attempt                                                                                                     | request id, attempt no., provider, model, `selection_reason` ([§4.3.7](#437-provider-router-and-policy-engine)), outcome, latency, tokens in/out, cost, provider request id, error code                                                                                                                                                                                                                                                                                                            | 1–3 per request          | With the request                        |
 | `usage_event`      | Append-only quota/billing ledger                                                                                                 | installation, period, request id, quota weight, tokens, cost, recorded_at                                                                                                                                                                                                                                                                                                                                                                                                                          | ~1 per request           | Longer than requests — billing evidence |
-| `usage_rollup`     | Pre-aggregated per installation/period/capability                                                                                | dimensions, counts, tokens, cost                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Small                    | Long                                    |
+| `usage_rollup`     | Pre-aggregated per installation/period/capability                                                                                | dimensions, counts, quota weight, tokens, cost                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Small                    | Long                                    |
 | `platform_counter` | Bucketed counts for events that are never journaled — chiefly guard rejections                                                   | dimension set, time bucket, count                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Bounded, low cardinality | Months                                  |
 | `control_audit`    | Control-plane mutations                                                                                                          | operator, action, target, before/after pointer, at                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Low                      | Long                                    |
 
@@ -2529,6 +2639,7 @@ expensive:
 | Resolve capability manifest         | Every request        | Bundled artifacts; config cache for grants and kill switches            | No D1 on the hot path                                                              |
 | Support lookup by request reference | Rare                 | D1, indexed on the reference, then one R2 envelope                      | Single indexed lookup — the reference exists to make this trivial                  |
 | Usage summary for a clinic          | Occasional           | Quota DO for live counters; `usage_rollup` for history                  | Live and historical answers deliberately come from different places                |
+| Plan catalogue (`GET /v1/plans`)    | Occasional — purchase/renewal UI, AI Billing Orchestrator order validation | Config cache; D1 on a cold isolate                      | Unauthenticated and cacheable (A17); prices are configuration, not secrets         |
 | Analytics and dashboards            | Continuous, internal | `ai_request` / `ai_attempt` / `usage_rollup` / `platform_counter` in D1 | Read-only, off the request path; acceptable because journal volume is clinic-scale |
 | Billing period close                | Monthly              | `usage_event` → `usage_rollup` via cron                                 | The ledger is the evidence; rollups are the convenience                            |
 
@@ -2597,6 +2708,14 @@ Why enrollment is operator-driven rather than self-service: an installation is a
 boundary**. Allowing a client to enroll itself would let anyone with a copy of the desktop app create
 a tenant, and would make the platform's entitlement record meaningless.
 
+**Updated by A16 (§2.10):** the boundary stands, but the *operator* is no longer a human with a
+shared bearer. Enrollment is now purchase-driven: the vendor AI Billing Orchestrator's orchestrator calls
+`enroll` with its own CAT key, and the call is only accepted with a Purchase Proof proving
+payment for that exact installation and key material. The diagram above is unchanged in shape —
+`OPS` becomes "orchestrator (or human operator)", and "operator credentials" becomes "CAT +
+purchase proof" (ABO §5.6, §5.7). Human enrollment of a non-paying installation remains possible
+through a zero-price comp order, so the two-signature rule has no exceptions.
+
 **What enroll writes into the entitlement row.** Enroll creates the entitlement row but does not set
 its economics. The row is created in status `pending` with the plan name from the enroll payload
 recorded, a zero request quota, a zero token and cost budget, an empty allowed-capability set, and a
@@ -2610,8 +2729,7 @@ The economics are filled by the **Entitlement management** mutation
 threshold, and period bounds and moves the row to status `active`. Enrollment and entitlement are
 deliberately two mutations rather than one: enroll establishes *who this tenant is and how to verify
 it*, entitlement assignment establishes *what it may spend*. Folding the second into the first would
-require enroll to carry a plan catalogue — a pricing artifact the platform does not otherwise model
-— and would make every plan change a lifecycle concern.
+require enroll to resolve plan economics at write time — and would make every plan change a lifecycle concern.
 
 The consequence a later slice binds to: an installation is enrolled and verifiable but entitled to
 nothing until entitlement assignment runs. The guard's entitlement stage
@@ -3602,7 +3720,7 @@ the mechanisms deliberately left out in
 | **Analytics**                      | The `ai_request` / `ai_attempt` journal, written from the first request                                        | Dashboards and queries; no schema change. A dedicated metrics store only if aggregation starts contending with the write path ([§9.16](#916-analytics-engine-as-the-metrics-store))                                                        |
 | **Subscription management**        | `entitlement` entity + control plane                                                                           | The plan catalogue exists (A15); optional sync with `organizations.subscription_tier`, which currently has no writers (F6)                                                                                                                  |
 | **AI quotas**                      | Quota DO + entitlement                                                                                         | Settled by A15: monthly credit budget with declared per-capability weights, a request-count guard, and soft thresholds                                                                                                                      |
-| **Billing**                        | `usage_event` is already an append-only priced ledger                                                          | Invoice generation is in the platform (A15): scheduled period close, versioned credit price list, immutable invoice records. **Payment collection remains outside** — no payment provider integration                                       |
+| **Billing**                        | `usage_event` is already an append-only priced ledger                                                          | Invoice generation is in the platform (A15): scheduled period close, immutable invoice records priced from the paid amount carried by each period's purchase proof (A17). **Payment collection remains outside** — collection lives in the AI Billing Orchestrator (A16)                                       |
 | **Additional AI providers**        | New adapter behind the provider port + routing policy entry                                                    | Adapter, eval run, canary. No pipeline change                                                                                                                                                                                              |
 | **New AI capabilities**            | New manifest + prompt artifact + schema + eval suite                                                           | Client changes only if a *new* context key is required                                                                                                                                                                                     |
 | **Multi-turn / conversational AI** | The `conversational` interaction mode on the manifest (A14); the canonical request already carries prior turns | A manifest flag, a permitted key set, a fourth terminal event kind, and two nullable journal columns. No turn storage and no per-request Durable Object, because the client holds the transcript ([§6.7](#67-conversational-capabilities)) |
@@ -3662,9 +3780,14 @@ edited and no new version is published to carry the state change
 | Fine-tuning                                            | Locks in a provider, needs a labelled corpus and a governance story                                                                                                                                                                                                                                                                                                                                                                                              | Prompt engineering demonstrably plateaus on a high-volume capability                                  |
 | Async/batch execution                                  | No requirement; constitution forbids queues today                                                                                                                                                                                                                                                                                                                                                                                                                | A batch workload appears with a real user                                                             |
 | Client-side model fallback                             | Reintroduces prompts and model choice into the client (R-12)                                                                                                                                                                                                                                                                                                                                                                                                     | Never, without a constitutional amendment                                                             |
-| Self-service enrollment                                | Enrollment is a billing and trust boundary ([§8.1](#81-clinic-enrollment-and-trust-bootstrap))                                                                                                                                                                                                                                                                                                                                                                   | A verified sign-up flow with payment exists                                                           |
 | Out-of-band cancellation, stream resume                | Requires per-request state for a rare interaction ([§9.7](#97-connection-scoped-cancellation-versus-a-session-durable-object))                                                                                                                                                                                                                                                                                                                                   | Generations routinely exceed a minute, or support data shows work lost to reconnects                  |
 | Health-based provider routing                          | Makes routing depend on invisible history ([§9.14](#914-mechanisms-deliberately-simplified))                                                                                                                                                                                                                                                                                                                                                                     | Provider outages make the wasted first attempt a measurable cost                                      |
+
+**Removed from this table:** *self-service enrollment*. Its written trigger — "a verified sign-up
+flow with payment exists" — fired on 2026-09-11 with the AI billing orchestration proposal and
+architecture (`docs/architecture/ai-billing-orchestration/`). The design it unblocked is recorded
+as amendment A16 ([§2.10](#210-amendment-a16-control-plane-caller-identity-purchase-proof-gated-grants-and-the-provisioning-receipt))
+and sliced as Band L in the delivery plan.
 
 
 ---
@@ -3820,7 +3943,7 @@ estimatedInputTokens = ceil(utf8ByteLength(serialized request input) / 4) * 1.15
  `estimatedInputTokens + maxOutputTokens ≤ perRequestCostCeiling`, with the secondary bound
  `estimatedInputTokens ≤ maxInputTokens`. No currency and no provider price enters the Worker;
  money appears only in the post-response `usage_event` ledger
- ([§7.3](#73-d1-relational-store)), which prices *actual* provider-reported tokens.
+ ([§7.3](#73-d1-logical-model)), which prices *actual* provider-reported tokens.
 - **The estimate is never billed.** Exact accounting is stage 15. A request that passes the estimate
  and then exceeds the ceiling at the provider is bounded by `maxOutputTokens`, not rescued here.
 

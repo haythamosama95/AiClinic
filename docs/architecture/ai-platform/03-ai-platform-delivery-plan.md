@@ -22,7 +22,7 @@
 1. [Purpose and Operating Assumptions](#1-purpose-and-operating-assumptions)
 2. [What a Slice Is](#2-what-a-slice-is)
 3. [The Slice Sequence](#3-the-slice-sequence)
-4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed) (band K only; band G decomposed in [§3.13](#313-band-g--commercial-surface))
+4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed) (band K only; band G decomposed in [§3.13](#313-band-g-commercial-surface), band L in [§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning))
 5. [Review Checkpoints](#5-review-checkpoints)
 6. [Spec Authoring Protocol](#6-spec-authoring-protocol)
 7. [Dependencies Outside the Platform](#7-dependencies-outside-the-platform)
@@ -72,10 +72,10 @@ These supersede the phase model previously carried in §12.2 of the architecture
 | DP-2 | **Sequencing is driven by dependency and contract stability**, not by user-visible value                                                                 | The only thing that can make a later slice expensive is an earlier slice having frozen the wrong contract, so contract slices come first                                                                                                                                                                                                                                    |
 | DP-3 | **A slice is complete when an automated test proves it**, not when it can be demonstrated                                                                | With nothing deployed, tests are the only available evidence, and they are also the review artifact ([§2.2](#22-the-completion-criterion))                                                                                                                                                                                                                                  |
 | DP-4 | **Contracts are frozen in dedicated early slices that contain no behaviour**                                                                             | A frozen, typed contract is a constraint a weak implementer cannot drift away from; prose in a spec is a suggestion                                                                                                                                                                                                                                                         |
-| DP-5 | **Compatibility machinery is deferred, but its contract surface is not**                                                                                 | There are no deployed clients, so overlap windows, deprecation flows, staged prompt rollout, and the `context_required` self-healing *behaviour* have no audience yet. The error codes, lifecycle states, and journal columns they need are cheap now and expensive to retrofit, so those land early and stay unused; the behaviour is sliced as band J ([§3.9](#39-band-j--deferred-compatibility-machinery)) |
+| DP-5 | **Compatibility machinery is deferred, but its contract surface is not**                                                                                 | There are no deployed clients, so overlap windows, deprecation flows, staged prompt rollout, and the `context_required` self-healing *behaviour* have no audience yet. The error codes, lifecycle states, and journal columns they need are cheap now and expensive to retrofit, so those land early and stay unused; the behaviour is sliced as band J ([§3.9](#39-band-j-deferred-compatibility-machinery)) |
 | DP-6 | **The client architecture guard (R-12) lands before any client AI code**, not at hardening time                                                          | The guard exists to stop prompt text, provider names, and model identifiers from entering the Flutter app. With generated client code, that is the expected outcome rather than a tail risk, so the guard must precede the code it guards                                                                                                                                   |
 | DP-7 | **The walking-skeleton thread is retained as a falsification checkpoint**, not as a release                                                              | Without shipping pressure, the failure mode is fifty well-tested slices that have never run together. One end-to-end thread through a fake provider is the earliest point at which the contract slices can be proven wrong ([§5](#5-review-checkpoints)). Band I is the slice set that makes that thread run on the live Worker and Flutter paths rather than only in harnesses |
-| DP-8 | **Everything the architecture decides is sliced (bands A–J plus bands G and I).** Only band K stays coarse                                               | Band G was blocked on product decisions rather than architectural ones; amendment A15 settled them (credit-denominated monthly quota, declared per-capability prices, a small plan catalogue, no overage, platform-issued invoices, gauge usage surface), and the band is decomposed in [§3.13](#313-band-g--commercial-surface). Band K remains deliberately undesigned — slicing it would encode a deferral as a commitment ([§4](#4-bands-not-yet-decomposed)). Band I adds no new §4 component: it composes modules already frozen by A–J onto `POST /v1/requests`, discovery HTTP, and the first client invoke path. Band V is verification tooling traced to §13.5 and the scenario catalog, not a §4 component group ([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)) |
+| DP-8 | **Everything the architecture decides is sliced (bands A–J plus bands G and I).** Only band K stays coarse                                               | Band G was blocked on product decisions rather than architectural ones; amendment A15 settled them (credit-denominated monthly quota, declared per-capability prices, a small plan catalogue, no overage, platform-issued invoices, gauge usage surface), and the band is decomposed in [§3.13](#313-band-g-commercial-surface). Band K remains deliberately undesigned — slicing it would encode a deferral as a commitment ([§4](#4-bands-not-yet-decomposed)). Band I adds no new §4 component: it composes modules already frozen by A–J onto `POST /v1/requests`, discovery HTTP, and the first client invoke path. Band V is verification tooling traced to §13.5 and the scenario catalog, not a §4 component group ([§3.14](#314-band-v-verification-tooling-scenario-catalog-and-viewer)) |
 
 
 ---
@@ -91,7 +91,7 @@ These supersede the phase model previously carried in §12.2 of the architecture
 A slice is one Spec Kit feature: one `specs/<NNN>-<name>/` directory, one branch, one review. It
 implements *named parts* of `01-ai-platform.md` — one component group from §4 or the contracts from
 §5 that group needs — and nothing else. The single exception is band V
-([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)): verification tooling that
+([§3.14](#314-band-v-verification-tooling-scenario-catalog-and-viewer)): verification tooling that
 traces to §13.5 and the scenario catalog rather than to a §4 component group.
 
 Slice identifiers in this document (`A1`, `D3`, `D4`, …) are stable and do not change when a slice
@@ -169,14 +169,17 @@ states the acceptance shape — the spec expands each into named test cases.
 Bands A, B, and C are close to strictly ordered. Band D and band E may proceed in parallel once
 C1 exists. Band F may start any time after the slice it hardens. Band H is the last large block of
 new behaviour. Band J is ordered by trigger rather than by position: each of its slices waits for the
-condition in its `Build when` column ([§3.9](#39-band-j--deferred-compatibility-machinery)). Band I
+condition in its `Build when` column ([§3.9](#39-band-j-deferred-compatibility-machinery)). Band I
 is the live-composition band: it starts after the modules named in each slice's `Needs` column exist,
 and it freezes no new contract — it only attaches already-built stages and client libraries to the
-Worker fetch handler and the first Flutter AI surface ([§3.10](#310-band-i--live-composition-and-request-path-wiring)).
+Worker fetch handler and the first Flutter AI surface ([§3.10](#310-band-i-live-composition-and-request-path-wiring)).
 Band G is the commercial band: it may start as soon as its `Needs` are met and runs in parallel with
-the later bands — nothing in bands H, I, or J depends on it ([§3.13](#313-band-g--commercial-surface)).
+the later bands — nothing in bands H, I, or J depends on it ([§3.13](#313-band-g-commercial-surface)).
 Band V is verification tooling — the E2E scenario catalog suite and the viewer app — and is ordered
-by what it verifies rather than by platform dependencies ([§3.14](#314-band-v--verification-tooling-scenario-catalog-and-viewer)).
+by what it verifies rather than by platform dependencies ([§3.14](#314-band-v-verification-tooling-scenario-catalog-and-viewer)).
+Band L is the AI Billing Orchestrator band: it starts after Band G completes and adds the control-plane trust
+refactor, the AI Billing Orchestrator, and the clinic/Flutter purchase path
+([§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning)).
 
 ### 3.2 Band A — Foundations and frozen contracts
 
@@ -244,7 +247,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **What this band does:** The core AI pipeline: compose a prompt from immutable artifacts, route to a provider through a policy-driven chain, invoke with bounded retry and fallback, stream normalized chunks to the client, validate the assembled output (with optional repair), and adapt real providers behind a shared port. D1–D4 use the fake adapter; D5 adds the first real provider; D7 proves a second provider needs only an adapter and a routing-policy edit.
 
-**Useful to know:** D4 plus E4 produce the *module* half of checkpoint **CP3** (the falsification / walking-skeleton thread, DP-7). Band I wires those modules onto live HTTP and Flutter invoke so the thread runs end to end ([§3.10](#310-band-i--live-composition-and-request-path-wiring)). D7 plus F1 satisfy **CP4**: provider independence. Prompt text never lives in D1; context is rendered as delimited typed data, never merged into instructions (R-10).
+**Useful to know:** D4 plus E4 produce the *module* half of checkpoint **CP3** (the falsification / walking-skeleton thread, DP-7). Band I wires those modules onto live HTTP and Flutter invoke so the thread runs end to end ([§3.10](#310-band-i-live-composition-and-request-path-wiring)). D7 plus F1 satisfy **CP4**: provider independence. Prompt text never lives in D1; context is rendered as delimited typed data, never merged into instructions (R-10).
 
 
 | ID      | Slice                                      | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                                                                                               |
@@ -266,7 +269,7 @@ Nothing in this band handles a real request. It exists so that everything after 
 
 **What this band does:** Wires the Flutter desktop app to the platform without leaking AI internals. E1 installs the architecture guard (R-12) in CI; E2 is the AI Client SDK (token acquisition, idempotency, SSE consumption, cancel); E3 is the Context Resolver and the first clinic-side context RPC; E4 is the first user-visible AI surface with provisional-draft UX and degraded-mode behaviour.
 
-**Useful to know:** E1 must land before E2 (DP-6) — the guard must exist before any client AI code is written. The rest of the band may proceed in parallel with band D once C1 exists. E3's contract test fetches live manifests and fails if the Resolver cannot satisfy every declared key — this catches context-key drift early. E4 ships the first surface and degraded-mode UX; composing production AAT mint and HTTPS submit onto that surface is Band I ([§3.10](#310-band-i--live-composition-and-request-path-wiring)), which together with I1 reifies CP3.
+**Useful to know:** E1 must land before E2 (DP-6) — the guard must exist before any client AI code is written. The rest of the band may proceed in parallel with band D once C1 exists. E3's contract test fetches live manifests and fails if the Resolver cannot satisfy every declared key — this catches context-key drift early. E4 ships the first surface and degraded-mode UX; composing production AAT mint and HTTPS submit onto that surface is Band I ([§3.10](#310-band-i-live-composition-and-request-path-wiring)), which together with I1 reifies CP3.
 
 
 | ID     | Slice                                  | Canonical           | Needs      | Done when                                                                                                                                                                                                                                                                   |
@@ -463,10 +466,10 @@ prior suite green, not just the latest.
 
 | ID | Layer | Required cases |
 | --- | --- | --- |
-| **G1** | SQL / migration + integration | *Catalogue:* migrations apply cleanly to an empty database and the schema snapshot matches, including `plan`, `credit_price`, and the `entitlement` credit-budget column; one case per plan CRUD mutation asserting the `control_audit` row and operator identity; non-operator rejected. *Assignment:* assigning a plan populates credit budget, request guard, `max_cost_class`, soft threshold, and capability set in one audited mutation; an explicit per-installation override of a plan value is recorded as such. *Cache:* plans and entitlements are served through the config cache with the A5 read pattern — one D1 read cold, zero warm |
+| **G1** | SQL / migration + integration | *Catalogue:* migrations apply cleanly to an empty database and the schema snapshot matches, including `plan` with its price and display columns (A17) and the `entitlement` credit-budget column; `credit_price` is absent; one case per plan CRUD mutation asserting the `control_audit` row and operator identity; non-operator rejected. *Assignment:* assigning a plan populates credit budget, request guard, `max_cost_class`, soft threshold, and capability set in one audited mutation; an explicit per-installation override of a plan value is recorded as such. *Cache:* plans and entitlements are served through the config cache with the A5 read pattern — one D1 read cold, zero warm. *Read:* `GET /v1/plans` serves the active catalogue unauthenticated with cache headers |
 | **G2** | DO unit + integration (spy) | *Debit:* settlement debits exactly the manifest's declared `quota_weight`; a conversational leg debits per leg; a cancelled request debits the full declared weight; a guard rejection debits nothing and writes no journal row. *Admission:* exhausted credit budget → `quota_exhausted` with `reset_at`; crossing the soft threshold on the credit ratio sets the `degraded` flag F4 routes on. *Invariants:* token and cost counters still settle actuals unchanged; exactly two Durable Object round trips per request; the credit RPC gains fields without changing the meaning of any existing field (§2.3) |
 | **G3** | Workers integration + Flutter widget (spy) | *Endpoint:* an authenticated installation reads current-period credits consumed against budget, sourced live from the Quota DO, and prior periods from `usage_rollup`; unauthenticated → taxonomy unauthorized; the response carries credits only — no provider prices, no token or cost actuals. *Client:* the gauge renders consumed-versus-budget; a non-enrolled installation hides it with no network probe; platform unreachability renders as a normal state, not an error dialog |
-| **G4** | Scheduled job + integration | *Close:* period close writes exactly one immutable `invoice` row per active installation, priced through the `credit_price` version active for that period; a re-run is idempotent; a zero-consumption period issues no invoice. *Price list:* activating a new price-list version is an audited operator mutation and never reprices a closed period. *Evidence:* an invoice resolves to its `usage_rollup` rows, and any line can be traced to request references; payment collection is out of scope and no payment-provider call exists |
+| **G4** | Scheduled job + integration | *Close:* period close writes exactly one immutable `invoice` row per installation whose period was funded by a purchase proof, priced from the paid amount recorded at grant (A17); a re-run is idempotent; a period with no paid grant issues no invoice. *Evidence:* an invoice records the period's credits consumed from `usage_rollup` as usage evidence, and any line can be traced to request references; payment collection is out of scope and no payment-provider call exists |
 
 #### 3.12.11 Band V
 
@@ -478,13 +481,30 @@ prior suite green, not just the latest.
 | **V4** | Viewer build + smoke | *Commercial pages:* plan catalogue CRUD drives the real G1 control mutations; the per-installation credit gauge renders the G3 endpoint's consumed-versus-budget; the invoice list and detail render G4's invoices with their rollup evidence. *Stage X:* the cron and failure-journey operations are drivable from the viewer. All of it against the local stack, with raw request/response visible |
 
 
+#### 3.12.12 Band L
+
+| ID | Layer | Required cases |
+| --- | --- | --- |
+| **L1** | Workers integration + SQL | *CAT:* happy path per action class; expired / future-`iat` / wrong-`aud` / wrong-`act` / wrong-`tgt` / wrong-body-hash CATs → 401; `jti` replay → 401; revoked key → 401. *Break-glass:* bearer on a grant action → 401; bearer on a break-glass action → 200. *Audit:* `control_audit.operator_id` carries the CAT `iss`. *Schema:* migration applies cleanly to an empty database; snapshot pinned |
+| **L2** | Workers integration + SQL | *Gating:* enroll/entitle/renew/override without or with a forged purchase proof → reject with no writes; purchase proof replay → `409 purchase_proof_replayed` with the grant rolled back; `order_id` reuse across installations → UNIQUE failure. *Renew:* on `pending` → 409; on `active`/`suspended` → new period and catalogue economics, `status = active`; entitlement-suspend → guard rejects `ai_disabled`; renew reactivates. *Enroll:* dedup ignores `org_id` collision; unknown catalogue plan → 400 |
+| **L3** | Workers integration | Status while `pending` → no receipt; while active → receipt verifies against the served key set; wrong-`aud` / expired / unknown-`kid` receipts fail closed; suspended installation → taxonomy `installation_suspended`; no journal row and no DO round trip per call |
+| **L4** | Workers integration + fixtures | *Orders:* PoP signature valid / invalid / tampered-payload; stale `issued_at`; duplicate live order → 409 carrying the existing id; poll-token auth non-enumerating. *Plans:* the ABO holds no plan or price table (A17) — order creation validates the plan and reads the price from a cached fetch of the platform's `GET /v1/plans`, and a catalogue fetch failure fails the order with `502 catalogue_unavailable`. *Webhook:* HMAC valid / invalid / stale / duplicate-delivery against recorded Paymob fixtures; canonical event mapping; provider-ref quarantine contract test (no adapter import in order/purchase-proof/outbox serializers) |
+| **L5** | Workers integration (fake platform client) | Outbox retry backoff and terminal-failure alert; dunning timeline transitions at each boundary (renewal checkout issued, `past_due`, suspend at `grace_until`, `expired` at tail); refund → immediate `entitlement_suspend` outbox row; a failed platform call never marks a row done; reconciliation detects seeded drift of each kind |
+| **L6** | SQL / pgTAP | `create_ai_order` gating (`FORBIDDEN` / `INSTALLATION_NOT_ENROLLED`) and signature verifiability; the old `set_ai_availability(boolean, text)` signature is absent; receipt verification accept/reject matrix (bad signature, wrong `aud`, expired, unknown `kid`); `get_ai_availability` self-expires at `valid_until`; last-platform-key revocation refused; wrapped secret key still mints AATs and signs orders; deny-all RLS unchanged |
+| **L7** | Flutter widget + local-stack E2E | Purchase → payment → activation end to end on the local stack; renewal extends `valid_until`; suspended → pay → reactivated with no vendor contact; reinstall recovery via the reactivate path; E1 lint fixture with a provider hostname fails the build |
+| **L8** | Probe scripts + docs verification | Rewritten probes mint CATs and pass against the local control plane; the same probe calls with a bearer token → 401; every `curl` example in the rewritten docs executes verbatim against the local stack (docs-as-tests harness) |
+
+
 ### 3.13 Band G — Commercial surface
 
 **What this band does:** Builds the commercial layer the product decisions recorded in amendment
 A15 define: a small plan catalogue mapping a plan name to its economics, credit-denominated monthly
 quota debited at each capability's declared `quota_weight`, a usage-summary endpoint with a simple
 in-app gauge, and billing period close with platform-issued invoices. Payment collection stays
-outside the platform.
+outside the platform. **Amended by A17:** the catalogue is the single plan *and* pricing
+catalogue — it carries the subscription price and display copy and is served at `GET /v1/plans`;
+`credit_price` is withdrawn; invoices are priced from the paid amount carried by each period's
+purchase proof.
 
 **Useful to know:** This band was held coarse under DP-8 until its product inputs existed; A15
 settled them (OD-2, OD-15, and the §12.3 billing row). G2 **extends** B4's frozen admission
@@ -496,14 +516,18 @@ parallel once their `Needs` are met. Nothing here is on the request path's laten
 the existing two Durable Object round trips, and G3/G4 are read surfaces and scheduled jobs.
 
 **Code sync (verified against `ai-platform/` as of 2026-09):**
-- The `entitlement` table (`migrations/20260731120000_platform_schema.sql`) carries `request_quota`,
-  `token_budget`, `cost_budget`, period bounds, and `plan` as a free string — **no** credit column,
-  and no `plan` / `credit_price` / `invoice` tables exist. G1's migrations are greenfield and
-  forward-only per A5's rule.
+- Band G has started: `migrations/20260911120000_plan_catalogue.sql` (`plan`, `credit_price`,
+  `entitlement` credit columns) and `20260911200000_invoice.sql` exist, and
+  `src/period-close/` reads `credit_price`. **A17 amends this in flight, before the band
+  completes:** the `plan` catalogue gains `price_cents` / `currency` / `display_name` /
+  `description` by forward-only migration, `credit_price` is dropped (or never created) in the
+  same amendment pass, and period close is repriced from the paid amount recorded at grant.
+  Finishing `credit_price` as written and then ripping it out would be waste.
 - `usage_event.quota_weight INTEGER` already exists — the ledger needed no change, as A15 states.
 - `src/pricing/` is the **bundled token-rate artifact** (`control/pricing/platform-default/1.json`)
-  that prices provider-reported tokens into ledger cost units. It is *not* the A15 `credit_price`
-  list; G4 must keep the two apart (A15 item 5 says which answers which question).
+  that prices provider-reported tokens into ledger cost units. It is *not* a commercial price
+  list; with `credit_price` withdrawn (A17), the catalogue price on `plan` is the only
+  clinic-facing price and this artifact remains internal cost accounting.
 - G1 extends I4's entitle endpoint (`src/control/entitle.ts`,
   `POST /control/installations/:id/entitle`) with plan-catalogue assignment; the entitlement stage
   (`src/entitlement/`) reads `entitlement.plan` as a string via `planTierMeetsMinimum`, so the
@@ -515,10 +539,10 @@ the existing two Durable Object round trips, and G3/G4 are read surfaces and sch
 
 | ID     | Slice                                              | Canonical                              | Needs        | Done when                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | -------------------------------------------------- | -------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **G1** | Plan catalogue and credit-denominated entitlement  | §4.5, §7.3, §4.3.2, A15                | A5, B2       | Forward-only migrations create `plan`, `credit_price`, and the `entitlement` monthly credit-budget column, pinned by a schema snapshot test; operator plan CRUD and plan-based entitlement assignment are audited control-plane mutations; assignment from a plan populates every economics field in one mutation; plans and entitlements are served through the config cache with the A5 warm/cold read pattern                                                            |
+| **G1** | Plan catalogue and credit-denominated entitlement  | §4.5, §7.3, §4.3.2, A15, A17         | A5, B2       | Forward-only migrations create `plan` — including `price_cents` / `currency` / `display_name` / `description` (A17) — and the `entitlement` monthly credit-budget column, pinned by a schema snapshot test; `credit_price` is withdrawn (A17) and must not survive the band; operator plan CRUD and plan-based entitlement assignment are audited control-plane mutations; assignment from a plan populates every economics field in one mutation; plans and entitlements are served through the config cache with the A5 warm/cold read pattern; `GET /v1/plans` serves the active catalogue (name, price, display copy) unauthenticated and cacheable                                                            |
 | **G2** | Declared-weight credit debit in admission          | §4.3.3, §5.1, §8.8, A15                | G1, B4, F4   | The stage-15 credit call debits the manifest's declared `quota_weight` (per leg for `conversational`), cancelled requests debit in full, guard rejections debit nothing; admission answers credit-budget exhaustion with `quota_exhausted` and crosses the soft threshold on the credit ratio into the `degraded` flag; token and cost counters settle actuals unchanged; the two-round-trip and no-journal-on-rejection invariants hold                                     |
 | **G3** | Usage summary endpoint and in-app gauge            | §7.6, §4.1, A11, A15                   | G2, E4       | An authenticated installation reads current-period credits consumed against budget (live from the Quota DO) and prior periods from `usage_rollup`; the response carries credits only; the Flutter client renders a simple gauge, hides it for non-enrolled installations without probing, and renders platform unreachability as a normal state                                                                                                                              |
-| **G4** | Billing period close and invoice generation        | §7.3, §4.5, §12.3, A15                 | G1, F3       | A scheduled close freezes the period's `usage_rollup` and writes exactly one immutable `invoice` per active installation, priced through the `credit_price` version active for that period; re-runs are idempotent; zero-consumption periods issue no invoice; price-list activation is an audited operator mutation that never reprices a closed period; every invoice line traces to request references; no payment-provider integration exists                          |
+| **G4** | Billing period close and invoice generation        | §7.3, §4.5, §12.3, A15, A17          | G1, F3       | A scheduled close freezes the period's `usage_rollup` and writes exactly one immutable `invoice` per installation whose period was funded by a purchase proof, priced from the proof's paid `amount_cents` / `currency` recorded at grant (A17) — never from a catalogue re-lookup; re-runs are idempotent; periods with no paid grant issue no invoice; credits consumed are recorded as usage evidence and every invoice line traces to request references; no payment-provider integration exists                          |
 
 
 ### 3.14 Band V — Verification tooling: scenario catalog and viewer
@@ -552,6 +576,40 @@ V4 adds what Band G and stage X need.
 | **V4** | Viewer commercial surface and stage-X page       | — (tooling; drives A15 surfaces)     | V3, G1, G3, G4 | The viewer gains plan-catalogue CRUD against G1's control mutations, a per-installation credit gauge reading G3's endpoint, and an invoice list/detail view over G4's output; the stage-X cron and failure journeys are drivable; everything runs against the local stack with raw request/response visible                                                          |
 
 
+### 3.15 Band L — AI Billing Orchestrator and self-service provisioning
+
+**What this band does:** Executes amendment A16 and the AI billing orchestration architecture
+(`docs/architecture/ai-billing-orchestration/02-architecture.md`, cited as **ABO**): replaces the
+shared operator bearer with per-caller CAT keys, gates every grant on a billing purchase proof, adds
+`renew` / `entitlement-suspend` / `GET /v1/installation/status` to the platform, builds the
+AI Billing Orchestrator (purchase + orchestrator modules, Paymob adapter first), replaces the clinic
+`set_ai_availability` RPC with the receipt-verifying variant, and ships the Flutter purchase and
+activation flows.
+
+**Useful to know:** This band is sequenced **after Band G completes** (proposal §11): G1's
+plan-catalogue assignment logic is reused by purchase-proof-gated `entitle`/`renew`, and the
+expected refactor collision point is `src/control/entitle.ts`. L1–L3 are platform-side and
+strictly ordered; L4 (AI Billing Orchestrator) is a separate deployable and may proceed in parallel once
+G1 exists; L5 needs both L2 and L4; L6 needs L3's receipt contract; L7 needs L4 and L6. The
+constitution amendment registering the AI Billing Orchestrator lands **before** L1 code, per the §7 rule
+that the first slice of a new deployable must not itself be architectural drift. The two product
+decisions the band assumes are recorded in ABO §1: renewals are payer-initiated (no
+card-on-file), and support grants go through zero-price comp orders.
+
+| ID     | Slice                                                              | Canonical                              | Needs      | Done when                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------ | -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **L1** | Control-plane caller identity: `control_operator`, CAT auth, replay store | §4.5, A16; ABO §2.2, §4.2, §5.6, §8.1  | G1         | Forward-only migration creates `control_operator` and `control_cat_jti`, pinned by a schema snapshot test; the shared `packages/ed25519-jws/` package (compact-JWS sign/verify, base64url, timing-safe compare — ABO §2.2) is extracted first, and both the existing AAT verifier and the new CAT factory consume it; `OperatorAuth.resolve` is async and takes the action; the CAT factory verifies signature, `aud`, `iat`/`exp` ≤ 120 s with skew, `act` ∈ `allowed_actions`, `tgt`, body hash, and single-use `jti`; the bearer factory resolves only for break-glass actions; `control_audit.operator_id` is the CAT `iss`; every existing control route passes its old bearer-based tests rewritten to CAT, and grant actions reject the bearer with 401 |
+| **L2** | Purchase-proof-gated grants: `enroll`/`entitle`/`renew`/`override`, `entitlement-suspend` | §4.5, §8.1, A16; ABO §4.2, §5.7, §8.2  | L1         | Migration adds the `purchase_proof` table, `entitlement.order_id` (UNIQUE, partial) / `purchase_proof_id`, and `control_audit.order_id`; enroll takes `{purchase_proof, org_id, display_name, region}` with key material and plan from the claims, dedups on `installation_id` only, and validates plan against the catalogue; entitle/renew/override verify kind-specific purchase proofs and consume them batch-atomically (`409 purchase_proof_replayed` on reuse); renew moves `active`/`suspended` → `active` with catalogue economics and new period; `entitlement-suspend` moves `active` → `suspended` under CAT alone; a grant without a valid purchase proof fails and writes nothing |
+| **L3** | Provisioning receipt: platform signing key, `GET /v1/installation/status`, `GET /v1/platform-keys` | §4.5, §5.6, A16; ABO §3.5, §5.8, §5.9  | L1         | The status endpoint authenticates via `EnrolledKeyVerifier` (audience `ai-platform`), returns installation/entitlement status and `period_end` from the config cache, and includes a signed receipt (15-minute `exp`, `aud` = installation id, `valid_until` = `period_end` + grace) exactly when both statuses are active; `platform-keys` serves the public key set from vars; receipt verification fails closed on unknown `kid`, wrong `aud`, or expiry; no journal row and no DO round trip per call |
+| **L4** | AI Billing Orchestrator: orders, PoP verification, Paymob adapter, webhook endpoint | ABO §2, §4.1, §5.2–§5.5, §6.1, §7      | G1         | New `ai-billing-orchestrator/` deployable with its own D1 and secrets deploys in three environments; no plan or price table exists in the AI Billing Orchestrator (A17) — `POST /orders` validates the plan and reads the price from a cached server-side fetch of the platform's `GET /v1/plans`; `POST /orders` verifies the clinic PoP signature over exact payload bytes and enforces one live order per installation; `GET /orders/{id}` is poll-token gated and non-enumerating; the Paymob adapter creates intentions and verifies webhook HMAC-SHA512 with timing-safe compare, 10-minute tolerance, and `webhook_events` idempotency; provider identifiers appear only in `provider_refs` (contract test); canonical events transition the order machine |
+| **L5** | Orchestrator: outbox consumer, CAT minter, crons, reconciliation | ABO §3.4, §5.6, §6, §11                | L2, L4     | Paid/comp orders enqueue `provision`, renewals enqueue `renew`, refunds and grace-expiry enqueue `entitlement_suspend`; the per-minute outbox cron delivers with bounded backoff and presents purchase proof + CAT on every call; the order-clock cron runs the dunning timeline of ABO §6.3 exactly; the daily billing reconciliation writes `reconciliation_alert` rows for payment/entitlement/payout drift; a failed platform call never marks an outbox row done; `POST /ops/comp-orders` authenticates with per-operator Ed25519 keys (`ops_operator` + CAT-structured tokens verified via the shared `packages/ed25519-jws/` package, `ops_jti` replay guard in the same batch) and attributes every comp order via `comp_operator_id` — no shared ops bearer (`BILLING_OPS_TOKEN`-style secret) exists, and there is no alerts HTTP endpoint (billing reconciliation alerts are read/acknowledged via `wrangler d1` / Cloudflare dashboard under account IAM) |
+| **L6** | Clinic Supabase: order-signing RPC, receipt-verified `set_ai_availability`, platform key seed, key wrapping | §4.2.1, A16; ABO §3.6, §5.2, §9        | L3         | `create_ai_order(plan)` signs the order payload with the active installation key (pgsodium, owner/admin-gated); `set_ai_availability(boolean, text)` is **dropped** and `set_ai_availability(receipt)` verifies the receipt against `ai.platform_receipt_keys` (signature, `aud` = own installation, `exp`, `status`) before writing `ai.availability`; `get_ai_availability` self-expires at `valid_until`; `add_/revoke_platform_receipt_key` manage the key set (last-key revocation refused); `installation_keys.secret_key` is wrapped with pgsodium AEAD with no RPC contract change; deny-all RLS untouched |
+| **L7** | Flutter purchase and activation flows                              | §4.1, A16; ABO §10                     | L4, L6     | Purchase: `GET /plans` plan picker (plan names, prices, and copy never hardcoded) → keypair → `create_ai_order` → `POST /orders` → system-browser checkout → poll until paid; activation: AAT → `platform-keys` seed → status poll → receipt → `set_ai_availability(receipt)`; renewal banner from `period_end − 7d` through grace; suspended and expired states render as normal states with a pay-to-reactivate path; lost local state recovers via the reactivate path; the E1 lint rejects provider hostnames and the AI Billing Orchestrator origin is the only new endpoint the client learns |
+| **L8** | Docs and probes rewrite: bearer → CAT                              | Stage 3/4 docs, runbook; A16           | L1         | Data-journey stages 3–4 and the operator runbook replace every bearer-based instruction and probe with CAT-based ones (including a local key-generation recipe for human operators); the stage-2 doc's intended-production flow cites the purchase flow; no probe still references `OPERATOR_BEARER_TOKEN` except the break-glass section |
+
+Completing L7 satisfies checkpoint **CP7**.
+
+
 ---
 
 
@@ -559,10 +617,12 @@ V4 adds what Band G and stage X need.
 ## 4. Bands Not Yet Decomposed
 
 One band is deliberately left coarse. The reason is not "the architecture has not decided" —
-everything the architecture owns is decided and sliced in bands A–J plus the live-composition band I
-and the commercial band G; only K stays coarse. (Band G was held here until amendment A15 settled
-its product inputs — quota unit and period, plan structure, overage policy, and the billing
-boundary — and is now decomposed in [§3.13](#313-band-g--commercial-surface).)
+everything the architecture owns is decided and sliced in bands A–J plus the live-composition band I,
+the commercial band G, and the AI Billing Orchestrator band L; only K stays coarse. (Band G was held here until
+amendment A15 settled its product inputs — quota unit and period, plan structure, overage policy, and
+the billing boundary — and is now decomposed in [§3.13](#313-band-g-commercial-surface). Band L was
+triggered by the §12.5 self-service enrollment deferral and is decomposed in
+[§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning).)
 
 ### 4.1 Band K — Explicitly later
 
@@ -594,6 +654,7 @@ continuing to build in the same direction.
 | **CP4** | D7 and F1                        | Is the inference path complete and provider-independent? A second provider is added by adapter and policy alone, with no pipeline change — the claim in §12.4 that the whole design rests on                                                                                                                                        |
 | **CP5** | F5                                | Is the platform operationally honest? Every request is explainable from its reference, costs are bounded and measured, and the metered footprint matches §13.6.1                                                                                                                                                                    |
 | **CP6** | I4                                | Is the local stack operable end to end? An enrolled installation can be entitled and granted, discovery and submit work over HTTP, and a stale-manifest `context_required` self-heals once on the live client path                                                                                                                   |
+| **CP7** | L7                                | Can a clinic purchase, pay, and activate with no human in the loop — and does every grant trace to an order? A throwaway clinic completes the ABO §10 purchase and activation flows against the local stack; a forged purchase proof and a bearer-token grant attempt both fail; billing reconciliation of the exercise finds zero drift |
 
 
 At CP2, CP4, CP5, and CP6, also perform the review R-19 and R-20 call for: diff the implemented
