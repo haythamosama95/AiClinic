@@ -22,7 +22,7 @@
 1. [Purpose and Operating Assumptions](#1-purpose-and-operating-assumptions)
 2. [What a Slice Is](#2-what-a-slice-is)
 3. [The Slice Sequence](#3-the-slice-sequence)
-4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed) (band K only; band G decomposed in [§3.13](#313-band-g-commercial-surface), band L in [§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning))
+4. [Bands Not Yet Decomposed](#4-bands-not-yet-decomposed) (band K only; band G decomposed in [§3.13](#313-band-g-commercial-surface); band L superseded by the ABO delivery plan — see [§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning))
 5. [Review Checkpoints](#5-review-checkpoints)
 6. [Spec Authoring Protocol](#6-spec-authoring-protocol)
 7. [Dependencies Outside the Platform](#7-dependencies-outside-the-platform)
@@ -177,9 +177,10 @@ Band G is the commercial band: it may start as soon as its `Needs` are met and r
 the later bands — nothing in bands H, I, or J depends on it ([§3.13](#313-band-g-commercial-surface)).
 Band V is verification tooling — the E2E scenario catalog suite and the viewer app — and is ordered
 by what it verifies rather than by platform dependencies ([§3.14](#314-band-v-verification-tooling-scenario-catalog-and-viewer)).
-Band L is the AI Billing Orchestrator band: it starts after Band G completes and adds the control-plane trust
-refactor, the AI Billing Orchestrator, and the clinic/Flutter purchase path
-([§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning)).
+The AI Billing Orchestrator introduction — the control-plane trust refactor, the billing Worker, and the
+clinic/Flutter purchase path — is no longer sliced here: former band L is superseded by
+`docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` (bands M–U), which sequences that work
+across all four codebases ([§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning)).
 
 ### 3.2 Band A — Foundations and frozen contracts
 
@@ -483,16 +484,7 @@ prior suite green, not just the latest.
 
 #### 3.12.12 Band L
 
-| ID | Layer | Required cases |
-| --- | --- | --- |
-| **L1** | Workers integration + SQL | *CAT:* happy path per action class; expired / future-`iat` / wrong-`aud` / wrong-`act` / wrong-`tgt` / wrong-body-hash CATs → 401; `jti` replay → 401; revoked key → 401. *Break-glass:* bearer on a grant action → 401; bearer on a break-glass action → 200. *Audit:* `control_audit.operator_id` carries the CAT `iss`. *Schema:* migration applies cleanly to an empty database; snapshot pinned |
-| **L2** | Workers integration + SQL | *Gating:* enroll/entitle/renew/override without or with a forged purchase proof → reject with no writes; purchase proof replay → `409 purchase_proof_replayed` with the grant rolled back; `order_id` reuse across installations → UNIQUE failure. *Renew:* on `pending` → 409; on `active`/`suspended` → new period and catalogue economics, `status = active`; entitlement-suspend → guard rejects `ai_disabled`; renew reactivates. *Enroll:* dedup ignores `org_id` collision; unknown catalogue plan → 400 |
-| **L3** | Workers integration | Status while `pending` → no receipt; while active → receipt verifies against the served key set; wrong-`aud` / expired / unknown-`kid` receipts fail closed; suspended installation → taxonomy `installation_suspended`; no journal row and no DO round trip per call |
-| **L4** | Workers integration + fixtures | *Orders:* PoP signature valid / invalid / tampered-payload; stale `issued_at`; duplicate live order → 409 carrying the existing id; poll-token auth non-enumerating. *Plans:* the ABO holds no plan or price table (A17) — order creation validates the plan and reads the price from a cached fetch of the platform's `GET /v1/plans`, and a catalogue fetch failure fails the order with `502 catalogue_unavailable`. *Webhook:* HMAC valid / invalid / stale / duplicate-delivery against recorded Paymob fixtures; canonical event mapping; provider-ref quarantine contract test (no adapter import in order/purchase-proof/outbox serializers) |
-| **L5** | Workers integration (fake platform client) | Outbox retry backoff and terminal-failure alert; dunning timeline transitions at each boundary (renewal checkout issued, `past_due`, suspend at `grace_until`, `expired` at tail); refund → immediate `entitlement_suspend` outbox row; a failed platform call never marks a row done; reconciliation detects seeded drift of each kind |
-| **L6** | SQL / pgTAP | `create_ai_order` gating (`FORBIDDEN` / `INSTALLATION_NOT_ENROLLED`) and signature verifiability; the old `set_ai_availability(boolean, text)` signature is absent; receipt verification accept/reject matrix (bad signature, wrong `aud`, expired, unknown `kid`); `get_ai_availability` self-expires at `valid_until`; last-platform-key revocation refused; wrapped secret key still mints AATs and signs orders; deny-all RLS unchanged |
-| **L7** | Flutter widget + local-stack E2E | Purchase → payment → activation end to end on the local stack; renewal extends `valid_until`; suspended → pay → reactivated with no vendor contact; reinstall recovery via the reactivate path; E1 lint fixture with a provider hostname fails the build |
-| **L8** | Probe scripts + docs verification | Rewritten probes mint CATs and pass against the local control plane; the same probe calls with a bearer token → 401; every `curl` example in the rewritten docs executes verbatim against the local stack (docs-as-tests harness) |
+**Superseded.** The Band L test floor moved with the band: the per-slice required cases for the AI Billing Orchestrator introduction are in `docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` §3.12 (bands M–U).
 
 
 ### 3.13 Band G — Commercial surface
@@ -578,36 +570,32 @@ V4 adds what Band G and stage X need.
 
 ### 3.15 Band L — AI Billing Orchestrator and self-service provisioning
 
-**What this band does:** Executes amendment A16 and the AI billing orchestration architecture
-(`docs/architecture/ai-billing-orchestration/02-architecture.md`, cited as **ABO**): replaces the
-shared operator bearer with per-caller CAT keys, gates every grant on a billing purchase proof, adds
-`renew` / `entitlement-suspend` / `GET /v1/installation/status` to the platform, builds the
-AI Billing Orchestrator (purchase + orchestrator modules, Paymob adapter first), replaces the clinic
-`set_ai_availability` RPC with the receipt-verifying variant, and ships the Flutter purchase and
-activation flows.
+**Band L is superseded.** The AI Billing Orchestrator introduction is now sliced by
+`docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` (bands M–U), which replaces
+L1–L8 entirely. Band L was written before the ABO architecture
+(`docs/architecture/ai-billing-orchestration/02-architecture.md`) stabilized; the design revisions
+of 2026-09-13 changed the band's foundations, so the work was re-planned against the stabilized
+design rather than patched onto the old slices. The four largest deltas:
 
-**Useful to know:** This band is sequenced **after Band G completes** (proposal §11): G1's
-plan-catalogue assignment logic is reused by purchase-proof-gated `entitle`/`renew`, and the
-expected refactor collision point is `src/control/entitle.ts`. L1–L3 are platform-side and
-strictly ordered; L4 (AI Billing Orchestrator) is a separate deployable and may proceed in parallel once
-G1 exists; L5 needs both L2 and L4; L6 needs L3's receipt contract; L7 needs L4 and L6. The
-constitution amendment registering the AI Billing Orchestrator lands **before** L1 code, per the §7 rule
-that the first slice of a new deployable must not itself be architectural drift. The two product
-decisions the band assumes are recorded in ABO §1: renewals are payer-initiated (no
-card-on-file), and support grants go through zero-price comp orders.
+1. **The break-glass bearer is removed, not demoted** (ABO §8.1, §13 item 3) — every
+   `/control/v1/*` caller, orchestrator or human, authenticates with a personal CAT key registered
+   in `control_operator`, and auth-system recovery is a D1-level operation under Cloudflare account
+   IAM. L1's "bearer resolves for break-glass actions" and L8's bearer break-glass section no
+   longer exist.
+2. **The ABO `purchase_proofs` table is dropped** (ABO §4.1.5) — the outbox (rows never purged,
+   the minted JWS embedded in `payload`) is the minting ledger. The platform-side `purchase_proof`
+   table stays as the replay guard and gains `amount_cents` / `currency`.
+3. **`grace_days` is single-sourced in the plan catalogue** (ABO §4.1.6, §5.10, §6.3) — served by
+   `GET /v1/plans`, initial value 7; neither deployable hardcodes the constant.
+4. **`orders` is slimmed** (ABO §4.1.2) — no `org_id` / `display_name` / `region` columns; that
+   metadata is parsed from the stored `order_payload` at orchestration time, and renewal-checkout
+   re-validates key material against the platform (`409 key_rotated`; a rotated clinic creates a
+   fresh order).
 
-| ID     | Slice                                                              | Canonical                              | Needs      | Done when                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------ | ------------------------------------------------------------------ | -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **L1** | Control-plane caller identity: `control_operator`, CAT auth, replay store | §4.5, A16; ABO §2.2, §4.2, §5.6, §8.1  | G1         | Forward-only migration creates `control_operator` and `control_cat_jti`, pinned by a schema snapshot test; the shared `packages/ed25519-jws/` package (compact-JWS sign/verify, base64url, timing-safe compare — ABO §2.2) is extracted first, and both the existing AAT verifier and the new CAT factory consume it; `OperatorAuth.resolve` is async and takes the action; the CAT factory verifies signature, `aud`, `iat`/`exp` ≤ 120 s with skew, `act` ∈ `allowed_actions`, `tgt`, body hash, and single-use `jti`; the bearer factory resolves only for break-glass actions; `control_audit.operator_id` is the CAT `iss`; every existing control route passes its old bearer-based tests rewritten to CAT, and grant actions reject the bearer with 401 |
-| **L2** | Purchase-proof-gated grants: `enroll`/`entitle`/`renew`/`override`, `entitlement-suspend` | §4.5, §8.1, A16; ABO §4.2, §5.7, §8.2  | L1         | Migration adds the `purchase_proof` table, `entitlement.order_id` (UNIQUE, partial) / `purchase_proof_id`, and `control_audit.order_id`; enroll takes `{purchase_proof, org_id, display_name, region}` with key material and plan from the claims, dedups on `installation_id` only, and validates plan against the catalogue; entitle/renew/override verify kind-specific purchase proofs and consume them batch-atomically (`409 purchase_proof_replayed` on reuse); renew moves `active`/`suspended` → `active` with catalogue economics and new period; `entitlement-suspend` moves `active` → `suspended` under CAT alone; a grant without a valid purchase proof fails and writes nothing |
-| **L3** | Provisioning receipt: platform signing key, `GET /v1/installation/status`, `GET /v1/platform-keys` | §4.5, §5.6, A16; ABO §3.5, §5.8, §5.9  | L1         | The status endpoint authenticates via `EnrolledKeyVerifier` (audience `ai-platform`), returns installation/entitlement status and `period_end` from the config cache, and includes a signed receipt (15-minute `exp`, `aud` = installation id, `valid_until` = `period_end` + grace) exactly when both statuses are active; `platform-keys` serves the public key set from vars; receipt verification fails closed on unknown `kid`, wrong `aud`, or expiry; no journal row and no DO round trip per call |
-| **L4** | AI Billing Orchestrator: orders, PoP verification, Paymob adapter, webhook endpoint | ABO §2, §4.1, §5.2–§5.5, §6.1, §7      | G1         | New `ai-billing-orchestrator/` deployable with its own D1 and secrets deploys in three environments; no plan or price table exists in the AI Billing Orchestrator (A17) — `POST /orders` validates the plan and reads the price from a cached server-side fetch of the platform's `GET /v1/plans`; `POST /orders` verifies the clinic PoP signature over exact payload bytes and enforces one live order per installation; `GET /orders/{id}` is poll-token gated and non-enumerating; the Paymob adapter creates intentions and verifies webhook HMAC-SHA512 with timing-safe compare, 10-minute tolerance, and `webhook_events` idempotency; provider identifiers appear only in `provider_refs` (contract test); canonical events transition the order machine |
-| **L5** | Orchestrator: outbox consumer, CAT minter, crons, reconciliation | ABO §3.4, §5.6, §6, §11                | L2, L4     | Paid/comp orders enqueue `provision`, renewals enqueue `renew`, refunds and grace-expiry enqueue `entitlement_suspend`; the per-minute outbox cron delivers with bounded backoff and presents purchase proof + CAT on every call; the order-clock cron runs the dunning timeline of ABO §6.3 exactly; the daily billing reconciliation writes `reconciliation_alert` rows for payment/entitlement/payout drift; a failed platform call never marks an outbox row done; `POST /ops/comp-orders` authenticates with per-operator Ed25519 keys (`ops_operator` + CAT-structured tokens verified via the shared `packages/ed25519-jws/` package, `ops_jti` replay guard in the same batch) and attributes every comp order via `comp_operator_id` — no shared ops bearer (`BILLING_OPS_TOKEN`-style secret) exists, and there is no alerts HTTP endpoint (billing reconciliation alerts are read/acknowledged via `wrangler d1` / Cloudflare dashboard under account IAM) |
-| **L6** | Clinic Supabase: order-signing RPC, receipt-verified `set_ai_availability`, platform key seed, key wrapping | §4.2.1, A16; ABO §3.6, §5.2, §9        | L3         | `create_ai_order(plan)` signs the order payload with the active installation key (pgsodium, owner/admin-gated); `set_ai_availability(boolean, text)` is **dropped** and `set_ai_availability(receipt)` verifies the receipt against `ai.platform_receipt_keys` (signature, `aud` = own installation, `exp`, `status`) before writing `ai.availability`; `get_ai_availability` self-expires at `valid_until`; `add_/revoke_platform_receipt_key` manage the key set (last-key revocation refused); `installation_keys.secret_key` is wrapped with pgsodium AEAD with no RPC contract change; deny-all RLS untouched |
-| **L7** | Flutter purchase and activation flows                              | §4.1, A16; ABO §10                     | L4, L6     | Purchase: `GET /plans` plan picker (plan names, prices, and copy never hardcoded) → keypair → `create_ai_order` → `POST /orders` → system-browser checkout → poll until paid; activation: AAT → `platform-keys` seed → status poll → receipt → `set_ai_availability(receipt)`; renewal banner from `period_end − 7d` through grace; suspended and expired states render as normal states with a pay-to-reactivate path; lost local state recovers via the reactivate path; the E1 lint rejects provider hostnames and the AI Billing Orchestrator origin is the only new endpoint the client learns |
-| **L8** | Docs and probes rewrite: bearer → CAT                              | Stage 3/4 docs, runbook; A16           | L1         | Data-journey stages 3–4 and the operator runbook replace every bearer-based instruction and probe with CAT-based ones (including a local key-generation recipe for human operators); the stage-2 doc's intended-production flow cites the purchase flow; no probe still references `OPERATOR_BEARER_TOKEN` except the break-glass section |
-
-Completing L7 satisfies checkpoint **CP7**.
+The new plan also executes A17 in code first (its Band M: catalogue price/display/`grace_days`
+columns, `credit_price` withdrawal, invoice reshape), which Band L assumed but never sliced.
+Checkpoint **CP7** is satisfied by the ABO plan's end-to-end checkpoint CP-ABO-3
+([§5](#5-review-checkpoints)).
 
 
 ---
@@ -617,11 +605,13 @@ Completing L7 satisfies checkpoint **CP7**.
 ## 4. Bands Not Yet Decomposed
 
 One band is deliberately left coarse. The reason is not "the architecture has not decided" —
-everything the architecture owns is decided and sliced in bands A–J plus the live-composition band I,
-the commercial band G, and the AI Billing Orchestrator band L; only K stays coarse. (Band G was held here until
+everything the architecture owns is decided and sliced in bands A–J plus the live-composition band I and
+the commercial band G; only K stays coarse. (Band G was held here until
 amendment A15 settled its product inputs — quota unit and period, plan structure, overage policy, and
-the billing boundary — and is now decomposed in [§3.13](#313-band-g-commercial-surface). Band L was
-triggered by the §12.5 self-service enrollment deferral and is decomposed in
+the billing boundary — and is now decomposed in [§3.13](#313-band-g-commercial-surface). The AI Billing
+Orchestrator work triggered by the §12.5 self-service enrollment deferral was formerly band L; it is now
+sliced by the dedicated ABO delivery plan,
+`docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` — see
 [§3.15](#315-band-l-ai-billing-orchestrator-and-self-service-provisioning).)
 
 ### 4.1 Band K — Explicitly later
@@ -654,7 +644,7 @@ continuing to build in the same direction.
 | **CP4** | D7 and F1                        | Is the inference path complete and provider-independent? A second provider is added by adapter and policy alone, with no pipeline change — the claim in §12.4 that the whole design rests on                                                                                                                                        |
 | **CP5** | F5                                | Is the platform operationally honest? Every request is explainable from its reference, costs are bounded and measured, and the metered footprint matches §13.6.1                                                                                                                                                                    |
 | **CP6** | I4                                | Is the local stack operable end to end? An enrolled installation can be entitled and granted, discovery and submit work over HTTP, and a stale-manifest `context_required` self-heals once on the live client path                                                                                                                   |
-| **CP7** | L7                                | Can a clinic purchase, pay, and activate with no human in the loop — and does every grant trace to an order? A throwaway clinic completes the ABO §10 purchase and activation flows against the local stack; a forged purchase proof and a bearer-token grant attempt both fail; billing reconciliation of the exercise finds zero drift |
+| **CP7** | ABO plan CP-ABO-3 (`docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` §4) | Can a clinic purchase, pay, and activate with no human in the loop — and does every grant trace to an order? A throwaway clinic completes the ABO §10 purchase and activation flows against the local stack; a forged purchase proof fails, and a bearer-token grant attempt fails because the bearer credential no longer exists; billing reconciliation of the exercise finds zero drift against the ABO §6.7 coherence matrix |
 
 
 At CP2, CP4, CP5, and CP6, also perform the review R-19 and R-20 call for: diff the implemented

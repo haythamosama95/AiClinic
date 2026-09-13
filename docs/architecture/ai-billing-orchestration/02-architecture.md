@@ -101,7 +101,7 @@ One new Worker, two modules, **two keys** (key separation is load-bearing):
 ai-billing-orchestrator/
 ├─ purchase module          secret: BILLING_PURCHASE_PROOF_PRIVATE_KEY, PAYMOB_*
 │  ├─ orders/               POST /v1/orders, GET /v1/orders/{id}, renewal checkout
-│  ├─ catalogue/            cached read of the platform's GET /v1/plans (§4.1.7)
+│  ├─ catalogue/            cached read of the platform's GET /v1/plans (§4.1.6)
 │  ├─ webhooks/             POST /v1/webhooks/{provider} — signature verify, idempotency
 │  ├─ providers/            adapter port (Paymob first); provider IDs quarantined
 │  └─ purchase_proofs/         mint purchase proof after payment or comp order
@@ -148,9 +148,10 @@ A **comp** (complimentary) order is a zero-price order issued by vendor support 
 trials, or adjustments — with no checkout. It still mints a purchase proof and follows the same
 grant path as a paid order (§6.5).
 
-Human operators use **personal CAT keys** registered in `control_operator`. The legacy
-`OPERATOR_BEARER_TOKEN` is demoted to **break-glass only** (suspend/resume/rotate/etc.) — it
-cannot grant (`enroll`, `entitle`, `renew`, `override`).
+Human operators use **personal CAT keys** registered in `control_operator` for every
+`/control/v1/*` call — there is no shared bearer anywhere on the control plane. The legacy
+`OPERATOR_BEARER_TOKEN` is **removed entirely** (§8.1, §13 item 3); auth-system recovery is a
+D1-level operation under Cloudflare account IAM, not a standing credential.
 
 ### Happy-path purchase flow
 
@@ -302,6 +303,23 @@ clinic activation is pull-based, §10.2).
 - Never calls the ai-platform `/v1/*` data path — only `/control/v1/*`, and only with a CAT.
 - Never stores provider identifiers outside `provider_refs` (§7.2).
 
+### 2.4 Configuration and secrets inventory
+
+Secrets (per environment, via `wrangler secret`): `BILLING_PURCHASE_PROOF_PRIVATE_KEY` (§3.1),
+`ORCHESTRATOR_CAT_PRIVATE_KEY` (§3.1), `PAYMOB_SECRET_KEY` / `PAYMOB_PUBLIC_KEY` /
+`PAYMOB_HMAC_SECRET` (§7.2). Vars: the active purchase-proof `kid` (`bill-<n>`, §3.3), the
+orchestrator CAT key id (§3.4), `PAYMOB_INTEGRATION_ID` (§7.2), and:
+
+
+| Var                    | Purpose                                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| `AI_PLATFORM_BASE_URL` | Platform origin for the orchestrator module's control client (`/control/v1/*` calls) and the purchase module's catalogue fetch (`GET /v1/plans`, §4.1.6) |
+| `BILLING_PUBLIC_ORIGIN` | This Worker's own public origin — used to build the Paymob `notification_url` (§7.2)                    |
+
+**Catalogue cache mechanism.** The server-side `GET /v1/plans` fetch is cached **per isolate,
+in memory**, with a 300 s max-age (the endpoint's `Cache-Control`, §5.10) — no Cache API, no D1
+mirror; a cold isolate simply fetches. The staleness analysis in §4.1.6 applies unchanged.
+
 
 
 ## 3. Trust model and key management
@@ -359,7 +377,7 @@ verifier picks the right public key from its store.
 │           │ only orchestrator module                            │ verify before any        │
 │           │ can sign with orchestrator key                      │ control handler (§5.6)   │
 │           │                                                     │                          │
-│  Human operators (break-glass / ops)         same table ────────┘                          │
+│  Human operators (incident response / ops) same table ────────┘                            │
 │  ┌────────────────────────────┐   signs CAT  each operator: own row, own allowed_actions;  │
 │  │ PRIVATE on operator's      │ ──────────▶   private key never on server (§4.2)           │
 │  │   laptop only              │                                                            │
@@ -407,8 +425,9 @@ matching the existing clinic-key conventions.
 
 Human operators hold **personal** Ed25519 keypairs (generated locally, private key never leaves
 their machine) and sign CATs with them; their public keys are registered in `control_operator`
-(§4.2). The shared `OPERATOR_BEARER_TOKEN` is demoted to break-glass scope
-(§8.1, §13 item 3).
+(§4.2). The shared `OPERATOR_BEARER_TOKEN` is **removed entirely** (§8.1, §13 item 3) — a
+shared, unattributed credential is the exact anti-pattern per-operator keys exist to
+eliminate.
 
 ### 3.2 Key identifiers
 
@@ -434,7 +453,9 @@ The platform verifies purchase proofs against a **key set**, not a single key:
 Verification selects the entry by header `kid` and rejects outside its validity window — the same
 shape as `isKeyWithinValidityWindow` in `EnrolledKeyVerifier`.
 
-Rotation procedure (zero-downtime, four steps):
+Rotation procedure (zero-downtime, four steps) — executed by the single rotation
+script/runbook of §3.7, which performs the platform-side and AI Billing Orchestrator-side steps
+in one operation:
 
 1. Generate `bill-(n+1)`; add its public half to `BILLING_PURCHASE_PROOF_PUBLIC_KEYS` alongside
   `bill-n` (platform now accepts both).
@@ -514,14 +535,35 @@ slice, not hand-waved.
 Until the migration ships, the residual is exactly today's status quo; the order-signing RPC is
 designed so wrapping is an internal change to two functions.
 
+### 3.7 Rotation runbook and boot-time self-check
+
+Every rotation above spans two deployables — a platform-side half and an AI Billing
+Orchestrator-side half that must land together or the trust chain breaks half-rotated. Two
+operability controls keep that from being a hand-coordinated dance:
+
+- **One rotation script/runbook per key domain.** A single script (or runbook, while the
+  operator count is one) performs **both sides** of a rotation in one operation: for the
+  purchase-proof key, the §3.3 four-step procedure (platform key-set update, ABO secret + active
+  `kid` var, overlap wait, old-key retirement); for the orchestrator CAT key, the §3.4
+  table-backed procedure (`control_operator` insert, ABO secret + key-id var, old-row
+  revocation); for the receipt key, the §3.5 procedure (platform secret + served key set,
+  clinic-side self-healing refetch, old-key retirement). The script enforces the overlap waits
+  between phases rather than relying on the operator's calendar.
+- **ABO boot-time self-check.** At isolate init (cached for the isolate's lifetime), the AI
+  Billing Orchestrator verifies its active purchase-proof `kid` and issuer
+  (`BILLING_ISSUER`) against an **authenticated platform read** (orchestrator-scoped CAT,
+  §5.6) and **fails fast** on mismatch — the Worker refuses to mint proofs or run the outbox
+  processor and emits a structured alert. A misconfigured or half-rotated deploy surfaces at
+  boot, not as a stream of failed `enroll` calls against paid orders.
+
 ## 4. Data model
 
 
 
 ### 4.1 Billing D1 schema
 
-Nine tables in the AI Billing Orchestrator's D1 database. [§4.1.1](#411-overview) maps entities,
-transactions, and relationships; [§4.1.2](#412-orders)–[§4.1.9](#419-ops_operator-and-ops_jti) give
+Seven tables in the AI Billing Orchestrator's D1 database. [§4.1.1](#411-overview) maps entities,
+transactions, and relationships; [§4.1.2](#412-orders)–[§4.1.8](#418-ops_operator-and-ops_jti) give
 per-table column detail.
 
 Forward-only migrations under `ai-billing-orchestrator/migrations/`, named
@@ -537,8 +579,7 @@ actors:
 | ---- | ------ | --- |
 | State hub | `orders` | One row per purchase relationship; every other billing table hangs off it |
 | Provider bridge | `provider_refs`, `webhook_events` | Isolate provider identifiers from the rest of the schema; idempotent webhook log |
-| Module bridge | `outbox` | In-process handoff from the **purchase** module to the **orchestrator** module (same Worker, no queue) |
-| Platform bridge | `purchase_proofs` | Minted purchase-proof JWS stored for outbox retries; consumed by ai-platform `/control/v1/*` |
+| Module bridge | `outbox` | In-process handoff from the **purchase** module to the **orchestrator** module (same Worker, no queue); persisted `payload` rows double as the purchase-proof minting ledger (§4.1.5) |
 | Ops drift | `reconciliation_alert` | Findings when billing state and platform state diverge |
 | Ops identity | `ops_operator`, `ops_jti` | Per-operator authentication for `/v1/ops/*` — no shared bearer (§11.2) |
 
@@ -564,10 +605,9 @@ detect it.
 │  │ orders,            │    │ reads outbox, calls   │  │
 │  │ provider_refs      │───►│ ai-platform /control/v1 │  │
 │  │ webhook_events     │out │                       │  │
-│  │ purchase_proofs,   │box │                       │  │
-│  │ ops_operator       │    │                       │  │
+│  │ ops_operator       │box │                       │  │
 │  └────────────────────┘    └───────────────────────┘  │
-│  reconciliation_alert (daily cron); ops_jti (§4.1.9)  │
+│  reconciliation_alert (daily cron); ops_jti (§4.1.8)  │
 └──────────────┬───────────────────────┬────────────────┘
                │ webhook               │ CAT + purchase proof
                ▼                       ▼
@@ -575,21 +615,21 @@ detect it.
 ```
 
 **Tables hang off `orders`** — every other billing table is a child row (there is no local plan
-table; the platform's catalogue is the single source — §4.1.7):
+table; the platform's catalogue is the single source — §4.1.6):
 
 ```
   provider_refs ──────►  orders  ◄────── webhook_events
   (quarantine provider     │  ▲              (idempotent event log;
    ids; FK order_id)       │  │               resolves via provider_refs)
                            │  │
-              ┌────────────┼──┼────────────┐
-              ▼            ▼  │            ▼
-       purchase_proofs    outbox            reconciliation_alert
-       (FK order_id;      (FK order_id;     (detail JSON cites
-        JWS for platform)   handoff to       order_id; no FK)
-                            orchestrator;
-                            payload embeds
-                            purchase_proofs.jws)
+                           ▼  │            ┌────────────────────┐
+                          outbox            │ reconciliation_alert
+                       (FK order_id;        │ (detail JSON cites
+                        handoff to          │  order_id; no FK)
+                        orchestrator;       └────────────────────┘
+                        payload embeds
+                        the minted proof
+                        JWS)
 ```
 
 **Happy-path chain** — the flows that matter most, in order (tables **written**; full access in
@@ -606,7 +646,7 @@ the transaction table):
                                       orders, provider_refs
 
  3  Owner pays in browser ──webhook──► purchase module
-                                      webhook_events → orders → purchase_proofs → outbox
+                                      webhook_events → orders → outbox (proof JWS in payload)
 
  4  producer ──waitUntil/inline──► orchestrator module ──► ai-platform /control/v1/*
                                       outbox (done), orders (provisioned_at)
@@ -626,18 +666,19 @@ conceptually (R = read, W = write):
 | ---- | ------- | ----------------- |
 | [0] Flutter → ai-platform · HTTP `GET /v1/plans` | List sellable plans with current prices and display copy, so client UIs never hardcode the catalogue (A17). | *(none — platform config cache; not billing D1)* |
 | [1] Clinic Supabase → Flutter · RPC | Clinic signs a purchase intent (installation key, plan, org metadata) so Flutter can open checkout without holding the private key. | *(none — clinic tables only)* |
-| [2] Flutter → purchase module · HTTP `POST /v1/orders` | Verify proof-of-possession signature, confirm the plan is sellable and no live order exists, open provider hosted checkout. | **R** platform `plan` catalogue — cached `GET /v1/plans` fetch: plan exists, current price/currency (not billing D1)<br>**R** `orders` — live-order guard per `installation_id`<br>**W** `orders` — new `pending` row (clinic identity, signed payload bytes, poll-token hash)<br>**W** `provider_refs` — provider checkout intention/transaction ids from the adapter<br>**W** `orders` — `checkout_url` and `checkout_expires_at` |
+| [2] Flutter → purchase module · HTTP `POST /v1/orders` | Verify proof-of-possession signature, confirm the plan is sellable and no live order exists, open provider hosted checkout. | **R** platform `plan` catalogue — cached `GET /v1/plans` fetch: plan exists, current price/currency (not billing D1)<br>**R** `orders` — live-order guard per `installation_id`<br>**W** `orders` — new `pending` row (clinic identity snapshot, signed payload bytes, poll-token hash)<br>**W** `provider_refs` — provider checkout intention/transaction ids from the adapter<br>**W** `orders` — `checkout_url` and `checkout_expires_at` |
 | [3a] Flutter → purchase module · HTTP `GET /v1/orders/{id}` | Poll purchase/renewal progress for the UI; response is provider-agnostic (status, period, checkout link). | **R** `orders` — `status`, period bounds, grace, checkout fields (auth via poll-token hash) |
 | [3b] Flutter → purchase module · HTTP `POST /v1/orders/{id}/renewal-checkout` | Issue a new hosted checkout for renewal or plan change while order is `provisioned` or `past_due`. | **R** platform `plan` catalogue — cached fetch: target plan exists, current price<br>**R** `orders` — confirm order state allows renewal<br>**W** `provider_refs` — new checkout refs for this payment attempt<br>**W** `orders` — replace `checkout_url` / `checkout_expires_at` |
-| [4] Payment provider → purchase module · HTTP `POST /v1/webhooks/{provider}` | Authoritatively record payment outcome (success, failure, refund); transition order state; mint purchase proof; queue platform provisioning and trigger it immediately (`ctx.waitUntil` on the new outbox row). | **R** `provider_refs` — map provider id → `order_id`<br>**R** `webhook_events` — idempotency on `(provider, provider_event_id)`<br>**W** `webhook_events` — log authenticated event + payload hash<br>**W** `orders` — status transition, period bounds, `paid_at`, latest `purchase_proof_id` on success<br>**W** `purchase_proofs` — mint and persist the purchase-proof JWS for this period<br>**W** `outbox` — enqueue `provision` (or refund-driven) job with proof embedded in `payload` |
-| [5] orchestrator module → ai-platform · waitUntil + cron sweeper + HTTPS `/control/v1/*` | Triggered immediately by the producer on enqueue (`ctx.waitUntil` or order-clock inline); drive platform `enroll` → `entitle` (or `renew` / `entitlement-suspend`) using CAT + purchase proof. The `* * * * *` cron sweeps due `pending` rows on failure or backoff. | **R** `outbox` — due `pending` rows<br>**R** `purchase_proofs` — exact JWS to replay on retry<br>**R** `orders` — order context for the control call<br>**W** `outbox` — `done` / retry backoff / `failed`<br>**W** `orders` — `provisioned_at` when provision completes |
+| [4] Payment provider → purchase module · HTTP `POST /v1/webhooks/{provider}` | Authoritatively record payment outcome (success, failure, refund); transition order state; mint purchase proof; queue platform provisioning and trigger it immediately (`ctx.waitUntil` on the new outbox row). | **R** `provider_refs` — map provider id → `order_id`<br>**R** `webhook_events` — idempotency on `(provider, provider_event_id)`<br>**W** `webhook_events` — log authenticated event + payload hash<br>**W** `orders` — status transition, period bounds, `paid_at`, latest `purchase_proof_id` on success<br>**W** `outbox` — enqueue `provision` (or refund-driven) job with the freshly minted proof JWS embedded in `payload` |
+| [5] orchestrator module → ai-platform · waitUntil + cron sweeper + HTTPS `/control/v1/*` | Triggered immediately by the producer on enqueue (`ctx.waitUntil` or order-clock inline); drive platform `enroll` → `entitle` (or `renew` / `entitlement-suspend`) using CAT + purchase proof. The `* * * * *` cron sweeps due `pending` rows on failure or backoff. | **R** `outbox` — due `pending` rows (`payload` carries the exact JWS to present, on first attempt and every retry)<br>**R** `orders` — order context for the control call<br>**W** `outbox` — `done` / retry backoff / `failed`<br>**W** `orders` — `provisioned_at` when provision completes |
 | [6] Order clock cron → purchase module · cron (§11.1) | Time-driven dunning: renewal checkout windows, `past_due` flips, suspend enqueue, terminal expiry. | **R** `orders` — rows crossing `period_end`, `grace_until`, expiry thresholds<br>**W** `orders` — status, `grace_until`, renewal checkout fields<br>**W** `outbox` — `entitlement_suspend` rows when grace expires unpaid; clock `await`s processor inline for those rows |
 | [7] Billing reconciliation cron → ops · cron (§11.3) | Detect billing ↔ platform ↔ payout drift; persist findings for operator review. | **R** `orders` — `paid` / `provisioned` / `past_due` cohort<br>**R** `webhook_events` — payout cross-check<br>**R** platform (via `quota-inspect` / audit reads — not billing D1)<br>**W** `reconciliation_alert` — drift kind + JSON `detail` (order id, installation id, amounts) |
-| [—] Vendor ops → purchase module · HTTP `POST /v1/ops/comp-orders` | Issue complimentary access (trial/goodwill) without payment — same grant path as a paid order (§6.5). | **R** `ops_operator` — per-operator key verification (§4.1.9)<br>**R** platform `plan` catalogue — cached fetch: plan exists<br>**W** `orders` — comp order through `paid` state (`comp_operator_id` attribution)<br>**W** `ops_jti` — token replay guard, same batch<br>**W** `purchase_proofs` — mint proof<br>**W** `outbox` — enqueue `provision` and trigger it immediately via `ctx.waitUntil` |
+| [—] Vendor ops → purchase module · HTTP `POST /v1/ops/comp-orders` | Issue complimentary access (trial/goodwill) without payment — same grant path as a paid order (§6.5). | **R** `ops_operator` — per-operator key verification (§4.1.8)<br>**R** platform `plan` catalogue — cached fetch: plan exists<br>**W** `orders` — comp order through `paid` state (`comp_operator_id` attribution)<br>**W** `ops_jti` — token replay guard, same batch<br>**W** `outbox` — enqueue `provision` with the minted proof JWS in `payload`, and trigger it immediately via `ctx.waitUntil` |
 
-Step [4]→[5] is the critical internal handoff: the **purchase** module writes `purchase_proofs`
-and enqueues `outbox`; the **orchestrator** module (same Worker) is invoked immediately via
-`ctx.waitUntil` from the purchase handlers (webhook, comp-order) and inline from the order clock,
+Step [4]→[5] is the critical internal handoff: the **purchase** module mints the purchase proof
+and enqueues `outbox` with the JWS embedded in `payload`; the **orchestrator** module (same
+Worker) is invoked immediately via `ctx.waitUntil`
+from the purchase handlers (webhook, comp-order) and inline from the order clock,
 with the `* * * * *` cron handler remaining as sweeper for retries and dropped attempts. No HTTP
 between the two modules — the table is the handoff and the durability mechanism: `waitUntil` is
 best-effort, so a dropped or failed immediate attempt leaves the row `pending` for the sweeper.
@@ -647,12 +688,11 @@ best-effort, so a dropped or failed immediate attempt leaves the row `pending` f
 
 | Child table | Key column | Parent | Notes |
 | ----------- | ---------- | ------ | ----- |
-| `orders` | `plan` | platform `plan` catalogue | Not a local join — validated via the cached `GET /v1/plans` fetch (§4.1.7) |
-| `orders` | `purchase_proof_id` | `purchase_proofs` | Points at the **latest** proof only; history stays in `purchase_proofs` |
+| `orders` | `plan` | platform `plan` catalogue | Not a local join — validated via the cached `GET /v1/plans` fetch (§4.1.6) |
+| `orders` | `purchase_proof_id` | — (proof `jti`) | Latest minted proof id only; the JWS bytes live in `outbox.payload` and, after consumption, in the platform `purchase_proof` log (§4.2) |
 | `provider_refs` | `order_id` | `orders` | Provider ids quarantined here |
 | `webhook_events` | `order_id` | `orders` | Resolved via `provider_refs`; null if unresolvable |
-| `outbox` | `order_id` | `orders` | `payload` embeds the `purchase_proofs.jws` for that job |
-| `purchase_proofs` | `order_id` | `orders` | One row per minted proof (retained for outbox retries) |
+| `outbox` | `order_id` | `orders` | `payload` embeds the minted proof JWS for that job |
 | `reconciliation_alert` | — | `orders` (in `detail` JSON) | No FK; ops-facing drift record |
 
 #### 4.1.2 orders
@@ -667,21 +707,30 @@ keeps one `order_id` with a new purchase proof per period):
 | `installation_id`                                          | TEXT NOT NULL | From the clinic-signed order payload (§5.2)                                                        |
 | `kid`                                                      | TEXT NOT NULL | Clinic signing key id from the order payload                                                       |
 | `public_key`                                               | TEXT NOT NULL | Clinic public key (base64url) from the order payload                                               |
-| `plan`                                                     | TEXT NOT NULL | Plan name — validated against the platform's `plan` catalogue, the single catalogue (A17, §4.1.7) |
-| `org_id`                                                   | TEXT NOT NULL | Clinic-local org id (metadata only — never a uniqueness key, §13 item 2)                           |
-| `display_name`                                             | TEXT NOT NULL | Clinic display name (metadata for enroll and invoices)                                             |
-| `region`                                                   | TEXT NOT NULL | Billing region (metadata for enroll)                                                               |
+| `plan`                                                     | TEXT NOT NULL | Plan name — validated against the platform's `plan` catalogue, the single catalogue (A17, §4.1.6) |
 | `status`                                                   | TEXT NOT NULL | State machine of §6.1                                                                              |
 | `period_start` / `period_end`                              | TEXT          | Current paid period (null until first payment)                                                     |
-| `grace_until`                                              | TEXT          | `period_end + 7 days` while `past_due` (§6.3)                                                      |
+| `grace_until`                                              | TEXT          | `period_end + grace_days` while `past_due` (§6.3)                                                  |
 | `order_payload`                                            | TEXT NOT NULL | Exact clinic-signed payload bytes, as received                                                     |
 | `order_signature`                                          | TEXT NOT NULL | Base64url detached signature over `order_payload`                                                  |
 | `poll_token_hash`                                          | TEXT NOT NULL | SHA-256 (hex) of the order poll token (§5.4)                                                       |
 | `checkout_url` / `checkout_expires_at`                     | TEXT          | Current checkout URL (initial or renewal) and its expiry                                           |
-| `purchase_proof_id`                                        | TEXT          | Latest purchase proof minted for this order                                                        |
+| `purchase_proof_id`                                        | TEXT          | Latest purchase proof id minted for this order (the JWS `jti`; the proof bytes live in `outbox.payload`, §4.1.5) |
 | `comp_operator_id`                                         | TEXT          | `ops_operator.operator_id` of the issuing operator — comp orders only (§6.5, §11.2)                |
 | `created_at` / `paid_at` / `provisioned_at` / `updated_at` | TEXT          | Lifecycle timestamps                                                                               |
 
+**The identity columns are an as-purchased snapshot, not a registry mirror.** `installation_id`,
+`kid`, and `public_key` are copied from the clinic-signed payload at order creation and are
+never re-synced from the platform: they bind the money to the key material the clinic held
+*when it paid*, which is exactly what the purchase proof and platform enroll must commit to
+(§5.2). Clinic-side key rotation or an org rename does not propagate — by design. The
+`org_id` / `display_name` / `region` metadata is deliberately **not** stored as columns; it
+already lives inside the stored `order_payload` bytes on the same row, and the orchestrator
+parses it from there at orchestration time (enroll, §8.2) — one less drift point.
+**Key-rotation rule:** if the clinic has rotated its installation key since the order was
+created, the order's key material is stale and the order cannot be renewed — renewal-checkout
+re-validates the key material against the platform and a rotated clinic must create a fresh
+order (§5.4, §6.4).
 
 One **live** order per installation, enforced by a partial unique index:
 `CREATE UNIQUE INDEX idx_orders_live_installation ON orders (installation_id) WHERE status IN ('pending','paid','provisioned','past_due');`
@@ -699,7 +748,7 @@ The quarantine table. Every provider-assigned identifier lives here and nowhere 
 | `ref_id`       | TEXT PK                  | UUID                                                        |
 | `order_id`     | TEXT NOT NULL → `orders` | Owning order                                                |
 | `provider`     | TEXT NOT NULL            | Adapter id, e.g. `paymob`                                   |
-| `kind`         | TEXT NOT NULL            | `checkout`                                                  |
+| `kind`         | TEXT NOT NULL            | `checkout` \| `intention` \| `settlement`                    |
 | `provider_ref` | TEXT NOT NULL            | The provider's identifier (intention id, transaction id, …) |
 | `created_at`   | TEXT NOT NULL            |                                                             |
 
@@ -721,7 +770,7 @@ Idempotent, provider-signature-verified event log:
 | `order_id`                     | TEXT          | Resolved via `provider_refs`; null if unresolvable          |
 | `payload_hash`                 | TEXT NOT NULL | SHA-256 (hex) of the raw body — tamper-evidence for the log |
 | `received_at` / `processed_at` | TEXT          |                                                             |
-| `status`                       | TEXT NOT NULL | `processed`                                                 |
+| `status`                       | TEXT NOT NULL | `processed` \| `failed` — failures after the idempotency insert are marked `failed` and recovered via the outbox, not the provider (§5.5) |
 
 
 `UNIQUE (provider, provider_event_id)` is the idempotency key: a redelivered webhook is an
@@ -746,45 +795,36 @@ and the sweeper cannot double-process the same row; platform-side idempotency (4
 | Column                        | Type                     | Meaning                                                     |
 | ----------------------------- | ------------------------ | ----------------------------------------------------------- |
 | `outbox_id`                   | TEXT PK                  | UUID                                                        |
-| `kind`                        | TEXT NOT NULL            | `provision`                                                 |
+| `kind`                        | TEXT NOT NULL            | `provision` \| `entitlement_suspend`                         |
 | `order_id`                    | TEXT NOT NULL → `orders` |                                                             |
-| `payload`                     | TEXT NOT NULL            | JSON: purchase proof JWS plus the control-call parameters   |
+| `payload`                     | TEXT NOT NULL            | JSON: purchase proof JWS plus the control-call parameters (enroll metadata is parsed from the order's stored `order_payload`, §4.1.2) |
 | `status`                      | TEXT NOT NULL            | `pending` → `processing` → `done` or `failed`             |
 | `attempts`                    | INTEGER NOT NULL         |                                                             |
 | `next_attempt_at`             | TEXT NOT NULL            | Exponential backoff, cap 10 attempts → `failed` + alert log |
 | `last_error`                  | TEXT                     |                                                             |
 | `created_at` / `processed_at` | TEXT                     |                                                             |
 
-#### 4.1.6 purchase_proofs
+**The outbox is also the minting ledger.** The minted purchase-proof JWS is embedded in
+`payload` at enqueue time, and outbox rows are **never purged**: `done` rows persist as the
+durable record of what was minted and presented, so retries re-present the identical token
+(purchase proofs are single-use platform-side, §5.7) and billing reconciliation can audit
+minting. An earlier draft of this design kept a separate `purchase_proofs` table for that
+ledger role; it was dropped because the outbox `payload` already carries the JWS — the second
+copy was redundant. The platform-side `purchase_proof` table (§4.2) **stays**: it is the
+consumption log and replay guard, and the co-location rule (§5.1) requires it to live in the
+enforcing store — a guard that lives in the caller's database is no guard at all.
 
-Every purchase proof ever minted, with its JWS, so outbox retries re-present the identical
-token (purchase proofs are single-use platform-side; §5.7).
-
-**Why two copies of the proof exist.** This table is the **minting ledger** — what the ABO
-issued, kept so outbox retries re-present the identical JWS and so billing reconciliation can
-audit minting. The platform's `purchase_proof` table (§4.2) is the **consumption log** — the
-replay guard, which must insert in the same D1 batch as the grant it protects (the co-location
-rule, §5.1). The platform cannot treat the ABO's table as its replay guard: a guard that lives
-in the caller's database is no guard at all. Neither copy can be eliminated without breaking
-one of those two jobs.
-
-
-| Column                        | Type                     | Meaning                                |
-| ----------------------------- | ------------------------ | -------------------------------------- |
-| `purchase_proof_id`           | TEXT PK                  | UUID — becomes the JWS `jti`           |
-| `order_id`                    | TEXT NOT NULL → `orders` |                                        |
-| `installation_id`             | TEXT NOT NULL            |                                        |
-| `kind`                        | TEXT NOT NULL            | `purchase`                             |
-| `period_start` / `period_end` | TEXT NOT NULL            |                                        |
-| `jws`                         | TEXT NOT NULL            | The compact serialization, minted once |
-| `created_at`                  | TEXT NOT NULL            |                                        |
-
-#### 4.1.7 No local plan table — the platform catalogue is the single source
+#### 4.1.6 No local plan table — the platform catalogue is the single source
 
 The AI Billing Orchestrator holds **no plan or price table**. Plan names, subscription prices, and
 display copy live in exactly one place: the platform's `plan` catalogue, which carries
 `price_cents` / `currency` / `display_name` / `description` alongside the economics (platform
-amendment A17). The purchase module reads the catalogue through a cached server-side fetch of
+amendment A17) **and `grace_days`** — the single source for the grace / renewal-lead / payable-tail
+timing constants (§6.3). The AI Billing Orchestrator's order clock reads grace and renewal timing
+from this same cached fetch, and the platform computes receipt `valid_until = period_end +
+grace_days` from the same catalogue value (§5.8) — the two sides agree because both read one
+catalogue, not because two deployables hardcode the same constant. The initial value is 7 days.
+The purchase module reads the catalogue through a cached server-side fetch of
 `GET /v1/plans` (§5.10) — at order creation, at renewal checkout, and at comp-order validation.
 
 This deletes an entire drift class: there is no both-tables sellability rule, no CI drift check,
@@ -793,13 +833,20 @@ price used at checkout is the catalogue's *current* price; the price *paid* is b
 purchase proof's `amount_cents` / `currency` claims (§5.7), so invoices (G4) and reconciliation
 never re-lookup a catalogue price.
 
-**Cache behaviour.** The fetch is cached for the endpoint's `Cache-Control` max-age (300 s). A
+**Cache behaviour.** The fetch is cached per isolate in memory for the endpoint's
+`Cache-Control` max-age (300 s) — the mechanism named in §2.4. A
 price change propagates to new checkouts within minutes; a paid order is never repriced, so
 staleness can only delay a *new* price's visibility, never misquote an open period. A catalogue
 fetch failure at order time fails the request with `502 catalogue_unavailable` — selling against
 an unverifiable catalogue is worse than a retryable error.
 
-#### 4.1.8 reconciliation_alert
+**Contract test.** A contract test pins that `GET /v1/plans` serves **exactly** the
+`status = 'active'` rows, each with price (`price_cents` / `currency`) and `grace_days` — so the
+ABO-side "plan exists and is active" validation (against the cached fetch) and the
+platform-side validation at enroll/entitle/renew (against the catalogue directly, §8.2) are
+provably the same rule, not two implementations that can drift.
+
+#### 4.1.7 reconciliation_alert
 
 Drift findings from the daily job (§11):
 
@@ -807,12 +854,12 @@ Drift findings from the daily job (§11):
 | Column            | Type          | Meaning                                           |
 | ----------------- | ------------- | ------------------------------------------------- |
 | `alert_id`        | TEXT PK       | UUID                                              |
-| `kind`            | TEXT NOT NULL | `entitlement_without_payment`                     |
+| `kind`            | TEXT NOT NULL | `payment_without_entitlement` \| `entitlement_without_payment` \| `payout_mismatch` (§11.3) |
 | `detail`          | TEXT NOT NULL | JSON context (order id, installation id, amounts) |
 | `created_at`      | TEXT NOT NULL |                                                   |
 | `acknowledged_at` | TEXT          | Operator review marker                            |
 
-#### 4.1.9 ops_operator and ops_jti
+#### 4.1.8 ops_operator and ops_jti
 
 Per-operator authentication for `/v1/ops/*` — the same pattern as the platform's
 `control_operator` (§4.2), applied to the AI Billing Orchestrator's own ops surface from day one. There is no
@@ -835,6 +882,12 @@ rule, §5.1).
 
 Bootstrap and rotation are `wrangler d1` statements under Cloudflare account IAM (per-person,
 audited by Cloudflare) — ops scale does not justify a self-service key API.
+
+**Dual-registry provisioning.** A human operator who both issues comp orders and performs
+platform incident response needs their public key in **both** registries — `ops_operator` here
+and `control_operator` on the platform (§4.2), which are schema-identical by design. One
+provisioning script/runbook registers the operator into both atomically, so the two registries
+cannot drift into divergent identity config (§11.2).
 
 
 
@@ -882,6 +935,8 @@ CREATE TABLE purchase_proof (
   kind           TEXT NOT NULL,                -- purchase | renewal | comp
   period_start   TEXT NOT NULL,
   period_end     TEXT NOT NULL,
+  amount_cents   INTEGER NOT NULL,             -- paid amount from the proof claims (§5.7)
+  currency       TEXT NOT NULL,                -- ditto
   processed_at   TEXT NOT NULL
 );
 ```
@@ -903,6 +958,16 @@ replay protection lives in the `purchase_proof` table, which retains **every** c
 
 `control_audit` **gains** `order_id TEXT` (nullable) — every grant traces to a payment
 (proposal §4.7); null only for non-grant actions and pre-migration rows.
+
+Two further platform-side column additions land with the A17 catalogue amendment pass (they
+are recorded here because this design depends on them):
+
+- `plan` **gains** `grace_days INTEGER NOT NULL DEFAULT 7` — served by `GET /v1/plans`
+  (§5.10) and the single source for dunning timing on both sides (§4.1.6, §6.3, §11.1).
+- `invoice` **gains** `purchase_proof_id TEXT` (nullable; alternatively `order_id`) — so the
+  chain invoice → proof → order is navigable in data, and period close (G4) prices the invoice
+  from the consumed proof's `amount_cents` / `currency`, never from a catalogue re-lookup
+  (§5.7, §6.4).
 
 ## 5. Wire contracts
 
@@ -995,10 +1060,11 @@ ai-platform `[env.*.ratelimits]` bindings).
 
 **Verification order:** JSON parse → required fields → payload age (`issued_at` within 24 h) →
 `public_key` decodes to 32 bytes → `crypto.subtle.verify` over exact payload bytes → plan exists
-in the platform catalogue (cached `GET /v1/plans` fetch, §4.1.7) → no live order for
+in the platform catalogue (cached `GET /v1/plans` fetch, §4.1.6) → no live order for
 `installation_id` (partial unique index, §4.1).
-
-**Then:** insert `orders` (`status = pending`, poll token generated — 256-bit random, stored as
+ 
+**Then:** insert `orders` (`status = pending`; `installation_id` / `kid` / `public_key` stored as
+the as-purchased identity snapshot, §4.1.2; poll token generated — 256-bit random, stored as
 SHA-256 hex) → adapter `create_checkout(order, price)` with the catalogue's current price for the
 plan → store returned refs in `provider_refs` → update `checkout_url`.
 
@@ -1020,7 +1086,7 @@ plan → store returned refs in `provider_refs` → update `checkout_url`.
 `404 plan_not_found`, `409 order_exists` (a live order already exists for this installation —
 the response includes that order's `order_id` so a restarted client can resume, but **not** a
 new poll token), `502 provider_error`, `502 catalogue_unavailable` (the platform catalogue fetch
-failed — retryable; §4.1.7).
+failed — retryable; §4.1.6).
 
 ### 5.4 `GET /v1/orders/{order_id}` (AI Billing Orchestrator)
 
@@ -1044,19 +1110,32 @@ returns the same `404` — order existence is not enumerable.
 }
 ```
 
-`checkout_url` is non-null while payable: initially, and again from `period_end − 7 days` until
-terminal state (the renewal checkout, §6.3). No provider identifiers, no amounts beyond what the
+`checkout_url` is non-null while payable: initially, and again from `period_end − grace_days`
+until terminal state (the renewal checkout, §6.3). No provider identifiers, no amounts beyond what the
 clinic already knows — the response is provider-agnostic by construction.
 
 `POST /v1/orders/{order_id}/renewal-checkout` — the self-service plan-change and on-demand
 renewal path. Auth: the same poll-token Bearer rule as the GET, with the same uniform `404`.
 Body `{ "plan": "<plan name>" }`. Valid while the order is `provisioned` or `past_due`.
-Validates the plan against the platform catalogue (cached `GET /v1/plans` fetch, §4.1.7), runs
+Validates the plan against the platform catalogue (cached `GET /v1/plans` fetch, §4.1.6), runs
 the adapter `create_checkout` for that plan's
 current catalogue price, stores the new refs in `provider_refs`, and replaces `checkout_url` /
 `checkout_expires_at` on the order. The new plan takes effect when the renewal is paid and
-`renew` applies it (§6.4). Errors: `400 invalid_payload`, `404 plan_not_found`,
-`409 illegal_state` (terminal orders), `502 provider_error`, `502 catalogue_unavailable`.
+`renew` applies it (§6.4).
+
+**Key-rotation re-validation.** Before opening the checkout, the AI Billing Orchestrator
+re-validates the order's key material against the platform through an authenticated read
+(orchestrator-scoped `quota-inspect` / `support-lookup`, §5.6): the `kid` / `public_key` in the
+order's as-purchased snapshot (§4.1.2) must still be the installation's active enrolled key. If
+the clinic has rotated keys since the order was created, the order **must be re-created** — the
+endpoint fails with `409 key_rotated` and the clinic starts a fresh order with a newly signed
+payload (§5.3), because the purchase proof and enroll bind the as-purchased key material and a
+renewal cannot re-bind them. The order clock's pre-issued renewal checkouts (§11.1) run the
+same check before calling the adapter.
+
+Errors: `400 invalid_payload`, `404 plan_not_found`,
+`409 illegal_state` (terminal orders), `409 key_rotated` (clinic rotated keys — fresh order
+required), `502 provider_error`, `502 catalogue_unavailable`.
 When the order's current plan has been retired, this endpoint is the **only** renewal checkout
 path — the order clock does not pre-issue a URL for non-sellable plans (§6.6).
 
@@ -1096,7 +1175,8 @@ webhook's effect.
 
 ### 5.6 CAT — Control Action Token
 
-Replaces the operator bearer on every grant-path control route. Compact JWS, sent as
+Replaces the operator bearer on **every** control route — the bearer is removed, not scoped
+(§8.1). Compact JWS, sent as
 `Authorization: CAT <token>`.
 
 **Header:** `{ "alg": "EdDSA", "kid": "<control_operator.key_id>" }`
@@ -1149,7 +1229,7 @@ the `jti`. Compact JWS, carried in the control request body as `{ "purchase_proo
 | `aud`                         | `"ai-platform-control"`                                                                  |
 | `jti`                         | `purchase_proof_id` (UUID) — replay key into the platform `purchase_proof` table         |
 | `iat` / `exp`                 | `exp = iat + 72 h` — sized for outbox retry windows; single-use makes a long life safe   |
-| `kind`                        | `purchase`                                                                               |
+| `kind`                        | `purchase` \| `renewal` \| `comp`                                                        |
 | `order_id`                    | Billing order UUID                                                                       |
 | `installation_id`             | Bound installation                                                                       |
 | `kid` / `public_key`          | Clinic key material from the order (enroll validates the body against these)             |
@@ -1185,7 +1265,7 @@ the clinic's `set_ai_availability` RPC.
 | `status`            | `"active"` (receipts are never minted for any other state)                       |
 | `plan`              | Current plan name (display only)                                                 |
 | `period_end`        | Current paid period end                                                          |
-| `valid_until`       | `period_end + grace` — the clinic-side self-expiry instant (§6.3)                |
+| `valid_until`       | `period_end + grace_days` from the plan catalogue (§5.10) — the clinic-side self-expiry instant (§6.3) |
 | `platform_base_url` | The Worker's origin — what the clinic stores and calls                           |
 
 
@@ -1232,7 +1312,7 @@ re-fetches once on `unknown kid` receipt-verification failure (§3.5).
 
 The sellable-plan read path — served by the **platform**, not the AI Billing Orchestrator, because the
 platform's `plan` catalogue is the single plan and pricing catalogue (platform amendment A17;
-§4.1.7). Unauthenticated and cacheable, edge rate-limited; prices are not secrets — they are
+§4.1.6). Unauthenticated and cacheable, edge rate-limited; prices are not secrets — they are
 displayed on the provider's hosted checkout page — so the endpoint needs no credential, mirroring
 the `GET /v1/platform-keys` precedent (§5.9). Reads come from the config cache (warm isolate: no
 D1 I/O, the A5 pattern).
@@ -1247,13 +1327,18 @@ D1 I/O, the A5 pattern).
       "display_name": "Standard",
       "description": "…",
       "price_cents": 150000,
-      "currency": "EGP"
+      "currency": "EGP",
+      "grace_days": 7
     }
   ]
 }
 ```
 
-- **Source:** `plan` rows with `status = 'active'`, served from the config cache.
+- **Source:** `plan` rows with `status = 'active'`, served from the config cache — exactly the
+  active rows, each with price and `grace_days` (pinned by the §4.1.6 contract test).
+  `grace_days` is the single source for dunning timing on both sides: the ABO order clock
+  (§11.1) reads it from this payload, and receipt minting computes
+  `valid_until = period_end + grace_days` from the same value (§5.8).
 - **Caching:** `Cache-Control: public, max-age=300`. A price change propagates to clients within
   minutes; open periods are never repriced (the paid amount is bound into the purchase proof,
   §5.7), so staleness can only delay a *new* price's visibility, never misquote an open period.
@@ -1261,7 +1346,7 @@ D1 I/O, the A5 pattern).
 
 Two consumers: Flutter calls this when the purchase surface opens and when the renewal banner
 renders plan selection (§10.1, §10.3) — plan names, prices, and display copy are never shipped in
-the app; and the AI Billing Orchestrator purchase module fetches it server-side (cached, §4.1.7) to
+the app; and the AI Billing Orchestrator purchase module fetches it server-side (cached, §4.1.6) to
 validate and price `POST /v1/orders`, renewal checkouts, and comp orders.
 
 ## 6. State machines and dunning policy
@@ -1274,7 +1359,7 @@ validate and price `POST /v1/orders`, renewal checkouts, and comp orders.
                  create_checkout
  POST /v1/orders ─────────────────► pending ──payment_succeeded──► paid ──outbox: provision──► provisioned
                                     │                            │                              │
-                                    │ payment_failed /           │ refunded /                   │ period_end − 7d:
+                                    │ payment_failed /           │ refunded /                   │ period_end − grace_days:
                                     │ checkout expiry            │ chargeback                   │ renewal checkout issued
                                     ▼                            ▼                              ▼
                                 cancelled ◄──────────────── (terminal states)            provisioned (renewal due)
@@ -1287,7 +1372,7 @@ validate and price `POST /v1/orders`, renewal checkouts, and comp orders.
                                                               ▼
                                               past_due (suspended) ── outbox: entitlement_suspend fired
                                                               │
-                                                              │ period_end + 37 days, unpaid
+                                                              │ period_end + grace_days + 30d, unpaid
                                                               ▼
                                                           expired (terminal)
 ```
@@ -1302,9 +1387,10 @@ enqueue via `ctx.waitUntil`; platform enroll + entitle succeeded). A failed prov
 the order `paid` and retries via the outbox sweeper — money received always eventually
 provisions or alerts.
 - `provisioned → past_due` is time-driven: the daily cron flips orders whose `period_end` has
-passed without a renewal payment, setting `grace_until = period_end + 7 days`.
+passed without a renewal payment, setting `grace_until = period_end + grace_days` (catalogue
+value, §6.3).
 - `past_due → provisioned` on `renewal_paid` (new period bounds from the payment date, §6.4).
-- `past_due → expired` at `period_end + 37 days` (7-day grace + 30-day payable tail).
+- `past_due → expired` at `period_end + grace_days + 30 days` (grace + 30-day payable tail).
 - `refunded` / `chargeback` are reachable from `paid`, `provisioned`, or `past_due` and are
 terminal. Both fire an outbox `entitlement_suspend` **immediately** — no grace when money was
 clawed back.
@@ -1335,7 +1421,7 @@ grant service" hold for the orchestration path too.
 - The guard already rejects any `status ≠ active` with `forbidden_capability` / `ai_disabled`
 (`src/entitlement/index.ts`) — no guard change is needed for the new status value.
 - Installation-level `suspend`/`resume` (existing, installation.status) remain the **human**
-break-glass tools and are untouched. The two suspension axes are independent: an
+incident-response tools and are untouched. The two suspension axes are independent: an
 abuse-suspended installation stays rejected at identity even if a renewal payment arrives and
 reactivates the entitlement — renew never touches `installation.status`.
 
@@ -1347,18 +1433,23 @@ the orchestrator's `entitlement-suspend` closes the guard. See §14, deviation 1
 
 ### 6.3 Dunning and grace policy — decided
 
-Proposal §12 item 1, resolved:
+Proposal §12 item 1, resolved. All three timing constants (renewal lead, grace, receipt
+self-expiry) derive from **`grace_days` on the plan catalogue row**, served by `GET /v1/plans`
+(§5.10): the ABO order clock reads them from its cached catalogue fetch (§11.1), and the
+platform's receipt minting uses the same catalogue value (§5.8) — the two enforcement
+mechanisms agree because both read one catalogue, not because two deployables hardcode the
+same constant. The initial value is **7 days**.
 
 
 | Parameter                             | Value                                                      | Rationale                                                                                                                                                                                                                |
 | ------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Renewal checkout issued               | `period_end − 7 days`                                      | A full week of in-app "Renew" CTA (§10.3) before service is at risk                                                                                                                                                      |
-| Grace (`past_due`, service continues) | **7 days** after `period_end`                              | Constitution V: no hard-lock; clinics have intermittent connectivity and monthly cash cycles. AI is an add-on, so a bounded continuation is safe — the guard still meters every request against the old period's budgets |
+| Renewal checkout issued               | `period_end − grace_days`                                  | A full grace-length window of in-app "Renew" CTA (§10.3) before service is at risk                                                                                                                                       |
+| Grace (`past_due`, service continues) | **`grace_days`** after `period_end`                        | Constitution V: no hard-lock; clinics have intermittent connectivity and monthly cash cycles. AI is an add-on, so a bounded continuation is safe — the guard still meters every request against the old period's budgets |
 | Suspension                            | At `grace_until`, orchestrator fires `entitlement-suspend` | Fail-closed after grace; reactivation only via paid renewal + purchase proof                                                                                                                                             |
-| Payable tail                          | 30 further days (`period_end + 37`)                        | Late payers reactivate via `renew` without re-purchasing or re-enrolling                                                                                                                                                 |
+| Payable tail                          | 30 further days (`period_end + grace_days + 30`)           | Late payers reactivate via `renew` without re-purchasing or re-enrolling                                                                                                                                                 |
 | Terminal                              | `expired` at tail end                                      | New purchase required; platform side still needs only `renew` (entitlement row persists), so reactivation stays cheap                                                                                                    |
 | Refund / chargeback                   | **Immediate** `entitlement-suspend`, no grace              | Money was clawed back; grace would be an abuse window                                                                                                                                                                    |
-| Receipt `valid_until`                 | `period_end + 7 days`                                      | Clinic UI self-expires exactly when the platform suspends — the two enforcement mechanisms agree by construction                                                                                                         |
+| Receipt `valid_until`                 | `period_end + grace_days` (same catalogue value)           | Clinic UI self-expires exactly when the platform suspends — the two enforcement mechanisms agree by construction                                                                                                         |
 
 
 Dunning notification surface is **in-app only** (Flutter learns `past_due` / `grace_until` from
@@ -1380,6 +1471,12 @@ catalogue, updates the entitlement's plan/economics/period/`order_id`/`purchase_
 counters automatically when the period bounds change (verified: `maybeResetPeriod` in
 `src/quota-do/index.ts`), so no DO coordination is needed.
 
+**Key rotation vs renewal.** A renewal proof re-carries the order's as-purchased key material
+(§4.1.2), so renewal is only valid while that material is still the installation's active
+enrolled key. Renewal-checkout re-validates the key material against the platform via an
+authenticated read before taking payment (§5.4); if the clinic has rotated keys, the order
+must be **re-created** — a fresh order with a freshly signed payload — rather than renewed.
+
 **Plan changes** take effect at renewal only: the clinic requests a renewal checkout for a
 different plan (`POST /v1/orders/{id}/renewal-checkout`, §5.4) and pays it; the purchase proof
 carries the new plan, which `renew` applies. There is **no proration and no mid-period migration** — orchestration policy lives in the core
@@ -1390,7 +1487,11 @@ onto a currently active plan — see §6.6.
 
 Composition with Band G4 is as the proposal states: period close invoices the period that
 ended; the paid renewal opens the next. The two systems share only the plan name and the
-period bounds carried by the purchase proof.
+period bounds carried by the purchase proof. The platform `invoice` row gains a
+`purchase_proof_id` (or `order_id`) reference in the A17 amendment pass (§4.2), so the chain
+invoice → proof → order is navigable in data, and the invoice is priced from the consumed
+proof's `amount_cents` / `currency` — what was actually paid — never from a catalogue
+re-lookup (§5.7).
 
 ### 6.5 Comp orders
 
@@ -1428,7 +1529,7 @@ active plan from `GET /v1/plans`, call `renewal-checkout` with that plan, pay, a
 apply the new plan and catalogue economics on the **same** `order_id` (§6.4). The `orders.plan`
 column is updated when the renewal payment succeeds.
 
-**Order-clock behaviour** (`period_end − 7 days`, §11.1). The cron may attempt to pre-issue a
+**Order-clock behaviour** (`period_end − grace_days`, §11.1). The cron may attempt to pre-issue a
 renewal checkout using `orders.plan` only when that plan is currently sellable (present in the
 cached `GET /v1/plans` response). When `orders.plan` is no longer sellable:
 
@@ -1447,6 +1548,40 @@ cron pre-issued checkout for that plan (unlikely in practice — pre-issued URLs
 `checkout_expires_at`). There is no subscriber-count gate on plan retirement in this design;
 forced migration at renewal is the policy. Goodwill exceptions (e.g. honouring an old price for
 one clinic) go through `comp` orders and `override` (§6.5), not catalogue grandfathering.
+
+**Plan renames are discouraged.** The plan name is a shared key in five places — `orders.plan`,
+the purchase-proof `plan` claim, `entitlement.plan`, `invoice.plan`, and
+`capability_grant.scope = 'plan:{tier}'` — so a rename is not a catalogue edit but a migration
+across `capability_grant` rows (and every record that carries the name). Retire the old plan
+and create the new one under a new name instead; the forced-migration path above then applies
+cleanly.
+
+### 6.7 Order ↔ entitlement coherence matrix
+
+The two state machines (§6.1, §6.2) are synchronized only through the outbox, the platform's
+409-mappings (§11.1), and daily billing reconciliation (§11.3) — so the canonical statement of
+which order-status × entitlement-status pairs are coherent is a **contract artifact**, not
+prose. This subsection is that artifact: both sides' contract tests and the §11.3
+reconciliation job consume this mapping, and a pair marked *drift* is exactly what
+`reconciliation_alert` reports.
+
+
+| `orders.status`              | `entitlement.status`      | Verdict    | Why                                                                                  |
+| ---------------------------- | ------------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `pending`                    | *(no entitlement row)*    | Coherent   | Pre-payment; the platform does not know the installation yet                         |
+| `pending`                    | any                       | Drift      | An entitlement without a paid order is an unbilled grant                             |
+| `paid`                       | `pending`                 | Transient  | Provisioning in flight; must resolve within the outbox retry window (§4.1.5)         |
+| `paid`                       | `active` / `suspended` / *(none)* | Drift | Money received but the two records disagree on what was granted               |
+| `provisioned`                | `active`                  | Coherent   | The happy path                                                                       |
+| `provisioned`                | `suspended`               | Drift      | Paid and in-period, yet the guard is closed — investigate before the clinic notices  |
+| `past_due`                   | `active`                  | Coherent   | In grace: `grace_until` has not passed, service continues by policy (§6.3)           |
+| `past_due`                   | `suspended`               | Coherent   | Grace expired unpaid; the `entitlement_suspend` outbox row has landed                |
+| `refunded` / `chargeback`    | `suspended`               | Coherent   | Money clawed back → immediate suspend, no grace (§6.1)                               |
+| `expired`                    | `suspended`               | Coherent   | Terminal; reactivation is a new purchase + `renew`                                   |
+| `cancelled`                  | *(no entitlement row)*    | Coherent   | Abandoned checkout; nothing was ever granted                                         |
+
+Any pair not listed as coherent or transient is drift. The matrix is deliberately small: if a
+real transition cannot be expressed here, the state machines — not the matrix — are wrong.
 
 ## 7. Payment provider adapter
 
@@ -1485,7 +1620,7 @@ meaning.
   to canonical events at the edge.
 3. Billing **policy** (grace length, proration, payable tail) is decided in the core module; the
   adapter executes mechanics only.
-4. A contract test greps `purchase_proofs`, `outbox`, and `orders` serializers for adapter-module
+4. A contract test greps `outbox` and `orders` serializers for adapter-module
   imports and fails on any.
 
 
@@ -1497,11 +1632,12 @@ Grounded against Paymob's current API (verified 2026-09-11):
 - **Checkout:** `POST /v1/intention/` with the merchant **secret key**
 (`Authorization: Token …`), `amount` in cents, `currency: "EGP"`,
 `payment_methods: [<integration id>]`, `special_reference: <order_id>`,
-`notification_url: https://<abo>/v1/webhooks/paymob`, and a `redirection_url` that is used
+`notification_url: <BILLING_PUBLIC_ORIGIN>/v1/webhooks/paymob` (§2.4), and a `redirection_url` that is used
 for UX only. The response's `client_secret` plus the **public key** compose the Unified
 Checkout URL (`/unifiedcheckout/?publicKey=…&clientSecret=…`) — that URL is the
 `checkout_url` returned to Flutter. Intention id and Paymob order id are stored in
-`provider_refs` (`kind = checkout`).
+`provider_refs` (kinds `intention` and `checkout` respectively; settlement/inquiry flows use
+`kind = settlement`, §4.1.3).
 - **Webhook:** transaction callback POST to `notification_url` with an `hmac` query parameter.
 Verification is HMAC-SHA512 over the documented 20-field concatenation of `body.obj`,
 lowercased hex, timing-safe compared (§5.5). Event mapping: `obj.success = true` →
@@ -1529,8 +1665,8 @@ Flutter (proposal §3.1 anti-lock-in, now contract-pinned by §7.1 rule 4).
 
 ## 8. Platform-side changes
 
-These are recorded as **Amendment A16** in `01-ai-platform.md` (§2.11) and sliced as Band L in
-the delivery plan; this section is the design summary. Sequenced after Band G completes, per
+These are recorded as **Amendment A16** in `01-ai-platform.md` (§2.10) and sliced in
+`04-abo-delivery-plan.md` (bands M–U, superseding Band L); this section is the design summary. Sequenced after Band G completes, per
 the proposal — the expected refactor collision point is `src/control/entitle.ts` (proposal §9
 finding 1), and G1's plan-catalogue assignment logic is reused as-is.
 
@@ -1549,13 +1685,20 @@ export type OperatorAuth = {
 
 `requireOperator(request, operatorAuth, action)` gains the action argument and an `await` at
 each handler — the call sites' shape is otherwise unchanged, and dispatch
-(`src/control/index.ts`) is untouched except for the two new routes. Two factories exist:
+(`src/control/index.ts`) is untouched except for the two new routes. Exactly one factory
+remains:
 
-- `createCatOperatorAuth({ db, … })` — the production path (§5.6 verification order).
-- `createSecretOperatorAuth` — **retained, demoted to break-glass**: it resolves only when the
-route's action is in `BREAK_GLASS_ACTIONS = { suspend, resume, rotate, revoke-key, delete, purge, kill-switch-arm, kill-switch-disarm }`. Grant-path actions (`enroll`, `entitle`,
-`renew`, `override`, plan CRUD, cohort, routing-policy, token-contract, deprecate/retire)
-get `null` from it. `worker.ts` wires a composite that tries CAT first, then break-glass.
+- `createCatOperatorAuth({ db, … })` — the only production path (§5.6 verification order).
+
+The legacy `createSecretOperatorAuth` bearer factory and its break-glass action set are
+**deleted, not demoted**: every `/control/v1/*` caller — orchestrator or human — authenticates
+with a personal CAT key registered in `control_operator`, and there is no composite wiring in
+`worker.ts`. A shared, non-attributed bearer is the exact anti-pattern §11.2 refuses for the
+ABO's own ops surface; the platform does not keep it either. The one genuine residual the
+bearer covered — auth-system failure (a corrupted `control_operator` table, or all operator
+keys lost) — is answered at the D1 level: an operator with Cloudflare account IAM inserts a
+new `control_operator` row via `wrangler d1`, the same bootstrap mechanism the ABO uses for
+`ops_operator` (§4.1.8). No standing credential exists to leak.
 
 Human operators sign CATs with a small local CLI delivered in Band L
 (`ai-platform/scripts/cat-sign`, alongside the L8 key-generation recipe); the private key never
@@ -1567,7 +1710,9 @@ with `order_id` added on grant actions (§4.2).
 ### 8.2 Purchase-proof-gated grants
 
 - `enroll` — body shrinks to `{ purchase_proof, org_id, display_name, region }`;
-`kid`/`public_key`/`plan` come from the purchase proof claims (§5.7). Dedup is tightened to
+`kid`/`public_key`/`plan` come from the purchase proof claims (§5.7), and the orchestrator
+reads `org_id` / `display_name` / `region` from the order's stored `order_payload` bytes at
+orchestration time — they are not `orders` columns (§4.1.2). Dedup is tightened to
 `installation_id` **only** (§13 item 2): the `org_id` OR-clause in `handleEnroll`'s
 existence check is removed; `org_id` remains stored metadata. Plan validation changes from
 the hardcoded `isKnownPlanTier` list to a `plan`-catalogue lookup (`status = 'active'`),
@@ -1584,8 +1729,8 @@ UPDATE (plan, all economics from the catalogue, period from the purchase proof,
 `order_id`. Response `{ installation_id, status: "active", period_end }`.
 - `entitlement-suspend` (new) — `POST /control/v1/installations/{id}/entitlement-suspend`,
 body-less. `active → suspended`, else `409 illegal_lifecycle_transition`. CAT-only (no
-purchase proof — it grants nothing). Orchestrator scope; **not** in the break-glass bearer set
-(humans use installation `suspend`).
+purchase proof — it grants nothing). Orchestrator scope; human operators use installation
+`suspend`/`resume` with their own scoped CAT keys (§6.2).
 - `override` — now requires `{ purchase_proof }` with `kind = comp` in addition to its existing
 payload (§6.5). Its economics-merging logic is unchanged.
 
@@ -1710,7 +1855,7 @@ expiry.
 
 ### 10.3 Renewal and dunning UX
 
-- From `period_end − 7 days`, the status endpoint's `period_end` drives a "Renew AI" banner.
+- From `period_end − grace_days` (§6.3), the status endpoint's `period_end` drives a "Renew AI" banner.
 When `orders.plan` is still sellable, the cron may have pre-issued a `checkout_url`; tapping
 "Renew" can poll `GET /v1/orders/{id}` and open that URL directly. When the current plan has
 been retired (§6.6), `checkout_url` is null until the owner picks a replacement — the banner
@@ -1733,7 +1878,7 @@ order poll. Payment reactivates end-to-end with no vendor contact.
 | App reinstall / lost local storage | Owner re-runs purchase surface → `POST /v1/orders` returns `409 order_exists` with the live `order_id`… but no poll token. Recovery path: the surface instead offers "already purchased — reactivate", which skips the AI Billing Orchestrator checkout path and goes straight to §10.2 steps 2–4 (status + receipt need only an AAT). The poll token is a UX convenience, not a capability |
 | Platform unreachable               | Existing E4 rule: renders as a normal state, never an error dialog; flag unchanged                                                                                                                                                                                                                                                                                                       |
 | Receipt expired mid-session        | Flag self-expires at `valid_until`; AI chrome hides; no clinical workflow is blocked (constitution V)                                                                                                                                                                                                                                                                                    |
-| Clinic clock skew                  | Receipt `exp` is 15 min and verified against clinic time; the activation poll retries, so transient skew self-resolves. `valid_until` is day-granular in practice (period + 7 days) and tolerant of hours of skew                                                                                                                                                                        |
+| Clinic clock skew                  | Receipt `exp` is 15 min and verified against clinic time; the activation poll retries, so transient skew self-resolves. `valid_until` is day-granular in practice (period + `grace_days`) and tolerant of hours of skew                                                                                                                                                                        |
 | Current plan retired at renewal    | Cron leaves `checkout_url` null (§6.6); renewal banner requires plan selection from `GET /v1/plans` and an explicit `renewal-checkout` call before payment — no silent charge at the old tier                                                                                                                                                                                            |
 
 
@@ -1754,7 +1899,7 @@ the primary driver:
 | Schedule     | Job              | Work                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `* * * * *`  | Outbox sweeper   | Drain due `outbox` rows still `pending` (`next_attempt_at ≤ now`): retries with exponential backoff (cap 10, `failed` logs an alert) and recovery of rows whose immediate `ctx.waitUntil` attempt was dropped or failed. Same shared processor and idempotent-replay mapping as the producer trigger: `409 already_enrolled`, `409 not_pending`, and `409 purchase_proof_replayed` mark the row `done`, not `failed` — they mean a prior attempt committed and its response was lost; the processor confirms with a `quota-inspect` read before closing the row. Happy path is event-driven (seconds, via the producer's `waitUntil` trigger); the sweeper bounds recovery of failed or dropped attempts to ~1 minute |
-| `10 * * * *` | Order clock      | Issue renewal checkouts (`period_end − 7d`) **only when** `orders.plan` is sellable (§6.6); otherwise skip checkout and log `renewal_checkout_skipped_plan_retired`. Flip `past_due` at `period_end`, fire `entitlement_suspend` outbox rows at `grace_until`, flip `expired` at the tail, cancel expired checkouts                                                                                                                                                                                                                                                                                                                                                         |
+| `10 * * * *` | Order clock      | Issue renewal checkouts (`period_end − grace_days`, read from the cached catalogue fetch, §4.1.6) **only when** `orders.plan` is sellable (§6.6) and the order's key material still matches the platform (§5.4); otherwise skip checkout and log `renewal_checkout_skipped_plan_retired` / `renewal_checkout_skipped_key_rotated`. Flip `past_due` at `period_end`, fire `entitlement_suspend` outbox rows at `grace_until`, flip `expired` at the tail, cancel expired checkouts                                                                                                                                                                                                                                                                                                                                                         |
 | `0 5 * * *`  | Billing reconciliation | §11.3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 
@@ -1766,20 +1911,22 @@ The platform Worker's existing crons gain one job: purge `control_cat_jti` rows 
 `POST /v1/ops/comp-orders` (§6.5) is the only ops HTTP endpoint, and it is authenticated by
 **per-operator Ed25519 keys from day one** — the same pattern as the platform's
 `control_operator`, applied to the AI Billing Orchestrator's own surface (`ops_operator` /
-`ops_jti`, §4.1.9). Tokens are CAT-structured (§5.6 claims) with `aud =
+`ops_jti`, §4.1.8). Tokens are CAT-structured (§5.6 claims) with `aud =
 "ai-billing-orchestrator-ops"`, verified against `ops_operator` via the shared
 `packages/ed25519-jws/` package, with `jti` replay-guarded in the same batch as the comp-order
 write (co-location rule, §5.1). The verified `operator_id` is recorded on the order
 (`comp_operator_id`) and every comp order is caught by the payout direction of billing
 reconciliation (§11.3: an entitlement whose order never payouts). Key bootstrap, rotation, and
 revocation are `wrangler d1` statements under Cloudflare account IAM (per-person, audited by
-Cloudflare).
+Cloudflare). Operators who also perform platform incident response are provisioned into both
+registries (`ops_operator` here, `control_operator` on the platform) by one atomic provisioning
+script/runbook (§4.1.8).
 
 There is deliberately **no shared ops bearer** (no `BILLING_OPS_TOKEN`-style secret): a shared
 bearer here would be *operationally grant-capable* — a comp order auto-provisions through the
 Worker's own keys, so a leaked bearer could mint free service end-to-end with no attribution.
-That is the same anti-pattern the platform demoted `OPERATOR_BEARER_TOKEN` for; the AI Billing
-Orchestrator does not introduce it.
+That is the same anti-pattern the platform removed `OPERATOR_BEARER_TOKEN` for (§8.1); the AI
+Billing Orchestrator does not introduce it.
 
 There is also **no `GET /v1/ops/reconciliation-alerts` HTTP endpoint**: billing reconciliation
 alerts are read and acknowledged directly against D1 (`wrangler d1` / Cloudflare dashboard),
@@ -1793,14 +1940,15 @@ Named *billing* reconciliation to distinguish it from the platform's usage-side
 after-the-fact control for collusion and insider tampering (proposal §3.3, §8):
 
 1. **Payment → entitlement:** every ABO order in `paid`/`provisioned`/`past_due` has a
-  platform entitlement whose `order_id` matches and whose status is coherent (queried per
+  platform entitlement whose `order_id` matches and whose status is coherent per the §6.7
+   coherence matrix (queried per
    installation through `quota-inspect` with the orchestrator CAT — a read the orchestrator is
    already scoped for). Drift → `reconciliation_alert (payment_without_entitlement)`.
 2. **Entitlement → payment:** the reverse direction needs a platform-side list the control
   plane does not currently expose. Rather than add a list endpoint, the platform's
    `control_audit` is the source: the job pages `support-lookup`-style audit reads (orchestrator
    scope) for `entitle`/`renew`/`override` actions and confirms each carries an `order_id` that
-   exists and is coherent in the AI Billing Orchestrator. Drift → `entitlement_without_payment`. If audit paging
+   exists and is coherent per the §6.7 matrix in the AI Billing Orchestrator. Drift → `entitlement_without_payment`. If audit paging
    proves insufficient at volume, a dedicated `GET /control/v1/entitlements` audit read is the
    named extension point — deferred until needed, per the constitution's simplicity rule.
 3. **Provider payouts:** `list_settlements` vs `webhook_events`/`orders` — every payout traces
@@ -1809,7 +1957,8 @@ after-the-fact control for collusion and insider tampering (proposal §3.3, §8)
    `payout_mismatch`.
 
 Every run and every alert is a structured log line; alerts persist in
-`reconciliation_alert` until acknowledged via the ops endpoint.
+`reconciliation_alert` until acknowledged directly against D1 (`wrangler d1` / Cloudflare
+dashboard — there is deliberately no alerts HTTP endpoint, §11.2).
 
 ## 12. Security traceability
 
@@ -1820,14 +1969,14 @@ Every attack row in proposal §8, traced to the concrete mechanism in this desig
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Self-enroll keypair from the app              | Enroll now requires a Purchase Proof (§8.2) in addition to CAT; without payment there is no purchase proof. Guard still fails closed: `401 unauthenticated` without enroll, `403 ai_disabled` without entitle                                     |
 | Forge payment webhook                         | HMAC-SHA512 verification with timing-safe compare + `webhook_events` idempotency as the authoritative replay guard (§5.5)                                                                                                                         |
-| Call `/control/v1/*` directly                    | CAT requires a `control_operator` private key — server-side only, never shipped (§5.6); break-glass bearer has no grant scope (§8.1)                                                                                                              |
+| Call `/control/v1/*` directly                    | CAT requires a `control_operator` private key — server-side only, never shipped (§5.6); there is no bearer fallback — the shared bearer is removed entirely (§8.1)                                                                              |
 | Orchestrator fully compromised                | Holds no purchase proof signing key → cannot grant (§2.1 key separation). Worst case: `entitlement-suspend` DoS — revocable via `control_operator.revoked_at` (§3.4), audited (`control_audit` with real `operator_id`), rate-limited at the edge |
 | Billing fully compromised                     | Holds no CAT key → cannot write to the platform (§2.1). Forged purchase proofs need the purchase proof signing key, which lives in a different secret store from the CAT key                                                                      |
 | Replay one payment for many clinics           | `entitlement.order_id` UNIQUE + `purchase_proof` table single-use + order bound to one installation by PoP (§4.2, §5.2, §5.7)                                                                                                                     |
 | Redirect a paid order to another installation | Purchase proof binds `installation_id` + key material minted at order creation; enroll validates body against claims (§5.7)                                                                                                                       |
-| Rogue human operator                          | Personal keys with scoped `allowed_actions`; break-glass bearer cannot grant; every action attributed in `control_audit` (§8.1). The AI Billing Orchestrator's ops surface uses the same pattern from day one — per-operator keys (`ops_operator`), comp orders attributed via `comp_operator_id`, no shared ops bearer (§11.2) |
+| Rogue human operator                          | Personal CAT keys with scoped `allowed_actions` — a suspend-scoped human key can stop abuse but can never grant; every action attributed in `control_audit` (§8.1). Operator key loss is recovered at the D1 level: a new `control_operator` row inserted via `wrangler d1` under Cloudflare account IAM (§13 item 3). The AI Billing Orchestrator's ops surface uses the same pattern from day one — per-operator keys (`ops_operator`), comp orders attributed via `comp_operator_id`, no shared ops bearer (§11.2) |
 | Flip `ai.availability` in clinic DB           | Receipt-verified RPC is the only write path (old boolean RPC dropped, §9.2); even a flipped flag yields no AI access — the guard re-checks entitlement per request                                                                                |
-| Insider tampers with platform D1              | Billing reconciliation (§11.3) + `control_audit.order_id` on every grant + purchase proof table cross-check                                                                                                                                           |
+| Insider tampers with platform D1              | Billing reconciliation (§11.3) + `control_audit.order_id` on every grant + platform `purchase_proof` consumption-log cross-check (§4.2)                                                                                                               |
 
 
 **Residual risks (honest):** purchase-module + orchestrator-module key collusion (mitigated: separate secrets,
@@ -1842,7 +1991,8 @@ caught by billing reconciliation and the suspend is then manual.
 
 All seven items from proposal §12, decided:
 
-1. **Dunning/grace policy** — §6.3: 7-day renewal lead, 7-day grace with service continuing,
+1. **Dunning/grace policy** — §6.3: renewal lead and grace both equal to the catalogue's
+  `grace_days` (initially 7 days) with service continuing through grace,
   entitlement-suspend at grace end, 30-day payable tail, immediate suspend on
    refund/chargeback, in-app dunning surface only.
 2. **Enroll dedup** — tightened to `installation_id` only (§8.2). The `org_id` OR-clause is
@@ -1850,17 +2000,24 @@ All seven items from proposal §12, decided:
    cross-deployment collision risk), and with PoP-bound orders the installation id is the trust
    anchor. Disaster-recovery re-enrollment of the same clinic under a new installation id is
    thereby unblocked, which the old clause prevented.
-3. **Break-glass bearer** — kept, scoped to `suspend`/`resume`/`rotate`/`revoke-key`/`delete`/
-  `purge`/`kill-switch-*` (§8.1). Removing it entirely would make the orchestrator a single
-   point of failure for incident response; scoping it preserves "humans can stop abuse but can
-   never grant."
+3. **Break-glass bearer** — RESOLVED: **removed entirely** (§8.1). All `/control/v1/*` callers,
+  orchestrator and human, authenticate with personal CAT keys registered in `control_operator`;
+   humans with suspend-scoped keys can stop abuse but can never grant, so the "humans can stop
+   abuse but never grant" property holds without any shared credential. The residual concern —
+   the orchestrator as single point of failure for incident response — was never real: human
+   CAT keys cover every incident action, and the orchestrator is not on the human incident
+   path. The one genuine residual, auth-system failure (corrupted `control_operator` table or
+   all keys lost), is answered at the D1 level: an operator with Cloudflare account IAM inserts
+   a new `control_operator` row via `wrangler d1` — the same bootstrap mechanism the ABO uses
+   for `ops_operator` (§4.1.8).
 4. **Separate Cloudflare account** — not now. Single vendor operator; separate Worker, D1, and
   secrets already prevent cross-service credential access within the account. Revisit when a
    second engineer gains production access; the design has no account-local coupling, so the
    move is a redeploy, not a redesign.
 5. **Trust-root rotation** — designed in §3.3–§3.5: key-set verification with validity windows
   (purchase proof), table-backed rotation (CAT), clinic-side key set with self-healing refetch
-   (receipt).
+   (receipt); operationalized by the single rotation script/runbook and the ABO boot-time
+   self-check (§3.7).
 6. **Clinic private-key wrapping** — designed in §3.6 (pgsodium AEAD with a named managed key),
   scheduled in Band L (slice L6), honest about the live-`postgres` residual.
 7. **CAT** `jti` **replay store** — D1 table `control_cat_jti` (§4.2), insert-if-absent, cron purge.
@@ -1901,9 +2058,10 @@ All seven items from proposal §12, decided:
    the catalogue.
 10. **Receipt carries** `valid_until` **and the clinic flag self-expires** (§5.8, §9.2) — the
     proposal implied expiry ("receipts expire with the period") without a mechanism; this is
-    the mechanism, set to `period_end + grace` so the two enforcement paths agree.
+    the mechanism, set to `period_end + grace_days` from the plan catalogue so the two
+    enforcement paths agree by construction (§6.3).
 11. **The plan and pricing catalogue lives only on the platform** (platform amendment A17;
-    §4.1.7, §5.10) — the proposal's Flutter flows assume plan selection without defining where
+    §4.1.6, §5.10) — the proposal's Flutter flows assume plan selection without defining where
     the plan list or prices come from, and the first draft of this document answered with an
     ABO-side `plan_price` table, a second catalogue that could drift from the platform's. There
     is now one catalogue (platform `plan`, with price and display copy), one public read
@@ -1919,7 +2077,7 @@ All seven items from proposal §12, decided:
     control-plane family (platform `/control/v1/*` and all ABO endpoints), the taxonomy envelope
     reserved for the clinic-facing `/v1/*` data path. The proposal was silent; the first draft
     of this document invented a third style by accident.
-14. **No shared ops bearer on the AI Billing Orchestrator** (§4.1.9, §11.2) — the proposal's
+14. **No shared ops bearer on the AI Billing Orchestrator** (§4.1.8, §11.2) — the proposal's
     "operator keys — done now, not later" principle is applied to the orchestrator's own ops
     surface: `POST /v1/ops/comp-orders` takes per-operator Ed25519 keys (`ops_operator` +
     CAT-structured tokens via the shared package) with `comp_operator_id` attribution, and a
@@ -1942,7 +2100,8 @@ pinning the seam (§7.1). No custom backend is added to the *clinic's* primary a
 RPC-enforced under deny-all RLS; the platform's grant path is constraint-enforced (UNIQUE
 indexes, batch-atomic purchase proof consumption).
 - **IV. Secure, human-gated operations** — every grant is two-signature gated and audited with
-real operator identity and order id; break-glass retains human incident response.
+real operator identity and order id; human incident response runs on personal scoped CAT keys,
+with D1-level recovery under Cloudflare account IAM (§8.1, §13 item 3).
 - **V. Operational continuity** — nothing hard-locks: grace period before any suspension, AI
 is an add-on whose loss never blocks clinical workflows, the clinic flag fails closed but the
 app remains fully usable, and reactivation is self-service.

@@ -593,15 +593,25 @@ what the platform signs.
    target, and a SHA-256 hash of the request body — ABO §5.6). The `OperatorAuth` port is the
    injection point, wired once in `worker.ts`; its `resolve` becomes asynchronous and gains the
    action argument. `control_audit.operator_id` becomes the CAT `iss` — real per-caller
-   attribution. The legacy `OPERATOR_BEARER_TOKEN` is demoted to break-glass scope
-   (`suspend`/`resume`/`rotate`/`revoke-key`/`delete`/`purge`/`kill-switch-*`): **humans can
-   stop abuse but can never grant service.**
+   attribution. The legacy `OPERATOR_BEARER_TOKEN` is **removed entirely, not demoted**: the
+   bearer factory and its action set are deleted, exactly one `OperatorAuth` factory (CAT)
+   remains, and every `/control/*` caller — orchestrator or human — authenticates with a
+   personal CAT key registered in `control_operator`. A shared, unattributed credential is
+   the exact anti-pattern per-operator keys exist to eliminate; scoped `allowed_actions`
+   preserve the property that **humans can stop abuse but can never grant service**. The one
+   residual the bearer covered — auth-system failure (all operator keys lost, or a corrupted
+   `control_operator` table) — is answered at the D1 level: an operator with Cloudflare
+   account IAM inserts a new `control_operator` row directly via `wrangler d1` (ABO §8.1).
+   No standing credential exists to leak; the operator runbook gains this D1-recovery
+   procedure.
 2. **Grants require a Purchase Proof.** `enroll`, `entitle`, the new `renew`, and
    `override` each require a valid purchase proof signed by the vendor AI Billing Orchestrator (Ed25519
    JWS; claims bind `order_id`, `installation_id`, clinic key material, plan, and period —
    ABO §5.7). Key material, plan, and quotas are taken from or validated against the
    purchase proof, never trusted from the caller; the plan name still resolves through the A15/G1
-   catalogue, and G1's one-mutation assignment logic is reused as-is. Purchase proofs are
+   catalogue — enroll/entitle plan validation resolves against the catalogue's
+   `status = 'active'` rows, replacing the earlier hardcoded known-tier check — and G1's
+   one-mutation assignment logic is reused as-is. Purchase proofs are
    single-use: a `purchase_proof` table is inserted in the same D1 batch as the grant, so a
    replay rolls the grant back. `entitlement` gains `order_id` (UNIQUE — one payment entitles
    one installation) and `purchase_proof_id`; `control_audit` gains `order_id`, so every
@@ -621,7 +631,11 @@ what the platform signs.
 5. **The platform signs Provisioning Receipts.** A new platform receipt key (the Worker's first
    production signing key) signs short-lived receipts; `GET /v1/installation/status` —
    AAT-authenticated through the existing `EnrolledKeyVerifier` pattern — returns one when the
-   installation and entitlement are both active (ABO §5.8, §5.9). Clinics verify receipts
+   installation and entitlement are both active (ABO §5.8, §5.9). The receipt claim set carries
+   `iss`, `aud` (the installation id), a 15-minute `exp`, `status`, `plan` (display only),
+   `period_end`, `valid_until` (the clinic-side self-expiry instant — `period_end + grace_days`
+   per A17), and `platform_base_url`, the Worker's origin, which the clinic stores and calls —
+   self-healing distribution of the platform origin to clinics. Clinics verify receipts
    against a clinic-side key set seeded from `GET /v1/platform-keys`; rotation is `kid`-based
    with validity windows (ABO §3.5). Receipts activate the clinic UI flag only — the guard
    remains the enforcement point.
@@ -652,17 +666,26 @@ store — is unacceptable. This amendment consolidates to **one catalogue and on
 
 1. **The `plan` catalogue is the only catalogue and the only price list.** It gains the
    subscription price (`price_cents`, `currency`) and display copy (`display_name`,
-   `description`). Prices are configuration, not money movement: A15's collection boundary is
+   `description`), plus `grace_days` (initial value 7) — the single source for the
+   dunning/grace timeline, consumed by the AI Billing Orchestrator's order clock from the
+   catalogue fetch it already makes and by receipt minting
+   (`valid_until = period_end + grace_days`, A16 item 5), and served by `GET /v1/plans`.
+   Prices are configuration, not money movement: A15's collection boundary is
    untouched (collection lives in the AI Billing Orchestrator; no provider integration, no money in the
    request path), and the platform already held a price list under A15.
 2. **`credit_price` is removed before Band G completes.** Per-credit invoicing contradicts the
    subscription model: the clinic pays the plan price per period, never a metered credit total.
    The in-flight G-band code (`plan_catalogue` migration, `period-close`) is amended now rather
-   than finished-then-refactored.
+   than finished-then-refactored. `specs/059-billing-period-close` (FR-023..FR-025, `credit_price`
+   versioning) is superseded by this amendment and must be rewritten to paid-amount pricing when
+   Band G completes.
 3. **The invoice prices from what was paid, not from a catalogue lookup.** The purchase proof
    carries billing-signed `amount_cents`/`currency` claims (ABO §5.7); the platform stores them
-   on the `purchase_proof` row at consumption, and period close (G4) writes the invoice from
-   that amount with credits consumed recorded as usage evidence. Price changes therefore need no
+   as `amount_cents`/`currency` columns on the `purchase_proof` row at consumption — this pins
+   the DDL — and period close (G4) writes the invoice from
+   that amount with credits consumed recorded as usage evidence. The `invoice` row gains
+   `purchase_proof_id` (or `order_id`), so the chain invoice → proof → order is navigable in
+   data. Price changes therefore need no
    versioning on the platform: the catalogue holds the *current* sell price; the invoice records
    the *paid* price. A period with no paid grant closes with no invoice.
 4. **The catalogue is served at `GET /v1/plans`** — unauthenticated, cacheable
@@ -688,8 +711,8 @@ never reads prices.
 | A5–A13 | Human acceptance, cost ceilings, idempotency, kill switches, evals, retention, degraded mode, versioning, request reference | Added          | throughout                    |
 | A14    | Interaction mode on the manifest; the chat surface is a declared capability with bounded context negotiation                | Added          | §5.1, §6.7, §8.10, §9.19      |
 | A15    | Commercial surface: monthly credit-denominated quota with declared per-capability prices, a small plan catalogue, no overage, platform-issued invoices, gauge usage surface | Added          | §4.3.3, §4.5, §5.1, §7.3, §12.3, §15 |
-| A16    | Control-plane caller identity (CAT, `control_operator`), purchase-proof-gated grants (`enroll`/`entitle`/`renew`/`override`), entitlement `suspended` status, platform-signed provisioning receipts | Added          | §4.5, §7.3, §8.1, §12.5 |
-| A17    | Single plan and pricing catalogue: `plan` gains the subscription price and display copy, `credit_price` withdrawn, invoices priced from the paid amount, catalogue served at `GET /v1/plans` | Changed        | §2.6, §7.3, §7.6        |
+| A16    | Control-plane caller identity (CAT, `control_operator`; shared bearer **removed**, D1-level recovery), purchase-proof-gated grants (`enroll`/`entitle`/`renew`/`override`), entitlement `suspended` status, platform-signed provisioning receipts | Added          | §4.5, §7.3, §8.1, §12.5, §13.4 |
+| A17    | Single plan and pricing catalogue: `plan` gains the subscription price, display copy, and `grace_days`, `credit_price` withdrawn, invoices priced from the paid amount and linked to the purchase proof, catalogue served at `GET /v1/plans` | Changed        | §2.6, §7.3, §7.6        |
 | —      | Retire local-Ollama AI service assumption                                                                                   | Removed        | `03-deployment-networking.md` |
 | —      | No PHI redaction                                                                                                            | Accepted as-is | §11 R-9                       |
 
@@ -1718,6 +1741,13 @@ Every control-plane mutation is journaled with the operator identity. Routing po
 changes are the highest-leverage actions in the entire system — an unaudited change to where requests
 go is indistinguishable from an attack.
 
+Operator identity is a personal CAT key registered in `control_operator` (A16,
+[§2.10](#210-amendment-a16-control-plane-caller-identity-purchase-proof-gated-grants-and-the-provisioning-receipt)) —
+there is no shared bearer credential at any scope. If every operator key is lost or the
+`control_operator` table is corrupted, recovery is at the D1 level: an operator with Cloudflare
+account IAM inserts a new `control_operator` row via `wrangler d1`. The operator runbook carries
+this D1-recovery procedure.
+
 ### 4.6 Responsibility matrix
 
 
@@ -2484,9 +2514,9 @@ schema definition.
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | --------------------------------------- |
 | `installation`     | An enrolled clinic deployment                                                                                                    | installation id, org id, display name, status, region, enrolled_at                                                                                                                                                                                                                                                                                                                                                                                                                                 | Tens–thousands of rows   | Life of customer                        |
 | `installation_key` | Verification material and rotation history                                                                                       | installation id, public key, algorithm, valid_from, valid_until, revoked_at                                                                                                                                                                                                                                                                                                                                                                                                                        | Few per installation     | History kept for audit                  |
-| `entitlement`      | What this installation may use and how much                                                                                      | installation id, plan, period bounds, request quota, token/cost budget, monthly credit budget (A15), allowed capability set, soft threshold, `max_cost_class`, status                                                                                                                                                                                                                                                                                                                                | One current + history    | History kept for billing disputes       |
-| `plan`             | The commercial catalogue: what a named plan includes (A15), its subscription price and display copy (A17) — the only pricing catalogue                              | plan name, monthly credit budget, request-count guard, `max_cost_class`, soft threshold, capability set, status, `price_cents`, `currency`, `display_name`, `description`                                                                                                                                                                                                                                                                                                                        | A handful of rows        | Full history                            |
-| `invoice`          | One issued invoice per installation per period (A15); the subscription charge document, priced from the paid amount recorded on the period's purchase proof (A17) | installation, period, plan, amount, currency, credits consumed (usage evidence), status, issued_at                                                                                                                                                                                                                                                                                                                                                                                               | One per installation per month | Long — billing evidence            |
+| `entitlement`      | What this installation may use and how much                                                                                      | installation id, plan, period bounds, request quota, token/cost budget, monthly credit budget (A15), allowed capability set, soft threshold, `max_cost_class`, status, `order_id` (UNIQUE) and `purchase_proof_id` — the grant's payment traceability (A16)                                                                                                                                                                                                                                                                                                                                | One current + history    | History kept for billing disputes       |
+| `plan`             | The commercial catalogue: what a named plan includes (A15), its subscription price and display copy (A17) — the only pricing catalogue; `grace_days` is the single source for the dunning/grace timeline on both sides (A17)                              | plan name, monthly credit budget, request-count guard, `max_cost_class`, soft threshold, capability set, status, `price_cents`, `currency`, `display_name`, `description`, `grace_days`                                                                                                                                                                                                                                                                                                                        | A handful of rows        | Full history                            |
+| `invoice`          | One issued invoice per installation per period (A15); the subscription charge document, priced from the paid amount recorded on the period's purchase proof (A17) | installation, period, plan, amount, currency, credits consumed (usage evidence), `purchase_proof_id` (or `order_id`) — invoice → proof → order is navigable in data (A17), status, issued_at                                                                                                                                                                                                                                                                                                                                                                                               | One per installation per month | Long — billing evidence            |
 | `capability_grant` | Which capability versions a plan or installation may use, **and** the current lifecycle of a capability version (scope `global`) | scope (`global` / `plan` / `installation`), capability id, version, granted/revoked, lifecycle state (`active` / `deprecated` / `retired`), successor id, deprecated_at, retire_after, changed_at, changed_by                                                                                                                                                                                                                                                                                      | Low                      | Full history                            |
 | `token_contract`   | The platform-global set of accepted AAT `ver` values                                                                             | accepted `ver` value, added_at, retired_at, changed_by — one row per `ver`; the accepted set is the rows with no `retired_at`                                                                                                                                                                                                                                                                                                                                                                      | A handful of rows ever   | Full history                            |
 | `kill_switch`      | Active kill-switch state for the four control-plane scopes (A8)                                                                  | scope (`global` / `capability` / `installation` / `provider`), target (literal `"global"` at global scope; otherwise the capability / installation / provider id), active, changed_at, changed_by — one current row per (`scope`, `target`); config-cache kind `kill_switches` with key `global` or `{scope}:{target}`                                                                                                                                                                              | Low                      | Full history                            |
@@ -2639,7 +2669,7 @@ expensive:
 | Resolve capability manifest         | Every request        | Bundled artifacts; config cache for grants and kill switches            | No D1 on the hot path                                                              |
 | Support lookup by request reference | Rare                 | D1, indexed on the reference, then one R2 envelope                      | Single indexed lookup — the reference exists to make this trivial                  |
 | Usage summary for a clinic          | Occasional           | Quota DO for live counters; `usage_rollup` for history                  | Live and historical answers deliberately come from different places                |
-| Plan catalogue (`GET /v1/plans`)    | Occasional — purchase/renewal UI, AI Billing Orchestrator order validation | Config cache; D1 on a cold isolate                      | Unauthenticated and cacheable (A17); prices are configuration, not secrets         |
+| Plan catalogue (`GET /v1/plans`)    | Occasional — purchase/renewal UI, AI Billing Orchestrator order validation | Config cache; D1 on a cold isolate                      | Unauthenticated and cacheable (A17); prices are configuration, not secrets; serves exactly `status = 'active'` rows, each with price and `grace_days` — pinned by contract test         |
 | Analytics and dashboards            | Continuous, internal | `ai_request` / `ai_attempt` / `usage_rollup` / `platform_counter` in D1 | Read-only, off the request path; acceptable because journal volume is clinic-scale |
 | Billing period close                | Monthly              | `usage_event` → `usage_rollup` via cron                                 | The ledger is the evidence; rollups are the convenience                            |
 
@@ -3863,6 +3893,7 @@ provider behaviour.
 | Configuration       | Prompts, manifests, and schemas are deployed artifacts; only genuinely volatile policy (kill switches, capability grants, routing policy version, token-contract accepted-`ver` set) is data in D1, read through the config cache |
 | D1 region           | Pinned to the region serving the clinics. This is what keeps a cold-isolate config read cheap and is the condition under which a distributed cache stays unnecessary ([§9.15](#915-workers-kv-as-a-hot-config-cache)) |
 | Secrets             | Provider keys and signing material in the platform secret store only. Never in config files, never journaled, never logged. Rotation without redeploy                                                                 |
+| Billing and receipt keys (A16/A17) | `BILLING_PURCHASE_PROOF_PUBLIC_KEYS` (**var** — JSON purchase-proof verification key set with `not_before`/`not_after` validity windows); `BILLING_ISSUER` (**var** — expected purchase-proof `iss`); `PLATFORM_RECEIPT_PRIVATE_KEY` (**secret** — PKCS#8 Ed25519, the Worker's first production signing key, used only by the status endpoint to mint receipts); `PLATFORM_RECEIPT_PUBLIC_KEYS` (**var** — backs `GET /v1/platform-keys`). There is no `OPERATOR_BEARER_TOKEN` — the shared bearer is removed, not demoted (A16) |
 | Promotion           | Contracts first: a capability or context-key change is reviewed as a contract change, deployed, then activated by cohort                                                                                              |
 | Migrations          | Forward-only, additive D1 migrations, versioned in the repository like the Supabase migrations already are                                                                                                            |
 
