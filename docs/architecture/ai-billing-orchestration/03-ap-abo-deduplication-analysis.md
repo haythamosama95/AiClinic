@@ -7,7 +7,7 @@ implemented ai-platform (AP, all bands except L) and the design-phase AI Billing
 Orchestrator (ABO); evaluate where deviating from (or amending) the constitution yields
 significant gain.
 **Sources:** `docs/architecture/ai-billing-orchestration/01-proposal.md`,
-`docs/architecture/ai-billing-orchestration/02-architecture.md`,
+`docs/architecture/ai-billing-orchestration/02-architecture-toc.md`,
 `ai-platform/` (code: migrations, `schema.snap.sql`, `wrangler.toml`, `src/`),
 `docs/architecture/ai-platform/01-ai-platform.md` (A15–A17),
 `.specify/memory/constitution.md` (v1.1.0).
@@ -222,10 +222,10 @@ limited to a shared "insert-if-absent + purge cron" helper.
 ### 3.8 F8 — `outbox` vs `grace_admission_queue`: same table-as-queue mechanism — **LOW**
 
 **Description.** AP `grace_admission_queue` (with its reconcile cron) and ABO `outbox`
-(with its sweeper cron) are the same mechanism: D1 row as durable job, atomic claim,
-bounded retries, cron sweeper. Different payloads, different triggers.
+(with its Cloudflare Queue delivery) are the same pattern: a D1 row as the durable job
+ledger with bounded retries. Different payloads, different delivery mechanisms.
 
-**Verdict: Keep both tables.** Extract a shared outbox-processor helper into a workspace
+**Verdict: Keep both tables.** Extract a shared outbox-ledger helper into a workspace
 package when L4/L5 land.
 
 ### 3.9 F9 — `order_id` / `purchase_proof_id` on AP `entitlement` — **LOW**
@@ -405,8 +405,8 @@ catalogue-cache storage mechanism (in-memory per isolate vs Cache API).
 
 The governing clause is the Operating Constraints amendment (`constitution.md:96-105`): a
 *single* vendor-side control service, no clinic business data, no write path into clinic
-Supabase, outbox + Cron Triggers (no queue infra), and "the AI platform stays additive and
-never learns about money."
+Supabase, outbox ledger + a managed Cloudflare Queue for delivery, and "the AI platform stays
+additive and never learns about money."
 
 ### 4.1 Candidate 1 — Merge ABO into the AP Worker
 
@@ -443,17 +443,17 @@ money" with *"never collects payments and holds no payment-provider integration;
 records paid amounts solely as billing-attested claims for invoicing."* Revisit full
 embrace only if the ABO's operational burden proves real in production.
 
-### 4.3 Candidate 3 — Replace outbox + cron with direct invocation or a queue
+### 4.3 Candidate 3 — Outbox delivery: queue vs direct invocation
 
-**Description.** The design already has the fast path: producers invoke the orchestrator
-immediately via `ctx.waitUntil` or inline `await`; the `* * * * *` cron is a *sweeper*,
-not the driver. Pure direct invocation would drop 1 table + 1 cron but make "money
-received always eventually provisions or alerts" unenforceable (dropped isolate = paid but
-never provisioned). A real queue adds constitutionally forbidden infrastructure at a
-volume of a few messages/day.
+**Description.** The outbox row is the durable ledger; delivery runs through a managed
+Cloudflare Queue (`outbox-events`, consumer = the ABO Worker, `outbox-dlq` dead-letter).
+Pure direct invocation was rejected: it would drop the table but make "money received
+always eventually provisions or alerts" unenforceable (dropped isolate = paid but never
+provisioned). The queue adds no operated infrastructure — Cloudflare manages the broker —
+and removes the hand-rolled retry/backoff/sweeper code at a volume of a few messages/day.
 
-**Verdict: Keep the constitution, no amendment.** The current design is the local optimum:
-event-driven latency with table durability for ~1 table + 1 cron.
+**Verdict: Adopt the queue.** Managed retries and dead-lettering beat a hand-rolled
+sweeper; the outbox table stays as the minting ledger and audit record.
 
 ### 4.4 Candidate 4 — Single shared D1 for billing + platform
 
@@ -530,7 +530,7 @@ path; D1 insider tampering bypasses it, and §11.3 is the sole after-the-fact co
 |---|---|---|---|---|
 | 1 | Merge ABO into AP Worker | Principle I / vendor amendment | −1 deployable, −1 trust hop; destroys two-key custody | **Keep constitution** |
 | 2 | AP learns about money | "never learns about money" | Wording: honesty. Full: −1 deployable, −4 tables, −1 job; kills two-signature rule | **Amend wording (PATCH); full embrace: not now** |
-| 3 | Queue or pure in-process handoff | "no queues" / outbox clause | Negative (durability loss) or unjustified infra | **Keep constitution** |
+| 3 | Queue or pure in-process handoff | "no queues" / outbox clause | Managed retries + DLQ, no sweeper code; pure in-process loses durability | **Adopt managed queue; keep outbox ledger** |
 | 4 | Shared D1 | None textual | −1 proof copy, simpler reconciliation; loses tamper evidence | **Keep design; no amendment** |
 | 5 | ABO minimal state | None | −1 table (`purchase_proofs`) | **Simplify design; no amendment** |
 | 6 | Remove break-glass bearer | None (Principle IV spirit) | −1 factory/secret/action-set; one identity mechanism | **Lean remove; needs more design** |
@@ -578,7 +578,7 @@ clinic-scale volume does not justify.
 
 ## 6. Appendix: Design-Doc Inconsistencies Found
 
-Issues in `02-architecture.md` itself, flagged for the design phase (not redundancies):
+Issues in `02-architecture-toc.md` itself, flagged for the design phase (not redundancies):
 
 1. **"Nine tables" (L522) vs eight enumerated** (§4.1.2–§4.1.9) — the ninth is never named.
 2. **`outbox.kind`** column table lists only `provision` (L750), but the text requires

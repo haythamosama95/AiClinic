@@ -581,7 +581,7 @@ future afternoon of work and a rewrite. No redaction is built now.
 **Why this amendment exists.** The deferral in [§12.5](#125-explicitly-not-to-be-built-yet) named
 its trigger verbatim: *"a verified sign-up flow with payment exists."* That flow now exists —
 `docs/architecture/ai-billing-orchestration/01-proposal.md` (agreed) and
-`docs/architecture/ai-billing-orchestration/02-architecture.md` (the buildable design, cited as
+`docs/architecture/ai-billing-orchestration/02-architecture-toc.md` (the buildable design, cited as
 **ABO** below). The changes below are the platform-side half of it. They are recorded here as a
 contract change because they alter who may call the control plane, what a grant requires, and
 what the platform signs.

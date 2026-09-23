@@ -67,7 +67,7 @@ AI Billing Orchestrator (`ai-billing-orchestrator`)
 │   ├─ order state machine — provider-agnostic
 │   └─ webhook endpoint   — provider signature verification, idempotent event table
 └─ orchestrator module    (CAT signing key)
-    ├─ consumes paid events via outbox table (in-process handoff; no queue infra)
+    ├─ consumes paid events as a Cloudflare Queue consumer (outbox rows are the ledger)
     └─ drives ai-platform /control/* (enroll → entitle / renew / suspend)
 ```
 
@@ -97,9 +97,10 @@ AI Billing Orchestrator (`ai-billing-orchestrator`)
 - **Never holds clinic credentials** — clinic activation is pull-based (§5).
 - Renewal payments produce a new purchase proof per period → `renew`.
 
-### 3.3 Scheduled work (Cron Triggers)
+### 3.3 Scheduled work (Cron Triggers + Queue)
 
-- Renewal checks, outbox retries.
+- Renewal checks (cron); outbox delivery via a Cloudflare Queue with managed retries and a
+  dead-letter queue.
 - **Reconciliation job:** provider payouts vs active entitlements; drift = alert
   (catches collusion and insider D1 tampering after the fact).
 
@@ -243,8 +244,9 @@ Five findings that shape the work:
 ## 10. Required amendments
 
 - **Constitution** (`.specify/memory/constitution.md`): new clause permitting a single
-  vendor-side control service (the AI Billing Orchestrator). Outbox table + Cron Triggers (not a
-  queue system) keeps the "no queues" rule intact. Supabase still owns clinic domain
+  vendor-side control service (the AI Billing Orchestrator). The outbox table is the ledger and
+  a single managed Cloudflare Queue handles delivery/retries — no broker infrastructure to
+  operate. Supabase still owns clinic domain
   integrity; the ai-platform stays additive and never learns about money.
 - **`01-ai-platform.md`:** §8.1 (enrollment trust bootstrap), §12.5 (move self-service
   enrollment from "not yet" to designed, citing the payment trigger), A15 (the payment

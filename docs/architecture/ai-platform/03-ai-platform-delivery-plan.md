@@ -573,7 +573,7 @@ V4 adds what Band G and stage X need.
 **Band L is superseded.** The AI Billing Orchestrator introduction is now sliced by
 `docs/architecture/ai-billing-orchestration/04-abo-delivery-plan.md` (bands M–U), which replaces
 L1–L8 entirely. Band L was written before the ABO architecture
-(`docs/architecture/ai-billing-orchestration/02-architecture.md`) stabilized; the design revisions
+(`docs/architecture/ai-billing-orchestration/02-architecture-toc.md`) stabilized; the design revisions
 of 2026-09-13 changed the band's foundations, so the work was re-planned against the stabilized
 design rather than patched onto the old slices. The four largest deltas:
 
