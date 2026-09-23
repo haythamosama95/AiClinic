@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -396,5 +395,113 @@ describe("schema_snapshot_matches", () => {
 
     const actualDdl = await dumpCreateTableDdl();
     expect(actualDdl.trim()).toBe(expectedDdl.trim());
+  });
+});
+
+describe("m1_migration_applies_empty_database_snapshot_pinned", () => {
+  it("applies cleanly to an empty database and pins plan.grace_days DEFAULT 7 without credit_price", async () => {
+    const { stderr } = await applyMigrations();
+    expect(stderr).not.toMatch(/error/i);
+
+    const expectedDdl = await readFile(SCHEMA_SNAPSHOT_PATH, "utf8");
+    expect(expectedDdl).toMatch(
+      /CREATE TABLE\s+plan\b[\s\S]*?\bgrace_days\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+7\b/i,
+    );
+    expect(expectedDdl).not.toMatch(/CREATE TABLE\s+credit_price\b/i);
+
+    const actualDdl = await dumpCreateTableDdl();
+    expect(actualDdl.trim()).toBe(expectedDdl.trim());
+  });
+});
+
+/** M1 forward-only migration — parked during pre-A17 seed so apply can run over existing rows. */
+const M1_MIGRATION_FILE = "20260923120000_catalogue_grace_days.sql";
+const MIGRATIONS_DIR = path.join(ROOT, "migrations");
+
+/**
+ * Apply every migration except the M1 file (when present), so the pre-A17 catalogue
+ * can be seeded before the M1 forward-only migration runs.
+ */
+async function applyMigrationsBeforeM1(): Promise<{
+  stdout: string;
+  stderr: string;
+}> {
+  const m1Path = path.join(MIGRATIONS_DIR, M1_MIGRATION_FILE);
+  const parkedPath = path.join(persistDir, M1_MIGRATION_FILE);
+  let parked = false;
+  try {
+    try {
+      await rename(m1Path, parkedPath);
+      parked = true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        throw error;
+      }
+    }
+    return await applyMigrations();
+  } finally {
+    if (parked) {
+      await rename(parkedPath, m1Path);
+    }
+  }
+}
+
+describe("m1_migration_applies_over_existing_catalogue", () => {
+  it("applies cleanly over seeded plan + credit_price; preserves plans with grace_days default; drops credit_price; no down migration", async () => {
+    const { stderr: preStderr } = await applyMigrationsBeforeM1();
+    expect(preStderr).not.toMatch(/error/i);
+
+    await query(
+      `INSERT INTO plan (
+        name, credit_budget, request_quota, max_cost_class,
+        soft_threshold, allowed_capabilities, status
+      ) VALUES (
+        'standard', 1000, 500, 'standard',
+        0.8, '["cap.a"]', 'active'
+      )`,
+    );
+    await query(
+      `INSERT INTO credit_price (
+        version, price_per_credit, currency, active_from, activated_by
+      ) VALUES (
+        'v2026-07', 0.01, 'USD', '2026-07-01T00:00:00.000Z', 'operator-seed'
+      )`,
+    );
+
+    const { stderr } = await applyMigrations();
+    expect(stderr).not.toMatch(/error/i);
+
+    const tables = await tableNames();
+    expect(tables.has("credit_price")).toBe(false);
+
+    const planColumns = await tableColumnNames("plan");
+    expect(planColumns.has("grace_days")).toBe(true);
+
+    const plans = await query<{
+      name: string;
+      credit_budget: number;
+      grace_days: number;
+    }>("SELECT name, credit_budget, grace_days FROM plan WHERE name = 'standard'");
+    expect(plans).toHaveLength(1);
+    expect(plans[0]?.name).toBe("standard");
+    expect(plans[0]?.credit_budget).toBe(1000);
+    expect(plans[0]?.grace_days).toBe(7);
+
+    const expectedDdl = await readFile(SCHEMA_SNAPSHOT_PATH, "utf8");
+    expect(expectedDdl).toMatch(
+      /CREATE TABLE\s+plan\b[\s\S]*?\bgrace_days\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+7\b/i,
+    );
+    expect(expectedDdl).not.toMatch(/CREATE TABLE\s+credit_price\b/i);
+
+    const actualDdl = await dumpCreateTableDdl();
+    expect(actualDdl.trim()).toBe(expectedDdl.trim());
+
+    const migrationFiles = await readdir(MIGRATIONS_DIR);
+    expect(
+      migrationFiles.some((name) =>
+        /catalogue_grace_days.*\.down\.sql$/i.test(name),
+      ),
+    ).toBe(false);
   });
 });

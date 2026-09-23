@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import invoiceMigrationSql from "../migrations/20260911200000_invoice.sql?raw";
 import {
   ConfigCache,
   createD1ConfigReader,
@@ -11,6 +12,27 @@ import {
 } from "../src/config-cache";
 import type { ReaderSpy } from "./config-cache.test";
 import { assertControlAudit } from "./helpers/control-audit-assert";
+
+/** Workers pool has no host `readdirSync`; Vite glob is the src/ walk (cohort pattern). */
+const SRC_TS_MODULES = import.meta.glob("../src/**/*.ts", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
+
+const CREDIT_PRICE_SRC_NEEDLES = [
+  "credit_price",
+  "CreditPriceActivatePayload",
+  "credit-price",
+] as const;
+
+function normalizeSrcModulePath(modulePath: string): string {
+  return modulePath.replace(/\\/g, "/");
+}
+
+function isCreditPriceModulePath(modulePath: string): boolean {
+  return normalizeSrcModulePath(modulePath).endsWith("/control/credit-price.ts");
+}
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -864,5 +886,480 @@ describe("config_cache_entitlement_warm_zero_io", () => {
 
     expect(reader.readCount()).toBe(0);
     expect(row.credit_budget).toBe(10_000);
+  });
+});
+
+describe("m1_no_credit_price_reference_in_src", () => {
+  it("finds zero credit_price / CreditPriceActivatePayload / credit-price refs and no credit-price module", () => {
+    const creditPriceModule = Object.keys(SRC_TS_MODULES).find(isCreditPriceModulePath);
+    expect(creditPriceModule).toBeUndefined();
+
+    const offenders: string[] = [];
+    for (const [modulePath, source] of Object.entries(SRC_TS_MODULES)) {
+      const rel = normalizeSrcModulePath(modulePath).replace(/^\.\.\/src\//, "");
+      for (const needle of CREDIT_PRICE_SRC_NEEDLES) {
+        if (source.includes(needle)) {
+          offenders.push(`${rel}: ${needle}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+type PlanA17Fields = {
+  price_cents: number;
+  currency: string;
+  display_name: string;
+  description: string;
+  grace_days?: number;
+};
+
+type PlanPayloadWithA17 = PlanPayload & PlanA17Fields;
+
+const A17_CREATE_FIELDS: PlanA17Fields = {
+  price_cents: 150_000,
+  currency: "EGP",
+  display_name: "Professional",
+  description: "Full clinic AI suite",
+  grace_days: 14,
+};
+
+async function selectPlanA17Row(name: string = FIXTURE_PLAN_NAME): Promise<{
+  name: string;
+  credit_budget: number;
+  request_quota: number;
+  max_cost_class: string;
+  soft_threshold: number;
+  allowed_capabilities: string;
+  status: string;
+  price_cents: number;
+  currency: string;
+  display_name: string;
+  description: string;
+  grace_days: number;
+} | null> {
+  return env.DB.prepare(
+    `SELECT name, credit_budget, request_quota, max_cost_class, soft_threshold,
+            allowed_capabilities, status,
+            price_cents, currency, display_name, description, grace_days
+     FROM plan WHERE name = ?`,
+  )
+    .bind(name)
+    .first();
+}
+
+describe("m1_plan_crud_a17_fields_round_trip_audited", () => {
+  it("round-trips A17 fields with audit, defaults, validation, and economics-unchanged update", async () => {
+    const handlers = await loadPlanCatalogueHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    const fullCreate: PlanPayloadWithA17 = {
+      ...DEFAULT_PLAN_PAYLOAD,
+      ...A17_CREATE_FIELDS,
+    };
+
+    const createResponse = await handlers.handlePlanCreate(
+      buildPlanCreateRequest(fullCreate as PlanPayload),
+      bindings(),
+      operatorAuth,
+    );
+    expect(createResponse.ok).toBe(true);
+
+    const created = await selectPlanA17Row();
+    expect(created).toMatchObject({
+      name: FIXTURE_PLAN_NAME,
+      price_cents: A17_CREATE_FIELDS.price_cents,
+      currency: A17_CREATE_FIELDS.currency,
+      display_name: A17_CREATE_FIELDS.display_name,
+      description: A17_CREATE_FIELDS.description,
+      grace_days: A17_CREATE_FIELDS.grace_days,
+      credit_budget: DEFAULT_PLAN_PAYLOAD.credit_budget,
+      request_quota: DEFAULT_PLAN_PAYLOAD.request_quota,
+      max_cost_class: DEFAULT_PLAN_PAYLOAD.max_cost_class,
+      soft_threshold: DEFAULT_PLAN_PAYLOAD.soft_threshold,
+      status: DEFAULT_PLAN_PAYLOAD.status,
+    });
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR.operatorId,
+      action: "plan_create",
+      target: FIXTURE_PLAN_NAME,
+    });
+
+    await clearCatalogueTables();
+
+    const omitGracePayload = {
+      ...DEFAULT_PLAN_PAYLOAD,
+      name: "omit-grace",
+      price_cents: 99_00,
+      currency: "USD",
+      display_name: "Omit Grace",
+      description: "defaults grace_days",
+    };
+    expect(
+      (
+        await handlers.handlePlanCreate(
+          buildPlanCreateRequest(omitGracePayload as PlanPayload),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    const omitGraceRow = await selectPlanA17Row("omit-grace");
+    expect(omitGraceRow?.grace_days).toBe(7);
+
+    await clearCatalogueTables();
+
+    const zeroGracePayload: PlanPayloadWithA17 = {
+      ...DEFAULT_PLAN_PAYLOAD,
+      name: "zero-grace",
+      price_cents: 50_00,
+      currency: "USD",
+      display_name: "Zero Grace",
+      description: "explicit zero",
+      grace_days: 0,
+    };
+    expect(
+      (
+        await handlers.handlePlanCreate(
+          buildPlanCreateRequest(zeroGracePayload as PlanPayload),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+    const zeroGraceRow = await selectPlanA17Row("zero-grace");
+    expect(zeroGraceRow?.grace_days).toBe(0);
+
+    await clearCatalogueTables();
+
+    const invalidCases: Array<{ label: string; payload: Record<string, unknown> }> = [
+      {
+        label: "negative grace_days",
+        payload: {
+          ...DEFAULT_PLAN_PAYLOAD,
+          ...A17_CREATE_FIELDS,
+          grace_days: -1,
+        },
+      },
+      {
+        label: "negative price_cents",
+        payload: {
+          ...DEFAULT_PLAN_PAYLOAD,
+          ...A17_CREATE_FIELDS,
+          price_cents: -1,
+        },
+      },
+      {
+        label: "non-integer price_cents",
+        payload: {
+          ...DEFAULT_PLAN_PAYLOAD,
+          ...A17_CREATE_FIELDS,
+          price_cents: 12.5,
+        },
+      },
+      {
+        label: "empty currency",
+        payload: {
+          ...DEFAULT_PLAN_PAYLOAD,
+          ...A17_CREATE_FIELDS,
+          currency: "",
+        },
+      },
+      {
+        label: "empty display_name",
+        payload: {
+          ...DEFAULT_PLAN_PAYLOAD,
+          ...A17_CREATE_FIELDS,
+          display_name: "",
+        },
+      },
+    ];
+
+    for (const invalid of invalidCases) {
+      const beforePlanCount = await countPlanRows();
+      const beforeAuditCount = await countControlAuditRows();
+
+      const response = await handlers.handlePlanCreate(
+        buildPlanCreateRequest(invalid.payload as unknown as PlanPayload),
+        bindings(),
+        operatorAuth,
+      );
+
+      expect(response.status, invalid.label).toBe(400);
+      expect(await response.json(), invalid.label).toEqual({
+        error: "invalid_payload",
+      });
+      expect(await countPlanRows(), `${invalid.label} plan rows`).toBe(
+        beforePlanCount,
+      );
+      expect(await countControlAuditRows(), `${invalid.label} audit rows`).toBe(
+        beforeAuditCount,
+      );
+    }
+
+    expect(
+      (
+        await handlers.handlePlanCreate(
+          buildPlanCreateRequest(fullCreate as PlanPayload),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const beforeEconomics = await selectPlanA17Row();
+    expect(beforeEconomics).not.toBeNull();
+    const beforeAuditCount = await countControlAuditRows();
+
+    const a17OnlyUpdate = {
+      price_cents: 200_000,
+      currency: "USD",
+      display_name: "Pro Plus",
+      description: "Updated copy",
+      grace_days: 10,
+    };
+    const updateResponse = await handlers.handlePlanUpdate(
+      buildPlanUpdateRequest(FIXTURE_PLAN_NAME, a17OnlyUpdate as Partial<PlanPayload>),
+      bindings(),
+      operatorAuth,
+    );
+    expect(updateResponse.ok).toBe(true);
+
+    const afterUpdate = await selectPlanA17Row();
+    expect(afterUpdate).toMatchObject({
+      price_cents: a17OnlyUpdate.price_cents,
+      currency: a17OnlyUpdate.currency,
+      display_name: a17OnlyUpdate.display_name,
+      description: a17OnlyUpdate.description,
+      grace_days: a17OnlyUpdate.grace_days,
+      credit_budget: beforeEconomics!.credit_budget,
+      request_quota: beforeEconomics!.request_quota,
+      max_cost_class: beforeEconomics!.max_cost_class,
+      soft_threshold: beforeEconomics!.soft_threshold,
+      status: beforeEconomics!.status,
+    });
+    expect(JSON.parse(afterUpdate?.allowed_capabilities ?? "[]")).toEqual(
+      DEFAULT_PLAN_PAYLOAD.allowed_capabilities,
+    );
+    expect(await countControlAuditRows()).toBe(beforeAuditCount + 1);
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR.operatorId,
+      action: "plan_update",
+      target: FIXTURE_PLAN_NAME,
+    });
+  });
+});
+
+describe("m1_plan_crud_non_operator_rejected", () => {
+  it("rejects plan create, update, and delete without operator credentials", async () => {
+    const handlers = await loadPlanCatalogueHandlers();
+    const rejectAuth = createFakeOperatorAuth(null);
+
+    const mutations: Array<{
+      label: string;
+      invoke: () => Promise<Response>;
+    }> = [
+      {
+        label: "create",
+        invoke: () =>
+          handlers.handlePlanCreate(
+            buildPlanCreateRequest({
+              ...DEFAULT_PLAN_PAYLOAD,
+              ...A17_CREATE_FIELDS,
+            } as PlanPayload),
+            bindings(),
+            rejectAuth,
+          ),
+      },
+      {
+        label: "update",
+        invoke: () =>
+          handlers.handlePlanUpdate(
+            buildPlanUpdateRequest(FIXTURE_PLAN_NAME, {
+              price_cents: 1,
+              currency: "EGP",
+              display_name: "X",
+              description: "Y",
+              grace_days: 7,
+            } as Partial<PlanPayload>),
+            bindings(),
+            rejectAuth,
+          ),
+      },
+      {
+        label: "delete",
+        invoke: () =>
+          handlers.handlePlanDelete(
+            buildPlanDeleteRequest(FIXTURE_PLAN_NAME),
+            bindings(),
+            rejectAuth,
+          ),
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const beforePlanCount = await countPlanRows();
+      const beforeAuditCount = await countControlAuditRows();
+
+      const response = await mutation.invoke();
+
+      expect(response.status, `${mutation.label} status`).toBe(401);
+      expect(await response.json(), `${mutation.label} body`).toEqual({
+        error: "unauthorized",
+      });
+      expect(await countPlanRows(), `${mutation.label} plan rows`).toBe(
+        beforePlanCount,
+      );
+      expect(await countControlAuditRows(), `${mutation.label} audit rows`).toBe(
+        beforeAuditCount,
+      );
+    }
+  });
+});
+
+describe("m1_plan_delete_removes_row_and_audits", () => {
+  it("deletes the plan row with plan_delete audit even when entitlement/invoice reference the name", async () => {
+    const handlers = await loadPlanCatalogueHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+
+    await applyPlatformSchema(env.DB, invoiceMigrationSql);
+
+    expect(
+      (
+        await handlers.handlePlanCreate(
+          buildPlanCreateRequest({
+            ...DEFAULT_PLAN_PAYLOAD,
+            ...A17_CREATE_FIELDS,
+          } as PlanPayload),
+          bindings(),
+          operatorAuth,
+        )
+      ).ok,
+    ).toBe(true);
+
+    await env.DB.prepare(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (?, ?, 'Delete Ref Clinic', 'active', 'us-east-1', '2026-08-01T00:00:00.000Z')`,
+    )
+      .bind(FIXTURE_INSTALLATION_ID, FIXTURE_ORG_ID)
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO entitlement (
+        entitlement_id, installation_id, plan, period_start, period_end,
+        request_quota, token_budget, cost_budget, credit_budget, max_cost_class,
+        allowed_capabilities, soft_threshold, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        `ent-${FIXTURE_INSTALLATION_ID}`,
+        FIXTURE_INSTALLATION_ID,
+        FIXTURE_PLAN_NAME,
+        "2026-08-01T00:00:00.000Z",
+        "2026-09-01T00:00:00.000Z",
+        1_000,
+        500_000,
+        50,
+        DEFAULT_PLAN_PAYLOAD.credit_budget,
+        DEFAULT_PLAN_PAYLOAD.max_cost_class,
+        JSON.stringify([FIXTURE_CAPABILITY_ID]),
+        0.8,
+        "active",
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO invoice (
+        installation_id, period, credits_consumed, credit_price_version,
+        total, status, issued_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        FIXTURE_INSTALLATION_ID,
+        "2026-08",
+        100,
+        "v1",
+        10.5,
+        "issued",
+        "2026-09-01T00:00:00.000Z",
+      )
+      .run();
+
+    const entitlementBefore = await env.DB.prepare(
+      "SELECT plan FROM entitlement WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ plan: string }>();
+    expect(entitlementBefore?.plan).toBe(FIXTURE_PLAN_NAME);
+
+    const invoiceBefore = await env.DB.prepare(
+      "SELECT installation_id, period, status FROM invoice WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ installation_id: string; period: string; status: string }>();
+    expect(invoiceBefore).toMatchObject({
+      installation_id: FIXTURE_INSTALLATION_ID,
+      period: "2026-08",
+      status: "issued",
+    });
+
+    const beforeAuditCount = await countControlAuditRows();
+
+    const response = await handlers.handlePlanDelete(
+      buildPlanDeleteRequest(),
+      bindings(),
+      operatorAuth,
+    );
+    expect(response.ok).toBe(true);
+
+    const planAfter = await env.DB.prepare(
+      "SELECT name FROM plan WHERE name = ?",
+    )
+      .bind(FIXTURE_PLAN_NAME)
+      .first<{ name: string }>();
+    expect(planAfter).toBeNull();
+
+    expect(await countControlAuditRows()).toBe(beforeAuditCount + 1);
+    await assertControlAudit(env.DB, {
+      operatorId: FAKE_OPERATOR.operatorId,
+      action: "plan_delete",
+      target: FIXTURE_PLAN_NAME,
+    });
+
+    const entitlementAfter = await env.DB.prepare(
+      "SELECT plan FROM entitlement WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ plan: string }>();
+    expect(entitlementAfter?.plan).toBe(FIXTURE_PLAN_NAME);
+
+    const invoiceAfter = await env.DB.prepare(
+      "SELECT installation_id, period, status FROM invoice WHERE installation_id = ?",
+    )
+      .bind(FIXTURE_INSTALLATION_ID)
+      .first<{ installation_id: string; period: string; status: string }>();
+    expect(invoiceAfter).toEqual(invoiceBefore);
+
+    await env.DB.prepare("DELETE FROM invoice").run();
+  });
+});
+
+describe("m1_plan_delete_unknown_returns_404", () => {
+  it("returns 404 plan_not_found with no audit for an unknown plan name", async () => {
+    const handlers = await loadPlanCatalogueHandlers();
+    const operatorAuth = createFakeOperatorAuth();
+    const beforeAuditCount = await countControlAuditRows();
+
+    const response = await handlers.handlePlanDelete(
+      buildPlanDeleteRequest("does-not-exist"),
+      bindings(),
+      operatorAuth,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "plan_not_found" });
+    expect(await countControlAuditRows()).toBe(beforeAuditCount);
   });
 });

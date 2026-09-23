@@ -1,6 +1,6 @@
 /**
  * G4 — Price-list activation and invoice evidence (Workers integration).
- * Phase 2: written red before handleCreditPriceActivate, dispatch wiring, and close exist.
+ * M1 — credit-price activate withdrawn: assert route 404; no activate happy-path writes.
  */
 import { env, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,6 @@ import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_q
 import invoiceMigrationSql from "../migrations/20260911200000_invoice.sql?raw";
 import { runPeriodClose } from "../src/period-close";
 import * as pricing from "../src/pricing/index";
-import { assertControlAudit } from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -250,20 +249,6 @@ function buildCreditPriceActivateRequest(
   });
 }
 
-async function countCreditPriceRows(): Promise<number> {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM credit_price").first<{
-    count: number;
-  }>();
-  return row?.count ?? 0;
-}
-
-async function countControlAuditRows(): Promise<number> {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM control_audit").first<{
-    count: number;
-  }>();
-  return row?.count ?? 0;
-}
-
 async function fetchInvoice(
   installationId: string = FIXTURE_INSTALLATION,
   period: string = FIXTURE_PERIOD,
@@ -348,100 +333,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("price_list_activation_audited", () => {
-  it("writes credit_price and journals control_audit with operator identity", async () => {
-    const payload: CreditPriceActivatePayload = {
-      version: "v2026-09",
-      price_per_credit: 0.25,
-      currency: "USD",
-      active_from: "2026-09-01T00:00:00.000Z",
-    };
-
-    const response = await SELF.fetch(buildCreditPriceActivateRequest(payload));
-
-    expect(response.status).toBe(200);
-
-    const row = await env.DB.prepare(
-      `SELECT version, price_per_credit, currency, active_from, activated_by
-       FROM credit_price WHERE version = ?`,
-    )
-      .bind(payload.version)
-      .first<{
-        version: string;
-        price_per_credit: number;
-        currency: string;
-        active_from: string;
-        activated_by: string;
-      }>();
-
-    expect(row).toEqual({
-      version: payload.version,
-      price_per_credit: payload.price_per_credit,
-      currency: payload.currency,
-      active_from: payload.active_from,
-      activated_by: TEST_OPERATOR_ID,
-    });
-    expect(row?.activated_by).not.toBe(TEST_OPERATOR_BEARER);
-
-    await assertControlAudit(env.DB, {
-      operatorId: TEST_OPERATOR_ID,
-      action: "credit_price_activate",
-      target: payload.version,
-    });
-  });
-});
-
-describe("price_list_activation_non_operator_rejected", () => {
-  it("returns 401 unauthorized and writes no credit_price or control_audit row", async () => {
-    const beforeCreditPrice = await countCreditPriceRows();
-    const beforeAudit = await countControlAuditRows();
-
+describe("m1_credit_price_activate_returns_404", () => {
+  it("m1_credit_price_activate_returns_404", async () => {
+    // Route unregistered after M1 — no credit_price table read/write in this case.
     const response = await SELF.fetch(
-      buildCreditPriceActivateRequest(
-        {
-          version: "v2026-09-unauthorized",
-          price_per_credit: 0.25,
-          currency: "USD",
-          active_from: "2026-09-01T00:00:00.000Z",
-        },
-        "wrong-bearer-token",
-      ),
-    );
-
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "unauthorized" });
-    expect(await countCreditPriceRows()).toBe(beforeCreditPrice);
-    expect(await countControlAuditRows()).toBe(beforeAudit);
-  });
-});
-
-describe("price_list_activation_never_reprices_closed_period", () => {
-  it("leaves issued invoice version and total unchanged after a new activation", async () => {
-    await seedInstallation();
-    await seedEntitlement();
-    await seedUsageRollup({ quotaWeight: 40 });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
-
-    await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-    const closed = await fetchInvoice();
-    expect(closed).not.toBeNull();
-
-    const activateResponse = await SELF.fetch(
       buildCreditPriceActivateRequest({
         version: "v2026-09",
-        price_per_credit: 0.99,
+        price_per_credit: 0.25,
         currency: "USD",
         active_from: "2026-09-01T00:00:00.000Z",
       }),
     );
-    expect(activateResponse.status).toBe(200);
 
-    const afterActivation = await fetchInvoice();
-    expect(afterActivation).toEqual(closed);
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not Found");
   });
 });
 
@@ -521,7 +426,7 @@ describe("invoice_line_traces_to_request_references", () => {
 });
 
 describe("no_payment_provider_call", () => {
-  it("makes zero payment-provider fetch calls during close and activation", async () => {
+  it("makes zero payment-provider fetch calls during close", async () => {
     const paymentProviderCalls: string[] = [];
     const originalFetch = globalThis.fetch.bind(globalThis);
     vi.spyOn(globalThis, "fetch").mockImplementation(
@@ -544,16 +449,6 @@ describe("no_payment_provider_call", () => {
     });
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-
-    const activateResponse = await SELF.fetch(
-      buildCreditPriceActivateRequest({
-        version: "v2026-09",
-        price_per_credit: 0.15,
-        currency: "USD",
-        active_from: "2026-09-01T00:00:00.000Z",
-      }),
-    );
-    expect(activateResponse.status).toBe(200);
 
     expect(paymentProviderCalls).toEqual([]);
   });
