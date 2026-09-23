@@ -18,7 +18,7 @@ M1 executes AP-ARCH A17 items 1–2 (and A15 item 4 as updated by A17) inside th
 
 **Storage**: Platform D1 only. One forward-only migration after `20260911200000_invoice.sql` alters `plan` with the five A17 columns and `DROP TABLE credit_price`. Schema snapshot updated. No down migration. No FK from `entitlement.plan` / `invoice.plan` to `plan.name` (delete remains a catalogue operation). Config-cache kind `"plans"` stays; `SELECT *` already returns new columns — no cache kind rewrite.
 
-**Testing**: SQL / migration + integration (Delivery Plan §3.12.1 M1). Empty-DB and over-existing-catalogue migration applies, plus schema snapshot pin, in `ai-platform/test/migrations.test.ts` (A5/G1 harness). Workers integration (`npx vitest run --config vitest.workers.config.ts`) for credit-price grep/404, plan CRUD round-trip / validation / non-operator, and delete bug-fix — extending `test/plan-catalogue.test.ts` (same Miniflare + operator-auth pattern as G1). G4-era `test/price-list-activation.test.ts` and `test/period-close.test.ts` adjusted so they no longer require the withdrawn table/endpoint (do not implement M2 purchase-proof pricing). Suite joins CI permanently (§3.11). Band §3.2.1 matrix is `/abo-verify`, not this plan.
+**Testing**: SQL / migration + integration (Delivery Plan §3.12.1 M1). Empty-DB and over-existing-catalogue migration applies, plus schema snapshot pin, in `ai-platform/test/migrations.test.ts` (A5/G1 harness). Workers integration (`npx vitest run --config vitest.workers.config.ts`) for credit-price grep/404, plan CRUD round-trip / validation / non-operator, and delete bug-fix — extending `test/plan-catalogue.test.ts` (same Miniflare + operator-auth pattern as G1). G4-era `test/price-list-activation.test.ts` and `test/period-close.test.ts` adjusted so they no longer require the withdrawn table/endpoint (do not implement M2 purchase-proof pricing). G1-era asserts that pin the withdrawn artefacts are adjusted as withdrawal / delete-fix fallout: `test/migrations.test.ts` drops `credit_price` from `G1_CATALOGUE_TABLES` and retires the `CREATE TABLE credit_price` snapshot-presence expectation; `test/plan-catalogue.test.ts` applies the M1 migration in `beforeAll`, extends `DEFAULT_PLAN_PAYLOAD` with valid A17 fields (FR-011), and updates `plan_delete_audit` to assert row removal (FR-013). Frozen G1 contract files stay untouched (§2.3). Suite joins CI permanently (§3.11). Band §3.2.1 matrix is `/abo-verify`, not this plan.
 
 **Target Platform**: `ai-platform/` Cloudflare Worker (D1 + `/control`). No `ai-billing-orchestrator/`, `frontend/`, or `backend/`. Gateway remains additive, non-primary (AP-ARCH §14; constitution Operating Constraints).
 
@@ -28,7 +28,7 @@ M1 executes AP-ARCH A17 items 1–2 (and A15 item 4 as updated by A17) inside th
 
 **Constraints**:
 - Spec is authoritative; do not add files, endpoints, or behaviour the spec does not name.
-- Do not rewrite G1 frozen contracts (`specs/056-plan-catalogue/contracts/*`) or G1 economics columns — extend plan CRUD payloads and DDL only (Consumes G1; delivery plan §2.3). A17-authorized withdrawal of `credit_price` is the sole exception to "do not change Consumes."
+- Do not rewrite G1 frozen contracts (`specs/056-plan-catalogue/contracts/*`) or G1 economics columns — extend plan CRUD payloads and DDL only (Consumes G1; delivery plan §2.3). A17-authorized withdrawal of `credit_price` is the sole exception to "do not change Consumes." G1-era test asserts that pin the withdrawn `credit_price` or the audit-only delete are adjusted as part of that withdrawal and the delete fix (FR-002, FR-003, FR-011, FR-013) — test-suite fallout, not a frozen-contract rewrite.
 - Do not implement `GET /v1/plans`, period-close repricing, `purchase_proof` DDL, or invoice reshape (FR-017; M2 / P2).
 - Plan delete removes the `plan` row and writes `plan_delete` audit (fixes G-era audit-only delete). Unknown plan → `404` `plan_not_found`; no audit.
 - Invalid A17 payloads → `400` `invalid_payload`; no row; no audit. Omitted `grace_days` on create → schema default `7`; explicit `0` stored as `0`.
@@ -220,8 +220,9 @@ Expanded matrix: Delivery Plan §3.2.1 (M1-V1…M1-V14 and Band M e2e/x-e2e rows
 4. **Plan CRUD A17 fields** — extend `PlanPayload` + validators + INSERT/UPDATE; omit/`0`/`invalid_payload` / economics-unchanged cases (FR-009–FR-012, FR-016).
 5. **Plan delete fix** — `DELETE FROM plan` in the same batch as `plan_delete` audit; unknown 404; referenced-name delete (FR-013–FR-015).
 6. **Turn integration floor green** — including non-operator via B2 `requireOperator`.
-7. **Verification** — slice-only vitest commands from Test Layout; confirm `grep` over `ai-platform/src/` is clean for `credit_price` / `CreditPriceActivatePayload` / `credit-price`; confirm G1 contract files / entitle / enroll / config-cache kind untouched; confirm no `GET /v1/plans`.
-8. **Documentation** — write `quickstart.md` per sections above.
+7. **G1 suite fallout** — `migrations.test.ts`: drop `credit_price` from `G1_CATALOGUE_TABLES` and retire the snapshot-presence expectation (FR-002, FR-003). `plan-catalogue.test.ts`: apply the M1 migration in `beforeAll`; extend `DEFAULT_PLAN_PAYLOAD` with valid A17 fields (FR-011); update `plan_delete_audit` to assert row removal (FR-013).
+8. **Verification** — slice-only vitest commands from Test Layout; confirm `grep` over `ai-platform/src/` is clean for `credit_price` / `CreditPriceActivatePayload` / `credit-price`; confirm G1 contract files / entitle / enroll / config-cache kind untouched; confirm no `GET /v1/plans`.
+9. **Documentation** — write `quickstart.md` per sections above.
 
 ## Complexity Tracking
 

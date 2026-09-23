@@ -361,7 +361,7 @@ describe("T-A5-16 conversation_id_and_turn_ordinal_nullable", () => {
 });
 
 /** G1 catalogue entities — tables and entitlement columns the forward-only migration must add. */
-const G1_CATALOGUE_TABLES = ["plan", "credit_price"] as const;
+const G1_CATALOGUE_TABLES = ["plan"] as const;
 
 async function tableColumnNames(table: string): Promise<Set<string>> {
   const rows = await query<{ name: string }>(`PRAGMA table_info(${table})`);
@@ -389,7 +389,7 @@ describe("schema_snapshot_matches", () => {
 
     const expectedDdl = await readFile(SCHEMA_SNAPSHOT_PATH, "utf8");
     expect(expectedDdl).toMatch(/CREATE TABLE\s+plan\b/i);
-    expect(expectedDdl).toMatch(/CREATE TABLE\s+credit_price\b/i);
+    expect(expectedDdl).not.toMatch(/CREATE TABLE\s+credit_price\b/i);
     expect(expectedDdl).toMatch(/\bcredit_budget\b/i);
     expect(expectedDdl).toMatch(/\bmax_cost_class\b/i);
 

@@ -1,6 +1,7 @@
 /**
  * G4 — Billing period close (scheduled job).
- * Phase 2: written red before invoice migration, runPeriodClose, and cron wiring exist.
+ * M1 — credit_price fixtures withdrawn; period-close issues no invoices until M2
+ * (purchase-proof / paid-amount pricing). Do not assert G-era credits×price invoices.
  */
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +38,6 @@ type InvoiceRow = {
   installation_id: string;
   period: string;
   credits_consumed: number;
-  credit_price_version: string;
   total: number;
   status: string;
   issued_at: string;
@@ -139,28 +139,6 @@ async function seedUsageRollup(options: {
     .run();
 }
 
-async function seedCreditPrice(options: {
-  version: string;
-  pricePerCredit: number;
-  currency?: string;
-  activeFrom: string;
-  activatedBy?: string;
-}): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO credit_price (
-       version, price_per_credit, currency, active_from, activated_by
-     ) VALUES (?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      options.version,
-      options.pricePerCredit,
-      options.currency ?? "USD",
-      options.activeFrom,
-      options.activatedBy ?? "operator-seed",
-    )
-    .run();
-}
-
 async function fetchAllUsageRollup(): Promise<UsageRollupRow[]> {
   const result = await env.DB.prepare(
     `SELECT rollup_id, dimensions, request_count, tokens, cost, quota_weight
@@ -182,8 +160,7 @@ async function fetchInvoice(
   period: string = FIXTURE_PERIOD,
 ): Promise<InvoiceRow | null> {
   return env.DB.prepare(
-    `SELECT installation_id, period, credits_consumed, credit_price_version,
-            total, status, issued_at
+    `SELECT installation_id, period, credits_consumed, total, status, issued_at
      FROM invoice
      WHERE installation_id = ? AND period = ?`,
   )
@@ -194,7 +171,6 @@ async function fetchInvoice(
 async function clearPeriodCloseTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM invoice"),
-    env.DB.prepare("DELETE FROM credit_price"),
     env.DB.prepare("DELETE FROM usage_rollup"),
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM installation"),
@@ -213,38 +189,23 @@ beforeEach(async () => {
 });
 
 describe("close_one_invoice_per_active_installation", () => {
-  it("writes exactly one immutable invoice priced through the active credit price version", async () => {
+  it("issues no invoice until M2 owns paid-amount pricing (M1 interim no-op)", async () => {
     await seedInstallation(FIXTURE_INSTALLATION_1);
     await seedEntitlement(FIXTURE_INSTALLATION_1);
     await seedUsageRollup({
       installationId: FIXTURE_INSTALLATION_1,
       quotaWeight: 100,
     });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
 
-    expect(await countInvoices()).toBe(1);
-    const invoice = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    expect(invoice).toEqual({
-      installation_id: FIXTURE_INSTALLATION_1,
-      period: FIXTURE_PERIOD,
-      credits_consumed: 100,
-      credit_price_version: "v2026-07",
-      total: 10,
-      status: "issued",
-      issued_at: expect.any(String),
-    });
-    expect(invoice?.issued_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(await countInvoices()).toBe(0);
+    expect(await fetchInvoice(FIXTURE_INSTALLATION_1)).toBeNull();
   });
 });
 
 describe("close_one_invoice_each_of_two_active_installations", () => {
-  it("issues one invoice per active installation without combining installations", async () => {
+  it("issues no invoices for either installation until M2", async () => {
     await seedInstallation(FIXTURE_INSTALLATION_1);
     await seedInstallation(FIXTURE_INSTALLATION_2);
     await seedEntitlement(FIXTURE_INSTALLATION_1);
@@ -257,49 +218,31 @@ describe("close_one_invoice_each_of_two_active_installations", () => {
       installationId: FIXTURE_INSTALLATION_2,
       quotaWeight: 60,
     });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.25,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
 
-    expect(await countInvoices()).toBe(2);
-    const invoice1 = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    const invoice2 = await fetchInvoice(FIXTURE_INSTALLATION_2);
-    expect(invoice1?.installation_id).toBe(FIXTURE_INSTALLATION_1);
-    expect(invoice2?.installation_id).toBe(FIXTURE_INSTALLATION_2);
-    expect(invoice1?.credits_consumed).toBe(40);
-    expect(invoice2?.credits_consumed).toBe(60);
-    expect(invoice1?.total).toBe(10);
-    expect(invoice2?.total).toBe(15);
+    expect(await countInvoices()).toBe(0);
+    expect(await fetchInvoice(FIXTURE_INSTALLATION_1)).toBeNull();
+    expect(await fetchInvoice(FIXTURE_INSTALLATION_2)).toBeNull();
   });
 });
 
 describe("close_rerun_idempotent", () => {
-  it("does not insert a second invoice or mutate the issued row on re-run", async () => {
+  it("remains a no-op on re-run with no invoice rows", async () => {
     await seedInstallation(FIXTURE_INSTALLATION_1);
     await seedEntitlement(FIXTURE_INSTALLATION_1);
     await seedUsageRollup({
       installationId: FIXTURE_INSTALLATION_1,
       quotaWeight: 25,
     });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.2,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-    const first = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    expect(first).not.toBeNull();
+    expect(await countInvoices()).toBe(0);
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
 
-    expect(await countInvoices()).toBe(1);
-    const second = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    expect(second).toEqual(first);
+    expect(await countInvoices()).toBe(0);
+    expect(await fetchInvoice(FIXTURE_INSTALLATION_1)).toBeNull();
   });
 });
 
@@ -310,11 +253,6 @@ describe("close_zero_consumption_no_invoice", () => {
     await seedUsageRollup({
       installationId: FIXTURE_INSTALLATION_1,
       quotaWeight: 0,
-    });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-07-01T00:00:00.000Z",
     });
 
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
@@ -334,11 +272,6 @@ describe("close_freezes_usage_rollup_without_rewriting_rows", () => {
       installationId: FIXTURE_INSTALLATION_1,
       quotaWeight: 30,
     });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
 
     const before = await fetchAllUsageRollup();
     await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
@@ -346,87 +279,8 @@ describe("close_freezes_usage_rollup_without_rewriting_rows", () => {
 
     expect(after).toEqual(before);
     expect(runRollupSpy).not.toHaveBeenCalled();
+    expect(await countInvoices()).toBe(0);
 
     runRollupSpy.mockRestore();
-  });
-});
-
-describe("close_prices_through_latest_version_active_at_period_start", () => {
-  it("uses the latest credit_price whose active_from is at or before period start", async () => {
-    await seedInstallation(FIXTURE_INSTALLATION_1);
-    await seedEntitlement(FIXTURE_INSTALLATION_1);
-    await seedUsageRollup({
-      installationId: FIXTURE_INSTALLATION_1,
-      quotaWeight: 10,
-    });
-    await seedCreditPrice({
-      version: "v2026-06",
-      pricePerCredit: 0.05,
-      activeFrom: "2026-06-01T00:00:00.000Z",
-    });
-    await seedCreditPrice({
-      version: "v2026-07-mid",
-      pricePerCredit: 0.2,
-      activeFrom: "2026-07-15T00:00:00.000Z",
-    });
-    await seedCreditPrice({
-      version: "v2026-08-mid",
-      pricePerCredit: 0.99,
-      activeFrom: "2026-08-15T00:00:00.000Z",
-    });
-
-    await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-
-    const invoice = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    expect(invoice?.credit_price_version).toBe("v2026-07-mid");
-    expect(invoice?.total).toBe(2);
-  });
-});
-
-describe("mid_period_activation_does_not_apply_to_current_period", () => {
-  it("ignores credit_price versions activated inside the unclosed period", async () => {
-    await seedInstallation(FIXTURE_INSTALLATION_1);
-    await seedEntitlement(FIXTURE_INSTALLATION_1);
-    await seedUsageRollup({
-      installationId: FIXTURE_INSTALLATION_1,
-      quotaWeight: 20,
-    });
-    await seedCreditPrice({
-      version: "v2026-07",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-07-01T00:00:00.000Z",
-    });
-    await seedCreditPrice({
-      version: "v2026-08-mid",
-      pricePerCredit: 0.5,
-      activeFrom: "2026-08-20T00:00:00.000Z",
-    });
-
-    await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-
-    const invoice = await fetchInvoice(FIXTURE_INSTALLATION_1);
-    expect(invoice?.credit_price_version).toBe("v2026-07");
-    expect(invoice?.total).toBe(2);
-  });
-});
-
-describe("close_no_applicable_price_list_no_invoice", () => {
-  it("issues no invoice and invents no default price when no version applies at period start", async () => {
-    await seedInstallation(FIXTURE_INSTALLATION_1);
-    await seedEntitlement(FIXTURE_INSTALLATION_1);
-    await seedUsageRollup({
-      installationId: FIXTURE_INSTALLATION_1,
-      quotaWeight: 50,
-    });
-    await seedCreditPrice({
-      version: "v2026-09-future",
-      pricePerCredit: 0.1,
-      activeFrom: "2026-09-01T00:00:00.000Z",
-    });
-
-    await runPeriodClose({ db: env.DB, period: FIXTURE_PERIOD });
-
-    expect(await countInvoices()).toBe(0);
-    expect(await fetchInvoice(FIXTURE_INSTALLATION_1)).toBeNull();
   });
 });

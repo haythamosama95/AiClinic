@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import invoiceMigrationSql from "../migrations/20260911200000_invoice.sql?raw";
+import catalogueGraceDaysSql from "../migrations/20260923120000_catalogue_grace_days.sql?raw";
 import {
   ConfigCache,
   createD1ConfigReader,
@@ -178,6 +179,10 @@ const DEFAULT_PLAN_PAYLOAD: PlanPayload = {
   soft_threshold: 0.8,
   allowed_capabilities: [FIXTURE_CAPABILITY_ID],
   status: "active",
+  price_cents: 100_00,
+  currency: "EGP",
+  display_name: "Fixture Plan",
+  description: "G1 catalogue fixture",
 };
 
 const DEFAULT_ENTITLE_PAYLOAD: EntitlePayload = {
@@ -434,6 +439,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, uniqueEntitlementSql);
   await applyPlatformSchema(env.DB, planCatalogueSql);
+  await applyPlatformSchema(env.DB, catalogueGraceDaysSql);
 });
 
 beforeEach(async () => {
@@ -554,7 +560,7 @@ describe("plan_update_audit", () => {
 });
 
 describe("plan_delete_audit", () => {
-  it("journals plan_delete with operator identity and retains the plan row", async () => {
+  it("journals plan_delete with operator identity and removes the plan row", async () => {
     const handlers = await loadPlanCatalogueHandlers();
     const operatorAuth = createFakeOperatorAuth();
 
@@ -578,7 +584,13 @@ describe("plan_delete_audit", () => {
     );
     expect(response.ok).toBe(true);
 
-    expect(await countPlanRows()).toBe(beforePlanCount);
+    expect(await countPlanRows()).toBe(beforePlanCount - 1);
+    const planAfter = await env.DB.prepare(
+      "SELECT name FROM plan WHERE name = ?",
+    )
+      .bind(FIXTURE_PLAN_NAME)
+      .first<{ name: string }>();
+    expect(planAfter).toBeNull();
     expect(await countControlAuditRows()).toBe(beforeAuditCount + 1);
     await assertControlAudit(env.DB, {
       operatorId: FAKE_OPERATOR.operatorId,

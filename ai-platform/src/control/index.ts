@@ -14,7 +14,6 @@ export {
   handlePlanDelete,
   handlePlanUpdate,
 } from "./plan";
-export { handleCreditPriceActivate } from "./credit-price";
 export { handleDeprecate, handleRetire } from "./capability-lifecycle";
 export { handleCohortActivate, handleCohortPromote } from "./cohort";
 export {
@@ -72,7 +71,6 @@ import {
   handlePlanDelete,
   handlePlanUpdate,
 } from "./plan";
-import { handleCreditPriceActivate } from "./credit-price";
 import {
   handleTokenContractBeginRotation,
   handleTokenContractRetire,
@@ -84,7 +82,6 @@ import type { ControlBindings, OperatorAuth } from "./types";
 const PLAN_CREATE_PATTERN = /^\/control\/plans\/create$/;
 const PLAN_UPDATE_PATTERN = /^\/control\/plans\/[^/]+\/update$/;
 const PLAN_DELETE_PATTERN = /^\/control\/plans\/[^/]+\/delete$/;
-const CREDIT_PRICE_ACTIVATE_PATTERN = /^\/control\/credit-price\/activate$/;
 const OVERRIDE_PATTERN = /^\/control\/installations\/[^/]+\/override$/;
 
 const CONTROL_ACTION_PATTERN =
@@ -127,7 +124,6 @@ export function isControlRoute(pathname: string): boolean {
     PLAN_CREATE_PATTERN.test(pathname) ||
     PLAN_UPDATE_PATTERN.test(pathname) ||
     PLAN_DELETE_PATTERN.test(pathname) ||
-    CREDIT_PRICE_ACTIVATE_PATTERN.test(pathname) ||
     OVERRIDE_PATTERN.test(pathname)
   );
 }
@@ -223,10 +219,6 @@ export async function dispatchControlRequest(
 
   if (PLAN_DELETE_PATTERN.test(pathname)) {
     return handlePlanDelete(request, bindings, operatorAuth);
-  }
-
-  if (CREDIT_PRICE_ACTIVATE_PATTERN.test(pathname)) {
-    return handleCreditPriceActivate(request, bindings, operatorAuth);
   }
 
   if (OVERRIDE_PATTERN.test(pathname)) {

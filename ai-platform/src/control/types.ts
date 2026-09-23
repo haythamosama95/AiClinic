@@ -95,6 +95,11 @@ export type PlanPayload = {
   soft_threshold: number;
   allowed_capabilities: string[];
   status: string;
+  price_cents: number;
+  currency: string;
+  display_name: string;
+  description: string;
+  grace_days?: number;
 };
 
 export type OverridePayload = {
@@ -105,11 +110,4 @@ export type OverridePayload = {
   period_start?: string;
   period_end?: string;
   soft_threshold?: number;
-};
-
-export type CreditPriceActivatePayload = {
-  version: string;
-  price_per_credit: number;
-  currency: string;
-  active_from: string;
 };

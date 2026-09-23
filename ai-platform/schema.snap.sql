@@ -60,14 +60,6 @@ CREATE TABLE control_audit (
   recorded_at TEXT NOT NULL
 );
 
-CREATE TABLE credit_price (
-  version TEXT PRIMARY KEY NOT NULL,
-  price_per_credit REAL NOT NULL,
-  currency TEXT NOT NULL,
-  active_from TEXT NOT NULL,
-  activated_by TEXT NOT NULL
-);
-
 CREATE TABLE entitlement (
   entitlement_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,
@@ -149,7 +141,7 @@ CREATE TABLE plan (
   soft_threshold REAL NOT NULL,
   allowed_capabilities TEXT NOT NULL,
   status TEXT NOT NULL
-);
+, price_cents INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', grace_days INTEGER NOT NULL DEFAULT 7);
 
 CREATE TABLE platform_counter (
   counter_id TEXT PRIMARY KEY NOT NULL,
