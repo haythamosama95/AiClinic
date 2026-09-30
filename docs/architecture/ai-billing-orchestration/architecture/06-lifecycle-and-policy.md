@@ -28,26 +28,39 @@ control-plane trust refactor, clinic Supabase changes, and Flutter purchase/acti
 
 ### 6.1 Order state machine (AI Billing Orchestrator)
 
-```
-                 create_checkout
- POST /v1/orders ─────────────────► pending ──payment_succeeded──► paid ──outbox: provision──► provisioned
-                                    │                            │                              │
-                                    │ payment_failed /           │ refunded /                   │ period_end − grace_days:
-                                    │ checkout expiry            │ chargeback                   │ renewal checkout issued
-                                    ▼                            ▼                              ▼
-                                cancelled ◄──────────────── (terminal states)            provisioned (renewal due)
-                                                                                              │
-                                              period_end, unpaid                              │ renewal_paid
-                                                                                              ▼
-                                                          past_due ──renewal_paid──► provisioned (new period)
-                                                              │
-                                                              │ grace_until passes, unpaid
-                                                              ▼
-                                              past_due (suspended) ── outbox: entitlement_suspend fired
-                                                              │
-                                                              │ period_end + grace_days + 30d, unpaid
-                                                              ▼
-                                                          expired (terminal)
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    [*] --> pending: POST /v1/orders (create_checkout)
+
+    pending --> paid: payment_succeeded (§5.5)\nor comp issuance (§6.5)
+    pending --> cancelled: payment_failed,\ncheckout expiry, cancel
+
+    paid --> provisioned: outbox: provision
+    paid --> refunded: refunded
+    paid --> chargeback: chargeback
+
+    provisioned --> provisioned: period_end − grace_days:\nrenewal checkout issued
+    provisioned --> past_due: period_end, unpaid
+    provisioned --> refunded: refunded
+    provisioned --> chargeback: chargeback
+
+    past_due --> provisioned: renewal_paid (§6.4)
+    past_due --> expired: period_end + grace_days + 30d,\nunpaid
+    past_due --> refunded: refunded
+    past_due --> chargeback: chargeback
+
+    cancelled --> [*]
+    refunded --> [*]
+    chargeback --> [*]
+    expired --> [*]
+
+    note right of past_due
+        When grace_until passes unpaid,
+        outbox fires entitlement_suspend
+        (guard suspended; order stays past_due).
+    end note
 ```
 
 Rules:
@@ -74,14 +87,17 @@ clawed back.
 
 ### 6.2 Entitlement state machine (platform)
 
-```
- enroll (purchase proof: purchase|comp)          entitle (purchase proof: purchase|comp)
- ───────────────────────────────► pending ──────────────────────────────────► active
-                                                                               │  ▲
-                                          entitlement-suspend (CAT, no         │  │ renew (purchase proof:
-                                          purchase proof — suspending grants      │  │ purchase|renewal|comp)
-                                          nothing)                             ▼  │
-                                                                           suspended
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> pending: enroll\n(purchase proof: purchase|comp)
+
+    pending --> active: entitle\n(purchase proof: purchase|comp)
+
+    active --> suspended: entitlement-suspend\n(CAT; no purchase proof)
+
+    suspended --> active: renew\n(purchase proof: purchase|renewal|comp)
 ```
 
 - `pending` is the enroll sentinel: zero quotas, closed empty period — unchanged from existing platform enroll semantics.
