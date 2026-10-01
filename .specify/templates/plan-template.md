@@ -27,14 +27,14 @@
 **Testing**: [e.g., flutter test, integration tests, SQL/RPC validation, or NEEDS
 CLARIFICATION]
 
-**Target Platform**: [e.g., Windows desktop, clinic LAN, Supabase-hosted backend or NEEDS CLARIFICATION]
+**Target Platform**: [e.g., Windows desktop, shared vendor-hosted Supabase backend or NEEDS CLARIFICATION]
 
 **Project Type**: [e.g., desktop application with managed backend or NEEDS CLARIFICATION]
 
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
 
-**Constraints**: [domain-specific, e.g., desktop-first, branch-aware, graceful
-degradation, modest clinic hardware, or NEEDS CLARIFICATION]
+**Constraints**: [domain-specific, e.g., desktop-first, tenant- and branch-aware, graceful
+degradation, modest clinic desktops, or NEEDS CLARIFICATION]
 
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
