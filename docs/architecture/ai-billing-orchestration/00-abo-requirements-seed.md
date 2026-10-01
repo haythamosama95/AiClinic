@@ -1,7 +1,8 @@
 # AI Billing Orchestrator — Product Requirements (Design Seed)
 
 **Status:** Seed — the input for the ABO design. It states *what* the ABO must achieve, not *how*.
-**Date:** 2026-09-30
+**Date:** 2026-09-30. **Revised:** 2026-10-01, the shared backend talks only to the desktop app
+(C-02, FR-61, FR-62, SR-09).
 
 This document is self-contained. The ABO design is derived from it and from the current code. Tags:
 
@@ -142,8 +143,8 @@ field, a state, or a contract version. It must build no more than that seam.
 | Clinic owner / administrator | Chooses a plan, pays, renews, changes plan for the next term, maintains the billing contact details, and sees payment history. May use any of the clinic's desktops (multi-branch). |
 | Clinic staff | Use AI features when the clinic is entitled. See renewal and allowance notices that ask them to tell an administrator. Never pay, see payment details, or contact billing services. |
 | Clinic desktop app (Flutter, Windows) | Presents offers and status; starts checkout in the system browser. |
-| Shared backend (one Supabase/PostgreSQL project) | Hosts **all clinics as tenants** of one remotely hosted project **owned by the developer**. Holds whatever credentials let it act for each clinic toward the AI Platform. Stores each clinic's "AI available" flag and subscription status. Reachable over the internet and able to make outbound calls. |
-| AI Platform (existing Cloudflare Worker + D1 + per-clinic Durable Object) | Knows clinics and their credentials; enforces entitlement and usage on every AI request; exposes control operations. |
+| Shared backend (one Supabase/PostgreSQL project) | Hosts **all clinics as tenants** of one remotely hosted project **owned by the developer**. Holds clinic data and whatever credentials let it vouch for each clinic's users toward the vendor services. Talks only to the desktop app (C-02). Reachable over the internet. |
+| AI Platform (existing Cloudflare Worker + D1 + per-clinic Durable Object) | Knows clinics and their credentials; enforces entitlement and usage on every AI request; tells each desktop its clinic's AI status; exposes control operations. |
 | Payment provider (Paymob first) | Hosted checkout, payment notifications, transaction inquiry, payout reports. Reports reversals the vendor did not initiate. |
 | Vendor operator (the developer, one person) | Owns and operates the shared backend, the ABO and the AI Platform. Handles support, complimentary grants, incident response and reconciliation review. |
 
@@ -277,11 +278,12 @@ field, a state, or a contract version. It must build no more than that seam.
 - **FR-60** Owners and administrators can see the current plan, term end date, allowance used and
   remaining, grace status, and payment history.
 - **FR-61** Staff see whether AI is available and the staff notices of FR-27, nothing more. They
-  never see prices or payment details, and staff desktops never contact billing or entitlement
-  services. [Decided]
-- **FR-62** The "AI available" flag and subscription status are refreshed only by owner or
-  administrator actions, or by the shared backend itself. They are never refreshed from a staff
-  desktop. [Decided]
+  never see prices or payment details, and staff desktops never contact billing services. A staff
+  desktop reads its clinic's status from the AI Platform, which it already uses for AI, and only
+  in the staff form. [Decided]
+- **FR-62** The "AI available" flag and subscription status are read by each desktop from the AI
+  Platform when it needs them. No copy is kept on the clinic's behalf, so there is nothing a desktop
+  could refresh or set. [Decided]
 - **FR-63** The flag and status reflect a renewal, lapse, exhaustion or reversal within a bounded
   time, even if no owner or administrator opens the app. [Assumed]
 - **FR-64** If a staff member uses AI after it has stopped but before the flag catches up, the denial
@@ -348,8 +350,9 @@ field, a state, or a contract version. It must build no more than that seam.
 - **SR-09** The ABO and the AI Platform hold no credentials that can read or write the shared
   database. Only the developer's own administrative access can, and it is kept separate from the
   billing and AI services. One database holds every clinic's clinical data, so a compromise of
-  either service must not reach it. Messages between the shared backend and the ABO are
-  authenticated and limited to billing and AI status.
+  either service must not reach it. No messages pass between the shared backend and the ABO or
+  the AI Platform (C-02). The backend's only part in billing and AI is the short-lived,
+  single-purpose credentials it issues to desktops.
 - **SR-10** No payment-provider data is stored in the shared backend, and no card data anywhere.
   Provider identifiers stay inside the provider integration boundary.
 - **SR-11** Signing keys and service credentials can be rotated, and a compromised one revoked,
@@ -442,10 +445,10 @@ the design]
   may be reworked for the ABO (§8.2).
 - **C-02** All clinics share **one** remotely hosted Supabase project owned by the developer, with one
   auth service. Clinics are tenants inside it, and branches sit within a clinic. [Decided] The shared
-  backend is internet-reachable and can make outbound calls (database HTTP or server-side
-  functions). Interaction between the shared backend and the vendor services can run in either
-  direction and does not need a desktop to be open. SR-09 limits what the billing and AI services
-  may hold.
+  backend holds clinic data only and talks only to the desktop app. It makes no outbound calls to
+  the ABO or the AI Platform, and they never call it. Anything the vendor services need from it
+  travels through a desktop, as a credential it issued. [Decided] SR-09 limits what the billing and
+  AI services may hold.
 - **C-03** The clinic backend is never on a clinic PC or LAN. [Decided] A desktop reinstall does not
   change a clinic's identity. Clinic users cannot touch the database outside the app's roles and
   functions.
@@ -497,8 +500,9 @@ close each one.
 | Using up the allowance ends the subscription early, with no grace and no refund; the clinic may then buy any current offer, and the new term starts at payment | Decided |
 | Notices are in-app only; staff see them too, with no payment details | Decided |
 | One operator may grant complimentary access alone, protected as in §5.2 | Decided |
-| Only owners and administrators refresh the AI flag; staff desktops never contact billing | Decided |
+| Desktops read AI status from the AI Platform; staff desktops never contact billing | Decided |
 | All clinics share one remotely hosted Supabase project owned by the developer | Decided |
+| The shared backend talks only to the desktop app; it never calls, and is never called by, the ABO or the AI Platform | Decided |
 | Every grant traces to a payment or an attributed vendor grant; no exceptions | Decided |
 | A full reversal of the current term's payment ends service immediately, with no grace | Decided |
 | Initial grace period is 7 days after a term's end date | Decided |
