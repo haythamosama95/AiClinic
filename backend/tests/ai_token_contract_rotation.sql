@@ -323,6 +323,10 @@ BEGIN
 END;
 $$;
 
+UPDATE ai_internal.app_settings
+SET value_json = '"1"'::jsonb
+WHERE key = 'ai.aat.ver';
+
 COMMIT;
 
 SELECT test_name, passed, detail FROM ai_token_contract_rotation_results ORDER BY test_name;

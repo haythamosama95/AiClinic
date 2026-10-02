@@ -136,7 +136,7 @@ FR-009 insert, used by T012–T022: for every impersonated fixture user whose `r
 
 **Purpose**: This unit's H-BK suite passes, then every earlier suite is still green (rule S2). Consumes Binding is none; the pre-existing backend suites inside the two H-BK commands are that regression.
 
-- [ ] T024 Run harness H-BK on local Supabase and confirm it is green — produces the green run, satisfies FR-009, SC-001, and SC-002, proved by E2E-P1.1-01 through E2E-P1.1-08. Depends on T001–T023. Run `backend/tests/run_all_backend_tests.sh` (it includes `membership_active_org.sql` for E2E-P1.1-01 through E2E-P1.1-07, plus the pre-existing suites) and `backend/tests/catalog/run.sh` (E2E-P1.1-08). Pre-existing suites keep their impersonated claims and their assertions. There is no earlier ABO unit suite to add. A full-product `npm test` is not this command.
+- [X] T024 Run harness H-BK on local Supabase and confirm it is green — produces the green run, satisfies FR-009, SC-001, and SC-002, proved by E2E-P1.1-01 through E2E-P1.1-08. Depends on T001–T023. Run `backend/tests/run_all_backend_tests.sh` (it includes `membership_active_org.sql` for E2E-P1.1-01 through E2E-P1.1-07, plus the pre-existing suites) and `backend/tests/catalog/run.sh` (E2E-P1.1-08). Pre-existing suites keep their impersonated claims and their assertions. There is no earlier ABO unit suite to add. A full-product `npm test` is not this command.
 
 ---
 
