@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/063-abo-p2-1-package-core-canonical-signing/plan.md`
-Feature spec: `specs/063-abo-p2-1-package-core-canonical-signing/spec.md`
-Branch: `ai/063-abo-p2-1-package-core-canonical-signing`
+Active feature plan: `specs/064-abo-p2-2-package-contracts-message-types-webauthn/plan.md`
+Feature spec: `specs/064-abo-p2-2-package-contracts-message-types-webauthn/spec.md`
+Branch: `ai/064-abo-p2-2-package-contracts-message-types-webauthn`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

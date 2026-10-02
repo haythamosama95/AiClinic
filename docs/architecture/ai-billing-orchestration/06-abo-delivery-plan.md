@@ -379,7 +379,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 
 ### P2.2 — Package contracts: message types, WebAuthn, Access JWT and the testkit
 - **Spec** 064 · **Codebase** `packages/vendor-contracts/` · **Size** M · **Depends** P2.1 · **Parallel** P1.x
-- **Read:** 04 §1.2; 04 §1.4 (field table only); 04 §1.5; 04 §1.6; 04 §1.7; 04 §2.1; 02 §3.3; 01 §7 row R-5 (spike).
+- **Read:** 04 §1.2; 04 §1.4 (field table only); 04 §1.5; 04 §1.6; 04 §1.7; 04 §2.1; 04 §4.1 (the sentence defining each event, only); 02 §3.3; 01 §7 row R-5 (spike).
 - **Do not read:** 04 §1.3 method semantics (names only), 03 §6.
 - **Implements:**
   - Types + runtime validators: result envelope, grant envelope, receipt, coverage snapshot, feed event, operation object, AI/billing/feed token claims.
