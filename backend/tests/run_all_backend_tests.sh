@@ -116,6 +116,10 @@ run_shell_test "AI platform trust suite" "run_ai_platform_trust_tests.sh"
 printf '\n--- Safety ---\n'
 run_sql_test "Dev reset safety" "dev_reset_safety.sql"
 
+# --- Membership / active organisation ---
+printf '\n--- Membership / active organisation ---\n'
+run_sql_test "Membership active org" "membership_active_org.sql"
+
 # --- Summary ---
 printf -- '\n==========================================================\n'
 printf -- ' Results: %d/%d suites passed\n' "${passed_suites}" "${total_suites}"

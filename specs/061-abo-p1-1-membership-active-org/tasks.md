@@ -32,7 +32,7 @@
 
 **Independent Test**: E2E-P1.1-07 in harness H-BK (psql on local Supabase, `backend/tests/`).
 
-- [ ] T001 [US1] Add the failing test `E2E-P1.1-07` in `backend/tests/membership_active_org.sql`, and register that file from `backend/tests/run_all_backend_tests.sh` with `run_sql_test` — produces the red test, satisfies FR-001 and FR-002, proved by E2E-P1.1-07. After migrations, every non-deleted staff member whose database has a non-deleted organisation has exactly one `ai_internal.membership` row for the earliest such organisation and that staff member's role. A non-deleted staff member and no organisation — the bootstrap administrator from `20260516100400_auth_rbac_seed.sql` on a fresh database — has no membership row. The test fails because `ai_internal.membership` is absent. Leave existing suite claims and assertions unchanged.
+- [X] T001 [US1] Add the failing test `E2E-P1.1-07` in `backend/tests/membership_active_org.sql`, and register that file from `backend/tests/run_all_backend_tests.sh` with `run_sql_test` — produces the red test, satisfies FR-001 and FR-002, proved by E2E-P1.1-07. After migrations, every non-deleted staff member whose database has a non-deleted organisation has exactly one `ai_internal.membership` row for the earliest such organisation and that staff member's role. A non-deleted staff member and no organisation — the bootstrap administrator from `20260516100400_auth_rbac_seed.sql` on a fresh database — has no membership row. The test fails because `ai_internal.membership` is absent. Leave existing suite claims and assertions unchanged.
 
 **Checkpoint**: E2E-P1.1-07 exists and fails.
 
