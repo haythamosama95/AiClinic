@@ -2,7 +2,7 @@
 
 **Status:** Phase 2 design. **Date:** 2026-10-01.
 
-Start with section 0. It explains the purpose, the systems involved and every term used later. Sections 1 to 8 keep their numbers because the other design documents cite them (for example "03 §5.4").
+Start with section 0 (after [02 §0](02-abo-architecture-and-threat-model.md#0-start-here-the-big-picture) if you have not read it). Section 0 here adds business and data-model vocabulary. Sections 1 to 8 keep their numbers because the other design documents cite them (for example "03 §5.4").
 
 ## Table of Contents
 
@@ -57,11 +57,11 @@ Start with section 0. It explains the purpose, the systems involved and every te
 
 ## 0. Start here: the big picture
 
+Read the [architecture and threat model](02-abo-architecture-and-threat-model.md) §0 first for the product story, the prepaid-bundle and guarded-building pictures, the cast of systems, hosting vocabulary (D1, R2, Workers, tokens, signatures) and the purchase walk-through through doors and keys (TB-n, K-n). This section adds only what that document does not cover.
+
 ### 0.1 What we are trying to achieve
 
-AiClinic's desktop app has an optional, paid AI add-on. Today the vendor turns AI on for a clinic by hand. The **AI Billing Orchestrator (ABO)** makes it self-service: a clinic administrator picks an offer in the app, pays on the payment provider's web page, and AI switches on by itself within about a minute. It keeps working until the paid time or the paid usage runs out, and then it stops on time.
-
-To do that safely, the vendor's systems must write down the right facts in the right places and follow exact rules about them. This document describes those facts and rules. It answers five questions:
+The vendor's systems must write down the right facts in the right places and follow exact rules about them. **This document** describes those facts and rules. It answers five questions:
 
 1. **What is written down, and where?** Sections 1 to 4 list every record and the system that owns it.
 2. **How does each thing change over its life?** Section 5 follows a checkout, a payment, a grant, a term, a reversal and a background task from birth to end.
@@ -69,9 +69,8 @@ To do that safely, the vendor's systems must write down the right facts in the r
 4. **How are things named and referenced?** Section 7.
 5. **How long is each record kept?** Section 8.
 
-Five goals shape every choice in this document:
+Four goals shape every choice in **this** document (shared goals such as "no service without payment" are in 02 §0.1):
 
-- **No service without payment.** Nobody gets AI without a real, confirmed payment or a deliberate, signed gift from the vendor.
 - **Money always becomes service, or someone is told.** A confirmed payment is turned into AI time automatically. If that stalls, the vendor is alerted, and recovery never needs hand-editing a database.
 - **Records cannot be quietly changed.** Commercial facts are written once and never edited, and an independent copy is kept.
 - **AI stops on time even if billing is broken.** The system that enforces AI access keeps its own calendar and does not wait for the billing system.
@@ -79,9 +78,7 @@ Five goals shape every choice in this document:
 
 ### 0.2 The whole system in one analogy
 
-Think of a **prepaid mobile phone bundle**. You walk into a shop, choose a bundle from the price board ("1 month, 500 units"), pay at the till, and the network adds the bundle to your SIM card. Every call uses some units. When the month ends or the units run out, the bundle ends. You can buy next month's bundle early, and it waits until the current one finishes.
-
-This design works the same way:
+02 §0.2 names the shop, the network, the bank terminal and the other players. On top of that picture, **this document** names the commercial objects a purchase creates:
 
 | Mobile bundle world                                 | In this design                                                    | Explained in |
 | --------------------------------------------------- | ----------------------------------------------------------------- | ------------ |
@@ -96,40 +93,23 @@ This design works the same way:
 | Units running out before the end date               | **Exhaustion**                                                    | §6.3         |
 | The bank pulling the money back                     | A **reversal**                                                    | §2.7, §5.5   |
 | A free bundle the shop owner gives a friend         | A **complimentary grant**                                         | §5.3         |
-| The shop: price board, till and receipt book        | The **ABO**                                                       | §2           |
-| The network's meter for one SIM, which decides every call | The clinic's **Durable Object (DO)** on the AI Platform     | §3.1, §6     |
 
-Keep this picture in mind. Each later section zooms into one part of it.
+Keep this table in mind when reading sections 2 to 6.
 
 ### 0.3 The systems involved
 
-| System                          | What it is                                                                                                                         | Analogy                                   | Its part in billing                                                                                         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Desktop app**                 | The clinic's Flutter app on Windows. A clinic has several desktops, possibly across branches                                       | The customer                              | Administrators buy and renew. Staff only use AI and see simple notices                                     |
-| **Shared backend**              | One Supabase (PostgreSQL database) project that holds every clinic's clinical data. Each clinic is a **tenant** inside it          | The ID office                             | Only issues short-lived signed **tokens** (temporary ID badges) to desktops. It never talks to the ABO or the AI Platform (rule C-02) |
-| **ABO**                         | A new program on Cloudflare (a **Worker**: code that runs on Cloudflare's servers when a request arrives), with its own storage      | The shop and its accountant               | Sells offers, takes payments through Paymob, keeps the commercial records, asks the AI Platform to add terms |
-| **AI Platform**                 | The existing Cloudflare Worker that serves AI requests                                                                              | The phone network                         | The only place that decides whether an AI request is allowed                                               |
-| **Per-clinic Durable Object (DO)** | A Cloudflare feature: one small program instance per clinic, with its own private storage, that handles **one request at a time** | The clinic's dedicated cashier with a private notebook, serving one customer at a time | Holds the clinic's terms and usage counters and decides each AI request. Because it serves one request at a time, two requests can never both take "the last credit" |
-| **Paymob**                      | The payment provider (Egypt). Shows a hosted payment page, sends notifications, answers status questions                           | The bank's card terminal                  | Takes the card payment. The ABO never sees card data                                                       |
-| **Paymob adapter**              | The only part of the ABO that knows Paymob's formats                                                                               | A translator                              | Converts Paymob messages into neutral ones, so another provider can be added later                          |
-| **Operator** and **console**    | The developer, the vendor's single human operator, using a web page (`ops.<vendor-domain>`) behind **Cloudflare Access** (a login gate) | The shop owner                        | Looks things up, fixes stuck work, gives complimentary grants, records chargebacks                         |
+The cast list and what each system is live in 02 §0.3. For **billing records**, remember the split: the **ABO** owns money (offers, checkouts, payments, grant requests); the clinic's **DO** owns time and usage (terms, allowance, admission); the **shared backend** never stores billing facts and never calls the ABO or the AI Platform (C-02).
 
 ### 0.4 Where data is kept
 
-There are four kinds of storage. Each is a different kind of cupboard.
+Four **authoritative** stores appear in this document. Product words for D1, R2, append-only rows, bucket locks, NDJSON and D1 Time Travel are in 02 §0.4.
 
-| Storage                       | What it is                                                                                         | Analogy                                                         |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **D1**                        | Cloudflare's database (SQLite). Data is in tables of rows and columns. The ABO has its own D1; the AI Platform has another | A filing cabinet of forms                      |
-| **R2**                        | Cloudflare's file storage. Files are grouped by name **prefix**, like folders (`ledger/`, `evidence/`) | A warehouse of boxes, grouped by aisle                     |
-| **DO storage**                | Each clinic's DO has its own small SQLite database that only that DO can read or write              | The cashier's private notebook                                  |
-| **Backend database**          | The shared Supabase PostgreSQL database                                                            | The ID office's records                                         |
-
-Three protective features appear often:
-
-- **D1 Time Travel** lets a D1 database be restored to any moment in the last 30 days. Think of an "undo to last Tuesday" button.
-- A **bucket lock** on an R2 prefix means files there can be added but not changed or deleted. Think of a sealed vault with a slot: things go in, nothing comes out.
-- **NDJSON** ("newline-delimited JSON") is a text format with one record per line. The ABO writes one line per fact into the locked `ledger/` prefix, which works like a carbon copy of the receipt book kept in that vault.
+| Store                | What this document treats as authoritative there              | Analogy                          |
+| -------------------- | ------------------------------------------------------------- | -------------------------------- |
+| **ABO D1**           | Offers, checkouts, payments, reversals, grant requests, work rows | The shop's filing cabinet   |
+| **ABO R2**           | Evidence files; locked `ledger/` NDJSON copy of commercial facts | Vault copy of the receipt book |
+| **Platform D1 + DO storage** | Terms, usage, coverage mirror, grant ledger per clinic | Network meter + cashier notebook |
+| **Backend database** | Users, memberships, issuer keys — not commercial billing rows | ID office only                 |
 
 **Authority versus copies.** Every fact has exactly one **authoritative store**, the master copy that wins any disagreement. Other places may hold copies, but only for evidence, for rebuilding after a loss, or for display. Think of an original contract in the safe and photocopies on desks: if they differ, the original is right.
 
@@ -173,12 +153,13 @@ Three protective features appear often:
 
 ### 0.6 Technical words
 
+Security and proof vocabulary (signatures, HMAC, inquiry, tokens, passkeys, service binding) is in 02 §0.4 and §0.5. Below are **data-model** words used in sections 1 to 8.
+
 **Records**
 
 - **Table, row, field.** A table is a stack of forms of one kind; a row is one filled-in form; a field (column) is one box on the form.
-- **Append-only.** Rows can be added but never changed or deleted, like a ledger written in pen: a correction is a new line, never an eraser.
 - **Mutable.** Rows may be changed, like a whiteboard. Used only for "current status" and housekeeping, never for commercial facts.
-- **Trigger.** A rule inside the database that runs automatically. Here, triggers act as tripwires: any attempt to update or delete an append-only row is aborted.
+- **Trigger.** A rule inside the database that runs automatically. Here, triggers act as tripwires: any attempt to update or delete an append-only row (02 §0.4) is aborted.
 - **Index.** A sorted lookup list, like a book's index, so the database finds rows without reading every one. D1 bills for rows read, so every query has an index.
 - **Surrogate key.** An internal row id with no business meaning.
 - **ULID.** A unique id that contains 80 random bits, so nobody can guess another clinic's id.
@@ -186,32 +167,15 @@ Three protective features appear often:
 - **UTC, ISO-8601.** All times are in UTC (world time, no time zones) and written in the standard form `2026-03-01T10:00:00Z`.
 - **Snapshot.** A complete picture of something at one moment, like a photo.
 
-**Proof and protection**
-
-- **Hash (SHA-256).** A short fingerprint computed from data. The same data always gives the same fingerprint; any change gives a different one. Storing a hash proves later exactly what the data was, without keeping the data itself.
-- **Canonical JSON.** One fixed way of writing a JSON object (key order, spacing), so both sides compute the same fingerprint for the same content.
-- **Signature, key, `kid`.** A digital wax seal. Only the holder of a private key can make it; anyone with the matching public key can check it. `kid` (key id) says which seal was used, so keys can be replaced over time (**rotation**).
-- **HMAC.** A seal made with a secret shared between Paymob and the ABO. It shows a notification came from Paymob.
-- **Inquiry.** The ABO asking Paymob's API directly, with a separate credential, "what is the real state of this payment?". A notification only *triggers* work; the inquiry is the *proof*, like phoning the bank instead of trusting a text message.
-- **Envelope.** The exact, signed contents of a grant: who, what plan, how long, how many credits, and the evidence. Think of a sealed order form.
-- **Receipt.** The AI Platform's signed answer to a grant or void, kept by both sides as proof.
-- **Authorization classes.** Each AI Platform operation needs one of three levels of proof: **M** (machine: the ABO over its private line, with its signature when coverage changes), **H** (a human operator logged in through Cloudflare Access) or **HP** (human plus passkey: an H operator who also touches a hardware security key for this exact operation). Defined in 02 §3.3.
-- **Passkey, WebAuthn, assertion.** A passkey is a hardware security key. WebAuthn is the web standard for using it. An assertion is the signed proof produced when the operator touches it, bound to one specific operation.
-- **Token claims `sub`, `org`, `jti`.** A token issued by the backend states who the user is (`sub`), which clinic they act for (`org`) and carries a unique token id (`jti`).
-- **Service binding.** A private connection from the ABO to the AI Platform inside Cloudflare, not reachable from the internet.
-
 **Reliable background work**
 
-- **Idempotent.** Doing it twice has the same effect as doing it once, like pressing a lift button twice. Retries are safe because every operation is idempotent.
 - **Dedupe key.** A value that identifies "the same thing", so a repeat is recognised and ignored.
 - **Batch.** Several writes committed all together or not at all.
 - **Work row.** A to-do card for one background step, such as "confirm this payment" (§2.9).
 - **Lease.** A "someone is working on this until 10:05" tag on a work row, so two workers never do the same card at once.
 - **Backoff.** Waiting longer between each retry (1 minute, then 2, 4, 8, up to 15).
-- **Cron.** A timer that runs a job on a schedule, such as every minute.
-- **Inline attempt.** The first try of a work row, made right away while the triggering request finishes, before the cron picks it up.
-- **Outbox.** An out-tray inside the DO. Changes that other systems must learn about are put there and shipped later, so the request path stays fast.
-- **Alarm.** A DO's alarm clock: it wakes the DO at a set time, for example when a term ends.
+- **Inline attempt.** The first try of a work row, made right away while the triggering request finishes, before the cron picks it up (cron and `waitUntil`: 02 §0.4).
+- **Outbox** and **alarm.** The DO's out-tray and wake-up clock (02 §0.4); here they publish coverage to platform D1 (§3.2).
 - **Mirror** and **view.** Read-only copies of the DO's coverage kept elsewhere: `coverage_mirror` on the platform, `coverage_view` in the ABO.
 - **Event, sequence number, cursor.** An event is a "something changed" notice. Sequence numbers (`clinic_seq` per clinic, `feed_seq` across all clinics) put events in order. A cursor is a bookmark saying "I have read up to here".
 - **Tombstone.** A marker saying "this id is dead", stored even before the thing it kills arrives, so the thing is refused when it shows up.
@@ -222,7 +186,7 @@ Three protective features appear often:
 
 ### 0.7 One purchase, start to finish
 
-This walk-through names the records each step writes. Every record is described in full later; the section is given in brackets.
+02 §0.7 follows the same purchase through doors and keys. Here the same steps name **which records** each step writes (full definitions later; section in brackets).
 
 1. **The administrator looks at offers.** The desktop shows the sellable offer versions (§2.2). The first time, the administrator enters a billing contact (§2.3).
 2. **They open a checkout.** The ABO asks the AI Platform how far the clinic's coverage already reaches, so it can say "starts now" or "starts after your current term" and later spot duplicate payments. It writes a `checkout` with a frozen copy of the offer (§2.4). The Paymob adapter creates Paymob's payment session, called an *intention* (§2.11). The desktop opens Paymob's page in the browser.
@@ -239,22 +203,7 @@ If anything goes wrong in steps 3 to 7, an open work row keeps retrying, and an 
 
 ### 0.8 How to read the rest of this document
 
-**Reference codes.** Short codes in brackets point to where a rule comes from. You do not need to follow them to understand the text.
-
-| Code      | Means                                              | Defined in                                               |
-| --------- | -------------------------------------------------- | -------------------------------------------------------- |
-| G-n       | Product goal                                       | [Seed](00-abo-requirements-seed.md) §2.1                 |
-| FR-n      | Functional requirement (what the product must do) | Seed §4                                                  |
-| SR-n      | Security requirement                               | Seed §5                                                  |
-| NFR-n     | Reliability or operational requirement             | Seed §6                                                  |
-| RC-n      | Records and retention requirement                  | Seed §7                                                  |
-| C-n       | Constraint or given fact                           | Seed §8.1                                                |
-| P-n       | A gap in today's AI Platform code                  | Seed §8.2                                                |
-| A-n       | Acceptance scenario that must pass before launch   | Seed §11                                                 |
-| X-n       | A future expansion, and the "seam" kept open for it | Seed §2.3 and 01 §5                                     |
-| T-n, I-n, R-n | Code fact, approved interpretation of the seed, risk | [Decision memo](01-abo-design-decisions.md) §2, §4, §7 |
-| AD-n, K-n | Adversary, credential                              | [Architecture and threat model](02-abo-architecture-and-threat-model.md) §4.2, §3.1 |
-| AL-n, FM-n | Alert, failure mode                               | [Operations](05-abo-operations-and-traceability.md) §2, §4 |
+**Reference codes.** Short codes (`G-n`, `FR-n`, `SR-n`, `TB-n`, `K-n`, and the rest) are defined in 02 §0.8. This document also cites **AD-n** (adversary) and **AL-n**, **FM-n** (alert, failure mode) from [operations](05-abo-operations-and-traceability.md) §2 and §4 when a lifecycle touches security or ops.
 
 "01 §n" means section n of the [decision memo](01-abo-design-decisions.md); "02 §n" the [architecture and threat model](02-abo-architecture-and-threat-model.md); "04 §n" the [contracts](04-abo-contracts.md); "05 §n" the [operations document](05-abo-operations-and-traceability.md). A bare "§n" means a section of this document.
 
@@ -311,12 +260,63 @@ These rules apply to every ABO table.
 
 **What this is.** The shop's price board, and the legal small print shown next to it. An offer is a stable product name ("Standard monthly"); each repricing or change creates a new **offer version**, so a clinic always knows exactly what it bought, and old prices are never lost (FR-04). Offers live in data, not in code, so the vendor can change the board without releasing a new app.
 
-The four tables:
+Four tables:
 
-- `offer` is the product's stable identity. `code` is a short, fixed, human-readable name (a "slug", such as `standard-monthly`).
-- `offer_version` is one row on the price board. Its fields: which plan version it sells (`plan_id`, `plan_version`); the length, as `term_unit` (always `month`; staging compresses time instead of using shorter units, §6.1) and `term_count` (1, 3 or 12); the price (`price_minor`, `currency`); the credits included (`allowance_credits`); the grace policy (`grace_days`, which is 7, and `grace_cap_rule`, which is `proportional`, meaning the grace allowance is capped in proportion to the grace length, §6.4); `copy`, the display name and summary in each language; the `terms_version` of the small print that applies; who published it (`published_by`); and `assertion_sha256`, the fingerprint of the operator's passkey proof.
-- `offer_event` is the history of the board: when a version was `published`, `retired` (taken off sale) or `reinstated` (put back on sale), by whom (`actor`) and when (`at`).
-- `terms_version` is each version of the legal text, per language (`locale`). The text itself is a file in R2 (`text_r2_key`), and its fingerprint (`text_sha256`) proves which exact words the buyer saw.
+- `offer` is the product's stable identity (append-only).
+- `offer_version` is one immutable row on the price board (append-only).
+- `offer_event` is the on/off-sale history for the board (append-only).
+- `terms_version` is one version of the legal small print (append-only).
+
+**`offer`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `offer_id` | Stable id for this product line on the board. |
+| `code` | Short human-readable slug (for example `standard-monthly`); fixed for the life of the offer. |
+
+**`offer_version`** (append-only)
+
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `offer_id` | Which product line this board row belongs to. |
+| Identity | `version` | Monotonic version number for that offer (1, 2, 3 …). |
+| What is sold | `plan_id` | Which AI plan this offer sells. |
+| What is sold | `plan_version` | Which published plan version (immutable on the platform). |
+| Term length | `term_unit` | Always `month` (staging compresses time instead of shorter units, §6.1). |
+| Term length | `term_count` | How many months: 1, 3 or 12. |
+| Price | `price_minor` | List price in minor units (§0.6). |
+| Price | `currency` | ISO 4217 currency code (for example `EGP`). |
+| Allowance | `allowance_credits` | Credits included in one purchased term. |
+| Grace | `grace_days` | Courtesy days after term end (7). |
+| Grace | `grace_cap_rule` | How grace allowance is capped (`proportional`, §6.4). |
+| Display | `copy` | Per-locale display name and summary shown on the board. |
+| Legal | `terms_version` | Which small-print version applies to this board row (§2.2). |
+| Publication | `published_by` | Operator identity tied to the HP publish action. |
+| Publication | `assertion_sha256` | Fingerprint of the passkey proof for that publish (02 §3.3). |
+
+**`offer_event`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `offer_id` | Which product line changed on the board. |
+| `kind` | `published` (version put on sale), `retired` (taken off sale) or `reinstated` (same version back on sale). |
+| `version` | Which `offer_version` this event refers to. |
+| `actor` | Operator who performed the HP action. |
+| `at` | When the event was recorded (UTC). |
+
+**`terms_version`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `terms_version` | Stable id for this revision of the legal text. |
+| `locale` | Language code for this text (for example `en`, `ar`). |
+| `text_r2_key` | R2 object key where the full legal text is stored. |
+| `text_sha256` | Fingerprint of that file; proves which words the buyer saw. |
+| `published_by` | Operator who published this text revision. |
 
 
 | Table            | Kind        | Fields                                                                                                                                                                                                                                                    |
@@ -335,9 +335,22 @@ The four tables:
 
 ### 2.3 Billing contact
 
-**What this is.** The payer's name, email and phone, which Paymob requires for every checkout. It is personal data, protected by law (Egypt's Personal Data Protection Law), so it is kept in exactly one table that can be erased. Everything else refers to it only by version number and fingerprint. Think of a sealed envelope with a number on it: the books record "envelope #3 was used", and the envelope itself can be shredded later without tearing pages out of the books.
+**What this is.** The payer's name, email and phone, which the payment provider requires for every checkout. It is personal data, protected by law (Egypt's Personal Data Protection Law), so it is kept in exactly one table that can be erased. Everything else refers to it only by version number and fingerprint. Think of a sealed envelope with a number on it: the books record "envelope #3 was used", and the envelope itself can be shredded later without tearing pages out of the books.
 
-Fields: the clinic (`org_id`), the `version` number, the details (`name`, `email`, `phone`), the fingerprint of the details (`contact_sha256`), the user who entered them (`created_by_sub`), and, if erased, when and by whom (`erased_at`, `erased_by`).
+**`billing_contact`** (insert-only, erasable)
+
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `org_id` | The clinic this contact belongs to. |
+| Identity | `version` | Version number for this clinic (1, 2, 3 …); new details mean a new row. |
+| Details | `name` | Payer name sent to the provider; blanked on erasure. |
+| Details | `email` | Payer email; blanked on erasure. |
+| Details | `phone` | Payer phone; blanked on erasure. |
+| Proof | `contact_sha256` | Fingerprint of `name`, `email` and `phone` at write time; kept after erasure. |
+| Audit | `created_by_sub` | Shared-backend user who entered this version. |
+| Erasure | `erased_at` | When this row was blanked by operator erasure, if applicable (UTC). |
+| Erasure | `erased_by` | Operator identity for erasure, if applicable. |
 
 
 | Table             | Kind        | Fields                                                                         |
@@ -364,27 +377,58 @@ Three tables:
 - `checkout_event` is a diary of what happened to it (append-only).
 - `checkout_status` is the current state in one line (mutable, recomputable from the diary).
 
-Fields of `checkout`, in groups:
+**`checkout`** (append-only)
 
-- **Identity.** `checkout_id`, the human `reference` (§7), the clinic (`org_id`), the user who opened it (`created_by_sub`), and `client_request_id`, a random id the desktop sends so that pressing "buy" twice creates only one checkout (unique per clinic).
-- **What is being bought.** `offer_id` and `offer_version`.
-- **The snapshot.** `plan_id`, `plan_version`, `term_unit`, `term_count`, `allowance_credits`, `grace_days`, `grace_cap_rule`; the price as `list_price_minor` (the board price) and `charged_price_minor` (what is actually charged); `adjustment_id`, always empty at launch and reserved for future discounts (X-08); `currency`; the `terms_version` accepted; and the billing contact used (`billing_contact_version`, `billing_contact_sha256`).
-- **Where the clinic stood.** `opened_with_coverage_through`, explained below (I-8), and `coverage_source` (`live` or `view`), saying where that value came from.
-- **Future-proofing.** `provider_id` names the payment provider (X-03). `initiator` is always `payer` at launch; it leaves room for automatic renewals charged by the merchant later (X-04).
-- **Deadline.** `expires_at`.
 
-Fields of `checkout_event`: the `checkout_id`; the `kind` of event; where the news came from (`source`: a Paymob `callback`, an `inquiry`, the `operator` or the `system` itself); a reference to the evidence (`ref`); who acted (`actor`); and when (`at`). The kinds are:
+| Field | What it is |
+| ----- | ---------- |
+| `checkout_id` | The slip's unique id (ULID). |
+| `reference` | The human-readable id shown to the administrator and sent to Paymob (§7). |
+| `org_id` | The clinic buying. |
+| `created_by_sub` | The shared-backend user id of the administrator who opened the checkout. |
+| `client_request_id` | A random id the desktop sends with "buy"; the same id for the same clinic creates only one checkout (idempotency). |
+| `offer_id` | Which product line on the price board was chosen (§2.2). |
+| `offer_version` | Which board row was chosen; together with `offer_id`, names the exact commercial terms at open time. |
+| `plan_id` | Snapshot: which AI plan is sold (from the offer version). |
+| `plan_version` | Snapshot: which published plan version; frozen even if the platform publishes a newer one later. |
+| `term_unit` | Snapshot: length unit; always `month` (staging compresses time instead of shorter units, §6.1). |
+| `term_count` | Snapshot: how many months (1, 3 or 12). |
+| `allowance_credits` | Snapshot: credits included in the term being bought. |
+| `grace_days` | Snapshot: courtesy days after the term end (7). |
+| `grace_cap_rule` | Snapshot: how grace allowance is capped (`proportional`, §6.4). |
+| `list_price_minor` | Snapshot: board price in minor units (§0.6). |
+| `charged_price_minor` | Snapshot: amount Paymob must collect; equals `list_price_minor` at launch (discounts would use `adjustment_id`, X-08). |
+| `adjustment_id` | Snapshot: price adjustment applied, if any; always null at launch (X-08). |
+| `currency` | Snapshot: ISO 4217 currency code (for example `EGP`). |
+| `terms_version` | Snapshot: which legal small-print version the buyer accepts (§2.2). |
+| `billing_contact_version` | Snapshot: which billing-contact version was used (§2.3); not the contact values themselves. |
+| `billing_contact_sha256` | Snapshot: fingerprint of that contact version, so erasure does not break the audit trail. |
+| `opened_with_coverage_through` | The date existing coverage was projected to end when the checkout opened (I-8); used for the "starts now / starts later" projection (04 §2.2) and duplicate detection (§5.2). |
+| `coverage_source` | Where `opened_with_coverage_through` came from: `live` (AI Platform `getCoverage`) or `view` (ABO `coverage_view` fallback, §2.10). |
+| `provider_id` | Which payment provider handles this checkout (Paymob at launch; X-03). |
+| `initiator` | Who started the purchase; always `payer` at launch (room for merchant-initiated renewal later, X-04). |
+| `expires_at` | When the checkout stops being payable in the ABO's books (UTC). |
 
-- `opened`: created successfully.
-- `open_failed`: Paymob refused to create its payment session.
-- `attempt_declined`: a card attempt failed; the page can be retried.
-- `attempt_pending`: a card attempt is still in progress at the bank.
-- `paid`: a payment was confirmed.
-- `expired`: the deadline passed unpaid.
-- `cancelled`: the operator cancelled it.
-- `late_paid`: a payment arrived after it expired or was cancelled.
+**`checkout_event`** (append-only)
 
-Fields of `checkout_status`: `checkout_id`, the current `state` (§5.1) and `last_event_at`.
+
+| Field | What it is |
+| ----- | ---------- |
+| `checkout_id` | The checkout this diary line belongs to. |
+| `kind` | What happened: `opened` (created successfully); `open_failed` (Paymob refused the payment session); `attempt_declined` (card failed, same page may retry); `attempt_pending` (bank still processing); `paid` (payment confirmed); `expired` (deadline passed unpaid); `cancelled` (operator cancelled); `late_paid` (payment confirmed after expire or cancel). |
+| `source` | Where the news came from: Paymob `callback`, `inquiry`, `operator` or `system`. |
+| `ref` | Pointer to the evidence behind this line (for example a notification id, inquiry id or operator action id). |
+| `actor` | Who caused it when applicable (operator sub or system); empty when only the provider reported. |
+| `at` | When the event was recorded (UTC). |
+
+**`checkout_status`** (mutable, recomputable from `checkout_event`)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `checkout_id` | The checkout whose current square on the board game this row summarizes (§5.1). |
+| `state` | Current lifecycle state: `open`, `open_failed`, `paid`, `expired`, `cancelled` or `paid_late` (§5.1). |
+| `last_event_at` | Time of the latest `checkout_event` that produced this state. |
 
 
 | Table             | Kind        | Fields                                                                                                                                                                                                                                                                                            |
@@ -403,19 +447,40 @@ Fields of `checkout_status`: `checkout_id`, the current `state` (§5.1) and `las
 
 ### 2.5 Evidence
 
-**What this is.** Proof of what Paymob said. There are two kinds of message from Paymob: **notifications**, which Paymob sends on its own when something happens, and **inquiry results**, which are Paymob's answers when the ABO asks. A notification is like a text message saying "you've been paid": useful as a nudge, but not trusted alone. The inquiry is like phoning the bank to check (§0.6). Both are kept, the way an accountant files every bank letter.
+**What this is.** Proof of what the payment provider said. There are two kinds of message: **notifications**, which the provider pushes when something happens, and **inquiry results**, which are answers when the ABO asks. A notification is like a text message saying "you've been paid": useful as a nudge, but not trusted alone. The inquiry is like phoning the bank to check (§0.6). Both are kept, the way an accountant files every bank letter. Provider-specific wire formats are translated in the adapter (§2.11); these tables are provider-neutral.
 
-Fields of `notification`:
+Two tables:
 
-- `notification_id` and `provider_id` (which provider sent it).
-- `channel`: Paymob sends two kinds of notification. `processed` is the server-to-server message about a transaction; `response` is the redirect when the payer's browser returns to the ABO.
-- `hmac_valid`: whether its HMAC seal checked out.
-- `body_r2_key` and `body_sha256`: where the raw message is stored in R2, and its fingerprint.
-- `dedupe_key`: identifies the payment state change it reports, so repeats are recognised (§7).
-- `checkout_id`: the checkout it is about.
-- `disposition`, what was done with it: `enqueued` (a confirm task was created), `duplicate` (already seen) or `unmatched` (no matching checkout).
+- `notification` is one inbound provider message (append-only).
+- `inquiry_result` is one normalized answer to an authenticated inquiry (append-only).
 
-Fields of `inquiry_result`: `inquiry_id`; the `subject` asked about (a checkout or a payment); `normalized_state`, Paymob's answer translated into the ABO's neutral vocabulary; `cumulative_reversed_minor`, the total amount reversed so far; where the raw answer is stored and its fingerprint (`raw_r2_key`, `raw_sha256`); and the time (`at`). A row is written only when the answer differs from the previous one (01 §3.3), because the ABO asks repeatedly and identical answers would only add noise and cost.
+**`notification`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `notification_id` | Unique id for this stored message. |
+| `provider_id` | Which provider sent it (Paymob at launch; X-03). |
+| `channel` | How it arrived: `processed` (server-to-server transaction update) or `response` (browser return redirect); Paymob-shaped names at launch. |
+| `hmac_valid` | Whether the adapter's authenticity check on the raw body passed. |
+| `body_r2_key` | R2 key under `evidence/` for the raw message body. |
+| `body_sha256` | Fingerprint of that raw body. |
+| `dedupe_key` | Id for the reported state change so repeats are ignored (§7). |
+| `checkout_id` | Checkout the message is about, when matched; empty if unmatched. |
+| `disposition` | What the ABO did with it: `enqueued` (confirm work created), `duplicate` (already seen) or `unmatched` (no checkout). |
+
+**`inquiry_result`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `inquiry_id` | Unique id for this stored answer. |
+| `subject` | What was asked about: a checkout or a payment id. |
+| `normalized_state` | Provider answer translated to neutral vocabulary (`payment_succeeded`, `payment_failed`, `payment_pending`, `reversal`, etc.; 01 §3.3). |
+| `cumulative_reversed_minor` | Total amount reversed on the transaction so far, in minor units. |
+| `raw_r2_key` | R2 key for the provider's raw inquiry response. |
+| `raw_sha256` | Fingerprint of that raw response. |
+| `at` | When this answer was recorded (UTC). A row is written only when the answer differs from the previous one for the same subject (01 §3.3). |
 
 
 | Table            | Kind        | Fields                                                                                                                                                                          |
@@ -426,23 +491,49 @@ Fields of `inquiry_result`: `inquiry_id`; the `subject` asked about (a checkout 
 
 **Rules.**
 
-- **Where the raw messages live.** Under the R2 prefix `evidence/`, outside the locked `ledger/` vault, because Paymob's messages contain the payer's contact details and must stay erasable (§2.3). The D1 rows keep the fingerprints, so erasing a message still leaves proof that it existed.
-- **Fakes are not evidence.** A message whose HMAC seal fails is not stored as evidence. The ABO only counts such failures, and keeps a sample of at most 10 per hour under an R2 prefix that is cleared after 30 days. If Paymob changes its message format and every seal starts failing (A23), the developer can look at the samples to see what changed.
+- **Where the raw messages live.** Under the R2 prefix `evidence/`, outside the locked `ledger/` vault, because provider messages often contain payer contact details and must stay erasable (§2.3). The D1 rows keep the fingerprints, so erasing a message still leaves proof that it existed.
+- **Fakes are not evidence.** A message whose authenticity check fails is not stored as evidence. The ABO only counts such failures, and keeps a sample of at most 10 per hour under an R2 prefix that is cleared after 30 days. If a provider changes its message format and every check starts failing (A23), the developer can look at the samples to see what changed.
 
 ### 2.6 Payment
 
 **What this is.** The bank's confirmation that money arrived. A payment row is the most important commercial fact in the system: it is what turns into AI time. It exists only after an authenticated inquiry has confirmed the money (01 §3.3). A notification alone never creates one.
 
-Fields of `payment`, in groups:
+Two tables:
 
-- **Identity.** `payment_id`, computed from Paymob's transaction id (§7); the human `reference`; the clinic (`org_id`); the `checkout_id` it paid; the `provider_id`.
-- **Money and time.** `amount_minor`, `currency`; `paid_at` (when the payer paid, according to Paymob); `confirmed_at` (when the ABO's inquiry confirmed it); `confirmation_inquiry_id` (which inquiry did).
-- **What was bought.** `offer_id`, `offer_version` and `billing_contact_version`, copied from the checkout.
-- **Labels.** `classification`, set once at confirmation (§5.2): `normal`, `likely_duplicate` (probably the same purchase paid twice) or `late` (paid after the checkout expired or was cancelled).
-- **Decision.** `disposition`, what the ABO does with the money: `grant` (turn it into a term), `withheld_mismatch` (hold it, because something does not match; `mismatch_detail` says what) or `reversed_before_grant` (the money was already taken back before AI time was given).
-- **Proof.** `evidence_sha256`, the fingerprint of the evidence behind it.
+- `payment` is the confirmed-money fact (append-only).
+- `payment_release` records the operator releasing a withheld payment (append-only, HP action).
 
-`payment_release` records the operator releasing a withheld payment, which is an HP action: `payment_id`, the `operator_action_id` and the time (`at`).
+**`payment`** (append-only)
+
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `payment_id` | Stable id for this payment, derived from `provider_id` and the provider's transaction reference (§7); raw provider ids stay in the adapter tables (SR-10). |
+| Identity | `reference` | Human-readable id for support and reconciliation (§7). |
+| Identity | `org_id` | The clinic that paid. |
+| Identity | `checkout_id` | The order slip this payment settles. |
+| Identity | `provider_id` | Which payment provider reported the money (Paymob at launch; X-03). |
+| Money and time | `amount_minor` | Amount confirmed by inquiry, in minor units (§0.6). |
+| Money and time | `currency` | ISO 4217 currency code (for example `EGP`). |
+| Money and time | `paid_at` | When the provider says the payer paid (UTC). |
+| Money and time | `confirmed_at` | When the ABO's authenticated inquiry confirmed success (UTC). |
+| Money and time | `confirmation_inquiry_id` | The `inquiry_result` row that proved the money (§2.5). |
+| What was bought | `offer_id` | Copied from the checkout: which product line was purchased (§2.2). |
+| What was bought | `offer_version` | Copied from the checkout: which board version was purchased. |
+| What was bought | `billing_contact_version` | Copied from the checkout: which billing-contact version was on the slip (§2.3); not the contact values. |
+| Labels | `classification` | Set once at confirmation and never changed (§5.2): `normal`; `likely_duplicate` (same coverage snapshot as an earlier paid checkout, I-8); or `late` (checkout was `expired` or `cancelled`). |
+| Decision | `disposition` | What the ABO does with this money: `grant` (create a grant request); `withheld_mismatch` (hold — amount, currency or order did not match the checkout); or `reversed_before_grant` (inquiry already showed it fully reversed; no grant). |
+| Decision | `mismatch_detail` | When `disposition = withheld_mismatch`, what failed to match (for example amount or currency); otherwise empty. |
+| Proof | `evidence_sha256` | Fingerprint of the inquiry (and related) evidence used to write this row. |
+
+**`payment_release`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `payment_id` | The withheld payment the operator is releasing for grant. |
+| `operator_action_id` | The signed HP operator-action audit row for this release (§2.10). |
+| `at` | When the release was recorded (UTC). |
 
 
 | Table            | Kind        | Fields                                                                                                                                                                                                                                                                                                             |
@@ -461,19 +552,38 @@ Fields of `payment`, in groups:
 
 **What this is.** Money going backwards on a specific payment (§0.5). A reversal is never read as a new payment (FR-42). Like a returned cheque: it is filed against the original deposit, not as a new deposit.
 
-Fields of `reversal`:
+Two tables:
 
-- `reversal_id`, the human `reference`, and the `payment_id` it reverses.
-- `source`, who started it: `provider` (Paymob or the bank), `operator` (recorded by hand, for example a chargeback Paymob never reported) or `vendor` (a refund the vendor issues). `vendor` is rejected at launch; it is the seam for adding refunds later (X-01).
-- `kind`: `refund`, `void`, `chargeback` or `unknown`.
-- `amount_minor` (this reversal), `cumulative_reversed_minor` (the total reversed on this payment so far) and `is_full` (whether the whole payment is now reversed).
-- `detected_via`, how it was found: a `notification`, an `inquiry`, a `payout` report line, or `manual` entry.
-- `recorded_by`, `evidence_sha256`.
-- `effect`, what it does to the clinic's AI time (§5.5).
+- `reversal` is the money-back fact (append-only).
+- `reversal_outcome` is one platform answer when a reversal changes AI time (append-only).
 
-`reversal_outcome` records what the AI Platform did about it: the `reversal_id`, the `result`, the platform's signed `receipt` and the time (`at`).
+**`reversal`** (append-only)
 
-Summary:
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `reversal_id` | Unique id for this reversal. |
+| Identity | `reference` | Human-readable id for support (§7). |
+| Identity | `payment_id` | The payment this reversal applies to. |
+| Origin | `source` | Who started it: `provider` (provider or bank), `operator` (manual HP entry) or `vendor` (vendor refund; rejected at launch, X-01). |
+| Origin | `kind` | `refund`, `void`, `chargeback` or `unknown`. |
+| Amounts | `amount_minor` | Amount reversed by this row, in minor units. |
+| Amounts | `cumulative_reversed_minor` | Total reversed on this payment after this row. |
+| Amounts | `is_full` | Whether the payment is now fully reversed. |
+| Detection | `detected_via` | How it was found: `notification`, `inquiry`, `payout` file line or `manual`. |
+| Audit | `recorded_by` | Operator or system identity that wrote the row, when applicable. |
+| Proof | `evidence_sha256` | Fingerprint of the evidence behind this reversal. |
+| Service effect | `effect` | What should happen to AI time: `tombstone`, `end_current`, `remove_queued`, `none` or `review_partial` (§5.5). |
+
+**`reversal_outcome`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `reversal_id` | The reversal this outcome belongs to. |
+| `result` | Platform result of applying the reversal (for example void applied, conflict, or transient failure; §5.5). |
+| `receipt` | Platform-signed receipt for the void or related operation, when present. |
+| `at` | When this outcome was recorded (UTC). |
 
 
 | Table              | Kind        | Fields                                                                                                                                                                                                                                                                                  |
@@ -486,20 +596,36 @@ Summary:
 
 **What this is.** The ABO's copy of every "please add this AI time" instruction it sends to the AI Platform, and the platform's answers. Think of an order form sent to the warehouse, kept with its signed delivery note.
 
-Fields of `grant_request`:
+Two tables:
 
-- `grant_id`, computed from what caused the grant (§7), so the same cause always produces the same id and a retry can never create a second grant.
-- `org_id`.
-- `source_kind`: `paid`, `complimentary` or `transfer` (§0.5). `source_ref` points to the cause: the payment, the operator action or the transfer.
-- `envelope`: the full grant contents in canonical JSON (04 §1.4), and `envelope_sha256`, its fingerprint.
-- `assertion`: for complimentary grants only, the operator's passkey proof.
+- `grant_request` is the outbound instruction (append-only).
+- `grant_outcome` is one platform response (append-only; multiple rows if retried).
 
-Fields of `grant_outcome`, one row per answer from the platform:
+**`grant_request`** (append-only)
 
-- `grant_id`.
-- `result`: `applied` (done now), `already_applied` (it was done before; a harmless repeat), `conflict` (the same id was already used with *different* contents) or `rejected` (it failed the platform's checks).
-- For paid grants, `abo_kid` and `abo_signature`: the key and signature the ABO used on the accepted attempt. Each attempt signs with the ABO's *current* key, so when the key is replaced (**key rotation**), waiting requests need no new row.
-- `receipt`, signed by the platform; `term_ids`, the terms it created; and the time (`at`).
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `grant_id` | Deterministic id from the cause (§7) so retries cannot create a second grant. |
+| Identity | `org_id` | Clinic receiving the grant. |
+| Source | `source_kind` | `paid`, `complimentary` or `transfer` (§0.5). |
+| Source | `source_ref` | Cause id: `payment_id`, operator action id or `transfer_id` (SR-10). |
+| Payload | `envelope` | Full grant message in canonical JSON (04 §1.4). |
+| Payload | `envelope_sha256` | Fingerprint of `envelope`. |
+| Authorization | `assertion` | Operator passkey proof JSON for complimentary grants; empty for paid grants. |
+
+**`grant_outcome`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `grant_id` | The grant request this answer belongs to. |
+| `result` | `applied` (done now), `already_applied` (harmless duplicate), `conflict` (same id, different payload) or `rejected` (platform checks failed). |
+| `abo_kid` | ABO signing key id used on the accepted paid attempt; empty for complimentary-only paths. |
+| `abo_signature` | Signature on the accepted paid attempt; each retry may use the current key (key rotation needs no new request). |
+| `receipt` | Platform-signed receipt when the grant was accepted. |
+| `term_ids` | Term ids the platform created or adjusted. |
+| `at` | When this outcome was recorded (UTC). |
 
 
 | Table             | Kind        | Fields                                                                                                                                                                                              |
@@ -514,14 +640,20 @@ Fields of `grant_outcome`, one row per answer from the platform:
 
 **What this is.** The ABO's to-do board. Every background step, such as "confirm this payment" or "send this grant", is a card (a **work row**) on the board. Workers pick up cards, do them, and move them to "done". A card that cannot be finished yet stays on the board and is retried. Because the cards are in the database, nothing is forgotten if the ABO crashes, and the operator can always see what is stuck.
 
-Fields of `work`:
+**`work`** (mutable)
 
-- `work_id`.
-- `kind`, the type of task: `confirm` (inquire and confirm a payment), `grant` (send a grant), `reverse` (apply a reversal), `sweep_checkout` and `sweep_payment` (periodic re-checks with Paymob that catch lost notifications and lost reversals), or `transfer_step` (one step of moving time to a new identity).
-- `subject_id`: what the task is about.
-- `dedupe_key`: unique, so the same task cannot be added twice.
-- `state` (§5.6).
-- `attempts`, `next_attempt_at` (when to try again), `lease_until` (the "someone is on it until…" tag, §0.6) and `last_error`.
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `work_id` | Unique id for this to-do card. |
+| Task | `kind` | `confirm` (inquire and confirm payment), `grant` (send grant), `reverse` (apply reversal), `sweep_checkout` / `sweep_payment` (provider re-checks for missed webhooks or reversals), or `transfer_step` (one transfer step). |
+| Task | `subject_id` | Id of the checkout, payment, grant, reversal or transfer this card processes. |
+| Task | `dedupe_key` | Unique key so the same logical task cannot be queued twice. |
+| Progress | `state` | `open`, `done` or `parked` (§5.6). |
+| Progress | `attempts` | How many times a runner has tried this card. |
+| Progress | `next_attempt_at` | Earliest time to retry after backoff (UTC). |
+| Progress | `lease_until` | Runner holds the card until this time (§0.6); prevents double processing. |
+| Progress | `last_error` | Short message from the last failed attempt, for ops. |
 
 
 | Table  | Kind    | Fields                                                                                                                                                                                                              |
@@ -543,12 +675,98 @@ The notification intake (§2.5) works the same way: the `notification` row and i
 
 **What this is.** The shop owner's supervision tools: the alarm bell, the list of discrepancies, the signed log of everything the operator did, the bank statements, and a copy of each clinic's coverage for reference.
 
-- `alert` is one alarm that may need a human. `alert_key` (the alert's code plus what it is about) makes sure the same problem sends one email series, not hundreds (NFR-02). It also stores the `code` and `severity`; when the problem was first and last seen (`first_at`, `last_at`) and how often (`count`); the sending progress (`send_state`, `next_send_at`); and when it was resolved (`resolved_at`).
-- `finding` is one discrepancy found by reconciliation: `finding_id`, its `kind` (listed in 05 §3), its `subject`, `detail` and `detected_at`. `finding_resolution` records how the operator closed it: `finding_id`, `resolved_by`, a `note` and `at`.
-- `operator_action` is the audit log of every operator action (FR-73): `action_id`, who did it (`actor_email`), the id of their login token (`access_jti`), the `action` and its `subject`, fingerprints of the exact parameters (`params_sha256`) and of the passkey proof (`assertion_sha256`), and the `result`.
-- `payout_import` is one uploaded monthly payout file from Paymob: `import_id`, `provider_id`, the file's fingerprint (`file_sha256`) and where it is stored (`r2_key`), who imported it (`imported_by`) and the `period` it covers. `payout_line` is one line of that file: `import_id`, `line_no`, its `kind` (`payment`, `refund`, `chargeback`, `fee`, `other`), the amounts before fees, the fee and after fees (`gross_minor`, `fee_minor`, `net_minor`), `settled_at`, and the matching `payment_id` (empty if no payment matches).
-- `coverage_view` is the ABO's read-only copy of each clinic's coverage, built from the coverage events the AI Platform publishes (04 §1.8): `org_id`, `binding_epoch`, `clinic_seq` and the `snapshot`. It is used for the console, for reconciliation that traces each grant to its origin, and as the checkout fallback (§2.4). It is updated by the ordering rule below.
-- `feed_cursor` is the ABO's bookmark: the last platform `feed_seq` it has read.
+**`alert`** (mutable)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `alert_key` | Stable key (alert code plus subject) so one problem does not spam email (NFR-02). |
+| `code` | Alert type code (for example AL-01). |
+| `severity` | How urgent the alert is. |
+| `first_at` | When this problem was first seen (UTC). |
+| `last_at` | When it was last seen (UTC). |
+| `count` | How many times it has fired. |
+| `send_state` | Email send progress for this alert. |
+| `next_send_at` | When to send or resend email (UTC). |
+| `resolved_at` | When the problem was cleared, if resolved (UTC). |
+
+**`finding`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `finding_id` | Unique id for this reconciliation discrepancy. |
+| `kind` | Finding category (listed in 05 §3). |
+| `subject` | What the finding is about (for example a payment or grant id). |
+| `detail` | Structured explanation for the operator. |
+| `detected_at` | When reconciliation raised it (UTC). |
+
+**`finding_resolution`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `finding_id` | The finding being closed. |
+| `resolved_by` | Operator who resolved it. |
+| `note` | Operator explanation. |
+| `at` | When resolution was recorded (UTC). |
+
+**`operator_action`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `action_id` | Unique id for this HP or operator action (FR-73). |
+| `actor_email` | Operator's email. |
+| `access_jti` | Id of the login session token used. |
+| `action` | What was done (for example publish offer, release payment). |
+| `subject` | Id of the object acted on. |
+| `params_sha256` | Fingerprint of the exact parameters. |
+| `assertion_sha256` | Fingerprint of the passkey proof, when HP. |
+| `result` | Outcome (success, rejection code, etc.). |
+
+**`payout_import`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `import_id` | Unique id for one uploaded payout file. |
+| `provider_id` | Which provider's statement this is. |
+| `file_sha256` | Fingerprint of the uploaded file. |
+| `r2_key` | Where the file is stored in R2. |
+| `imported_by` | Operator who uploaded it. |
+| `period` | Statement period the file covers (for example `2026-03`). |
+
+**`payout_line`** (append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `import_id` | Parent payout import. |
+| `line_no` | Line number within that file. |
+| `kind` | `payment`, `refund`, `chargeback`, `fee` or `other`. |
+| `gross_minor` | Amount before fees, in minor units. |
+| `fee_minor` | Provider fee on this line. |
+| `net_minor` | Amount after fees. |
+| `settled_at` | When the provider settled this line (UTC). |
+| `payment_id` | Matched ABO payment, if any; null if unmatched. |
+
+**`coverage_view`** (mutable)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `org_id` | Clinic this snapshot belongs to. |
+| `binding_epoch` | Platform binding epoch when this snapshot was valid (§5.4). |
+| `clinic_seq` | Per-clinic event sequence from the platform feed (§6.7). |
+| `snapshot` | JSON coverage snapshot from the platform (04 §1.8); used for console, grant-origin checks and checkout fallback (§2.4). |
+
+**`feed_cursor`** (mutable)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `feed_seq` | Last global platform `feed_seq` the ABO has applied (single row or per-consumer as implemented). |
 
 
 | Table                | Kind        | Fields                                                                                                                                                  |
@@ -572,9 +790,44 @@ Think of book editions and page numbers. A re-created identity starts a new edit
 
 **What this is.** The translator's private notebook. These tables hold every Paymob-specific identifier, so none reaches the rest of the ABO, called the **domain** (G6, SR-10). Only the adapter module reads or writes them. If another provider is added later, it gets its own tables, and nothing else changes.
 
-- `paymob_intention` is Paymob's payment session for one checkout: `checkout_id`, Paymob's `intention_id` and `order_id`, the `client_secret` used to open Paymob's page, the `special_reference` (the ABO's checkout reference, given to Paymob) and `expires_at`.
-- `paymob_txn` is one Paymob transaction: `txn_id`, `order_id`, the ABO's `checkout_id` and `payment_id`, `parent_txn_id` (Paymob reports refunds as child transactions of the original payment) and `last_state_key`, the last state seen.
-- `paymob_state_seen` records every distinct state change already processed (SR-02). Its `dedupe_key` is unique and made of the transaction, its normalized state and the cumulative reversed amount; it also stores the `source` and `first_seen_at`. The amount is part of the key because Paymob re-sends the same parent transaction with new flags when a refund happens, so the transaction id alone would not show that something changed.
+Three tables (adapter-only; not append-only facts in the ledger sense):
+
+- `paymob_intention` — one Paymob payment session per checkout.
+- `paymob_txn` — one Paymob transaction id mapped to ABO ids.
+- `paymob_state_seen` — dedupe of provider state changes already handled (SR-02).
+
+**`paymob_intention`**
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `checkout_id` | ABO checkout this session is for. |
+| `intention_id` | Paymob intention (payment session) id. |
+| `order_id` | Paymob order id for this checkout. |
+| `client_secret` | Secret the desktop uses to open Paymob's hosted payment page. |
+| `special_reference` | Checkout `reference` sent to Paymob as merchant reference. |
+| `expires_at` | When Paymob's session expires (UTC). |
+
+**`paymob_txn`**
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `txn_id` | Paymob transaction id (used inside adapter to compute `payment_id`, §7). |
+| `order_id` | Paymob order id linking back to the intention. |
+| `checkout_id` | ABO checkout. |
+| `payment_id` | ABO payment once confirmed; empty until then. |
+| `parent_txn_id` | Parent txn when this row is a refund child of an original payment. |
+| `last_state_key` | Last normalized state key seen for this txn (adapter bookkeeping). |
+
+**`paymob_state_seen`**
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `dedupe_key` | Unique key: transaction + normalized state + cumulative reversed amount (SR-02). |
+| `source` | Whether the state was seen via `notification`, `inquiry`, etc. |
+| `first_seen_at` | When this state combination was first processed (UTC). |
 
 
 | Table               | Fields                                                                                                                      |
@@ -596,28 +849,82 @@ The DO already uses SQLite storage (`ai-platform/wrangler.toml:17-19`). Today it
 
 **Why one small "hot" row matters.** Cloudflare bills a DO mainly by rows written. The **request path** (the work done for every AI request) therefore writes only the single `hot` row, about twice per request: once at admission and once at settlement (01 §3.2, write budget). The other tables change only when something notable happens, such as a new grant or a term ending. Picture the cashier keeping a running total on one sticky note and opening the big ledger only for real events.
 
-Fields of `hot` (one row per clinic):
+Four tables (SQLite inside the DO; replaces today's single JSON blob):
 
-- **Switches.** `suspended` (the operator turned AI off); `transferred_out_to` (this identity's time was moved to another installation); `awaiting_transfer` (this is a new identity waiting for moved time to arrive); `transfer_pending` (this identity was deleted with time left and waits for the operator to move it, §5.4).
-- **Counters.** `active_term_id` (the term in use); `used` (credits used); `reserved` (credits held by requests still running); `grace_base_used` (the value of `used` when grace started, §6.4).
-- **In-flight requests.** `reservations`: at most 16, matching the concurrency limit. Each has an id, a weight, a term id, a capability and the time it was admitted.
-- **Repeat protection.** `replay` entries remember token ids already seen, and `idempotency` entries remember answers already given, so a repeated request gets the stored answer and is not counted twice. Old entries are cleared on each write, but each is kept for at least the 2-hour horizon.
-- **Warnings sent.** `band_emitted`: which low-allowance warnings (75 % and 90 %) were already announced for this term.
-- **Ordering.** `binding_epoch` and `clinic_seq` (§2.10).
-- **Alarm clock.** `next_alarm_at`.
+- `hot` — one row, updated on almost every AI request.
+- `term` — one row per coverage period.
+- `grant` — one row per grant applied on this installation.
+- `outbox` — transient rows shipped to platform D1 by the alarm.
 
-Fields of `term` (one row per term):
+**`hot`** (one row per clinic)
 
-- `term_id`; `grant_id` (the grant that created this row); `origin_grant_id` (the grant that *first* created this time, kept when the term is moved to a new identity, §5.5).
-- `position` (its place in the queue), `state` (§5.4) and `end_reason`.
-- `plan_snapshot`: a frozen copy of the plan (plan id and version, display name, capabilities, max cost class, concurrency limit), so a later plan change cannot alter a term already sold.
-- `allowance`, and `used_final`, the usage when it ended.
-- Its length: `duration_unit` and `duration_count`. Its grace policy: `grace_days` and `grace_cap`.
-- Its dates: `calendar_start` (the instant its calendar counts from, which can be backdated, §5.4), `starts_at` (when it began serving), `ends_at`, `grace_ends_at` and `ended_at`.
 
-Fields of `grant` (one row per grant received): `grant_id`; `kind` (`term` adds a term, `term_adjustment` changes the active one); `source_kind`; the envelope and its fingerprint (`envelope`, `envelope_sha256`); the `evidence`; the platform's `receipt`; `applied_at`; and, if cancelled later, `voided_at` and `void_reason`.
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Switches | `suspended` | Operator turned AI off for this installation. |
+| Switches | `transferred_out_to` | Destination `installation_id` if time was moved away. |
+| Switches | `awaiting_transfer` | New identity waiting for `transferIn` to deliver moved time (§5.4). |
+| Switches | `transfer_pending` | Identity deleted with coverage left; waits for operator transfer (§5.4). |
+| Counters | `active_term_id` | `term_id` currently serving requests. |
+| Counters | `used` | Credits consumed on the active term (and grace when applicable). |
+| Counters | `reserved` | Credits reserved for in-flight requests. |
+| Counters | `grace_base_used` | Value of `used` when grace started (§6.4). |
+| In-flight | `reservations` | Up to 16 entries: reservation id, weight, `term_id`, capability, admitted at. |
+| Repeat protection | `replay` | Recent token ids (`jti`) already seen; swept but kept ≥ 2 hours. |
+| Repeat protection | `idempotency` | Cached admission/settlement answers by idempotency key; same retention. |
+| Warnings | `band_emitted` | Which allowance bands (75 %, 90 %) were already announced this term. |
+| Ordering | `binding_epoch` | Binding epoch for events this DO publishes (§2.10). |
+| Ordering | `clinic_seq` | Per-clinic sequence for those events (§6.7). |
+| Alarm | `next_alarm_at` | When the DO alarm should wake to flush `outbox` or end terms (UTC). |
 
-Fields of `outbox` (temporary rows): `seq`, `kind` (`coverage_event`, `grant_ledger`, `usage_adjustment` or `alert`) and the `payload`. The DO's alarm ships these rows to platform D1 and then deletes them (§6.7).
+**`term`** (one row per term)
+
+
+| Group | Field | What it is |
+| ----- | ----- | ---------- |
+| Identity | `term_id` | Unique id for this coverage period. |
+| Lineage | `grant_id` | Grant that created this row. |
+| Lineage | `origin_grant_id` | Grant that first created this time; kept across transfers (§5.5). |
+| Queue | `position` | Place in the term queue (0 = active). |
+| Lifecycle | `state` | `active`, `queued`, `grace`, `held` or `ended` (§5.4). |
+| Lifecycle | `end_reason` | Why it ended, when `ended` (§5.4). |
+| Plan | `plan_snapshot` | Frozen plan id/version, display name, capabilities, max cost class, concurrency limit. |
+| Allowance | `allowance` | Credits included in this term. |
+| Allowance | `used_final` | Credits used when the term ended. |
+| Length | `duration_unit` | Calendar unit (for example `month`). |
+| Length | `duration_count` | How many units the term spans. |
+| Grace policy | `grace_days` | Courtesy days after `ends_at`. |
+| Grace policy | `grace_cap` | Maximum grace credits (from proportional rule, §6.4). |
+| Dates | `calendar_start` | Instant the calendar counts from (may be backdated, §5.4). |
+| Dates | `starts_at` | When the term began serving. |
+| Dates | `ends_at` | Scheduled end of paid period. |
+| Dates | `grace_ends_at` | End of grace window, if any. |
+| Dates | `ended_at` | When the term actually ended (UTC). |
+
+**`grant`** (one row per grant)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `grant_id` | Same id as the ABO grant request (§7). |
+| `kind` | `term` (adds or queues a term) or `term_adjustment` (changes active term). |
+| `source_kind` | `paid`, `complimentary` or `transfer`. |
+| `envelope` | Canonical grant JSON as received. |
+| `envelope_sha256` | Fingerprint of `envelope`. |
+| `evidence` | Supporting evidence blob (signatures, source ref). |
+| `receipt` | Platform-signed receipt returned to the ABO. |
+| `applied_at` | When this grant was applied on the DO (UTC). |
+| `voided_at` | When voided, if applicable (UTC). |
+| `void_reason` | Why the grant was voided. |
+
+**`outbox`** (transient)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `seq` | Monotonic sequence within this DO outbox. |
+| `kind` | `coverage_event`, `grant_ledger`, `usage_adjustment` or `alert`. |
+| `payload` | JSON body shipped to platform D1; row deleted after successful ship (§6.7). |
 
 Summary:
 
@@ -648,6 +955,244 @@ A few terms used in the table:
 - **Plan bounds for paid grants.** `grace.days` (the grant's grace length) at most 7, and `cap_rule = proportional` (§6.4).
 - File and line references such as `migrations/20260731120000_platform_schema.sql:8` point to today's code.
 
+#### 3.2.1 Key registries
+
+**`issuer_key`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `kid` | Key id for backend-issued desktop tokens. |
+| `issuer` | Issuer name matching JWT `iss`. |
+| `public_key` | Public key material for verifying tokens. |
+| `status` | `active`, `retiring` or `revoked`. |
+| `not_before` | Earliest time this key may sign (UTC). |
+| `not_after` | Latest time this key may sign (UTC). |
+| `registered_by` | Operator who registered the key. |
+| `assertion_sha256` | Fingerprint of the HP passkey proof for registration. |
+
+**`service_key`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `kid` | Key id for ABO service signatures. |
+| `service` | Service name (`abo`). |
+| `public_key` | Public key for verifying paid grants. |
+| `status` | `active`, `retiring` or `revoked`. |
+| `registered_by` | Operator who registered the key. |
+| `assertion_sha256` | Fingerprint of the HP passkey proof. |
+
+**`operator_credential`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `credential_id` | Unique passkey credential id. |
+| `operator_email` | Operator email bound to this passkey. |
+| `public_key_cose` | COSE-encoded public key. |
+| `alg` | Signature algorithm. |
+| `status` | `pending`, `active` or `revoked`. |
+| `activates_at` | Earliest activation time (24-hour delay, UTC). |
+| `approved_by` | Existing credential that approved this one. |
+| `revoked_by` | Credential that revoked this one, if any. |
+
+**`assertion_used`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `challenge_sha256` | Hash of the WebAuthn challenge; replay guard. |
+| `credential_id` | Passkey that consumed the challenge. |
+| `used_at` | When the assertion was accepted (UTC); swept after a day. |
+
+#### 3.2.2 Clinic identity
+
+**`tenant_binding`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `org_id` | Shared-backend clinic id. |
+| `installation_id` | Platform identity (DO) for this binding. |
+| `epoch` | Binding generation (1, 2, 3 … after re-creation). |
+| `status` | `active`, `held_for_transfer` or `retired`. |
+| `retired_at` | When the binding was retired (UTC). |
+| `reason` | Why the binding changed state. |
+
+**`installation`** (Kept)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| (existing columns) | Platform clinic row; `status` includes `deleted` but the row is never removed (RC-05). |
+
+#### 3.2.3 Plans and complimentary limits
+
+**`plan_version`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `plan_id` | Stable plan id. |
+| `version` | Published version number. |
+| `display_name` | Human-readable plan name. |
+| `capabilities` | Allowed AI capabilities for this plan. |
+| `max_cost_class` | Highest model cost class permitted. |
+| `concurrency_limit` | Max simultaneous AI requests. |
+| `max_allowance_per_month` | Upper bound for monthly allowance sizing. |
+| `status` | `published` or `retired`. |
+| `published_by` | Operator who published. |
+| `assertion_sha256` | HP passkey proof fingerprint. Immutable once published (P-04, P-05). |
+
+**`ceiling_policy`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| (versioned policy row) | Caps complimentary grants: per grant ≤ 31 days and ≤ 1 month of plan allowance; per clinic per 90 days ≤ 62 days and ≤ 2 months including adjustments (01 I-10). Paid grants: `grace.days` ≤ 7 and `cap_rule = proportional`. |
+| `set_by` | Operator who set this policy version. |
+| `assertion_sha256` | HP passkey proof fingerprint. |
+
+#### 3.2.4 Coverage copies
+
+**`coverage_mirror`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `installation_id` | Platform identity this row mirrors. |
+| `org_id` | Clinic id for lookups. |
+| `binding_epoch` | Epoch of the snapshot (ordering, §2.10). |
+| `clinic_seq` | Per-clinic sequence of the snapshot. |
+| `state` | Coverage state word (§5.7). |
+| `suspended` | Whether operator suspension is on. |
+| `hard_stop_at` | When AI must stop if coverage lapses (UTC). |
+| `term_snapshot` | Summary of the active term for display. |
+| `snapshot` | Full coverage snapshot shape (04 §1.7); desktop status is derived from it (04 §4.3). Never used alone to admit requests (§6.5). |
+
+**`coverage_event`** (New, append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `feed_seq` | Global autoincrement cursor the ABO reads (`feed_cursor`, §2.10). |
+| `event_id` | Unique id for this event. |
+| `org_id` | Clinic affected. |
+| `installation_id` | Platform identity affected. |
+| `binding_epoch` | Epoch when the event was emitted. |
+| `clinic_seq` | Per-clinic sequence number. |
+| `kind` | What changed (coverage transition). |
+| `snapshot` | Coverage snapshot after the change. |
+| `at` | Event time (UTC). Never purged. |
+
+#### 3.2.5 Grant ledger and transfers
+
+**`grant_ledger`** (New, append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `grant_id` | Grant id (matches ABO and DO). |
+| `origin_grant_id` | Lineage id across transfers (§5.5). |
+| `org_id` | Clinic that received the grant. |
+| `installation_id` | Identity where it was applied. |
+| `kind` | `term` or `term_adjustment`. |
+| `source_kind` | `paid`, `complimentary` or `transfer`. |
+| `operator_credential_id` | Passkey used for complimentary grants (SR-25). |
+| `envelope_sha256` | Fingerprint of grant envelope. |
+| `receipt` | Platform-signed receipt. |
+| `applied_at` | When applied (UTC). |
+
+**`grant_void`** (New, append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `grant_id` | Grant being voided. |
+| `reason` | Why it was voided. |
+| `source` | `reversal` or `operator`. |
+| `evidence_sha256` | Fingerprint of supporting evidence. |
+| `at` | When recorded (UTC). May tombstone before grant arrives (§5.5). |
+
+**`transfer`** (New, append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `transfer_id` | Id from `beginTransfer` authorisation (04 §1.3). |
+| `org_id` | Clinic whose time moves (same org only). |
+| `from_installation_id` | Source identity. |
+| `to_installation_id` | Destination identity after re-bind. |
+| `reason` | Operator reason (HP). |
+| `package` | Serialized terms and allowances to recreate on the new DO (§5.4). |
+
+**`transfer_step`** (New, append-only)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `transfer_id` | Parent transfer. |
+| `step` | Leg of the move (`transferOut` or `transferIn`, 04 §1.3). |
+| `state` | Progress until `applied` or `already_applied`. |
+| `receipt` | Platform-signed receipt for this leg. |
+| `at` | Last update (UTC). |
+
+#### 3.2.6 Usage and housekeeping
+
+**`fallback_admission`** (Replaces `grace_admission_queue`)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `installation_id` | Clinic identity admitted while DO was unreachable (§6.5). |
+| `idempotency_key` | Client key so the same request is not double-counted. |
+| `term_id` | Term the admission was charged against. |
+| `weight` | Credit weight reserved. |
+| `admitted_at` | When fallback admission happened (UTC). |
+| `state` | `pending` until drained into the DO, then `settled`. |
+
+**`usage_event`** (Changed)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `usage_event_id` | Unique usage row id. |
+| `installation_id` | Clinic identity. |
+| `term_id` | Term credited (replaces `period`, P-15). |
+| `request_id` | AI request id; unique so journal and DO adjustment cannot double-count (§6.2). |
+| `quota_weight` | Credits charged for this request. |
+| `tokens` | Token usage reported by the adapter. |
+| `cost` | Cost units reported by the adapter. |
+| `recorded_at` | When usage was recorded (UTC). |
+
+**`usage_rollup`** (Changed)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| (rollup dimensions) | Aggregated usage keyed by `{installation_id, term_id}` instead of period. |
+
+**`platform_alert`** (New)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| (same as ABO `alert`, §2.10) | `alert_key`, `code`, `severity`, `first_at`, `last_at`, `count`, `send_state`, `next_send_at`, `resolved_at`. |
+
+**`control_audit`** (Changed)
+
+
+| Field | What it is |
+| ----- | ---------- |
+| `actor` | Operator Access email (was generic actor). |
+| `assertion_sha256` | Passkey proof fingerprint for HP control actions. |
+| (other existing columns) | Control action audit fields unchanged in role. |
+
+**Dropped (pre-launch, no migration):** `installation_key`, `entitlement`, `plan`, `credit_price`, `invoice`, `grace_admission_queue` (P-06, P-02, P-04, P-13).
+
+Summary:
+
 
 | Table                  | Change   | Fields and notes                                                                                                                                                                                         |
 | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -675,6 +1220,22 @@ A few terms used in the table:
 ### 3.3 R2
 
 **What this is.** The platform's own vault copy, independent of the ABO's. The prefix `grant-ledger/` holds one NDJSON object per grant and per void, with its receipt, under a bucket lock (RC-03, RC-05), so even a deleted or damaged D1 cannot erase the record of what was granted. The existing prefixes that store AI request envelopes (the stored contents of AI requests) are unchanged.
+
+**`grant-ledger/`** (locked NDJSON, RC-03)
+
+
+| Artifact | What it is |
+| -------- | ---------- |
+| Grant object | One NDJSON line per grant applied: ids, envelope fingerprint, platform receipt, timestamps. |
+| Void object | One NDJSON line per `grant_void` with reason, source and evidence fingerprint. |
+| Bucket lock | Prevents tampering with the vault prefix (RC-05). |
+
+**Other R2 prefixes** (unchanged)
+
+
+| Prefix / use | What it is |
+| ------------ | ---------- |
+| AI request envelopes | Stored request payloads for the serving pipeline; not part of billing orchestration. |
 
 ## 4. Shared backend records
 

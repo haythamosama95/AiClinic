@@ -2,9 +2,9 @@
 
 **Status:** Phase 2 design. **Date:** 2026-10-01.
 
-Start with section 0. It explains what this document is for, the systems that talk to each other, and every term used later. Sections 1 to 7 keep their numbers because the other design documents cite them (for example "04 §1.3").
+Start with section 0 (after [02 §0](02-abo-architecture-and-threat-model.md#0-start-here-the-big-picture) and [03 §0](03-abo-data-model-and-lifecycle.md#0-start-here-the-big-picture) if you have not read them). Section 0 here adds what a contract is, the channels between systems, and wire vocabulary. Sections 1 to 7 keep their numbers because the other design documents cite them (for example "04 §1.3").
 
-Requirement IDs (such as FR-13 or SR-10) refer to the [seed](00-abo-requirements-seed.md); "01 §n", "02 §n", "03 §n" refer to the [decision memo](01-abo-design-decisions.md), the [architecture and threat model](02-abo-architecture-and-threat-model.md) and the [data model](03-abo-data-model-and-lifecycle.md). The key to every code is in §0.8.
+Requirement IDs (such as FR-13 or SR-10) refer to the [seed](00-abo-requirements-seed.md); "01 §n", "02 §n", "03 §n" refer to the [decision memo](01-abo-design-decisions.md), the [architecture and threat model](02-abo-architecture-and-threat-model.md) and the [data model](03-abo-data-model-and-lifecycle.md). The key to every reference code is in [02 §0.8](02-abo-architecture-and-threat-model.md#08-how-to-read-the-rest-of-this-document).
 
 Two ground rules apply to the whole document (JSON, minor units and UTC are explained further in §0.6):
 
@@ -31,6 +31,7 @@ Two ground rules apply to the whole document (JSON, minor units and UTC are expl
    - [Receipt](#16-receipt)
    - [Coverage snapshot](#17-coverage-snapshot)
    - [Coverage events](#18-coverage-events)
+   - [End-to-end picture](#19-end-to-end-picture)
 2. [Tokens and ABO clinic API](#2-tokens-and-abo-clinic-api)
    - [Token claims](#21-token-claims)
    - [ABO clinic API](#22-abo-clinic-api)
@@ -63,21 +64,21 @@ Two ground rules apply to the whole document (JSON, minor units and UTC are expl
 
 ## 0. Start here: the big picture
 
+Read the [architecture and threat model](02-abo-architecture-and-threat-model.md) §0 for the product story, the prepaid-bundle picture, the cast of systems, hosting and security vocabulary, and the purchase walk-through through doors and keys. Read the [data model](03-abo-data-model-and-lifecycle.md) §0 for business words and the record-level purchase walk-through. This section adds only what those documents do not cover.
+
 ### 0.1 What we are trying to achieve
 
-AiClinic's desktop app has an optional, paid AI add-on. The **AI Billing Orchestrator (ABO)** makes buying it self-service: a clinic administrator picks an offer in the app, pays on the payment provider's web page, and AI switches on by itself within about a minute. It keeps working until the paid time or the paid usage runs out, and then it stops on time. The [data model](03-abo-data-model-and-lifecycle.md) (03) describes *what is written down* to make that work.
+03 describes *what is written down* to turn payment into AI time. **This document** describes *what is said*: the messages between programs. It answers five questions:
 
-This document describes *what is said*. Several separate programs take part in a purchase, and they only cooperate by sending each other messages. For every pair of programs that talk, this document fixes exactly:
-
-1. **Who may call whom, and over what kind of connection.** Some programs may never call each other at all.
-2. **What each request contains.** Every field, its type and its allowed values.
-3. **What each answer looks like.** Including every way the answer can say "no", and what the caller must do next.
-4. **What proof the caller must show.** A signed token, a digital signature, or the operator's touch on a hardware key.
-5. **How the message formats can change later** without breaking a clinic that has not updated its app yet.
+1. **What does the ABO say to the AI Platform, and what comes back?** Section 1.
+2. **What badges and HTTP paths do desktops use for billing and AI?** Sections 2 and 4.
+3. **Which backend functions does the desktop call?** Section 3.
+4. **How does the ABO talk to Paymob through the adapter?** Section 5.
+5. **How may message formats change without breaking an old app?** Section 7.
 
 It also lists which existing source files must change to match these message formats (§3.2 and §6), so every rule can be traced to code.
 
-Four goals shape every contract here:
+Four goals shape every contract here (shared goals such as "no service without payment" are in 02 §0.1):
 
 - **No one can buy AI time without real proof.** Every message that adds AI time carries a signature or a fresh operator approval, and the receiver checks it itself.
 - **Each connection carries only what it needs.** A badge for the billing shop cannot run AI, and a badge for AI cannot open a checkout. No prices or payment details travel to places that do not need them.
@@ -86,19 +87,10 @@ Four goals shape every contract here:
 
 ### 0.2 The whole system in one analogy
 
-Think of a **prepaid mobile phone bundle**, the same picture used in 03. You walk into a shop, choose a bundle from the price board, pay at the till, and the network adds the bundle to your SIM card. Every call uses some units. When the month ends or the units run out, the bundle ends.
-
-This document is about the **paperwork that passes between the offices** in that picture. A **contract** is the agreed shape of each form or letter: which office may send it, which boxes it has, what the reply looks like, and what every refusal reason means. If both offices fill in the same form the same way, they never misunderstand each other.
+02 §0.2 and 03 §0.2 name the shop, the network, the bank terminal and the commercial objects a purchase creates. **This document** is about the **paperwork that passes between the offices**: a **contract** is the agreed shape of each form or letter — which office may send it, which boxes it has, what the reply looks like, and what every refusal reason means.
 
 | Mobile bundle world                                                   | In this design                                       | Explained in |
 | --------------------------------------------------------------------- | ---------------------------------------------------- | ------------ |
-| The shop: price board, till and receipt book                          | The **ABO**                                          | §0.3         |
-| The phone network                                                     | The **AI Platform**                                  | §0.3         |
-| The clinic's dedicated cashier with a private notebook, one customer at a time | The clinic's **Durable Object (DO)**        | §0.3         |
-| The ID office that issues temporary visitor badges                    | The **shared backend**, which issues **tokens**      | §2           |
-| The bank's card terminal                                              | **Paymob**                                           | §5.3         |
-| A translator for the bank's language                                  | The **Paymob adapter**                               | §5           |
-| The shop owner                                                        | The **operator**                                     | §1.5         |
 | The agreed shape of a form exchanged between two offices              | A **contract**                                       | §0.4         |
 | The standard reply slip with tick-boxes                               | The **result envelope**                              | §1.2         |
 | The menu of counter services, and which ID each needs                 | The **method catalogue**                             | §1.3         |
@@ -113,25 +105,13 @@ This document is about the **paperwork that passes between the offices** in that
 | A renovation work order listing every room to change                  | A **change list**                                    | §3.2, §6     |
 | Two offices agreeing to accept both the old and new form during a changeover | **Contract versioning**                       | §7           |
 
-Keep this picture in mind. Each later section zooms into one form or one counter.
+Keep this table in mind. Each later section zooms into one form or one counter.
 
 ### 0.3 The systems and the channels between them
 
-**The systems.**
+The cast list and what each system is live in 02 §0.3. For **messages**, remember the split in 03 §0.3: the shared backend never calls the ABO or the AI Platform (C-02), and the AI Platform never calls the ABO (01 §3.7).
 
-| System                             | What it is                                                                                                                          | Analogy                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Desktop app**                    | The clinic's Flutter app on Windows. A clinic has several desktops. An **administrator** can buy; **staff** only use AI             | The customer                                               |
-| **Shared backend**                 | One Supabase (PostgreSQL database) project that holds every clinic's data. Each clinic is a **tenant** inside it                    | The ID office                                              |
-| **ABO**                            | A new program on Cloudflare (a **Worker**: code that runs on Cloudflare's servers when a request arrives), with its own storage     | The shop, with price board, till and receipt book          |
-| **ABO console**                    | The operator's web page (`ops.<vendor-domain>`), served by the ABO, behind **Cloudflare Access** (a login gate)                      | The shop owner's back office                               |
-| **AI Platform**                    | The existing Cloudflare Worker that serves AI requests and alone decides whether each one is allowed                                 | The phone network                                          |
-| **Per-clinic Durable Object (DO)** | A Cloudflare feature: one small program instance per clinic, with its own private storage, that handles one request at a time       | The clinic's dedicated cashier with a private notebook     |
-| **Paymob**                         | The payment provider (Egypt). Shows a hosted payment page, sends notifications, answers status questions                            | The bank's card terminal                                   |
-| **Paymob adapter**                 | The only part of the ABO that knows Paymob's formats                                                                                | A translator                                               |
-| **Operator**                       | The developer, the vendor's single human operator                                                                                   | The shop owner                                             |
-
-**The channels.** A **channel** is one direction of conversation between two systems, with its own form shapes. The document is organised by channel:
+A **channel** is one direction of conversation between two systems, with its own form shapes. This document is organised by channel:
 
 | Channel                                        | Kind of connection                                                    | Section |
 | ---------------------------------------------- | --------------------------------------------------------------------- | ------- |
@@ -140,11 +120,6 @@ Keep this picture in mind. Each later section zooms into one form or one counter
 | Desktop to shared backend                      | Database function calls (RPCs)                                        | §3      |
 | Desktop to AI Platform                         | HTTPS over the internet, with an AI token                             | §4      |
 | ABO to Paymob, through the adapter             | Paymob's own web API and notifications                                | §5      |
-
-Two "never" rules frame all of them:
-
-- **The shared backend talks to no one.** It never calls the ABO or the AI Platform, and neither of them calls it (rule C-02). Its only part is to sign tokens for desktops. Like an ID office, it hands out badges and never phones the shop or the network.
-- **The AI Platform never calls the ABO.** The ABO always asks; the platform only answers (01 §3.7).
 
 Section 6 is not a channel: it is the AI Platform's change list. Section 7 gathers the versioning rules for every channel.
 
@@ -161,45 +136,20 @@ A contract is not code. Two independently written programs can both follow it, a
 
 ### 0.5 Business words
 
-These are the same words 03 uses; they are repeated here briefly so this document can be read on its own.
+Checkout, grant, term, coverage and the rest of the commercial vocabulary are in [03 §0.5](03-abo-data-model-and-lifecycle.md#05-business-words). Below are terms that appear often **on the wire** in this document but are not spelled out there:
 
-**Who is who**
-
-- **Clinic, tenant, organisation, `org_id`.** One customer clinic. In the shared backend it is a *tenant*: one of many customers sharing one database. Its id is `org_id`, the only clinic key used across all systems.
-- **Member, membership role, branch.** A **member** is a clinic user. Their **membership role** says what they may do; only `administrator` may buy. Other members are **staff**. A **branch** is one site of a multi-site clinic.
-- **Installation, `installation_id`.** The clinic's identity on the AI Platform, like the SIM card the network knows. It is a separate id from `org_id`. An installation can be marked `deleted`.
-- **Tenant binding and epoch.** The record that links an `org_id` to its current `installation_id`, like the contract that links a customer to a SIM. If the platform identity has to be re-created, a new binding is made and its **epoch** (a counter: 1, 2, 3 …) goes up. A binding is `active`, retired, or `held_for_transfer` (frozen because paid time is still on it and must be moved first).
-- **Operator.** The developer, the vendor's single human operator, working in the ABO console.
-- **Billing contact.** The payer's name, email and phone, which Paymob requires.
-
-**What is sold**
-
-- **Plan and plan version.** The AI Platform's definition of *what AI* a clinic gets: which features (**capabilities**), the most expensive model class it may use (**cost class**), how many requests may run at once (**concurrency limit**), and the largest allowance per month. A published plan version never changes; a change means a new version.
-- **Offer and offer version.** What the shop sells: one plan version for a length of time at a price, with an allowance and grace. Repricing makes a new offer version. An offer can be **retired** (taken off sale), and a version is **superseded** when a newer one replaces it.
-- **Terms of sale (`terms_version`).** The legal text the buyer accepts before paying. Not to be confused with a *term* below.
-- **Credits, allowance and band.** Usage is counted in **credits**. The **allowance** is the number of credits a term includes. The **band** is a coarse "how much is used" marker: `ok`, `75` (75% used), `90` or `exhausted`.
-
-**What is bought and owned**
-
-- **Checkout.** One attempt to buy one offer, like the order slip at the till. It freezes the price and contents when opened.
-- **Payment.** Money that Paymob has confirmed was received for a checkout.
-- **Grant.** An instruction to the AI Platform: "add this much AI time to this clinic". Its **source** is a payment (**paid**), an operator gift (**complimentary**) or a move between identities (**transfer**). A **term adjustment** is a complimentary grant that changes the current term instead of adding a new one.
-- **Term.** The unit of AI time a grant creates: a span of dates plus its allowance. A term is active, **queued** (waiting its turn), **held** (frozen after a reversal, waiting for the operator), in grace, or ended.
-- **Placement.** Where a new term goes. At launch only `queue` is allowed: broadly, the term starts now if nothing is running, otherwise after the current one (exact rules in 03 §6.1).
-- **Coverage.** All of a clinic's terms together. "Covered" means it may use AI now. **Coverage through** is the date coverage would reach if no allowance ran out.
-- **Grace, exhaustion, lapse.** **Grace** is a short courtesy period (7 days) after a term's end date, with a small capped share of leftover allowance. **Exhaustion** is the allowance being fully used; the term ends at once. **Lapse** is the state after grace with nothing new: AI is off.
-- **Suspension.** The operator switching a clinic's AI off, for example for abuse. **Resume** switches it back on.
-- **Transfer.** Moving a clinic's remaining paid time to a new platform identity of the *same* clinic.
-- **Reversal.** Money taken back from a payment: a **refund**, a **void** (payment cancelled before it settled) or a **chargeback** (the card holder's bank forces it back). A reversal is **full** or partial.
-- **Voiding a grant.** Cancelling AI time that a grant created, for example after a reversal or a mistaken gift.
-- **Ceiling policy and override.** Limits on how much complimentary time the operator may give, per grant and per clinic over 90 days. An **override** is a separately approved, separately alerted exception.
+- **Band.** A coarse "how much is used" marker on status surfaces: `ok`, `75` (75% used), `90` or `exhausted`.
+- **Placement.** Where a new term goes in a grant envelope. At launch only `queue` is allowed (exact rules in 03 §6.1).
+- **Coverage through.** The date coverage would reach if no allowance ran out; used when opening a checkout.
+- **Voiding a grant.** Cancelling AI time that a grant created, for example after a reversal or a mistaken gift (platform methods in §1.3).
+- **Ceiling policy and override.** Limits on complimentary grants; an **override** is a separately approved, separately alerted exception (§1.5).
 - **Velocity check.** An alarm on unusually many paid grants in a short time.
-- **Subscription reference.** A human-readable id the clinic quotes to support.
-- **Payout and reconciliation.** A **payout** is money Paymob transfers to the vendor's bank. **Reconciliation** is the daily cross-check that every payout, payment and grant match.
-- **Alert, digest and heartbeat.** An **alert** is an email the developer receives quickly. The **digest** is a daily summary email. A **heartbeat** is a regular "I am alive" ping to an outside monitor; if it stops, the monitor raises the alarm.
-- **Notices.** Short coded messages on the desktop, such as "your term ends soon".
+- **Subscription reference.** A human-readable id the clinic quotes to support (`GET /v1/subscription`, §2.2).
+- **Notices.** Short coded messages on the desktop, such as "your term ends soon" (§4.2).
 
 ### 0.6 Technical words
+
+Hosting vocabulary (Workers, D1, R2, service binding, `WorkerEntrypoint`, `VendorEntrypoint`) is in 02 §0.4. Security and proof vocabulary (signatures, HMAC, JWT, tokens, passkeys, authorization classes M, H and HP) is in 02 §0.4 and §0.5. Data-model words (work row, outbox, mirror, event, tombstone, minor units, UTC) are in 03 §0.6. Below are **wire and contract** words used in sections 1 to 7.
 
 **Talking over a network**
 
@@ -208,53 +158,26 @@ These are the same words 03 uses; they are repeated here briefly so this documen
 - **Streamed response.** An answer sent in pieces as it is produced, like AI text appearing word by word.
 - **Route, endpoint, hostname.** A **route** or **endpoint** is one path a server answers. A **hostname** is the server's web address, such as `billing.<vendor-domain>`.
 - **Rate limit.** A cap on how many requests a caller may make in a period.
-- **Service binding.** A private connection from one Cloudflare Worker to another inside Cloudflare, not reachable from the internet. Like an internal pneumatic tube between two offices in the same building.
-- **RPC (remote procedure call).** Calling a function that lives in another program as if it were local. The word appears in two places: the ABO calls the AI Platform's functions over the service binding, and the desktop calls the shared backend's database functions (§3.1).
-- **`WorkerEntrypoint` and method.** `WorkerEntrypoint` is Cloudflare's way of offering a named set of functions over a service binding. Each function is a **method**. The platform's set is called `VendorEntrypoint`, the counter window the ABO talks to.
+- **RPC on the wire.** Here the word appears in two places: the ABO calls the AI Platform's **methods** over the service binding (§1), and the desktop calls the shared backend's database **RPCs** (§3.1).
 
-**Data formats**
+**Data on the wire**
 
-- **JSON.** A plain-text format for structured data: `{"grant_id": "…", "count": 3}`. Keys here are in snake_case.
-- **Minor units and piastres.** Money is a whole number of the smallest coin. EGP 150.00 is `15000` piastres, so no rounding ever happens.
-- **UTC, ISO-8601.** Times are in world time with no time zones, written as `2026-03-01T10:00:00Z`.
+- **JSON.** A plain-text format for structured data: `{"grant_id": "…", "count": 3}`. Keys here are in snake_case (see the ground rules at the top of this document).
 - **E.164.** The international phone number format: a plus sign, the country code and the number, such as `+201001234567` (example).
-- **UUID and ULID.** Long random ids that nobody can guess.
 - **Hex and base64url.** Two ways of writing binary data as text. **Hex** uses the digits 0-9 and letters a-f. **base64url** is shorter and is safe inside web addresses.
-- **Snapshot.** A complete picture of something at one moment, like a photo.
+- **Canonical JSON (RFC 8785).** One fixed way of writing a JSON object so both sides compute the same fingerprint for signatures and content hashes (02 §0.5; used normatively in §1.1).
 
-**Proof and protection**
-
-- **Hash (SHA-256).** A short fingerprint computed from data. The same data always gives the same fingerprint; any change gives a different one. **SHA-512** is a longer variant.
-- **Canonical JSON (RFC 8785, the JSON Canonicalization Scheme).** One fixed way of writing a JSON object (key order, spacing, number format), so both sides compute the same fingerprint for the same content. RFC 8785 is the public standard that defines it.
-- **Signature, key pair, `kid`.** A digital wax seal. Only the holder of a private key can make it; anyone with the matching public key can check it. `kid` (key id) names which seal was used, so keys can be replaced over time (**rotation**). A key is active, **retiring** (still accepted for a while), revoked or expired.
-- **Ed25519 and EdDSA.** A modern, fast signature method. EdDSA is the family name; Ed25519 is the specific variant used everywhere here. **ES256** is another signature method, used by some hardware keys.
-- **HMAC.** A seal made with a secret shared by both sides. Here it shows that a notification really came from Paymob.
-- **JWT and JWS.** A **JWT** (JSON Web Token) is a small signed text badge. **JWS** (JSON Web Signature) is the signing format it uses. A JWT has a **header** (which method and key signed it) and **claims** (the statements on the badge).
-- **Token.** A short-lived JWT that the shared backend signs for a desktop, like a visitor badge with an expiry time and a named destination. It is sent in a header `Authorization: Bearer <token>` ("bearer" means whoever carries it is admitted).
-- **Cloudflare Access and Access JWT.** **Cloudflare Access** is the login gate in front of the operator console. After login it gives the browser an **Access JWT**, forwarded to the platform in the `Cf-Access-Jwt-Assertion` header and checked against the Access "team certificates" (Cloudflare's public keys for the vendor's account).
-- **Passkey, WebAuthn, assertion.** A **passkey** is a hardware security key. **WebAuthn** is the web standard for using it. An **assertion** is the signed proof produced when the operator touches the key, bound to one exact operation (§1.5).
-- **Authorization classes M, H and HP.** Each platform method needs one of three levels of proof (02 §3.3): **M** (machine: the ABO over the service binding, plus its signature when coverage changes), **H** (a human operator logged in through Access) or **HP** (human plus passkey: H plus a fresh passkey touch for this exact operation). Like a counter that serves some forms by courier, some only to the owner in person, and some only when the owner also signs in front of a witness.
-
-**Reliable work**
+**Safe retries and replies**
 
 - **Idempotent.** Doing it twice has the same effect as doing it once, like pressing a lift button twice. Every method that changes something names what makes it idempotent ("idempotent by"): the id that lets the receiver recognise a repeat.
 - **Content hash and conflict.** A repeat with the same id *and* the same fingerprint is a harmless retry. The same id with a *different* fingerprint is a **conflict**: something is wrong and a human must look.
-- **Retry with backoff, park.** **Backoff** means waiting longer between each retry. To **park** a task is to stop retrying it and wait for the operator.
-- **Work row.** A to-do card in the ABO for one background step, retried until done (03 §2.9).
+- **Result codes.** The fixed strings in the **result envelope** (`applied`, `rejected`, `duplicate`, `parked`, and the rest) tell the caller whether to retry; they are defined in §1.2, not invented per endpoint.
 - **Saga.** A multi-step job where each step is done and recorded separately, and the whole job is driven to completion step by step, like a relay race where each runner's handover is logged.
-- **Cron.** A timer that runs a job on a schedule. A **cron expression** such as `*/5 * * * *` (every 5 minutes) writes the schedule in five fields: minute, hour, day of month, month, day of week.
-- **Outbox and alarm.** The DO's out-tray of changes to ship to other systems, and its alarm clock that wakes it at a set time (03 §0.6).
-- **Event, sequence number, cursor.** An **event** is a "something changed" notice. Sequence numbers put events in order. A **cursor** is a bookmark: "I have read up to here".
-- **Tombstone.** A marker saying "this id is dead", stored even before the thing it kills arrives, so the thing is refused when it shows up.
-- **Lineage.** The chain linking a term back to the grant that first created it, even after a transfer (`origin_grant_id`).
-- **Mirror, view and TTL cache.** `coverage_mirror` (on the platform) and `coverage_view` (in the ABO) are read-only copies of the DO's coverage. A **TTL cache** keeps a copy for a fixed "time to live" before refreshing it, so it can be slightly out of date.
 
-**Storage**
+**Versions and delivery**
 
-- **D1, R2 and DO storage.** D1 is Cloudflare's database (SQLite); R2 is its file storage; each DO has its own private SQLite database (03 §0.4).
-- **Table, row, append-only, trigger.** A table is a stack of forms of one kind; a row is one filled-in form. **Append-only** rows are added but never changed; a **trigger** is an automatic database rule, used here to block edits. A **fact** is one append-only record of something that happened, such as a payment (03 §2.1).
-- **Migration.** A numbered script that changes a database's structure (adds or drops tables or columns). Migrations run in order and, once released, are never edited.
-- **Contract version, `contract_version`.** The edition number of a message format (§7).
+- **Contract version and `contract_version`.** The edition number of a message format on a channel; rules for every channel are in §7.
+- **Migration.** A numbered script that changes a database's structure (adds or drops tables or columns). Section 6 lists platform migrations that must match these contracts; migrations run in order and, once released, are never edited.
 
 ### 0.7 One purchase, seen as messages
 
@@ -273,22 +196,7 @@ At every step, each message carries its channel's contract version, so a desktop
 
 ### 0.8 How to read the rest of this document
 
-**Reference codes.** Short codes in brackets point to where a rule comes from or what it satisfies. You do not need to follow them to understand the text.
-
-| Code          | Means                                                     | Defined in                                                                       |
-| ------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| G-n, G5       | Product goal                                              | [Seed](00-abo-requirements-seed.md) §2.1                                         |
-| FR-n          | Functional requirement (what the product must do)         | Seed §4                                                                          |
-| SR-n          | Security requirement                                      | Seed §5                                                                          |
-| NFR-n         | Reliability or operational requirement                    | Seed §6                                                                          |
-| RC-n          | Records and retention requirement                         | Seed §7                                                                          |
-| C-n           | Constraint or given fact                                  | Seed §8.1                                                                        |
-| P-n           | A gap in today's AI Platform code                         | Seed §8.2                                                                        |
-| A-n, An       | Acceptance scenario that must pass before launch (written both "A-22" and "A22") | Seed §11                                                  |
-| X-n           | A future expansion, and the "seam" kept open for it       | Seed §2.3 and 01 §5                                                              |
-| T-n, I-n, R-n | Code fact, approved interpretation of the seed, risk or spike (an experiment still to run) | [Decision memo](01-abo-design-decisions.md) §2, §4, §7 |
-| AD-n, K-n     | Adversary, credential                                     | [Architecture and threat model](02-abo-architecture-and-threat-model.md) §4.2, §3.1 |
-| AL-n, FM-n    | Alert, failure mode                                       | [Operations](05-abo-operations-and-traceability.md) §2, §4                       |
+**Reference codes.** Short codes (`G-n`, `FR-n`, `SR-n`, `TB-n`, `K-n`, and the rest) are defined in [02 §0.8](02-abo-architecture-and-threat-model.md#08-how-to-read-the-rest-of-this-document). This document also cites **AD-n** (adversary) and **AL-n**, **FM-n** (alert, failure mode) from [operations](05-abo-operations-and-traceability.md) §2 and §4 when a contract touches security or ops.
 
 "01 §n" means section n of the [decision memo](01-abo-design-decisions.md); "02 §n" the [architecture and threat model](02-abo-architecture-and-threat-model.md); "03 §n" the [data model](03-abo-data-model-and-lifecycle.md); "05 §n" the [operations document](05-abo-operations-and-traceability.md). A bare "§n" means a section of this document.
 
@@ -300,7 +208,7 @@ At every step, each message carries its channel's contract version, so a desktop
 
 ## 1. ABO and AI Platform
 
-**Purpose.** This is the most important channel: the shop talking to the network. Every change to a clinic's AI time (adding a term, voiding one, suspending a clinic, moving time to a new identity) travels here as a request from the ABO, or from the operator through the ABO's console, to the AI Platform. The platform checks every request itself and answers with a standard reply slip. Sections 1.1 to 1.3 describe the connection, the reply slip and the menu of methods; sections 1.4 to 1.8 describe the main forms: the grant envelope, the operator's approval, the receipt, the coverage snapshot and the coverage events.
+**Purpose.** This is the most important channel: the shop talking to the network. Every change to a clinic's AI time (adding a term, voiding one, suspending a clinic, moving time to a new identity) travels here as a request from the ABO, or from the operator through the ABO's console, to the AI Platform. The platform checks every request itself and answers with a standard reply slip. Sections 1.1 to 1.3 describe the connection, the reply slip and the menu of methods; sections 1.4 to 1.8 describe the main forms: the grant envelope, the operator's approval, the receipt, the coverage snapshot and the coverage events. Section 1.9 ties them together in one example.
 
 ### 1.1 Transport and versioning
 
@@ -568,6 +476,60 @@ There are no prices, payment references or provider ids in the snapshot (FR-53, 
 - It requires `after` to equal the stored cursor and `feed_seq` to ascend, and on any failure it keeps the cursor, so nothing is skipped.
 - Events are not signed: they travel over the service binding, and `coverage_view` serves only the console, reconciliation and the checkout fallback (03 §2.4).
 - There is no HTTP feed route; the shared backend reads nothing from the platform (C-02).
+
+### 1.9 End-to-end picture
+
+**What this is.** One paid purchase on this channel, showing how §1.1 to §1.8 fit together. Read it after the subsections as a recap, or skim it first as a map before the field lists. Paymob and the desktop billing API are out of scope here (§5 and §2); only the ABO talking to the platform over the service binding appears.
+
+**How the pieces connect.**
+
+| Subsection | Role on this channel |
+| ---------- | -------------------- |
+| §1.1 Transport and versioning | Every call is an RPC on `VendorEntrypoint` over the service binding; arguments and answers carry `contract_version`; signed payloads use RFC 8785 and Ed25519. |
+| §1.2 Result envelope | Every answer is `{contract_version, result, code, detail, receipt?}`; the ABO branches on `result` (retry, park, or done). |
+| §1.3 Method catalogue | Named operations (`grant`, `getCoverage`, `readCoverageEvents`, …) with class M, H or HP and idempotency keys. |
+| §1.4 Grant envelope | The sealed order form for `grant`; validation order and rejection codes before the DO runs. |
+| §1.5 Operator assertion | Not on the paid path; required inside the envelope or method input for HP operations (complimentary grants, voids, transfers, key registration). |
+| §1.6 Receipt | Returned when `result` is `applied` or `already_applied`; stored by both sides as proof of what the platform did. |
+| §1.7 Coverage snapshot | Shape of `getCoverage` output and of the `snapshot` inside each coverage event; also what the ABO mirrors in `coverage_view`. |
+| §1.8 Coverage events | Paged feed the ABO reads on a schedule; updates `coverage_view` without calling `getCoverage` for every clinic. |
+
+**Paid grant — sequence.** After Paymob confirms payment, the ABO builds a grant envelope (§1.4), signs it with its service key (§1.1), and calls `grant` (class M, §1.3). The platform validates, the clinic's DO applies the term, and the platform answers with the standard envelope (§1.2) and a signed receipt (§1.6). Later, the DO's outbox produces coverage events (§1.8) whose `snapshot` matches §1.7; the ABO's cron consumes them into `coverage_view`.
+
+```mermaid
+sequenceDiagram
+    participant ABO as ABO Worker
+    participant VP as AI Platform VendorEntrypoint
+    participant DO as Clinic DO
+
+    Note over ABO,VP: §1.1 service binding, contract_version on every call
+
+    ABO->>VP: getCoverage(org_id)
+    VP-->>ABO: result ok, snapshot (§1.7)
+
+    Note over ABO: Checkout / Paymob (§5) — not on this binding
+
+    ABO->>VP: grant(envelope, abo_kid, abo_signature)
+    Note over VP: §1.4 validation checklist
+    VP->>DO: apply grant (atomic)
+    DO-->>VP: term created, outbox queued
+    VP-->>ABO: result applied, receipt (§1.6)
+
+    Note over DO,VP: Outbox ships ledger + coverage_event (§1.8)
+
+    ABO->>VP: readCoverageEvents(after=feed_cursor)
+    VP-->>ABO: events[] with snapshot (§1.7)
+    Note over ABO: Update coverage_view (§1.8 rules)
+```
+
+**Same channel, different proof.** The diagram is the machine path (class M). Other rows in §1.3 swap the proof and sometimes the payload:
+
+- **Complimentary `grant` (HP).** Same envelope shape (§1.4), but the platform checks an operator assertion (§1.5) instead of the ABO signature; ceiling rules still apply.
+- **`voidForReversal` (M).** No full envelope; ABO signs `{grant_id, reversal_id, …}`; answer is still envelope + receipt (§1.2, §1.6); may write a tombstone if the grant has not landed yet (§1.3).
+- **`suspend` / `resume` (H).** Operator's Access JWT only; answer includes a fresh snapshot (§1.7), not necessarily a receipt.
+- **Transfer saga (HP then M).** `beginTransfer` (assertion) → retried `transferOut` / `transferIn` (M) until both report `applied` or `already_applied` (§1.3).
+
+**Retries in one glance.** If the ABO sends the same `grant_id` and the same `envelope_sha256` again, the platform answers `already_applied` and returns the original receipt (§1.2, §1.3). A different hash for the same id is `conflict` (park and alert). A down DO or `unknown_kid` is `transient` (backoff forever). None of these change the envelope or receipt shapes — only the tick-box on the reply slip.
 
 ## 2. Tokens and ABO clinic API
 

@@ -193,6 +193,76 @@ The vendor systems run on two hosting companies. **Cloudflare** runs the ABO and
 - **HMAC.** A seal made with a secret that two parties share, here Paymob and the ABO. It shows a notification came from Paymob. Checking it **in constant time** means the check always takes the same time, so an attacker cannot learn the secret by timing many guesses.
 - **TLS.** The encryption behind `https://`, which stops anyone on the network from reading or altering traffic.
 
+How the pieces above fit together (signatures are **verified**, not decrypted; the message stays readable):
+
+```text
+§0.5  SEALS & SIGNATURES — how the pieces connect
+══════════════════════════════════════════════════
+
+  (A) ASYMMETRIC SEAL  — one stamp, many verifiers          Ed25519 everywhere
+  ─────────────────────────────────────────────────────────────────────────────
+
+       KEY SET (≥2 keys, rotation)
+       ┌─────────────────────────────────────────────────────────────┐
+       │  kid: "2026-01"          kid: "2026-02"   ← overlapping     │
+       │  ┌──────────────┐        ┌──────────────┐    valid at once  │
+       │  │ private key  │        │ private key  │  (sign with ONE)  │
+       │  │  (secret)    │        │  (secret)    │                   │
+       │  └──────┬───────┘        └──────────────┘                   │
+       │         │ signs                                             │
+       │         ▼                                                   │
+       │  ┌──────────────┐        public key ◄── matched pair        │
+       │  │  Ed25519     │        public key                         │
+       │  │  (EdDSA)     │                                           │
+       │  └──────┬───────┘                                           │
+       │         │ produces                                          │
+       │         ▼                                                   │
+       │    SIGNATURE  = seal on MESSAGE (1 char change → fail)      │
+       │         │                                                   │
+       │         │  on tokens: wrapped as JWS compact line           │
+       │         │  header.{ alg: EdDSA, kid: "2026-01" }.payload.sig│
+       │         │         └── tells verifier WHICH public key       │
+       └─────────┼───────────────────────────────────────────────────┘
+                 │
+                 ▼ verify
+       WHO TRUSTS WHICH PUBLIC KEYS?
+       ┌────────────────────┐     ┌────────────────────┐
+       │   PINNED KEYS      │     │   KEY REGISTRY     │
+       │ (ABO config deploy)│     │ (Platform, HP only)│
+       │  kid → public key  │     │  kid → public key  │
+       └────────────────────┘     └────────────────────┘
+                 │                           │
+                 └──────── lookup by kid ────┘
+                            then check signature
+
+       not_after ──► retire a kid (stop signing / stop trusting)
+
+
+  (B) FINGERPRINT  — same bytes → same H(x)  (not a “who signed it” seal)
+  ─────────────────────────────────────────────────────────────────────────
+
+       DATA  ──►  CANONICAL JSON  ──►  HASH H(x)  ──►  short fingerprint
+                                                      (WebAuthn challenge,
+                                                       binding ops, etc.)
+
+
+  (C) HMAC  — shared secret seal  (Paymob ↔ ABO), not a key pair
+  ─────────────────────────────────────────────────────────────────────────
+
+       Paymob                          ABO
+       shared SECRET ───────────────── shared SECRET
+            │                              │
+            └──► HMAC(notification body) ──► constant-time compare
+                 “this callback is from Paymob”
+
+
+  (D) TLS  — transport wrapper  (https), separate from token/signature logic
+  ─────────────────────────────────────────────────────────────────────────
+
+       Client ═════ encrypted channel ═════ Server
+              (read/alter on the wire blocked; app still checks JWS/HMAC)
+```
+
 **Passes (tokens)**
 
 - **Token.** A short-lived signed pass. The shared backend issues them to desktops; the desktops show them to the ABO or the AI Platform. Think of a visitor badge printed by the ID office.

@@ -1,8 +1,10 @@
 # AI Billing Orchestrator — Operations, Failure Modes and Traceability
 
-**Status:** Phase 2 design. **Date:** 2026-10-01. Requirement IDs refer to the [seed](00-abo-requirements-seed.md); "01 §n" to "04 §n" to the [decision memo](01-abo-design-decisions.md), [architecture and threat model](02-abo-architecture-and-threat-model.md), [data model](03-abo-data-model-and-lifecycle.md) and [contracts](04-abo-contracts.md).
+**Status:** Phase 2 design. **Date:** 2026-10-01.
 
-Start with section 0. It explains the purpose, the systems involved and every term used later. Sections 1 to 10 keep their numbers, and the alert ids (AL-…) and failure ids (FM-…) keep their values, because the other design documents cite them (for example "05 §3.3" or "AL-23").
+Start with section 0 (after [02 §0](02-abo-architecture-and-threat-model.md#0-start-here-the-big-picture), [03 §0](03-abo-data-model-and-lifecycle.md#0-start-here-the-big-picture) and [04 §0](04-abo-contracts.md#0-start-here-the-big-picture) if you have not read them). Section 0 here adds operations vocabulary, the housekeeping analogy, and an illustrative operator day. Sections 1 to 10 keep their numbers, and the alert ids (AL-…) and failure ids (FM-…) keep their values, because the other design documents cite them (for example "05 §3.3" or "AL-23").
+
+Requirement IDs refer to the [seed](00-abo-requirements-seed.md); "01 §n" to "04 §n" to the [decision memo](01-abo-design-decisions.md), [architecture and threat model](02-abo-architecture-and-threat-model.md), [data model](03-abo-data-model-and-lifecycle.md) and [contracts](04-abo-contracts.md). The key to every reference code is in [02 §0.8](02-abo-architecture-and-threat-model.md#08-how-to-read-the-rest-of-this-document).
 
 ## Table of Contents
 
@@ -39,11 +41,11 @@ Start with section 0. It explains the purpose, the systems involved and every te
 
 ## 0. Start here: the big picture
 
+Read the [architecture and threat model](02-abo-architecture-and-threat-model.md) §0 for the product story, systems, hosting and security vocabulary, and out-of-band alerting. Read the [data model](03-abo-data-model-and-lifecycle.md) §0 for commercial records and lifecycles, and the [contracts](04-abo-contracts.md) §0 for channels and wire shapes. This section adds only what those documents do not cover: how the shop is run, watched and repaired.
+
 ### 0.1 What we are trying to achieve
 
-AiClinic's desktop app has an optional, paid AI add-on. The **AI Billing Orchestrator (ABO)** makes buying it self-service: a clinic administrator picks an offer in the app, pays on the payment provider's web page, and AI switches on by itself within about a minute. It keeps working until the paid time or the paid usage runs out, and then it stops on time.
-
-The sibling documents describe how this is built: the decisions (01), the security blueprint (02), what is written down (03) and the messages exchanged (04). This document describes **how it is run day to day, and how we know it does what was promised**. The vendor has a single human operator, the developer, who also has other work. So the system must look after itself, call for help only when a human is truly needed, and make every fix a button rather than a database edit.
+01 through 04 describe what to build. **This document** describes **how it is run day to day, and how we know it does what was promised**. The vendor has a single human operator, the developer, who also has other work. So the system must look after itself, call for help only when a human is truly needed, and make every fix a button rather than a database edit.
 
 It answers nine questions:
 
@@ -57,7 +59,7 @@ It answers nine questions:
 8. **Does every required scenario have a defined outcome?** Section 8 (acceptance walkthrough).
 9. **Where is each requirement satisfied, and which ones are not fully met?** Sections 9 and 10.
 
-Four goals shape every choice in this document:
+Four goals shape every choice in **this** document (shared goals such as "no service without payment" are in 02 §0.1):
 
 - **Nothing stalls silently.** If a confirmed payment has not become AI time within minutes, or any background job stops running, the developer is told by a channel that still works when the main systems are down.
 - **Recovery never needs database surgery.** Every failure either heals by itself (a retry, a re-check) or is fixed with one console action. Nobody hand-edits a table.
@@ -66,153 +68,116 @@ Four goals shape every choice in this document:
 
 ### 0.2 The whole system in one analogy
 
-The sibling documents use a **prepaid mobile phone bundle** as the picture. You walk into a shop, choose a bundle from the price board, pay at the till, and the network adds the bundle to your SIM card. Every call uses some units, and the bundle ends when its month or its units run out. This document keeps that picture and adds the **shop's housekeeping**: the chore rota, the alarms, the manager's office, the end-of-day cash-up and the fire drills.
-
-**The business picture (same as the other documents):**
-
-| Mobile bundle world                                                   | In this design                                                      | Explained in |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------ |
-| The customer                                                          | A clinic's **desktop app**                                          | §0.3         |
-| The ID office that issues temporary visitor badges                    | The **shared backend** (Supabase), issuing short-lived **tokens**   | §0.3         |
-| The shop: price board, till and receipt book                          | The **ABO**                                                         | §0.3         |
-| The phone network                                                     | The **AI Platform**                                                 | §0.3         |
-| The clinic's dedicated cashier with a private notebook, serving one customer at a time | The clinic's **Durable Object (DO)** on the AI Platform | §0.3     |
-| The bank's card terminal                                              | **Paymob**, the payment provider                                    | §0.3         |
-| The shop owner                                                        | The **operator**: the developer                                     | §0.3         |
-
-**The operations picture (new in this document):**
+02 §0.2 names the shop, the network, the bank terminal and the other players. **This document** adds the **shop's housekeeping**: the chore rota, the alarms, the manager's office, the end-of-day cash-up and the fire drills.
 
 | Shop housekeeping world                                                        | In this design                                                     | Explained in |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------ |
 | The chore rota (every minute, every hour, every morning) and the night watchman's rounds | **Scheduled work**: timed jobs and **sweeps**             | §0.5, §1     |
-| Smoke alarms, each with its own urgency and its own repeat rule               | **Alerts** AL-01 to AL-23                                          | §0.4, §2     |
+| Smoke alarms, each with its own urgency and its own repeat rule               | **Alerts** AL-01 to AL-23                                          | §2           |
 | A guard who must phone in every hour, or an alarm goes off on its own         | The **heartbeat** and **dead-man's switch** monitor                | §0.5, §1, §2 |
-| The manager's office, with the customer files and the action buttons          | The **operator console**                                           | §0.3, §3     |
+| The manager's office, with the customer files and the action buttons          | The **operator console**                                           | §3           |
 | A safe that needs both a key card and a fingerprint                           | **HP actions** (human plus passkey)                                | §0.5, §3.2   |
 | The end-of-day cash-up: till roll against bank statement against stock sold   | **Reconciliation** and its **findings**                            | §0.4, §3.3   |
-| The morning newspaper about yesterday in the shop                             | The **daily digest** email                                         | §0.4, §3.4   |
+| The morning newspaper about yesterday in the shop                             | The **daily digest** email                                         | §3.4         |
 | The fire-drill playbook: for each emergency, what happens and what you do     | **Failure modes** FM-01 to FM-25                                   | §4           |
 | Restoring the books from the carbon copies kept in the vault                  | **Rebuild procedures**                                             | §0.5, §5     |
 | A dress rehearsal on a fast-forwarded clock                                   | **Staging**, with compressed time                                  | §0.5, §6.1   |
 | The opening-day checklist                                                     | **Launch conditions**                                              | §6.2         |
 | A checklist mapping each promise to where it is kept                          | The **traceability matrix**                                        | §9           |
 
-Keep both pictures in mind. Each later section zooms into one part of them.
+Keep this table in mind. Each later section zooms into one part of it.
 
 ### 0.3 The systems involved
 
-Each system below is a separate program or service. This table only says what each one is and what part it plays in day-to-day running.
+The cast list and what each system is live in 02 §0.3. For **operations**, remember who runs the chores and who raises which alarms:
 
-| System                                  | What it is, in plain words                                                                                                                                   | Analogy                                                  | Its part in operations                                                                                                   |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **Desktop app**                         | The clinic's Flutter app on Windows. A clinic has several desktops. An **administrator** can buy; **staff** only use AI                                      | The customer                                             | Reads the clinic's AI status from the AI Platform; shows "AI service unreachable" or "update the app" when needed       |
-| **Shared backend**                      | One Supabase project (a PostgreSQL database plus login) holding every clinic's clinical data. Each clinic is a **tenant** in it                               | The ID office                                            | Only signs short-lived tokens for desktops. It runs no vendor jobs and never talks to the ABO or the AI Platform (C-02) |
-| **ABO**                                 | A new program on Cloudflare (a **Worker**: code that runs on Cloudflare's servers when a request arrives or a timer fires), with its own storage              | The shop, with price board, till and receipt book        | Runs most of the scheduled jobs, raises most alerts, serves the console, runs reconciliation and sends the digest       |
-| **Operator console**                    | A web page at `ops.<vendor-domain>`, served by the ABO                                                                                                       | The manager's office                                     | Where the operator looks things up and presses the action buttons (§3)                                                   |
-| **Cloudflare Access**                   | Cloudflare's login gate placed in front of a web address. Only the operator can pass it                                                                       | The guard desk at the staff entrance                     | Protects the console; the logged-in email is recorded as the author of every action                                     |
-| **AI Platform**                         | The existing Cloudflare Worker that serves AI requests and alone decides whether each one is allowed                                                         | The phone network                                        | Runs its own timed jobs, raises the alerts only it can see (for example every grant), and answers the ABO's questions   |
-| **Per-clinic Durable Object (DO)**      | A Cloudflare feature: one small program instance per clinic inside the AI Platform, with its own private storage, handling one request at a time            | The clinic's dedicated cashier with a private notebook   | Keeps the clinic's terms and usage. Its own alarm clock ends terms on time and ships its news to the rest of the platform |
-| **Paymob**                              | The payment provider (Egypt). Shows a hosted card page, sends notifications, answers status questions                                                         | The bank's card terminal                                 | Is asked again and again by the ABO's sweeps, so a lost message never loses a payment                                   |
-| **Paymob adapter**                      | The only part of the ABO that knows Paymob's formats                                                                                                          | A translator                                             | Turns Paymob's messages into neutral ones                                                                                |
-| **Alert channel**                       | Email sent by Cloudflare's own mail service (**Email Routing**, through its `send_email` function) to the developer's mailbox, which pushes to their phone    | The alarm bell                                           | Carries every alert and the daily digest (02 §5)                                                                         |
-| **Heartbeat monitor and audit watcher** | A small scheduler run by a third company, outside Cloudflare and Supabase                                                                                     | A guard outside the building who expects a phone call every hour | Raises the alarm if the vendor systems go silent, and watches Cloudflare's own record of account changes (02 §4.4)  |
-| **Operator**                            | The developer, the vendor's single human operator                                                                                                             | The shop owner                                           | Reads alerts and the digest; acts through the console                                                                    |
+| System | Its part in day-to-day running |
+| ------ | ------------------------------ |
+| **ABO** | Most scheduled jobs, most alerts, the operator console, reconciliation, digest, Paymob sweeps and inquiries |
+| **AI Platform** | Grant and platform-only alerts, its own crons, answers the ABO's RPCs (04 §1) |
+| **Clinic DO** | Term calendar and usage; alarm ships outbox to platform D1 so coverage stays current without blocking AI requests |
+| **Shared backend** | Signs desktop tokens only; runs no vendor jobs (C-02) |
+| **Desktops** | Read AI status from the platform; show unreachable or "update the app" when needed |
+| **Paymob** | Hosted pay page; callbacks trigger work, but inquiry is the proof (02 §0.7) |
+| **Cloudflare Access** | Gates the console; the logged-in email is recorded on every operator action |
+| **Alert channel** | Email via Cloudflare `send_email` to one fixed address (02 §5) |
+| **Heartbeat monitor and audit watcher** | Outside Cloudflare; dead-man's switch on missing pings; reads Cloudflare audit logs (02 §4.4, §5) |
+| **Operator** | Reads alerts and the digest; acts through the console |
 
 ### 0.4 Business words
 
-These are the same words used in 03 §0.5, shortened. Read them once; later sections use them freely.
+Checkout, grant, term, reversal and the rest of the commercial vocabulary are in [03 §0.5](03-abo-data-model-and-lifecycle.md#05-business-words). Below are terms this document uses for **running and watching** the shop:
 
-**Who is who**
+**Preconditions and lookup**
 
-- **Clinic, tenant, `org_id`.** One customer clinic. In the shared backend it is a *tenant* (one of many customers sharing one database). Its id is `org_id`.
-- **Installation.** The clinic's identity on the AI Platform: the "SIM card" the network knows.
-- **Tenant binding** and **epoch.** The record linking an `org_id` to its current installation. If the identity has to be re-created, a new binding is made and its epoch (1, 2, 3, …) goes up. A binding `held_for_transfer` is frozen because the installation was deleted while paid time remained, and waits for the operator; meanwhile AI is refused with the reason `transfer_pending`, and new grants get `transient` (try later) (03 §5.4). A clinic whose old identity has handed over its time ends `transferred`, and a new identity waiting to receive moved time is `awaiting_transfer`.
-- **Tenancy retrofit.** Work in the shared backend, tracked as 01 R-1, that adds proper per-clinic membership (`current_org_id()` and an "active organisation" per session). Today the backend serves one clinic only. Several guarantees here are **conditional** on this retrofit.
-- **Billing contact.** The payer's name, email and phone, which Paymob requires. It is personal data, kept in one erasable table (03 §2.3).
-- **Subscription reference.** A human-readable id (such as `AIC-` plus 8 characters) that the clinic quotes to support (03 §7). The operator can type it into the console to find the clinic.
+- **Tenancy retrofit.** Work in the shared backend (01 R-1) that adds proper per-clinic membership (`current_org_id()` and an active organisation per session). Today the backend serves one clinic only. Several guarantees here are **conditional** on this retrofit.
+- **Subscription reference.** A human-readable id (such as `AIC-` plus 8 characters) the clinic quotes to support (03 §7). The operator types it into the console to find the clinic.
 
-**What is sold and bought**
+**Money decisions the operator sees**
 
-- **Plan version, offer, offer version, terms version.** A *plan version* is what AI a clinic gets. An *offer* is what the shop sells (a plan for a length of time at a price, with an allowance). Each change makes a new *offer version*. The *terms version* is the legal text the buyer accepts. Published versions never change; they can only be **retired** (taken off sale).
-- **Checkout.** One attempt to buy one offer: the order slip. It is **open** while it can be paid, and **expires** if nobody pays in time.
-- **Payment.** Money Paymob confirmed for a checkout. Each payment gets a **classification** label (`normal`, `likely_duplicate` meaning probably the same purchase paid twice, or `late`) and a **disposition**, the decision about the money: `grant` (turn it into AI time) or **withheld** (held back because the amount, currency or order did not match; only the operator can release it).
-- **Grant.** An instruction to the AI Platform: "add this much AI time to this clinic". A grant is **paid** (from a payment), **complimentary** (a gift by the operator, such as a trial or goodwill), a **term adjustment** (a complimentary change to the current term) or a **transfer** (moving time to a new identity of the same clinic).
-- **Term.** The unit of AI time a grant creates: a span of dates plus its allowance. A term is **active**, **queued** (waiting its turn), **held** (frozen after a reversal, waiting for the operator), in **grace** or **ended**. **Coverage** is all of a clinic's terms together.
-- **Allowance, credits.** Usage is counted in credits; the allowance is the number of credits a term includes. **Band events** are the warnings sent when 75 % and 90 % of it is used.
-- **Grace, lapse, exhaustion.** *Grace* is 7 days after the end date when AI keeps working on a capped leftover. *Lapse* is the state after grace with nothing new. *Exhaustion* is the allowance running out, which ends the term at once with no grace.
-- **Suspension, kill switch, routing.** The operator switching one clinic's AI off for abuse (suspension), switching an AI feature off for everyone (a kill switch), or choosing which AI provider serves requests (routing).
-- **Ceiling** and **ceiling override.** The platform's limit on how much a complimentary grant may give (for example at most 31 days per grant). An override lets one grant exceed it, but needs a second passkey touch and its own alert.
-- **Velocity.** How fast paid grants are arriving. Too many too quickly (the thresholds are in 04 §1.4) suggests the ABO is fabricating them.
+- **Classification** and **disposition.** When a payment is confirmed, **classification** is `normal`, `likely_duplicate` (probably the same purchase paid twice) or `late`. **Disposition** is `grant` (turn it into AI time) or **withheld** (amount, currency or order did not match; only the operator can release it).
+- **Manual chargeback.** Paymob does not report chargebacks, so the operator records them by hand in the console.
+- **Reversal effect.** What a reversal does to service, for example `end_current` (the current term ends now) or `none` (it paid for an old, ended term, so nothing changes) (03 §5.5).
+- **Payout import.** Paymob reports bank transfers only in a CSV from its dashboard; the operator **imports** it each month. Each row is a **payout line** (payment or refund/chargeback).
 
-**When money goes backwards**
+**Transfers and limits**
 
-- **Reversal.** Money taken back from a payment: a **refund** (returned, perhaps from Paymob's dashboard), a **void** (cancelled before it settled) or a **chargeback** (the card holder's bank forces it back). Paymob does not report chargebacks, so the operator records them by hand (a **manual chargeback**). A reversal's **effect** says what happens to service, for example `end_current` (the current term ends now) or `none` (it paid for an old, ended term, so nothing changes) (03 §5.5).
-- **Void receipt** and **tombstone.** When a reversal cancels a grant, the platform answers with a signed receipt. If the grant had not arrived yet, the platform stores a tombstone: a "this grant is dead" marker that refuses the grant when it shows up.
-- **Payout.** The money Paymob actually transfers to the vendor's bank, minus fees. Paymob reports it only in a CSV file downloaded from its dashboard, which the operator **imports** into the console each month. Each row of that file is a **payout line**.
+- **`held_for_transfer`.** A binding frozen because the installation was deleted while paid time remained; AI is refused with `transfer_pending`, and non-transfer grants get `transient` until `beginTransfer` runs (03 §5.4).
+- **Ceiling override.** One complimentary grant may exceed the platform ceiling only with a second passkey touch and its own alert (SR-24).
+- **Velocity.** Too many paid grants too quickly (thresholds in 04 §1.4) suggests fabrication; the platform alerts.
 
 **Keeping watch**
 
-- **Alert.** An email to the developer when something needs a human. Each has an id AL-nn (§2).
-- **Reconciliation** and **finding.** Reconciliation is the daily cross-check that money, payments and grants all agree, like a shop's end-of-day cash-up. Each disagreement is written down as a *finding* (§3.3).
+- **Alert (AL-n).** An email when something needs a human (§2).
+- **Reconciliation** and **finding.** Daily cross-check that money, payments and grants agree (§3.3). Each disagreement is a *finding*.
 - **Digest.** One summary email each morning about the last 24 hours (§3.4).
-- **Failure mode.** One way the system can break, with an id FM-nn, how it is noticed and what happens next (§4).
+- **Failure mode (FM-n).** One way the system can break, how it is noticed and what happens next (§4).
 
 ### 0.5 Technical words
 
-**Where data is kept**
+Store names, work rows, mirrors, cron and `waitUntil` are in 02 §0.4 and 03 §0.6. Platform reply shapes and method names are in 04 §1. Below are **operations** words used in sections 1 to 10.
 
-- **D1.** Cloudflare's database (SQLite). The ABO has its own D1; the AI Platform has another. Think of a filing cabinet of forms.
-- **R2, prefix, R2 bucket lock.** R2 is Cloudflare's file storage; a **bucket** is one storage area, and files are grouped by name **prefix**, like folders (`ledger/`, `grant-ledger/`). A **bucket lock** on a prefix means files there can be added but never changed or deleted: a sealed vault with a slot.
-- **NDJSON.** "Newline-delimited JSON": a text format with one record per line. The ABO writes one line per commercial fact into the locked `ledger/` prefix, like a carbon copy of the receipt book kept in the vault. Each fact has a running number, `fact_seq`. **Export lag** is how far that copy is behind the database.
-- **D1 Time Travel.** Restores a D1 database to any moment in the last 30 days: an "undo to last Tuesday" button.
-- **Append-only, triggers, status tables.** Commercial facts are written once and never edited, like a ledger in pen. Database **triggers** (automatic rules) block any edit or deletion. Small editable **status tables** hold "the current state" and can always be recomputed from the facts.
-- **Mirror and view.** Read-only copies of each clinic's coverage: `coverage_mirror` on the platform (desktops read their status from it) and `coverage_view` in the ABO (for the console, reconciliation and as a fallback at checkout). A **coverage event** is a "something changed" notice that keeps these copies up to date; `coverage_event` is the platform's list of them. A **snapshot** is a complete picture of a clinic's coverage at one moment.
+**Evidence copy and rebuild**
 
-**Timed and background work**
+- **NDJSON ledger.** The ABO writes one line per commercial fact into the locked R2 `ledger/` prefix (02 §0.4). Each line has a running number, `fact_seq`. **Export lag** is how far that copy is behind D1.
+- **D1 Time Travel.** Restores a D1 database to any moment in the last 30 days (02 §0.4); used in §5 rebuild paths.
+- **Status tables.** Small editable tables hold "current state" and can always be recomputed from append-only facts (03 §2.1).
 
-- **Cron.** A timer that runs a job on a schedule. Schedules such as `0 3 * * *` are written in standard cron notation; that one means "every day at 03:00 UTC". UTC is world time, with no time zones.
-- **Work row.** A to-do card in the ABO's D1 for one background step, such as "confirm this payment" or "send this grant". It is **open** until it succeeds (**done**), or it is **parked**: stopped because retrying cannot help, waiting for the operator (03 §5.6).
-- **`waitUntil` and inline attempt.** `waitUntil` is a Cloudflare feature that lets a Worker keep working briefly after it has already answered a request. The ABO uses it for the **inline attempt**: the first try of a new work row, made right away instead of waiting for the next cron run.
-- **Runner** and **lease.** A runner is whatever is processing a work row (the inline attempt or the cron). A lease is a "someone is working on this until 10:05" tag, so two runners never process the same row at once.
-- **Backoff.** Waiting longer between each retry (for example 1, 2, 4, 8 minutes, up to a cap of 15).
-- **Idempotent.** Doing it twice has the same effect as doing it once, like pressing a lift button twice. Every job is idempotent, so a repeated run is harmless.
-- **Index-backed.** Every scheduled query uses an **index** (a sorted lookup list, like a book's index), so the database never reads every row. D1 bills for rows read.
-- **Callback, notification.** A message Paymob sends to the ABO's address `/notify/paymob` when something happens to a payment. It only *triggers* work.
-- **Inquiry.** The ABO asking Paymob's API directly "what is the real state of this payment?". It is the *proof*, like phoning the bank instead of trusting a text message. Paymob limits how many questions it answers per minute (its **rate limit**), so all inquiries share one per-minute **inquiry budget**.
-- **Sweep.** A scheduled round of inquiries, like a night watchman checking every door. A **checkout sweep** asks about open checkouts, in case the payment callback was lost. A **reversal sweep** (reversal inquiry) re-asks about paid transactions, in case a refund or chargeback notice was lost.
-- **DO alarm** and **outbox.** A DO's alarm clock wakes it at a set time, for example at a term's end date. The **outbox** is an out-tray inside the DO: news that the rest of the platform must learn is put there, and the alarm **ships** it to platform D1 later, so AI requests stay fast.
-- **Fallback admission.** If a clinic's DO cannot be reached, the platform lets a small, bounded number of AI requests through and writes each one in `fallback_admission`. Later these rows are **drained**: replayed into the DO so the usage is counted (03 §6.5).
-- **Retention purge** and **rollup.** The platform's existing nightly jobs: the purge deletes old detailed records that are no longer needed; the rollup adds usage up into summary rows.
-- **Cursor.** A bookmark saying "I have read the platform's coverage events up to here".
+**Paymob and the chore rota**
+
+- **Callback** and **inquiry.** A callback is Paymob's notification to `/notify/paymob`; it only *triggers* work. An **inquiry** asks Paymob's API directly and is the *proof* (02 §0.7). All inquiries share one per-minute **inquiry budget** from Paymob's rate limit (01 §3.3, R-2).
+- **Sweep.** A scheduled round of inquiries, like a night watchman checking doors. A **checkout sweep** re-asks about open checkouts if a callback was lost. A **reversal sweep** re-asks about paid transactions if a refund or chargeback notice was lost.
+- **HMAC failure.** A callback whose Paymob seal does not verify; stored and alerted, but never treated as payment proof.
+
+**Platform and DO housekeeping**
+
+- **Fallback admission** and **drain.** If a DO is unreachable, the platform admits a bounded number of AI requests into `fallback_admission`, then **drains** them into the DO when it returns (03 §6.5).
+- **Retention purge** and **rollup.** The platform's existing nightly jobs: delete old detail that is no longer needed; roll usage into summaries.
+- **Feed cursor.** The ABO's bookmark for `readCoverageEvents` (04 §1.8).
 
 **Watching from outside**
 
-- **Heartbeat** and **dead-man's switch.** Each scheduled job sends a short "I am alive" message (a **ping**) to the external monitor. The monitor works as a dead-man's switch: it does nothing while pings arrive, and raises the alarm by itself when one is missing. Like a night guard who must phone in every hour.
-- **Audit log** and **audit watcher.** Cloudflare keeps its own log of account changes (deploys, secret changes, database exports, login-gate edits). The audit watcher is an hourly job outside Cloudflare that reads that log and alerts on sensitive changes (02 §4.4).
-- **`send_email` and deduplication.** Alerts are sent through Cloudflare's `send_email` function to one fixed address (02 §5). Each alert has an **`alert_key`** (its code plus what it is about), so the same problem produces one series of emails, not hundreds.
+- **Heartbeat** and **dead-man's switch.** Each scheduled job pings the external monitor; missing pings raise AL-21 (§2).
+- **Audit watcher.** An hourly job outside Cloudflare that reads Cloudflare audit logs and alerts on sensitive account changes (02 §4.4).
+- **`alert_key`.** Code plus subject for deduplication so one problem does not send hundreds of emails (02 §5).
 
-**Proof and permission**
+**Console proof and audit**
 
-- **HMAC.** A seal made with a secret shared between Paymob and the ABO. It shows a callback really came from Paymob. An **HMAC failure** is a callback whose seal does not check out.
-- **Signature, key, `kid`.** A digital wax seal: only the holder of a private key can make it; anyone with the public key can check it. `kid` (key id) says which key was used. Keys are replaced over time (**rotation**) and can be cancelled (**revocation**). `not_after` is a key's expiry date.
-- **Issuer key, service key, platform signing key.** Issuer keys are the backend's keys for signing desktop tokens. The ABO keeps its own fixed list of them, its **pins** (`ISSUER_KEYS`), instead of trusting the platform's list. The service key is the ABO's key for signing paid grants. The platform signing key signs the platform's receipts.
-- **Passkey, WebAuthn, assertion, passkey ceremony.** A passkey is a hardware security key. WebAuthn is the web standard for using it. The **ceremony** is the operator touching it in the browser for one exact operation, which produces an **assertion**: signed proof of that touch, valid for that operation only.
-- **Operator credential** and **bootstrap credential.** An operator credential is a registered passkey. A new one waits 24 hours and needs approval by an existing one. The very first one, the bootstrap credential, is accepted only while none exists yet, and that is alerted.
-- **Authorization classes M, H and HP** (02 §3.3). Each action needs one of three levels of proof. **M** (machine): the ABO over its private connection, with its signature when coverage changes. **H** (human): the operator logged in through Cloudflare Access; the login email becomes the recorded author. **HP** (human plus passkey): H plus a passkey touch for this exact action, like a safe that needs both a key card and a fingerprint.
-- **Audit records.** `operator_action` (in the ABO) and `control_audit` (on the platform) record every operator action and who did it.
-- **Platform answers.** Every request from the ABO to the platform gets one of these answers: `applied` (done now), `already_applied` (done before; nothing new), `conflict` (same id, different content), `rejected` (invalid; retrying cannot help) or `transient` (try again later) (04 §1.2). A **5xx** answer is the standard web code for "server error, try again"; Paymob then re-sends its callback.
-- **`grant_id = H(payment_id)`.** A grant's id is computed from its payment's id by a hash (a fingerprint function), so the same payment always gives the same grant id. The id is **deterministic**, and a repeat is recognised as `already_applied`.
-- **Contract version.** The edition number of a message format. Each receiver accepts the current version N and the previous N−1, and refuses others with `contract_version_unsupported` (04 §7).
-
-**Platform operations named in this document.** These are named requests the ABO can send to the AI Platform (04 §1.3): `getCoverage` (read a clinic's coverage), `inspectCoverage` (the full DO ledger: terms, grants and in-flight reservations), `listGrants` (list applied grants), `listGrantsForVoid` (list grants made with one operator credential in a time window, so they can be cancelled), `listServiceKeys` (list the ABO's registered keys and their status), and `beginTransfer`, `transferOut` and `transferIn` (authorise, then carry out, a move of paid time to a new identity).
+- **Authorization classes M, H and HP** (02 §3.3). Console actions are H or HP; HP runs the **passkey ceremony** (WebAuthn touch) and forwards an **assertion** (04 §1.5).
+- **Bootstrap credential.** The first operator passkey, accepted only while none exists yet; always alerted.
+- **`operator_action`** and **`control_audit`.** ABO and platform audit rows for every operator action and who did it.
+- **Platform answers.** `applied`, `already_applied`, `conflict`, `rejected`, `transient` (04 §1.2). A **5xx** HTTP response means "server error, try again" (Paymob may resend callbacks).
+- **`grant_id = H(payment_id)`.** Deterministic id so the same payment always maps to the same grant; repeats become `already_applied`.
 
 **Testing and release**
 
-- **Staging.** A separate copy of the whole system, in its own Cloudflare account and Supabase project, used for rehearsals with Paymob's **test integration** (a sandbox that accepts **test cards**, so no real money moves).
-- **`DURATION_SCALE`.** A staging-only setting that fast-forwards the calendar, so a month passes in 30 minutes.
-- **`wrangler dev`.** Cloudflare's tool for running a Worker on the developer's own computer.
-- **Fixture** and **stub.** A fixture is a saved, reusable test input. A stub is a small fake stand-in for an outside service, scripted to give chosen answers.
-- **Spec Kit feature** and **constitution check.** The project builds work in separate packages called Spec Kit features. Each must pass a check against the project's founding rules, the **constitution** (`.specify/memory/constitution.md`).
+- **Staging.** Separate Cloudflare account and Supabase project; Paymob **test integration** and **test cards** (02 §0.4).
+- **`DURATION_SCALE`.** Staging-only fast-forward: a month in 30 minutes.
+- **`wrangler dev`.** Run a Worker locally.
+- **Fixture** and **stub.** Saved test input; fake stand-in for an external service.
+- **Spec Kit feature** and **constitution check.** Work packages in this repository; each must pass `.specify/memory/constitution.md`.
+
+**Platform methods named in chores and console.** `getCoverage`, `inspectCoverage`, `listGrants`, `listGrantsForVoid`, `listServiceKeys`, `beginTransfer`, `transferOut`, `transferIn` (full catalogue 04 §1.3).
 
 ### 0.6 A day in the life of the operator
 
@@ -228,23 +193,7 @@ This is an **illustrative example** to show how the pieces fit. The times and th
 
 ### 0.7 How to read the rest of this document
 
-**Reference codes.** Short codes in brackets point to where a rule comes from or where it is kept. You do not need to follow them to understand the text.
-
-| Code          | Means                                                                     | Defined in                                                                          |
-| ------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| G-n (G1…)     | Product goal                                                              | [Seed](00-abo-requirements-seed.md) §2.1                                            |
-| FR-n          | Functional requirement (what the product must do)                         | Seed §4                                                                             |
-| SR-n          | Security requirement                                                      | Seed §5                                                                             |
-| NFR-n         | Reliability or operational requirement                                    | Seed §6                                                                             |
-| RC-n          | Records and retention requirement                                         | Seed §7                                                                             |
-| C-n           | Constraint or given fact                                                  | Seed §8.1                                                                           |
-| P-n           | A gap in today's AI Platform code                                         | Seed §8.2                                                                           |
-| A-n (A1…A36)  | Acceptance scenario that must pass before launch                          | Seed §11                                                                            |
-| X-n           | A future expansion, and the "seam" kept open for it                       | Seed §2.3 and 01 §5                                                                 |
-| T-n, I-n, R-n | Code fact, approved interpretation of the seed, risk or spike             | [Decision memo](01-abo-design-decisions.md) §2, §4, §7                              |
-| AD-n, K-n, TB-n | Adversary, credential, trust boundary                                   | [Architecture and threat model](02-abo-architecture-and-threat-model.md) §4.2, §3.1, §2 |
-| AL-n          | Alert                                                                     | This document §2                                                                    |
-| FM-n          | Failure mode                                                              | This document §4                                                                    |
+**Reference codes.** Short codes (`G-n`, `FR-n`, `SR-n`, `TB-n`, `K-n`, and the rest) are defined in [02 §0.8](02-abo-architecture-and-threat-model.md#08-how-to-read-the-rest-of-this-document). **AL-n** (alert) and **FM-n** (failure mode) are defined in this document (§2 and §4).
 
 A **spike** (in R-n) is a short experiment to answer an unknown before building, for example how Paymob behaves in its sandbox.
 
@@ -307,7 +256,7 @@ How to read the table:
 - **Condition**: what sets the alarm off.
 - **Raised by**: which system sends it. "External" means the heartbeat monitor or audit watcher outside Cloudflare.
 - **Repeat**: "Once" rings a single time per event. "Hourly" or "Daily" rings again at that interval while the condition holds. "Daily while held" rings daily for as long as a binding is held for transfer. "Per event" rings for each event the monitor sees.
-- **Requirement**: the requirement or design rule the alert serves (§0.7).
+- **Requirement**: the requirement or design rule the alert serves (02 §0.8).
 
 Words used in the table that are not in §0: "**open for more than 5 minutes**" means a work row has not reached `done` or `parked` within 5 minutes. A payment "**confirmed by inquiry with no verified callback**" is one the sweep found although no valid Paymob notification arrived. A **"late payment honoured"** is a payment made on a checkout that had already expired or been cancelled, which is still turned into service (G3). "**Non-paid ones marked for attention**" means complimentary, adjustment and transfer grants are flagged in the email. The **decoded operation and its target** is the plain-language content of the action and the clinic it touched, so a substituted operation is visible (02 AD-8). A **D1 export** is a download of a whole database, and an **Access policy edit** is a change to who may pass the console's login gate.
 
@@ -366,7 +315,7 @@ Global views list parked work, open findings, recent grants by source and by cre
 - **Two levels of proof.** Each action has a class (§0.5). **H** needs only the Access login. **HP** also needs the passkey: HP actions run the passkey ceremony in the console.
 - **Who checks.** "Verified by" says which system checks the evidence; the other system's check is only for UX (user experience: a convenience, such as greying out a button, not a protection). Actions on the ABO's own records (offers, checkouts, payments, findings, payer data) are checked by the ABO. Actions on the platform (coverage, suspension, plans, keys, installations) are checked by the AI Platform itself, so a compromised ABO cannot fake them (02 §3.3).
 
-How to read the table: **Action** is the button; **Class** is H or HP; **Verified by** is the system that checks the proof; **Requirement** is where the action is required (§0.7).
+How to read the table: **Action** is the button; **Class** is H or HP; **Verified by** is the system that checks the proof; **Requirement** is where the action is required (02 §0.8).
 
 Words used in the table: **retry parked work** restarts a parked work row after the cause is fixed. **Cancel an open checkout** marks it cancelled on the ABO's side; Paymob cannot cancel its own payment session, so a late payment is still honoured and alerted (AL-08, 01 §3.6). **Resolve a finding** closes a reconciliation finding once explained. **Publish or retire** puts a version on sale or takes it off. **Transfer or re-create identity** moves paid time to a new installation of the same clinic. **Release held terms** lets frozen queued terms run again. **Void a grant** cancels it. **Delete an installation** removes a clinic's AI identity (its records stay). **Erase** blanks a payer's personal data and the raw provider messages that contain it.
 
@@ -689,7 +638,7 @@ Words used in the rows that are not in §0: `GET /v1/payments` and `GET /v1/chec
 
 How to read the table:
 
-- **ID**: the item in the seed (§0.7 explains the prefixes). The last row, A1–A36, covers all the acceptance scenarios at once.
+- **ID**: the item in the seed (02 §0.8 explains the prefixes). The last row, A1–A36, covers all the acceptance scenarios at once.
 - **Satisfied in**: where the design keeps it. A bare § refers to this document; "03 §5.2" means section 5.2 of the data model, and so on. A name in `code font` after a reference (such as `plan_version` or `placement`) is the field or file at that place.
 - **Status**: how fully it is kept.
 
