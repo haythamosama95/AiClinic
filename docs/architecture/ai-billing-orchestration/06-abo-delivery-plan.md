@@ -1,7 +1,7 @@
 # AI Billing Orchestrator — Delivery Plan
 
 Status: approved for implementation · Date: 2026-10-02
-Scope: implements the ABO design in docs 02–05 (v2 design, git commit `5ac381b`).
+Scope: implements the ABO design in docs 02–05.
 
 ## Table of Contents
 
@@ -31,12 +31,9 @@ earlier suite must still be green.
 3. the design sections listed in the unit's **Read** line, and nothing in its **Do not read** line;
 4. the code paths listed in the unit's **Code** line.
 
-**Design source.** Every reference written like `03 §2.4` means the v2 design docs at commit `5ac381b`:
-`00` requirements seed, `01` design decisions, `02` architecture and threat model, `03` data model and lifecycle,
-`04` contracts, `05` operations and traceability. The working-tree copies under
-`docs/architecture/ai-billing-orchestration/` may hold a simplified rewrite with different section numbers; do not
-use them for § references. Until the v2 files are restored to that folder (open question OQ-1), read a section with
-`git show 5ac381b:docs/architecture/ai-billing-orchestration/<file>.md`.
+**Design source.** Every reference written like `03 §2.4` means the design docs in
+`docs/architecture/ai-billing-orchestration/`: `00` requirements seed, `01` design decisions, `02` architecture
+and threat model, `03` data model and lifecycle, `04` contracts, `05` operations and traceability.
 
 **Unit tests are not listed here.** Each unit's implementer decides its unit tests. This plan fixes the E2E
 scenarios: their IDs and meaning are copied into the unit's `spec.md` verbatim. An implementer may add scenarios
@@ -1228,23 +1225,19 @@ FM-07 (ABO D1 unavailable) is covered by P4.3 fault injection (callback gets 5xx
 
 Until the owner answers an item, units proceed on the default stated in it.
 
-1. **OQ-1: Which docs the implementers read.** Every read list cites the v2 docs (commit 5ac381b), but the working tree under
-   `docs/architecture/ai-billing-orchestration/` holds the outdated rewrite with different numbering. Recommendation: before P1.1, restore the v2 files to that path
-   (replacing the rewrite) so that every `§` reference resolves. Please confirm.
-   **Default:** until restored, implementers read sections with `git show 5ac381b:<path>` (section 1).
-2. **OQ-2: Multi-organisation users.** P1.1 adds membership and an active-org claim, set from the user's sole membership at sign-in. If any real user will belong to
+1. **OQ-2: Multi-organisation users.** P1.1 adds membership and an active-org claim, set from the user's sole membership at sign-in. If any real user will belong to
    more than one clinic at launch, the desktop needs an organisation switcher, which the design does not specify. Is that out of scope?
    **Default:** out of scope; the active organisation is changed only through the `set_active_organization` RPC.
-3. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2) need a Paymob
+2. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2) need a Paymob
    test integration and a staging Supabase project well before P8.1. Can those accounts be provisioned at the start of P4.2?
    **Default:** yes, provisioned at the start of P4.2; if not available, P4.2 and P5.2 stop at their spike step.
-4. **OQ-4: R-3 fallback adds a runtime part.** If Vault + SQL signing fails the P5.1 spike, the design's fallback is a single-purpose Supabase Edge Function signer.
+3. **OQ-4: R-3 fallback adds a runtime part.** If Vault + SQL signing fails the P5.1 spike, the design's fallback is a single-purpose Supabase Edge Function signer.
    That is a new deployable on the backend side. Is it acceptable under the constitution, or must the spike pass with SQL?
    **Default:** P5.1 stops and escalates if the spike fails; the fallback is used only with the owner's approval.
-5. **OQ-5: Time-control deviations.** Local E2E relies on a test-only clock control (absent from production and staging configs, asserted by a config test) and, in
+4. **OQ-5: Time-control deviations.** Local E2E relies on a test-only clock control (absent from production and staging configs, asserted by a config test) and, in
    H-FS only, on a faster `DURATION_SCALE` (1 month = 60 s, keeping the 30:1 ratio). The design fixes only the staging mapping. Is that interpretation acceptable?
    **Default:** accepted as described in rule V4.
-6. **OQ-6: Desktop E2E depth.** Flutter is verified through Dart client tests against the full local stack plus widget scenario tests, without a Windows
+5. **OQ-6: Desktop E2E depth.** Flutter is verified through Dart client tests against the full local stack plus widget scenario tests, without a Windows
    `integration_test` driver. Acceptable, or should P6.3 add one driven desktop golden path?
    **Default:** no `integration_test` driver; Dart client tests against H-FS plus widget scenario tests (harness H-FL).
 
