@@ -49,7 +49,7 @@
 
 - **Transport.** A service binding from the ABO to the platform's named `WorkerEntrypoint` class `VendorEntrypoint`, using RPC methods. It is not reachable from the internet. The platform never calls the ABO (01 §3.7).
 - **Versioning (X-10, NFR-09).** Every argument object and every result carries `contract_version`. The platform accepts N and N−1 and answers `rejected` with code `contract_version_unsupported` otherwise. Tokens carry `ver`, checked against the existing `token_contract` table. The rules for every channel are in §7.
-- **Canonical form.** Signed and hashed objects use the JSON Canonicalization Scheme (RFC 8785). Signatures are Ed25519 over the canonical bytes. Hashes are SHA-256, hex-encoded.
+- **Canonical form.** Signed and hashed objects use the JSON Canonicalization Scheme (RFC 8785). Signatures are Ed25519 over the canonical bytes, serialised as compact JWS (RFC 7515 compact serialization: base64url header, payload and signature joined by `.`) with header `{alg: "EdDSA", kid}`, where `kid` names the signing key in the relevant key set (02 §3.1, K-2 to K-4). Signing and verification run on WebCrypto (`crypto.subtle`), which both workerd and Node provide, so a signature made on either runtime verifies on the other. Hashes are SHA-256, hex-encoded.
 
 ### 1.2 Result envelope
 
@@ -481,7 +481,7 @@ Every path is under `ai-platform/`. Lines refer to the current code. Files not l
 | `src/alert/index.ts`              | `send_email` delivery, `platform_alert` dedupe and retry, heartbeat ping                                  |
 
 
-The shared package is `packages/vendor-contracts/` at the repository root, a `file:` dependency of both `ai-platform/` and the ABO. It holds RFC 8785 canonical JSON, Ed25519 JWS signing and verification, WebAuthn verification, the message types of §1 and §2, and the version constants of §7. The ABO's console uses the same WebAuthn and canonical-JSON code to build the operation object (§1.5), so both sides hash the same bytes. The backend cannot import it; its SQL verifies nothing that the package signs (01 §3.4).
+The shared package is `packages/vendor-contracts/` at the repository root, a `file:` dependency of both `ai-platform/` and the ABO. It holds RFC 8785 canonical JSON, Ed25519 compact JWS signing and verification on WebCrypto (§1.1), WebAuthn verification, the message types of §1 and §2, and the version constants of §7. The ABO's console uses the same WebAuthn and canonical-JSON code to build the operation object (§1.5), so both sides hash the same bytes. The backend cannot import it; its SQL verifies nothing that the package signs (01 §3.4).
 
 
 ### 6.3 D1 migrations

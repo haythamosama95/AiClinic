@@ -518,12 +518,13 @@ UTC throughout; the allowance is `A`.
 | ------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `org_id`                 | Backend tenant UUID                                                                   | The only tenant key across all three systems                                            |
 | `installation_id`        | Platform clinic UUID                                                                  | Reached only through `tenant_binding`                                                   |
-| Subscription reference   | `AIC-` plus 8 Crockford base-32 characters of SHA-256(`"sub-ref:"` ‖ `org_id`)        | Each system computes it with no lookup; stable across reinstalls and rotations (FR-66, A12, A13) |
+| Record ids               | ULID with 80 random bits (§2.1), encoded in Crockford base-32                          | Unguessable (§2.1); the same Crockford base-32 encoding the references below use        |
+| Subscription reference   | `AIC-` plus the leading 8 Crockford base-32 characters of SHA-256(`"sub-ref:"` ‖ `org_id`) | Each system computes it with no lookup; stable across reinstalls and rotations (FR-66, A12, A13) |
 | `payment_id`             | SHA-256(`"payment:"` ‖ `provider_id` ‖ `":"` ‖ provider transaction reference), hex   | Computed inside the adapter; the raw reference stays in the adapter's tables (SR-10)    |
 | `grant_id`               | SHA-256 over `"grant:paid:"` ‖ `payment_id`; `"grant:comp:"` ‖ operator action id; or `"grant:transfer:"` ‖ `transfer_id` ‖ `":"` ‖ n | Deterministic, so retries are idempotent (NFR-02)           |
 | State-change dedupe key  | provider, transaction, normalized state, cumulative reversed amount                  | SR-02; a refund re-sends the parent transaction with changed flags (01 §3.3)           |
 | Coverage `event_id`      | `installation_id` ‖ `":"` ‖ `clinic_seq`                                              | Idempotent shipping and applying                                                        |
-| Human references         | `CK-`, `PAY-`, `REV-`, `GR-` plus 8 base-32 characters of the record id               | Quotable by both the owner and support (FR-50)                                         |
+| Human references         | `CK-`, `PAY-`, `REV-`, `GR-` plus the trailing 8 base-32 characters of the record id  | Quotable by both the owner and support (FR-50); the trailing characters carry the ULID's random bits, so the reference stays unguessable (§2.1) |
 
 
 ## 8. Retention and immutability

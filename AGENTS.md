@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/062-abo-p1-2-tenant-scoping-cross-tenant-suite/plan.md`
-Feature spec: `specs/062-abo-p1-2-tenant-scoping-cross-tenant-suite/spec.md`
-Branch: `ai/062-abo-p1-2-tenant-scoping-cross-tenant-suite`
+Active feature plan: `specs/063-abo-p2-1-package-core-canonical-signing/plan.md`
+Feature spec: `specs/063-abo-p2-1-package-core-canonical-signing/spec.md`
+Branch: `ai/063-abo-p2-1-package-core-canonical-signing`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference
