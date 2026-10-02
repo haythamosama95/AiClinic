@@ -8,6 +8,15 @@ BEGIN;
 
 SELECT pg_temp.catalog_common_setup();
 
+INSERT INTO ai_internal.membership (user_id, organization_id, role)
+SELECT sm.auth_user_id, org.value, sm.role
+FROM public.staff_members sm
+JOIN catalog_setup org ON org.key = 'org'
+JOIN catalog_setup actor ON actor.key = 'admin_auth'
+  AND sm.auth_user_id = actor.value
+WHERE sm.is_deleted = false
+ON CONFLICT (user_id, organization_id) DO NOTHING;
+
 CREATE TEMP TABLE catalog_s02_ids (
   key text PRIMARY KEY,
   value text NOT NULL

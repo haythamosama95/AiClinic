@@ -19,6 +19,15 @@ BEGIN;
 
 SELECT pg_temp.catalog_common_setup();
 
+INSERT INTO ai_internal.membership (user_id, organization_id, role)
+SELECT sm.auth_user_id, org.value, sm.role
+FROM public.staff_members sm
+JOIN catalog_setup org ON org.key = 'org'
+JOIN catalog_setup actor ON actor.key IN ('admin_auth', 'doctor_auth')
+  AND sm.auth_user_id = actor.value
+WHERE sm.is_deleted = false
+ON CONFLICT (user_id, organization_id) DO NOTHING;
+
 -- -----------------------------------------------------------------------------
 -- Stage-local helpers (harness API stays frozen).
 -- -----------------------------------------------------------------------------
@@ -274,6 +283,13 @@ BEGIN
   SELECT sm.auth_user_id INTO STRICT v_rec_auth
   FROM public.staff_members sm
   WHERE sm.id = v_rec;
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id = v_rec_auth
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
 
   -- [SEED] Assign Omar to North so create_appointment can use him there.
   -- jwt_branch_ids for the RPC under test stays main-only.

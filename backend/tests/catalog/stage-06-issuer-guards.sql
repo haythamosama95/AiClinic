@@ -320,6 +320,13 @@ BEGIN
     RAISE EXCEPTION 'stage06_bootstrap receptionist mismatch: % / %', v_rec_name, v_rec_role;
   END IF;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id = v_adm_auth
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   DELETE FROM catalog_setup;
   INSERT INTO catalog_setup (key, value) VALUES
     ('org', v_org),

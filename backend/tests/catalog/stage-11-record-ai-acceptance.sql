@@ -32,6 +32,15 @@ BEGIN;
 
 SELECT pg_temp.catalog_common_setup();
 
+INSERT INTO ai_internal.membership (user_id, organization_id, role)
+SELECT sm.auth_user_id, org.value, sm.role
+FROM public.staff_members sm
+JOIN catalog_setup org ON org.key = 'org'
+JOIN catalog_setup actor ON actor.key IN ('admin_auth', 'doctor_auth')
+  AND sm.auth_user_id = actor.value
+WHERE sm.is_deleted = false
+ON CONFLICT (user_id, organization_id) DO NOTHING;
+
 -- -----------------------------------------------------------------------------
 -- Stage-local helpers (harness API stays frozen).
 -- -----------------------------------------------------------------------------
@@ -1117,6 +1126,13 @@ BEGIN
   VALUES (
     v_u2_staff, v_u2, 'S11 Org2 Doctor', 'doctor', v_u2, v_u2
   );
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org2, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id = v_u2
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
 
   INSERT INTO public.staff_branch_assignments (
     staff_member_id, branch_id, is_primary, created_by, updated_by

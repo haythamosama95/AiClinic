@@ -192,3 +192,27 @@ jobs:
           path: ai-platform/test/eval/reports/*.json
           if-no-files-found: ignore
           retention-days: 7
+
+  backend-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Start Supabase
+        working-directory: backend
+        run: supabase start
+
+      - name: Run backend SQL tests
+        run: backend/tests/run_all_backend_tests.sh
+
+      - name: Run catalog SQL tests
+        run: backend/tests/catalog/run.sh

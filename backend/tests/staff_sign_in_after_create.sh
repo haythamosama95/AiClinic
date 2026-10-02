@@ -91,6 +91,13 @@ BEGIN
   WHERE sm.auth_user_id IN (SELECT id FROM auth.users WHERE email = '${test_username}');
   DELETE FROM auth.users WHERE email = '${test_username}';
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id = '${bootstrap_user_id}'::uuid
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
