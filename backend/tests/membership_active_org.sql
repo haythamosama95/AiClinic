@@ -569,6 +569,364 @@ BEGIN
 END;
 $$;
 
+-- E2E-P1.1-04 — membership deleted while claims remain (FR-005, FR-008).
+-- Fails before the migration because current_org_id() is absent.
+DO $$
+DECLARE
+  v_user_id uuid := '06141000-0000-4000-8000-000000000004';
+  v_org_id uuid := '06142000-0000-4000-8000-000000000004';
+  v_branch_id uuid := '06144000-0000-4000-8000-000000000004';
+  v_staff_id uuid := '06143000-0000-4000-8000-000000000004';
+  v_claims text;
+  v_org_before uuid;
+  v_org_after uuid;
+  v_branch_count int;
+  v_list public.rpc_result;
+  v_forbidden boolean := false;
+  v_list_detail text;
+BEGIN
+  IF to_regprocedure('public.current_org_id()') IS NULL THEN
+    INSERT INTO membership_active_org_results (test_name, passed, detail)
+    VALUES (
+      'E2E-P1.1-04',
+      false,
+      'current_org_id() is absent'
+    );
+    RETURN;
+  END IF;
+
+  PERFORM set_config('role', 'postgres', true);
+
+  DELETE FROM public.audit_log
+  WHERE user_id = v_user_id
+     OR organization_id = v_org_id;
+  DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
+  DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.branches WHERE id = v_branch_id;
+  DELETE FROM public.organizations WHERE id = v_org_id;
+  DELETE FROM public.audit_log WHERE user_id = v_user_id;
+  DELETE FROM auth.users WHERE id = v_user_id;
+
+  INSERT INTO auth.users (
+    id, instance_id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at
+  )
+  VALUES (
+    v_user_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'e2e-p11-04',
+    extensions.crypt('pw-e2e-p11-04', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  );
+
+  INSERT INTO public.organizations (id, name, created_by, updated_by)
+  VALUES (v_org_id, 'E2E P1.1 Org 04', v_user_id, v_user_id);
+
+  INSERT INTO public.branches (id, organization_id, name, code, created_by, updated_by)
+  VALUES (v_branch_id, v_org_id, 'E2E P1.1 Branch 04', 'P114', v_user_id, v_user_id);
+
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, created_by, updated_by)
+  VALUES (v_staff_id, v_user_id, 'E2E P1.1 Member 04', 'administrator', v_user_id, v_user_id);
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  VALUES (v_user_id, v_org_id, 'administrator');
+
+  v_claims := json_build_object(
+    'sub', v_user_id::text,
+    'role', 'authenticated',
+    'active_org', v_org_id::text,
+    'organization_id', v_org_id::text,
+    'branch_ids', v_branch_id::text,
+    'staff_member_id', v_staff_id::text,
+    'staff_role', 'administrator'
+  )::text;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', v_claims, true);
+  v_org_before := public.current_org_id();
+
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM ai_internal.membership
+  WHERE user_id = v_user_id
+    AND organization_id = v_org_id;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', v_claims, true);
+  v_org_after := public.current_org_id();
+
+  SELECT count(*)::int
+  INTO v_branch_count
+  FROM public.branches
+  WHERE id = v_branch_id;
+
+  BEGIN
+    v_list := public.list_appointments(
+      v_branch_id,
+      now() - interval '1 day',
+      now() + interval '7 days',
+      NULL,
+      NULL
+    );
+    v_forbidden := NOT v_list.success AND v_list.error_code = 'FORBIDDEN';
+    v_list_detail := COALESCE(v_list.error_code, 'ok');
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_forbidden := SQLERRM = 'FORBIDDEN';
+      v_list_detail := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+
+  INSERT INTO membership_active_org_results (test_name, passed, detail)
+  VALUES (
+    'E2E-P1.1-04',
+    v_org_before = v_org_id
+      AND v_org_after IS NULL
+      AND v_branch_count = 0
+      AND v_forbidden,
+    'org_before=' || COALESCE(v_org_before::text, '<null>')
+      || ' org_after=' || COALESCE(v_org_after::text, '<null>')
+      || ' branches=' || COALESCE(v_branch_count::text, '<null>')
+      || ' list=' || COALESCE(v_list_detail, '<null>')
+  );
+
+  PERFORM set_config('request.jwt.claims', '', true);
+  DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
+  DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.audit_log
+  WHERE user_id = v_user_id
+     OR organization_id = v_org_id;
+  DELETE FROM public.branches WHERE id = v_branch_id;
+  DELETE FROM public.organizations WHERE id = v_org_id;
+  DELETE FROM public.audit_log WHERE user_id = v_user_id;
+  DELETE FROM auth.users WHERE id = v_user_id;
+END;
+$$;
+
+-- E2E-P1.1-05 — crafted active_org and organization_id with no membership (FR-005, FR-006).
+-- Fails before the migration because current_org_id() is absent.
+DO $$
+DECLARE
+  v_user_id uuid := '06151000-0000-4000-8000-000000000005';
+  v_active_org uuid := '06152000-0000-4000-8000-00000000005a';
+  v_legacy_org uuid := '06152000-0000-4000-8000-00000000005b';
+  v_from_active uuid;
+  v_from_legacy uuid;
+BEGIN
+  IF to_regprocedure('public.current_org_id()') IS NULL THEN
+    INSERT INTO membership_active_org_results (test_name, passed, detail)
+    VALUES (
+      'E2E-P1.1-05',
+      false,
+      'current_org_id() is absent'
+    );
+    RETURN;
+  END IF;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'active_org', v_active_org::text
+    )::text,
+    true
+  );
+  v_from_active := public.current_org_id();
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'organization_id', v_legacy_org::text
+    )::text,
+    true
+  );
+  v_from_legacy := public.current_org_id();
+
+  INSERT INTO membership_active_org_results (test_name, passed, detail)
+  VALUES (
+    'E2E-P1.1-05',
+    v_from_active IS NULL AND v_from_legacy IS NULL,
+    'active_org=' || COALESCE(v_from_active::text, '<null>')
+      || ' organization_id=' || COALESCE(v_from_legacy::text, '<null>')
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+END;
+$$;
+
+-- E2E-P1.1-06 — membership role ignores roles_permissions (FR-007).
+-- Fails before the migration because current_membership_role() is absent.
+DO $$
+DECLARE
+  v_user_id uuid := '06161000-0000-4000-8000-000000000006';
+  v_org_admin uuid := '06162000-0000-4000-8000-00000000006a';
+  v_org_doctor uuid := '06162000-0000-4000-8000-00000000006b';
+  v_staff_id uuid := '06163000-0000-4000-8000-000000000006';
+  v_perm_id uuid;
+  v_perm_key text;
+  v_granted boolean;
+  v_admin public.staff_role;
+  v_doctor public.staff_role;
+  v_admin_after public.staff_role;
+  v_doctor_after public.staff_role;
+  v_updated int := 0;
+BEGIN
+  IF to_regprocedure('public.current_membership_role()') IS NULL THEN
+    INSERT INTO membership_active_org_results (test_name, passed, detail)
+    VALUES (
+      'E2E-P1.1-06',
+      false,
+      'current_membership_role() is absent'
+    );
+    RETURN;
+  END IF;
+
+  PERFORM set_config('role', 'postgres', true);
+
+  DELETE FROM public.audit_log
+  WHERE user_id = v_user_id
+     OR organization_id IN (v_org_admin, v_org_doctor);
+  DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
+  DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.organizations WHERE id IN (v_org_admin, v_org_doctor);
+  DELETE FROM public.audit_log WHERE user_id = v_user_id;
+  DELETE FROM auth.users WHERE id = v_user_id;
+
+  INSERT INTO auth.users (
+    id, instance_id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at
+  )
+  VALUES (
+    v_user_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'e2e-p11-06',
+    extensions.crypt('pw-e2e-p11-06', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  );
+
+  INSERT INTO public.organizations (id, name, created_by, updated_by)
+  VALUES
+    (v_org_admin, 'E2E P1.1 Org Admin', v_user_id, v_user_id),
+    (v_org_doctor, 'E2E P1.1 Org Doctor', v_user_id, v_user_id);
+
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, created_by, updated_by)
+  VALUES (v_staff_id, v_user_id, 'E2E P1.1 Member 06', 'receptionist', v_user_id, v_user_id);
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  VALUES
+    (v_user_id, v_org_admin, 'administrator'),
+    (v_user_id, v_org_doctor, 'doctor');
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'active_org', v_org_admin::text
+    )::text,
+    true
+  );
+  v_admin := public.current_membership_role();
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'active_org', v_org_doctor::text
+    )::text,
+    true
+  );
+  v_doctor := public.current_membership_role();
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT rp.id, rp.permission_key, rp.is_granted
+  INTO v_perm_id, v_perm_key, v_granted
+  FROM public.roles_permissions rp
+  WHERE rp.role = 'administrator'
+    AND rp.is_deleted = false
+  ORDER BY rp.permission_key
+  LIMIT 1;
+
+  IF v_perm_id IS NOT NULL THEN
+    UPDATE public.roles_permissions
+    SET is_granted = NOT v_granted
+    WHERE id = v_perm_id;
+    GET DIAGNOSTICS v_updated = ROW_COUNT;
+  END IF;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'active_org', v_org_admin::text
+    )::text,
+    true
+  );
+  v_admin_after := public.current_membership_role();
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_id::text,
+      'role', 'authenticated',
+      'active_org', v_org_doctor::text
+    )::text,
+    true
+  );
+  v_doctor_after := public.current_membership_role();
+
+  PERFORM set_config('role', 'postgres', true);
+  IF v_perm_id IS NOT NULL THEN
+    UPDATE public.roles_permissions
+    SET is_granted = v_granted
+    WHERE id = v_perm_id;
+  END IF;
+
+  INSERT INTO membership_active_org_results (test_name, passed, detail)
+  VALUES (
+    'E2E-P1.1-06',
+    v_admin = 'administrator'::public.staff_role
+      AND v_doctor = 'doctor'::public.staff_role
+      AND v_admin_after = 'administrator'::public.staff_role
+      AND v_doctor_after = 'doctor'::public.staff_role
+      AND v_updated = 1,
+    'admin=' || COALESCE(v_admin::text, '<null>')
+      || ' doctor=' || COALESCE(v_doctor::text, '<null>')
+      || ' admin_after=' || COALESCE(v_admin_after::text, '<null>')
+      || ' doctor_after=' || COALESCE(v_doctor_after::text, '<null>')
+      || ' updated=' || v_updated::text
+      || ' permission=' || COALESCE(v_perm_key, '<null>')
+  );
+
+  PERFORM set_config('request.jwt.claims', '', true);
+  DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
+  DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.audit_log
+  WHERE user_id = v_user_id
+     OR organization_id IN (v_org_admin, v_org_doctor);
+  DELETE FROM public.organizations WHERE id IN (v_org_admin, v_org_doctor);
+  DELETE FROM public.audit_log WHERE user_id = v_user_id;
+  DELETE FROM auth.users WHERE id = v_user_id;
+END;
+$$;
+
 DO $$
 DECLARE
   v_failures int;
