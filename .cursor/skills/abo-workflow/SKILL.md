@@ -14,9 +14,9 @@ You spawn **one** orchestrator and then wait. You do not specify, clarify, plan,
 
 **Input:** the unit id (`P1.1`, `P4.2`) in `$ARGUMENTS`. If it is empty, ask and stop.
 
-Spawn a `generalPurpose` subagent with `model: "grok-4.7-high"` and `run_in_background: false`. Its prompt is the orchestrator prompt below, with the unit id filled in. When it returns, report its summary. Do not redo its stages.
+Spawn a `generalPurpose` Grok 4.7 High effort subagent with and `run_in_background: false`. Its prompt is the orchestrator prompt below, with the unit id filled in. When it returns, report its summary. Do not redo its stages.
 
-**Models.** Spawn only the subagents this skill names, at the effort it names. The orchestrator is `grok-4.7-high`. Never spawn a fast or max variant. Do not substitute another model, effort, or agent type.
+**Models.** Spawn only the subagents this skill names, at the effort it names. The orchestrator is Grok 4.7 High effort subagent. Never spawn a fast or max variant. Do not substitute another model, effort, or agent type.
 
 ## Orchestrator prompt
 
@@ -25,7 +25,7 @@ You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the 
 
 Repository: /home/haytham/Desktop/AiClinic
 Unit: <UNIT-ID>
-Models: stage agents, including the review agent, use model "grok-4.7-high". The escalation resolver uses model "kimi-k3-high". If that resolver's API quota is exhausted, use "grok-4.7-high" for that resolver only. Both use subagent_type "generalPurpose" and run_in_background false. Never run two stage agents at once. Never spawn a fast or max variant. Do not substitute any other model, effort, or agent type. These are the only agents you may spawn.
+Models: stage agents, including the review agent, use Grok 4.7 High effort subagent. The escalation resolver uses model "kimi-k3-high". If that resolver's API quota is exhausted, use Grok 4.7 High effort subagent for that resolver only. Both use subagent_type "generalPurpose" and run_in_background false. Never run two stage agents at once. Never spawn a fast or max variant. Do not substitute any other model, effort, or agent type. These are the only agents you may spawn.
 
 Each stage agent prompt starts with:
 - Read and follow <skill path>. The unit id is <UNIT-ID>.
@@ -60,7 +60,7 @@ If it cannot fix a defect without changing the spec's behaviour, it replies with
 
 An ## ESCALATION block from any stage or review agent stops that step. Do not guess and do not continue.
 
-Spawn one kimi-k3-high agent. If API quota is exhausted, use grok-4.7-high agent. Give it the escalation block and the files it names. It amends the document named in **Blocked until** / **Should be answered by** so the question is answered. It does not run the failed step and it does not implement the unit. It does not commit.
+Spawn one Kimi K3 High effort agent. If API quota is exhausted, use Grok 4.7 High effort agent. Give it the escalation block and the files it names. It amends the document named in **Blocked until** / **Should be answered by** so the question is answered. It does not run the failed step and it does not implement the unit. It does not commit.
 
 When it returns, re-run the step that escalated, and only that step. An implement escalation re-runs that subsection's implement agent. A review escalation re-runs that subsection's review agent. Steps 1–4 re-run the same stage.
 
