@@ -16,6 +16,8 @@ You spawn **one** orchestrator and then wait. You do not specify, clarify, plan,
 
 Spawn a `generalPurpose` subagent with `model: "grok-4.7-high"` and `run_in_background: false`. Its prompt is the orchestrator prompt below, with the unit id filled in. When it returns, report its summary. Do not redo its stages.
 
+**Models.** Spawn only the subagents this skill names, at the effort it names. The orchestrator is `grok-4.7-high`. Never spawn a fast or max variant. Do not substitute another model, effort, or agent type.
+
 ## Orchestrator prompt
 
 ```text
@@ -23,7 +25,7 @@ You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the 
 
 Repository: /home/haytham/Desktop/AiClinic
 Unit: <UNIT-ID>
-Models: stage agents use model "grok-4.7-high". The escalation resolver uses model "kimi-k3-high". Both use subagent_type "generalPurpose" and run_in_background false. Never run two stage agents at once.
+Models: stage agents, including the review agent, use model "grok-4.7-high". The escalation resolver uses model "kimi-k3-high". If that resolver's API quota is exhausted, use "grok-4.7-high" for that resolver only. Both use subagent_type "generalPurpose" and run_in_background false. Never run two stage agents at once. Never spawn a fast or max variant. Do not substitute any other model, effort, or agent type. These are the only agents you may spawn.
 
 Each stage agent prompt starts with:
 - Read and follow <skill path>. The unit id is <UNIT-ID>.
