@@ -116,7 +116,7 @@ The first command is H-PKG (Node, then the workers pool). The second is E2E-P2.1
 | E2E-P2.1-04 | `SELF.fetch` `POST /v1/requests` → `ai-platform/src/worker.ts` `fetch` → `requireAipContractVersion` in `src/vendor/contract-version.ts` → `negotiate` in the package → HTTP 400; `count("ai_request")` unchanged |
 | E2E-P2.1-05 | `SELF.fetch` `GET /v1/capabilities` → `worker.ts` `fetch` → `requireAipContractVersion` → on version 1, `handleDiscoveryRequest` then `withAipContractVersion`; on version 2, HTTP 400 |
 | E2E-P2.1-06 | `applyAllMigrations` → `setupPromotedFakePolicy` → `mintAat` → `SELF.fetch` `POST /v1/requests` → `worker.ts` `fetch` → `requireAipContractVersion` → `handleLivePostRequest` → `handleAdapterRequest` in `src/adapter.ts` → `withAipContractVersion` on that `Response` → read `Aip-Contract-Version` → then read the SSE body |
-| E2E-P2.1-07 | Existing suites → `ai-platform/test/system/harness.ts` and `ai-platform/test/e2e/harness/clinic.ts` (and the direct clinic `Request`s in Files) set `Aip-Contract-Version: 1` → `worker.ts` `fetch` |
+| E2E-P2.1-07 | Existing suites → `ai-platform/test/system/harness.ts` and `ai-platform/test/e2e/harness/clinic.ts` (and the direct clinic `Request`s in Files) set `Aip-Contract-Version: 1` → `worker.ts` `fetch`. E2e entitle → `ai-platform/test/e2e/harness/d1.ts` `resetPlatformState` and `ai-platform/test/e2e/harness/control.ts` re-seed `plan` → `handleEntitle` |
 
 ### Source Code (repository root)
 
@@ -157,7 +157,9 @@ ai-platform/
     ├── worker-request-orchestrator.test.ts
     ├── e2e/
     │   ├── harness/
-    │   │   └── clinic.ts
+    │   │   ├── clinic.ts
+    │   │   ├── control.ts
+    │   │   └── d1.ts
     │   ├── stage-08-guard-sse-adapter.test.ts
     │   └── stage-08-size-json-headers.test.ts
     └── system/
@@ -208,6 +210,8 @@ None.
 | `ai-platform/test/system/contract-version.system.test.ts` | FR-008, FR-009 |
 | `ai-platform/test/system/harness.ts` | FR-011 |
 | `ai-platform/test/e2e/harness/clinic.ts` | FR-011 |
+| `ai-platform/test/e2e/harness/d1.ts` | FR-011 |
+| `ai-platform/test/e2e/harness/control.ts` | FR-011 |
 | `ai-platform/test/system/failure-taxonomy-matrix.system.test.ts` | FR-011 |
 | `ai-platform/test/system/quota-admission-interplay.system.test.ts` | FR-011 |
 | `ai-platform/test/system/settlement-integrity.system.test.ts` | FR-011 |
@@ -238,7 +242,13 @@ The H-AP default is the header `Aip-Contract-Version` with value `1` when the ca
 - `clinicFetch` in `ai-platform/test/e2e/harness/clinic.ts`.
 - The direct clinic `Request`s that enter `worker.ts` `fetch` for a gated route: `failure-taxonomy-matrix.system.test.ts`, `quota-admission-interplay.system.test.ts`, `settlement-integrity.system.test.ts` (`POST /v1/requests` and `GET /v1/requests/${ref}`), `postStreamBody` in `stage-08-size-json-headers.test.ts`, the S08-059 `SELF.fetch` in `stage-08-guard-sse-adapter.test.ts`, `discoveryRequest` in `discovery-http.test.ts`, `buildPostRequest` in `worker-request-orchestrator.test.ts`, the `worker.fetch` of `/v1/requests` in `log-redaction.test.ts`, and the `POST /v1/requests` and `getRef` calls in `worker-entry.test.ts`.
 
-`operatorFetch` and `/health` do not gain the header. `GET /v1/usage` is not a gated route, so `usage-summary.test.ts` stays as it is.
+`operatorFetch` and `/health` do not gain the header. `GET /v1/usage` is not a gated route, so `usage-summary.test.ts` stays as it is. `/control/*` stays outside `requireAipContractVersion`. T008 does not edit `ai-platform/src/worker.ts`.
+
+E2E-P2.1-07's e2e entitle HTTP 404 is `plan_not_found` from `handleEntitle`. `resetE2eState` calls `resetPlatformState` in `ai-platform/test/e2e/harness/d1.ts`, which `DELETE`s `plan` and re-seeds only `token_contract`. Enroll stores `entitlement.plan` (`standard` from `enrollPayload`, or `professional`, `starter`, or `enterprise` where a suite overrides it). `handleEntitle` then reads `plan` by that name and copies `request_quota`, `credit_budget`, `max_cost_class`, `allowed_capabilities`, and `soft_threshold` from the row. T008 re-seeds that catalogue row the way `seedCataloguePlan` and `entitleScenario` do in `ai-platform/test/system/harness.ts`, and may edit only `ai-platform/test/e2e/harness/d1.ts` and `ai-platform/test/e2e/harness/control.ts` for this gap.
+
+In `d1.ts` `resetPlatformState`, after `reseedTokenContract`, `INSERT OR REPLACE` one `plan` row for each of `standard`, `professional`, `starter`, and `enterprise`: `credit_budget` 10000, `request_quota` 1000, `max_cost_class` `""`, `soft_threshold` 0.8, `allowed_capabilities` the JSON text of `["clinic.visit_summary"]`, `status` `active`. Update the `resetE2eState` comment so it records the catalogue re-seed as well as the `token_contract` seed.
+
+In `control.ts`, before `SELF.fetch` inside `controlFetch` and before `dispatchControlRequest` inside `dispatchControl`, re-seed when the pathname is `/control/installations/{installationId}/entitle`, the JSON body has integer `request_quota` ≥ 0, finite `soft_threshold` in `[0, 1]`, and `allowed_capabilities` as an array of strings, and `SELECT plan FROM entitlement WHERE installation_id = ?` returns a name. `INSERT OR REPLACE` that name: `request_quota`, `soft_threshold`, and `JSON.stringify(allowed_capabilities)` from the body; `credit_budget` from an integer body `credit_budget` when present, otherwise 10000; `max_cost_class` `""`; `status` `active`. Write with `prepare`/`run` on the D1 the handler reads (`env.DB` in `controlFetch`; the bindings `DB`, defaulting to `env.DB`, in `dispatchControl`). Skip this per-request write when the pathname is a different route, the body lacks those fields, or no entitlement row exists. Control routes do not gain `Aip-Contract-Version`.
 
 The CI job `vendor-contracts` is added to `.github/workflows/ci.yml` and leaves the existing jobs in place (rule V7). It checks out the repo, sets up Node 22, runs `npm ci` in `packages/vendor-contracts/`, then `npm test`.
 
@@ -254,7 +264,7 @@ Titles start with the E2E id (rule V3). H-PKG tests import the package exports a
 | E2E-P2.1-04 | H-AP | `ai-platform/test/system/contract-version.system.test.ts`. Title `E2E-P2.1-04`. `applyAllMigrations`, then `SELF.fetch` `POST /v1/requests` with an invalid bearer and no `Aip-Contract-Version`. Status 400, body `code` is `contract_version_unsupported`, `accepted_versions` is `[0, 1]`, and `count("ai_request")` is unchanged. |
 | E2E-P2.1-05 | H-AP | Same file. Title `E2E-P2.1-05`. `GET /v1/capabilities` with `Aip-Contract-Version: 1` echoes that header. The same route with value `2` returns 400 and `contract_version_unsupported`. |
 | E2E-P2.1-06 | H-AP | Same file. Title `E2E-P2.1-06`. After `setupPromotedFakePolicy` and `mintAat`, `SELF.fetch` `POST /v1/requests` with `Aip-Contract-Version: 1`. `response.headers.get("Aip-Contract-Version")` is `1` before the body is read. The body is `text/event-stream` and the first event is the adapter's accepted event. |
-| E2E-P2.1-07 | H-AP | `cd ai-platform && npm test && npm run test:e2e`. Title is the existing suite titles. System and e2e suites pass with the default header on gated clinic routes. |
+| E2E-P2.1-07 | H-AP | `cd ai-platform && npm test && npm run test:e2e`. Title is the existing suite titles. System and e2e suites pass with the default header on gated clinic routes. The e2e harness re-seeds `plan` in `ai-platform/test/e2e/harness/d1.ts` and `ai-platform/test/e2e/harness/control.ts` as the Files section specifies, so entitle resolves the enrolled catalogue row. |
 
 Ed25519 via WebCrypto is deterministic (RFC 8032). The JWS vector stores one compact JWS. Node and workerd each reproduce it and verify it, which is a signature made on either runtime checking on the other.
 
@@ -281,7 +291,7 @@ Tests are written and observed failing before the package functions and the work
 17. Set the default header in `ai-platform/test/e2e/harness/clinic.ts`.
 18. Set the header on the direct gated `Request`s in the system files (`failure-taxonomy-matrix.system.test.ts`, `quota-admission-interplay.system.test.ts`, `settlement-integrity.system.test.ts`).
 19. Set the header on the remaining direct gated `Request`s (`stage-08-size-json-headers.test.ts`, `stage-08-guard-sse-adapter.test.ts`, `discovery-http.test.ts`, `worker-request-orchestrator.test.ts`, `log-redaction.test.ts`, `worker-entry.test.ts`).
-20. Run E2E-P2.1-07 (`npm test` and `npm run test:e2e` in `ai-platform`) and keep going until both are green.
+20. Run E2E-P2.1-07 (`npm test` and `npm run test:e2e` in `ai-platform`). The header call sites from steps 16–19 are already in place. The remaining e2e entitle 404 is the missing catalogue row described in Files. Re-seed `plan` only in `ai-platform/test/e2e/harness/d1.ts` and `ai-platform/test/e2e/harness/control.ts`, as that section specifies, and keep going until both commands are green.
 21. Add the `vendor-contracts` CI job.
 22. Write `quickstart.md` from the outline above.
 
