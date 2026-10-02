@@ -40,11 +40,11 @@
 
 **Independent Test**: E2E-P1.1-01, E2E-P1.1-02, and E2E-P1.1-03 in harness H-BK.
 
-- [ ] T002 [US2] Add the failing test `E2E-P1.1-01` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-003 and FR-005, proved by E2E-P1.1-01. One membership; call `public.get_custom_claims` with the GoTrue event shape `{"user_id","claims"}`; assert `active_org`; then `current_org_id()` equals that organisation. Depends on T001 (same file). Fails because `current_org_id()` and the `active_org` claim are absent.
+- [X] T002 [US2] Add the failing test `E2E-P1.1-01` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-003 and FR-005, proved by E2E-P1.1-01. One membership; call `public.get_custom_claims` with the GoTrue event shape `{"user_id","claims"}`; assert `active_org`; then `current_org_id()` equals that organisation. Depends on T001 (same file). Fails because `current_org_id()` and the `active_org` claim are absent.
 
-- [ ] T003 [US2] Add the failing test `E2E-P1.1-02` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-004 and FR-008, proved by E2E-P1.1-02. Memberships in organisations A and B; `set_active_organization(B)`; hook refresh; `current_org_id()` equals B; `public.list_appointments` returns only B's rows. Depends on T002 (same file). Fails because `set_active_organization` is absent.
+- [X] T003 [US2] Add the failing test `E2E-P1.1-02` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-004 and FR-008, proved by E2E-P1.1-02. Memberships in organisations A and B; `set_active_organization(B)`; hook refresh; `current_org_id()` equals B; `public.list_appointments` returns only B's rows. Depends on T002 (same file). Fails because `set_active_organization` is absent.
 
-- [ ] T004 [US2] Add the failing test `E2E-P1.1-03` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-004, proved by E2E-P1.1-03. `set_active_organization(C)` returns `success = false` and `error_code = 'FORBIDDEN'`; the active-organisation row and the following hook claim stay as they were. Depends on T003 (same file). Fails because `set_active_organization` is absent.
+- [X] T004 [US2] Add the failing test `E2E-P1.1-03` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-004, proved by E2E-P1.1-03. `set_active_organization(C)` returns `success = false` and `error_code = 'FORBIDDEN'`; the active-organisation row and the following hook claim stay as they were. Depends on T003 (same file). Fails because `set_active_organization` is absent.
 
 **Checkpoint**: E2E-P1.1-01, E2E-P1.1-02, and E2E-P1.1-03 exist and fail.
 
