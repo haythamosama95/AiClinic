@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/064-abo-p2-2-package-contracts-message-types-webauthn/plan.md`
-Feature spec: `specs/064-abo-p2-2-package-contracts-message-types-webauthn/spec.md`
-Branch: `ai/064-abo-p2-2-package-contracts-message-types-webauthn`
+Active feature plan: `specs/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting/plan.md`
+Feature spec: `specs/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting/spec.md`
+Branch: `ai/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

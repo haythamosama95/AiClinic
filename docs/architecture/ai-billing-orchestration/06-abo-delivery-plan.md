@@ -150,7 +150,11 @@ and it calls them through the real platform worker, never a hand-written stub. N
 from the AI Platform (AP) plan §2.3): a later unit may extend a frozen contract but never rewrite one. If a
 contract is wrong, amend the v2 design doc first and then return. Design deviations recorded here:
 Access-JWT verification is placed in the shared package, next to WebAuthn, so both Workers use one
-copy. Each unit creates its own migration files with fresh, increasing timestamps; 04 §6.3 file names
+copy. P3.1 credential results stay inside the frozen result envelope: it does not grow, `receipt` stays
+required exactly when `result` is `applied` or `already_applied`, and `registerOperatorCredential`,
+`revokeOperatorCredential`, and `listOperatorCredentials` return `ok` with the credential row or the
+active-key list as JSON text in `detail`. They do not return `applied` or `already_applied`, which
+require a grant or reversal receipt. Each unit creates its own migration files with fresh, increasing timestamps; 04 §6.3 file names
 are indicative only, and the union of the contents must equal 04 §6.3.
 
 **S8. No unwired modules (the Band I lesson).** Every module a unit adds must be reached by at least one
@@ -427,10 +431,10 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **Outputs / freezes:** method dispatch + class table; auth refusal codes; credential lifecycle; alert body format; `platform_alert`.
 - **E2E (H-AP via service binding):**
   - E2E-P3.1-01 Empty registry: bootstrap registration without approval → `pending`; AL-13 marked bootstrap; a second unapproved registration → `rejected`.
-  - E2E-P3.1-02 HP call using a credential < 24 h old → rejected; after the test clock passes +24 h → `applied`.
-  - E2E-P3.1-03 HP with a valid Access JWT + assertion over the exact operation → applied; replaying the same assertion → rejected (`assertion_used`).
+  - E2E-P3.1-02 HP call using a credential < 24 h old → rejected; after the test clock passes +24 h → `ok`.
+  - E2E-P3.1-03 HP with a valid Access JWT + assertion over the exact operation → `ok`; replaying the same assertion → rejected (`assertion_used`).
   - E2E-P3.1-04 Assertion `issued_at` 6 min old → rejected; `actor_email` ≠ Access email → rejected.
-  - E2E-P3.1-05 H method with a missing, expired or wrong-`aud` Access JWT → rejected; no state change [TB-6, AD-11].
+  - E2E-P3.1-05 `revokeOperatorCredential` (class HP) with a missing, expired or wrong-`aud` Access JWT → `rejected` with code `unauthenticated`; no state change [TB-6, AD-11].
   - E2E-P3.1-06 Any method with `contract_version` missing or 2 → `rejected contract_version_unsupported`; nothing written.
   - E2E-P3.1-07 Credential A revokes B → HP with B fails; AL-13 sent [K-7 rotation].
   - E2E-P3.1-08 `send_email` throws → alert stays unsent; the next `*/5` run sends it exactly once [FM-16].

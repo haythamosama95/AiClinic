@@ -201,6 +201,8 @@ Every `VendorEntrypoint` method has exactly one class. The method list is in 04 
 
 The platform verifies classes H and HP itself; the ABO's own checks are only for UX. A compromised ABO therefore cannot invent an operator, and cannot perform a platform HP action without a real operator touch (SR-21; the substitution risk is in AD-8). The ABO applies the same passkey ceremony to its own value-affecting records: offer and terms publication, manual chargebacks, and release of withheld payments. It verifies them against the platform's credential registry (05 §3.2). A compromised ABO can skip those ABO-side checks, but that gives it nothing beyond AD-8. For `grant`, `source.kind` selects the class: `paid` is M, `complimentary` is HP (04 §1.3).
 
+A class H or HP call whose Access JWT is missing, expired, or has the wrong `aud` is `rejected` with code `unauthenticated` and writes nothing. The Access verification returns no code; `unauthenticated` is the entrypoint code for that failure. A class HP call that omits `assertion` is `rejected` with code `assertion_required`, except bootstrap `registerOperatorCredential` while `operator_credential` is empty (04 §1.3). The other class HP refusal codes are in 04 §1.5.
+
 ## 4. Threat model
 
 ### 4.1 Scope and assumptions
@@ -266,7 +268,7 @@ This closes 01 R-8.
 | C. SMS gateway                                                            | Adds a vendor, a cost, and a secret, with no security gain                                                                                                                     |
 
 
-**Decision: A, plus a heartbeat monitor outside Cloudflare.** Both Workers send alerts through `send_email`, deduplicated and retried from their alert tables (03 §2.10, §3.2). The fate-sharing gap is closed by a dead-man's-switch monitor outside Cloudflare and Supabase. The ABO's minute cron, the platform's 5-minute cron and the ABO's daily digest each ping it, and a missing ping alerts the developer over the monitor's own channel (NFR-04). The same external scheduler runs the hourly audit-log watcher (§4.4). Alert bodies carry codes and ids only (TB-9).
+**Decision: A, plus a heartbeat monitor outside Cloudflare.** Both Workers send alerts through `send_email`, deduplicated and retried from their alert tables (03 §2.10, §3.2). The fate-sharing gap is closed by a dead-man's-switch monitor outside Cloudflare and Supabase. The ABO's minute cron, the platform's 5-minute cron and the ABO's daily digest each ping `HEARTBEAT_URL`, the configuration value that holds the monitor's URL, and a missing ping alerts the developer over the monitor's own channel (NFR-04). The same external scheduler runs the hourly audit-log watcher (§4.4). Alert bodies carry codes and ids only (TB-9).
 
 ## 6. Rotation and revocation
 
