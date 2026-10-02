@@ -148,6 +148,7 @@ None.
 | `backend/supabase/migrations/20261002120000_membership_active_org.sql` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008 |
 | `backend/tests/membership_active_org.sql` | FR-001, FR-002, FR-003, FR-004, FR-005, FR-007, FR-008 |
 | `backend/tests/run_all_backend_tests.sh` | FR-009 |
+| `backend/tests/ai_token_contract_rotation.sql` | FR-009 |
 | `.github/workflows/ci.yml` | FR-009 |
 
 The migration contains only:
@@ -227,6 +228,8 @@ FR-009 fixture edits, each file traced to FR-009. For every impersonated fixture
 
 `ON DELETE CASCADE` from `auth.users` and `public.organizations` lets existing fixture teardown that deletes those parents remove the new rows. `backend/tests/jwt_claims_contract.sql` and `backend/tests/auth_flow_smoke.sh` keep their current assertions: the former reads `build_staff_claims` and does not impersonate `organization_id`; the latter checks that a real sign-in JWT still carries `organization_id`, which `build_staff_claims` still sets.
 
+`backend/tests/ai_token_contract_rotation.sql` keeps its claims and assertions unchanged and gains one teardown statement: after the failure-check block and before `COMMIT`, restore `ai_internal.app_settings` key `ai.aat.ver` to the seed value `'"1"'::jsonb` from `20260801120000_ai_keystore_schema.sql`. The two H-BK scripts E2E-P1.1-08 names share one local Supabase database — the CI job runs `supabase start` once, then runs both scripts — and the rotation file's committed advance of `ai.aat.ver` to `'"2"'` otherwise leaks into `backend/tests/catalog/stage-06-happy-path-and-lifecycle.sql`, which deliberately does not pin `ver` (overwriting it would mask seed drift) and asserts `ver = '1'` in S06-019, S06-020, and S06-025. Restoring the seed value is fixture teardown for database-wide state, not a change to the file's claims or assertions: T-J4-08 through T-J4-10 read the setting as they find it and record their results before the restore runs. The alternative of giving the two scripts separate databases is rejected; FR-009 and the CI job define one local Supabase for both.
+
 The CI job `backend-sql` is added to `.github/workflows/ci.yml` and leaves the existing jobs in place (rule V7). It checks out the repo, installs the Supabase CLI, runs `supabase start` in `backend/` (that applies all migrations, including the hook in `config.toml`), then runs `backend/tests/run_all_backend_tests.sh` and `backend/tests/catalog/run.sh`.
 
 ## Test Layout
@@ -244,7 +247,7 @@ Teardown: the `AFTER INSERT` trigger `trg_organizations_provision_billing_settin
 | E2E-P1.1-05 | H-BK | `membership_active_org.sql`: crafted `active_org` and, separately, crafted `organization_id`, each with no membership; `current_org_id()` is NULL. |
 | E2E-P1.1-06 | H-BK | `membership_active_org.sql`: `current_membership_role()` returns `administrator` and `doctor`; an `UPDATE` on `public.roles_permissions` leaves both results unchanged. |
 | E2E-P1.1-07 | H-BK | `membership_active_org.sql`: after migrations, every non-deleted staff member whose database has a non-deleted organisation has exactly one membership for the earliest such organisation and that staff member's role. A non-deleted staff member and no organisation — the bootstrap administrator from `20260516100400_auth_rbac_seed.sql` on a fresh database — has no membership row. |
-| E2E-P1.1-08 | H-BK | `backend/tests/run_all_backend_tests.sh` and `backend/tests/catalog/run.sh`. Pre-existing suites pass with the same impersonated claims and the same assertions. Fixture users who carry `organization_id` also hold the matching membership. Suites that impersonate a user with no staff row still assert denial. |
+| E2E-P1.1-08 | H-BK | `backend/tests/run_all_backend_tests.sh` and `backend/tests/catalog/run.sh`. Pre-existing suites pass with the same impersonated claims and the same assertions. Fixture users who carry `organization_id` also hold the matching membership. Suites that impersonate a user with no staff row still assert denial. Both scripts run against the same local Supabase database, so a suite that commits a database-wide setting restores the seed value before it exits: `ai_token_contract_rotation.sql` (run through `run_ai_platform_trust_tests.sh`) restores `ai.aat.ver` to `'"1"'` before its `COMMIT`, leaving the catalog stage-06 `ver` assertions — which intentionally do not pin `ver` — on the seed. |
 
 ## Sequencing
 
