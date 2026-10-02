@@ -139,6 +139,7 @@ ai-platform/
 │   │   └── entrypoint.ts
 │   └── worker.ts
 ├── test/
+│   ├── worker-entry.test.ts       # S2: export WorkerEntrypoint from the existing mock
 │   └── system/
 │       ├── harness.ts
 │       └── vendor-entrypoint.system.test.ts
@@ -181,8 +182,11 @@ ai-platform/
 | `ai-platform/vitest.workers.config.ts` | FR-014, FR-025 |
 | `ai-platform/test/system/harness.ts` | FR-014, FR-025 |
 | `ai-platform/test/system/vendor-entrypoint.system.test.ts` | FR-001–FR-025 |
+| `ai-platform/test/worker-entry.test.ts` | S2 |
 
 `schema.snap.sql` is replaced with the post-migration `CREATE TABLE` dump so the existing `T-A5-13 schema_snapshot_matches` test stays green. New `control_audit` columns are nullable. Existing inserts name their columns and keep writing `operator_id`. `src/control/index.ts`, `src/vendor/contract-version.ts`, `src/logger.ts`, and `packages/vendor-contracts/**` stay as they are.
+
+`src/worker.ts` keeps `export { VendorEntrypoint } from "./vendor/entrypoint"`. That re-export loads `src/vendor/entrypoint.ts`, and `VendorEntrypoint` extends `WorkerEntrypoint` from `cloudflare:workers`. `ai-platform/test/worker-entry.test.ts` is the only `vi.mock("cloudflare:workers")` under `ai-platform`. Its factory returns `{ DurableObject, env: runtimeEnv }`. The allowed S2 fix, applied in T033 before `npm test`, adds a `WorkerEntrypoint` class in that same factory with the same `(ctx, env)` constructor as the `DurableObject` stub already there, and returns `{ DurableObject, WorkerEntrypoint, env: runtimeEnv }`. `DurableObject` and `env` stay. This file is not a Test Layout scenario. Consumes contracts stay unchanged.
 
 ## Test Layout
 
@@ -237,7 +241,7 @@ Tests are written and observed failing before `VendorEntrypoint` exists. Each st
 30. `src/worker.ts` `scheduled` handles cron `*/5 * * * *` by calling alert retry, then the heartbeat ping. Existing `0 3`, `0 4`, and `0 5 1` branches stay. Retry sends each `unsent` row once and sets `sent`. E2E-P3.1-08 passes.
 31. The heartbeat job `fetch`es `HEARTBEAT_URL`. The harness records that fetch.
 32. A thrown job in the `*/5` branch logs one JSON line through `console.log` and inserts `platform_alert` code `scheduled_job_failed`. E2E-P3.1-09 passes. `src/logger.ts` stays on its current line format so earlier suites keep their log shape.
-33. Re-run the unit command and confirm E2E-P3.1-01 through E2E-P3.1-10 pass together.
+33. Re-run the unit command and confirm E2E-P3.1-01 through E2E-P3.1-10 pass together. Before `cd ai-platform && npm test && npm run test:e2e`, apply the Files-section S2 fix in `ai-platform/test/worker-entry.test.ts`: the existing `vi.mock("cloudflare:workers")` factory also exports `WorkerEntrypoint`. The `VendorEntrypoint` re-export in `src/worker.ts` stays.
 34. Write `quickstart.md` from the outline above.
 
 ## Complexity Tracking
