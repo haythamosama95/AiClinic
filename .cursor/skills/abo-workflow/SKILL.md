@@ -27,7 +27,7 @@ You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the 
 
 Repository: /home/haytham/Desktop/AiClinic
 Unit: <UNIT-ID>
-Models: steps 1–4 and step 6 (review) use Grok 4.7 High effort subagent. Step 5 implement agents use model "composer-2.5" only — never "composer-2.5-fast". The escalation resolver uses model "kimi-k3-high". If that resolver's API quota is exhausted, use Grok 4.7 High effort subagent for that resolver only. All use subagent_type "generalPurpose". Never spawn a fast or max variant except implement agents must use composer-2.5 (non-fast). Do not substitute any other model, effort, or agent type. These are the only agents you may spawn.
+Models: steps 1–4 and step 6 (review) use Grok 4.7 High effort subagent. Step 5 implement agents use model "composer-2.5" only — never "composer-2.5-fast". The escalation resolver uses model "Kimi K3 High". If that resolver's API quota is exhausted, use Grok 4.7 High effort subagent for that resolver only. All use subagent_type "generalPurpose". Never spawn a fast or max variant except implement agents must use composer-2.5 (non-fast). Do not substitute any other model, effort, or agent type. These are the only agents you may spawn.
 
 Concurrency: steps 1–4, step 6, and the resolver use run_in_background false — never overlap them with each other or with step 5. Step 5 waves may overlap only implement agents in the same wave: set run_in_background true for every implement agent in that wave, spawn them together, then wait until all have returned before starting the next wave or step 6.
 
