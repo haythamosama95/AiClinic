@@ -120,6 +120,10 @@ run_sql_test "Dev reset safety" "dev_reset_safety.sql"
 printf '\n--- Membership / active organisation ---\n'
 run_sql_test "Membership active org" "membership_active_org.sql"
 
+# --- Cross-tenant suite (P1.2) ---
+printf '\n--- Cross-tenant suite ---\n'
+run_sql_test "Cross-tenant suite" "cross_tenant_suite.sql"
+
 # --- Summary ---
 printf -- '\n==========================================================\n'
 printf -- ' Results: %d/%d suites passed\n' "${passed_suites}" "${total_suites}"

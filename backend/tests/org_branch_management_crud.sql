@@ -489,9 +489,9 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config('role', 'postgres', true);
-  INSERT INTO public.roles_permissions (role, permission_key, is_granted)
-  VALUES ('doctor', 'settings.manage_staff', true)
-  ON CONFLICT (role, permission_key) DO UPDATE
+  INSERT INTO public.roles_permissions (organization_id, role, permission_key, is_granted)
+  VALUES (v_org_id, 'doctor', 'settings.manage_staff', true)
+  ON CONFLICT (organization_id, role, permission_key) DO UPDATE
   SET is_granted = true, is_deleted = false, updated_at = now();
   PERFORM set_config('role', 'authenticated', true);
 

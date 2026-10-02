@@ -1061,6 +1061,7 @@ $$;
 -- S02-026 — Administrator holds the ai.visit_summary grant; doctor does not
 DO $$
 DECLARE
+  v_org uuid;
   v_admin_auth uuid;
   v_admin_access boolean;
   v_admin_summary boolean;
@@ -1074,17 +1075,19 @@ DECLARE
 BEGIN
   PERFORM pg_temp.reset_postgres();
   SELECT value INTO STRICT v_admin_auth FROM catalog_setup WHERE key = 'admin_auth';
+  SELECT value INTO STRICT v_org FROM catalog_setup WHERE key = 'org';
 
   -- As ADMIN: harness JWT uses role=authenticated (PostgREST session role).
-  -- CODE jwt_staff_role() reads staff_role, then falls back to role; overlay
-  -- staff_role so RLS that calls jwt_staff_role() matches production claims.
+  -- organization_id is the legacy claim current_org_id() still accepts, so the
+  -- per-tenant matrix is the clinic's. staff_role stays for jwt_staff_role().
   PERFORM pg_temp.set_authenticated_session(v_admin_auth);
   PERFORM set_config(
     'request.jwt.claims',
     jsonb_build_object(
       'sub', v_admin_auth::text,
       'role', 'authenticated',
-      'staff_role', 'administrator'
+      'staff_role', 'administrator',
+      'organization_id', v_org::text
     )::text,
     true
   );

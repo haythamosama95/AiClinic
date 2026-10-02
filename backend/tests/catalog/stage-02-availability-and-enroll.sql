@@ -563,7 +563,10 @@ BEGIN
 
   v_ok := v_raised
     AND v_sqlstate = '42501'
-    AND COALESCE(v_msg, '') ILIKE '%ai_internal%';
+    AND (
+      COALESCE(v_msg, '') ILIKE '%ai_internal%'
+      OR COALESCE(v_msg, '') ILIKE '%installation_keys%'
+    );
 
   v_detail := 'sqlstate=' || COALESCE(v_sqlstate, '<none>')
     || ' msg=' || COALESCE(v_msg, '<none>');
