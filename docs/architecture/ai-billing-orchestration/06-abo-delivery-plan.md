@@ -288,10 +288,20 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   `backend/supabase/config.toml` (auth hooks), `backend/tests/run_all_backend_tests.sh`, `backend/tests/catalog/`.
 - **Implements:**
   - `membership (user_id, organization_id, role)`; backfill one membership per existing staff user (current org, current role).
-  - Active organisation per session: a per-user active-org record, plus an auth access-token hook that puts the
+  - Active organisation per session: the per-user active-org record `user_active_organization (user_id PK,
+    organization_id, updated_at)` (03 §4 Tenancy row), plus an auth access-token hook that puts the
     `active_org` claim in the JWT; RPC `set_active_organization(p_organization_id)` (membership required).
+    The RPC returns `public.rpc_result`; without a membership in the named organisation it answers
+    `rpc_error('FORBIDDEN', ...)` (`success = false`) and leaves the record unchanged, so the claim is
+    unchanged on refresh.
   - `current_org_id()`: active-org claim, valid only while a live membership exists (re-checked on every call;
     otherwise NULL, and definer RPCs raise). `current_membership_role()`.
+  - Claim compatibility for `current_org_id()`: the active-org claim is `active_org`; a JWT that carries no
+    `active_org` claim — a pre-retrofit token, or the pre-existing H-BK suites' psql impersonation, which sets
+    only `organization_id` (e.g. `backend/tests/rls_isolation.sql`) — falls back to the legacy `organization_id`
+    claim. Whichever claim names the organisation, the membership re-check is unchanged: the organisation is
+    returned only while a live membership `(sub, org)` exists, so a crafted claim without a membership is still
+    treated as no organisation (E2E-P1.1-05).
   - Re-point `public.jwt_organization_id()` to `current_org_id()`, so the existing dependents inherit the re-check.
   - Billing authority = membership role `administrator` (T-2, I-1), never `roles_permissions`.
   - Backend CI job: local Supabase, all migrations, `run_all_backend_tests.sh` + catalog harness (H-BK in CI).
@@ -302,12 +312,17 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 - **E2E (H-BK, psql impersonating JWT users):**
   - E2E-P1.1-01 One-membership user signs in → the claim carries that org; `current_org_id()` = org.
   - E2E-P1.1-02 User in orgs A and B calls `set_active_organization(B)` and refreshes → `current_org_id()` = B; tenant RPCs return only B rows.
-  - E2E-P1.1-03 `set_active_organization(C)` without membership → error; claim unchanged.
+  - E2E-P1.1-03 `set_active_organization(C)` without membership → `rpc_result` with `success = false` and `error_code = 'FORBIDDEN'`; the active-org record and the claim unchanged.
   - E2E-P1.1-04 Membership deleted while the JWT is still valid → `current_org_id()` NULL; RLS selects return 0 rows; definer RPC raises [SR-03].
   - E2E-P1.1-05 Crafted JWT with an org the user has no membership in → treated as no org [A36 backend].
   - E2E-P1.1-06 `current_membership_role()` = administrator vs doctor; editing `roles_permissions` does not change it [T-2].
   - E2E-P1.1-07 Backfill: every pre-existing staff user has exactly one membership matching its org/role.
-  - E2E-P1.1-08 Regression: every pre-existing backend suite passes unchanged.
+  - E2E-P1.1-08 Regression: every pre-existing backend suite stays green with its impersonated claims and its
+    assertions unchanged. Those suites impersonate `request.jwt.claims` with `organization_id` and insert their
+    fixture users after the backfill, so P1.1 — as H-BK owner (rule V1) — adds to each such suite's fixture
+    setup the membership row each impersonated fixture user needs (the fixture user, the organisation its claim
+    names, the fixture staff role), mirroring the backfill rule. A suite that deliberately impersonates a user
+    with no fixture staff/membership row keeps asserting denial.
 
 ### P1.2 — Tenant scoping of shared state and the cross-tenant suite
 - **Spec** 062 · **Codebase** backend · **Size** L · **Depends** P1.1 · **Parallel** P2.x, P3.x, P4.x
@@ -1228,6 +1243,10 @@ Until the owner answers an item, units proceed on the default stated in it.
 1. **OQ-2: Multi-organisation users.** P1.1 adds membership and an active-org claim, set from the user's sole membership at sign-in. If any real user will belong to
    more than one clinic at launch, the desktop needs an organisation switcher, which the design does not specify. Is that out of scope?
    **Default:** out of scope; the active organisation is changed only through the `set_active_organization` RPC.
+   Sign-in rule for more than one live membership: the access-token hook keeps the stored active-org record when it
+   still names a live membership; otherwise it writes the deterministically first live membership — earliest
+   membership `created_at`, then lowest `organization_id` — and the claim carries that organisation. With no live
+   membership the claim carries no organisation.
 2. **OQ-3: Staging accounts earlier than P8.** The R-2 spike (Paymob sandbox, in P4.2/P4.3 research) and the R-4 spike (hosted pg_cron/pg_net, P5.2) need a Paymob
    test integration and a staging Supabase project well before P8.1. Can those accounts be provisioned at the start of P4.2?
    **Default:** yes, provisioned at the start of P4.2; if not available, P4.2 and P5.2 stop at their spike step.
