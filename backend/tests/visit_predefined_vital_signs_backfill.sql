@@ -85,6 +85,14 @@ BEGIN
   INTO v_admin_user_id
   FROM public.staff_members sm
   WHERE sm.id = v_staff_member_id;
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_admin_user_id)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config(

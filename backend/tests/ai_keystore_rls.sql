@@ -354,6 +354,15 @@ BEGIN
   v_result := public.bootstrap_create_branch(v_org_id, 'Verify Branch', NULL, NULL, 'VRB1', NULL);
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
 
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
+
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -436,6 +445,15 @@ BEGIN
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'PostRotate Branch', NULL, NULL, 'PRB1', NULL);
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config(
     'request.jwt.claims',
@@ -526,6 +544,15 @@ BEGIN
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'Malformed Branch', NULL, NULL, 'MSB1', NULL);
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config(
     'request.jwt.claims',
@@ -626,6 +653,15 @@ BEGIN
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'IssMismatch Branch', NULL, NULL, 'IMB1', NULL);
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config(
     'request.jwt.claims',
@@ -740,6 +776,15 @@ BEGIN
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'Revoke Branch', NULL, NULL, 'RVB1', NULL);
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config(
     'request.jwt.claims',

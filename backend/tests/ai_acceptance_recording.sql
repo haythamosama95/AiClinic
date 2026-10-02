@@ -126,6 +126,20 @@ BEGIN
     (v_reception_staff, v_reception_user, 'Reception', 'receptionist', v_owner_user, v_owner_user),
     (v_org2_staff, v_org2_user, 'Org2 Doc', 'doctor', v_org2_user, v_org2_user);
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_doctor_user, v_reception_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org2_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_org2_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   VALUES
     (v_owner_staff, v_branch_id, true, v_owner_user, v_owner_user),

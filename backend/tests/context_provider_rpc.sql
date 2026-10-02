@@ -116,6 +116,13 @@ BEGIN
     (v_staff_b, v_user_b, 'Owner B', 'administrator', v_user_b, v_user_b),
     (v_doctor_a, v_doctor_user_a, 'Doctor A', 'doctor', v_user_a, v_user_a);
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_a, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_doctor_user_a)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   VALUES
     (v_staff_a, v_branch_a, true, v_user_a, v_user_a),
