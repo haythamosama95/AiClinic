@@ -1,0 +1,21 @@
+{
+  "contract_version": 1,
+  "state": "active",
+  "reason": "none",
+  "suspended": false,
+  "term": {
+    "ref": "TERM-001",
+    "plan_display_name": "Live Monthly",
+    "starts_at": "2026-01-15T10:00:00.000Z",
+    "ends_at": "2026-02-15T10:00:00.000Z",
+    "grace_ends_at": "2026-02-22T10:00:00.000Z",
+    "allowance": 10000,
+    "used": 0,
+    "band": "ok"
+  },
+  "queued_count": 0,
+  "held_count": 0,
+  "coverage_through": "2026-02-15T10:00:00.000Z",
+  "binding_epoch": 1,
+  "clinic_seq": 42
+}

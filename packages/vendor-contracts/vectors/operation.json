@@ -1,0 +1,18 @@
+{
+  "operation": {
+    "op": "grant.create",
+    "params": {
+      "org_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "plan_id": "live-monthly"
+    },
+    "actor_email": "operator@example.com",
+    "issued_at": "2026-01-15T10:00:00.000Z",
+    "nonce": "01J0ABCDEFGHJKMNPQRSTVWXYZ0",
+    "contract_version": 1
+  },
+  "challenge": "qJs4XBVmk5ypjqzd4ChCFhcuUI7W7U8Q6POM645MNbg",
+  "rp_id": "console.example.com",
+  "origin": "https://ops.example.com",
+  "wrong_origin": "https://evil.example.com",
+  "wrong_rp_id": "wrong.example.com"
+}

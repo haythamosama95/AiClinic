@@ -1,0 +1,38 @@
+{
+  "payment_id": "6d1acdfcee37c0fd920dab7e45ff0931f9b65d52be4a9c2495ee889563a9e6f6",
+  "envelope": {
+    "contract_version": 1,
+    "grant_id": "4ea094c0b966521dc5378d06b7ec52f2018c4619d65abd7c29cf7e65ce061108",
+    "org_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "kind": "term",
+    "placement": "queue",
+    "source": {
+      "kind": "paid",
+      "ref": "6d1acdfcee37c0fd920dab7e45ff0931f9b65d52be4a9c2495ee889563a9e6f6"
+    },
+    "plan": {
+      "plan_id": "live-monthly",
+      "plan_version": 1
+    },
+    "duration": {
+      "unit": "month",
+      "count": 1
+    },
+    "allowance_credits": 10000,
+    "grace": {
+      "days": 7,
+      "cap_rule": "proportional"
+    },
+    "paid_at": "2026-01-15T10:00:00.000Z",
+    "evidence": {
+      "content_sha256": "6d1acdfcee37c0fd920dab7e45ff0931f9b65d52be4a9c2495ee889563a9e6f6",
+      "approvals": [
+        {
+          "credential_id": "cred-001",
+          "assertion": "stub"
+        }
+      ]
+    }
+  },
+  "hash_hex": "cfab11787001f83a255406c7d062228d5fc9f79c52f208a7d3219c7e4f0c3dae"
+}
