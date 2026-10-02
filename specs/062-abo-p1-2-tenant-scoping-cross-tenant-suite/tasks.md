@@ -32,9 +32,9 @@
 
 **Independent Test**: E2E-P1.2-01 in harness H-BK.
 
-- [ ] T001 [US2] Write the two-org fixture in `backend/tests/cross_tenant_suite.sql` — produces the shared fixture, satisfies FR-009, proved by E2E-P1.2-01 through E2E-P1.2-06. Sequencing step 1. Create organisation A, organisation B, an administrator membership in each, and one user with a membership in both. Later calls use `SET ROLE authenticated` and `request.jwt.claims`, matching `backend/tests/membership_active_org.sql`. Leave `public.set_active_organization` as it is. This task adds no E2E assertion yet.
+- [X] T001 [US2] Write the two-org fixture in `backend/tests/cross_tenant_suite.sql` — produces the shared fixture, satisfies FR-009, proved by E2E-P1.2-01 through E2E-P1.2-06. Sequencing step 1. Create organisation A, organisation B, an administrator membership in each, and one user with a membership in both. Later calls use `SET ROLE authenticated` and `request.jwt.claims`, matching `backend/tests/membership_active_org.sql`. Leave `public.set_active_organization` as it is. This task adds no E2E assertion yet.
 
-- [ ] T002 [US2] Add the failing test `E2E-P1.2-01 — admin of A edits roles_permissions; B unchanged` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-003, proved by E2E-P1.2-01. Depends on T001 (same file). Sequencing step 2. An administrator of A calls `public.update_role_permission(public.staff_role, text, boolean)` and `public.update_role_permissions(jsonb)`. B's permissions and B's `ai.%` grants stay unchanged. Observe the test fail: `roles_permissions` is still unscoped.
+- [X] T002 [US2] Add the failing test `E2E-P1.2-01 — admin of A edits roles_permissions; B unchanged` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-003, proved by E2E-P1.2-01. Depends on T001 (same file). Sequencing step 2. An administrator of A calls `public.update_role_permission(public.staff_role, text, boolean)` and `public.update_role_permissions(jsonb)`. B's permissions and B's `ai.%` grants stay unchanged. Observe the test fail: `roles_permissions` is still unscoped.
 
 **Checkpoint**: E2E-P1.2-01 exists and fails.
 
@@ -42,11 +42,11 @@
 
 **Independent Test**: E2E-P1.2-02, E2E-P1.2-03, and E2E-P1.2-05 in harness H-BK (`backend/tests/` on local Supabase).
 
-- [ ] T003 [US1] Add the failing test `E2E-P1.2-02 — user of A calls every tenant RPC with B's ids` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-001 and FR-005, proved by E2E-P1.2-02. Depends on T002 (same file). Sequencing step 3. Call each **keyed** and **fix** function in `research.md` §7 with B's ids. The result is not found or empty. Foreign ids use the existing `error_code` `NOT_FOUND` or an empty result. B's rows stay unchanged. Observe the test fail: the **fix** functions are still open to B's ids.
+- [X] T003 [US1] Add the failing test `E2E-P1.2-02 — user of A calls every tenant RPC with B's ids` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-001 and FR-005, proved by E2E-P1.2-02. Depends on T002 (same file). Sequencing step 3. Call each **keyed** and **fix** function in `research.md` §7 with B's ids. The result is not found or empty. Foreign ids use the existing `error_code` `NOT_FOUND` or an empty result. B's rows stay unchanged. Observe the test fail: the **fix** functions are still open to B's ids.
 
-- [ ] T004 [US1] Add the failing test `E2E-P1.2-03 — direct reads by A return zero B rows` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-001 and FR-006, proved by E2E-P1.2-03. Depends on T003 (same file). Sequencing step 4. `SELECT` as A of every tenant table in `research.md` §2 returns zero rows of organisation B. Observe the test fail: inventoried tables still return B's rows.
+- [X] T004 [US1] Add the failing test `E2E-P1.2-03 — direct reads by A return zero B rows` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-001 and FR-006, proved by E2E-P1.2-03. Depends on T003 (same file). Sequencing step 4. `SELECT` as A of every tenant table in `research.md` §2 returns zero rows of organisation B. Observe the test fail: inventoried tables still return B's rows.
 
-- [ ] T006 [US1] Add the failing test `E2E-P1.2-05 — AI RPCs write organization_id = current_org_id()` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T005 (same file). Sequencing step 6. Append this test after T005 even though this heading also holds T003 and T004. `public.record_ai_acceptance(text, text, jsonb)` and `public.issue_ai_token(text[])` write `organization_id = public.current_org_id()`. `auth_internal.record_ai_acceptance` stays as it is; the test reads the row it writes. Observe the test fail: `issue_ai_token` does not yet write `organization_id` from `current_org_id()`.
+- [X] T006 [US1] Add the failing test `E2E-P1.2-05 — AI RPCs write organization_id = current_org_id()` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T005 (same file). Sequencing step 6. Append this test after T005 even though this heading also holds T003 and T004. `public.record_ai_acceptance(text, text, jsonb)` and `public.issue_ai_token(text[])` write `organization_id = public.current_org_id()`. `auth_internal.record_ai_acceptance` stays as it is; the test reads the row it writes. Observe the test fail: `issue_ai_token` does not yet write `organization_id` from `current_org_id()`.
 
 **Checkpoint**: E2E-P1.2-02, E2E-P1.2-03, and E2E-P1.2-05 exist and fail. E2E-P1.2-05 is appended after T005.
 
@@ -54,7 +54,7 @@
 
 **Independent Test**: E2E-P1.2-04 in harness H-BK.
 
-- [ ] T005 [US3] Add the failing test `E2E-P1.2-04 — dual-membership user sees only the active org` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T004 (same file). Sequencing step 5. `public.set_active_organization(p_organization_id)` succeeds, the test refreshes `request.jwt.claims` so `active_org` is that organisation (the P1.1 refresh), then `SELECT` on `staff_members` and `staff_branch_assignments` returns only the active organisation's rows. Leave `public.set_active_organization` as it is. Observe the test fail: staff and assignment policies are not yet the membership predicate.
+- [X] T005 [US3] Add the failing test `E2E-P1.2-04 — dual-membership user sees only the active org` to `backend/tests/cross_tenant_suite.sql` — produces the red test, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T004 (same file). Sequencing step 5. `public.set_active_organization(p_organization_id)` succeeds, the test refreshes `request.jwt.claims` so `active_org` is that organisation (the P1.1 refresh), then `SELECT` on `staff_members` and `staff_branch_assignments` returns only the active organisation's rows. Leave `public.set_active_organization` as it is. Observe the test fail: staff and assignment policies are not yet the membership predicate.
 
 **Checkpoint**: E2E-P1.2-04 exists and fails.
 
@@ -62,7 +62,7 @@
 
 **Independent Test**: E2E-P1.2-06 in harness H-BK.
 
-- [ ] T007 [US4] Register `cross_tenant_suite.sql` in `backend/tests/run_all_backend_tests.sh` with one `run_sql_test` line — produces the runner entry for `E2E-P1.2-06 — all backend suites green`, satisfies FR-009, proved by E2E-P1.2-06. Depends on T006. Sequencing step 7. Observe `backend/tests/run_all_backend_tests.sh` fail because the new suite's tests fail. Leave `backend/tests/catalog/run.sh` and `.github/workflows/ci.yml` as they are.
+- [X] T007 [US4] Register `cross_tenant_suite.sql` in `backend/tests/run_all_backend_tests.sh` with one `run_sql_test` line — produces the runner entry for `E2E-P1.2-06 — all backend suites green`, satisfies FR-009, proved by E2E-P1.2-06. Depends on T006. Sequencing step 7. Observe `backend/tests/run_all_backend_tests.sh` fail because the new suite's tests fail. Leave `backend/tests/catalog/run.sh` and `.github/workflows/ci.yml` as they are.
 
 **Checkpoint**: E2E-P1.2-06 is registered and `backend/tests/run_all_backend_tests.sh` fails.
 
@@ -78,19 +78,19 @@
 
 #### 4.1.1 User Story 2 - Per-tenant roles and permissions (part 1)
 
-- [ ] T008 [US2] Create `backend/supabase/migrations/20261002150000_tenant_scoping.sql` with `roles_permissions.organization_id` and unique `(organization_id, role, permission_key)` — produces the per-tenant key, satisfies FR-003, proved by E2E-P1.2-01. Depends on T001–T007 (those tests are already failing). Sequencing step 8. Column and uniqueness follow `contracts/roles-permissions.md` and `data-model.md`.
+- [X] T008 [US2] Create `backend/supabase/migrations/20261002150000_tenant_scoping.sql` with `roles_permissions.organization_id` and unique `(organization_id, role, permission_key)` — produces the per-tenant key, satisfies FR-003, proved by E2E-P1.2-01. Depends on T001–T007 (those tests are already failing). Sequencing step 8. Column and uniqueness follow `contracts/roles-permissions.md` and `data-model.md`.
 
-- [ ] T009 [US2] Append the matrix copy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces one copy of the pre-change matrix on every existing organisation, with the unscoped rows removed, satisfies FR-003, proved by E2E-P1.2-01. Depends on T008 (same file). Sequencing step 9.
+- [X] T009 [US2] Append the matrix copy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces one copy of the pre-change matrix on every existing organisation, with the unscoped rows removed, satisfies FR-003, proved by E2E-P1.2-01. Depends on T008 (same file). Sequencing step 9.
 
-- [ ] T010 [US2] Append the `AFTER INSERT` seed trigger on `public.organizations` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-organisation default matrix, satisfies FR-003, proved by E2E-P1.2-01. Depends on T009 (same file). Sequencing step 10. The trigger seeds the default matrix. It does not copy another tenant's later edits.
+- [X] T010 [US2] Append the `AFTER INSERT` seed trigger on `public.organizations` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-organisation default matrix, satisfies FR-003, proved by E2E-P1.2-01. Depends on T009 (same file). Sequencing step 10. The trigger seeds the default matrix. It does not copy another tenant's later edits.
 
-- [ ] T011 [US2] Append `CREATE OR REPLACE` of `roles_permissions_select` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant select policy, satisfies FR-003, proved by E2E-P1.2-01. Depends on T010 (same file). Sequencing step 11. The policy follows `contracts/roles-permissions.md`.
+- [X] T011 [US2] Append `CREATE OR REPLACE` of `roles_permissions_select` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant select policy, satisfies FR-003, proved by E2E-P1.2-01. Depends on T010 (same file). Sequencing step 11. The policy follows `contracts/roles-permissions.md`.
 
-- [ ] T012 [US2] Append `CREATE OR REPLACE` of `auth_internal.update_role_permission` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant single-row update, satisfies FR-003, proved by E2E-P1.2-01. Depends on T011 (same file). Sequencing step 12. Scope the body to `current_org_id()`. Leave `public.current_org_id()` and `public.current_membership_role()` as they are.
+- [X] T012 [US2] Append `CREATE OR REPLACE` of `auth_internal.update_role_permission` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant single-row update, satisfies FR-003, proved by E2E-P1.2-01. Depends on T011 (same file). Sequencing step 12. Scope the body to `current_org_id()`. Leave `public.current_org_id()` and `public.current_membership_role()` as they are.
 
 #### 4.1.2 User Story 2 - Per-tenant roles and permissions (part 2)
 
-- [ ] T013 [US2] Append `CREATE OR REPLACE` of `auth_internal.update_role_permissions` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant bulk update, satisfies FR-003, proved by E2E-P1.2-01. Depends on T012 (same file). Sequencing step 13. Scope the body to `current_org_id()`.
+- [X] T013 [US2] Append `CREATE OR REPLACE` of `auth_internal.update_role_permissions` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the per-tenant bulk update, satisfies FR-003, proved by E2E-P1.2-01. Depends on T012 (same file). Sequencing step 13. Scope the body to `current_org_id()`.
 
 **Checkpoint**: E2E-P1.2-01 passes.
 
@@ -100,11 +100,11 @@
 
 #### 4.2.1 User Story 1 - Tenant inventory keyed on the session organisation (part 1)
 
-- [ ] T014 [US1] Append `ai_token_issuance.organization_id`, the membership backfill, and the replaced SELECT policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces org-scoped token issuance, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T013 (same file). Sequencing step 14. Follow `data-model.md`.
+- [X] T014 [US1] Append `ai_token_issuance.organization_id`, the membership backfill, and the replaced SELECT policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces org-scoped token issuance, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T013 (same file). Sequencing step 14. Follow `data-model.md`.
 
-- [ ] T015 [US1] Append `CREATE OR REPLACE` of `auth_internal.issue_ai_token` so it writes `organization_id` and the token `org` claim from `current_org_id()` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that write, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T014 (same file). Sequencing step 15. Leave `auth_internal.record_ai_acceptance` as it is.
+- [X] T015 [US1] Append `CREATE OR REPLACE` of `auth_internal.issue_ai_token` so it writes `organization_id` and the token `org` claim from `current_org_id()` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that write, satisfies FR-002 and FR-008, proved by E2E-P1.2-05. Depends on T014 (same file). Sequencing step 15. Leave `auth_internal.record_ai_acceptance` as it is.
 
-- [ ] T016 [US1] Append the `auth_internal.issue_ai_token` scope load to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces `ai.%` scopes from `roles_permissions` for `current_org_id()` and `current_membership_role()`, satisfies FR-003 and FR-008, proved by E2E-P1.2-01 and E2E-P1.2-05. Depends on T015 (same file). Sequencing step 16. Leave `public.current_membership_role()` as it is.
+- [X] T016 [US1] Append the `auth_internal.issue_ai_token` scope load to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces `ai.%` scopes from `roles_permissions` for `current_org_id()` and `current_membership_role()`, satisfies FR-003 and FR-008, proved by E2E-P1.2-01 and E2E-P1.2-05. Depends on T015 (same file). Sequencing step 16. Leave `public.current_membership_role()` as it is.
 
 **Checkpoint**: E2E-P1.2-05 passes. E2E-P1.2-02 and E2E-P1.2-03 stay failing until T036. Sequencing steps 17–18 are User Story 3 and come next.
 
@@ -112,9 +112,9 @@
 
 **Independent Test**: E2E-P1.2-04 in harness H-BK.
 
-- [ ] T017 [US3] Append `CREATE OR REPLACE` of `staff_members_select` and `staff_members_update` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the membership predicate on staff rows, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T016 (same file). Sequencing step 17. Staff rows have no organisation of their own. The policies tie staff to the organisation through membership.
+- [X] T017 [US3] Append `CREATE OR REPLACE` of `staff_members_select` and `staff_members_update` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the membership predicate on staff rows, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T016 (same file). Sequencing step 17. Staff rows have no organisation of their own. The policies tie staff to the organisation through membership.
 
-- [ ] T018 [US3] Append `CREATE OR REPLACE` of `staff_branch_assignments_select` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the membership predicate on assignment rows, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T017 (same file). Sequencing step 18. Keep the setup-required arm only when `current_org_id()` is null.
+- [X] T018 [US3] Append `CREATE OR REPLACE` of `staff_branch_assignments_select` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces the membership predicate on assignment rows, satisfies FR-004 and FR-007, proved by E2E-P1.2-04. Depends on T017 (same file). Sequencing step 18. Keep the setup-required arm only when `current_org_id()` is null.
 
 **Checkpoint**: E2E-P1.2-04 passes.
 
@@ -126,47 +126,47 @@ Sequencing returns to User Story 1 at step 19. Each table task adds `organizatio
 
 #### 4.4.1 User Story 1 - Tenant inventory keyed on the session organisation (part 2)
 
-- [ ] T019 [US1] Append `public.appointments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T018 (same file). Sequencing step 19.
+- [X] T019 [US1] Append `public.appointments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T018 (same file). Sequencing step 19.
 
-- [ ] T020 [US1] Append `public.visits` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T019 (same file). Sequencing step 20.
+- [X] T020 [US1] Append `public.visits` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T019 (same file). Sequencing step 20.
 
-- [ ] T021 [US1] Append `public.visit_clinical_notes` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T020 (same file). Sequencing step 21.
+- [X] T021 [US1] Append `public.visit_clinical_notes` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T020 (same file). Sequencing step 21.
 
-- [ ] T022 [US1] Append `public.visit_vital_signs` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T021 (same file). Sequencing step 22.
+- [X] T022 [US1] Append `public.visit_vital_signs` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T021 (same file). Sequencing step 22.
 
-- [ ] T023 [US1] Append `public.visit_investigations` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T022 (same file). Sequencing step 23.
+- [X] T023 [US1] Append `public.visit_investigations` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T022 (same file). Sequencing step 23.
 
 #### 4.4.2 User Story 1 - Tenant inventory keyed on the session organisation (part 3)
 
-- [ ] T024 [US1] Append `public.visit_attachments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T023 (same file). Sequencing step 24.
+- [X] T024 [US1] Append `public.visit_attachments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T023 (same file). Sequencing step 24.
 
-- [ ] T025 [US1] Append `public.treatment_plans` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T024 (same file). Sequencing step 25.
+- [X] T025 [US1] Append `public.treatment_plans` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T024 (same file). Sequencing step 25.
 
-- [ ] T026 [US1] Append `public.invoice_items` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T025 (same file). Sequencing step 26.
+- [X] T026 [US1] Append `public.invoice_items` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T025 (same file). Sequencing step 26.
 
-- [ ] T027 [US1] Append `public.payments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T026 (same file). Sequencing step 27.
+- [X] T027 [US1] Append `public.payments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T026 (same file). Sequencing step 27.
 
-- [ ] T028 [US1] Append `public.invoice_number_sequences` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T027 (same file). Sequencing step 28. Existing deny-all policies stay.
+- [X] T028 [US1] Append `public.invoice_number_sequences` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T027 (same file). Sequencing step 28. Existing deny-all policies stay.
 
 #### 4.4.3 User Story 1 - Tenant inventory keyed on the session organisation (part 4)
 
-- [ ] T029 [US1] Append `public.patient_allergies` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T028 (same file). Sequencing step 29.
+- [X] T029 [US1] Append `public.patient_allergies` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T028 (same file). Sequencing step 29.
 
-- [ ] T030 [US1] Append `public.patient_medications` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T029 (same file). Sequencing step 30.
+- [X] T030 [US1] Append `public.patient_medications` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T029 (same file). Sequencing step 30.
 
-- [ ] T031 [US1] Append `public.patient_chronic_conditions` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T030 (same file). Sequencing step 31.
+- [X] T031 [US1] Append `public.patient_chronic_conditions` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T030 (same file). Sequencing step 31.
 
-- [ ] T032 [US1] Append `public.service_branches` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T031 (same file). Sequencing step 32.
+- [X] T032 [US1] Append `public.service_branches` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T031 (same file). Sequencing step 32.
 
-- [ ] T033 [US1] Append `public.shift_assignments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T032 (same file). Sequencing step 33.
+- [X] T033 [US1] Append `public.shift_assignments` column, backfill, and restrictive policy to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that table's org key, satisfies FR-001, FR-002, and FR-006, proved by E2E-P1.2-03. Depends on T032 (same file). Sequencing step 33.
 
 #### 4.4.4 User Story 1 - Tenant inventory keyed on the session organisation (part 5)
 
-- [ ] T034 [US1] Append restrictive policy `invoices_org` on `public.invoices` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that org policy, satisfies FR-001 and FR-006, proved by E2E-P1.2-03. Depends on T033 (same file). Sequencing step 34.
+- [X] T034 [US1] Append restrictive policy `invoices_org` on `public.invoices` to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces that org policy, satisfies FR-001 and FR-006, proved by E2E-P1.2-03. Depends on T033 (same file). Sequencing step 34.
 
-- [ ] T035 [US1] Append the shared `BEFORE INSERT` trigger to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces `organization_id` filled from the parent, satisfies FR-001 and FR-002, proved by E2E-P1.2-03. Depends on T034 (same file). Sequencing step 35. The parent for each table is `research.md` §2.2.
+- [X] T035 [US1] Append the shared `BEFORE INSERT` trigger to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces `organization_id` filled from the parent, satisfies FR-001 and FR-002, proved by E2E-P1.2-03. Depends on T034 (same file). Sequencing step 35. The parent for each table is `research.md` §2.2.
 
-- [ ] T036 [US1] Append `organization_id = public.current_org_id()` on the row lookups in `research.md` §4.2 to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces those scoped lookups, satisfies FR-001 and FR-005, proved by E2E-P1.2-02. Depends on T035 (same file). Sequencing step 36. `CREATE OR REPLACE` `get_appointment`, `get_visit_by_appointment`, `list_invoices`, `list_patient_invoices`, `assert_invoice_branch_scope`, `lock_draft_invoice`, and `lock_payable_invoice`. Existing branch predicates stay.
+- [X] T036 [US1] Append `organization_id = public.current_org_id()` on the row lookups in `research.md` §4.2 to `backend/supabase/migrations/20261002150000_tenant_scoping.sql` — produces those scoped lookups, satisfies FR-001 and FR-005, proved by E2E-P1.2-02. Depends on T035 (same file). Sequencing step 36. `CREATE OR REPLACE` `get_appointment`, `get_visit_by_appointment`, `list_invoices`, `list_patient_invoices`, `assert_invoice_branch_scope`, `lock_draft_invoice`, and `lock_payable_invoice`. Existing branch predicates stay.
 
 **Checkpoint**: E2E-P1.2-02 and E2E-P1.2-03 pass. E2E-P1.2-05 already passes from T016.
 
@@ -177,6 +177,11 @@ Sequencing returns to User Story 1 at step 19. Each table task adds `organizatio
 **Purpose**: This unit's H-BK suite passes, then every earlier suite is still green (rule S2). P1.1 and the pre-existing backend suites run inside the two H-BK commands below.
 
 - [ ] T037 Run harness H-BK on local Supabase and confirm it is green — produces the green run, satisfies FR-009, SC-001, and SC-002, proved by E2E-P1.2-01 through E2E-P1.2-06. Depends on T001–T036. Sequencing steps 37–39. Re-run `backend/tests/cross_tenant_suite.sql` and confirm E2E-P1.2-01 through E2E-P1.2-05 pass. Re-run `backend/tests/run_all_backend_tests.sh` and confirm it exits 0. Re-run `backend/tests/catalog/run.sh` and confirm it exits 0. `backend/tests/catalog/run.sh` stays as it is. Those two runner commands are the regression: they include this unit's suite and every earlier backend suite, including P1.1. A full-product `npm test` is not this command.
+
+  Escalation resolution (2026-10-02; see `plan.md` §8): T008–T036 are not reopened. If E2E-P1.2-01 through E2E-P1.2-05 do not all pass on a clean local DB (`supabase db reset --no-seed`, then `psql -f backend/tests/cross_tenant_suite.sql`), this task's agent may make the following corrections, and only these, until the suite is green. No spec behaviour change and no new product scope.
+
+  1. Correct `backend/supabase/migrations/20261002150000_tenant_scoping.sql`. This explicitly includes one `CREATE OR REPLACE` that scopes the `branch_ids` claim to the active organisation — in `auth_internal.build_staff_claims`, or as an intersection in `public.jwt_branch_ids()` — so that after `public.set_active_organization` and the claims refresh, `public.jwt_branch_ids()` excludes the other organisation's branches (FR-007, E2E-P1.2-04) and the branch-guarded **keyed** RPCs answer not found or empty with B's ids (FR-005, E2E-P1.2-02). It also includes any further correction to the migration's own bodies (for example the **fix** row lookups of Sequencing step 36) needed for E2E-P1.2-01 through E2E-P1.2-05. `public.current_org_id()`, `public.current_membership_role()`, `public.set_active_organization`, `public.get_custom_claims`, and `auth_internal.sync_active_organization` stay as P1.1 froze them. Earlier migration files stay untouched.
+  2. Align two assertions in `backend/tests/cross_tenant_suite.sql` with the spec, without weakening any other assertion: the E2E-P1.2-03 `roles_permissions` leak check counts only rows of organisation B (FR-006; own-organisation rows visible under the FR-003 policy are not leaks), and the E2E-P1.2-02 `public.issue_ai_token` call captures the function's `text` result instead of assigning it to a `public.rpc_result` variable (FR-005; a no-row-id function may succeed, and B's rows must be unchanged).
 
 ---
 

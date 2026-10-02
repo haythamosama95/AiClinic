@@ -179,6 +179,12 @@ Tests land first and are observed failing before the migration. 39 steps. Do not
 38. Re-run `backend/tests/run_all_backend_tests.sh` and confirm it exits 0.
 39. Re-run `backend/tests/catalog/run.sh` and confirm it exits 0.
 
+**Escalation resolution (T037, 2026-10-02)**: The T037 stop asked whether steps 8–36 must be reopened for E2E-P1.2-02, E2E-P1.2-03, and E2E-P1.2-04. Answer: the implementation is incomplete in one cross-cutting respect, and two suite assertions over-reach the spec. Steps 8–36 stay closed; T037 carries the correction.
+
+- The `branch_ids` claim that `auth_internal.build_staff_claims` writes is not scoped to the active organisation, so for a dual-membership user every row lookup guarded by `jwt_branch_ids()` alone still sees the other organisation's branches. That is the root cause of E2E-P1.2-04 (`branch_b_in_jwt=true`) and of the E2E-P1.2-02 "keyed" RPCs that returned data. FR-005 and FR-007 (as clarified in `spec.md`) require the claim to hold only the active organisation's branches after the switch. The correction is one `CREATE OR REPLACE` in `20261002150000_tenant_scoping.sql` — scope the claim in `auth_internal.build_staff_claims`, or intersect in `public.jwt_branch_ids()` — and it supersedes `research.md` §4.4's "skip" for those two functions to that extent. The P1.1 consumes (`public.current_org_id()`, `public.current_membership_role()`, `public.set_active_organization`, `public.get_custom_claims`, `auth_internal.sync_active_organization`) stay as P1.1 froze them, and earlier migration files stay untouched.
+- E2E-P1.2-02's `issue_ai_token` violation (`22P02` malformed record literal) is a suite call-site artifact: `public.issue_ai_token` returns `text`, and the block assigns the result to a `public.rpc_result` variable. Per FR-005 and `research.md` §7, a no-row-id function may succeed; B's rows must be unchanged. The suite call site may capture the `text` result instead.
+- E2E-P1.2-03's `roles_permissions=54` is a test/spec mismatch: the suite counts every visible row and expects zero, but FR-006 requires zero rows of organisation B, and FR-003's policy deliberately shows a member their own organisation's granted rows (E2E-P1.2-01 depends on that read). The suite assertion may count only rows with `organization_id` of organisation B.
+
 ## 9. Complexity Tracking
 
 No constitution violation. 02 §7 records none for this unit. Nothing is listed here.
