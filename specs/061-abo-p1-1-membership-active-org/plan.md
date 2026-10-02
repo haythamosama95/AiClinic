@@ -233,6 +233,8 @@ The CI job `backend-sql` is added to `.github/workflows/ci.yml` and leaves the e
 
 Titles start with the E2E id (rule V3). E2E-P1.1-01 through E2E-P1.1-07 live in `backend/tests/membership_active_org.sql` and fail until the migration exists. The file is registered from `run_all_backend_tests.sh` so the CI job runs it.
 
+Teardown: the `AFTER INSERT` trigger `trg_organizations_provision_billing_settings` (from `20260605180000_billing.sql`, a historical migration that stays untouched) provisions a `public.organization_billing_settings` row for every fixture organisation, and its foreign key to `public.organizations` has no `ON DELETE CASCADE`. Every fixture cleanup and teardown in `membership_active_org.sql` therefore deletes `public.organization_billing_settings` for the fixture organisations before deleting from `public.organizations`, matching the pattern in `backend/tests/billing_rls.sql` and `backend/tests/service_catalog_crud.sql`.
+
 | ID | Harness | Test |
 | --- | --- | --- |
 | E2E-P1.1-01 | H-BK | `membership_active_org.sql`: one membership, call `public.get_custom_claims` with the GoTrue event shape `{"user_id","claims"}`, assert `active_org`, then `current_org_id()` equals that organisation. |
