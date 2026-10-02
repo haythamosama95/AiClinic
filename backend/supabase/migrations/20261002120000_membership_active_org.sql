@@ -270,3 +270,48 @@ SET search_path = public
 AS $$
   SELECT public.current_org_id();
 $$;
+
+CREATE OR REPLACE FUNCTION public.current_membership_role()
+RETURNS public.staff_role
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_claims jsonb;
+  v_sub_text text;
+  v_sub uuid;
+  v_org uuid;
+  v_role public.staff_role;
+BEGIN
+  v_org := public.current_org_id();
+  IF v_org IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  v_claims := public.request_jwt_claims();
+  v_sub_text := v_claims ->> 'sub';
+
+  BEGIN
+    IF v_sub_text IS NULL OR btrim(v_sub_text) = '' THEN
+      RETURN NULL;
+    END IF;
+    v_sub := v_sub_text::uuid;
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RETURN NULL;
+  END;
+
+  SELECT m.role
+  INTO v_role
+  FROM ai_internal.membership m
+  WHERE m.user_id = v_sub
+    AND m.organization_id = v_org;
+
+  RETURN v_role;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.current_membership_role() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.current_membership_role() TO authenticated;

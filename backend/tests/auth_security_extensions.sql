@@ -155,6 +155,15 @@ BEGIN
     SELECT id INTO v_org_id FROM public.organizations LIMIT 1;
   END IF;
 
+  IF v_org_id IS NOT NULL THEN
+    INSERT INTO ai_internal.membership (user_id, organization_id, role)
+    SELECT sm.auth_user_id, v_org_id, sm.role
+    FROM public.staff_members sm
+    WHERE sm.auth_user_id = v_bootstrap_user
+      AND sm.is_deleted = false
+    ON CONFLICT (user_id, organization_id) DO NOTHING;
+  END IF;
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',

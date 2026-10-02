@@ -926,6 +926,11 @@ BEGIN
   );
 
   PERFORM set_config('request.jwt.claims', '', true);
+  -- The permission edit stamps updated_by via set_audit_user(); clear it
+  -- after claims are empty so auth.uid() is null and the fixture user can go.
+  UPDATE public.roles_permissions
+  SET updated_by = NULL
+  WHERE updated_by = v_user_id;
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
   DELETE FROM public.audit_log

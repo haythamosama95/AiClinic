@@ -70,6 +70,13 @@ BEGIN
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
 
   PERFORM set_config('role', 'postgres', true);
+
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user, v_doctor_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
   INSERT INTO admin_reset_password_results VALUES (
     'fixture_org_and_branch_ready',
     v_org_id IS NOT NULL AND v_branch_id IS NOT NULL,

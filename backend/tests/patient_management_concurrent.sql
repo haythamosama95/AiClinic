@@ -47,6 +47,13 @@ BEGIN
   ON CONFLICT (staff_member_id, branch_id) DO UPDATE
   SET is_deleted = false, is_primary = true;
 
+  INSERT INTO ai_internal.membership (user_id, organization_id, role)
+  SELECT sm.auth_user_id, v_org_id, sm.role
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id IN (v_bootstrap_user)
+    AND sm.is_deleted = false
+  ON CONFLICT (user_id, organization_id) DO NOTHING;
+
   -- Insert first patient with phone '01001234567'
   v_patient1_id := gen_random_uuid();
   INSERT INTO public.patients (id, organization_id, branch_id, full_name, phone, mrn, is_deleted, created_by, updated_by)
