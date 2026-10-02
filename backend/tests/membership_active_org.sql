@@ -158,6 +158,7 @@ BEGIN
   DELETE FROM ai_internal.user_active_organization WHERE user_id = v_user_id;
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id = v_org_id;
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM public.audit_log
   WHERE user_id = v_user_id
@@ -218,6 +219,7 @@ BEGIN
   DELETE FROM public.audit_log
   WHERE user_id = v_user_id
      OR organization_id = v_org_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id = v_org_id;
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -268,6 +270,7 @@ BEGIN
   WHERE user_id = v_user_id
      OR organization_id IN (v_org_a, v_org_b);
   DELETE FROM public.branches WHERE id IN (v_branch_a, v_branch_b);
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_a, v_org_b);
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_b);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -421,6 +424,7 @@ BEGIN
   WHERE user_id = v_user_id
      OR organization_id IN (v_org_a, v_org_b);
   DELETE FROM public.branches WHERE id IN (v_branch_a, v_branch_b);
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_a, v_org_b);
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_b);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -461,6 +465,7 @@ BEGIN
   DELETE FROM ai_internal.user_active_organization WHERE user_id = v_user_id;
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_a, v_org_c);
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_c);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -563,6 +568,7 @@ BEGIN
   DELETE FROM public.audit_log
   WHERE user_id = v_user_id
      OR organization_id IN (v_org_a, v_org_c);
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_a, v_org_c);
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_c);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -603,6 +609,7 @@ BEGIN
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
   DELETE FROM public.branches WHERE id = v_branch_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id = v_org_id;
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -701,6 +708,7 @@ BEGIN
   WHERE user_id = v_user_id
      OR organization_id = v_org_id;
   DELETE FROM public.branches WHERE id = v_branch_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id = v_org_id;
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -750,6 +758,8 @@ BEGIN
   );
   v_from_legacy := public.current_org_id();
 
+  PERFORM set_config('role', 'postgres', true);
+
   INSERT INTO membership_active_org_results (test_name, passed, detail)
   VALUES (
     'E2E-P1.1-05',
@@ -758,7 +768,6 @@ BEGIN
       || ' organization_id=' || COALESCE(v_from_legacy::text, '<null>')
   );
 
-  PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('request.jwt.claims', '', true);
 END;
 $$;
@@ -797,6 +806,7 @@ BEGIN
      OR organization_id IN (v_org_admin, v_org_doctor);
   DELETE FROM ai_internal.membership WHERE user_id = v_user_id;
   DELETE FROM public.staff_members WHERE id = v_staff_id;
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_admin, v_org_doctor);
   DELETE FROM public.organizations WHERE id IN (v_org_admin, v_org_doctor);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
@@ -921,6 +931,7 @@ BEGIN
   DELETE FROM public.audit_log
   WHERE user_id = v_user_id
      OR organization_id IN (v_org_admin, v_org_doctor);
+  DELETE FROM public.organization_billing_settings WHERE organization_id IN (v_org_admin, v_org_doctor);
   DELETE FROM public.organizations WHERE id IN (v_org_admin, v_org_doctor);
   DELETE FROM public.audit_log WHERE user_id = v_user_id;
   DELETE FROM auth.users WHERE id = v_user_id;
