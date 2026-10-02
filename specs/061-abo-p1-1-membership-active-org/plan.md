@@ -256,6 +256,8 @@ Tests are written and observed failing before the migration and the fixture inse
 4. Run E2E-P1.1-08 (`run_all_backend_tests.sh` and `catalog/run.sh`) and keep going until both are green.
 5. Add the `backend-sql` CI job and write `quickstart.md` from the outline above.
 
+The red run of E2E-P1.1-08 in the window between steps 2 and 3 — after `current_membership_role()` (T011) and before the fixture membership inserts — already occurred during implementation (`run_all_backend_tests.sh` 10/29, `catalog/run.sh` 3 passed / 5 failed, while `public.jwt_organization_id()` re-checked membership and the fixture users still lacked a membership row). That window is closed and is not re-observed; step 4's green run is the completion criterion for E2E-P1.1-08.
+
 The fixture insert is one change repeated across the files in Files, grouped as one task per existing runner section so the tasks phase does not emit one task per file. With the failing test file, the migration, those groups, the CI job, and `quickstart.md`, the implied count stays at or under 40. It is not padded upward.
 
 ## Complexity Tracking

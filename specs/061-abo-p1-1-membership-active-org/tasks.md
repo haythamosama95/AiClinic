@@ -26,7 +26,7 @@
 
 ## 3. Tests
 
-**Purpose**: One task per E2E id. Titles start with the E2E id (rule V3). E2E-P1.1-01 through E2E-P1.1-07 are appended to `backend/tests/membership_active_org.sql` and fail until the migration exists. E2E-P1.1-08 is the existing H-BK scripts, executed red after the migration and before the fixture inserts.
+**Purpose**: One task per E2E id. Titles start with the E2E id (rule V3). E2E-P1.1-01 through E2E-P1.1-07 are appended to `backend/tests/membership_active_org.sql` and fail until the migration exists. E2E-P1.1-08 is the existing H-BK scripts. Their red run after the migration and before the fixture inserts already occurred during implementation and that window is closed; the record is in T008.
 
 ### 3.1 User Story 1 - Staff membership backfill (Priority: P1)
 
@@ -58,9 +58,9 @@
 
 - [X] T007 [US3] Add the failing test `E2E-P1.1-06` to `backend/tests/membership_active_org.sql` — produces the red test, satisfies FR-007, proved by E2E-P1.1-06. `current_membership_role()` returns `administrator` and `doctor`; an `UPDATE` on `public.roles_permissions` leaves both results unchanged. Depends on T006 (same file). Fails because `current_membership_role()` is absent.
 
-- [ ] T008 [P] [US3] Treat `E2E-P1.1-08` as the unchanged commands `backend/tests/run_all_backend_tests.sh` and `backend/tests/catalog/run.sh` — produces the red run, satisfies FR-009, proved by E2E-P1.1-08. Author this alongside T005–T007; it does not edit `backend/tests/membership_active_org.sql`. Execute it after T011 and before T012–T022 finish: both scripts fail once `public.jwt_organization_id()` re-checks membership and the fixture users still lack a membership row. Leave every pre-existing claim and assertion unchanged. `backend/tests/catalog/run.sh` stays as it is.
+- [ ] T008 [P] [US3] Treat `E2E-P1.1-08` as the unchanged commands `backend/tests/run_all_backend_tests.sh` and `backend/tests/catalog/run.sh` — satisfies FR-009, proved by E2E-P1.1-08. Author this alongside T005–T007; it does not edit `backend/tests/membership_active_org.sql`. The red run after T011 and before the T012–T022 fixture inserts already occurred during the T011–T015 implement pass and that window is closed: `backend/tests/run_all_backend_tests.sh` reported 10/29 and `backend/tests/catalog/run.sh` reported 3 passed / 5 failed while `public.jwt_organization_id()` re-checked membership and the fixture users still lacked a membership row. This task no longer requires observing a tree from before the fixture membership inserts, and the scripts are not re-run for redness on the current tree. Leave every pre-existing claim and assertion unchanged. `backend/tests/catalog/run.sh` stays as it is.
 
-**Checkpoint**: E2E-P1.1-04, E2E-P1.1-05, and E2E-P1.1-06 exist and fail. E2E-P1.1-08 is the two existing scripts, run red after the migration.
+**Checkpoint**: E2E-P1.1-04, E2E-P1.1-05, and E2E-P1.1-06 exist and fail. E2E-P1.1-08 is the two existing scripts; their red run after the migration already occurred and is recorded in T008.
 
 ---
 
@@ -164,7 +164,7 @@ FR-009 insert, used by T012–T022: for every impersonated fixture user whose `r
 ### 7.1 Phase Dependencies
 
 - **Tests (T001–T008)**: Start immediately. T001 creates `backend/tests/membership_active_org.sql` and registers it. T002–T007 append to that file in order. T008 is `[P]` with T005–T007. Sequencing step 1: T001–T007 are observed failing before any migration task.
-- **Implementation (T009–T023)**: After T001–T007 exist and fail. Order is Sequencing: migration (T009, then T010, then T011), then the fixture groups (T012–T022), then the CI job (T023). T008's red run sits after T011 and before T012–T022 finish.
+- **Implementation (T009–T023)**: After T001–T007 exist and fail. Order is Sequencing: migration (T009, then T010, then T011), then the fixture groups (T012–T022), then the CI job (T023). T008's red run sat after T011 and before T012–T022 finish; that window already occurred during the T011–T015 implement pass (`backend/tests/run_all_backend_tests.sh` 10/29, `backend/tests/catalog/run.sh` 3 passed / 5 failed) and is closed, so T008 no longer requires observing a tree from before the fixture membership inserts.
 - **Verification (T024)**: After every implementation task.
 - **Documentation (T025)**: After T024 is green.
 
@@ -187,5 +187,5 @@ FR-009 insert, used by T012–T022: for every impersonated fixture user whose `r
 # Two User Story 3 test tasks launched together.
 # T008 does not edit membership_active_org.sql; T005 appends E2E-P1.1-04 there.
 Task: "T005 [US3] Add the failing test E2E-P1.1-04 in backend/tests/membership_active_org.sql"
-Task: "T008 [P] [US3] E2E-P1.1-08 red run of backend/tests/run_all_backend_tests.sh and backend/tests/catalog/run.sh"
+Task: "T008 [P] [US3] E2E-P1.1-08 via the unchanged backend/tests/run_all_backend_tests.sh and backend/tests/catalog/run.sh (red-run window closed, recorded in T008)"
 ```
