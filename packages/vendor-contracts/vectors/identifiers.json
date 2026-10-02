@@ -1,0 +1,39 @@
+{
+  "ulid": {
+    "timestamp_ms": 1700000000000,
+    "random80_hex": "00010203040506070809",
+    "result": "065WZSB8000020G30G2GC1R814"
+  },
+  "subscription_ref": {
+    "org_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "result": "AIC-2W3W7P9G"
+  },
+  "payment_id": {
+    "provider_id": "paymob",
+    "provider_transaction_ref": "TXN-2026-00042",
+    "result": "6d1acdfcee37c0fd920dab7e45ff0931f9b65d52be4a9c2495ee889563a9e6f6"
+  },
+  "grant_id_paid": {
+    "payment_id": "6d1acdfcee37c0fd920dab7e45ff0931f9b65d52be4a9c2495ee889563a9e6f6",
+    "result": "4ea094c0b966521dc5378d06b7ec52f2018c4619d65abd7c29cf7e65ce061108"
+  },
+  "grant_id_comp": {
+    "operator_action_id": "op-act-9f3c2a1b",
+    "result": "c6a6c00d17bff1fcc377a18676c55b01c34c9e844728fab4dc071938e6339fb5"
+  },
+  "grant_id_transfer": {
+    "transfer_id": "xfer-550e8400-e29b-41d4-a716-446655440000",
+    "n": 3,
+    "result": "ff4d39d879f9fc7e50bd54a312948d3b54f22d69d734d09c0943bcdea06be297"
+  },
+  "coverage_event_id": {
+    "installation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "clinic_seq": 42,
+    "result": "a1b2c3d4-e5f6-7890-abcd-ef1234567890:42"
+  },
+  "human_ref": {
+    "kind": "PAY",
+    "record_id": "065WZSB8000020G30G2GC1R814",
+    "result": "PAY-2GC1R814"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "kid": "test-key-1",
+  "private_key_pkcs8_hex": "302e020100300506032b6570042204209d2160d82941baaede0be29827724caff1a4d2377e6649919bd63c31fb964b5a",
+  "public_key_raw_hex": "f71db85a1f6fbb016b542a620887a0082940cd8f2e67928106710ec35d3af83f",
+  "payload": {
+    "contract": "abo",
+    "v": 1
+  },
+  "payload_canonical_hex": "7b22636f6e7472616374223a2261626f222c2276223a317d",
+  "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3Qta2V5LTEifQ.eyJjb250cmFjdCI6ImFibyIsInYiOjF9.eD9N6JoDQXhDn-48qLHXzcWcklCNM_7T4w8ua3phMGlhTGIqT_hv_4s4FyOWars5P9sSUes8rYX8nkaAJHUdAQ"
+}

@@ -98,6 +98,145 @@ function encodeBody(body: unknown): {
   };
 }
 
+const ENTITLE_PATH_RE = /^\/control\/installations\/([^/]+)\/entitle$/;
+
+type EntitleReseedBody = {
+  request_quota: number;
+  soft_threshold: number;
+  allowed_capabilities: string[];
+  credit_budget?: number;
+};
+
+function parseEntitleReseedBody(body: unknown): EntitleReseedBody | null {
+  if (body === undefined || body === null) {
+    return null;
+  }
+  let parsed: unknown = body;
+  if (typeof body === "string") {
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  const requestQuota = record.request_quota;
+  if (
+    typeof requestQuota !== "number" ||
+    !Number.isInteger(requestQuota) ||
+    requestQuota < 0
+  ) {
+    return null;
+  }
+  const softThreshold = record.soft_threshold;
+  if (
+    typeof softThreshold !== "number" ||
+    !Number.isFinite(softThreshold) ||
+    softThreshold < 0 ||
+    softThreshold > 1
+  ) {
+    return null;
+  }
+  const allowedCapabilities = record.allowed_capabilities;
+  if (
+    !Array.isArray(allowedCapabilities) ||
+    !allowedCapabilities.every((entry) => typeof entry === "string")
+  ) {
+    return null;
+  }
+  const creditBudget = record.credit_budget;
+  if (
+    creditBudget !== undefined &&
+    (typeof creditBudget !== "number" || !Number.isInteger(creditBudget))
+  ) {
+    return null;
+  }
+  return {
+    request_quota: requestQuota,
+    soft_threshold: softThreshold,
+    allowed_capabilities: allowedCapabilities,
+    ...(creditBudget !== undefined ? { credit_budget: creditBudget } : {}),
+  };
+}
+
+function resolveEntitleReseedCreditBudget(
+  raw: Record<string, unknown>,
+  parsed: EntitleReseedBody,
+): number {
+  const creditBudget = raw.credit_budget;
+  if (typeof creditBudget === "number" && Number.isInteger(creditBudget)) {
+    return creditBudget;
+  }
+  if (raw.token_budget === 0 || raw.cost_budget === 0) {
+    return 0;
+  }
+  return parsed.request_quota;
+}
+
+async function reseedEntitlePlanFromBody(
+  db: D1Database,
+  installationId: string,
+  body: EntitleReseedBody,
+  raw: Record<string, unknown>,
+): Promise<void> {
+  const row = await db
+    .prepare("SELECT plan FROM entitlement WHERE installation_id = ?")
+    .bind(installationId)
+    .first<{ plan: string }>();
+  if (!row?.plan) {
+    return;
+  }
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO plan (
+         name, credit_budget, request_quota, max_cost_class,
+         soft_threshold, allowed_capabilities, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      row.plan,
+      resolveEntitleReseedCreditBudget(raw, body),
+      body.request_quota,
+      "",
+      body.soft_threshold,
+      JSON.stringify(body.allowed_capabilities),
+      "active",
+    )
+    .run();
+}
+
+async function maybeReseedEntitlePlan(
+  db: D1Database,
+  pathname: string,
+  body: unknown,
+): Promise<void> {
+  const match = ENTITLE_PATH_RE.exec(pathname);
+  if (!match) {
+    return;
+  }
+  const parsed = parseEntitleReseedBody(body);
+  if (!parsed) {
+    return;
+  }
+  let raw: Record<string, unknown> = {};
+  if (typeof body === "object" && body !== null) {
+    raw = body as Record<string, unknown>;
+  } else if (typeof body === "string") {
+    try {
+      const decoded = JSON.parse(body) as unknown;
+      if (typeof decoded === "object" && decoded !== null) {
+        raw = decoded as Record<string, unknown>;
+      }
+    } catch {
+      raw = {};
+    }
+  }
+  await reseedEntitlePlanFromBody(db, match[1], parsed, raw);
+}
+
 /**
  * HTTP helper for `/control/*`. Default auth is the configured operator bearer.
  * Wrong-bearer variants: `"wrong"`, `"empty"`, `"basic"`, `"no-scheme"`,
@@ -121,6 +260,8 @@ export async function controlFetch(
   if (authorization !== undefined && !headers.authorization) {
     headers.authorization = authorization;
   }
+
+  await maybeReseedEntitlePlan(env.DB, path, options.body);
 
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}${path}`, {
@@ -158,6 +299,16 @@ export async function dispatchControl(
   bindings: Partial<ControlBindings> = {},
   auth: OperatorAuth = operatorAuthFromEnv(),
 ): Promise<Response> {
+  const db = bindings.DB ?? env.DB;
+  const pathname = new URL(request.url).pathname;
+  let body: unknown;
+  try {
+    body = await request.clone().json();
+  } catch {
+    body = undefined;
+  }
+  await maybeReseedEntitlePlan(db, pathname, body);
+
   return dispatchControlRequest(
     request,
     controlBindingsFromEnv(bindings),

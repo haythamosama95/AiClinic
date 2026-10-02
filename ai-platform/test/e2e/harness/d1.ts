@@ -104,6 +104,29 @@ async function reseedTokenContract(db: D1Database): Promise<void> {
     .run();
 }
 
+const CATALOGUE_PLAN_NAMES = [
+  "standard",
+  "professional",
+  "starter",
+  "enterprise",
+] as const;
+
+const CATALOGUE_ALLOWED_CAPABILITIES = JSON.stringify(["clinic.visit_summary"]);
+
+async function reseedCataloguePlans(db: D1Database): Promise<void> {
+  const insert = db.prepare(
+    `INSERT OR REPLACE INTO plan (
+       name, credit_budget, request_quota, max_cost_class,
+       soft_threshold, allowed_capabilities, status
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const name of CATALOGUE_PLAN_NAMES) {
+    await insert
+      .bind(name, 10_000, 1000, "", 0.8, CATALOGUE_ALLOWED_CAPABILITIES, "active")
+      .run();
+  }
+}
+
 async function resetR2(): Promise<void> {
   let cursor: string | undefined;
   do {
@@ -139,6 +162,7 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM token_contract"),
   ]);
   await reseedTokenContract(db);
+  await reseedCataloguePlans(db);
   await resetR2();
   isolateConfigCache.clear();
 }
@@ -299,7 +323,8 @@ export async function bootstrapE2e(): Promise<void> {
 
 /**
  * Wipe D1 business tables, R2 objects, and the isolate config cache.
- * Re-inserts the migration `token_contract` seed row (`ver='1'`).
+ * Re-inserts the migration `token_contract` seed row (`ver='1'`) and the
+ * catalogue `plan` rows (`standard`, `professional`, `starter`, `enterprise`).
  * Call from `beforeEach`.
  */
 export async function resetE2eState(): Promise<void> {

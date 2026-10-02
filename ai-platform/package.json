@@ -23,5 +23,8 @@
     "typescript": "^5.9.2",
     "vitest": "~3.2.4",
     "wrangler": "~4.86.0"
+  },
+  "dependencies": {
+    "vendor-contracts": "file:../packages/vendor-contracts"
   }
 }

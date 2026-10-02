@@ -383,6 +383,7 @@ describe("quota admission interplay", () => {
           "content-type": "application/json",
           "x-idempotency-key": cancelledKey,
           "x-capability-version": CAPABILITY_VERSION,
+          "Aip-Contract-Version": "1",
         },
         body: JSON.stringify(visitSummaryInvokeBody(cancelledScenario)),
         signal: controller.signal,

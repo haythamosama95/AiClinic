@@ -189,7 +189,10 @@ describe("POST /v1/requests production orchestrator wiring", () => {
     await workerModule.default.fetch(
       new Request("https://ai-gateway.test/v1/requests", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Aip-Contract-Version": "1",
+        },
         body: JSON.stringify({ installation: "inst-1", capability: "cap@v1" }),
       }),
       runtimeEnv as never,
@@ -215,10 +218,14 @@ describe("GET /v1/requests/:ref response shaping", () => {
   const REF = "ABCD-EFGH";
 
   async function getRef(headers?: HeadersInit): Promise<Response> {
+    const requestHeaders = new Headers(headers);
+    if (!requestHeaders.has("Aip-Contract-Version")) {
+      requestHeaders.set("Aip-Contract-Version", "1");
+    }
     return workerModule.default.fetch(
       new Request(`https://ai-gateway.test/v1/requests/${REF}`, {
         method: "GET",
-        headers,
+        headers: requestHeaders,
       }),
     );
   }

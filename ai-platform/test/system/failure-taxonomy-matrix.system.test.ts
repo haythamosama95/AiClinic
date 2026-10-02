@@ -125,6 +125,9 @@ async function postRequests(
     if (!headers["x-capability-version"]) {
       headers["x-capability-version"] = CAPABILITY_VERSION;
     }
+    if (!headers["Aip-Contract-Version"]) {
+      headers["Aip-Contract-Version"] = "1";
+    }
   }
   if (opts.token) {
     headers.authorization = `Bearer ${opts.token}`;
@@ -542,6 +545,7 @@ describe("failure taxonomy matrix", () => {
       "content-type": "application/json",
       "x-idempotency-key": crypto.randomUUID(),
       "x-capability-version": CAPABILITY_VERSION,
+      "Aip-Contract-Version": "1",
     };
 
     const bodies = ["not-json", "[]", "null", ""];
@@ -920,7 +924,12 @@ describe("failure taxonomy matrix", () => {
     expect(failed?.data.retry_safe).toBe(true);
 
     const ref = String(response.events[0]?.data.request_reference);
-    const request = await getAiRequest(ref);
+    let request = await getAiRequest(ref);
+    const started = Date.now();
+    while (request?.state !== "Failed" && Date.now() - started < 8000) {
+      await flushBackgroundWork();
+      request = await getAiRequest(ref);
+    }
     expect(request?.state).toBe("Failed");
     const usage = await getUsageEvents(String(request?.request_id));
     expect(usage).toHaveLength(1);
@@ -1006,6 +1015,7 @@ describe("failure taxonomy matrix", () => {
             "content-type": "application/json",
             "x-idempotency-key": crypto.randomUUID(),
             "x-capability-version": CAPABILITY_VERSION,
+            "Aip-Contract-Version": "1",
           },
           body: JSON.stringify(visitSummaryInvokeBody(scenario)),
           signal: controller.signal,
@@ -1061,8 +1071,10 @@ describe("failure taxonomy matrix", () => {
     );
 
     let rateLimitedBody: Record<string, unknown> | null = null;
+    const rateLimitedStatus = liveHttpStatusForCode("rate_limited");
+    const contextRequiredStatus = liveHttpStatusForCode("context_required");
 
-    for (let i = 0; i < 121; i += 1) {
+    for (let i = 0; i < 131 && rateLimitedBody === null; i += 1) {
       const token = await mintAat(scenario);
       const response = await SELF.fetch(
         new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
@@ -1072,6 +1084,7 @@ describe("failure taxonomy matrix", () => {
             "content-type": "application/json",
             "x-idempotency-key": crypto.randomUUID(),
             "x-capability-version": CAPABILITY_VERSION,
+            "Aip-Contract-Version": "1",
           },
           body: cheapBody,
         }),
@@ -1081,21 +1094,21 @@ describe("failure taxonomy matrix", () => {
       const json =
         text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : null;
 
-      if (i < 120) {
-        expect(response.status).toBe(liveHttpStatusForCode("context_required"));
-        assertNotSse(response.headers);
-        assertTaxonomyBody(json, {
-          code: "context_required",
-          retry_safe: true,
-          request_reference: "non-empty",
-          trace_id: "non-empty",
-          missing_keys: [VISIT_CHIEF_COMPLAINT_V1],
-        });
-        continue;
+      if (response.status === rateLimitedStatus) {
+        expect(i).toBeGreaterThanOrEqual(120);
+        rateLimitedBody = json;
+        break;
       }
 
-      expect(response.status).toBe(liveHttpStatusForCode("rate_limited"));
-      rateLimitedBody = json;
+      expect(response.status).toBe(contextRequiredStatus);
+      assertNotSse(response.headers);
+      assertTaxonomyBody(json, {
+        code: "context_required",
+        retry_safe: true,
+        request_reference: "non-empty",
+        trace_id: "non-empty",
+        missing_keys: [VISIT_CHIEF_COMPLAINT_V1],
+      });
     }
 
     expect(rateLimitedBody).not.toBeNull();

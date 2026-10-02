@@ -292,6 +292,10 @@ async function assertOnlyPublishTablesTouched(): Promise<void> {
       expect(await count(table)).toBe(1);
       continue;
     }
+    if (table === "plan") {
+      expect(await count(table)).toBe(4);
+      continue;
+    }
     if (table === "routing_policy" || table === "control_audit") {
       expect(await count(table)).toBe(1);
       continue;

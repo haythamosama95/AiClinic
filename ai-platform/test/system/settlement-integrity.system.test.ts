@@ -244,6 +244,7 @@ describe("settlement integrity", () => {
             "content-type": "application/json",
             "x-idempotency-key": crypto.randomUUID(),
             "x-capability-version": CAPABILITY_VERSION,
+            "Aip-Contract-Version": "1",
           },
           body: JSON.stringify(visitSummaryInvokeBody(scenario)),
           signal: controller.signal,
@@ -277,9 +278,17 @@ describe("settlement integrity", () => {
       expect(request?.completed_at).toBeTruthy();
       expect(request?.terminal_error_code).toBeNull();
 
-      const usageCount = await count("usage_event", "request_id = ?", [
-        request!.request_id,
-      ]);
+      let usageCount = 0;
+      const usageStarted = Date.now();
+      while (usageCount !== 1 && Date.now() - usageStarted < 8000) {
+        usageCount = await count("usage_event", "request_id = ?", [
+          request!.request_id,
+        ]);
+        if (usageCount === 1) {
+          break;
+        }
+        await flushBackgroundWork();
+      }
       expect(usageCount).toBe(1);
       expect(await r2Exists(String(request?.payload_pointer))).toBe(true);
     } finally {
@@ -355,6 +364,7 @@ describe("settlement integrity", () => {
             "content-type": "application/json",
             "x-idempotency-key": cancelledKey,
             "x-capability-version": CAPABILITY_VERSION,
+            "Aip-Contract-Version": "1",
           },
           body: JSON.stringify(visitSummaryInvokeBody(scenario)),
           signal: controller.signal,
@@ -455,7 +465,9 @@ describe("settlement integrity", () => {
     expect(clientGet.body).not.toHaveProperty("installation_id");
 
     const unauth = await SELF.fetch(
-      new Request(`${GATEWAY_ORIGIN}/v1/requests/${ref}`),
+      new Request(`${GATEWAY_ORIGIN}/v1/requests/${ref}`, {
+        headers: { "Aip-Contract-Version": "1" },
+      }),
     );
     expect(unauth.status).toBe(401);
 

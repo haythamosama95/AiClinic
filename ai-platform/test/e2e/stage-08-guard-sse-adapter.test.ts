@@ -611,7 +611,10 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
     });
     const request = new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
       method: "POST",
-      headers: requiredAdapterHeaders(),
+      headers: {
+        ...requiredAdapterHeaders(),
+        "Aip-Contract-Version": "1",
+      },
       body: stream,
       duplex: "half",
     } as RequestInit);

@@ -308,6 +308,9 @@ function discoveryRequest(
   headers: Record<string, string> = {},
 ): Request {
   const requestHeaders: Record<string, string> = { ...headers };
+  if (!requestHeaders["Aip-Contract-Version"]) {
+    requestHeaders["Aip-Contract-Version"] = "1";
+  }
   if (token !== undefined) {
     requestHeaders.authorization = `Bearer ${token}`;
   }

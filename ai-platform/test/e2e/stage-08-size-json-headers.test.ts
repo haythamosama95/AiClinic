@@ -57,10 +57,14 @@ async function postStreamBody(
   headers: Record<string, string>,
   bytes: Uint8Array,
 ): Promise<Awaited<ReturnType<typeof readHttpResult>>> {
+  const requestHeaders = { ...headers };
+  if (!requestHeaders["Aip-Contract-Version"]) {
+    requestHeaders["Aip-Contract-Version"] = "1";
+  }
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
       method: "POST",
-      headers,
+      headers: requestHeaders,
       body: bytesStream(bytes),
       duplex: "half",
     } as RequestInit),

@@ -149,6 +149,10 @@ async function assertTokenContractSeed(): Promise<TokenContractRow> {
 
 async function assertBusinessTablesEmpty(): Promise<void> {
   for (const table of BUSINESS_TABLES) {
+    if (table === "plan") {
+      expect(await count(table), "plan holds the catalogue re-seed").toBe(4);
+      continue;
+    }
     expect(await count(table), `${table} must be empty`).toBe(0);
   }
 }

@@ -137,7 +137,10 @@ describe("adapter malformed body rejection (T25)", () => {
 
     const response = await worker.fetch("http://127.0.0.1/v1/requests", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "Aip-Contract-Version": "1",
+      },
       body: "{not-valid-json",
     });
 

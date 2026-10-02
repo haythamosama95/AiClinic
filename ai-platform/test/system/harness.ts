@@ -593,6 +593,9 @@ export async function invoke(
   if (opts.traceId) {
     headers["x-trace-id"] = opts.traceId;
   }
+  if (!headers["Aip-Contract-Version"]) {
+    headers["Aip-Contract-Version"] = "1";
+  }
 
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}/v1/requests`, {
@@ -637,6 +640,9 @@ export async function getCapabilities(
   if (ifNoneMatch) {
     headers["if-none-match"] = ifNoneMatch;
   }
+  if (!headers["Aip-Contract-Version"]) {
+    headers["Aip-Contract-Version"] = "1";
+  }
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}/v1/capabilities`, { headers }),
   );
@@ -658,7 +664,10 @@ export async function getRequest(
 ): Promise<{ status: number; body: Record<string, unknown> | null }> {
   const response = await SELF.fetch(
     new Request(`${GATEWAY_ORIGIN}/v1/requests/${ref}`, {
-      headers: { authorization: `Bearer ${token}` },
+      headers: {
+        authorization: `Bearer ${token}`,
+        "Aip-Contract-Version": "1",
+      },
     }),
   );
   const text = await response.text();

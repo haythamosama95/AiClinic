@@ -49,6 +49,9 @@ export async function clinicFetch(
 ): Promise<Response> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { ...options.headers };
+  if (!headers["Aip-Contract-Version"]) {
+    headers["Aip-Contract-Version"] = "1";
+  }
   if (options.token) {
     headers.authorization = `Bearer ${options.token}`;
   }

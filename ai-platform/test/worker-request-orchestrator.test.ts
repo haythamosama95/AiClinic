@@ -540,6 +540,7 @@ function buildPostRequest(options: {
     "x-idempotency-key": options.idempotencyKey ?? uniqueIdempotencyKey(),
     "x-trace-id": FIXTURE_TRACE_ID,
     "x-capability-version": FIXTURE_CAPABILITY_VERSION,
+    "Aip-Contract-Version": "1",
   };
   if (options.token) {
     headers.authorization = `Bearer ${options.token}`;
@@ -1077,7 +1078,12 @@ describe("idempotency_repeat_returns_prior_no_second_inference", () => {
   it("T15 — repeated key returns prior state", async () => {
     const key = uniqueIdempotencyKey();
     await fetchLivePost(await mintAat(), { idempotencyKey: key });
-    const attemptsBefore = await countAiAttempts();
+    let attemptsBefore = await countAiAttempts();
+    const attemptsStarted = Date.now();
+    while (attemptsBefore < 1 && Date.now() - attemptsStarted < 8000) {
+      await flushBackgroundWork();
+      attemptsBefore = await countAiAttempts();
+    }
     const { response, events } = await fetchLivePost(await mintAat(), {
       idempotencyKey: key,
     });

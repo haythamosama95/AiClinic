@@ -29,6 +29,10 @@ import {
 import { handleDiscoveryRequest } from "./discovery";
 import { handleUsageSummaryRequest } from "./usage-summary";
 import {
+  requireAipContractVersion,
+  withAipContractVersion,
+} from "./vendor/contract-version";
+import {
   createSecretOperatorAuth,
   dispatchControlRequest,
   isControlRoute,
@@ -1580,10 +1584,22 @@ export default {
     }
 
     if (url.pathname === "/v1/capabilities" && request.method === "GET") {
-      return handleDiscoveryRequest(request, {
-        DB: runtimeEnv.DB,
-        R2: runtimeEnv.R2,
-      }, makeLog("discovery/index.ts"));
+      const contractVersion = requireAipContractVersion(request);
+      if (!contractVersion.ok) {
+        return contractVersion.response;
+      }
+      const discoveryResponse = await handleDiscoveryRequest(
+        request,
+        {
+          DB: runtimeEnv.DB,
+          R2: runtimeEnv.R2,
+        },
+        makeLog("discovery/index.ts"),
+      );
+      return withAipContractVersion(
+        discoveryResponse,
+        contractVersion.version,
+      );
     }
 
     if (url.pathname === "/v1/usage" && request.method === "GET") {
@@ -1599,7 +1615,16 @@ export default {
     }
 
     if (url.pathname === "/v1/requests" && request.method === "POST") {
-      return handleLivePostRequest(request, runtimeEnv, ctx);
+      const contractVersion = requireAipContractVersion(request);
+      if (!contractVersion.ok) {
+        return contractVersion.response;
+      }
+      const liveResponse = await handleLivePostRequest(
+        request,
+        runtimeEnv,
+        ctx,
+      );
+      return withAipContractVersion(liveResponse, contractVersion.version);
     }
 
     if (
@@ -1633,6 +1658,12 @@ export default {
       if (!reference) {
         return new Response(null, { status: 404 });
       }
+      const contractVersion = requireAipContractVersion(request);
+      if (!contractVersion.ok) {
+        return contractVersion.response;
+      }
+      const echoAipContractVersion = (response: Response) =>
+        withAipContractVersion(response, contractVersion.version);
       const getLog = makeLog("journal/index.ts", { request_reference: reference });
 
       const auth = await authenticateGetRequest(request, {
@@ -1641,7 +1672,9 @@ export default {
       if (!auth.ok) {
         // Prefer 401 for missing/invalid token; suspended maps to taxonomy HTTP status.
         const status = liveHttpStatusForCode(auth.code) ?? 401;
-        return Response.json(getRequestAuthErrorBody(auth.code), { status });
+        return echoAipContractVersion(
+          Response.json(getRequestAuthErrorBody(auth.code), { status }),
+        );
       }
 
       // Pass raw path reference — getRequest normalizes once (contract §3.1).
@@ -1656,37 +1689,56 @@ export default {
 
       if (!result.found) {
         getLog.debug("get_request_not_found");
-        return new Response(null, { status: 404 });
+        return echoAipContractVersion(new Response(null, { status: 404 }));
       }
 
       getLog.info("get_request_served", { state: result.state });
 
       if (result.state === "Completed") {
         if ("result" in result) {
-          return Response.json({
-            state: "Completed",
-            result: result.result,
-          });
+          return echoAipContractVersion(
+            Response.json({
+              state: "Completed",
+              result: result.result,
+            }),
+          );
         }
-        return Response.json({ state: "Completed" });
+        return echoAipContractVersion(Response.json({ state: "Completed" }));
       }
 
       if ("pending" in result && result.pending) {
-        return Response.json({ state: result.state, pending: true });
+        return echoAipContractVersion(
+          Response.json({ state: result.state, pending: true }),
+        );
       }
 
       if (result.state === "Failed") {
-        return Response.json({
-          state: "Failed",
-          terminal_error_code: result.terminalErrorCode,
-        });
+        return echoAipContractVersion(
+          Response.json({
+            state: "Failed",
+            terminal_error_code: result.terminalErrorCode,
+          }),
+        );
       }
 
       if (result.state === "AwaitingContext") {
-        return Response.json({ state: "AwaitingContext" });
+        return echoAipContractVersion(
+          Response.json({ state: "AwaitingContext" }),
+        );
       }
 
-      return Response.json({ state: "Cancelled" });
+      return echoAipContractVersion(Response.json({ state: "Cancelled" }));
+    }
+
+    if (url.pathname === "/v1/coverage" && request.method === "GET") {
+      const contractVersion = requireAipContractVersion(request);
+      if (!contractVersion.ok) {
+        return contractVersion.response;
+      }
+      return withAipContractVersion(
+        new Response("Not Found", { status: 404 }),
+        contractVersion.version,
+      );
     }
 
     makeLog("worker.ts").debug("route_not_found", {
