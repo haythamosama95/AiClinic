@@ -74,6 +74,7 @@ import entitlementUniqueSql from "../../migrations/20260821130000_entitlement_in
 import planCatalogueSql from "../../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import invoiceMigrationSql from "../../migrations/20260911200000_invoice.sql?raw";
+import operatorCredentialMigrationSql from "../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -94,6 +95,32 @@ declare module "cloudflare:test" {
     RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
     BUILD_SHA: string;
     ENVIRONMENT: string;
+    VENDOR: {
+      registerOperatorCredential(
+        args: Record<string, unknown>,
+      ): Promise<VendorResultEnvelope>;
+      revokeOperatorCredential(
+        args: Record<string, unknown>,
+      ): Promise<VendorResultEnvelope>;
+      listOperatorCredentials(
+        args: Record<string, unknown>,
+      ): Promise<VendorResultEnvelope>;
+    };
+    TEST_CLOCK: string;
+    ACCESS_TEAM_DOMAIN: string;
+    ACCESS_AUD: string;
+    WEBAUTHN_RP_ID: string;
+    WEBAUTHN_ORIGIN: string;
+    HEARTBEAT_URL: string;
+    ALERT_EMAIL_TO: string;
+    SEND_EMAIL: {
+      send(message: {
+        from: string;
+        to: string;
+        subject: string;
+        text: string;
+      }): Promise<void>;
+    };
   }
 }
 
@@ -213,6 +240,7 @@ const MIGRATION_SQL = [
   planCatalogueSql,
   quotaWeightMigrationSql,
   invoiceMigrationSql,
+  operatorCredentialMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -298,11 +326,17 @@ export async function applyAllMigrations(db: D1Database): Promise<void> {
     )
     .run();
   await seedCataloguePlan(db);
+  await ensureHarnessTestClockTable();
   migrationsApplied = true;
 }
 
 export async function resetPlatformState(): Promise<void> {
+  await ensureHarnessTestClockTable();
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM platform_alert"),
+    env.DB.prepare("DELETE FROM assertion_used"),
+    env.DB.prepare("DELETE FROM operator_credential"),
+    env.DB.prepare("DELETE FROM harness_test_clock"),
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM grace_admission_queue"),
     env.DB.prepare("DELETE FROM platform_counter"),
@@ -329,6 +363,7 @@ export async function resetPlatformState(): Promise<void> {
     )
     .run();
   await seedCataloguePlan(env.DB);
+  vendorTestClockIso = null;
 }
 
 export function visitSummaryManifest(): Manifest {
@@ -923,7 +958,76 @@ export async function r2Exists(key: string): Promise<boolean> {
  * `SELF.scheduled` is not exposed by @cloudflare/vitest-pool-workers 0.8.71 in
  * this project — invoke the exported worker module `scheduled()` with pool env.
  */
+const vendorHeartbeatHarness = {
+  capturedFetches: [] as string[],
+  fetchThrows: false,
+  interceptReady: false,
+};
+
+export const vendorHarnessState = {
+  capturedEmails: [] as Array<{
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+  }>,
+  sendEmailThrows: false,
+};
+
+export const vendorSendEmailBinding = {
+  async send(message: {
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+  }): Promise<void> {
+    if (vendorHarnessState.sendEmailThrows) {
+      throw new Error("send_email failure injected by harness");
+    }
+    vendorHarnessState.capturedEmails.push({ ...message });
+  },
+};
+
+async function ensureHeartbeatFetchMock(): Promise<void> {
+  await ensureVendorAccessTeam();
+  if (vendorHeartbeatHarness.interceptReady) {
+    return;
+  }
+  const { fetchMock } = await import("cloudflare:test");
+  const heartbeatUrl = env.HEARTBEAT_URL;
+  const parsed = new URL(heartbeatUrl);
+  fetchMock
+    .get(parsed.origin)
+    .intercept({ path: parsed.pathname, method: "GET" })
+    .reply(() => {
+      vendorHeartbeatHarness.capturedFetches.push(heartbeatUrl);
+      if (vendorHeartbeatHarness.fetchThrows) {
+        throw new Error("heartbeat fetch failure injected by harness");
+      }
+      return { statusCode: 200, data: "ok" };
+    })
+    .persist();
+  vendorHeartbeatHarness.interceptReady = true;
+}
+
+export function setSendPlatformEmailThrows(throws: boolean): void {
+  vendorHarnessState.sendEmailThrows = throws;
+}
+
+export function setHeartbeatFetchThrows(throws: boolean): void {
+  vendorHeartbeatHarness.fetchThrows = throws;
+}
+
+export function clearCapturedHeartbeatFetches(): void {
+  vendorHeartbeatHarness.capturedFetches.length = 0;
+}
+
+export function getCapturedHeartbeatFetches(): ReadonlyArray<string> {
+  return vendorHeartbeatHarness.capturedFetches;
+}
+
 export async function runScheduled(cron: string): Promise<void> {
+  await ensureHeartbeatFetchMock();
   const workerModule = await import("../../src/worker");
   await workerModule.default.scheduled(
     { cron, scheduledTime: Date.now(), noRetry() { } },
@@ -995,4 +1099,175 @@ export async function setupPromotedFakePolicy(
     throw new Error(`promote failed: ${promoted.status}`);
   }
   clearConfigCache();
+}
+
+// --- P3.1 vendor entrypoint harness (H-AP) ---
+
+export type VendorResultEnvelope = {
+  contract_version?: number;
+  result: string;
+  code: string;
+  detail: string;
+  receipt?: unknown;
+};
+
+export type VendorMethod =
+  | "registerOperatorCredential"
+  | "revokeOperatorCredential"
+  | "listOperatorCredentials";
+
+export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
+
+type AccessTeam = Awaited<
+  ReturnType<
+    typeof import("vendor-contracts/testkit").createAccessTeam
+  >
+>;
+
+let vendorAccessTeam: AccessTeam | null = null;
+
+function vendorAccessIssuer(): string {
+  return `https://${env.ACCESS_TEAM_DOMAIN}`;
+}
+
+export function clearCapturedVendorEmails(): void {
+  vendorHarnessState.capturedEmails.length = 0;
+}
+
+export function getCapturedVendorEmails(): ReadonlyArray<{
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+}> {
+  return vendorHarnessState.capturedEmails;
+}
+
+export async function mintVendorAccessJwt(
+  overrides: {
+    email?: string;
+    aud?: string;
+    exp?: number;
+    iat?: number;
+    kid?: string;
+  } = {},
+): Promise<string> {
+  await ensureVendorAccessTeam();
+  let now = Math.floor(Date.now() / 1000);
+  if (env.TEST_CLOCK === "1") {
+    const row = await env.DB.prepare(
+      "SELECT now_iso FROM harness_test_clock WHERE id = 'default'",
+    ).first<{ now_iso: string }>();
+    if (row?.now_iso) {
+      const parsed = Date.parse(row.now_iso);
+      if (!Number.isNaN(parsed)) {
+        now = Math.floor(parsed / 1000);
+      }
+    }
+  }
+  return vendorAccessTeam!.mint({
+    email: overrides.email ?? VENDOR_OPERATOR_EMAIL,
+    aud: overrides.aud ?? env.ACCESS_AUD,
+    iat: overrides.iat ?? now - 60,
+    exp: overrides.exp ?? now + 3600,
+    kid: overrides.kid,
+  });
+}
+
+async function ensureVendorAccessTeam(): Promise<void> {
+  if (vendorAccessTeam !== null) {
+    return;
+  }
+  const { createAccessTeam } = await import("vendor-contracts/testkit");
+  const { fetchMock } = await import("cloudflare:test");
+  vendorAccessTeam = await createAccessTeam({ issuer: vendorAccessIssuer() });
+  fetchMock.activate();
+  fetchMock.disableNetConnect();
+  fetchMock
+    .get(vendorAccessIssuer())
+    .intercept({ path: "/cdn-cgi/access/certs", method: "GET" })
+    .reply(200, JSON.stringify({ keys: vendorAccessTeam.certs.keys }))
+    .persist();
+}
+
+export async function setupVendorHarness(): Promise<void> {
+  await ensureVendorAccessTeam();
+  Object.assign(env.SEND_EMAIL, vendorSendEmailBinding);
+  clearCapturedVendorEmails();
+  vendorHarnessState.sendEmailThrows = false;
+  vendorHeartbeatHarness.fetchThrows = false;
+  clearCapturedHeartbeatFetches();
+}
+
+export async function vendorCall(
+  method: VendorMethod,
+  args: Record<string, unknown>,
+  opts: {
+    accessJwt?: string;
+    assertion?: Record<string, unknown>;
+  } = {},
+): Promise<VendorResultEnvelope> {
+  const payload: Record<string, unknown> = { ...args };
+  if (opts.accessJwt !== undefined) {
+    payload.access_jwt = opts.accessJwt;
+  }
+  if (opts.assertion !== undefined) {
+    payload.assertion = opts.assertion;
+  }
+  return env.VENDOR[method](payload);
+}
+
+let vendorTestClockIso: string | null = null;
+
+async function ensureHarnessTestClockTable(): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS harness_test_clock (
+       id TEXT PRIMARY KEY,
+       now_iso TEXT NOT NULL
+     )`,
+  ).run();
+}
+
+export async function setTestClock(isoUtc: string): Promise<void> {
+  await ensureHarnessTestClockTable();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO harness_test_clock (id, now_iso) VALUES ('default', ?)`,
+  )
+    .bind(isoUtc)
+    .run();
+  vendorTestClockIso = isoUtc;
+}
+
+export function getVendorTestClockIso(): string | null {
+  return vendorTestClockIso;
+}
+
+export async function vendorTableCount(table: string): Promise<number> {
+  return count(table);
+}
+
+export function encodeVendorAssertion(
+  assertion: {
+    alg: "ES256" | "EdDSA";
+    authenticatorData: Uint8Array;
+    clientDataJSON: Uint8Array;
+    signature: Uint8Array;
+  },
+): Record<string, string> {
+  return {
+    alg: assertion.alg,
+    authenticator_data: base64urlEncode(assertion.authenticatorData),
+    client_data_json: base64urlEncode(assertion.clientDataJSON),
+    signature: base64urlEncode(assertion.signature),
+  };
+}
+
+export function encodeVendorAttestation(attestation: {
+  alg: "ES256" | "EdDSA";
+  publicKey: Uint8Array;
+}): { alg: "ES256" | "EdDSA"; public_key: string } {
+  return {
+    alg: attestation.alg,
+    public_key: base64urlEncode(attestation.publicKey),
+  };
 }

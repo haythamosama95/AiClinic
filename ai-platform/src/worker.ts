@@ -116,9 +116,9 @@ import {
   type Logger,
   type LoggerFactory,
 } from "./logger";
+import { runFiveMinuteCron, type AlertEnv } from "./alert/index";
 
-interface Env {
-  DB: D1Database;
+interface Env extends AlertEnv {
   R2: R2Bucket;
   DO: DurableObjectNamespace;
   BUILD_SHA: string;
@@ -1565,6 +1565,8 @@ export class GatewayObject extends DurableObject {
   }
 }
 
+export { VendorEntrypoint } from "./vendor/entrypoint";
+
 export default {
   async fetch(
     request: Request,
@@ -1833,6 +1835,10 @@ export default {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    } else if (cron === "*/5 * * * *") {
+      log.info("scheduled_five_minute_start");
+      await runFiveMinuteCron(runtimeEnv);
+      log.info("scheduled_five_minute_complete");
     }
 
     log.debug("scheduled_cron_complete", { cron });

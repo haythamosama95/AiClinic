@@ -43,7 +43,15 @@ vi.mock("cloudflare:workers", () => {
       this.env = env;
     }
   }
-  return { DurableObject, env: runtimeEnv };
+  class WorkerEntrypoint {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  }
+  return { DurableObject, WorkerEntrypoint, env: runtimeEnv };
 });
 
 vi.mock("../src/adapter", () => ({

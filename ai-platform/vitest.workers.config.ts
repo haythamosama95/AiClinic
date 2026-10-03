@@ -1,4 +1,5 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { kCurrentWorker } from "miniflare";
 import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-date";
 
 export default defineWorkersConfig({
@@ -67,6 +68,16 @@ export default defineWorkersConfig({
           bindings: {
             OPERATOR_BEARER_TOKEN: "test-operator-bearer-token",
             OPERATOR_ID: "operator-test-principal",
+            TEST_CLOCK: "1",
+            ACCESS_TEAM_DOMAIN: "access.test",
+            ACCESS_AUD: "vendor-access-aud",
+            WEBAUTHN_RP_ID: "ops.vendor.test",
+            WEBAUTHN_ORIGIN: "https://ops.vendor.test",
+            HEARTBEAT_URL: "https://heartbeat.test/ping",
+            ALERT_EMAIL_TO: "alerts@clinic.invalid",
+          },
+          serviceBindings: {
+            VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },
           },
         },
       },

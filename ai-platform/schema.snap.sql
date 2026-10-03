@@ -39,6 +39,12 @@ CREATE TABLE ai_request (
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
 
+CREATE TABLE assertion_used (
+  challenge_sha256 TEXT PRIMARY KEY NOT NULL,
+  credential_id TEXT NOT NULL,
+  used_at TEXT NOT NULL
+);
+
 CREATE TABLE capability_grant (
   grant_id TEXT PRIMARY KEY NOT NULL,
   scope TEXT NOT NULL,
@@ -58,7 +64,7 @@ CREATE TABLE control_audit (
   before_pointer TEXT,
   after_pointer TEXT,
   recorded_at TEXT NOT NULL
-);
+, actor TEXT, assertion_sha256 TEXT);
 
 CREATE TABLE credit_price (
   version TEXT PRIMARY KEY NOT NULL,
@@ -141,6 +147,17 @@ CREATE TABLE kill_switch (
   PRIMARY KEY (scope, target)
 );
 
+CREATE TABLE operator_credential (
+  credential_id TEXT PRIMARY KEY NOT NULL,
+  operator_email TEXT NOT NULL,
+  public_key_cose TEXT NOT NULL,
+  alg TEXT NOT NULL,
+  status TEXT NOT NULL,
+  activates_at TEXT NOT NULL,
+  approved_by TEXT,
+  revoked_by TEXT
+);
+
 CREATE TABLE plan (
   name TEXT PRIMARY KEY NOT NULL,
   credit_budget INTEGER NOT NULL,
@@ -149,6 +166,18 @@ CREATE TABLE plan (
   soft_threshold REAL NOT NULL,
   allowed_capabilities TEXT NOT NULL,
   status TEXT NOT NULL
+);
+
+CREATE TABLE platform_alert (
+  alert_key TEXT PRIMARY KEY NOT NULL,
+  code TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  first_at TEXT NOT NULL,
+  last_at TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  send_state TEXT NOT NULL,
+  next_send_at TEXT,
+  resolved_at TEXT
 );
 
 CREATE TABLE platform_counter (
