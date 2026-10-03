@@ -71,3 +71,31 @@ Assumptions chosen by the resolver. Each one is written into the design docs nam
 **Why:** FR-005 already records version 2 and retires version 1, and T010 reseeds that pair after every reset. A sole live version 1 would make `ver` `"2"` fail verification. T023 already names the stage 00/01/05 files this unit migrates; the rotation and publish files read the same seed, so they follow it too. The system harness drops its issuer registry when it deletes `operator_credential` and only then calls `registerIssuerKey`, after the signer is active. The e2e pool has no `TEST_CLOCK` (T011), so the harness moves that new row's `activates_at` instead of the clock. The entrypoint still promotes a pending signer only when `activates_at` is at or before now.
 
 **Amended:** `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`; `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/plan.md`; `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md`
+
+## 8. Remaining e2e assertion values after the version 2 seed
+
+**Question:** The credential-cache drop, `activates_at` promotion, and stage 00/01/05 version-2-current / version-1-retired seed are applied. `npm run test:e2e` still fails (38 failed). Which of these assertions should this unit change, and to what expected value?
+
+**Assumption:** Keep the closed seed. Version `2` stays current, version `1` stays retired, begin-rotation of version `2` is 409 `ver_already_exists`, and a sole live version `1` is not chosen. Apply that seed to stage 07, 09, and 12 as well. The platform assigns `installation_id`. `newClinic` returns a `Scenario` and its capabilities call is 200. It inserts one pending `entitlement`. A registered issuer `kid` is not installation-scoped. A refusal before `org` is resolved counts `installation_id` `"unverified"`.
+
+- S01-026, S01-029: the unauthenticated counter matches `installation_id` `"unverified"`. Expected length greater than 0 and some row `count >= 1`.
+- S03-078: delete the stored installation id. Expected status 200 and body `{}`.
+- S03-080, S03-083: expected `entitlement` count is 1.
+- S04-019: grant scope is `installationScope()` (`installation:` plus the stored id). Expected length 1 and `capability_version` `"1.0.0"`. There is no `INSTALLATION_SCOPE` constant.
+- S04-031, S04-032, S04-033, S04-037: the same through `installationGrantScope()`. Expected length 1, that scope, `capability_version` `"1.0.0"`. There is no `INSTALLATION_GRANT_SCOPE` constant.
+- S04-103, S04-104: scope is `installation:` plus the id `enrollAndEntitleI0` returns. Expected length 1 and `capability_version` `"1.0.0"` before and after the wrong bearer.
+- S05-023, S05-024, S05-025, S05-026, S05-027, S05-028, S05-033, S05-037: do not read `.status` on `newClinic`'s return. Canary of the stored id is 200.
+- S05-042, S05-043, S05-046, S05-051, S05-054, S05-058: `canary.status` stays 200 for the stored id.
+- S05-072: `excluded[0]` stays `{ provider_id: "deepseek", model_id: "deepseek-v4-flash", reason_code: "installation_excluded" }` and `chain` stays `GEMINI_ONLY_CHAIN` when the override uses the stored id.
+- S05-073: `chain` stays `GEMINI_ONLY_CHAIN` when the pin override uses the stored id.
+- S05-074: `failed.code` stays `"provider_unavailable"` when the pin override uses the stored id.
+- S05-075: `effective_cost_class` stays `"economy"` when the override uses the stored id.
+- S07-019, S12-032: `newClinic` capabilities stays 200. When the harness issuer `kid` is outside validity, `newClinic` drops that cached signer and registers a new `kid` whose window contains now. The token already minted for the closed `kid` stays 401.
+- S07-020: expected status is 200. An unregistered `kid` stays 401.
+- S07-025: expected status stays 401, and the minted `ver` is not stored (for example `"99"`), not `"2"`.
+- S07-026, S09-026: begin-rotation of `ver` `"2"` is 409 `ver_already_exists`. Open `ver` `"3"` (200, `{ ver: "3" }`), then retire `ver` `"2"` (200). The `ver` `"2"` token is then 401. Retiring `ver` `"1"` is 409 `ver_already_retired`. Do not delete version 2 or clear version 1's `retired_at`.
+- S12-057, S12-059: invoke status stays 200 with minted `ver` `"2"`. `ver` `"1"` is 401 and does not settle.
+
+**Why:** FR-005 refuses `ver` `"1"` and any unstored `ver` before `org` is resolved, and the verifier records that refusal on `installation_id` `"unverified"`. FR-008 assigns the installation id and does not insert `entitlement`; the removed enroll inserted one pending row, and `/control/entitle` still requires that pending sentinel, so `newClinic` inserts it. FR-004 accepts any registered issuer `kid` and does not bind it to one installation. Canary, delete, grants, and routing overrides already succeed for a stored installation id and return 404 `installation_not_found` for an id that was never stored. A catalog constant passed into `newClinic` is overwritten by the platform id, which is why those calls saw 404, an empty grant list, or an unfiltered chain. `newClinic` returns the scenario, not an HTTP result. The second clinic in a validity-window test reuses the harness `kid` after the test has moved that `kid` outside its window, so the next `newClinic` must register a new `kid` before its capabilities call. Opening version `"3"` and retiring version `"2"` is the rotation the seed already allows.
+
+**Amended:** `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).
