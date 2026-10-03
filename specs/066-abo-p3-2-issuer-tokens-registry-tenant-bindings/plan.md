@@ -233,9 +233,10 @@ Depends is P3.1, not none. The rows above are that unit's freezes.
 | `ai-platform/test/capability-deprecation.test.ts` | FR-015 |
 | `ai-platform/test/routing-policy-canary.test.ts` | FR-015 |
 | `ai-platform/test/entitlement.test.ts` | FR-015 |
-| `ai-platform/test/e2e/stage-00-auth-schema-cron-happy.test.ts` | FR-015, FR-017 |
-| `ai-platform/test/e2e/stage-00-boot-bindings-routing.test.ts` | FR-017 |
-| `ai-platform/test/e2e/stage-01-auth-validation.test.ts` | FR-017 |
+| `ai-platform/test/e2e/stage-00-auth-schema-cron-happy.test.ts` | FR-005, FR-015, FR-017 |
+| `ai-platform/test/e2e/stage-00-boot-bindings-routing.test.ts` | FR-005, FR-017 |
+| `ai-platform/test/e2e/stage-01-auth-validation.test.ts` | FR-005, FR-017 |
+| `ai-platform/test/e2e/stage-01-rotation-retire.test.ts` | FR-005, FR-017 |
 | `ai-platform/test/e2e/stage-03-enroll-validation.test.ts` | FR-015 |
 | `ai-platform/test/e2e/stage-03-lifecycle-rotate.test.ts` | FR-015 |
 | `ai-platform/test/e2e/stage-03-revoke-delete-purge.test.ts` | FR-015 |
@@ -248,6 +249,7 @@ Depends is P3.1, not none. The rows above are that unit's freezes.
 | `ai-platform/test/e2e/stage-05-filters-kill-switch.test.ts` | FR-017 |
 | `ai-platform/test/e2e/stage-05-rollback-serving.test.ts` | FR-017 |
 | `ai-platform/test/e2e/stage-05-canary-promote.test.ts` | FR-017 |
+| `ai-platform/test/e2e/stage-05-publish.test.ts` | FR-005, FR-017 |
 | `ai-platform/test/e2e/stage-07-etag-cache.test.ts` | FR-017 |
 | `ai-platform/test/e2e/stage-07-entitlement-filters.test.ts` | FR-017 |
 | `ai-platform/test/e2e/stage-07-routing-identity.test.ts` | FR-017 |
@@ -276,7 +278,7 @@ Depends is P3.1, not none. The rows above are that unit's freezes.
 
 `ISSUER_ID` is added under `[env.development.vars]`, `[env.staging.vars]`, and `[env.production.vars]` with the value `issuer-test`, and to the workers and e2e Miniflare bindings. `registerIssuerKey` stores that var on `issuer`. The verifier compares `iss` to it. `vitest.e2e.config.ts` also gains the H-AP `VENDOR` self binding and the existing Access, WebAuthn, and `ALERT_EMAIL_TO` bindings so `newClinic()` can call `registerIssuerKey`. `TEST_CLOCK` stays only on `vitest.workers.config.ts`.
 
-`newClinic()` registers one harness issuer key through `vendorCall("registerIssuerKey", …)` and mints issuer tokens (`iss` = `ISSUER_ID`, `aud` = `ai-platform`, `ver` = `"2"`, header `alg` `EdDSA`, `kid`, `typ` `JWT`). It presents one token on `GET /v1/capabilities` with `Aip-Contract-Version: 1`, reads `installation_id` from `tenant_binding`, and writes that id back onto the scenario. `entitleScenario` then uses that id. The platform assigns the id. Callers stop sending a chosen installation id to enroll. `setupPromotedFakePolicy` calls `newClinic()` and then `entitleScenario`.
+`newClinic()` registers one harness issuer key through `vendorCall("registerIssuerKey", …)` and mints issuer tokens (`iss` = `ISSUER_ID`, `aud` = `ai-platform`, `ver` = `"2"`, header `alg` `EdDSA`, `kid`, `typ` `JWT`). When the e2e reset deletes `operator_credential`, it drops the cached issuer credential. The next registration bootstraps a new signer and sets that row's `activates_at` at or before wall-clock now so the existing signer-read promotion marks it `active` before `registerIssuerKey`. Issuer tokens still verify. Stage 00, 01, and 05 token-contract assertions expect version `2` current and version `1` retired, and they do not reseed a sole live version `1`. It presents one token on `GET /v1/capabilities` with `Aip-Contract-Version: 1`, reads `installation_id` from `tenant_binding`, and writes that id back onto the scenario. `entitleScenario` then uses that id. The platform assigns the id. Callers stop sending a chosen installation id to enroll. `setupPromotedFakePolicy` calls `newClinic()` and then `entitleScenario`.
 
 Suites whose subject is enroll, rotate, or revoke-key assert HTTP 404 and do not touch `installation_key`. Other enrolling suites call `newClinic()`, then the existing entitle path.
 
@@ -321,7 +323,7 @@ Tests are written and observed failing before the issuer-key methods and `Issuer
 20. Add `newClinic()` and issuer-token minting to `test/system/harness.ts`. `enrollScenario` becomes `newClinic()`. `setupPromotedFakePolicy` uses it and still calls `entitleScenario`.
 21. Point the system suites listed in Files at `newClinic()` and the returned `installation_id`.
 22. Add the same `newClinic()` behavior to `test/e2e/harness/control.ts` and mint issuer tokens from `test/e2e/harness/aat.ts`. Drop the `installation_key` fault target in `test/e2e/harness/faults.ts`.
-23. Migrate the remaining Files test rows: enrolling e2e stages call `newClinic()`; enroll, rotate, and revoke-key assertions expect 404; unit fixtures stop inserting `installation_key` and stop constructing `EnrolledKeyVerifier`. `src/worker-entry.test.ts` expects 404 for the enroll URL.
+23. Migrate the remaining Files test rows: enrolling e2e stages call `newClinic()`; enroll, rotate, and revoke-key assertions expect 404; unit fixtures stop inserting `installation_key` and stop constructing `EnrolledKeyVerifier`. `src/worker-entry.test.ts` expects 404 for the enroll URL. Stage 00, 01, and 05 token-contract assertions expect version `2` current and version `1` retired. They do not reseed a sole live version `1`.
 24. Re-run the unit command. All eight tests pass.
 25. Run `cd ai-platform && npm test && npm run test:e2e`. Earlier suites stay green (rule S2). Admission, capability, and entitlement sources are untouched, and entitle still runs after `newClinic()`.
 26. Write `quickstart.md` from the outline above.
