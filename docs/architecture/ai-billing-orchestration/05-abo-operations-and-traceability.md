@@ -62,7 +62,7 @@ Alerts go through `send_email` (02 §5), deduplicated by `alert_key` and repeate
 | AL-10 | Reconciliation finding (§3.3)                                              | ABO         | Daily        | FR-81                   |
 | AL-11 | Any grant applied: paid, complimentary, term adjustment or transfer; non-paid ones marked for attention. The body carries the decoded operation and its target (02 AD-8) | AI Platform | Once | SR-23 |
 | AL-12 | Ceiling override used                                                      | AI Platform | Once         | SR-24                   |
-| AL-13 | Issuer key, service key or operator credential registered or revoked; bootstrap credential. The body carries the decoded operation and its target | AI Platform | Once | SR-11, SR-25 |
+| AL-13 | Issuer key, service key or operator credential registered, retired, or revoked; bootstrap credential. The body carries the decoded operation and its target | AI Platform | Once | SR-11, SR-25 |
 | AL-14 | A key is within 30 days of `not_after`                                     | ABO         | Daily        | A25                     |
 | AL-15 | The backend has not pulled the feed for 5 minutes (`feedConsumerHealth`)   | ABO         | Hourly       | FR-63, 01 R-4           |
 | AL-16 | R2 bucket lock missing, or fact export more than an hour behind            | ABO         | Daily        | RC-03                   |
@@ -106,7 +106,7 @@ HP actions run the passkey ceremony in the console. "Verified by" says which sys
 | Ceiling override (second assertion)             | HP    | AI Platform | SR-24               |
 | Transfer or re-create identity; release held terms; void a grant | HP | AI Platform | FR-72, SR-25, 01 I-3 |
 | Publish or retire a plan version; set the ceiling policy | HP | AI Platform | FR-01, SR-24     |
-| Register or revoke an issuer key, service key or operator credential | HP | AI Platform | SR-11, SR-25 |
+| Register, retire, or revoke an issuer key; register or revoke a service key or operator credential | HP | AI Platform | SR-11, SR-25 |
 | Delete an installation                          | HP    | AI Platform | A24                 |
 | Erase a tenant's payer contact data and raw provider bodies (03 §2.3) | HP | ABO   | 01 R-9              |
 

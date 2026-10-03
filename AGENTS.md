@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting/plan.md`
-Feature spec: `specs/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting/spec.md`
-Branch: `ai/065-abo-p3-1-vendor-entrypoint-authorization-operator-alerting`
+Active feature plan: `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/plan.md`
+Feature spec: `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`
+Branch: `ai/066-abo-p3-2-issuer-tokens-registry-tenant-bindings`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

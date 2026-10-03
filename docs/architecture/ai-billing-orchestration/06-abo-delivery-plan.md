@@ -443,12 +443,12 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
 
 ### P3.2 — Issuer tokens, issuer-key registry and tenant bindings
 - **Spec** 066 · **Codebase** ai-platform · **Size** M · **Depends** P3.1 · **Parallel** P4.1
-- **Read:** 02 §3.2; 04 §2.1; 03 §3.2 rows `issuer_key`, `tenant_binding`, `installation`; 04 §1.3 rows register/revokeIssuerKey, listIssuerKeys;
+- **Read:** 02 §3.2; 04 §2.1; 03 §3.2 rows `issuer_key`, `tenant_binding`, `installation`; 04 §1.3 rows register/retire/revokeIssuerKey, listIssuerKeys;
   04 §6.1 rows identity, config-cache, discovery, journal (`authenticateGetRequest`), platform-vocabulary, control/lifecycle (enroll removal), control/token-contract;
   02 §6 row K-2; 05 §2 row AL-20.
 - **Code:** `src/identity/index.ts:236-383`, `src/config-cache/index.ts`, `src/control/lifecycle.ts:201-467`, `migrations/20260731120000_platform_schema.sql`, `migrations/20260803120000_token_contract.sql`.
 - **Implements:**
-  - `issuer_key`; `registerIssuerKey`/`revokeIssuerKey` (HP, AL-13); `listIssuerKeys` (M).
+  - `issuer_key`; `registerIssuerKey`/`retireIssuerKey`/`revokeIssuerKey` (HP, AL-13); `listIssuerKeys` (M). `retireIssuerKey` is the only writer of `retiring`.
   - Issuer-token verifier replacing `EnrolledKeyVerifier`: `kid` active or retiring within validity, `iss = ISSUER_ID`, `aud` per route,
     lifetime ≤ 600 s, skew, `ver = "2"` via `token_contract` (insert 2, retire 1); existing replay rules.
   - `tenant_binding`: the first valid token for an unknown org creates installation + binding epoch 1; at most 50 creations per day
@@ -464,7 +464,7 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   - E2E-P3.2-02 Unknown `kid` → 401 `unauthenticated`; a `kid` revoked through HP → rejected after one cache TTL.
   - E2E-P3.2-03 `aud=abo` or `aud=ai-platform-feed`, lifetime 601 s, or `ver="1"` → 401 [TB-3].
   - E2E-P3.2-04 Two active `kid`s: tokens of both accepted; a retiring `kid` accepted until `not_after` [A13, K-2].
-  - E2E-P3.2-05 51st new-org creation within 24 h → refused + AL-20.
+  - E2E-P3.2-05 51st new-org creation within 24 h → 401 `unauthenticated`; nothing created; AL-20.
   - E2E-P3.2-06 `GET /v1/requests/{ref}` with the owner org's token → 200; another org's token → not found.
   - E2E-P3.2-07 `/control/installations/*/enroll` → 404; no `installation_key` table.
   - E2E-P3.2-08 AL-13 on issuer-key registration carries the decoded operation and `kid`.
@@ -873,9 +873,9 @@ frozen, and always call the real platform worker over the service binding (rules
 
 ### P4.9 — Console relays: platform configuration, registries and bootstrap
 - **Spec** 084 · **Codebase** abo · **Size** M · **Depends** P4.7, P3.10 · **Parallel** P4.8 (different files), P5.x
-- **Read:** 05 §3.2 (rows kill switches/routing, plan version/ceiling policy, register/revoke keys and credentials); 04 §1.3 rows kill switch…token contract,
-  supportLookup, publish/retirePlanVersion, setCeilingPolicy, register/revoke keys, register/revokeOperatorCredential; 02 §6 (table); 04 §6.6 (bootstrap script row).
-- **Implements:** console pages for plan-version publish/retire, ceiling policy, issuer and service key register/revoke, operator credential bootstrap and
+- **Read:** 05 §3.2 (rows kill switches/routing, plan version/ceiling policy, register/retire/revoke keys and credentials); 04 §1.3 rows kill switch…token contract,
+  supportLookup, publish/retirePlanVersion, setCeilingPolicy, register/retire/revokeIssuerKey, register/revoke service keys, register/revokeOperatorCredential; 02 §6 (table); 04 §6.6 (bootstrap script row).
+- **Implements:** console pages for plan-version publish/retire, ceiling policy, issuer-key register/retire/revoke and service-key register/revoke, operator credential bootstrap and
   registration (WebAuthn `create` → attestation + approving assertion) and revocation, kill switches, routing policy (publish/canary/promote/rollback, replacing
   `bootstrap-routing-policy.sh`), cohort, capability lifecycle, token contract, support lookup by reference.
 - **E2E (H-XW):**
