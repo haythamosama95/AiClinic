@@ -109,3 +109,13 @@ Assumptions chosen by the resolver. Each one is written into the design docs nam
 **Why:** The closed window is on `issuer_key`, and the operator credential row is still present and active. `registerIssuerKey` is class HP, so the assertion comes from that existing credential. 04 §1.3 returns `assertion_required` for a second `registerOperatorCredential` that omits the approving assertion, and a registration that includes one inserts a new row `pending` for 24 hours. That second credential is a larger path than signing the new `kid` with the credential that is already active. Escalation 7 still bootstraps a signer only when a reset deletes `operator_credential` and the table is empty. Escalation 8 still requires the new `kid`, capabilities 200, and 401 for the token of the closed `kid`. Two issuer kids stay allowed (FR-013).
 
 **Amended:** `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).
+
+## 10. SX-032 settled payload object
+
+**Question:** SX-032 settles a completed request and expects its payload object in R2 before the purge. `r2Exists(pointer)` is false. Should this unit change that assertion, or is the missing object a harness defect this unit must fix?
+
+**Assumption:** The assertion stays `expect(await r2Exists(pointer)).toBe(true)`. A completed settlement still writes one payload object before any purge. The key is `request/{requestId}/envelope`, stored on `ai_request.payload_pointer`, and that key is the pointer `settleCompleted` checks. The write runs in `waitUntil` after SSE close, and `settleCompleted` currently reads R2 once after `flushBackgroundWork(200)`, before that write is visible on `env.R2`. The missing object is a harness defect. This unit makes `settleCompleted` wait until `r2Exists` sees that object, the same wait stage 11 uses for a completed envelope. The assertion value stays true. The later SX-032 check that a non-aged purge leaves that same object in place stays true.
+
+**Why:** Platform §7.4 and pipeline stage 16 write exactly one R2 payload envelope per completed request, after the response. P3.2 adds issuer tokens and tenant bindings and does not remove that write. Stage 11 already waits for the same post-response envelope and keeps `r2Exists` true. Escalations 7–9 cover the issuer credential and the version seed. They leave payload storage unchanged. The settled pointer is present before the purge.
+
+**Amended:** `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/tasks.md` (T023); `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md` (FR-017).
