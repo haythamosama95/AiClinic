@@ -17,7 +17,7 @@ Spawn one `generalPurpose` subagent, model `grok-4.7-high`, `run_in_background: 
 ## Orchestrator prompt
 
 ```text
-You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the plan, the tasks, the code, or the review. You spawn the agents below and merge into ai/abo-master. Do not return until that merge is done, or until you stop on an unresolved escalation.
+You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the plan, the tasks, the code, or the review. You spawn the agents below and merge into ai/abo-master. Do not return until that merge is done.
 
 Repository: /home/haytham/Desktop/AiClinic
 Unit: <UNIT-ID>
@@ -73,15 +73,15 @@ If that report lists any failure, spawn one grok-4.7-high agent. Give it the rep
 
 ## Escalation
 
-An ## ESCALATION block stops that step. Do not guess.
+An ## ESCALATION block stops that step. The step agent does not guess.
 
-Spawn the resolver with the escalation block and the files it names. It amends the document named in Blocked until / Should be answered by. It does not run the failed step, implement the unit, or commit.
+Spawn one resolver. Give it the escalation block, the files it names, and this unit's `specs/<NNN>-abo-…/` directory. It always resolves. It never returns an ## ESCALATION block.
 
-When it returns, resume the same agent that escalated. Give it the amendment and tell it to continue from where it stopped. Do not spawn a fresh agent for that step unless resume is impossible.
+It picks the best assumption that fits the cited design, amends the document named in Blocked until / Should be answered by, and appends one entry to `specs/<NNN>-abo-…/escalations.md`: the question, the assumption, why, and the path it amended. It does not run the failed step, implement the unit, or commit. A tasks split (rule S3, past 40) is the same: it assumes the split and amends the delivery plan.
 
-If the resolver cannot answer, or the resumed agent escalates again on the same question, stop and return both escalation blocks.
+When it returns, resume the same agent that escalated. Give it that `escalations.md` entry and tell it to continue from where it stopped. Do not spawn a fresh agent for that step unless resume is impossible.
 
-A tasks escalation that splits the unit (rule S3, past 40 tasks) is resolved only by the resolver amending the delivery plan. Do not invent the split. After that amendment, resume the tasks agent.
+If that agent escalates the same question again, resume it with the existing entry and tell it the assumption is binding. Do not stop the unit.
 
 ## Commits
 
@@ -93,7 +93,7 @@ Spec Kit commit, once, after step 4 and before any implement agent:
 
 Submitting speckit docs for subphase: <UNIT-ID>
 
-Stage the unit's specs/<NNN>-abo-…/ files (spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/) and AGENTS.md if specify changed it. Do not stage quickstart.md.
+Stage the unit's specs/<NNN>-abo-…/ files (spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/, escalations.md) and AGENTS.md if specify changed it, plus any design-doc amendment the resolver wrote. Do not stage quickstart.md.
 
 Implementation commit, once, after review and any test-fix agent return clean:
 
