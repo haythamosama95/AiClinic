@@ -8,7 +8,8 @@ import { noopLogger, type Logger } from "../logger";
 
 export type ConfigEntityKind =
   | "installations"
-  | "keys"
+  | "issuer_keys"
+  | "tenant_bindings"
   | "entitlements"
   | "grants"
   | "kill_switches"
@@ -197,8 +198,8 @@ async function loadRoutingPolicyDocument(
 }
 
 /**
- * Production D1Reader for enrolled-key verification and related config loads.
- * Covers installations, keys, entitlements, grants, kill_switches,
+ * Production D1Reader for issuer-token verification and related config loads.
+ * Covers installations, issuer_keys, tenant_bindings, entitlements, grants, kill_switches,
  * active_routing_policy (with optional R2 document load), and token_contracts.
  * Reader keys are `${kind}:${key}` (see loadConfig).
  */
@@ -225,9 +226,21 @@ export function createD1ConfigReader(
             .first<D1Row>();
           return row ?? "miss";
         }
-        case "keys": {
+        case "issuer_keys": {
           const row = await db
-            .prepare("SELECT * FROM installation_key WHERE key_id = ?")
+            .prepare("SELECT * FROM issuer_key WHERE kid = ?")
+            .bind(key)
+            .first<D1Row>();
+          return row ?? "miss";
+        }
+        case "tenant_bindings": {
+          const row = await db
+            .prepare(
+              `SELECT * FROM tenant_binding
+               WHERE org_id = ? AND status = 'active'
+               ORDER BY epoch DESC
+               LIMIT 1`,
+            )
             .bind(key)
             .first<D1Row>();
           return row ?? "miss";
@@ -400,8 +413,9 @@ export async function loadConfig(
   kind: ConfigEntityKind,
   key: string,
   logger: Logger = noopLogger,
+  nowMs: number = Date.now(),
 ): Promise<D1Row> {
-  const now = Date.now();
+  const now = nowMs;
   const cached = cache.consult(kind, key, now);
   if (cached !== undefined) {
     return cached;
@@ -419,7 +433,7 @@ export async function loadConfig(
 
     // Stamp expiry from store time, not the pre-read `now`. TTL 0 plus an
     // async D1 read would otherwise expire before the same-request consult.
-    cache.remember(kind, key, row);
+    cache.remember(kind, key, row, nowMs);
     return cloneRow(row);
   });
 }

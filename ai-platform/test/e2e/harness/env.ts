@@ -14,6 +14,27 @@ declare module "cloudflare:test" {
     ENVIRONMENT: string;
     CONFIG_CACHE_TTL_MS?: string;
     LOG_VERBOSITY?: string;
+    ISSUER_ID?: string;
+    ACCESS_TEAM_DOMAIN: string;
+    ACCESS_AUD: string;
+    WEBAUTHN_RP_ID: string;
+    WEBAUTHN_ORIGIN: string;
+    VENDOR: {
+      registerOperatorCredential(
+        args: Record<string, unknown>,
+      ): Promise<{
+        result: string;
+        code: string;
+        detail: string;
+      }>;
+      registerIssuerKey(
+        args: Record<string, unknown>,
+      ): Promise<{
+        result: string;
+        code: string;
+        detail: string;
+      }>;
+    };
   }
 }
 
@@ -36,13 +57,18 @@ export const POLICY_ID = "standard";
 export const POLICY_VERSION = "1";
 export const POLICY_REF = "routing/standard";
 export const AAT_AUDIENCE = "ai-platform";
-export const TOKEN_CONTRACT_VER = "1";
+export const TOKEN_CONTRACT_VER = "2";
+export const ISSUER_ID =
+  (env as { ISSUER_ID?: string }).ISSUER_ID ?? "issuer-test";
+export const WEBAUTHN_RP_ID = env.WEBAUTHN_RP_ID;
+export const WEBAUTHN_ORIGIN = env.WEBAUTHN_ORIGIN;
 
 export const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
 export const PLATFORM_TABLES = [
   "installation",
-  "installation_key",
+  "issuer_key",
+  "tenant_binding",
   "entitlement",
   "capability_grant",
   "routing_policy",

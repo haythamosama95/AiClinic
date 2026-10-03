@@ -2,8 +2,9 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import { ConfigCache, createD1ConfigReader } from "../src/config-cache";
-import { EnrolledKeyVerifier, type VerifyContext } from "../src/identity";
+import { IssuerTokenVerifier, type VerifyContext } from "../src/identity";
 import { assertControlAudit } from "./helpers/control-audit-assert";
 
 declare module "cloudflare:test" {
@@ -20,6 +21,7 @@ const AUDIENCE = "ai-platform";
 const CLOCK_SKEW_SECONDS = 60;
 const NOW = 1_720_000_450;
 
+const ISSUER_ID = "issuer-test";
 const FIXTURE_ISS = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 const FIXTURE_KID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
 const FIXTURE_SUB = "c1000000-0000-4000-8000-000000000001";
@@ -106,7 +108,8 @@ async function countAcceptedContracts(): Promise<number> {
 async function clearTokenContractTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM control_audit"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM token_contract"),
     env.DB.prepare(
@@ -194,7 +197,7 @@ async function mintToken(
   claims: Partial<AatClaims> = {},
 ): Promise<string> {
   const payload: AatClaims = {
-    iss: FIXTURE_ISS,
+    iss: ISSUER_ID,
     aud: AUDIENCE,
     sub: FIXTURE_SUB,
     org: FIXTURE_ORG,
@@ -204,7 +207,7 @@ async function mintToken(
     jti: FIXTURE_JTI,
     iat: NOW - 30,
     exp: NOW + 300,
-    ver: "1",
+    ver: NEW_VER,
     ...claims,
   };
   const header = { alg: "EdDSA", kid: keypair.kid };
@@ -221,21 +224,25 @@ async function mintToken(
 
 async function seedActiveInstallation(keypair: TestKeypair): Promise<void> {
   const enrolledAt = new Date(NOW * 1000).toISOString();
-  const validFrom = new Date((NOW - 3600) * 1000).toISOString();
-  await env.DB.prepare(
-    `INSERT INTO installation
-      (installation_id, org_id, display_name, status, region, enrolled_at)
-     VALUES (?, ?, ?, 'active', ?, ?)`,
-  )
-    .bind(FIXTURE_ISS, FIXTURE_ORG, "J4 Clinic", "us-east-1", enrolledAt)
-    .run();
-  await env.DB.prepare(
-    `INSERT INTO installation_key
-      (key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at)
-     VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
-  )
-    .bind(keypair.kid, FIXTURE_ISS, keypair.publicKeyB64, validFrom)
-    .run();
+  const notBefore = new Date((NOW - 3600) * 1000).toISOString();
+  const notAfter = new Date((NOW + 86400) * 1000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO installation
+        (installation_id, org_id, display_name, status, region, enrolled_at)
+       VALUES (?, ?, ?, 'active', ?, ?)`,
+    ).bind(FIXTURE_ISS, FIXTURE_ORG, "J4 Clinic", "us-east-1", enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO tenant_binding
+        (org_id, installation_id, epoch, status, created_at)
+       VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(FIXTURE_ORG, FIXTURE_ISS, enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO issuer_key
+        (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+       VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+    ).bind(keypair.kid, ISSUER_ID, keypair.publicKeyB64, notBefore, notAfter),
+  ]);
 }
 
 function buildD1VerifyContext(): VerifyContext {
@@ -245,12 +252,14 @@ function buildD1VerifyContext(): VerifyContext {
     now: NOW,
     cache: new ConfigCache(),
     reader: createD1ConfigReader(env.DB),
+    issuerId: ISSUER_ID,
   };
 }
 
 beforeAll(async () => {
   await applySql(env.DB, migrationSql);
   await applySql(env.DB, tokenContractMigrationSql);
+  await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
 });
 
 beforeEach(async () => {
@@ -384,7 +393,7 @@ describe("T-J4-10 rotation_requires_no_re_enrollment", () => {
       .first<{ retired_at: string | null }>();
     expect(priorStillAccepted?.retired_at).toBeNull();
 
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const ctx = buildD1VerifyContext();
     const tokenVer1 = await mintToken(keypair, {
       ver: PRIOR_VER,
@@ -611,7 +620,7 @@ describe("d1_config_reader_token_contracts_identity_path", () => {
       ).ok,
     ).toBe(true);
 
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const acceptedCtx = buildD1VerifyContext();
     const acceptedToken = await mintToken(keypair, {
       ver: PRIOR_VER,

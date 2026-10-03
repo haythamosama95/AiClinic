@@ -4,13 +4,12 @@
 
 import { env, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { INSTALLATION_KEY_TTL_DAYS } from "../../src/control/lifecycle";
 import {
   applyAllMigrations,
   clearConfigCache,
   count,
   enrollPayload,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
@@ -68,21 +67,21 @@ async function generateKeypair(kid: string): Promise<TestKeypair> {
   };
 }
 
-async function ensureInstallationKeyActive(installationId: string): Promise<void> {
+async function ensureIssuerKeyActive(kid: string): Promise<void> {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const key = await env.DB.prepare(
-      "SELECT valid_from FROM installation_key WHERE installation_id = ? AND revoked_at IS NULL ORDER BY valid_from DESC LIMIT 1",
+      "SELECT not_before FROM issuer_key WHERE kid = ? AND status = 'active'",
     )
-      .bind(installationId)
-      .first<{ valid_from: string }>();
-    const validFromMs = Date.parse(String(key?.valid_from));
+      .bind(kid)
+      .first<{ not_before: string }>();
+    const notBeforeMs = Date.parse(String(key?.not_before));
     const verifierNowMs = Math.floor(Date.now() / 1000) * 1000;
-    if (!Number.isNaN(validFromMs) && verifierNowMs >= validFromMs) {
+    if (!Number.isNaN(notBeforeMs) && verifierNowMs >= notBeforeMs) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("installation key not yet within validity window");
+  throw new Error("issuer key not yet within validity window");
 }
 
 async function mintAatWithKeypair(
@@ -90,9 +89,9 @@ async function mintAatWithKeypair(
   keypair: TestKeypair,
   overrides: { ver?: string } = {},
 ): Promise<string> {
-  await ensureInstallationKeyActive(scenario.installationId);
+  await ensureIssuerKeyActive(keypair.kid);
   const payload = {
-    iss: scenario.installationId,
+    iss: ISSUER_ID,
     aud: "ai-platform",
     sub: scenario.actorId,
     org: scenario.orgId,
@@ -102,7 +101,7 @@ async function mintAatWithKeypair(
     jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000) - 30,
     exp: Math.floor(Date.now() / 1000) + 300,
-    ver: "1",
+    ver: "2",
     ...overrides,
   };
   const header = { alg: "EdDSA", kid: keypair.kid };
@@ -137,7 +136,14 @@ async function controlPost(
     }),
   );
   const text = await response.text();
-  const json = text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+  let json: Record<string, unknown> = {};
+  if (text.length > 0) {
+    try {
+      json = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      json = {};
+    }
+  }
   return { status: response.status, json };
 }
 
@@ -198,7 +204,7 @@ describe("lifecycle interplay", () => {
 
   it("SYS-2.2 — Illegal transitions", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
 
     const firstSuspend = await operatorFetch(
       `/control/installations/${scenario.installationId}/suspend`,
@@ -241,88 +247,25 @@ describe("lifecycle interplay", () => {
     expect(resumeAfterDelete.json.error).toBe("illegal_lifecycle_transition");
   });
 
-  it("SYS-2.3 — Rotate additive overlap and revoke-key", async () => {
+  it("SYS-2.3 — Rotate and revoke-key routes removed", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
-    const k0Keypair = scenario.keypair;
-    const k0Token = await mintAat(scenario);
 
-    const k0Invoke = await invoke(scenario, { token: k0Token });
-    expect(k0Invoke.status).toBe(200);
-    assertInvokeCompleted(k0Invoke.events);
-
-    const k1Kid = crypto.randomUUID();
-    const k1Keypair = await generateKeypair(k1Kid);
     const rotated = await operatorFetch(
       `/control/installations/${scenario.installationId}/rotate`,
       {
-        kid: k1Kid,
-        public_key: k1Keypair.publicKeyB64,
+        kid: crypto.randomUUID(),
+        public_key: scenario.keypair.publicKeyB64,
         algorithm: "EdDSA",
       },
     );
-    expect(rotated.status).toBe(200);
-    clearConfigCache();
+    expect(rotated.status).toBe(404);
 
-    const k1Key = await env.DB.prepare(
-      "SELECT key_id, valid_from, valid_until, revoked_at FROM installation_key WHERE key_id = ?",
-    )
-      .bind(k1Kid)
-      .first<{
-        key_id: string;
-        valid_from: string;
-        valid_until: string;
-        revoked_at: string | null;
-      }>();
-    expect(k1Key?.revoked_at).toBeNull();
-    const expectedUntil = new Date(
-      Date.parse(k1Key!.valid_from) + INSTALLATION_KEY_TTL_DAYS * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    expect(k1Key?.valid_until).toBe(expectedUntil);
-
-    const k0Row = await env.DB.prepare(
-      "SELECT revoked_at FROM installation_key WHERE key_id = ?",
-    )
-      .bind(k0Keypair.kid)
-      .first<{ revoked_at: string | null }>();
-    expect(k0Row?.revoked_at).toBeNull();
-
-    const k0AfterRotateToken = await mintAatWithKeypair(scenario, k0Keypair);
-    const k0AfterRotate = await invoke(scenario, { token: k0AfterRotateToken });
-    expect(k0AfterRotate.status).toBe(200);
-    assertInvokeCompleted(k0AfterRotate.events);
-
-    await ensureInstallationKeyActive(scenario.installationId);
-    const k1Token = await mintAatWithKeypair(scenario, k1Keypair);
-    const k1Invoke = await invoke(scenario, { token: k1Token });
-    expect(k1Invoke.status).toBe(200);
-    assertInvokeCompleted(k1Invoke.events);
-
-    const revokeK0 = await operatorFetch(
+    const revokeKey = await operatorFetch(
       `/control/installations/${scenario.installationId}/revoke-key`,
-      { kid: k0Keypair.kid },
+      { kid: scenario.kid },
     );
-    expect(revokeK0.status).toBe(200);
-    clearConfigCache();
-
-    const k0AfterRevokeToken = await mintAatWithKeypair(scenario, k0Keypair);
-    const k0AfterRevoke = await invoke(scenario, { token: k0AfterRevokeToken });
-    expect(k0AfterRevoke.status).toBe(401);
-    expect(k0AfterRevoke.body?.code).toBe("unauthenticated");
-
-    const repeatRevoke = await operatorFetch(
-      `/control/installations/${scenario.installationId}/revoke-key`,
-      { kid: k0Keypair.kid },
-    );
-    expect(repeatRevoke.status).toBe(409);
-    expect(repeatRevoke.json.error).toBe("key_already_revoked");
-
-    const revokeLast = await operatorFetch(
-      `/control/installations/${scenario.installationId}/revoke-key`,
-      { kid: k1Kid },
-    );
-    expect(revokeLast.status).toBe(409);
-    expect(revokeLast.json.error).toBe("cannot_revoke_last_active_key");
+    expect(revokeKey.status).toBe(404);
   });
 
   it("SYS-2.4 — Delete then purge", async () => {
@@ -371,9 +314,6 @@ describe("lifecycle interplay", () => {
       await count("installation", "installation_id = ?", [scenario.installationId]),
     ).toBe(0);
     expect(
-      await count("installation_key", "installation_id = ?", [scenario.installationId]),
-    ).toBe(0);
-    expect(
       await count("entitlement", "installation_id = ?", [scenario.installationId]),
     ).toBe(0);
     expect(
@@ -404,30 +344,31 @@ describe("lifecycle interplay", () => {
     expect(afterPurge.body?.code).toBe("unauthenticated");
   });
 
-  it("SYS-2.5 — Re-enroll after purge is fresh", async () => {
+  it("SYS-2.5 — newClinic after purge is fresh", async () => {
     const scenario = await newScenario();
     await setupPromotedFakePolicy(scenario);
     await operatorFetch(`/control/installations/${scenario.installationId}/delete`, {});
     await operatorFetch(`/control/installations/${scenario.installationId}/purge`, {});
     clearConfigCache();
 
-    const reEnrolled = await enrollScenario(scenario);
-    expect(reEnrolled.status).toBe(200);
+    const fresh = await newScenario();
+    fresh.orgId = crypto.randomUUID();
+    await newClinic(fresh);
 
-    const entitlement = await getEntitlement(scenario.installationId);
+    const entitlement = await getEntitlement(fresh.installationId);
     expect(entitlement?.status).toBe("pending");
     expect(entitlement?.request_quota).toBe(0);
     expect(entitlement?.allowed_capabilities).toBe("[]");
 
-    const token = await mintAat(scenario);
-    const gated = await invoke(scenario, { token });
+    const token = await mintAat(fresh);
+    const gated = await invoke(fresh, { token });
     expect(gated.status).toBe(403);
     expect(gated.body?.code).toBe("forbidden_capability");
   });
 
   it("SYS-2.6 — Operator auth matrix", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const staffToken = await mintAat(scenario);
     const rotateKid = crypto.randomUUID();
@@ -509,28 +450,43 @@ describe("lifecycle interplay", () => {
       },
     ];
 
+    const removedRoutes = new Set(["enroll", "rotate", "revoke-key"]);
+
     for (const route of routes) {
       const auditBefore = await count("control_audit");
+      const expectNotFound = removedRoutes.has(route.label);
 
       const noBearer = await controlPost(route.path, route.body);
-      expect(noBearer.status, `${route.label} no bearer`).toBe(401);
-      expect(noBearer.json.error).toBe("unauthorized");
+      expect(noBearer.status, `${route.label} no bearer`).toBe(
+        expectNotFound ? 404 : 401,
+      );
+      if (!expectNotFound) {
+        expect(noBearer.json.error).toBe("unauthorized");
+      }
 
       const wrongBearer = await controlPost(
         route.path,
         route.body,
         "Bearer definitely-not-the-operator-token",
       );
-      expect(wrongBearer.status, `${route.label} wrong bearer`).toBe(401);
-      expect(wrongBearer.json.error).toBe("unauthorized");
+      expect(wrongBearer.status, `${route.label} wrong bearer`).toBe(
+        expectNotFound ? 404 : 401,
+      );
+      if (!expectNotFound) {
+        expect(wrongBearer.json.error).toBe("unauthorized");
+      }
 
       const staffBearer = await controlPost(
         route.path,
         route.body,
         `Bearer ${staffToken}`,
       );
-      expect(staffBearer.status, `${route.label} staff AAT`).toBe(401);
-      expect(staffBearer.json.error).toBe("unauthorized");
+      expect(staffBearer.status, `${route.label} staff AAT`).toBe(
+        expectNotFound ? 404 : 401,
+      );
+      if (!expectNotFound) {
+        expect(staffBearer.json.error).toBe("unauthorized");
+      }
 
       const auditAfter = await count("control_audit");
       expect(auditAfter, `${route.label} audit unchanged`).toBe(auditBefore);

@@ -6,7 +6,7 @@ import {
   CAPABILITY_VERSION,
   controlFetch,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   flushBackgroundWork,
@@ -142,9 +142,8 @@ async function enrollAndEntitle(
   entitle: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, entitle);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, entitle);
   expect(entitled.status).toBe(200);
   return scenario;
 }
@@ -274,7 +273,21 @@ async function settleCompleted(): Promise<{
   const scenario = await provisionHappyPath();
   const jti = crypto.randomUUID();
   const idempotencyKey = `idem-s12-057-${crypto.randomUUID()}`;
-  const token = await mintAat(scenario, { claims: { jti, ver: "1" } });
+  const retired = await mintAat(scenario, { claims: { ver: "1" } });
+  const retiredInvoke = await postRequest(scenario, {
+    token: retired,
+    idempotencyKey: `idem-s12-057-retired-${crypto.randomUUID()}`,
+    traceId: "s12-057-retired",
+    body: visitSummaryInvokeBody(scenario),
+  });
+  expect(retiredInvoke.status).toBe(401);
+  expect(
+    await queryOne("SELECT request_id FROM ai_request WHERE installation_id = ?", [
+      scenario.installationId,
+    ]),
+  ).toBeNull();
+
+  const token = await mintAat(scenario, { claims: { jti, ver: "2" } });
   const policyRow = await loadServingPolicyRow();
   pinServingRoutingPolicy(policyRow, [scenario.installationId]);
   const result = await postRequest(scenario, {
@@ -301,9 +314,8 @@ async function settleCompleted(): Promise<{
 
 async function enrollThrowaway(): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  return scenario;
+  await newClinic(scenario);
+return scenario;
 }
 
 function crockfordRef(prefix: string, index: number): string {

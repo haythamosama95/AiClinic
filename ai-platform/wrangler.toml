@@ -38,6 +38,7 @@ WEBAUTHN_RP_ID = "ops.vendor.test"
 WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
 
 [[env.development.send_email]]
 name = "SEND_EMAIL"
@@ -86,6 +87,7 @@ WEBAUTHN_RP_ID = "ops.vendor.test"
 WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
 
 [[env.staging.send_email]]
 name = "SEND_EMAIL"
@@ -134,6 +136,7 @@ WEBAUTHN_RP_ID = "ops.vendor.test"
 WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
+ISSUER_ID = "issuer-test"
 
 [[env.production.send_email]]
 name = "SEND_EMAIL"

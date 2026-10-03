@@ -8,8 +8,8 @@ export const PLAN_TIERS = [
 
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
-/** Only algorithm accepted for clinic installation keys and AAT verification. */
-export const INSTALLATION_KEY_ALGORITHM = "EdDSA" as const;
+/** Only algorithm accepted for issuer keys and issuer-token verification. */
+export const ISSUER_KEY_ALGORITHM = "EdDSA" as const;
 
 /** Upper bound for identifier strings stored in D1 and used as cache keys. */
 export const MAX_IDENTIFIER_LENGTH = 128;
@@ -29,7 +29,7 @@ export function isKnownPlanTier(plan: string): plan is PlanTier {
 }
 
 export function isSupportedInstallationKeyAlgorithm(algorithm: string): boolean {
-  return algorithm === INSTALLATION_KEY_ALGORITHM;
+  return algorithm === ISSUER_KEY_ALGORITHM;
 }
 
 export function isCanonicalUuid(value: string): boolean {

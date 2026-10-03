@@ -9,11 +9,20 @@ async function harnessClockMs(env: ClockEnv): Promise<number | null> {
   if (env.TEST_CLOCK !== "1" || env.DB === undefined) {
     return null;
   }
-  const row = await env.DB.prepare(
-    "SELECT now_iso FROM harness_test_clock WHERE id = ?",
-  )
-    .bind(HARNESS_CLOCK_ROW_ID)
-    .first<{ now_iso: string }>();
+  let row: { now_iso: string } | null;
+  try {
+    row = await env.DB.prepare(
+      "SELECT now_iso FROM harness_test_clock WHERE id = ?",
+    )
+      .bind(HARNESS_CLOCK_ROW_ID)
+      .first<{ now_iso: string }>();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
   if (row?.now_iso === undefined || row.now_iso.length === 0) {
     return null;
   }

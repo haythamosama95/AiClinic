@@ -17,6 +17,8 @@ import {
   seedSql,
   setCapabilityRegistry,
   type HttpResult,
+  newClinic,
+  newScenario,
 } from "./harness";
 
 beforeAll(async () => {
@@ -27,8 +29,8 @@ beforeEach(async () => {
   await resetE2eState();
 });
 
-const I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
-const I1 = "1b2e5d3f-8c4e-5f6a-ab7c-2d3e4f5a6b7c";
+let I0 = "";
+let I1 = "";
 const CAPABILITY_ID = "clinic.visit_summary";
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 const CANONICAL_UUID_RE =
@@ -155,22 +157,13 @@ async function waitForClockTick(): Promise<void> {
 }
 
 async function enroll(
-  installationId: string,
+  _installationId: string,
   plan: "professional" | "standard",
-): Promise<void> {
-  const keypair = await generateTestKeypair();
-  const result = await controlFetch(enrollPath(installationId), {
-    body: {
-      org_id: crypto.randomUUID(),
-      display_name: "Verify Clinic",
-      region: "eu-central",
-      plan,
-      public_key: keypair.publicKeyB64,
-      algorithm: "EdDSA",
-      kid: keypair.kid,
-    },
-  });
-  expect(result.status).toBe(200);
+): Promise<string> {
+  const scenario = await newScenario();
+  scenario.plan = plan;
+  await newClinic(scenario);
+  return scenario.installationId;
 }
 
 async function entitle(
@@ -186,7 +179,7 @@ async function entitle(
 }
 
 async function enrollAndEntitleI0(): Promise<void> {
-  await enroll(I0, "professional");
+  I0 = await enroll(I0, "professional");
   await entitle(I0);
 }
 
@@ -278,7 +271,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
   });
 
   it("S04-068 — Activate inserts grant when none is live", async () => {
-    await enroll(I1, "standard");
+    I1 = await enroll(I1, "standard");
     const entitlementBefore = await getEntitlement(I1);
     expect(entitlementBefore?.status).toBe("pending");
     expect(await count("capability_grant")).toBe(0);
@@ -315,7 +308,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
 
   it("S04-069 — Activate mixed cohort update and insert", async () => {
     await enrollAndEntitleI0();
-    await enroll(I1, "standard");
+    I1 = await enroll(I1, "standard");
     const i0GrantBefore = await latestGrant(installationScope(I0));
     expect(i0GrantBefore?.capability_version).toBe("1.0.0");
     expect(await getGrants(installationScope(I1))).toEqual([]);
@@ -360,7 +353,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
   });
 
   it("S04-070 — Activate dedupes duplicate installation ids", async () => {
-    await enroll(I1, "standard");
+    I1 = await enroll(I1, "standard");
     expect(await count("capability_grant")).toBe(0);
 
     const result = await controlFetch(activatePath("1.0.0"), {
@@ -462,7 +455,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
 
   it("S04-074 — Promote happy path ends cohort split", async () => {
     await enrollAndEntitleI0();
-    await enroll(I1, "professional");
+    I1 = await enroll(I1, "professional");
 
     await withTwoVersionRegistry(async () => {
       await entitle(I1, {
@@ -577,7 +570,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
   });
 
   it("S04-076 — Promote skips entitlements lacking capability", async () => {
-    await enroll(I0, "professional");
+    I0 = await enroll(I0, "professional");
     await entitle(I0, { ...REF_BODY, allowed_capabilities: [] });
 
     const entitlementBefore = await getEntitlement(I0);
@@ -614,7 +607,7 @@ describe("Stage 04 — cohort activate/promote and deprecate failures (S04-066�
   });
 
   it("S04-077 — Promote skips pending entitlements", async () => {
-    await enroll(I1, "standard");
+    I1 = await enroll(I1, "standard");
     await enrollAndEntitleI0();
     const i1EntitlementBefore = await getEntitlement(I1);
     expect(i1EntitlementBefore?.status).toBe("pending");

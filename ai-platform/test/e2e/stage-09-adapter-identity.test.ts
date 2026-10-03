@@ -8,7 +8,7 @@ import {
   clearConfigCache,
   controlFetch,
   count,
-  enrollInstallation,
+  newClinic,
   ensureInstallationKeyActive,
   generateTestKeypair,
   mintAat,
@@ -396,25 +396,12 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
 
   it("S09-018 — revoked key is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
-    const rotated = await generateTestKeypair();
-
-    const rotate = await controlFetch(
-      `/control/installations/${scenario.installationId}/rotate`,
+    await seedSql([
       {
-        body: {
-          kid: rotated.kid,
-          public_key: rotated.publicKeyB64,
-          algorithm: "EdDSA",
-        },
+        sql: "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
+        params: [scenario.kid],
       },
-    );
-    expect(rotate.status).toBe(200);
-
-    const revoke = await controlFetch(
-      `/control/installations/${scenario.installationId}/revoke-key`,
-      { body: { kid: scenario.kid } },
-    );
-    expect(revoke.status).toBe(200);
+    ]);
     clearConfigCache();
 
     const token = await mintAat(scenario);
@@ -427,16 +414,16 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
   it("S09-019 — key not yet valid is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario);
-    const original = await queryOne<{ valid_from: string }>(
-      "SELECT valid_from FROM installation_key WHERE key_id = ?",
+    const original = await queryOne<{ not_before: string }>(
+      "SELECT not_before FROM issuer_key WHERE kid = ?",
       [scenario.kid],
     );
-    expect(original?.valid_from).toEqual(expect.any(String));
+    expect(original?.not_before).toEqual(expect.any(String));
 
     const futureFrom = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_from = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_before = ? WHERE kid = ?",
         params: [futureFrom, scenario.kid],
       },
     ]);
@@ -449,8 +436,8 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
     } finally {
       await seedSql([
         {
-          sql: "UPDATE installation_key SET valid_from = ? WHERE key_id = ?",
-          params: [original?.valid_from, scenario.kid],
+          sql: "UPDATE issuer_key SET not_before = ? WHERE kid = ?",
+          params: [original?.not_before, scenario.kid],
         },
       ]);
       clearConfigCache();
@@ -460,15 +447,15 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
   it("S09-020 — key past valid_until is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
     const token = await mintAat(scenario);
-    const original = await queryOne<{ valid_until: string | null }>(
-      "SELECT valid_until FROM installation_key WHERE key_id = ?",
+    const original = await queryOne<{ not_after: string | null }>(
+      "SELECT not_after FROM issuer_key WHERE kid = ?",
       [scenario.kid],
     );
 
     const pastUntil = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_until = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_after = ? WHERE kid = ?",
         params: [pastUntil, scenario.kid],
       },
     ]);
@@ -481,8 +468,8 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
     } finally {
       await seedSql([
         {
-          sql: "UPDATE installation_key SET valid_until = ? WHERE key_id = ?",
-          params: [original?.valid_until, scenario.kid],
+          sql: "UPDATE issuer_key SET not_after = ? WHERE kid = ?",
+          params: [original?.not_after, scenario.kid],
         },
       ]);
       clearConfigCache();
@@ -492,37 +479,15 @@ describe("Stage 09 — adapter parse and identity (S09-001…S09-022)", () => {
   it("S09-021 — key bound to a different installation is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
     const second = await newScenario();
-    const enrolled = await enrollInstallation(second);
-    expect(enrolled.status).toBe(200);
+    await newClinic(second);
+    const token = await mintAat(scenario, {
+      kid: second.kid,
+      keypair: second.keypair,
+    });
 
-    const token = await mintAat(scenario);
-    const original = await queryOne<{ installation_id: string }>(
-      "SELECT installation_id FROM installation_key WHERE key_id = ?",
-      [scenario.kid],
-    );
-    expect(original?.installation_id).toBe(scenario.installationId);
-
-    await seedSql([
-      {
-        sql: "UPDATE installation_key SET installation_id = ? WHERE key_id = ?",
-        params: [second.installationId, scenario.kid],
-      },
-    ]);
-    clearConfigCache();
-
-    try {
-      const result = await postInvoke(scenario, { token });
-      assertUnauthenticated(result);
-      await assertNoRequestWrites();
-    } finally {
-      await seedSql([
-        {
-          sql: "UPDATE installation_key SET installation_id = ? WHERE key_id = ?",
-          params: [scenario.installationId, scenario.kid],
-        },
-      ]);
-      clearConfigCache();
-    }
+    const result = await postInvoke(scenario, { token });
+    assertUnauthenticated(result);
+    await assertNoRequestWrites();
   });
 
   it("S09-022 — bad Ed25519 signature is unauthenticated", async () => {

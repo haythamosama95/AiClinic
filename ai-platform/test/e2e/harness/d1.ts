@@ -11,7 +11,10 @@ import entitlementUniqueSql from "../../../migrations/20260821130000_entitlement
 import planCatalogueSql from "../../../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import invoiceMigrationSql from "../../../migrations/20260911200000_invoice.sql?raw";
+import operatorCredentialMigrationSql from "../../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import { isolateConfigCache } from "../../../src/config-cache";
+import { clearE2eIssuerRegistry } from "./aat";
 import { env, PLATFORM_TABLES } from "./env";
 
 /** Real SQL files under `ai-platform/migrations/`, in filename order. */
@@ -29,11 +32,20 @@ export const MIGRATION_SQL: readonly string[] = [
   planCatalogueSql,
   quotaWeightMigrationSql,
   invoiceMigrationSql,
+  operatorCredentialMigrationSql,
+  issuerKeyTenantBindingMigrationSql,
 ];
 
-const TOKEN_CONTRACT_SEED = {
+const TOKEN_CONTRACT_V2_SEED = {
+  ver: "2",
+  added_at: "2026-10-03T13:00:00.000Z",
+  changed_by: "seed",
+} as const;
+
+const TOKEN_CONTRACT_V1_SEED = {
   ver: "1",
   added_at: "2026-08-03T00:00:00.000Z",
+  retired_at: "2026-10-03T13:00:00.000Z",
   changed_by: "seed",
 } as const;
 
@@ -91,17 +103,25 @@ export async function listTableNames(
 }
 
 async function reseedTokenContract(db: D1Database): Promise<void> {
-  await db
-    .prepare(
-      `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
+  await db.batch([
+    db.prepare(
+      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES (?, ?, NULL, ?)`,
-    )
-    .bind(
-      TOKEN_CONTRACT_SEED.ver,
-      TOKEN_CONTRACT_SEED.added_at,
-      TOKEN_CONTRACT_SEED.changed_by,
-    )
-    .run();
+    ).bind(
+      TOKEN_CONTRACT_V2_SEED.ver,
+      TOKEN_CONTRACT_V2_SEED.added_at,
+      TOKEN_CONTRACT_V2_SEED.changed_by,
+    ),
+    db.prepare(
+      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+       VALUES (?, ?, ?, ?)`,
+    ).bind(
+      TOKEN_CONTRACT_V1_SEED.ver,
+      TOKEN_CONTRACT_V1_SEED.added_at,
+      TOKEN_CONTRACT_V1_SEED.retired_at,
+      TOKEN_CONTRACT_V1_SEED.changed_by,
+    ),
+  ]);
 }
 
 const CATALOGUE_PLAN_NAMES = [
@@ -143,6 +163,9 @@ async function resetR2(): Promise<void> {
 export async function resetPlatformState(): Promise<void> {
   const db = env.DB;
   await db.batch([
+    db.prepare("DELETE FROM assertion_used"),
+    db.prepare("DELETE FROM platform_alert"),
+    db.prepare("DELETE FROM operator_credential"),
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM grace_admission_queue"),
     db.prepare("DELETE FROM platform_counter"),
@@ -154,7 +177,8 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM routing_policy"),
     db.prepare("DELETE FROM kill_switch"),
     db.prepare("DELETE FROM entitlement"),
-    db.prepare("DELETE FROM installation_key"),
+    db.prepare("DELETE FROM tenant_binding"),
+    db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
     db.prepare("DELETE FROM invoice"),
     db.prepare("DELETE FROM credit_price"),
@@ -165,6 +189,7 @@ export async function resetPlatformState(): Promise<void> {
   await reseedCataloguePlans(db);
   await resetR2();
   isolateConfigCache.clear();
+  clearE2eIssuerRegistry();
 }
 
 /**

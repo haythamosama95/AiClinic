@@ -116,17 +116,6 @@ CREATE TABLE installation (
   enrolled_at TEXT NOT NULL
 );
 
-CREATE TABLE installation_key (
-  key_id TEXT PRIMARY KEY NOT NULL,
-  installation_id TEXT NOT NULL,
-  public_key TEXT NOT NULL,
-  algorithm TEXT NOT NULL,
-  valid_from TEXT NOT NULL,
-  valid_until TEXT,
-  revoked_at TEXT,
-  FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
-);
-
 CREATE TABLE invoice (
   installation_id TEXT NOT NULL,
   period TEXT NOT NULL,
@@ -136,6 +125,17 @@ CREATE TABLE invoice (
   status TEXT NOT NULL,
   issued_at TEXT NOT NULL,
   PRIMARY KEY (installation_id, period)
+);
+
+CREATE TABLE issuer_key (
+  kid TEXT PRIMARY KEY NOT NULL,
+  issuer TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  not_before TEXT NOT NULL,
+  not_after TEXT NOT NULL,
+  registered_by TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL
 );
 
 CREATE TABLE kill_switch (
@@ -194,6 +194,18 @@ CREATE TABLE routing_policy (
   active_from TEXT NOT NULL,
   activated_by TEXT NOT NULL, canary_installation_ids TEXT, status TEXT NOT NULL DEFAULT 'published',
   PRIMARY KEY (policy_id, version)
+);
+
+CREATE TABLE tenant_binding (
+  org_id TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  epoch INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  retired_at TEXT,
+  reason TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (org_id, epoch),
+  FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
 );
 
 CREATE TABLE token_contract (

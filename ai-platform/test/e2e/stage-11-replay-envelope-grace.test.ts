@@ -11,7 +11,7 @@ import {
   count,
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   fakePolicyDocument,
@@ -289,9 +289,8 @@ async function setupFresh(options?: {
   }
 
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(
+  await newClinic(scenario);
+const entitled = await entitleInstallation(
     scenario,
     options?.entitle ?? JULY_ENTITLE,
   );

@@ -77,6 +77,7 @@ export {
   controlHandlers,
   DEFAULT_ENTITLE_PAYLOAD,
   dispatchControl,
+  newClinic,
   enrollInstallation,
   enrollPayload,
   entitleInstallation,

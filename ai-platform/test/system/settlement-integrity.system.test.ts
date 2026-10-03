@@ -10,7 +10,7 @@ import {
   CAPABILITY_VERSION,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   flushBackgroundWork,
@@ -453,7 +453,7 @@ describe("settlement integrity", () => {
     const token = await mintAat(scenario);
 
     const other = await newScenario();
-    await enrollScenario(other);
+    await newClinic(other);
     await entitleScenario(other);
     const otherToken = await mintAat(other);
 

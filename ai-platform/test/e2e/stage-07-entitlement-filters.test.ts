@@ -11,7 +11,7 @@ import {
   clinicFetch,
   controlFetch,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   enrollPayload,
   entitleInstallation,
   getEntitlement,
@@ -68,14 +68,9 @@ function installationOnlyPayload(
   };
 }
 
-async function enrollWithPlan(
-  scenario: Scenario,
-  plan: string,
-): Promise<void> {
-  const enrolled = await enrollInstallation(scenario, {
-    payload: enrollPayload(scenario, { plan }),
-  });
-  expect(enrolled.status).toBe(200);
+async function enrollWithPlan(scenario: Scenario, plan: string): Promise<void> {
+  scenario.plan = plan;
+  await newClinic(scenario);
 }
 
 /** Catalog B0: enrolled professional installation, installation-scope grant only. */
@@ -175,7 +170,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     // Catalog D1 UPDATE: no HTTP sets valid_until; last active key cannot be revoked.
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_until = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_after = ? WHERE kid = ?",
         params: [CLOSED_VALID_UNTIL, closed.kid],
       },
     ]);
@@ -187,7 +182,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     const futureToken = await mintAat(future);
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_from = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_before = ? WHERE kid = ?",
         params: ["2099-01-01T00:00:00.000Z", future.kid],
       },
     ]);
@@ -200,7 +195,11 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     const i1 = await newScenario();
     await enrollWithPlan(i1, "professional");
 
-    const token = await mintAat(i0, { kid: i1.kid });
+    const registered = await mintAat(i0, { kid: i1.kid });
+    expect((await discoveryGet(registered)).status).toBe(200);
+
+    const unregisteredKid = crypto.randomUUID();
+    const token = await mintAat(i0, { kid: unregisteredKid });
     assertUnauthenticated(await discoveryGet(token));
   });
 
@@ -209,7 +208,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     const token = await mintAat(scenario);
     await seedSql([
       {
-        sql: "UPDATE installation_key SET public_key = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET public_key = ? WHERE kid = ?",
         params: ["not-base64url!!!", scenario.kid],
       },
     ]);
@@ -270,7 +269,7 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
 
   it("S07-025 — unknown token contract ver → 401", async () => {
     const scenario = await provisionB0();
-    const token = await mintAat(scenario, { claims: { ver: "2" } });
+    const token = await mintAat(scenario, { claims: { ver: "99" } });
     assertUnauthenticated(await discoveryGet(token));
   });
 
@@ -278,14 +277,25 @@ describe("Stage 07 — entitlement filters (S07-019…S07-037)", () => {
     const scenario = await provisionB0();
     const token = await mintAat(scenario);
 
-    const opened = await controlFetch("/control/token-contract/begin-rotation", {
+    const already = await controlFetch("/control/token-contract/begin-rotation", {
       body: { ver: "2" },
     });
+    expect(already.status).toBe(409);
+    expect(already.json).toEqual({ error: "ver_already_exists" });
+    const opened = await controlFetch("/control/token-contract/begin-rotation", {
+      body: { ver: "3" },
+    });
     expect(opened.status).toBe(200);
+    expect(opened.json).toEqual({ ver: "3" });
     const retired = await controlFetch("/control/token-contract/retire", {
-      body: { ver: "1" },
+      body: { ver: "2" },
     });
     expect(retired.status).toBe(200);
+    const alreadyRetired = await controlFetch("/control/token-contract/retire", {
+      body: { ver: "1" },
+    });
+    expect(alreadyRetired.status).toBe(409);
+    expect(alreadyRetired.json).toEqual({ error: "ver_already_retired" });
     clearConfigCache();
 
     assertUnauthenticated(await discoveryGet(token));

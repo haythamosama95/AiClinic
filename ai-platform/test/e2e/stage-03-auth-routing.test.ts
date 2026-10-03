@@ -44,10 +44,15 @@ function installationActionPath(action: string, id = I0): string {
 
 async function assertNoLifecycleWrites(): Promise<void> {
   expect(await count("installation")).toBe(0);
-  expect(await count("installation_key")).toBe(0);
+  expect(await count("issuer_key")).toBe(0);
+  expect(await count("tenant_binding")).toBe(0);
   expect(await count("entitlement")).toBe(0);
   expect(await count("control_audit")).toBe(0);
   expect(await queryAll("SELECT action FROM control_audit")).toEqual([]);
+}
+
+function assertEnrollRotateRevokeRemoved(result: HttpResult): void {
+  expect(result.status).toBe(404);
 }
 
 function assertUnauthorized(result: HttpResult): void {
@@ -82,7 +87,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: CANONICAL_ENROLL_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -92,7 +97,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: CANONICAL_ENROLL_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -102,7 +107,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: ROTATE_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -112,7 +117,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: ROTATE_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -122,7 +127,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: REVOKE_KEY_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -132,7 +137,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: REVOKE_KEY_BODY,
     });
 
-    assertUnauthorized(result);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -237,7 +242,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
     });
 
     for (const result of [empty, basic, noScheme]) {
-      assertUnauthorized(result);
+      assertEnrollRotateRevokeRemoved(result);
     }
     await assertNoLifecycleWrites();
   });
@@ -251,8 +256,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       },
     );
 
-    assertUnauthorized(result);
-    expect(result.status).not.toBe(400);
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 
@@ -290,7 +294,7 @@ describe("Stage 03 — installation enrollment auth and routing (S03-001…S03-0
       body: "not-json",
     });
 
-    assertControlError(result, 400, "invalid_json");
+    assertEnrollRotateRevokeRemoved(result);
     await assertNoLifecycleWrites();
   });
 });

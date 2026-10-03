@@ -13,7 +13,7 @@ import {
   CRON_ROLLUP,
   QUOTA_DO_RPC_URL,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   flushBackgroundWork,
@@ -162,9 +162,8 @@ async function entitlementSnapshot(
 
 async function enrollOnly(): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  return scenario;
+  await newClinic(scenario);
+return scenario;
 }
 
 async function enrollAndEntitle(

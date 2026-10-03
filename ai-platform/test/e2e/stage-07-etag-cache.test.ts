@@ -11,7 +11,7 @@ import {
   controlFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   enrollPayload,
   entitleInstallation,
   env,
@@ -215,10 +215,8 @@ async function countR2Objects(): Promise<number> {
 
 async function enrollClinic(scenario?: Scenario): Promise<Scenario> {
   const ready = scenario ?? (await newScenario());
-  const enrolled = await enrollInstallation(ready, {
-    payload: enrollPayload(ready, { plan: "professional" }),
-  });
-  expect(enrolled.status).toBe(200);
+  ready.plan = ready.plan ?? "professional";
+  await newClinic(ready);
   return ready;
 }
 

@@ -3,6 +3,8 @@ import {
   bootstrapE2e,
   controlFetch,
   count,
+  newClinic,
+  newScenario,
   createCapabilityRegistry,
   dispatchControl,
   diskIoError,
@@ -32,9 +34,11 @@ beforeEach(async () => {
   await resetE2eState();
 });
 
-const I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
+let I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
 const UNKNOWN_INSTALLATION_ID = "00000000-0000-0000-0000-000000000000";
-const INSTALLATION_SCOPE = `installation:${I0}`;
+function installationScope(): string {
+  return `installation:${I0}`;
+}
 const PLAN_SCOPE = "plan:professional";
 
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -60,10 +64,9 @@ const REF_BODY = {
   ],
 };
 
-const ENTITLE_SUCCESS_BODY = {
-  installation_id: I0,
-  status: "active",
-} as const;
+function entitleSuccessBody(): { installation_id: string; status: "active" } {
+  return { installation_id: I0, status: "active" };
+}
 
 const PUBLISHED_VISIT_SUMMARY_JSON: Record<string, unknown> = {
   Identity: {
@@ -191,10 +194,11 @@ function assertControlError(
 }
 
 function assertEntitleSuccess(result: HttpResult): void {
+  const body = entitleSuccessBody();
   expect(result.status).toBe(200);
   expect(result.headers.get("content-type")).toContain("application/json");
-  expect(result.json).toEqual(ENTITLE_SUCCESS_BODY);
-  expect(result.text).toBe(JSON.stringify(ENTITLE_SUCCESS_BODY));
+  expect(result.json).toEqual(body);
+  expect(result.text).toBe(JSON.stringify(body));
 }
 
 function expectIsoApproxNow(value: unknown): string {
@@ -218,20 +222,12 @@ function jsonText(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-async function enrollI0(): Promise<void> {
-  const keypair = await generateTestKeypair();
-  const result = await controlFetch(`/control/installations/${I0}/enroll`, {
-    body: {
-      org_id: crypto.randomUUID(),
-      display_name: "Verify Clinic",
-      region: "eu-central",
-      plan: "professional",
-      public_key: keypair.publicKeyB64,
-      algorithm: "EdDSA",
-      kid: keypair.kid,
-    },
-  });
-  expect(result.status).toBe(200);
+async function enrollI0(): Promise<string> {
+  const scenario = await newScenario();
+  scenario.plan = "professional";
+  await newClinic(scenario);
+  I0 = scenario.installationId;
+  return I0;
 }
 
 async function entitleI0(
@@ -302,11 +298,11 @@ async function assertEntitleAuditRow(): Promise<Record<string, unknown>> {
 async function assertInstallationGrant(
   version: string = "1.0.0",
 ): Promise<Record<string, unknown>> {
-  const grants = await getGrants(INSTALLATION_SCOPE);
+  const grants = await getGrants(installationScope());
   expect(grants).toHaveLength(1);
   const grant = grants[0];
   expectCanonicalUuid(grant.grant_id);
-  expect(grant.scope).toBe(INSTALLATION_SCOPE);
+  expect(grant.scope).toBe(installationScope());
   expect(grant.capability_id).toBe("clinic.visit_summary");
   expect(grant.capability_version).toBe(version);
   expectIsoApproxNow(grant.granted_at);
@@ -324,7 +320,7 @@ async function assertInstallationGrant(
 async function assertNoCohortActivateSideEffects(
   grantBefore: Record<string, unknown>,
 ): Promise<void> {
-  expect(await getGrants(INSTALLATION_SCOPE)).toEqual([grantBefore]);
+  expect(await getGrants(installationScope())).toEqual([grantBefore]);
   expect(await count("control_audit", "action = ?", ["cohort_activate"])).toBe(
     0,
   );
@@ -506,7 +502,7 @@ describe("Stage 04 — entitle happy path and cohort activate (S04-041…S04-065
   it("S04-051 — Re-entitle after active is not_pending", async () => {
     await enrollAndEntitleI0();
     const entitlementBefore = await getEntitlement(I0);
-    const grantsBefore = await getGrants(INSTALLATION_SCOPE);
+    const grantsBefore = await getGrants(installationScope());
     const auditsBefore = await getAudits("entitle", I0);
     expect(grantsBefore).toHaveLength(1);
     expect(auditsBefore).toHaveLength(1);
@@ -516,7 +512,7 @@ describe("Stage 04 — entitle happy path and cohort activate (S04-041…S04-065
     assertControlError(result, 409, "not_pending");
     expect(await getEntitlement(I0)).toEqual(entitlementBefore);
     expect(entitlementBefore?.status).toBe("active");
-    expect(await getGrants(INSTALLATION_SCOPE)).toEqual(grantsBefore);
+    expect(await getGrants(installationScope())).toEqual(grantsBefore);
     expect(await getAudits("entitle", I0)).toEqual(auditsBefore);
     expect(await count("capability_grant")).toBe(1);
   });
@@ -558,7 +554,7 @@ describe("Stage 04 — entitle happy path and cohort activate (S04-041…S04-065
 
     assertEntitleSuccess(result);
     await assertActiveEntitlementFromRefBody();
-    expect(await getGrants(INSTALLATION_SCOPE)).toEqual([]);
+    expect(await getGrants(installationScope())).toEqual([]);
     const planGrants = await getGrants(PLAN_SCOPE);
     expect(planGrants).toHaveLength(1);
     const grant = planGrants[0];
@@ -613,7 +609,7 @@ describe("Stage 04 — entitle happy path and cohort activate (S04-041…S04-065
     expect(planGrants[0]).toEqual(seeded);
     expect(planGrants[0].grant_id).toBe("seed-plan-grant-1");
     expect(planGrants[0].changed_by).toBe("seed");
-    expect(await getGrants(INSTALLATION_SCOPE)).toEqual([]);
+    expect(await getGrants(installationScope())).toEqual([]);
     expect(await count("capability_grant")).toBe(1);
     await assertEntitleAuditRow();
   });

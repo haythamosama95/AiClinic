@@ -286,11 +286,8 @@ export function installEnvOverrides(
 }
 
 export function uniqueConstraintError(
-  target: "installation" | "installation_key" | "other" = "installation",
+  target: "installation" | "other" = "installation",
 ): Error {
-  if (target === "installation_key") {
-    return new Error("UNIQUE constraint failed: installation_key.key_id");
-  }
   if (target === "installation") {
     return new Error("UNIQUE constraint failed: installation.installation_id");
   }

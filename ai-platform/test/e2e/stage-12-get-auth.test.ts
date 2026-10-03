@@ -10,7 +10,7 @@ import {
   clinicFetch,
   controlFetch,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   fakePolicyDocument,
@@ -290,9 +290,8 @@ async function settleCompleted(): Promise<SettledGet> {
 /** Second installation in the same `it` — do not republish (409 already_published). */
 async function settleOnLivePolicy(): Promise<SettledGet> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
   expect(entitled.status).toBe(200);
   return admitAndSettle(scenario);
 }
@@ -520,41 +519,26 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     const token = await mintAat(scenario, { kid: unknownKid });
     assertUnauthenticated(await getClinic(ref, { token }), ref);
     expect(
-      await queryOne("SELECT key_id FROM installation_key WHERE key_id = ?", [
-        unknownKid,
-      ]),
+      await queryOne("SELECT kid FROM issuer_key WHERE kid = ?", [unknownKid]),
     ).toBeNull();
   });
 
   it("S12-031 — revoked key returns 401", async () => {
     const { scenario, ref } = await settleCompleted();
     const token = await mintAat(scenario);
-    const rotated = await generateTestKeypair();
-
-    const rotate = await controlFetch(
-      `/control/installations/${scenario.installationId}/rotate`,
+    await seedSql([
       {
-        body: {
-          kid: rotated.kid,
-          public_key: rotated.publicKeyB64,
-          algorithm: "EdDSA",
-        },
+        sql: "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
+        params: [scenario.kid],
       },
-    );
-    expect(rotate.status).toBe(200);
-
-    const revoke = await controlFetch(
-      `/control/installations/${scenario.installationId}/revoke-key`,
-      { body: { kid: scenario.kid } },
-    );
-    expect(revoke.status).toBe(200);
+    ]);
     clearConfigCache();
 
-    const key = await queryOne<{ revoked_at: string | null }>(
-      "SELECT revoked_at FROM installation_key WHERE key_id = ?",
+    const key = await queryOne<{ status: string }>(
+      "SELECT status FROM issuer_key WHERE kid = ?",
       [scenario.kid],
     );
-    expect(key?.revoked_at).not.toBeNull();
+    expect(key?.status).toBe("revoked");
 
     assertUnauthenticated(await getClinic(ref, { token }), ref);
   });
@@ -564,7 +548,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     const closedToken = await mintAat(closed.scenario);
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_until = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_after = ? WHERE kid = ?",
         params: [PAST_VALID_UNTIL, closed.scenario.kid],
       },
     ]);
@@ -578,7 +562,7 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
     const futureToken = await mintAat(future.scenario);
     await seedSql([
       {
-        sql: "UPDATE installation_key SET valid_from = ? WHERE key_id = ?",
+        sql: "UPDATE issuer_key SET not_before = ? WHERE kid = ?",
         params: [FUTURE_VALID_FROM, future.scenario.kid],
       },
     ]);
@@ -592,10 +576,8 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
   it("S12-033 — kid bound to a different installation returns 401", async () => {
     const i0 = await settleCompleted();
     const i1 = await newScenario();
-    const enrolled = await enrollInstallation(i1);
-    expect(enrolled.status).toBe(200);
-
-    const token = await mintAat(i0.scenario, {
+    await newClinic(i1);
+const token = await mintAat(i0.scenario, {
       kid: i1.kid,
       keypair: i1.keypair,
     });
@@ -683,9 +665,9 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
       assertCompletedGet(warm);
 
       await env.DB.prepare(
-        "UPDATE installation_key SET revoked_at = ? WHERE key_id = ?",
+        "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
       )
-        .bind(new Date().toISOString(), scenario.kid)
+        .bind(scenario.kid)
         .run();
 
       const stale = await getClinic(ref, { token });
@@ -708,9 +690,9 @@ describe("Stage 12 — GET /v1/requests/{ref} auth (S12-019…S12-040)", () => {
       assertCompletedGet(warm);
 
       await env.DB.prepare(
-        "UPDATE installation_key SET revoked_at = ? WHERE key_id = ?",
+        "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
       )
-        .bind(new Date().toISOString(), scenario.kid)
+        .bind(scenario.kid)
         .run();
 
       await flushBackgroundWork(200);

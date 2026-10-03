@@ -23,7 +23,7 @@ import {
   controlFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   env,
   flushBackgroundWork,
   getAiRequest,
@@ -593,10 +593,8 @@ describe("Stage 12 — support lookup (S12-041…S12-055)", () => {
   it("S12-049 — Support lookup reads across installations", async () => {
     const settled = await settleCompleted();
     const other = await newScenario();
-    const enrolled = await enrollInstallation(other);
-    expect(enrolled.status).toBe(200);
-
-    // [SEED] retarget the settled row at I1. FK must exist (enroll first).
+    await newClinic(other);
+// [SEED] retarget the settled row at I1. FK must exist (enroll first).
     // Lookup SQL has no installation predicate (unlike clinic GET S12-017).
     await seedSql([
       {

@@ -1,14 +1,17 @@
 /**
- * Identity stage — TokenVerifier port and enrolled-key verification (B3 §4.3.2).
+ * Identity stage — TokenVerifier port and issuer-token verification (P3.2).
  */
 
+import type { AlertEnv } from "../alert";
+import { raiseAl20 } from "../alert";
 import {
   type ConfigCache,
   ConfigCacheMissError,
+  type ConfigEntityKind,
   type D1Reader,
   loadConfig,
 } from "../config-cache";
-import { toCanonicalUuid } from "../platform-vocabulary";
+import { noopLogger } from "../logger";
 import { recordGuardRejection } from "../rate-limit";
 
 export interface Principal {
@@ -28,8 +31,13 @@ export interface VerifyContext {
   audience: string;
   clockSkewSeconds: number;
   now: number;
+  /** Wall clock for config-cache consult/remember; defaults to `now * 1000`. */
+  nowMs?: number;
   cache: ConfigCache;
   reader: D1Reader;
+  issuerId: string;
+  db?: D1Database;
+  alertEnv?: AlertEnv;
 }
 
 export type VerifyResult =
@@ -42,6 +50,8 @@ export interface TokenVerifier {
 
 /** Maximum AAT lifetime (`exp − iat`) in seconds. §5.6 "short lifetime, minutes". */
 export const MAX_AAT_LIFETIME_SECONDS = 600;
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Guard-metric bucket for failures before signature verification (§4.7). */
 const UNVERIFIED_INSTALLATION_BUCKET = "unverified";
@@ -143,9 +153,9 @@ function parsePayloadClaims(raw: Record<string, unknown>): AatPayload | null {
   };
 }
 
-function buildPrincipal(payload: AatPayload): Principal {
+function buildPrincipal(payload: AatPayload, installationId: string): Principal {
   const principal: Principal = {
-    installationId: payload.iss,
+    installationId,
     organizationId: payload.org,
     branchId: payload.branch,
     actorId: payload.sub,
@@ -162,31 +172,6 @@ function buildPrincipal(payload: AatPayload): Principal {
 async function importEd25519PublicKey(
   keyRow: Record<string, unknown>,
 ): Promise<CryptoKey | null> {
-  const jwk = keyRow.jwk;
-  if (
-    jwk &&
-    typeof jwk === "object" &&
-    (jwk as { kty?: string }).kty === "OKP" &&
-    (jwk as { crv?: string }).crv === "Ed25519" &&
-    isString((jwk as { x?: string }).x)
-  ) {
-    try {
-      return await crypto.subtle.importKey(
-        "jwk",
-        {
-          kty: "OKP",
-          crv: "Ed25519",
-          x: (jwk as { x: string }).x,
-        },
-        { name: "Ed25519" },
-        false,
-        ["verify"],
-      );
-    } catch {
-      return null;
-    }
-  }
-
   if (!isString(keyRow.public_key)) {
     return null;
   }
@@ -209,23 +194,26 @@ async function importEd25519PublicKey(
   }
 }
 
-/** Enforce `valid_from <= now < COALESCE(valid_until, +inf)` (§4.5). */
-function isKeyWithinValidityWindow(
+function isIssuerKeyWithinValidityWindow(
   keyRow: Record<string, unknown>,
   nowSeconds: number,
 ): boolean {
-  const nowMs = nowSeconds * 1000;
-
-  if (isString(keyRow.valid_from)) {
-    const validFromMs = Date.parse(keyRow.valid_from);
-    if (!Number.isNaN(validFromMs) && nowMs < validFromMs) {
+  if (isString(keyRow.not_before)) {
+    const notBeforeMs = Date.parse(keyRow.not_before);
+    if (
+      !Number.isNaN(notBeforeMs) &&
+      nowSeconds < Math.floor(notBeforeMs / 1000)
+    ) {
       return false;
     }
   }
 
-  if (isString(keyRow.valid_until)) {
-    const validUntilMs = Date.parse(keyRow.valid_until);
-    if (!Number.isNaN(validUntilMs) && nowMs >= validUntilMs) {
+  if (isString(keyRow.not_after)) {
+    const notAfterMs = Date.parse(keyRow.not_after);
+    if (
+      !Number.isNaN(notAfterMs) &&
+      nowSeconds >= Math.floor(notAfterMs / 1000)
+    ) {
       return false;
     }
   }
@@ -233,7 +221,157 @@ function isKeyWithinValidityWindow(
   return true;
 }
 
-export class EnrolledKeyVerifier implements TokenVerifier {
+function isIssuerKeyUsable(
+  keyRow: Record<string, unknown>,
+  nowSeconds: number,
+): boolean {
+  const status = keyRow.status;
+  if (status === "revoked") {
+    return false;
+  }
+  if (status !== "active" && status !== "retiring") {
+    return false;
+  }
+  return isIssuerKeyWithinValidityWindow(keyRow, nowSeconds);
+}
+
+async function loadConfigAt(
+  ctx: VerifyContext,
+  kind: ConfigEntityKind,
+  key: string,
+): Promise<Record<string, unknown>> {
+  return loadConfig(
+    ctx.cache,
+    ctx.reader,
+    kind,
+    key,
+    noopLogger,
+    ctx.nowMs ?? ctx.now * 1000,
+  );
+}
+
+async function countEpochOneBindingsLast24Hours(
+  db: D1Database,
+  nowSeconds: number,
+): Promise<number> {
+  const nowIso = new Date(nowSeconds * 1000).toISOString();
+  const windowStart = new Date(Date.parse(nowIso) - ONE_DAY_MS).toISOString();
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM tenant_binding
+       WHERE epoch = 1 AND created_at > ?`,
+    )
+    .bind(windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function readActiveBindingFromD1(
+  db: D1Database,
+  orgId: string,
+): Promise<Record<string, unknown> | null> {
+  return db
+    .prepare(
+      `SELECT * FROM tenant_binding
+       WHERE org_id = ? AND status = 'active'
+       ORDER BY epoch DESC
+       LIMIT 1`,
+    )
+    .bind(orgId)
+    .first<Record<string, unknown>>();
+}
+
+async function resolveInstallationId(
+  ctx: VerifyContext,
+  orgId: string,
+): Promise<string | VerifyResult> {
+  try {
+    const binding = await loadConfigAt(ctx, "tenant_bindings", orgId);
+    if (!isString(binding.installation_id)) {
+      return rejectUnauthenticated();
+    }
+    return binding.installation_id;
+  } catch (error) {
+    if (!(error instanceof ConfigCacheMissError)) {
+      throw error;
+    }
+  }
+
+  if (ctx.db === undefined) {
+    return rejectUnauthenticated();
+  }
+
+  const recentCreations = await countEpochOneBindingsLast24Hours(ctx.db, ctx.now);
+  if (recentCreations >= 50) {
+    if (ctx.alertEnv !== undefined) {
+      await raiseAl20(ctx.alertEnv);
+    }
+    return rejectUnauthenticated();
+  }
+
+  const installationId = crypto.randomUUID();
+  const createdAt = new Date(ctx.now * 1000).toISOString();
+
+  try {
+    await ctx.db.batch([
+      ctx.db
+        .prepare(
+          `INSERT INTO installation (
+            installation_id, org_id, status, display_name, region, enrolled_at
+          ) VALUES (?, ?, 'active', '', '', ?)`,
+        )
+        .bind(installationId, orgId, createdAt),
+      ctx.db
+        .prepare(
+          `INSERT INTO tenant_binding (
+            org_id, installation_id, epoch, status, retired_at, reason, created_at
+          ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        )
+        .bind(orgId, installationId, createdAt),
+    ]);
+  } catch {
+    const existing = await readActiveBindingFromD1(ctx.db, orgId);
+    if (existing === null || !isString(existing.installation_id)) {
+      return rejectUnauthenticated();
+    }
+    ctx.cache.remember(
+      "tenant_bindings",
+      orgId,
+      existing,
+      ctx.now * 1000,
+    );
+    return existing.installation_id;
+  }
+
+  const bindingRow: Record<string, unknown> = {
+    org_id: orgId,
+    installation_id: installationId,
+    epoch: 1,
+    status: "active",
+    retired_at: null,
+    reason: null,
+    created_at: createdAt,
+  };
+  ctx.cache.remember("tenant_bindings", orgId, bindingRow, ctx.now * 1000);
+  ctx.cache.remember(
+    "installations",
+    installationId,
+    {
+      installation_id: installationId,
+      org_id: orgId,
+      status: "active",
+      display_name: "",
+      region: "",
+      enrolled_at: createdAt,
+    },
+    ctx.now * 1000,
+  );
+
+  return installationId;
+}
+
+export class IssuerTokenVerifier implements TokenVerifier {
   async verify(token: string, ctx: VerifyContext): Promise<VerifyResult> {
     const segments = token.split(".");
     if (segments.length !== 3) {
@@ -278,8 +416,6 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
-    // Cheap claim checks before any config-cache / D1 load (§4.3.2).
-    // Pre-verification: never attribute forged payload.iss (§4.7).
     if (payload.aud !== ctx.audience) {
       return rejectUnauthenticated();
     }
@@ -295,22 +431,25 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
-    const installationId = toCanonicalUuid(payload.iss);
-    const kid = toCanonicalUuid(header.kid);
-
-    let installation: Record<string, unknown>;
+    let contractRow: Record<string, unknown>;
     try {
-      installation = await loadConfig(ctx.cache, ctx.reader, "installations", installationId);
+      contractRow = await loadConfigAt(ctx, "token_contracts", payload.ver);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         return rejectUnauthenticated();
       }
       throw error;
     }
+
+    if (contractRow.retired_at != null) {
+      return rejectUnauthenticated();
+    }
+
+    const kid = header.kid;
 
     let keyRow: Record<string, unknown>;
     try {
-      keyRow = await loadConfig(ctx.cache, ctx.reader, "keys", kid);
+      keyRow = await loadConfigAt(ctx, "issuer_keys", kid);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         return rejectUnauthenticated();
@@ -318,16 +457,11 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       throw error;
     }
 
-    if (keyRow.revoked_at != null) {
+    if (!isIssuerKeyUsable(keyRow, ctx.now)) {
       return rejectUnauthenticated();
     }
 
-    if (!isKeyWithinValidityWindow(keyRow, ctx.now)) {
-      return rejectUnauthenticated();
-    }
-
-    // Key selected by iss AND kid (§4.3.2) — bind ownership before verify.
-    if (keyRow.installation_id !== installationId) {
+    if (payload.iss !== ctx.issuerId) {
       return rejectUnauthenticated();
     }
 
@@ -353,18 +487,15 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       return rejectUnauthenticated();
     }
 
-    // Signature verified — installation_id attribution is safe from here (§4.7).
-    // Fail closed on lifecycle: only `active` authenticates (§4.3.2 / B2 delete).
-    if (installation.status === "suspended") {
-      return rejectSuspended(installationId);
+    const installationIdOrReject = await resolveInstallationId(ctx, payload.org);
+    if (typeof installationIdOrReject !== "string") {
+      return installationIdOrReject;
     }
-    if (installation.status !== "active") {
-      return rejectUnauthenticated(installationId);
-    }
+    const installationId = installationIdOrReject;
 
-    let contractRow: Record<string, unknown>;
+    let installation: Record<string, unknown>;
     try {
-      contractRow = await loadConfig(ctx.cache, ctx.reader, "token_contracts", payload.ver);
+      installation = await loadConfigAt(ctx, "installations", installationId);
     } catch (error) {
       if (error instanceof ConfigCacheMissError) {
         return rejectUnauthenticated(installationId);
@@ -372,13 +503,16 @@ export class EnrolledKeyVerifier implements TokenVerifier {
       throw error;
     }
 
-    if (contractRow.retired_at != null) {
+    if (installation.status === "suspended") {
+      return rejectSuspended(installationId);
+    }
+    if (installation.status !== "active") {
       return rejectUnauthenticated(installationId);
     }
 
     return {
       ok: true,
-      principal: buildPrincipal({ ...payload, iss: installationId }),
+      principal: buildPrincipal(payload, installationId),
     };
   }
 }

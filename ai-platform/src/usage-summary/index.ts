@@ -9,7 +9,9 @@ import {
   type ConfigCache,
 } from "../config-cache";
 import { buildErrorBody, liveHttpStatusForCode } from "../errors";
-import { EnrolledKeyVerifier } from "../identity";
+import type { AlertEnv } from "../alert";
+import { clockNowMs, clockNowSeconds } from "../clock";
+import { IssuerTokenVerifier } from "../identity";
 import { noopLogger, type Logger } from "../logger";
 import type { InspectResponse } from "../quota-do";
 import { generateRequestReference } from "../reference";
@@ -17,10 +19,12 @@ import { generateUlid } from "../trace";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
-export interface UsageSummaryEnv {
+export interface UsageSummaryEnv extends AlertEnv {
   DB: D1Database;
   DO: DurableObjectNamespace;
   R2?: R2Bucket;
+  ISSUER_ID: string;
+  TEST_CLOCK?: string;
 }
 
 type UsageSummarySuccessBody = {
@@ -105,13 +109,19 @@ export async function handleUsageSummaryRequest(
   }
 
   const reader = createD1ConfigReader(env.DB, env.R2);
-  const verifier = new EnrolledKeyVerifier();
+  const verifier = new IssuerTokenVerifier();
+  const now = await clockNowSeconds(env);
+  const nowMs = await clockNowMs(env);
   const verifyResult = await verifier.verify(token, {
     audience: "ai-platform",
     clockSkewSeconds: 60,
-    now: Math.floor(Date.now() / 1000),
+    now,
+    nowMs,
     cache,
     reader,
+    issuerId: env.ISSUER_ID,
+    db: env.DB,
+    alertEnv: env,
   });
 
   if (!verifyResult.ok) {

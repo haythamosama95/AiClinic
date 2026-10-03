@@ -18,6 +18,8 @@ import {
   type HttpResult,
   type Scenario,
   type TestKeypair,
+  newClinic,
+  newScenario,
 } from "./harness";
 
 beforeAll(async () => {
@@ -28,8 +30,10 @@ beforeEach(async () => {
   await resetE2eState();
 });
 
-const I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
-const INSTALLATION_SCOPE = `installation:${I0}`;
+let I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
+function installationScope(): string {
+  return `installation:${I0}`;
+}
 
 /** Catalog REF-BODY (Conventions). Periods 2026-08-01…2026-09-01. */
 const REF_BODY = {
@@ -90,22 +94,15 @@ function assertControlError(
 }
 
 async function enrollPendingI0(): Promise<EnrolledI0> {
-  const orgId = crypto.randomUUID();
-  const kid = crypto.randomUUID();
-  const keypair = await generateTestKeypair(kid);
-  const result = await controlFetch(`/control/installations/${I0}/enroll`, {
-    body: {
-      org_id: orgId,
-      display_name: "E2E Clinic",
-      region: "us-east-1",
-      plan: "professional",
-      public_key: keypair.publicKeyB64,
-      algorithm: "EdDSA",
-      kid,
-    },
-  });
-  expect(result.status).toBe(200);
-  return { orgId, kid, keypair };
+  const scenario = await newScenario();
+  scenario.plan = "professional";
+  await newClinic(scenario);
+  I0 = scenario.installationId;
+  return {
+    orgId: scenario.orgId,
+    kid: scenario.kid,
+    keypair: scenario.keypair,
+  };
 }
 
 async function assertNoEntitleSideEffects(
@@ -118,7 +115,7 @@ async function assertNoEntitleSideEffects(
   expect(Number(entitlementBefore?.cost_budget)).toBe(0);
   expect(["[]", []]).toContainEqual(entitlementBefore?.allowed_capabilities);
   expect(await getEntitlement(I0)).toEqual(entitlementBefore);
-  expect(await getGrants(INSTALLATION_SCOPE)).toEqual([]);
+  expect(await getGrants(installationScope())).toEqual([]);
   expect(await count("capability_grant")).toBe(0);
   expect(await getAudits("entitle", I0)).toEqual([]);
 }
@@ -415,9 +412,9 @@ describe("Stage 04 — entitle auth and period validation (S04-001…S04-020)", 
     expect(entitlement?.status).toBe("active");
     expect(entitlement?.plan).toBe("professional");
 
-    const grants = await getGrants(INSTALLATION_SCOPE);
+    const grants = await getGrants(installationScope());
     expect(grants).toHaveLength(1);
-    expect(grants[0]?.scope).toBe(INSTALLATION_SCOPE);
+    expect(grants[0]?.scope).toBe(installationScope());
     expect(grants[0]?.capability_id).toBe("clinic.visit_summary");
     expect(grants[0]?.capability_version).toBe("1.0.0");
     expect(grants[0]?.revoked_at).toBeNull();

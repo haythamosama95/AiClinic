@@ -1,9 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
-  EnrolledKeyVerifier,
+  IssuerTokenVerifier,
   MAX_AAT_LIFETIME_SECONDS,
   type Principal,
   type TokenVerifier,
@@ -44,6 +45,7 @@ type ReaderSpy = D1Reader & {
 };
 
 const AUDIENCE = "ai-platform";
+const ISSUER_ID = "issuer-test";
 const CLOCK_SKEW_SECONDS = 60;
 const NOW = 1_720_000_450;
 
@@ -57,7 +59,7 @@ const FIXTURE_BRANCH = "e3000000-0000-4000-8000-000000000001";
 const FIXTURE_JTI = "f4000000-0000-4000-8000-000000000001";
 
 const DEFAULT_CLAIMS: AatClaims = {
-  iss: FIXTURE_ISS,
+  iss: ISSUER_ID,
   aud: AUDIENCE,
   sub: FIXTURE_SUB,
   org: FIXTURE_ORG,
@@ -67,7 +69,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   jti: FIXTURE_JTI,
   iat: NOW - 30,
   exp: NOW + 300,
-  ver: "1",
+  ver: "2",
 };
 
 let fixtureKeypair: TestKeypair;
@@ -216,27 +218,26 @@ function installationRow(
   };
 }
 
-function keyRow(
+function issuerKeyRow(
   keypair: TestKeypair,
-  installationId: string = FIXTURE_ISS,
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
+  const notBefore = new Date((NOW - 3600) * 1000).toISOString();
+  const notAfter = new Date((NOW + 86400) * 1000).toISOString();
   return {
-    key_id: keypair.kid,
-    installation_id: installationId,
+    kid: keypair.kid,
+    issuer: ISSUER_ID,
     public_key: keypair.publicKeyB64,
-    algorithm: "EdDSA",
-    valid_from: new Date((NOW - 3600) * 1000).toISOString(),
-    valid_until: null,
-    revoked_at: null,
-    jwk: keypair.jwk,
+    status: "active",
+    not_before: notBefore,
+    not_after: notAfter,
     ...overrides,
   };
 }
 
 const DEFAULT_TOKEN_CONTRACT: Record<string, unknown> = {
-  ver: "1",
-  added_at: "2026-08-03T00:00:00.000Z",
+  ver: "2",
+  added_at: "2026-10-03T13:00:00.000Z",
   retired_at: null,
   changed_by: "seed",
 };
@@ -260,15 +261,23 @@ function makeIdentityReader(
     if (lookupKey === `installations:${installationId}`) {
       return overrides.installation ?? installationRow("active", installationId);
     }
-    if (lookupKey === `keys:${keypair.kid}`) {
-      return overrides.key ?? keyRow(keypair, installationId);
+    if (lookupKey === `tenant_bindings:${FIXTURE_ORG}`) {
+      return {
+        org_id: FIXTURE_ORG,
+        installation_id: installationId,
+        epoch: 1,
+        status: "active",
+      };
+    }
+    if (lookupKey === `issuer_keys:${keypair.kid}`) {
+      return overrides.key ?? issuerKeyRow(keypair);
     }
     if (lookupKey.startsWith("token_contracts:")) {
       const ver = lookupKey.slice("token_contracts:".length);
       const contractLookup =
         overrides.contract ??
         ((contractVer: string) =>
-          contractVer === "1" ? DEFAULT_TOKEN_CONTRACT : "miss");
+          contractVer === "2" ? DEFAULT_TOKEN_CONTRACT : "miss");
       if (typeof contractLookup === "function") {
         return contractLookup(ver);
       }
@@ -288,12 +297,17 @@ function buildVerifyContext(
     now: NOW,
     cache: new ConfigCache(),
     reader,
+    issuerId: ISSUER_ID,
     ...overrides,
   };
 }
 
-function expectPrincipalFromClaims(principal: Principal, claims: AatClaims): void {
-  expect(principal.installationId).toBe(claims.iss);
+function expectPrincipalFromClaims(
+  principal: Principal,
+  claims: AatClaims,
+  installationId: string = FIXTURE_ISS,
+): void {
+  expect(principal.installationId).toBe(installationId);
   expect(principal.organizationId).toBe(claims.org);
   expect(principal.branchId).toBe(claims.branch);
   expect(principal.actorId).toBe(claims.sub);
@@ -333,7 +347,8 @@ async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
 
 async function clearIdentityTables(db: D1Database): Promise<void> {
   await db.batch([
-    db.prepare("DELETE FROM installation_key"),
+    db.prepare("DELETE FROM tenant_binding"),
+    db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
   ]);
 }
@@ -357,12 +372,23 @@ function createPlatformD1Reader(db: D1Database): D1Reader {
             .first<Record<string, unknown>>();
           return installation ?? "miss";
         }
-        case "keys": {
-          const installationKey = await db
-            .prepare("SELECT * FROM installation_key WHERE key_id = ?")
+        case "issuer_keys": {
+          const issuerKey = await db
+            .prepare("SELECT * FROM issuer_key WHERE kid = ?")
             .bind(key)
             .first<Record<string, unknown>>();
-          return installationKey ?? "miss";
+          return issuerKey ?? "miss";
+        }
+        case "tenant_bindings": {
+          const binding = await db
+            .prepare(
+              `SELECT * FROM tenant_binding
+               WHERE org_id = ? AND status = 'active'
+               ORDER BY epoch DESC LIMIT 1`,
+            )
+            .bind(key)
+            .first<Record<string, unknown>>();
+          return binding ?? "miss";
         }
         case "token_contracts": {
           const tokenContract = await db
@@ -397,11 +423,11 @@ async function seedSuspendedInstallation(
 
   await db
     .prepare(
-      `INSERT INTO installation_key
-        (key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at)
-       VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
+      `INSERT INTO tenant_binding
+        (org_id, installation_id, epoch, status, created_at)
+       VALUES (?, ?, 1, 'active', ?)`,
     )
-    .bind(keypair.kid, installationId, keypair.publicKeyB64, validFrom)
+    .bind(FIXTURE_ORG, installationId, enrolledAt)
     .run();
 }
 
@@ -415,7 +441,7 @@ beforeAll(async () => {
 
 describe("identity_valid_token_accepted", () => {
   it("returns ok:true with a principal carrying every §5.6 claim", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const claims = { ...DEFAULT_CLAIMS };
     const token = await mintToken(fixtureKeypair, claims);
     const ctx = buildVerifyContext(makeIdentityReader(fixtureKeypair));
@@ -429,7 +455,7 @@ describe("identity_valid_token_accepted", () => {
   });
 
   it("accepts a token whose lifetime equals MAX_AAT_LIFETIME_SECONDS", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const claims = {
       ...DEFAULT_CLAIMS,
       iat: NOW,
@@ -450,7 +476,7 @@ describe("identity_valid_token_accepted", () => {
 describe("identity_rejects_oversize_aat_lifetime", () => {
   it("rejects a still-unexpired token whose exp - iat exceeds MAX_AAT_LIFETIME_SECONDS", async () => {
     const spy = vi.spyOn(rateLimit, "recordGuardRejection");
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeIdentityReader(fixtureKeypair);
     const claims = {
       iat: NOW - 30,
@@ -470,7 +496,7 @@ describe("identity_rejects_oversize_aat_lifetime", () => {
   });
 
   it("rejects a one-hour token whose now still sits inside [iat, exp]", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeIdentityReader(fixtureKeypair);
     const token = await mintToken(fixtureKeypair, {
       iat: NOW,
@@ -572,8 +598,8 @@ describe("identity token rejection cases", () => {
       mutate: async (_token, keypair) => mintToken(keypair),
       reader: (keypair) =>
         makeIdentityReader(keypair, {
-          key: keyRow(keypair, FIXTURE_ISS, {
-            revoked_at: new Date(NOW * 1000).toISOString(),
+          key: issuerKeyRow(keypair, {
+            status: "revoked",
           }),
         }),
     },
@@ -582,8 +608,8 @@ describe("identity token rejection cases", () => {
       mutate: async (_token, keypair) => mintToken(keypair),
       reader: (keypair) =>
         makeIdentityReader(keypair, {
-          key: keyRow(keypair, FIXTURE_ISS, {
-            valid_from: new Date((NOW + 3600) * 1000).toISOString(),
+          key: issuerKeyRow(keypair, {
+            not_before: new Date((NOW + 3600) * 1000).toISOString(),
           }),
         }),
     },
@@ -592,8 +618,8 @@ describe("identity token rejection cases", () => {
       mutate: async (_token, keypair) => mintToken(keypair),
       reader: (keypair) =>
         makeIdentityReader(keypair, {
-          key: keyRow(keypair, FIXTURE_ISS, {
-            valid_until: new Date((NOW - 1) * 1000).toISOString(),
+          key: issuerKeyRow(keypair, {
+            not_after: new Date((NOW - 1) * 1000).toISOString(),
           }),
         }),
     },
@@ -610,7 +636,7 @@ describe("identity token rejection cases", () => {
   for (const testCase of cases) {
     describe(testCase.name, () => {
       it(testCase.expectOk ? "accepts inside skew window" : "rejects with unauthenticated", async () => {
-        const verifier = new EnrolledKeyVerifier();
+        const verifier = new IssuerTokenVerifier();
         const reader =
           testCase.reader?.(fixtureKeypair) ??
           makeIdentityReader(fixtureKeypair);
@@ -641,19 +667,11 @@ describe("identity token rejection cases", () => {
 // Cross-installation key binding (review Critical 1)
 // ---------------------------------------------------------------------------
 
-describe("identity_rejects_cross_installation_key", () => {
-  it("rejects when kid belongs to a different installation than iss", async () => {
-    const keypairB = await generateTestKeypair(FIXTURE_KID_B);
-    const verifier = new EnrolledKeyVerifier();
-
-    // Sign with installation B's key while claiming iss = A.
-    const token = await mintToken(keypairB, { iss: FIXTURE_ISS });
-    const reader = makeIdentityReader(fixtureKeypair, {
-      extra: {
-        [`keys:${keypairB.kid}`]: keyRow(keypairB, FIXTURE_ISS_B),
-        [`installations:${FIXTURE_ISS_B}`]: installationRow("active", FIXTURE_ISS_B),
-      },
-    });
+describe("identity_rejects_wrong_issuer_id", () => {
+  it("rejects when iss does not match configured issuer id", async () => {
+    const verifier = new IssuerTokenVerifier();
+    const token = await mintToken(fixtureKeypair, { iss: FIXTURE_ISS });
+    const reader = makeIdentityReader(fixtureKeypair);
 
     const result = await verifier.verify(token, buildVerifyContext(reader));
 
@@ -668,7 +686,7 @@ describe("identity_rejects_cross_installation_key", () => {
 describe("identity_preverification_tallies_unverified", () => {
   it("buckets audience/expiry failures under unverified, not forged iss", async () => {
     const spy = vi.spyOn(rateLimit, "recordGuardRejection");
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const forgedIss = "00000000-forged-iss0-0000-000000000099";
 
     const wrongAudience = await mintToken(fixtureKeypair, {
@@ -713,7 +731,7 @@ describe("identity_preverification_tallies_unverified", () => {
 
   it("attributes installation_id only after signature verification", async () => {
     const spy = vi.spyOn(rateLimit, "recordGuardRejection");
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
 
     const token = await mintToken(fixtureKeypair);
     const result = await verifier.verify(
@@ -737,12 +755,12 @@ describe("identity_preverification_tallies_unverified", () => {
 
 describe("identity_accepts_key_within_validity_window", () => {
   it("accepts when valid_from <= now < valid_until", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const token = await mintToken(fixtureKeypair);
     const reader = makeIdentityReader(fixtureKeypair, {
-      key: keyRow(fixtureKeypair, FIXTURE_ISS, {
-        valid_from: new Date((NOW - 60) * 1000).toISOString(),
-        valid_until: new Date((NOW + 3600) * 1000).toISOString(),
+      key: issuerKeyRow(fixtureKeypair, {
+        not_before: new Date((NOW - 60) * 1000).toISOString(),
+        not_after: new Date((NOW + 3600) * 1000).toISOString(),
       }),
     });
 
@@ -809,7 +827,7 @@ describe("identity_rejects_malformed_token", () => {
 
   for (const testCase of gauntlet) {
     it(`rejects ${testCase.name} as unauthenticated`, async () => {
-      const verifier = new EnrolledKeyVerifier();
+      const verifier = new IssuerTokenVerifier();
       const token = await testCase.token();
       const result = await verifier.verify(
         token,
@@ -838,7 +856,7 @@ class FixedResultVerifier implements TokenVerifier {
 
 function expectedPrincipal(claims: AatClaims = DEFAULT_CLAIMS): Principal {
   return Object.freeze({
-    installationId: claims.iss,
+    installationId: FIXTURE_ISS,
     organizationId: claims.org,
     branchId: claims.branch,
     actorId: claims.sub,
@@ -853,7 +871,7 @@ function expectedPrincipal(claims: AatClaims = DEFAULT_CLAIMS): Principal {
 
 describe("verifier_swap_changes_no_outcome", () => {
   it("returns identical outcomes for fake and enrolled-key verifiers", async () => {
-    const enrolledVerifier = new EnrolledKeyVerifier();
+    const enrolledVerifier = new IssuerTokenVerifier();
 
     const validClaims = { ...DEFAULT_CLAIMS };
     const validToken = await mintToken(fixtureKeypair, validClaims);
@@ -924,7 +942,7 @@ describe("verifier_swap_changes_no_outcome", () => {
 
 describe("principal_immutable_to_later_stage", () => {
   it("ignores or throws on mutation attempts and preserves original values", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const token = await mintToken(fixtureKeypair);
     const result = await verifier.verify(
       token,
@@ -1038,6 +1056,7 @@ describe("identity_rejects_suspended_installation", () => {
     db = workers.env.DB;
     await applyPlatformSchema(db, migrationSql);
     await applyPlatformSchema(db, tokenContractMigrationSql);
+    await applyPlatformSchema(db, issuerKeyTenantBindingMigrationSql);
   });
 
   beforeEach(async () => {
@@ -1047,8 +1066,18 @@ describe("identity_rejects_suspended_installation", () => {
   it("returns installation_suspended for a suspended installation", async () => {
     const keypair = await generateTestKeypair();
     await seedSuspendedInstallation(db, keypair);
+    const notBefore = new Date((NOW - 3600) * 1000).toISOString();
+    const notAfter = new Date((NOW + 86400) * 1000).toISOString();
+    await db
+      .prepare(
+        `INSERT INTO issuer_key
+          (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+         VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+      )
+      .bind(keypair.kid, ISSUER_ID, keypair.publicKeyB64, notBefore, notAfter)
+      .run();
 
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const token = await mintToken(keypair);
     const ctx = buildVerifyContext(createPlatformD1Reader(db));
 

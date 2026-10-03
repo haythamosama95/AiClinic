@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -23,6 +24,7 @@ const GATEWAY_ORIGIN = "https://ai-gateway.test";
 const AUDIENCE = "ai-platform";
 const NOW_SECONDS = 1_720_000_450;
 
+const ISSUER_ID = "issuer-test";
 const FIXTURE_INSTALLATION_ID = "inst-disc-001";
 const FIXTURE_ORG_ID = "org-disc-001";
 const FIXTURE_GRANTED_CAPABILITY_ID = "clinic.granted";
@@ -55,7 +57,7 @@ type TestKeypair = {
 };
 
 const DEFAULT_CLAIMS: AatClaims = {
-  iss: FIXTURE_INSTALLATION_ID,
+  iss: ISSUER_ID,
   aud: AUDIENCE,
   sub: "actor-disc-001",
   org: FIXTURE_ORG_ID,
@@ -65,7 +67,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   jti: "jti-disc-001",
   iat: NOW_SECONDS - 30,
   exp: NOW_SECONDS + 300,
-  ver: "1",
+  ver: "2",
 };
 
 function base64urlEncode(data: string | Uint8Array): string {
@@ -210,7 +212,8 @@ async function clearDiscoveryTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -220,25 +223,26 @@ async function seedInstallationKey(
   installationId: string = FIXTURE_INSTALLATION_ID,
 ): Promise<void> {
   const enrolledAt = new Date().toISOString();
-  const validFrom = new Date(Date.now() - 3_600_000).toISOString();
+  const notBefore = new Date(Date.now() - 3_600_000).toISOString();
+  const notAfter = new Date(Date.now() + 86_400_000).toISOString();
 
-  await env.DB
-    .prepare(
+  await env.DB.batch([
+    env.DB.prepare(
       `INSERT INTO installation (
         installation_id, org_id, display_name, status, region, enrolled_at
       ) VALUES (?, ?, ?, 'active', 'us-east-1', ?)`,
-    )
-    .bind(installationId, FIXTURE_ORG_ID, "Discovery Test Clinic", enrolledAt)
-    .run();
-
-  await env.DB
-    .prepare(
-      `INSERT INTO installation_key (
-        key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
-      ) VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
-    )
-    .bind(keypair.kid, installationId, keypair.publicKeyB64, validFrom)
-    .run();
+    ).bind(installationId, FIXTURE_ORG_ID, "Discovery Test Clinic", enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(FIXTURE_ORG_ID, installationId, enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO issuer_key (
+        kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256
+      ) VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+    ).bind(keypair.kid, ISSUER_ID, keypair.publicKeyB64, notBefore, notAfter),
+  ]);
 }
 
 async function seedEntitlement(
@@ -330,6 +334,11 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, tokenContractMigrationSql);
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
+  await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
+     VALUES ('2', '2026-10-03T00:00:00.000Z', NULL, 'seed')`,
+  ).run();
   fixtureKeypair = await generateTestKeypair("kid-disc-001");
 });
 

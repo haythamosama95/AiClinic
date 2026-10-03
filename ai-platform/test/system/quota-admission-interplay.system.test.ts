@@ -10,7 +10,7 @@ import {
   CAPABILITY_VERSION,
   clearConfigCache,
   count,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   fakePolicyTarget,
@@ -164,7 +164,7 @@ describe("quota admission interplay", () => {
 
   it("SYS-5.2 — Soft-threshold degraded tier", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     // G2: degraded is driven by the credit ratio (creditsUsed / credit_budget).
     // credit_budget 2 + one settled credit (quotaWeight 1) crosses the 0.5
     // threshold while leaving budget for the second admission.
@@ -323,7 +323,7 @@ describe("quota admission interplay", () => {
 
   it("SYS-5.6 — Replay of failed and cancelled", async () => {
     const failedScenario = await newScenario();
-    await enrollScenario(failedScenario);
+    await newClinic(failedScenario);
     await entitleScenario(failedScenario);
 
     const emptyChainDocument = fakePolicyDocument(POLICY_ID, "60", {
@@ -351,7 +351,7 @@ describe("quota admission interplay", () => {
     expect(await count("ai_attempt")).toBe(failedAttemptsBefore);
 
     const cancelledScenario = await newScenario();
-    await enrollScenario(cancelledScenario);
+    await newClinic(cancelledScenario);
     await entitleScenario(
       cancelledScenario,
       quotaEntitlePayload({ request_quota: 100 }),
@@ -459,7 +459,7 @@ describe("quota admission interplay", () => {
     expect(tokenSecond.body).not.toHaveProperty("retry_after");
 
     const costScenario = await newScenario();
-    await enrollScenario(costScenario);
+    await newClinic(costScenario);
     await entitleScenario(
       costScenario,
       quotaEntitlePayload({ request_quota: 100, credit_budget: 0 }),

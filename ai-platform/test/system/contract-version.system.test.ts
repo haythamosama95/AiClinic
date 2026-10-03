@@ -8,7 +8,7 @@ import {
   applyAllMigrations,
   CAPABILITY_VERSION,
   count,
-  enrollScenario,
+  newClinic,
   GATEWAY_ORIGIN,
   mintAat,
   newScenario,
@@ -55,7 +55,7 @@ describe("contract version", () => {
 
   it("E2E-P2.1-05 — GET /v1/capabilities echoes version 1 and refuses version 2", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     const token = await mintAat(scenario);
 
     const ok = await SELF.fetch(

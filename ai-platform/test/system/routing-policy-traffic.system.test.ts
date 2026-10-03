@@ -9,7 +9,7 @@ import {
   canary,
   clearConfigCache,
   count,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   fakePolicyTarget,
@@ -173,8 +173,8 @@ describe("routing policy traffic", () => {
   it("SYS-4.2 — Canary split two installations", async () => {
     const i0 = await newScenario();
     const i1 = await newScenario();
-    await enrollScenario(i0);
-    await enrollScenario(i1);
+    await newClinic(i0);
+    await newClinic(i1);
     expect((await entitleScenario(i0)).status).toBe(200);
     expect((await entitleScenario(i1)).status).toBe(200);
 
@@ -214,7 +214,7 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.3 — Promote & rollback semantics", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
 
     const v1Document = fakePolicyDocument(POLICY_ID, "1");
@@ -256,7 +256,7 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.4 — Version tie-break", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
 
     const baseDocument = fakePolicyDocument(POLICY_ID, "1");
@@ -342,7 +342,7 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.6 — Fail-closed target filters", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
 
     async function promoteAndInvoke(
@@ -427,7 +427,7 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.7 — Overrides & exclusions", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
 
     const excludeDocument = fakePolicyDocument(POLICY_ID, "30", {
@@ -484,7 +484,7 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.8 — Provider kill-switch failover", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
 
     const failoverDocument = fakePolicyDocument(POLICY_ID, "40", {

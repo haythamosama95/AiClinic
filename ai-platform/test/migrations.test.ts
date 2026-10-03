@@ -23,7 +23,8 @@ const MIGRATIONS_TABLE = "d1_migrations";
 /** §7.3 platform entities — every table the forward-only migration must create. */
 export const PLATFORM_ENTITIES = [
   "installation",
-  "installation_key",
+  "issuer_key",
+  "tenant_binding",
   "entitlement",
   "capability_grant",
   "routing_policy",

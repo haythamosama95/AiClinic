@@ -4,7 +4,7 @@ import {
   canaryPolicy,
   controlFetch,
   count,
-  enrollInstallation,
+  newClinic,
   env,
   generateTestKeypair,
   getAudits,
@@ -27,12 +27,16 @@ beforeAll(async () => {
   await bootstrapE2e();
 });
 
+const CATALOG_INST_A = "018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f";
+const CATALOG_INST_B = "018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a";
+let INST_A = CATALOG_INST_A;
+let INST_B = CATALOG_INST_B;
+
 beforeEach(async () => {
+  INST_A = CATALOG_INST_A;
+  INST_B = CATALOG_INST_B;
   await resetE2eState();
 });
-
-const INST_A = "018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f";
-const INST_B = "018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a";
 const UNKNOWN_INSTALLATION_ID = "9e9e9e9e-0000-4000-8000-000000000000";
 const COHORT_NAME = "early-adopters";
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
@@ -219,16 +223,21 @@ function expectCanonicalUuid(value: unknown): string {
   return id;
 }
 
-async function enrollAt(installationId: string): Promise<void> {
+async function enrollAt(installationId: string): Promise<string> {
   const scenario = await newScenario();
   const keypair = await generateTestKeypair();
-  const result = await enrollInstallation({
+  const ready = await newClinic({
     ...scenario,
     installationId,
     kid: keypair.kid,
     keypair,
   });
-  expect(result.status).toBe(200);
+  if (installationId === INST_A) {
+    INST_A = ready.installationId;
+  } else if (installationId === INST_B) {
+    INST_B = ready.installationId;
+  }
+  return ready.installationId;
 }
 
 async function publishVersion(

@@ -7,7 +7,7 @@ import {
   controlFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   generateTestKeypair,
@@ -206,9 +206,8 @@ async function enrollAndEntitle(
 ): Promise<void> {
   const keypair = await generateTestKeypair(scenario.kid);
   scenario.keypair = keypair;
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, entitle);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, entitle);
   expect(entitled.status).toBe(200);
 }
 
@@ -710,7 +709,10 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
     await publishAndPromote(
       policyDocument(14, {
         overrides: [
-          { installation_id: INST_A, exclude_providers: ["deepseek"] },
+          {
+            installation_id: instA.installationId,
+            exclude_providers: ["deepseek"],
+          },
         ],
       }),
     );
@@ -737,7 +739,7 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
       policyDocument(15, {
         overrides: [
           {
-            installation_id: INST_A,
+            installation_id: instA.installationId,
             pin_target: {
               provider_id: "gemini",
               model_id: "gemini-3.5-flash",
@@ -766,7 +768,7 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
       policyDocument(16, {
         overrides: [
           {
-            installation_id: INST_A,
+            installation_id: instA.installationId,
             pin_target: { provider_id: "openai", model_id: "gpt-6" },
           },
         ],
@@ -813,7 +815,7 @@ describe("Stage 05 — routing filters, kill switch, and invoke auth (S05-063…
           }),
         ],
         overrides: [
-          { installation_id: INST_A, force_cost_class: "economy" },
+          { installation_id: instA.installationId, force_cost_class: "economy" },
         ],
       }),
     );

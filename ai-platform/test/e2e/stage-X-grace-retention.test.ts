@@ -246,7 +246,21 @@ async function settleCompleted(scenario: Scenario): Promise<{
   const accepted = result.events.find((event) => event.event === "accepted");
   const ref = String(accepted?.data.request_reference ?? "");
   expect(ref).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/i);
-  const row = await getAiRequest(ref);
+  const started = Date.now();
+  let row = await getAiRequest(ref);
+  while (Date.now() - started < 8000) {
+    row = await getAiRequest(ref);
+    const candidate =
+      typeof row?.payload_pointer === "string" ? row.payload_pointer : "";
+    if (
+      row?.state === "Completed" &&
+      candidate.length > 0 &&
+      (await r2Exists(candidate))
+    ) {
+      break;
+    }
+    await flushBackgroundWork(50);
+  }
   expect(row).not.toBeNull();
   expect(row!.state).toBe("Completed");
   const requestId = String(row!.request_id);

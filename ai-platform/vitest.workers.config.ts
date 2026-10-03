@@ -75,6 +75,7 @@ export default defineWorkersConfig({
             WEBAUTHN_ORIGIN: "https://ops.vendor.test",
             HEARTBEAT_URL: "https://heartbeat.test/ping",
             ALERT_EMAIL_TO: "alerts@clinic.invalid",
+            ISSUER_ID: "issuer-test",
           },
           serviceBindings: {
             VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },

@@ -1,5 +1,5 @@
 import { CHANNEL_VERSIONS } from "vendor-contracts";
-import { clockNowIso } from "../clock";
+import { clockNowIso, clockNowMs } from "../clock";
 import { sendPlatformEmail, type SendEmailEnv } from "./email";
 
 export type AlertEnv = SendEmailEnv & {
@@ -9,6 +9,8 @@ export type AlertEnv = SendEmailEnv & {
 };
 
 const FIVE_MINUTE_CRON = "*/5 * * * *";
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const AL20_ALERT_KEY = "AL-20";
 
 export type Al13Kind = "bootstrap" | "register" | "revoke";
 
@@ -26,6 +28,280 @@ function al13AlertKey(credentialId: string, kind: Al13Kind): string {
 
 function al13EmailText(body: Al13Body): string {
   return JSON.stringify(body);
+}
+
+export type Al13IssuerKeyKind = "register" | "retire" | "revoke";
+
+export type Al13IssuerKeyBody = {
+  code: "AL-13";
+  kid: string;
+  operation: Record<string, unknown> | null;
+};
+
+function al13IssuerKeyAlertKey(kid: string, kind: Al13IssuerKeyKind): string {
+  return `AL-13:issuer_key:${kid}:${kind}`;
+}
+
+function al13IssuerKeyEmailText(body: Al13IssuerKeyBody): string {
+  return JSON.stringify(body);
+}
+
+function parseAl13IssuerKeyAlertKey(
+  alertKey: string,
+): { kid: string; kind: Al13IssuerKeyKind } | null {
+  const prefix = "AL-13:issuer_key:";
+  if (!alertKey.startsWith(prefix)) {
+    return null;
+  }
+  const rest = alertKey.slice(prefix.length);
+  const separator = rest.lastIndexOf(":");
+  if (separator <= 0) {
+    return null;
+  }
+  const kid = rest.slice(0, separator);
+  const kind = rest.slice(separator + 1);
+  if (kind !== "register" && kind !== "retire" && kind !== "revoke") {
+    return null;
+  }
+  return { kid, kind };
+}
+
+function issuerKeyHpMethod(kind: Al13IssuerKeyKind): string {
+  if (kind === "register") {
+    return "registerIssuerKey";
+  }
+  if (kind === "retire") {
+    return "retireIssuerKey";
+  }
+  return "revokeIssuerKey";
+}
+
+async function readIssuerKeyForAlert(
+  db: D1Database,
+  kid: string,
+): Promise<{
+  public_key: string;
+  not_before: string;
+  not_after: string;
+} | null> {
+  return db
+    .prepare(
+      `SELECT public_key, not_before, not_after FROM issuer_key WHERE kid = ?`,
+    )
+    .bind(kid)
+    .first<{ public_key: string; not_before: string; not_after: string }>();
+}
+
+async function rebuildAl13IssuerKeyOperation(
+  db: D1Database,
+  kid: string,
+  kind: Al13IssuerKeyKind,
+): Promise<Record<string, unknown> | null> {
+  const method = issuerKeyHpMethod(kind);
+  const audit = await db
+    .prepare(
+      `SELECT actor, assertion_sha256, recorded_at
+       FROM control_audit
+       WHERE action = ? AND target = ? AND assertion_sha256 IS NOT NULL
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+    )
+    .bind(method, kid)
+    .first<{
+      actor: string;
+      assertion_sha256: string;
+      recorded_at: string;
+    }>();
+  if (audit === null) {
+    return null;
+  }
+  const used = await db
+    .prepare(
+      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+    )
+    .bind(audit.assertion_sha256)
+    .first<{ credential_id: string }>();
+  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
+  const params: Record<string, unknown> = {
+    contract_version: contractVersion,
+    access_jwt: "",
+    kid,
+    signer_credential_id: used?.credential_id ?? "",
+  };
+  if (kind === "register") {
+    const row = await readIssuerKeyForAlert(db, kid);
+    if (row === null) {
+      return null;
+    }
+    params.public_key = row.public_key;
+    params.not_before = row.not_before;
+    params.not_after = row.not_after;
+  }
+  return {
+    op: method,
+    params,
+    actor_email: audit.actor,
+    issued_at: audit.recorded_at,
+    nonce: audit.assertion_sha256,
+    contract_version: contractVersion,
+  };
+}
+
+async function readPlatformAlertSendState(
+  db: D1Database,
+  alertKey: string,
+): Promise<"sent" | "unsent" | null> {
+  const row = await db
+    .prepare("SELECT send_state FROM platform_alert WHERE alert_key = ?")
+    .bind(alertKey)
+    .first<{ send_state: string }>();
+  if (row === null) {
+    return null;
+  }
+  return row.send_state === "sent" ? "sent" : "unsent";
+}
+
+async function sendAl13IssuerKeyBody(
+  env: AlertEnv,
+  body: Al13IssuerKeyBody,
+  alertKey: string,
+): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject: "AL-13",
+    text: al13IssuerKeyEmailText(body),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    await markAlertSent(env.DB, alertKey);
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, alertKey, nowIso);
+  }
+}
+
+export async function raiseAl13IssuerKey(
+  env: AlertEnv,
+  input: {
+    kid: string;
+    kind: Al13IssuerKeyKind;
+    operation: Record<string, unknown> | null;
+  },
+): Promise<void> {
+  const alertKey = al13IssuerKeyAlertKey(input.kid, input.kind);
+  const priorSendState = await readPlatformAlertSendState(env.DB, alertKey);
+  if (priorSendState === "sent") {
+    const nowIso = await clockNowIso(env);
+    await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
+    return;
+  }
+
+  const nowIso = await clockNowIso(env);
+  await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
+
+  const body: Al13IssuerKeyBody = {
+    code: "AL-13",
+    kid: input.kid,
+    operation: input.operation,
+  };
+  await sendAl13IssuerKeyBody(env, body, alertKey);
+}
+
+export type Al20Body = {
+  code: "AL-20";
+};
+
+function al20EmailText(): string {
+  return JSON.stringify({ code: "AL-20" } satisfies Al20Body);
+}
+
+async function markAl20AlertSent(
+  db: D1Database,
+  nextSendAtIso: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE platform_alert
+       SET send_state = 'sent', next_send_at = ?
+       WHERE alert_key = ?`,
+    )
+    .bind(nextSendAtIso, AL20_ALERT_KEY)
+    .run();
+}
+
+async function sendAl20Body(env: AlertEnv): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject: "AL-20",
+    text: al20EmailText(),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    const nowMs = await clockNowMs(env);
+    const nextSendAt = new Date(nowMs + ONE_DAY_MS).toISOString();
+    await markAl20AlertSent(env.DB, nextSendAt);
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, AL20_ALERT_KEY, nowIso);
+  }
+}
+
+export async function raiseAl20(env: AlertEnv): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  await upsertPlatformAlert(env.DB, AL20_ALERT_KEY, "AL-20", nowIso);
+  await sendAl20Body(env);
+}
+
+async function countEpochOneBindingsLast24Hours(
+  db: D1Database,
+  nowIso: string,
+): Promise<number> {
+  const nowMs = Date.parse(nowIso);
+  const windowStart = new Date(nowMs - ONE_DAY_MS).toISOString();
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM tenant_binding
+       WHERE epoch = 1 AND created_at > ?`,
+    )
+    .bind(windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function retryDueAl20Alerts(env: AlertEnv): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const row = await env.DB.prepare(
+    `SELECT alert_key, next_send_at, resolved_at
+     FROM platform_alert
+     WHERE alert_key = ?`,
+  )
+    .bind(AL20_ALERT_KEY)
+    .first<{
+      alert_key: string;
+      next_send_at: string | null;
+      resolved_at: string | null;
+    }>();
+  if (row === null || row.resolved_at !== null) {
+    return;
+  }
+  if (row.next_send_at === null || row.next_send_at > nowIso) {
+    return;
+  }
+
+  const count = await countEpochOneBindingsLast24Hours(env.DB, nowIso);
+  if (count > 50) {
+    await sendAl20Body(env);
+    return;
+  }
+
+  await env.DB.prepare(
+    `UPDATE platform_alert SET resolved_at = ? WHERE alert_key = ?`,
+  )
+    .bind(nowIso, AL20_ALERT_KEY)
+    .run();
 }
 
 async function upsertPlatformAlert(
@@ -286,7 +562,26 @@ export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
       await sendScheduledJobFailedBody(env, row.alert_key, job);
       continue;
     }
+    if (row.code === "AL-20") {
+      await sendAl20Body(env);
+      continue;
+    }
     if (row.code !== "AL-13") {
+      continue;
+    }
+    const issuerParsed = parseAl13IssuerKeyAlertKey(row.alert_key);
+    if (issuerParsed !== null) {
+      const operation = await rebuildAl13IssuerKeyOperation(
+        env.DB,
+        issuerParsed.kid,
+        issuerParsed.kind,
+      );
+      const body: Al13IssuerKeyBody = {
+        code: "AL-13",
+        kid: issuerParsed.kid,
+        operation,
+      };
+      await sendAl13IssuerKeyBody(env, body, row.alert_key);
       continue;
     }
     const parsed = parseAl13AlertKey(row.alert_key);
@@ -362,8 +657,9 @@ async function runFiveMinuteJob(
 }
 
 export async function runFiveMinuteCron(env: AlertEnv): Promise<void> {
-  await runFiveMinuteJob(env, "alert_retry", () =>
-    retryUnsentPlatformAlerts(env),
-  );
+  await runFiveMinuteJob(env, "alert_retry", async () => {
+    await retryUnsentPlatformAlerts(env);
+    await retryDueAl20Alerts(env);
+  });
   await runFiveMinuteJob(env, "heartbeat", () => pingPlatformHeartbeat(env));
 }

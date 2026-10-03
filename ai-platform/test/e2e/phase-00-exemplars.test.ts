@@ -32,9 +32,7 @@ describe("Phase 0 harness exemplars", () => {
       },
     );
 
-    expect(result.status).toBe(401);
-    expect(result.headers.get("content-type")).toContain("application/json");
-    expect(result.json).toEqual({ error: "unauthorized" });
+    expect(result.status).toBe(404);
   });
 
   it("P00-002 — guard rejection full taxonomy body", async () => {

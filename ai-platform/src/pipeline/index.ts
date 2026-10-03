@@ -346,8 +346,12 @@ export async function runGuard(
       audience: input.verifyContext?.audience ?? "ai-platform",
       clockSkewSeconds: input.verifyContext?.clockSkewSeconds ?? 60,
       now: input.verifyContext?.now ?? nowSeconds,
+      nowMs: input.verifyContext?.nowMs,
       cache: input.verifyContext?.cache ?? input.cache,
       reader: input.verifyContext?.reader ?? input.reader,
+      issuerId: input.verifyContext?.issuerId ?? "",
+      db: input.verifyContext?.db,
+      alertEnv: input.verifyContext?.alertEnv,
     };
     const verified = await input.verifier.verify(input.token, verifyCtx);
     if (!verified.ok) {

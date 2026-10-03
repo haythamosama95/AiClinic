@@ -4,14 +4,13 @@
 
 import { env, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { INSTALLATION_KEY_TTL_DAYS } from "../../src/control/lifecycle";
 import { VISIT_CHIEF_COMPLAINT_V1 } from "../../src/context";
 import {
   applyAllMigrations,
   CAPABILITY_ID,
   CAPABILITY_VERSION,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   flushBackgroundWork,
@@ -89,11 +88,9 @@ describe("golden journey", () => {
     );
   });
 
-  it("SYS-1.2 — Enroll → storage truth", async () => {
+  it("SYS-1.2 — newClinic → storage truth", async () => {
     const scenario = await newScenario();
-    const enrolled = await enrollScenario(scenario);
-    expect(enrolled.status).toBe(200);
-    expect(enrolled.json.platform_base_url).toBe(GATEWAY_ORIGIN);
+    await newClinic(scenario);
 
     const installation = await env.DB.prepare(
       "SELECT installation_id, org_id, display_name, status, region, enrolled_at FROM installation WHERE installation_id = ?",
@@ -109,45 +106,50 @@ describe("golden journey", () => {
       }>();
     expect(installation?.status).toBe("active");
     expect(installation?.org_id).toBe(scenario.orgId);
+    expect(installation?.display_name).toBe("");
+    expect(installation?.region).toBe("");
 
-    const key = await env.DB.prepare(
-      "SELECT key_id, valid_from, valid_until, revoked_at FROM installation_key WHERE installation_id = ?",
+    const binding = await env.DB.prepare(
+      "SELECT org_id, installation_id, epoch, status FROM tenant_binding WHERE org_id = ?",
     )
-      .bind(scenario.installationId)
+      .bind(scenario.orgId)
       .first<{
-        key_id: string;
-        valid_from: string;
-        valid_until: string;
-        revoked_at: string | null;
+        org_id: string;
+        installation_id: string;
+        epoch: number;
+        status: string;
       }>();
-    expect(key?.key_id).toBe(scenario.kid);
-    expect(key?.revoked_at).toBeNull();
-    const expectedUntil = new Date(
-      Date.parse(key!.valid_from) + INSTALLATION_KEY_TTL_DAYS * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    expect(key?.valid_until).toBe(expectedUntil);
+    expect(binding?.installation_id).toBe(scenario.installationId);
+    expect(binding?.epoch).toBe(1);
+    expect(binding?.status).toBe("active");
 
     const entitlement = await getEntitlement(scenario.installationId);
     expect(entitlement?.status).toBe("pending");
+    expect(entitlement?.plan).toBe("standard");
     expect(entitlement?.request_quota).toBe(0);
     expect(entitlement?.token_budget).toBe(0);
     expect(entitlement?.cost_budget).toBe(0);
     expect(entitlement?.allowed_capabilities).toBe("[]");
     expect(entitlement?.soft_threshold).toBe(0);
 
-    const audits = await getAudits("enroll", scenario.installationId);
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe(OPERATOR_ID);
-    expect(audits[0]?.action).toBe("enroll");
-
-    const reEnroll = await enrollScenario(scenario);
-    expect(reEnroll.status).toBe(409);
-    expect(reEnroll.json.error).toBe("already_enrolled");
+    const enrollRemoved = await operatorFetchRaw(
+      `/control/installations/${scenario.installationId}/enroll`,
+      {
+        org_id: scenario.orgId,
+        display_name: "x",
+        region: "x",
+        plan: "standard",
+        public_key: scenario.keypair.publicKeyB64,
+        algorithm: "EdDSA",
+        kid: scenario.kid,
+      },
+    );
+    expect(enrollRemoved.status).toBe(404);
   });
 
   it("SYS-1.3 — Pending gates runtime", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     const token = await mintAat(scenario);
     const beforeRequests = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM ai_request",
@@ -169,7 +171,7 @@ describe("golden journey", () => {
 
   it("SYS-1.4 — Entitle → grants", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     const entitled = await entitleScenario(scenario);
     expect(entitled.status).toBe(200);
     expect(entitled.json.status).toBe("active");
@@ -215,7 +217,7 @@ describe("golden journey", () => {
 
   it("SYS-1.5 — Discovery after entitle", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const token = await mintAat(scenario);
 
@@ -249,7 +251,7 @@ describe("golden journey", () => {
 
   it("SYS-1.6 — Publish → not served", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -276,7 +278,7 @@ describe("golden journey", () => {
 
   it("SYS-1.7 — Promote → invoke completes", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -298,7 +300,7 @@ describe("golden journey", () => {
 
   it("SYS-1.8 — Journal + settlement consistency", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -341,7 +343,7 @@ describe("golden journey", () => {
 
   it("SYS-1.9 — Envelope completeness", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -385,7 +387,7 @@ describe("golden journey", () => {
 
   it("SYS-1.10 — Client GET + support lookup", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);

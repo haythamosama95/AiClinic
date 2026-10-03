@@ -11,7 +11,11 @@ import {
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
-import { raiseAl13, raiseAl13Bootstrap } from "../alert/index";
+import {
+  raiseAl13,
+  raiseAl13Bootstrap,
+  raiseAl13IssuerKey,
+} from "../alert/index";
 import {
   clockNowIso,
   clockNowMs,
@@ -27,10 +31,18 @@ const ASSERTION_FRESHNESS_MS = 5 * 60 * 1000;
 const METHOD_CLASS = {
   registerOperatorCredential: "HP",
   revokeOperatorCredential: "HP",
+  registerIssuerKey: "HP",
+  retireIssuerKey: "HP",
+  revokeIssuerKey: "HP",
   listOperatorCredentials: "M",
+  listIssuerKeys: "M",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
+
+type HpVendorMethod = {
+  [K in VendorMethod]: (typeof METHOD_CLASS)[K] extends "HP" ? K : never;
+}[VendorMethod];
 
 type VendorResultEnvelope = {
   contract_version: number;
@@ -41,6 +53,7 @@ type VendorResultEnvelope = {
 
 type VendorEnv = ClockEnv & {
   DB: D1Database;
+  ISSUER_ID: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
   WEBAUTHN_RP_ID: string;
@@ -65,6 +78,17 @@ type OperatorCredentialRow = {
   activates_at: string;
   approved_by: string | null;
   revoked_by: string | null;
+};
+
+type IssuerKeyRow = {
+  kid: string;
+  issuer: string;
+  public_key: string;
+  status: string;
+  not_before: string;
+  not_after: string;
+  registered_by: string;
+  assertion_sha256: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,6 +151,39 @@ function rowToDetail(row: OperatorCredentialRow): string {
     revoked_by: row.revoked_by,
   };
   return JSON.stringify(ordered);
+}
+
+function issuerKeyRowToDetail(row: IssuerKeyRow): string {
+  const ordered = {
+    kid: row.kid,
+    issuer: row.issuer,
+    public_key: row.public_key,
+    status: row.status,
+    not_before: row.not_before,
+    not_after: row.not_after,
+    registered_by: row.registered_by,
+    assertion_sha256: row.assertion_sha256,
+  };
+  return JSON.stringify(ordered);
+}
+
+function isValidEd25519PublicKeyEncoding(publicKey: string): boolean {
+  const decoded = base64UrlDecode(publicKey);
+  return decoded !== null && decoded.length === 32;
+}
+
+async function readIssuerKey(
+  db: D1Database,
+  kid: string,
+): Promise<IssuerKeyRow | null> {
+  return db
+    .prepare(
+      `SELECT kid, issuer, public_key, status, not_before, not_after,
+              registered_by, assertion_sha256
+       FROM issuer_key WHERE kid = ?`,
+    )
+    .bind(kid)
+    .first<IssuerKeyRow>();
 }
 
 function base64UrlDecode(segment: string): Uint8Array | null {
@@ -343,7 +400,7 @@ function stableJson(value: unknown): string {
 }
 
 function operationParamsMatch(
-  method: VendorMethod,
+  method: HpVendorMethod,
   operation: Record<string, unknown>,
   rpcArgs: Record<string, unknown>,
   accessJwt: string,
@@ -372,10 +429,31 @@ function operationParamsMatch(
   } else if (method === "revokeOperatorCredential") {
     expected.credential_id = rpcArgs.credential_id;
     expected.signer_credential_id = rpcArgs.signer_credential_id;
+  } else if (method === "registerIssuerKey") {
+    expected.kid = rpcArgs.kid;
+    expected.public_key = rpcArgs.public_key;
+    expected.not_before = rpcArgs.not_before;
+    expected.not_after = rpcArgs.not_after;
+  } else if (method === "retireIssuerKey" || method === "revokeIssuerKey") {
+    expected.kid = rpcArgs.kid;
   } else {
     return false;
   }
   return stableJson(params) === stableJson(expected);
+}
+
+function hpAuditTarget(
+  method: HpVendorMethod,
+  rpcArgs: Record<string, unknown>,
+): string {
+  if (
+    method === "registerIssuerKey" ||
+    method === "retireIssuerKey" ||
+    method === "revokeIssuerKey"
+  ) {
+    return typeof rpcArgs.kid === "string" ? rpcArgs.kid : "";
+  }
+  return typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
 }
 
 async function assertionIssuedAtFresh(
@@ -409,13 +487,12 @@ type HpAssertionResult = HpAssertionReject | HpAssertionOk;
 
 async function runHpAssertionChecks(
   env: VendorEnv,
-  method: "registerOperatorCredential" | "revokeOperatorCredential",
+  method: HpVendorMethod,
   rpcArgs: Record<string, unknown>,
   accessEmail: string,
   negotiatedVersion: number,
 ): Promise<HpAssertionResult> {
-  const auditTarget =
-    typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
+  const auditTarget = hpAuditTarget(method, rpcArgs);
   const assertionRaw = rpcArgs.assertion;
   const operationRaw = rpcArgs.operation;
   const signerCredentialId = rpcArgs.signer_credential_id;
@@ -577,7 +654,7 @@ async function runHpAssertionChecks(
 async function finishHpAssertion(
   env: VendorEnv,
   accessEmail: string,
-  method: "registerOperatorCredential" | "revokeOperatorCredential",
+  method: HpVendorMethod,
   check: HpAssertionOk,
 ): Promise<void> {
   await insertAssertionUsed(env, check.assertionSha256, check.signer.credential_id);
@@ -593,7 +670,7 @@ async function finishHpAssertion(
 async function rejectHpAssertion(
   env: VendorEnv,
   accessEmail: string,
-  method: "registerOperatorCredential" | "revokeOperatorCredential",
+  method: HpVendorMethod,
   check: HpAssertionReject,
 ): Promise<VendorResultEnvelope> {
   await writeEntrypointAudit(
@@ -923,5 +1000,341 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     }));
 
     return ok(version, JSON.stringify(keys));
+  }
+
+  async registerIssuerKey(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "registerIssuerKey",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "registerIssuerKey",
+        check,
+      );
+    }
+
+    const kid = args.kid;
+    const publicKey = args.public_key;
+    const notBefore = args.not_before;
+    const notAfter = args.not_after;
+    if (
+      typeof kid !== "string" ||
+      kid.length === 0 ||
+      typeof publicKey !== "string" ||
+      typeof notBefore !== "string" ||
+      notBefore.length === 0 ||
+      typeof notAfter !== "string" ||
+      notAfter.length === 0
+    ) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "assertion_invalid");
+    }
+
+    if (!isValidEd25519PublicKeyEncoding(publicKey)) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "public_key_invalid");
+    }
+
+    const existing = await readIssuerKey(this.env.DB, kid);
+    if (existing !== null) {
+      if (existing.public_key !== publicKey) {
+        await writeEntrypointAudit(
+          this.env.DB,
+          access.email,
+          "registerIssuerKey",
+          check.auditTarget,
+          check.assertionSha256,
+        );
+        return conflict(version, "public_key_mismatch");
+      }
+      await finishHpAssertion(
+        this.env,
+        access.email,
+        "registerIssuerKey",
+        check,
+      );
+      return ok(version, issuerKeyRowToDetail(existing));
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "registerIssuerKey",
+      check,
+    );
+
+    await this.env.DB.prepare(
+      `INSERT INTO issuer_key
+         (kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`,
+    )
+      .bind(
+        kid,
+        this.env.ISSUER_ID,
+        publicKey,
+        notBefore,
+        notAfter,
+        access.email,
+        check.assertionSha256,
+      )
+      .run();
+
+    const row = await readIssuerKey(this.env.DB, kid);
+    if (row === null) {
+      return rejected(version, "assertion_invalid");
+    }
+
+    await raiseAl13IssuerKey(this.env, {
+      kid,
+      kind: "register",
+      operation: check.operation,
+    });
+
+    return ok(version, issuerKeyRowToDetail(row));
+  }
+
+  async listIssuerKeys(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const { results } = await this.env.DB.prepare(
+      `SELECT kid, public_key, status, not_before, not_after
+       FROM issuer_key
+       WHERE status IN ('active', 'retiring')
+       ORDER BY kid ASC`,
+    ).all<{
+      kid: string;
+      public_key: string;
+      status: string;
+      not_before: string;
+      not_after: string;
+    }>();
+
+    const keys = (results ?? []).map((row) => ({
+      kid: row.kid,
+      public_key: row.public_key,
+      status: row.status,
+      not_before: row.not_before,
+      not_after: row.not_after,
+    }));
+
+    return ok(version, JSON.stringify(keys));
+  }
+
+  async retireIssuerKey(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "retireIssuerKey",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "retireIssuerKey",
+        check,
+      );
+    }
+
+    const kid = args.kid;
+    if (typeof kid !== "string" || kid.length === 0) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "retireIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    const existing = await readIssuerKey(this.env.DB, kid);
+    if (existing === null) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "retireIssuerKey",
+        kid,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    if (existing.status === "revoked") {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "retireIssuerKey",
+        kid,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_revoked");
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "retireIssuerKey",
+      check,
+    );
+
+    if (existing.status === "active") {
+      await this.env.DB.prepare(
+        `UPDATE issuer_key SET status = 'retiring' WHERE kid = ?`,
+      )
+        .bind(kid)
+        .run();
+    }
+
+    const row = await readIssuerKey(this.env.DB, kid);
+    if (row === null) {
+      return rejected(version, "kid_not_found");
+    }
+
+    await raiseAl13IssuerKey(this.env, {
+      kid,
+      kind: "retire",
+      operation: check.operation,
+    });
+
+    return ok(version, issuerKeyRowToDetail(row));
+  }
+
+  async revokeIssuerKey(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "revokeIssuerKey",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "revokeIssuerKey",
+        check,
+      );
+    }
+
+    const kid = args.kid;
+    if (typeof kid !== "string" || kid.length === 0) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "revokeIssuerKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    const existing = await readIssuerKey(this.env.DB, kid);
+    if (existing === null) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "revokeIssuerKey",
+        kid,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "revokeIssuerKey",
+      check,
+    );
+
+    if (existing.status !== "revoked") {
+      await this.env.DB.prepare(
+        `UPDATE issuer_key SET status = 'revoked' WHERE kid = ?`,
+      )
+        .bind(kid)
+        .run();
+    }
+
+    const row = await readIssuerKey(this.env.DB, kid);
+    if (row === null) {
+      return rejected(version, "kid_not_found");
+    }
+
+    await raiseAl13IssuerKey(this.env, {
+      kid,
+      kind: "revoke",
+      operation: check.operation,
+    });
+
+    return ok(version, issuerKeyRowToDetail(row));
   }
 }

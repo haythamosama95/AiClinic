@@ -8,7 +8,7 @@ import {
   applyAllMigrations,
   clearConfigCache,
   count,
-  enrollScenario,
+  newClinic,
   GATEWAY_ORIGIN,
   getAudits,
   invoke,
@@ -65,31 +65,38 @@ describe("token contract rotation", () => {
     await setupPromotedFakePolicy(scenario);
 
     const began = await operatorFetch("/control/token-contract/begin-rotation", {
-      ver: "2",
+      ver: "3",
     });
     expect(began.status).toBe(200);
-    expect(began.json.ver).toBe("2");
+    expect(began.json.ver).toBe("3");
     clearConfigCache();
 
     const contracts = await env.DB.prepare(
       "SELECT ver, retired_at, changed_by FROM token_contract ORDER BY ver",
     ).all<{ ver: string; retired_at: string | null; changed_by: string }>();
-    const live = (contracts.results ?? []).filter((row) => row.retired_at === null);
+    const rows = contracts.results ?? [];
+    const live = rows.filter((row) => row.retired_at === null);
     expect(live).toHaveLength(2);
-    expect(live.map((row) => row.ver).sort()).toEqual(["1", "2"]);
-    expect(live.find((row) => row.ver === "1")?.changed_by).toBe("seed");
+    expect(live.map((row) => row.ver).sort()).toEqual(["2", "3"]);
+    expect(rows.find((row) => row.ver === "1")?.retired_at).toBeTruthy();
+    expect(rows.find((row) => row.ver === "2")?.changed_by).toBe("seed");
 
     const tokenV1 = await mintAat(scenario, { ver: "1" });
     const invokeV1 = await invoke(scenario, { token: tokenV1 });
-    assertIdentityPasses(invokeV1.status);
-    expect(invokeV1.status).toBe(200);
-    expect(terminalEventTypes(invokeV1.events)).toEqual(["completed"]);
+    expect(invokeV1.status).toBe(401);
+    expect(invokeV1.body?.code).toBe("unauthenticated");
 
     const tokenV2 = await mintAat(scenario, { ver: "2" });
     const invokeV2 = await invoke(scenario, { token: tokenV2 });
     assertIdentityPasses(invokeV2.status);
     expect(invokeV2.status).toBe(200);
     expect(terminalEventTypes(invokeV2.events)).toEqual(["completed"]);
+
+    const tokenV3 = await mintAat(scenario, { ver: "3" });
+    const invokeV3 = await invoke(scenario, { token: tokenV3 });
+    assertIdentityPasses(invokeV3.status);
+    expect(invokeV3.status).toBe(200);
+    expect(terminalEventTypes(invokeV3.events)).toEqual(["completed"]);
   });
 
   it("SYS-9.2 — Retire cuts old ver", async () => {
@@ -97,7 +104,7 @@ describe("token contract rotation", () => {
     await setupPromotedFakePolicy(scenario);
 
     const began = await operatorFetch("/control/token-contract/begin-rotation", {
-      ver: "2",
+      ver: "3",
     });
     expect(began.status).toBe(200);
     clearConfigCache();
@@ -117,7 +124,7 @@ describe("token contract rotation", () => {
       .first<{ ver: string; retired_at: string | null }>();
     expect(row?.retired_at).toBe(retired.json.retired_at);
 
-    const beginAudits = await getAudits("token_contract_begin_rotation", "2");
+    const beginAudits = await getAudits("token_contract_begin_rotation", "3");
     expect(beginAudits).toHaveLength(1);
     const retireAudits = await getAudits("token_contract_retire", "2");
     expect(retireAudits).toHaveLength(1);
@@ -127,8 +134,8 @@ describe("token contract rotation", () => {
     expect(blocked.status).toBe(401);
     expect(blocked.body?.code).toBe("unauthenticated");
 
-    const tokenV1 = await mintAat(scenario, { ver: "1" });
-    const allowed = await invoke(scenario, { token: tokenV1 });
+    const tokenV3 = await mintAat(scenario, { ver: "3" });
+    const allowed = await invoke(scenario, { token: tokenV3 });
     assertIdentityPasses(allowed.status);
     expect(allowed.status).toBe(200);
     expect(terminalEventTypes(allowed.events)).toEqual(["completed"]);
@@ -136,7 +143,7 @@ describe("token contract rotation", () => {
 
   it("SYS-9.3 — Auth & validation", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     const staffToken = await mintAat(scenario);
 
     const routes = [

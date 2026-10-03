@@ -1,4 +1,5 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { kCurrentWorker } from "miniflare";
 import { pinWorkerdCompatibilityDate } from "./test/pin-workerd-compatibility-date";
 
 /**
@@ -44,6 +45,15 @@ export default defineWorkersConfig({
             // serves consult (`now > expiresAt`) and the worker passes the
             // preloaded policy row through so routing never re-consults.
             CONFIG_CACHE_TTL_MS: "0",
+            ISSUER_ID: "issuer-test",
+            ACCESS_TEAM_DOMAIN: "access.test",
+            ACCESS_AUD: "vendor-access-aud",
+            WEBAUTHN_RP_ID: "ops.vendor.test",
+            WEBAUTHN_ORIGIN: "https://ops.vendor.test",
+            ALERT_EMAIL_TO: "alerts@clinic.invalid",
+          },
+          serviceBindings: {
+            VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },
           },
         },
       },

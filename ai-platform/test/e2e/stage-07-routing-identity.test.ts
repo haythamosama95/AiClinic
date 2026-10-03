@@ -12,7 +12,7 @@ import {
   controlFetch,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   generateTestKeypair,
   mintAat,
@@ -21,6 +21,7 @@ import {
   queryOne,
   readHttpResult,
   resetE2eState,
+  seedSql,
   TAXONOMY_BODY_KEYS,
   type EntitlePayload,
   type HttpResult,
@@ -52,9 +53,8 @@ const UNKNOWN_INSTALLATION_ISS = "11111111-2222-4333-8444-555555555555";
 
 async function provisionB0(): Promise<{ scenario: Scenario; token: string }> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, B0_ENTITLE);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, B0_ENTITLE);
   expect(entitled.status).toBe(200);
   const token = await mintAat(scenario);
   return { scenario, token };
@@ -331,51 +331,31 @@ describe("Stage 07 — discovery routing and identity (S07-001…S07-018)", () =
 
     assertUnauthenticated(result);
     expect(
-      await queryOne("SELECT key_id FROM installation_key WHERE key_id = ?", [
-        unknownKid,
-      ]),
+      await queryOne("SELECT kid FROM issuer_key WHERE kid = ?", [unknownKid]),
     ).toBeNull();
     expect(await count("ai_request")).toBe(0);
   });
 
   it("S07-018 — Revoked signing key → 401", async () => {
     const { scenario, token } = await provisionB0();
-    const rotated = await generateTestKeypair();
-
-    const rotate = await controlFetch(
-      `/control/installations/${scenario.installationId}/rotate`,
+    await seedSql([
       {
-        body: {
-          kid: rotated.kid,
-          public_key: rotated.publicKeyB64,
-          algorithm: "EdDSA",
-        },
+        sql: "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
+        params: [scenario.kid],
       },
-    );
-    expect(rotate.status).toBe(200);
-
-    const revoke = await controlFetch(
-      `/control/installations/${scenario.installationId}/revoke-key`,
-      { body: { kid: scenario.kid } },
-    );
-    expect(revoke.status).toBe(200);
+    ]);
     clearConfigCache();
 
-    const key = await queryOne<{ revoked_at: string | null }>(
-      "SELECT revoked_at FROM installation_key WHERE key_id = ?",
+    const key = await queryOne<{ status: string }>(
+      "SELECT status FROM issuer_key WHERE kid = ?",
       [scenario.kid],
     );
-    expect(key?.revoked_at).not.toBeNull();
+    expect(key?.status).toBe("revoked");
 
     const aiRequestBefore = await count("ai_request");
     const result = await discoveryGet({ token });
 
     assertUnauthenticated(result);
     expect(await count("ai_request")).toBe(aiRequestBefore);
-    const keyAfter = await queryOne<{ revoked_at: string | null }>(
-      "SELECT revoked_at FROM installation_key WHERE key_id = ?",
-      [scenario.kid],
-    );
-    expect(keyAfter?.revoked_at).toBe(key?.revoked_at);
   });
 });

@@ -9,6 +9,8 @@ import {
   queryAll,
   queryOne,
   resetE2eState,
+  newClinic,
+  newScenario,
   type HttpResult,
 } from "./harness";
 
@@ -20,7 +22,7 @@ beforeEach(async () => {
   await resetE2eState();
 });
 
-const I0 = "3f6b2a1c-9d4e-4f7a-8b1c-2e5d6a7b8c9d";
+let I0 = "3f6b2a1c-9d4e-4f7a-8b1c-2e5d6a7b8c9d";
 const ORG0 = "7a1b2c3d-4e5f-4a6b-9c8d-0e1f2a3b4c5d";
 const K0 = "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f";
 const X0 = "n4bQgYhMfWWaL-qgxVrQ1O91g3Z2Q4u2Zz8v0m5p8xk";
@@ -54,7 +56,7 @@ const CANONICAL_ENROLL_BODY = {
 } as const;
 
 // Code: new URL(request.url).origin. Pool origin is GATEWAY_ORIGIN.
-const CATALOG_ENROLL_SUCCESS_BODY = {
+const REMOVED_ENROLL_BODY = {
   platform_base_url: GATEWAY_ORIGIN,
 } as const;
 
@@ -112,7 +114,7 @@ type ControlAuditRow = {
 
 type LifecycleCounts = {
   installation: number;
-  installation_key: number;
+  issuer_key: number;
   entitlement: number;
   control_audit: number;
 };
@@ -146,16 +148,13 @@ function assertControlError(
   expect(result.json).toEqual({ error });
 }
 
-function assertCatalogEnrollSuccess(result: HttpResult): void {
-  expect(result.status).toBe(200);
-  expect(result.headers.get("content-type")).toContain("application/json");
-  expect(result.json).toEqual(CATALOG_ENROLL_SUCCESS_BODY);
-  expect(result.text).toBe(JSON.stringify(CATALOG_ENROLL_SUCCESS_BODY));
+function assertEnrollRouteRemoved(result: HttpResult): void {
+  expect(result.status).toBe(404);
 }
 
 async function assertNoLifecycleWrites(): Promise<void> {
   expect(await count("installation")).toBe(0);
-  expect(await count("installation_key")).toBe(0);
+  expect(await count("issuer_key")).toBe(0);
   expect(await count("entitlement")).toBe(0);
   expect(await count("control_audit")).toBe(0);
 }
@@ -163,7 +162,7 @@ async function assertNoLifecycleWrites(): Promise<void> {
 async function lifecycleCounts(): Promise<LifecycleCounts> {
   return {
     installation: await count("installation"),
-    installation_key: await count("installation_key"),
+    issuer_key: await count("issuer_key"),
     entitlement: await count("entitlement"),
     control_audit: await count("control_audit"),
   };
@@ -201,11 +200,17 @@ function expectCanonicalUuid(value: unknown): string {
   return id;
 }
 
+async function seedClinicI0(): Promise<void> {
+  const scenario = await newScenario();
+  await newClinic(scenario);
+  I0 = scenario.installationId;
+}
+
 async function enrollCanonicalI0(): Promise<HttpResult> {
   const result = await controlFetch(enrollPath(I0), {
     body: { ...CANONICAL_ENROLL_BODY },
   });
-  assertCatalogEnrollSuccess(result);
+  assertEnrollRouteRemoved(result);
   return result;
 }
 
@@ -215,7 +220,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: [1, 2, 3],
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -224,7 +229,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWithout("org_id"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -233,7 +238,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("display_name", "   "),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -242,7 +247,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("region", 42),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -251,7 +256,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWithout("plan"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -260,7 +265,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWithout("public_key"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -269,7 +274,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWithout("algorithm"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -278,7 +283,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWithout("kid"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -287,7 +292,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("plan", "platinum"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -296,7 +301,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("algorithm", "RS256"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -305,7 +310,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("org_id", "x"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -314,7 +319,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("kid", "key-1"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -324,7 +329,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       { body: { ...CANONICAL_ENROLL_BODY } },
     );
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -333,7 +338,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("public_key", "c2hvcnQ"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
@@ -342,162 +347,40 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       body: enrollBodyWith("public_key", "!!!not-base64!!!"),
     });
 
-    assertControlError(result, 400, "invalid_payload");
+    expect(result.status).toBe(404);
     await assertNoLifecycleWrites();
   });
 
   it("S03-036 — Enroll accepts uppercase hex UUIDs (boundary)", async () => {
-    const { publicKeyB64 } = await generateTestKeypair();
     const result = await controlFetch(enrollPath(I2_UPPER), {
-      body: { ...I2_ENROLL_BODY, public_key: publicKeyB64 },
+      body: { ...I2_ENROLL_BODY, public_key: (await generateTestKeypair()).publicKeyB64 },
     });
-
-    assertCatalogEnrollSuccess(result);
-
-    const installation = await queryOne<InstallationRow>(
-      "SELECT * FROM installation WHERE installation_id = ?",
-      [I2_STORED],
-    );
-    expect(installation).not.toBeNull();
-    expect(installation?.installation_id).toBe(I2_STORED);
-    expect(installation?.org_id).toBe(ORG2_UPPER);
-    expect(installation?.display_name).toBe("Boundary Clinic");
-    expect(installation?.status).toBe("active");
-    expect(installation?.region).toBe("eu-central");
-    expect(
-      await queryOne("SELECT * FROM installation WHERE installation_id = ?", [
-        I2_UPPER,
-      ]),
-    ).toBeNull();
-
-    const key = await queryOne<InstallationKeyRow>(
-      "SELECT * FROM installation_key WHERE key_id = ?",
-      [KI2_STORED],
-    );
-    expect(key).not.toBeNull();
-    expect(key?.key_id).toBe(KI2_STORED);
-    expect(key?.installation_id).toBe(I2_STORED);
-    expect(key?.public_key).toBe(publicKeyB64);
-    expect(key?.revoked_at).toBeNull();
-    expect(
-      await queryOne("SELECT * FROM installation_key WHERE key_id = ?", [
-        KI2_UPPER,
-      ]),
-    ).toBeNull();
-
-    const entitlement = await queryOne<EntitlementRow>(
-      "SELECT * FROM entitlement WHERE installation_id = ?",
-      [I2_STORED],
-    );
-    expect(entitlement).not.toBeNull();
-    expect(entitlement?.installation_id).toBe(I2_STORED);
-    expect(entitlement?.plan).toBe("starter");
-    expect(entitlement?.status).toBe("pending");
-
-    const audits = await queryAll<ControlAuditRow>(
-      "SELECT * FROM control_audit WHERE action = ? AND target = ?",
-      ["enroll", I2_STORED],
-    );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.operator_id).toBe("platform-operator");
-    expect(audits[0]?.target).toBe(I2_STORED);
-    expect(
-      await queryAll(
-        "SELECT * FROM control_audit WHERE action = ? AND target = ?",
-        ["enroll", I2_UPPER],
-      ),
-    ).toHaveLength(0);
+    assertEnrollRouteRemoved(result);
+    await assertNoLifecycleWrites();
   });
 
-  it("S03-037 — Enroll happy path registers installation, key, pending entitlement, and audit", async () => {
-    // Register 5 #20 (importKey catch after length check) is a note, not an ID
-    // skip. This HTTP enroll still sends catalog X0.
+  it("S03-037 — Enroll route removed (404)", async () => {
     const result = await controlFetch(enrollPath(I0), {
       body: { ...CANONICAL_ENROLL_BODY },
     });
-
-    assertCatalogEnrollSuccess(result);
-
-    const installation = await queryOne<InstallationRow>(
-      "SELECT * FROM installation WHERE installation_id = ?",
-      [I0],
-    );
-    expect(installation).not.toBeNull();
-    expect(installation?.installation_id).toBe(I0);
-    expect(installation?.org_id).toBe(ORG0);
-    expect(installation?.display_name).toBe("Verify Clinic");
-    expect(installation?.status).toBe("active");
-    expect(installation?.region).toBe("eu-central");
-    const enrolledAt = expectIsoTimestamp(installation?.enrolled_at);
-
-    const key = await queryOne<InstallationKeyRow>(
-      "SELECT * FROM installation_key WHERE key_id = ?",
-      [K0],
-    );
-    expect(key).not.toBeNull();
-    expect(key?.key_id).toBe(K0);
-    expect(key?.installation_id).toBe(I0);
-    expect(key?.public_key).toBe(X0);
-    expect(key?.algorithm).toBe("EdDSA");
-    expect(key?.valid_from).toBe(enrolledAt);
-    expect(key?.valid_until).toBe(
-      addDaysIso(enrolledAt, INSTALLATION_KEY_TTL_DAYS),
-    );
-    expect(key?.revoked_at).toBeNull();
-
-    const entitlement = await queryOne<EntitlementRow>(
-      "SELECT * FROM entitlement WHERE installation_id = ?",
-      [I0],
-    );
-    expect(entitlement).not.toBeNull();
-    expectCanonicalUuid(entitlement?.entitlement_id);
-    expect(entitlement?.installation_id).toBe(I0);
-    expect(entitlement?.plan).toBe("standard");
-    expect(entitlement?.period_start).toBe(enrolledAt);
-    expect(entitlement?.period_end).toBe(enrolledAt);
-    expect(entitlement?.request_quota).toBe(0);
-    expect(entitlement?.token_budget).toBe(0);
-    expect(Number(entitlement?.cost_budget)).toBe(0);
-    expect(["[]", []]).toContainEqual(entitlement?.allowed_capabilities);
-    expect(Number(entitlement?.soft_threshold)).toBe(0);
-    expect(entitlement?.status).toBe("pending");
-
-    const audits = await queryAll<ControlAuditRow>(
-      "SELECT * FROM control_audit WHERE action = ? AND target = ?",
-      ["enroll", I0],
-    );
-    expect(audits).toHaveLength(1);
-    expectCanonicalUuid(audits[0]?.audit_id);
-    expect(audits[0]?.operator_id).toBe("platform-operator");
-    expect(audits[0]?.action).toBe("enroll");
-    expect(audits[0]?.target).toBe(I0);
-    expect(audits[0]?.before_pointer).toBeNull();
-    expect(audits[0]?.after_pointer).toBeNull();
-
-    expect(await count("capability_grant")).toBe(0);
-    expect(await countR2Objects()).toBe(0);
+    assertEnrollRouteRemoved(result);
+    await assertNoLifecycleWrites();
   });
 
-  it("S03-038 — Re-enroll of the same installation_id returns already_enrolled", async () => {
-    await enrollCanonicalI0();
+  it("S03-038 — Re-enroll of the same installation_id returns 404", async () => {
+    await seedClinicI0();
     const before = await lifecycleCounts();
-    expect(before).toEqual({
-      installation: 1,
-      installation_key: 1,
-      entitlement: 1,
-      control_audit: 1,
-    });
 
     const result = await controlFetch(enrollPath(I0), {
       body: { ...CANONICAL_ENROLL_BODY },
     });
 
-    assertControlError(result, 409, "already_enrolled");
+    expect(result.status).toBe(404);
     expect(await lifecycleCounts()).toEqual(before);
   });
 
-  it("S03-039 — Enroll of a new installation_id with an existing org_id returns already_enrolled", async () => {
-    await enrollCanonicalI0();
+  it("S03-039 — Enroll of a new installation_id with an existing org_id returns 404", async () => {
+    await seedClinicI0();
 
     const result = await controlFetch(enrollPath(I_ORG_DUP), {
       body: {
@@ -507,7 +390,7 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       },
     });
 
-    assertControlError(result, 409, "already_enrolled");
+    expect(result.status).toBe(404);
     expect(
       await queryOne(
         "SELECT installation_id FROM installation WHERE installation_id = ?",
@@ -515,18 +398,10 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       ),
     ).toBeNull();
     expect(await count("installation")).toBe(1);
-    const remaining = await queryOne<InstallationRow>(
-      "SELECT * FROM installation WHERE installation_id = ?",
-      [I0],
-    );
-    expect(remaining?.installation_id).toBe(I0);
-    expect(remaining?.org_id).toBe(ORG0);
   });
 
-  it("S03-040 — Enroll reusing an existing kid returns duplicate_kid", async () => {
-    // Catalog side effects mention S03-036+S03-037 rows; this isolated test
-    // rebuilds I0 only. Assert the failed id is absent and I0 remains.
-    await enrollCanonicalI0();
+  it("S03-040 — Enroll reusing an existing kid returns 404", async () => {
+    await seedClinicI0();
 
     const result = await controlFetch(enrollPath(I_KID_DUP), {
       body: {
@@ -540,23 +415,8 @@ describe("Stage 03 — enroll validation (S03-021…S03-040)", () => {
       },
     });
 
-    assertControlError(result, 409, "duplicate_kid");
-    expect(
-      await queryOne(
-        "SELECT installation_id FROM installation WHERE installation_id = ?",
-        [I_KID_DUP],
-      ),
-    ).toBeNull();
+    expect(result.status).toBe(404);
     expect(await count("installation")).toBe(1);
-    expect(await count("installation_key")).toBe(1);
-    expect(await count("entitlement")).toBe(1);
-    expect(await count("control_audit")).toBe(1);
-    const remaining = await queryOne<InstallationRow>(
-      "SELECT * FROM installation WHERE installation_id = ?",
-      [I0],
-    );
-    expect(remaining?.installation_id).toBe(I0);
-    expect(remaining?.org_id).toBe(ORG0);
-    expect(remaining?.status).toBe("active");
+    expect(await count("issuer_key")).toBeGreaterThanOrEqual(1);
   });
 });

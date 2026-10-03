@@ -14,7 +14,7 @@ import {
   clearConfigCache,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   flushBackgroundWork,
@@ -225,7 +225,7 @@ describe("failure taxonomy matrix", () => {
     await setupPromotedFakePolicy(scenario);
     const before = await count("ai_request");
     const other = await newScenario();
-    await enrollScenario(other);
+    await newClinic(other);
 
     const variants: Array<{
       name: string;
@@ -295,17 +295,17 @@ describe("failure taxonomy matrix", () => {
         name: "key-revoked",
         prepare: async () => {
           await env.DB.prepare(
-            "UPDATE installation_key SET revoked_at = ? WHERE installation_id = ?",
+            "UPDATE issuer_key SET status = 'revoked' WHERE kid = ?",
           )
-            .bind(new Date().toISOString(), scenario.installationId)
+            .bind(scenario.kid)
             .run();
           clearConfigCache();
         },
         restore: async () => {
           await env.DB.prepare(
-            "UPDATE installation_key SET revoked_at = NULL WHERE installation_id = ?",
+            "UPDATE issuer_key SET status = 'active' WHERE kid = ?",
           )
-            .bind(scenario.installationId)
+            .bind(scenario.kid)
             .run();
           clearConfigCache();
         },
@@ -315,25 +315,25 @@ describe("failure taxonomy matrix", () => {
         name: "key-expired",
         prepare: async () => {
           await env.DB.prepare(
-            "UPDATE installation_key SET valid_until = '2020-01-01T00:00:00.000Z' WHERE installation_id = ?",
+            "UPDATE issuer_key SET not_after = '2020-01-01T00:00:00.000Z' WHERE kid = ?",
           )
-            .bind(scenario.installationId)
+            .bind(scenario.kid)
             .run();
           clearConfigCache();
         },
         restore: async () => {
           const key = await env.DB.prepare(
-            "SELECT valid_from FROM installation_key WHERE installation_id = ?",
+            "SELECT not_before FROM issuer_key WHERE kid = ?",
           )
-            .bind(scenario.installationId)
-            .first<{ valid_from: string }>();
+            .bind(scenario.kid)
+            .first<{ not_before: string }>();
           const validUntil = new Date(
-            Date.parse(String(key?.valid_from)) + 365 * 24 * 60 * 60 * 1000,
+            Date.parse(String(key?.not_before)) + 86400 * 1000,
           ).toISOString();
           await env.DB.prepare(
-            "UPDATE installation_key SET valid_until = ? WHERE installation_id = ?",
+            "UPDATE issuer_key SET not_after = ? WHERE kid = ?",
           )
-            .bind(validUntil, scenario.installationId)
+            .bind(validUntil, scenario.kid)
             .run();
           clearConfigCache();
         },
@@ -406,7 +406,7 @@ describe("failure taxonomy matrix", () => {
 
   it("SYS-6.3 — Pending entitlement / plan / grants / role / scope → forbidden_capability", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
@@ -937,7 +937,7 @@ describe("failure taxonomy matrix", () => {
 
   it("SYS-6.14 — No active routing policy → SSE failed internal_error", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);

@@ -2,10 +2,7 @@ export type { OperatorAuth, OperatorPrincipal } from "./types";
 export { createSecretOperatorAuth } from "./auth";
 export {
   handleDelete,
-  handleEnroll,
   handleResume,
-  handleRevokeKey,
-  handleRotate,
   handleSuspend,
 } from "./lifecycle";
 export { handleEntitle, handleOverride } from "./entitle";
@@ -48,10 +45,7 @@ import { handleEntitle, handleOverride } from "./entitle";
 import { reject } from "./http";
 import {
   handleDelete,
-  handleEnroll,
   handleResume,
-  handleRevokeKey,
-  handleRotate,
   handleSuspend,
 } from "./lifecycle";
 import {
@@ -88,7 +82,7 @@ const CREDIT_PRICE_ACTIVATE_PATTERN = /^\/control\/credit-price\/activate$/;
 const OVERRIDE_PATTERN = /^\/control\/installations\/[^/]+\/override$/;
 
 const CONTROL_ACTION_PATTERN =
-  /^\/control\/installations\/[^/]+\/(enroll|rotate|revoke-key|suspend|resume|delete|purge|entitle)$/;
+  /^\/control\/installations\/[^/]+\/(suspend|resume|delete|purge|entitle)$/;
 
 const CAPABILITY_LIFECYCLE_PATTERN =
   /^\/control\/capabilities\/[^/]+\/versions\/[^/]+\/(deprecate|retire)$/;
@@ -236,12 +230,6 @@ export async function dispatchControlRequest(
   const installAction = pathname.split("/").pop();
 
   switch (installAction) {
-    case "enroll":
-      return handleEnroll(request, bindings, operatorAuth);
-    case "rotate":
-      return handleRotate(request, bindings, operatorAuth);
-    case "revoke-key":
-      return handleRevokeKey(request, bindings, operatorAuth);
     case "suspend":
       return handleSuspend(request, bindings, operatorAuth);
     case "resume":

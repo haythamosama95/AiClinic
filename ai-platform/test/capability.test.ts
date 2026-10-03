@@ -334,7 +334,8 @@ async function clearEntitlementTables(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM control_audit"),
     db.prepare("DELETE FROM capability_grant"),
     db.prepare("DELETE FROM entitlement"),
-    db.prepare("DELETE FROM installation_key"),
+    db.prepare("DELETE FROM tenant_binding"),
+    db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),
   ]);
 }

@@ -308,7 +308,7 @@ export async function purgeByInstallationId(
 
   // Decision: purge-by-installation-id is the store half of installation
   // deletion recovery (§7.7). It removes identity + commercial footprint
-  // (`installation_key`, `entitlement`, `installation`) in addition to
+  // (`entitlement`, `installation`) in addition to
   // journal/ledger/counter/grant rows and `grace_admission_queue` rows that
   // FK to the installation — not deferred to B2 lifecycle alone.
   await db.batch([
@@ -342,10 +342,10 @@ export async function purgeByInstallationId(
       .prepare(`DELETE FROM capability_grant WHERE scope = ?`)
       .bind(installationScope),
     db
-      .prepare(`DELETE FROM installation_key WHERE installation_id = ?`)
+      .prepare(`DELETE FROM entitlement WHERE installation_id = ?`)
       .bind(installationId),
     db
-      .prepare(`DELETE FROM entitlement WHERE installation_id = ?`)
+      .prepare(`DELETE FROM tenant_binding WHERE installation_id = ?`)
       .bind(installationId),
     db
       .prepare(`DELETE FROM grace_admission_queue WHERE installation_id = ?`)

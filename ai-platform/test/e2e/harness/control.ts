@@ -5,15 +5,12 @@ import {
   handleCohortPromote,
   handleDelete,
   handleDeprecate,
-  handleEnroll,
   handleEntitle,
   handleInstallationPurge,
   handleInstallationQuotaGet,
   handleKillSwitchArm,
   handleKillSwitchDisarm,
   handleResume,
-  handleRevokeKey,
-  handleRotate,
   handleRoutingPolicyCanary,
   handleRoutingPolicyPromote,
   handleRoutingPolicyPublish,
@@ -36,6 +33,9 @@ import {
   WRONG_OPERATOR_BEARER,
   type HttpResult,
 } from "./env";
+import { getCapabilities } from "./clinic";
+import { queryOne } from "./d1";
+import { clearE2eIssuerRegistry, ensureE2eIssuerRegistry, mintAat } from "./aat";
 import type { Scenario } from "./types";
 
 export type ControlAuth =
@@ -332,21 +332,74 @@ export function enrollPayload(
   };
 }
 
+export async function newClinic(scenario?: Scenario): Promise<Scenario> {
+  const ready = scenario ?? {
+    installationId: crypto.randomUUID(),
+    orgId: crypto.randomUUID(),
+    branchId: crypto.randomUUID(),
+    actorId: crypto.randomUUID(),
+    kid: crypto.randomUUID(),
+    keypair: await (async () => {
+      const { generateTestKeypair } = await import("./crypto");
+      return generateTestKeypair(crypto.randomUUID());
+    })(),
+  };
+  const issuer = await ensureE2eIssuerRegistry();
+  ready.kid = issuer.kid;
+  const token = await mintAat(ready);
+  const caps = await getCapabilities(token);
+  if (caps.status !== 200) {
+    throw new Error(`newClinic capabilities failed (${caps.status})`);
+  }
+  const binding = await queryOne<{ installation_id: string }>(
+    "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+    [ready.orgId],
+  );
+  if (!binding?.installation_id) {
+    throw new Error("newClinic: tenant_binding missing");
+  }
+  ready.installationId = binding.installation_id;
+  await ensurePendingEntitlement(ready.installationId, ready.plan ?? "standard");
+  isolateConfigCache.clear();
+  return ready;
+}
+
+/** Enroll used to insert this sentinel so `/control/entitle` can activate it. */
+async function ensurePendingEntitlement(
+  installationId: string,
+  plan: string,
+): Promise<void> {
+  const existing = await queryOne<{ entitlement_id: string }>(
+    "SELECT entitlement_id FROM entitlement WHERE installation_id = ?",
+    [installationId],
+  );
+  if (existing) {
+    return;
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO entitlement (
+      entitlement_id, installation_id, plan, period_start, period_end,
+      request_quota, token_budget, cost_budget, allowed_capabilities,
+      soft_threshold, status
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
+  )
+    .bind(crypto.randomUUID(), installationId, plan, now, now)
+    .run();
+}
+
+/** @deprecated Use `newClinic`. Enroll control route returns 404. */
 export async function enrollInstallation(
   scenario: Scenario,
   options: ControlFetchOptions & { payload?: Record<string, unknown> } = {},
 ): Promise<HttpResult> {
-  const result = await controlFetch(
+  return controlFetch(
     `/control/installations/${scenario.installationId}/enroll`,
     {
       ...options,
       body: options.payload ?? options.body ?? enrollPayload(scenario),
     },
   );
-  if (result.status === 200) {
-    isolateConfigCache.clear();
-  }
-  return result;
 }
 
 export type EntitlePayload = {
@@ -524,9 +577,6 @@ export async function rollbackPolicy(
 export { jsonOf };
 
 export const controlHandlers = {
-  handleEnroll,
-  handleRotate,
-  handleRevokeKey,
   handleSuspend,
   handleResume,
   handleDelete,

@@ -11,7 +11,7 @@ import {
   clearConfigCache,
   count,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   fakePolicyDocument,
   getCapabilities,
@@ -280,7 +280,7 @@ describe("entitlement-grant interplay", () => {
 
   it("SYS-3.4 — Entitle does not overreach", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
 
     const entitlementBefore = await getEntitlement(scenario.installationId);
     const planBefore = String(entitlementBefore?.plan);
@@ -308,7 +308,7 @@ describe("entitlement-grant interplay", () => {
 
   it("SYS-3.5 — Entitlement uniqueness & validation", async () => {
     const scenario = await newScenario();
-    await enrollScenario(scenario);
+    await newClinic(scenario);
 
     const entitlement = await getEntitlement(scenario.installationId);
     expect(entitlement).toBeTruthy();
@@ -426,8 +426,8 @@ describe("entitlement-grant interplay", () => {
   it("SYS-3.6 — Multi-installation same-plan entitle", async () => {
     const i0 = await newScenario();
     const i1 = await newScenario();
-    await enrollScenario(i0);
-    await enrollScenario(i1);
+    await newClinic(i0);
+    await newClinic(i1);
 
     expect((await entitleScenario(i0, DEFAULT_ENTITLE_PAYLOAD)).status).toBe(200);
     expect((await entitleScenario(i1, DEFAULT_ENTITLE_PAYLOAD)).status).toBe(200);

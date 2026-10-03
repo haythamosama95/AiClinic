@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   ConfigCache,
   type ConfigEntityKind,
@@ -77,11 +78,6 @@ type EntitlePayload = {
 };
 
 type ControlHandlers = {
-  handleEnroll: (
-    request: Request,
-    bindings: ControlBindings,
-    operatorAuth: OperatorAuth,
-  ) => Promise<Response>;
   handleEntitle: (
     request: Request,
     bindings: ControlBindings,
@@ -177,7 +173,8 @@ async function clearLifecycleTables(): Promise<void> {
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM plan"),
   ]);
@@ -218,17 +215,39 @@ function buildEntitleRequest(
   );
 }
 
+
+async function seedEnrolledInstallation(
+  installationId: string = FIXTURE_INSTALLATION_ID,
+  orgId: string = FIXTURE_ORG_ID,
+): Promise<void> {
+  const enrolledAt = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (?, ?, ?, 'active', 'us-east-1', ?)`,
+    ).bind(installationId, orgId, "Test Clinic", enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(orgId, installationId, enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO entitlement (
+        entitlement_id, installation_id, plan, period_start, period_end,
+        request_quota, token_budget, cost_budget, allowed_capabilities,
+        soft_threshold, status
+      ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
+    ).bind(crypto.randomUUID(), installationId, DEFAULT_ENROLL_PAYLOAD.plan, enrolledAt, enrolledAt),
+  ]);
+}
+
 async function enrollFixture(
-  handlers: ControlHandlers,
-  operatorAuth: OperatorAuth = createFakeOperatorAuth(),
+  _handlers: unknown,
+  _operatorAuth?: unknown,
   installationId: string = FIXTURE_INSTALLATION_ID,
 ): Promise<void> {
-  const response = await handlers.handleEnroll(
-    buildEnrollRequest(installationId),
-    bindings(),
-    operatorAuth,
-  );
-  expect(response.ok).toBe(true);
+  await seedEnrolledInstallation(installationId);
 }
 
 function makePlatformD1Reader(db: D1Database): D1Reader {
@@ -330,6 +349,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, uniqueEntitlementSql);
   await applyPlatformSchema(env.DB, planCatalogueSql);
+  await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
 });
 
 beforeEach(async () => {

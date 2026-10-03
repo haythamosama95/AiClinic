@@ -8,7 +8,7 @@ import {
   CRON_RETENTION,
   CRON_ROLLUP,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   gatewayObjectJson,
@@ -135,9 +135,8 @@ async function sha256Hex(text: string): Promise<string> {
 
 async function enrollOnly(): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  return scenario;
+  await newClinic(scenario);
+return scenario;
 }
 
 async function enrollAndEntitle(

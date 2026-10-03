@@ -70,6 +70,7 @@ import statusMigrationSql from "../migrations/20260805190000_routing_policy_stat
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -98,6 +99,7 @@ declare module "cloudflare:test" {
 }
 
 const GATEWAY_ORIGIN = "https://ai-gateway.test";
+const ISSUER_ID = "issuer-test";
 const FIXTURE_INSTALLATION_ID = "inst-i1-orchestrator";
 const FIXTURE_ORG_ID = "org-i1-orchestrator";
 const FIXTURE_CAPABILITY_ID = "clinic.visit_summary";
@@ -171,7 +173,7 @@ async function mintToken(
   claims: Partial<AatClaims> = {},
 ): Promise<string> {
   const payload: AatClaims = {
-    iss: FIXTURE_INSTALLATION_ID,
+    iss: ISSUER_ID,
     aud: "ai-platform",
     sub: "actor-i1-001",
     org: FIXTURE_ORG_ID,
@@ -181,7 +183,7 @@ async function mintToken(
     jti: uniqueJti(),
     iat: fixtureNowSeconds() - 30,
     exp: fixtureNowSeconds() + 300,
-    ver: "1",
+    ver: "2",
     ...claims,
   };
   const header = { alg: "EdDSA", kid: keypair.kid };
@@ -305,7 +307,6 @@ function fixtureContext(): Record<string, unknown> {
 
 async function mintAat(overrides: Record<string, unknown> = {}): Promise<string> {
   return mintToken(fixtureKeypair, {
-    iss: FIXTURE_INSTALLATION_ID,
     sub: "actor-i1-001",
     org: FIXTURE_ORG_ID,
     branch: "branch-i1-001",
@@ -426,19 +427,26 @@ async function seedRoutingPolicy(
     .run();
 }
 
-async function seedInstallationKeys(
+async function seedIssuerBinding(
   installationId: string,
+  orgId: string,
   keypair: TestKeypair,
 ): Promise<void> {
-  const validFrom = new Date((fixtureNowSeconds() - 3600) * 1000).toISOString();
-  await env.DB
-    .prepare(
-      `INSERT INTO installation_key (
-        key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
-      ) VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
-    )
-    .bind(keypair.kid, installationId, keypair.publicKeyB64, validFrom)
-    .run();
+  const enrolledAt = FIXTURE_NOW;
+  const notBefore = new Date((fixtureNowSeconds() - 3600) * 1000).toISOString();
+  const notAfter = new Date((fixtureNowSeconds() + 86400) * 1000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(orgId, installationId, enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO issuer_key (
+        kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256
+      ) VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+    ).bind(keypair.kid, ISSUER_ID, keypair.publicKeyB64, notBefore, notAfter),
+  ]);
 }
 
 async function seedInstallationRow(installationId: string): Promise<void> {
@@ -465,14 +473,15 @@ async function seedInstallationFixture(installationId: string): Promise<void> {
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM kill_switch"),
   ]);
 
   await seedInstallationRow(installationId);
-  await seedInstallationKeys(installationId, fixtureKeypair);
+  await seedIssuerBinding(installationId, FIXTURE_ORG_ID, fixtureKeypair);
 
   await env.DB
     .prepare(
@@ -641,9 +650,14 @@ beforeAll(async () => {
     await applySql(env.DB, graceQueueMigrationSql);
     // G1 plan catalogue: adds entitlement.credit_budget consumed by G2 admission.
     await applySql(env.DB, planCatalogueMigrationSql);
+    await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
+       VALUES ('2', '2026-10-03T00:00:00.000Z', NULL, 'seed')`,
     ).run();
     schemaApplied = true;
   }

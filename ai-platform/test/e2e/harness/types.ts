@@ -7,4 +7,6 @@ export type Scenario = {
   actorId: string;
   kid: string;
   keypair: TestKeypair;
+  /** Plan stored on the pending entitlement enroll used to write. */
+  plan?: string;
 };

@@ -171,7 +171,8 @@ async function clearEntitlementTables(): Promise<void> {
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -180,20 +181,25 @@ async function seedInstallation(
   installationId: string = FIXTURE_INSTALLATION_ID,
   status: string = "active",
 ): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO installation (
-      installation_id, org_id, display_name, status, region, enrolled_at
-    ) VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(
       installationId,
       FIXTURE_ORG_ID,
       "Entitlement Test Clinic",
       status,
       "us-east-1",
       FIXTURE_NOW,
-    )
-    .run();
+    ),
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(FIXTURE_ORG_ID, installationId, FIXTURE_NOW),
+  ]);
 }
 
 async function seedEntitlement(

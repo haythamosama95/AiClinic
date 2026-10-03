@@ -257,12 +257,18 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
 
   it("S09-026 — retired token-contract ver 1 is unauthenticated", async () => {
     const scenario = await provisionHappyPath();
-    const opened = await controlFetch("/control/token-contract/begin-rotation", {
+    const already = await controlFetch("/control/token-contract/begin-rotation", {
       body: { ver: "2" },
     });
+    expect(already.status).toBe(409);
+    expect(already.json).toEqual({ error: "ver_already_exists" });
+    const opened = await controlFetch("/control/token-contract/begin-rotation", {
+      body: { ver: "3" },
+    });
     expect(opened.status).toBe(200);
+    expect(opened.json).toEqual({ ver: "3" });
     const retired = await controlFetch("/control/token-contract/retire", {
-      body: { ver: "1" },
+      body: { ver: "2" },
     });
     expect(retired.status).toBe(200);
     clearConfigCache();
@@ -271,14 +277,11 @@ describe("Stage 09 — entitlement and rate limit (S09-023…S09-043)", () => {
     assertJsonTaxonomy(result, 401, "unauthenticated", true);
     await assertNoGuardWrites();
 
-    await seedSql([
-      { sql: "DELETE FROM token_contract WHERE ver = ?", params: ["2"] },
-      {
-        sql: "UPDATE token_contract SET retired_at = NULL WHERE ver = ?",
-        params: ["1"],
-      },
-    ]);
-    clearConfigCache();
+    const alreadyRetired = await controlFetch("/control/token-contract/retire", {
+      body: { ver: "1" },
+    });
+    expect(alreadyRetired.status).toBe(409);
+    expect(alreadyRetired.json).toEqual({ error: "ver_already_retired" });
   });
 
   it("S09-027 — missing entitlement row is stage-3 internal_error", async () => {

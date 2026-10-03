@@ -61,6 +61,8 @@ vi.mock("../../src/prompt/registry", () => ({
 }));
 
 import { env, SELF } from "cloudflare:test";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
+import { createSoftwareAuthenticator } from "vendor-contracts/testkit";
 import migrationSql from "../../migrations/20260731120000_platform_schema.sql?raw";
 import capabilityGrantLifecycleSql from "../../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import canaryMigrationSql from "../../migrations/20260803100000_routing_policy_canary.sql?raw";
@@ -75,6 +77,7 @@ import planCatalogueSql from "../../migrations/20260911120000_plan_catalogue.sql
 import quotaWeightMigrationSql from "../../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import invoiceMigrationSql from "../../migrations/20260911200000_invoice.sql?raw";
 import operatorCredentialMigrationSql from "../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   createCapabilityRegistry,
   setCapabilityRegistry,
@@ -105,6 +108,9 @@ declare module "cloudflare:test" {
       listOperatorCredentials(
         args: Record<string, unknown>,
       ): Promise<VendorResultEnvelope>;
+      registerIssuerKey(
+        args: Record<string, unknown>,
+      ): Promise<VendorResultEnvelope>;
     };
     TEST_CLOCK: string;
     ACCESS_TEAM_DOMAIN: string;
@@ -125,6 +131,9 @@ declare module "cloudflare:test" {
 }
 
 export const GATEWAY_ORIGIN = "https://ai-gateway.test";
+export const ISSUER_ID =
+  (env as { ISSUER_ID?: string }).ISSUER_ID ?? "issuer-test";
+const VENDOR_CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
 export const OPERATOR_BEARER = "test-operator-bearer-token";
 export const OPERATOR_ID = "operator-test-principal";
 export const CAPABILITY_ID = "clinic.visit_summary";
@@ -135,7 +144,8 @@ export const POLICY_REF = "routing/standard";
 
 export const PLATFORM_TABLES = [
   "installation",
-  "installation_key",
+  "issuer_key",
+  "tenant_binding",
   "entitlement",
   "capability_grant",
   "routing_policy",
@@ -167,6 +177,8 @@ export type Scenario = {
   actorId: string;
   kid: string;
   keypair: TestKeypair;
+  /** Plan stored on the pending entitlement enroll used to write. */
+  plan?: string;
 };
 
 export type AatClaims = {
@@ -241,6 +253,7 @@ const MIGRATION_SQL = [
   quotaWeightMigrationSql,
   invoiceMigrationSql,
   operatorCredentialMigrationSql,
+  issuerKeyTenantBindingMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -348,7 +361,8 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM kill_switch"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM token_contract"),
     env.DB.prepare("DELETE FROM plan"),
@@ -356,14 +370,19 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM invoice"),
   ]);
 
-  await env.DB
-    .prepare(
+  await env.DB.batch([
+    env.DB.prepare(
       `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
-       VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,
-    )
-    .run();
+       VALUES ('2', '2026-10-03T13:00:00.000Z', NULL, 'seed')`,
+    ),
+    env.DB.prepare(
+      `INSERT INTO token_contract (ver, added_at, retired_at, changed_by)
+       VALUES ('1', '2026-08-03T00:00:00.000Z', '2026-10-03T13:00:00.000Z', 'seed')`,
+    ),
+  ]);
   await seedCataloguePlan(env.DB);
   vendorTestClockIso = null;
+  clearHarnessIssuerRegistry();
 }
 
 export function visitSummaryManifest(): Manifest {
@@ -463,29 +482,149 @@ export async function newScenario(): Promise<Scenario> {
   return { installationId, orgId, branchId, actorId, kid, keypair };
 }
 
-async function ensureInstallationKeyActive(installationId: string): Promise<void> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const key = await queryOne<{ valid_from: string }>(
-      "SELECT valid_from FROM installation_key WHERE installation_id = ?",
-      [installationId],
-    );
-    const validFromMs = Date.parse(String(key?.valid_from));
-    const verifierNowMs = Math.floor(Date.now() / 1000) * 1000;
-    if (!Number.isNaN(validFromMs) && verifierNowMs >= validFromMs) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+type HarnessIssuerRegistry = {
+  kid: string;
+  privateKey: CryptoKey;
+  publicKeyB64: string;
+  signerCredentialId: string;
+  signerAuthenticator: Awaited<ReturnType<typeof createSoftwareAuthenticator>>;
+};
+
+let harnessIssuerRegistry: HarnessIssuerRegistry | null = null;
+
+function clearHarnessIssuerRegistry(): void {
+  harnessIssuerRegistry = null;
+}
+
+async function harnessNowSeconds(): Promise<number> {
+  const iso = getVendorTestClockIso();
+  if (iso) {
+    return Math.floor(Date.parse(iso) / 1000);
   }
-  throw new Error("installation key not yet within validity window");
+  return nowSeconds();
+}
+
+async function operationForRegisterIssuerKey(input: {
+  kid: string;
+  publicKey: string;
+  notBefore: string;
+  notAfter: string;
+  accessJwt: string;
+}): Promise<Record<string, unknown>> {
+  return {
+    op: "registerIssuerKey",
+    params: {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      kid: input.kid,
+      public_key: input.publicKey,
+      not_before: input.notBefore,
+      not_after: input.notAfter,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: randomUuid(),
+    contract_version: VENDOR_CONTRACT_VERSION,
+  };
+}
+
+async function bootstrapHarnessOperatorCredential(
+  authenticator: Awaited<ReturnType<typeof createSoftwareAuthenticator>>,
+): Promise<{ credentialId: string; accessJwt: string }> {
+  const credentialId = randomUuid();
+  const attestation = encodeVendorAttestation(await authenticator.attest());
+  const accessJwt = await mintVendorAccessJwt();
+  const result = await vendorCall(
+    "registerOperatorCredential",
+    {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      credential_id: credentialId,
+      attestation,
+    },
+    { accessJwt },
+  );
+  if (result.result !== "ok") {
+    throw new Error(`registerOperatorCredential failed: ${result.code}`);
+  }
+  const row = JSON.parse(result.detail) as Record<string, unknown>;
+  await setTestClock(String(row.activates_at));
+  return { credentialId, accessJwt };
+}
+
+async function ensureHarnessIssuerRegistered(): Promise<HarnessIssuerRegistry> {
+  if (harnessIssuerRegistry !== null) {
+    return harnessIssuerRegistry;
+  }
+  await setupVendorHarness();
+  const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
+  const { credentialId: signerCredentialId } =
+    await bootstrapHarnessOperatorCredential(signerAuthenticator);
+
+  const kid = randomUuid();
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "Ed25519" },
+    true,
+    ["sign", "verify"],
+  );
+  const rawPublicKey = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+  const publicKeyB64 = base64urlEncode(new Uint8Array(rawPublicKey));
+  const notBefore = getVendorTestClockIso() ?? new Date().toISOString();
+  const notAfter = new Date(
+    Date.parse(notBefore) + 365 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const accessJwt = await mintVendorAccessJwt();
+  const operation = await operationForRegisterIssuerKey({
+    kid,
+    publicKey: publicKeyB64,
+    notBefore,
+    notAfter,
+    accessJwt,
+  });
+  const assertion = encodeVendorAssertion(
+    await signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const envelope = await vendorCall(
+    "registerIssuerKey",
+    {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      kid,
+      public_key: publicKeyB64,
+      not_before: notBefore,
+      not_after: notAfter,
+      signer_credential_id: signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt },
+  );
+  if (envelope.result !== "ok") {
+    throw new Error(`registerIssuerKey failed: ${envelope.code}`);
+  }
+
+  harnessIssuerRegistry = {
+    kid,
+    privateKey: keyPair.privateKey,
+    publicKeyB64,
+    signerCredentialId,
+    signerAuthenticator,
+  };
+  return harnessIssuerRegistry;
 }
 
 export async function mintAat(
   scenario: Scenario,
   overrides: Partial<AatClaims> = {},
 ): Promise<string> {
-  await ensureInstallationKeyActive(scenario.installationId);
+  const issuer = await ensureHarnessIssuerRegistered();
+  const now = await harnessNowSeconds();
   const payload: AatClaims = {
-    iss: scenario.installationId,
+    iss: ISSUER_ID,
     aud: "ai-platform",
     sub: scenario.actorId,
     org: scenario.orgId,
@@ -493,18 +632,18 @@ export async function mintAat(
     role: "clinician",
     scopes: ["ai.visit_summary", "ai.access"],
     jti: randomUuid(),
-    iat: nowSeconds() - 30,
-    exp: nowSeconds() + 300,
-    ver: "1",
+    iat: now - 30,
+    exp: now + 300,
+    ver: "2",
     ...overrides,
   };
-  const header = { alg: "EdDSA", kid: scenario.keypair.kid };
+  const header = { alg: "EdDSA", kid: issuer.kid, typ: "JWT" };
   const headerB64 = base64urlEncode(JSON.stringify(header));
   const payloadB64 = base64urlEncode(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
   const signature = await crypto.subtle.sign(
     { name: "Ed25519" },
-    scenario.keypair.privateKey,
+    issuer.privateKey,
     new TextEncoder().encode(signingInput),
   );
   return `${signingInput}.${base64urlEncode(new Uint8Array(signature))}`;
@@ -551,7 +690,14 @@ export async function operatorFetch(
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const response = await operatorFetchRaw(path, body);
   const text = await response.text();
-  const json = text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+  let json: Record<string, unknown> = {};
+  if (text.length > 0) {
+    try {
+      json = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      json = {};
+    }
+  }
   return { status: response.status, json };
 }
 
@@ -1050,18 +1196,58 @@ export function terminalEventTypes(events: SseEvent[]): string[] {
   return events.filter((event) => terminals.has(event.event)).map((e) => e.event);
 }
 
-export async function enrollScenario(scenario: Scenario): Promise<{
-  status: number;
-  json: Record<string, unknown>;
-}> {
-  const result = await operatorFetch(
-    `/control/installations/${scenario.installationId}/enroll`,
-    enrollPayload(scenario),
+export async function newClinic(scenario?: Scenario): Promise<Scenario> {
+  const ready = scenario ?? (await newScenario());
+  const issuer = await ensureHarnessIssuerRegistered();
+  ready.kid = issuer.kid;
+  const token = await mintAat(ready);
+  const response = await SELF.fetch(
+    new Request(`${GATEWAY_ORIGIN}/v1/capabilities`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "Aip-Contract-Version": "1",
+      },
+    }),
   );
-  if (result.status === 200) {
-    clearConfigCache();
+  if (response.status !== 200) {
+    const text = await response.text();
+    throw new Error(`newClinic capabilities failed (${response.status}): ${text}`);
   }
-  return result;
+  const binding = await queryOne<{ installation_id: string }>(
+    "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+    [ready.orgId],
+  );
+  if (!binding?.installation_id) {
+    throw new Error("newClinic: tenant_binding missing after capabilities");
+  }
+  ready.installationId = binding.installation_id;
+  await ensurePendingEntitlement(ready.installationId, ready.plan ?? "standard");
+  clearConfigCache();
+  return ready;
+}
+
+/** Enroll used to insert this sentinel so `/control/entitle` can activate it. */
+async function ensurePendingEntitlement(
+  installationId: string,
+  plan: string,
+): Promise<void> {
+  const existing = await queryOne<{ entitlement_id: string }>(
+    "SELECT entitlement_id FROM entitlement WHERE installation_id = ?",
+    [installationId],
+  );
+  if (existing) {
+    return;
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO entitlement (
+      entitlement_id, installation_id, plan, period_start, period_end,
+      request_quota, token_budget, cost_budget, allowed_capabilities,
+      soft_threshold, status
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, '[]', 0, 'pending')`,
+  )
+    .bind(crypto.randomUUID(), installationId, plan, now, now)
+    .run();
 }
 
 export async function entitleScenario(
@@ -1081,10 +1267,7 @@ export async function setupPromotedFakePolicy(
   scenario: Scenario,
   payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<void> {
-  const enrolled = await enrollScenario(scenario);
-  if (enrolled.status !== 200) {
-    throw new Error(`enroll failed: ${enrolled.status}`);
-  }
+  await newClinic(scenario);
   const entitled = await entitleScenario(scenario, payload);
   if (entitled.status !== 200) {
     throw new Error(`entitle failed: ${entitled.status}`);
@@ -1114,7 +1297,8 @@ export type VendorResultEnvelope = {
 export type VendorMethod =
   | "registerOperatorCredential"
   | "revokeOperatorCredential"
-  | "listOperatorCredentials";
+  | "listOperatorCredentials"
+  | "registerIssuerKey";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 

@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
-  EnrolledKeyVerifier,
+  IssuerTokenVerifier,
   type Principal,
   type VerifyContext,
   type VerifyResult,
@@ -37,6 +37,7 @@ type ReaderSpy = D1Reader & {
 };
 
 const AUDIENCE = "ai-platform";
+const ISSUER_ID = "issuer-test";
 const CLOCK_SKEW_SECONDS = 60;
 const NOW = 1_720_000_450;
 
@@ -48,7 +49,7 @@ const FIXTURE_BRANCH = "e3000000-0000-4000-8000-000000000001";
 const FIXTURE_JTI = "f4000000-0000-4000-8000-000000000001";
 
 const DEFAULT_CLAIMS: AatClaims = {
-  iss: FIXTURE_ISS,
+  iss: ISSUER_ID,
   aud: AUDIENCE,
   sub: FIXTURE_SUB,
   org: FIXTURE_ORG,
@@ -58,7 +59,7 @@ const DEFAULT_CLAIMS: AatClaims = {
   jti: FIXTURE_JTI,
   iat: NOW - 30,
   exp: NOW + 300,
-  ver: "1",
+  ver: "2",
 };
 
 let fixtureKeypair: TestKeypair;
@@ -177,16 +178,16 @@ function installationRow(status: string = "active"): Record<string, unknown> {
   };
 }
 
-function keyRow(keypair: TestKeypair): Record<string, unknown> {
+function issuerKeyRow(keypair: TestKeypair): Record<string, unknown> {
+  const notBefore = new Date((NOW - 3600) * 1000).toISOString();
+  const notAfter = new Date((NOW + 86400) * 1000).toISOString();
   return {
-    key_id: keypair.kid,
-    installation_id: FIXTURE_ISS,
+    kid: keypair.kid,
+    issuer: ISSUER_ID,
     public_key: keypair.publicKeyB64,
-    algorithm: "EdDSA",
-    valid_from: new Date((NOW - 3600) * 1000).toISOString(),
-    valid_until: null,
-    revoked_at: null,
-    jwk: keypair.jwk,
+    status: "active",
+    not_before: notBefore,
+    not_after: notAfter,
   };
 }
 
@@ -216,8 +217,16 @@ function makeRotationReader(
     if (lookupKey === `installations:${FIXTURE_ISS}`) {
       return installationRow("active");
     }
-    if (lookupKey === `keys:${keypair.kid}`) {
-      return keyRow(keypair);
+    if (lookupKey === `tenant_bindings:${FIXTURE_ORG}`) {
+      return {
+        org_id: FIXTURE_ORG,
+        installation_id: FIXTURE_ISS,
+        epoch: 1,
+        status: "active",
+      };
+    }
+    if (lookupKey === `issuer_keys:${keypair.kid}`) {
+      return issuerKeyRow(keypair);
     }
     if (lookupKey.startsWith("token_contracts:")) {
       const ver = lookupKey.slice("token_contracts:".length);
@@ -237,6 +246,7 @@ function buildVerifyContext(
     now: NOW,
     cache: new ConfigCache(),
     reader,
+    issuerId: ISSUER_ID,
     ...overrides,
   };
 }
@@ -261,7 +271,7 @@ beforeAll(async () => {
 
 describe("T-J4-01 both_ver_values_verify_during_rotation_window", () => {
   it("accepts AATs for every ver in the overlapping accepted set", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeRotationReader(fixtureKeypair, (ver) => {
       if (ver === "1" || ver === "2") {
         return acceptedContractRow(ver);
@@ -293,7 +303,7 @@ describe("T-J4-01 both_ver_values_verify_during_rotation_window", () => {
 
 describe("T-J4-02 retired_ver_refused_as_unauthenticated", () => {
   it("refuses a retired ver with existing unauthenticated code only", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeRotationReader(fixtureKeypair, (ver) => {
       if (ver === "1") {
         return retiredContractRow("1");
@@ -317,7 +327,7 @@ describe("T-J4-02 retired_ver_refused_as_unauthenticated", () => {
 
 describe("T-J4-03 unknown_ver_refused_as_unauthenticated", () => {
   it("refuses a never-accepted ver with the same unauthenticated path", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeRotationReader(fixtureKeypair, (ver) => {
       if (ver === "1") {
         return acceptedContractRow("1");
@@ -345,7 +355,7 @@ describe("T-J4-07 request_path_never_writes_token_contract", () => {
       const row = contractState.get(ver);
       return row ?? "miss";
     });
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const ctx = buildVerifyContext(reader);
     const token = await mintToken(fixtureKeypair, { ver: "1" });
 
@@ -397,7 +407,7 @@ describe("T-J4-07 request_path_never_writes_token_contract", () => {
 
 describe("T-J4-10 rotation_requires_no_re_enrollment", () => {
   it("same enrolled iss and kid verify under both accepted ver values after begin-rotation", async () => {
-    const verifier = new EnrolledKeyVerifier();
+    const verifier = new IssuerTokenVerifier();
     const reader = makeRotationReader(fixtureKeypair, (ver) => {
       if (ver === "1" || ver === "2") {
         return acceptedContractRow(ver);
@@ -429,6 +439,6 @@ describe("T-J4-10 rotation_requires_no_re_enrollment", () => {
     const readKeys = reader.read.mock.calls.map((call) => call[0]);
     expect(readKeys).toContain("token_contracts:1");
     expect(readKeys).toContain("token_contracts:2");
-    expect(readKeys).toContain(`keys:${fixtureKeypair.kid}`);
+    expect(readKeys).toContain(`issuer_keys:${fixtureKeypair.kid}`);
   });
 });

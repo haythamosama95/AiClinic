@@ -289,7 +289,7 @@ async function assertPublishedRow(opts: {
 async function assertOnlyPublishTablesTouched(): Promise<void> {
   for (const table of PLATFORM_TABLES) {
     if (table === "token_contract") {
-      expect(await count(table)).toBe(1);
+      expect(await count(table)).toBe(2);
       continue;
     }
     if (table === "plan") {

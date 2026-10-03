@@ -14,7 +14,7 @@ import {
   count,
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   getCapabilities,
@@ -166,8 +166,7 @@ async function enrollAndEntitle(
   token: string;
 }> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
+  await newClinic(scenario);
   const entitled = await entitleInstallation(scenario, payload);
   expect(entitled.status).toBe(200);
   const token = await mintAat(scenario);
@@ -233,7 +232,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
       "1",
     ]);
     expect(await count("control_audit")).toBe(0);
-    expect(await count("token_contract")).toBe(1);
+    expect(await count("token_contract")).toBe(2);
 
     const denied = await controlFetch("/control/token-contract/begin-rotation", {
       auth: { bearer: "any-presented-token" },
@@ -244,7 +243,7 @@ describe("Stage 00 — platform boot, bindings, and routing (S00-001…S00-018)"
     expect(denied.json).toEqual({ error: "unauthorized" });
 
     expect(await count("control_audit")).toBe(0);
-    expect(await count("token_contract")).toBe(1);
+    expect(await count("token_contract")).toBe(2);
     const afterContract = await queryOne<{
       ver: string;
       added_at: string;

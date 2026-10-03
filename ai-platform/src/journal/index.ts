@@ -1,7 +1,9 @@
+import type { AlertEnv } from "../alert";
+import { clockNowMs, clockNowSeconds } from "../clock";
 import { buildErrorBody, type TaxonomyCode } from "../errors";
 import { noopLogger, type Logger } from "../logger";
 import {
-  EnrolledKeyVerifier,
+  IssuerTokenVerifier,
   type Principal,
 } from "../identity";
 import type { InteractionMode, Manifest } from "../manifest";
@@ -541,9 +543,15 @@ export type AuthenticateGetRequestResult =
  * Authenticate GET /v1/requests/{reference} with the §5.6 enrolled-key verifier.
  * Requires `Authorization: Bearer <token>`; scopes subsequent getRequest by installation.
  */
+export type AuthenticateGetRequestEnv = AlertEnv & {
+  DB: D1Database;
+  ISSUER_ID: string;
+  TEST_CLOCK?: string;
+};
+
 export async function authenticateGetRequest(
   request: Request,
-  env: { DB: D1Database },
+  env: AuthenticateGetRequestEnv,
   logger: Logger = noopLogger,
   cache: ConfigCache = isolateConfigCache,
 ): Promise<AuthenticateGetRequestResult> {
@@ -559,13 +567,19 @@ export async function authenticateGetRequest(
     return { ok: false, code: "unauthenticated" };
   }
 
-  const verifier = new EnrolledKeyVerifier();
+  const verifier = new IssuerTokenVerifier();
+  const now = await clockNowSeconds(env);
+  const nowMs = await clockNowMs(env);
   const result = await verifier.verify(token, {
     audience: "ai-platform",
     clockSkewSeconds: 60,
-    now: Math.floor(Date.now() / 1000),
+    now,
+    nowMs,
     cache,
     reader: createD1ConfigReader(env.DB),
+    issuerId: env.ISSUER_ID,
+    db: env.DB,
+    alertEnv: env,
   });
 
   if (!result.ok) {

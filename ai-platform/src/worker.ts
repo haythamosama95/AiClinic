@@ -38,7 +38,8 @@ import {
   isControlRoute,
   isQuotaInspectRoute,
 } from "./control";
-import { EnrolledKeyVerifier } from "./identity";
+import { clockNowMs, clockNowSeconds } from "./clock";
+import { IssuerTokenVerifier } from "./identity";
 import {
   authenticateGetRequest,
   getRequest,
@@ -125,6 +126,8 @@ interface Env extends AlertEnv {
   ENVIRONMENT: string;
   LOG_VERBOSITY?: string;
   CONFIG_CACHE_TTL_MS?: string;
+  ISSUER_ID: string;
+  TEST_CLOCK?: string;
   OPERATOR_BEARER_TOKEN: string;
   OPERATOR_ID: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
@@ -342,7 +345,48 @@ const allowAllRateLimit: RateLimit = {
   },
 };
 
+/**
+ * Miniflare's limiter clears every wall-clock minute
+ * (`Date.now() / (period * 1000)`). A burst that crosses that minute
+ * never reaches the configured limit. Workers tests pin `TEST_CLOCK=1`
+ * and expect one continuous window, so count from the key's first hit
+ * for 60s. Production keeps the platform binding.
+ */
+function stableTestRateLimit(limit: number): RateLimit {
+  const buckets = new Map<string, { windowStart: number; count: number }>();
+  return {
+    async limit(options) {
+      const key = options.key;
+      const now = Date.now();
+      const current = buckets.get(key);
+      const fresh =
+        current === undefined || now - current.windowStart >= 60_000;
+      const count = fresh || current === undefined ? 0 : current.count;
+      if (count >= limit) {
+        return { success: false };
+      }
+      buckets.set(key, {
+        windowStart: fresh || current === undefined ? now : current.windowStart,
+        count: count + 1,
+      });
+      return { success: true };
+    },
+  };
+}
+
+const testInstallationRateLimit = stableTestRateLimit(600);
+const testActorRateLimit = stableTestRateLimit(120);
+const testCapabilityRateLimit = stableTestRateLimit(300);
+
 function productionRateLimitBindings(runtimeEnv: Env): RateLimitBindings {
+  if (runtimeEnv.TEST_CLOCK === "1") {
+    return {
+      DB: runtimeEnv.DB,
+      RATE_LIMITER_INSTALLATION: testInstallationRateLimit,
+      RATE_LIMITER_INSTALLATION_ACTOR: testActorRateLimit,
+      RATE_LIMITER_INSTALLATION_CAPABILITY: testCapabilityRateLimit,
+    };
+  }
   return {
     DB: runtimeEnv.DB,
     RATE_LIMITER_INSTALLATION:
@@ -1196,12 +1240,6 @@ async function runFreshEventSource(
     // suppresses the broker's own failed event, credit, and journal.
     ignoreBrokerSettlement = true;
     await brokerRun;
-    pushFailedTerminal(
-      sink,
-      streamContext.requestReference,
-      streamContext.traceId,
-      taxonomy,
-    );
     await settleTerminal(runtimeEnv, {
       ...terminalBase,
       attempts: attemptsForFailedSettlement(
@@ -1221,6 +1259,12 @@ async function runFreshEventSource(
       new Date().toISOString(),
       runtimeEnv.DB,
       manifest.interactionMode,
+    );
+    pushFailedTerminal(
+      sink,
+      streamContext.requestReference,
+      streamContext.traceId,
+      taxonomy,
     );
     return;
   }
@@ -1265,7 +1309,7 @@ function createProductionPreAccept(
   acceptContexts: AcceptContextStore,
   makeLog: LoggerFactory,
 ): PreAcceptGate {
-  const verifier = new EnrolledKeyVerifier();
+  const verifier = new IssuerTokenVerifier();
   const cache = isolateConfigCache;
   const reader = createD1ConfigReader(runtimeEnv.DB, runtimeEnv.R2);
   return async (input) => {
@@ -1287,11 +1331,22 @@ function createProductionPreAccept(
       request_reference: input.requestReference,
     });
     const token = extractBearerToken(input.request);
+    const now = await clockNowSeconds(runtimeEnv);
+    const nowMs = await clockNowMs(runtimeEnv);
     const guard = await runGuard(
       {
         bodyText: input.bodyText,
         token,
         verifier,
+        verifyContext: {
+          audience: "ai-platform",
+          clockSkewSeconds: 60,
+          now,
+          nowMs,
+          issuerId: runtimeEnv.ISSUER_ID,
+          db: runtimeEnv.DB,
+          alertEnv: runtimeEnv,
+        },
         capabilityId,
         capabilityVersion: input.headers.capabilityVersion,
         entitlement: {
@@ -1592,10 +1647,7 @@ export default {
       }
       const discoveryResponse = await handleDiscoveryRequest(
         request,
-        {
-          DB: runtimeEnv.DB,
-          R2: runtimeEnv.R2,
-        },
+        runtimeEnv,
         makeLog("discovery/index.ts"),
       );
       return withAipContractVersion(
@@ -1607,11 +1659,7 @@ export default {
     if (url.pathname === "/v1/usage" && request.method === "GET") {
       return handleUsageSummaryRequest(
         request,
-        {
-          DB: runtimeEnv.DB,
-          DO: runtimeEnv.DO,
-          R2: runtimeEnv.R2,
-        },
+        runtimeEnv,
         makeLog("usage-summary/index.ts"),
       );
     }
@@ -1668,9 +1716,7 @@ export default {
         withAipContractVersion(response, contractVersion.version);
       const getLog = makeLog("journal/index.ts", { request_reference: reference });
 
-      const auth = await authenticateGetRequest(request, {
-        DB: runtimeEnv.DB,
-      }, getLog);
+      const auth = await authenticateGetRequest(request, runtimeEnv, getLog);
       if (!auth.ok) {
         // Prefer 401 for missing/invalid token; suspended maps to taxonomy HTTP status.
         const status = liveHttpStatusForCode(auth.code) ?? 401;

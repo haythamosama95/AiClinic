@@ -6,6 +6,7 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import canaryMigrationSql from "../migrations/20260803100000_routing_policy_canary.sql?raw";
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -48,7 +49,8 @@ async function clearReaderTables(): Promise<void> {
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM issuer_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM installation"),
     env.DB.prepare("DELETE FROM token_contract"),
     env.DB.prepare(
@@ -69,20 +71,22 @@ async function seedInstallation(): Promise<void> {
     .run();
 }
 
-async function seedInstallationKey(): Promise<void> {
-  await env.DB
-    .prepare(
-      `INSERT INTO installation_key (
-        key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
-      ) VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
-    )
-    .bind(
-      FIXTURE_KEY_ID,
-      FIXTURE_INSTALLATION_ID,
-      "dGVzdC1wdWJsaWMta2V5",
-      FIXTURE_NOW,
-    )
-    .run();
+const ISSUER_ID = "issuer-test";
+
+async function seedIssuerKey(): Promise<void> {
+  const notAfter = "2027-07-31T12:00:00.000Z";
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(FIXTURE_ORG_ID, FIXTURE_INSTALLATION_ID, FIXTURE_NOW),
+    env.DB.prepare(
+      `INSERT INTO issuer_key (
+        kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256
+      ) VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+    ).bind(FIXTURE_KEY_ID, ISSUER_ID, "dGVzdC1wdWJsaWMta2V5", FIXTURE_NOW, notAfter),
+  ]);
 }
 
 async function seedEntitlement(): Promise<void> {
@@ -177,6 +181,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, canaryMigrationSql);
   await applyPlatformSchema(env.DB, statusMigrationSql);
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
+  await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
 });
 
 beforeEach(async () => {
@@ -202,16 +207,16 @@ describe("T6 config_reader_presence_installation", () => {
 });
 
 describe("T7 config_reader_presence_keys", () => {
-  it("serves a present installation key through the production D1 config reader", async () => {
+  it("serves a present issuer key through the production D1 config reader", async () => {
     await seedInstallation();
-    await seedInstallationKey();
+    await seedIssuerKey();
 
     const cache = new ConfigCache();
     const reader = createD1ConfigReader(env.DB);
-    const row = await loadConfig(cache, reader, "keys", FIXTURE_KEY_ID);
+    const row = await loadConfig(cache, reader, "issuer_keys", FIXTURE_KEY_ID);
 
-    expect(row.key_id).toBe(FIXTURE_KEY_ID);
-    expect(row.installation_id).toBe(FIXTURE_INSTALLATION_ID);
+    expect(row.kid).toBe(FIXTURE_KEY_ID);
+    expect(row.issuer).toBe(ISSUER_ID);
   });
 });
 

@@ -5,7 +5,7 @@ import {
   controlFetch,
   count,
   createCapabilityRegistry,
-  enrollInstallation,
+  newClinic,
   enrollPayload,
   entitleInstallation,
   env,
@@ -173,14 +173,11 @@ async function completeS04_098(): Promise<void> {
 
 async function enrollAndEntitleI0(): Promise<Scenario> {
   const scenario = await newScenario();
-  const i0: Scenario = { ...scenario, installationId: I0 };
-  const enrolled = await enrollInstallation(i0, {
-    payload: enrollPayload(i0, { plan: "professional" }),
-  });
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(i0, REF_BODY);
+  scenario.plan = "professional";
+  await newClinic(scenario);
+  const entitled = await entitleInstallation(scenario, REF_BODY);
   expect(entitled.status).toBe(200);
-  return i0;
+  return scenario;
 }
 
 async function globalOverlays(): Promise<OverlayRow[]> {
@@ -554,8 +551,10 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
   it("S04-103 — Cohort activate wrong operator bearer", async () => {
     await withVisitSummaryV2(async () => {
-      await enrollAndEntitleI0();
-      const grantsBefore = await getGrants(`installation:${I0}`);
+      const enrolled = await enrollAndEntitleI0();
+      const grantsBefore = await getGrants(
+        `installation:${enrolled.installationId}`,
+      );
       expect(grantsBefore).toHaveLength(1);
       expect(grantsBefore[0]?.capability_version).toBe("1.0.0");
       const allBefore = await allGrants();
@@ -569,7 +568,9 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       });
       assertUnauthorized(result);
 
-      const grantsAfter = await getGrants(`installation:${I0}`);
+      const grantsAfter = await getGrants(
+        `installation:${enrolled.installationId}`,
+      );
       expect(grantsAfter).toHaveLength(1);
       expect(grantsAfter[0]?.capability_version).toBe("1.0.0");
       expect(grantsAfter).toEqual(grantsBefore);
@@ -582,11 +583,12 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
 
   it("S04-104 — Cohort promote wrong operator bearer", async () => {
     await withVisitSummaryV2(async () => {
-      await enrollAndEntitleI0();
+      const enrolled = await enrollAndEntitleI0();
+      const scope = `installation:${enrolled.installationId}`;
       const grantsBefore = await allGrants();
-      expect(
-        (await getGrants(`installation:${I0}`))[0]?.capability_version,
-      ).toBe("1.0.0");
+      const scopedBefore = await getGrants(scope);
+      expect(scopedBefore).toHaveLength(1);
+      expect(scopedBefore[0]?.capability_version).toBe("1.0.0");
 
       const result = await controlFetch(PROMOTE_V2_PATH, {
         auth: { bearer: WRONG_BEARER },
@@ -594,6 +596,9 @@ describe("Stage 04 — deprecate, retire, and wrong-bearer auth (S04-086…S04-1
       });
       assertUnauthorized(result);
 
+      const scopedAfter = await getGrants(scope);
+      expect(scopedAfter).toHaveLength(1);
+      expect(scopedAfter[0]?.capability_version).toBe("1.0.0");
       expect(await allGrants()).toEqual(grantsBefore);
       expect(await count("capability_grant", "scope LIKE ?", ["plan:%"])).toBe(
         0,

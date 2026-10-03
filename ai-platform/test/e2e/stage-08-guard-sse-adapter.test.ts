@@ -9,7 +9,7 @@ import {
   clinicFetch,
   createRateLimiterDouble,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   env,
   GATEWAY_ORIGIN,
   handleAdapterRequest,
@@ -177,9 +177,8 @@ describe("Stage 08 — guard mapping, SSE accept, disconnect, adapter contract (
     // still passes; ConfigCacheMissError 500 only happens with no entitlement
     // row. Dummy unpublished grant (Stage 07) is the fallback if that changes.
     const scenario = await newScenario();
-    const enrolled = await enrollInstallation(scenario);
-    expect(enrolled.status).toBe(200);
-    const token = await mintAat(scenario);
+    await newClinic(scenario);
+const token = await mintAat(scenario);
 
     const result = await postRequest(scenario, {
       token,

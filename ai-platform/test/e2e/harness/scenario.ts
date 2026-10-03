@@ -2,7 +2,7 @@ import { generateTestKeypair } from "./crypto";
 import {
   canaryPolicy,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   fakePolicyDocument,
   promotePolicy,
@@ -28,21 +28,16 @@ export async function newScenario(): Promise<Scenario> {
 }
 
 /**
- * Real enroll path (POST `/control/installations/{id}/enroll`) + entitle +
- * publish/promote a fake-provider routing policy. Use this to build prior
- * state for clinic-facing journeys. Not `[SEED]`.
+ * Issuer-token clinic setup (`newClinic`) + entitle + publish/promote a
+ * fake-provider routing policy. Use this to build prior state for clinic-facing
+ * journeys. Not `[SEED]`.
  */
 export async function provisionHappyPath(
   scenario?: Scenario,
   entitle: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<Scenario> {
   const ready = scenario ?? (await newScenario());
-  const enrolled = await enrollInstallation(ready);
-  if (enrolled.status !== 200) {
-    throw new Error(
-      `provisionHappyPath: enroll failed (${enrolled.status}): ${enrolled.text}`,
-    );
-  }
+  await newClinic(ready);
   const entitled = await entitleInstallation(ready, entitle);
   if (entitled.status !== 200) {
     throw new Error(

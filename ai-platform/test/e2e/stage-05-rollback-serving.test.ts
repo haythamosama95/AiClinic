@@ -7,7 +7,7 @@ import {
   clearConfigCache,
   controlFetch,
   count,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   getAiRequest,
@@ -42,12 +42,16 @@ beforeAll(async () => {
   await bootstrapE2e();
 });
 
+const CATALOG_INST_A = "018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f";
+const CATALOG_INST_B = "018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a";
+let INST_A = CATALOG_INST_A;
+let INST_B = CATALOG_INST_B;
+
 beforeEach(async () => {
+  INST_A = CATALOG_INST_A;
+  INST_B = CATALOG_INST_B;
   await resetE2eState();
 });
-
-const INST_A = "018e4f2a-7c3b-7f1a-9d2e-5c6a8b0d1e2f";
-const INST_B = "018e4f2a-9d4c-7a2b-8e3f-6d7b9c1e2f3a";
 const POLICY_ID = "standard";
 const STANDARD_V1_POINTER = "control/routing-policy/standard/1.json";
 const STANDARD_V2_POINTER = "control/routing-policy/standard/2.json";
@@ -232,8 +236,12 @@ async function catalogScenario(installationId: string): Promise<Scenario> {
 
 async function enrollCatalog(installationId: string): Promise<Scenario> {
   const scenario = await catalogScenario(installationId);
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
+  await newClinic(scenario);
+  if (installationId === INST_A) {
+    INST_A = scenario.installationId;
+  } else if (installationId === INST_B) {
+    INST_B = scenario.installationId;
+  }
   return scenario;
 }
 

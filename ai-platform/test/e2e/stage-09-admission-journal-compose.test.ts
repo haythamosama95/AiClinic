@@ -12,7 +12,7 @@ import {
   createCapabilityRegistry,
   DEFAULT_ENTITLE_PAYLOAD,
   entitleInstallation,
-  enrollInstallation,
+  newClinic,
   env,
   fakePolicyDocument,
   flushBackgroundWork,
@@ -951,9 +951,8 @@ describe("Stage 09 — admission, journal, compose (S09-066…S09-085)", () => {
     expect(await count("grace_admission_queue")).toBe(1);
 
     const scenario = await newScenario();
-    const enrolled = await enrollInstallation(scenario);
-    expect(enrolled.status).toBe(200);
-    const entitled = await entitleInstallation(scenario, {
+    await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, {
       ...DEFAULT_ENTITLE_PAYLOAD,
       request_quota: 0,
     });

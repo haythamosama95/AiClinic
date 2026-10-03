@@ -9,7 +9,7 @@ import {
   CAPABILITY_ID,
   CAPABILITY_VERSION,
   clearConfigCache,
-  enrollScenario,
+  newClinic,
   entitleScenario,
   GATEWAY_ORIGIN,
   getAudits,
@@ -121,7 +121,7 @@ async function globalOverlay(): Promise<Record<string, unknown> | null> {
 }
 
 async function prepareEntitled(scenario: Scenario): Promise<void> {
-  await enrollScenario(scenario);
+  await newClinic(scenario);
   const entitled = await entitleScenario(scenario);
   expect(entitled.status).toBe(200);
 }

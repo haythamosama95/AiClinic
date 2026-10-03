@@ -7,7 +7,7 @@ import {
   CAPABILITY_VERSION,
   clinicFetch,
   count,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   fakePolicyDocument,
   fakePolicyTarget,
@@ -181,9 +181,8 @@ async function setupFresh(options?: {
   }
 
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, STAGE10_ENTITLE);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, STAGE10_ENTITLE);
   expect(entitled.status).toBe(200);
   if (!options?.skipPolicy) {
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION, {

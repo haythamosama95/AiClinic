@@ -10,6 +10,7 @@ import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import { isolateConfigCache } from "../src/config-cache";
 import { liveHttpStatusForCode } from "../src/errors";
 import { runRollup } from "../src/rollup";
@@ -25,6 +26,7 @@ const GATEWAY_ORIGIN = "https://ai-gateway.test";
 const AUDIENCE = "ai-platform";
 const NOW_SECONDS = 1_725_600_450;
 
+const ISSUER_ID = "issuer-test";
 const FIXTURE_ORG_ID = "org-usage-001";
 const FIXTURE_PERIOD_START = "2026-09-01T00:00:00.000Z";
 const FIXTURE_PERIOD_END = "2026-10-01T00:00:00.000Z";
@@ -103,7 +105,7 @@ type UsageSummaryBody = {
 
 function defaultClaims(installationId: string): AatClaims {
   return {
-    iss: installationId,
+    iss: ISSUER_ID,
     aud: AUDIENCE,
     sub: "actor-usage-001",
     org: FIXTURE_ORG_ID,
@@ -113,7 +115,7 @@ function defaultClaims(installationId: string): AatClaims {
     jti: "jti-usage-001",
     iat: NOW_SECONDS - 30,
     exp: NOW_SECONDS + 300,
-    ver: "1",
+    ver: "2",
   };
 }
 
@@ -348,7 +350,8 @@ async function clearUsageSummaryTables(): Promise<void> {
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
     env.DB.prepare("DELETE FROM entitlement"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
   ]);
 }
@@ -358,23 +361,26 @@ async function seedInstallationKey(
   installationId: string,
 ): Promise<void> {
   const enrolledAt = new Date().toISOString();
-  const validFrom = new Date(Date.now() - 3_600_000).toISOString();
+  const notBefore = new Date(Date.now() - 3_600_000).toISOString();
+  const notAfter = new Date(Date.now() + 86_400_000).toISOString();
 
-  await env.DB.prepare(
-    `INSERT INTO installation (
-      installation_id, org_id, display_name, status, region, enrolled_at
-    ) VALUES (?, ?, ?, 'active', 'us-east-1', ?)`,
-  )
-    .bind(installationId, FIXTURE_ORG_ID, "Usage Summary Clinic", enrolledAt)
-    .run();
-
-  await env.DB.prepare(
-    `INSERT INTO installation_key (
-      key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
-    ) VALUES (?, ?, ?, 'EdDSA', ?, NULL, NULL)`,
-  )
-    .bind(keypair.kid, installationId, keypair.publicKeyB64, validFrom)
-    .run();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO installation (
+        installation_id, org_id, display_name, status, region, enrolled_at
+      ) VALUES (?, ?, ?, 'active', 'us-east-1', ?)`,
+    ).bind(installationId, FIXTURE_ORG_ID, "Usage Summary Clinic", enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO tenant_binding (
+        org_id, installation_id, epoch, status, created_at
+      ) VALUES (?, ?, 1, 'active', ?)`,
+    ).bind(FIXTURE_ORG_ID, installationId, enrolledAt),
+    env.DB.prepare(
+      `INSERT INTO issuer_key (
+        kid, issuer, public_key, status, not_before, not_after, registered_by, assertion_sha256
+      ) VALUES (?, ?, ?, 'active', ?, ?, 'seed', 'seed')`,
+    ).bind(keypair.kid, ISSUER_ID, keypair.publicKeyB64, notBefore, notAfter),
+  ]);
 }
 
 async function seedEntitlement(
@@ -532,6 +538,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, uniqueEntitlementSql);
   await applyPlatformSchema(env.DB, planCatalogueMigrationSql);
   await applyQuotaWeightMigration(env.DB);
+  await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   fixtureKeypair = await generateTestKeypair("kid-usage-001");
 });
 

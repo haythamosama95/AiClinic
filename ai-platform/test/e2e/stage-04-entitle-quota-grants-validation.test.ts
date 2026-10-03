@@ -7,6 +7,8 @@ import {
   getAudits,
   getEntitlement,
   getGrants,
+  newClinic,
+  newScenario,
   queryOne,
   resetE2eState,
 } from "./harness";
@@ -19,12 +21,10 @@ beforeEach(async () => {
   await resetE2eState();
 });
 
-const I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
-const INSTALLATION_GRANT_SCOPE = `installation:${I0}`;
-const ENTITLE_SUCCESS_BODY = {
-  installation_id: I0,
-  status: "active",
-} as const;
+let I0 = "0a1f4c2e-7b3d-4e5f-9a6b-1c2d3e4f5a6b";
+function installationGrantScope(): string {
+  return `installation:${I0}`;
+}
 const ALLOW_LIST_JSON = '["clinic.visit_summary"]';
 const EMPTY_ALLOW_LIST_JSON = "[]";
 
@@ -85,24 +85,16 @@ function assertControlError(
 function assertEntitleActivated(result: ControlResult): void {
   expect(result.status).toBe(200);
   expect(result.headers.get("content-type")).toContain("application/json");
-  expect(result.json).toEqual(ENTITLE_SUCCESS_BODY);
-  expect(result.text).toBe(JSON.stringify(ENTITLE_SUCCESS_BODY));
+  const body = { installation_id: I0, status: "active" as const };
+  expect(result.json).toEqual(body);
+  expect(result.text).toBe(JSON.stringify(body));
 }
 
 async function enrollI0(): Promise<void> {
-  const { publicKeyB64 } = await generateTestKeypair();
-  const result = await controlFetch(enrollPath(), {
-    body: {
-      org_id: crypto.randomUUID(),
-      display_name: "E2E Clinic",
-      region: "us-east-1",
-      plan: "professional",
-      public_key: publicKeyB64,
-      algorithm: "EdDSA",
-      kid: crypto.randomUUID(),
-    },
-  });
-  expect(result.status).toBe(200);
+  const scenario = await newScenario();
+  scenario.plan = "professional";
+  await newClinic(scenario);
+  I0 = scenario.installationId;
 }
 
 async function entitleI0(body: unknown): Promise<ControlResult> {
@@ -119,9 +111,8 @@ async function assertFailureSideEffects(): Promise<void> {
   expect(Number(entitlement?.cost_budget)).toBe(0);
   expect(["[]", []]).toContainEqual(entitlement?.allowed_capabilities);
   expect(Number(entitlement?.soft_threshold)).toBe(0);
-
   expect(await count("capability_grant")).toBe(0);
-  expect(await getGrants(INSTALLATION_GRANT_SCOPE)).toEqual([]);
+  expect(await getGrants(installationGrantScope())).toEqual([]);
   expect(await getAudits("entitle", I0)).toEqual([]);
 }
 
@@ -170,9 +161,9 @@ async function assertActiveEntitlement(overrides: {
 }
 
 async function assertOneInstallationGrant(): Promise<void> {
-  const grants = await getGrants(INSTALLATION_GRANT_SCOPE);
+  const grants = await getGrants(installationGrantScope());
   expect(grants).toHaveLength(1);
-  expect(grants[0]?.scope).toBe(INSTALLATION_GRANT_SCOPE);
+  expect(grants[0]?.scope).toBe(installationGrantScope());
   expect(grants[0]?.capability_id).toBe("clinic.visit_summary");
   expect(grants[0]?.capability_version).toBe("1.0.0");
   expect(grants[0]?.revoked_at).toBeNull();

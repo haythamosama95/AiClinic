@@ -14,7 +14,7 @@ import {
   CAPABILITY_VERSION,
   clinicFetch,
   DEFAULT_ENTITLE_PAYLOAD,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   fakePolicyDocument,
@@ -140,16 +140,14 @@ function visitBody(scenario: Scenario): Record<string, unknown> {
 
 async function enrollOnly(): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  return scenario;
+  await newClinic(scenario);
+return scenario;
 }
 
 async function setupFailedScenario(): Promise<Scenario> {
   const scenario = await newScenario();
-  const enrolled = await enrollInstallation(scenario);
-  expect(enrolled.status).toBe(200);
-  const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
+  await newClinic(scenario);
+const entitled = await entitleInstallation(scenario, DEFAULT_ENTITLE_PAYLOAD);
   expect(entitled.status).toBe(200);
 
   const baseline = fakePolicyDocument(POLICY_ID, POLICY_VERSION);

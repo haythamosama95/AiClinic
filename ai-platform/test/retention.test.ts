@@ -1,8 +1,10 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
+import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
+import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import {
   EPHEMERAL_HORIZON_MS,
   admissionRPC,
@@ -96,7 +98,8 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
-    env.DB.prepare("DELETE FROM installation_key"),
+    env.DB.prepare("DELETE FROM tenant_binding"),
+    env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM ai_attempt"),
     env.DB.prepare("DELETE FROM ai_request"),
@@ -106,8 +109,10 @@ async function clearTables(): Promise<void> {
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
+  await applyPlatformSchema(env.DB, tokenContractMigrationSql);
   await applyPlatformSchema(env.DB, graceQueueMigrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
+  await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
 });
 
 beforeEach(async () => {
@@ -792,13 +797,6 @@ describe("retention_purge_by_installation_id", () => {
       .run();
 
     await env.DB.prepare(
-      `INSERT INTO installation_key (
-        key_id, installation_id, public_key, algorithm, valid_from, valid_until, revoked_at
-      ) VALUES (?, ?, ?, ?, ?, NULL, NULL)`,
-    )
-      .bind("key-a", FIXTURE_INSTALLATION_A, "pk-a", "EdDSA", recentDate)
-      .run();
-    await env.DB.prepare(
       `INSERT INTO entitlement (
         entitlement_id, installation_id, plan, period_start, period_end,
         request_quota, token_budget, cost_budget, allowed_capabilities, soft_threshold, status
@@ -892,11 +890,6 @@ describe("retention_purge_by_installation_id", () => {
     )
       .bind(FIXTURE_INSTALLATION_B)
       .first<{ c: number }>();
-    const keyA = await env.DB.prepare(
-      "SELECT COUNT(*) AS c FROM installation_key WHERE installation_id = ?",
-    )
-      .bind(FIXTURE_INSTALLATION_A)
-      .first<{ c: number }>();
     const entA = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM entitlement WHERE installation_id = ?",
     )
@@ -905,7 +898,6 @@ describe("retention_purge_by_installation_id", () => {
 
     expect(instA?.c).toBe(0);
     expect(instB?.c).toBe(1);
-    expect(keyA?.c).toBe(0);
     expect(entA?.c).toBe(0);
 
     const audit = await env.DB.prepare(

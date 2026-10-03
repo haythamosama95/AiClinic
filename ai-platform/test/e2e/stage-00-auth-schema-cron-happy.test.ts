@@ -15,7 +15,7 @@ import {
   createCapabilityRegistry,
   CRON_RETENTION,
   CRON_ROLLUP,
-  enrollInstallation,
+  newClinic,
   entitleInstallation,
   env,
   getCapabilities,
@@ -51,18 +51,22 @@ const HEALTH_BODY = { build: "local", environment: "development" } as const;
 const EXPECTED_PLATFORM_TABLES = [
   "ai_attempt",
   "ai_request",
+  "assertion_used",
   "capability_grant",
   "control_audit",
   "credit_price",
   "entitlement",
   "grace_admission_queue",
   "installation",
-  "installation_key",
   "invoice",
+  "issuer_key",
   "kill_switch",
+  "operator_credential",
   "plan",
+  "platform_alert",
   "platform_counter",
   "routing_policy",
+  "tenant_binding",
   "token_contract",
   "usage_event",
   "usage_rollup",
@@ -72,9 +76,16 @@ const BUSINESS_TABLES = PLATFORM_TABLES.filter(
   (table) => table !== "token_contract",
 );
 
-const TOKEN_CONTRACT_SEED = {
+const TOKEN_CONTRACT_V1 = {
   ver: "1",
   added_at: "2026-08-03T00:00:00.000Z",
+  retired_at: "2026-10-03T13:00:00.000Z",
+  changed_by: "seed",
+} as const;
+
+const TOKEN_CONTRACT_V2 = {
+  ver: "2",
+  added_at: "2026-10-03T13:00:00.000Z",
   retired_at: null,
   changed_by: "seed",
 } as const;
@@ -140,11 +151,10 @@ function assertUnauthenticatedTaxonomy(json: unknown): void {
 
 async function assertTokenContractSeed(): Promise<TokenContractRow> {
   const rows = await queryAll<TokenContractRow>(
-    "SELECT ver, added_at, retired_at, changed_by FROM token_contract",
+    "SELECT ver, added_at, retired_at, changed_by FROM token_contract ORDER BY ver",
   );
-  expect(rows).toHaveLength(1);
-  expect(rows[0]).toEqual(TOKEN_CONTRACT_SEED);
-  return rows[0]!;
+  expect(rows).toEqual([TOKEN_CONTRACT_V1, TOKEN_CONTRACT_V2]);
+  return rows[1]!;
 }
 
 async function assertBusinessTablesEmpty(): Promise<void> {
@@ -243,7 +253,8 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
       "routing_policy",
       "kill_switch",
       "entitlement",
-      "installation_key",
+      "issuer_key",
+      "tenant_binding",
       "ai_request",
       "installation",
       "token_contract",
@@ -356,7 +367,7 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
 
     for (const table of [
       "installation",
-      "installation_key",
+      "issuer_key",
       "entitlement",
       "capability_grant",
       "routing_policy",
@@ -376,7 +387,7 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
       "SELECT retired_at FROM token_contract WHERE ver = ?",
       ["1"],
     );
-    expect(seed?.retired_at ?? null).toBeNull();
+    expect(seed?.retired_at ?? null).toBe(TOKEN_CONTRACT_V1.retired_at);
   });
 
   it("S00-030 — Build gate accepts published manifest tree", async () => {
@@ -497,9 +508,8 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
 
   it("S00-036 — Happy path boot registry serves bundled capability via authenticated discovery", async () => {
     const scenario = await newScenario();
-    const enrolled = await enrollInstallation(scenario);
-    expect(enrolled.status).toBe(200);
-    const entitled = await entitleInstallation(scenario);
+    await newClinic(scenario);
+const entitled = await entitleInstallation(scenario);
     expect(entitled.status).toBe(200);
     const token = await mintAat(scenario, {
       claims: { scopes: ["ai.visit_summary"] },
@@ -558,9 +568,8 @@ describe("Stage 00 — auth, schema, cron, happy path (S00-019…S00-037)", () =
 
     try {
       const scenario = await newScenario();
-      const enrolled = await enrollInstallation(scenario);
-      expect(enrolled.status).toBe(200);
-      const entitled = await entitleInstallation(scenario);
+      await newClinic(scenario);
+const entitled = await entitleInstallation(scenario);
       expect(entitled.status).toBe(200);
       const token = await mintAat(scenario, {
         claims: { scopes: ["ai.visit_summary"] },
