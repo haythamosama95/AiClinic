@@ -1,9 +1,9 @@
 ---
 name: abo-implement
 description: >-
-  Execute selected phases of tasks.md for an ABO delivery unit. Tests fail
-  before implementation. Every earlier unit's suite stays green. Use when the
-  user asks to implement an ABO unit or run abo-implement with a phase
+  Execute a task range from an ABO unit's tasks.md. Tests fail before
+  implementation. The unit harness runs once after the test tasks in the range. Use when
+  the user asks to implement an ABO unit or run abo-implement with a phase
   selector. Never commit.
 disable-model-invocation: true
 ---
@@ -24,7 +24,7 @@ $ARGUMENTS
 
 ## Relationship to Spec Kit
 
-Same slot as `/speckit-implement`: execute this unit's `tasks.md` and mark finished tasks `[X]` in place. It is the last phase, after `/abo-tasks`. It runs only the phases it was asked for. Tests fail before the code exists. When the unit is done, its scenarios pass in the named harness and every earlier suite is still green (rule S2).
+Same slot as `/speckit-implement`: execute this unit's `tasks.md` and mark finished tasks `[X]` in place. It is the last phase, after `/abo-tasks`. It runs only the range it was asked for. Tests fail before the code exists.
 
 ## Prerequisites
 
@@ -43,10 +43,12 @@ Parse `FEATURE_DIR` and `AVAILABLE_DOCS`. Read only the documents `AVAILABLE_DOC
 
 ## Sources — read exactly these
 
+If the prompt says to continue after a resolver amendment, read that amendment and continue. Do not re-read sources already accepted.
+
 1. `tasks.md` — execution order.
 2. `plan.md` — Files, Test Layout, Sequencing, Consumes Binding.
 3. `spec.md` — Requirements, Test plan, Out of Scope. The task claims an FR and an E2E id.
-4. `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md`, sections 2 and 3 only: S2 (earlier suites stay green), S7 (no rewrite of a freeze), S8 (a live entry point), S9 (transitional paths).
+4. `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md`, sections 2 and 3 only: S7 (no rewrite of a freeze), S8 (a live entry point), S9 (transitional paths).
 5. `contracts/`, `data-model.md`, and `research.md` only when `AVAILABLE_DOCS` says they exist, plus the modules in Consumes Binding.
 
 A task that needs a section outside this list is stop condition 1. Do not open it.
@@ -56,7 +58,7 @@ A task that needs a section outside this list is stop condition 1. Do not open i
 Run only the phases asked for.
 
 - A selector is a phase number, a range, a phase name (`tests`, `implementation`, `verification`, `documentation`), or a task range (`T003-T006`). A phase is a top-level section. Subsections of at most 5 tasks belong to that phase; selecting the phase runs all of them.
-- If the phase selector is empty, do not assume "all". List one line per phase heading already in `tasks.md`: the heading, the task ids, and `[ ]` or `[X]` on each. Name the next unstarted phase, then ask. Do not pick it yourself.
+- If the phase selector is empty, do not assume "all". List one line per phase heading already in `tasks.md`: the heading, the task ids, and `[ ]` or `[X]` on each. Name the next unstarted phase, then ask. If the prompt says not to ask the user, return an ## ESCALATION instead. Do not pick it yourself.
 - Stop at the end of the last in-scope phase. Do not continue because the next phase looks small.
 - Out-of-scope tasks: do not create their files, and do not mark them `[X]`. A task range does not include the other tasks in that phase.
 
@@ -77,15 +79,15 @@ Which phase should I run?
 
 Before executing:
 
-- Every earlier phase the selection depends on (Dependencies & Execution Order) is fully `[X]`, and its files exist. A `[X]` whose file is missing is stop condition 6.
-- If Implementation is in scope, the Tests phase must already be on disk and failing red. Run the suite first: the command `plan.md` Test Layout names for this unit. Tests that are absent, or green before the code exists, mean stop and report. Do not back-fill tests inside an implementation run.
+- Every earlier phase the selection depends on (Dependencies & Execution Order) is fully `[X]`, and its files exist. A `[X]` whose file is missing is stop condition 5.
+- If Implementation is in scope, the Tests phase is already `[X]` and on disk. Do not run the harness before editing. Do not back-fill tests inside an implementation run.
 
 ## Overrides
 
 - **No Polish phase.** Do not invent one.
 - **No scaffolding** the plan's Files section does not name (ignore files, configs, linters, CI). A file is legitimate only if a task names it.
-- **Tests land red first.** End a Tests phase by running the suite and confirming the new tests fail for the stated reason — not a missing file or a broken import. The test file loads. Report the failures.
-- The unit has the stories `tasks.md` already labels (`[US1]`, `[US2]`, …). Follow the order in Dependencies & Execution Order. Do not collapse stories into one pass.
+- **Tests land red first.** Run the unit harness from Test Layout once, after the last in-scope test task. That run covers every test task in the range. The new tests fail for the stated reason, not a missing file or a broken import. The test file loads. Report that one run.
+- A range that spans stories is one pass in `tasks.md` order. Do not `npm ci` or `npm install` when that package's `node_modules` is already present.
 
 ## Execution
 
@@ -97,24 +99,24 @@ In scope: P4.2 tests — T003, T004, T005, T006.
 
 2. Verify preconditions. Every Consumes Binding row points at code that is present. A missing binding is stop condition 2.
 3. Execute in `tasks.md` order. Finish one phase before the next. Run `[P]` tasks together only when they touch different files. An FR or an E2E id a task claims must already be in `spec.md`. Do not mint one.
-4. Tests phase: confirm red, for the right reason.
+4. Tests in range: the one red run under Overrides.
 5. Implement only files the plan's Files section names, only for in-scope tasks.
-6. Mark each finished task `[X]` as you complete it, after its file is on disk. A test task is finished only once the red run is in the report.
-7. Verification, when in scope, runs before Documentation: the harness the spec's test plan names for this unit, then every earlier unit's own harness (rule S2). An earlier suite going red is a regression — stop condition 4. Do not edit that unit to make it green. If Verification is out of scope, still report the suite state where you stopped.
-8. Documentation, when in scope, writes `quickstart.md` last, only after Verification is green. The quickstart documents the passing state. Include only:
+6. Mark each finished task `[X]` after its file is on disk. Mark the test tasks `[X]` after that red run.
+7. Verification, when in scope, is that same harness, before Documentation. Do not run earlier suites. Do not edit an earlier unit to make one green.
+8. Documentation, when in scope, writes `quickstart.md` last, only after the unit harness is green. The quickstart documents the passing state. Include only:
    - what was implemented
    - files this unit added or modified
    - the harness command for this unit's tests only
    - how to inspect the change
    - entry point → module chain per E2E id (rule S8)
    - manual steps only when the plan says the harness cannot see the behaviour
-   No earlier-unit files, no combined counts, no full-suite command — regression is the Verification task. Renumber sections if you omit one; no gaps.
+   No earlier-unit files, no combined counts, no full-suite command. Renumber sections if you omit one; no gaps.
 9. Report and stop. Tasks completed, tasks left in the selected phases and why, the next phase that is now runnable.
 
 ```text
 Completed: T003–T006 (tests). Red: E2E-P4.2-01 fails on its assertion; the file loads.
 Left in scope: none.
-Suite where stopped: this unit's new tests are red. Earlier suites not run — verification is still ahead.
+Suite where stopped: this unit's new tests are red. Earlier suites are not this run.
 Next runnable: implementation, once you ask for it. Tests are on disk and red.
 ```
 
@@ -137,9 +139,8 @@ Output nothing but one `## ESCALATION` block. If several conditions fire, name e
 1. A task cannot be completed with what the spec and the plan name, or would break a prohibition above.
 2. A Consumes Binding entry has no existing implementation, or a task would change one.
 3. A named test cannot pass without changing the spec's stated behaviour.
-4. An earlier unit's suite goes red because of this unit's change.
-5. The work exceeds the task list: new files, a second codebase the plan does not name.
-6. `tasks.md` and the tree disagree: `[X]` but the file is absent, or an implementation file exists while its test file does not.
+4. The work exceeds the task list: new files, a second codebase the plan does not name.
+5. `tasks.md` and the tree disagree: `[X]` but the file is absent, or an implementation file exists while its test file does not.
 
 ```markdown
 ## ESCALATION

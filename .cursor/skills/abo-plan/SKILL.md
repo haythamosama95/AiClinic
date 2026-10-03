@@ -38,7 +38,7 @@ SPECIFY_FEATURE_DIRECTORY="<specs/<NNN>-abo-…>" \
 Parse `FEATURE_DIR`, `FEATURE_SPEC`, and `IMPL_PLAN`. If `FEATURE_SPEC` is missing,
 tell the user to run `/abo-specify` and stop.
 
-Read the sources and check the stop conditions before seeding. An escalation does
+On a first run, read the sources and check the stop conditions before seeding. If the prompt says to continue after a resolver amendment, read that amendment and continue. Do not re-read Read spans already accepted. An escalation does
 not call `setup-plan.sh` and does not write `plan.md`.
 
 When none fire, seed from the template stack and fill that file in place. A fresh
@@ -112,8 +112,9 @@ When **Spikes** is `None`, do not produce `research.md`. The design docs are the
 research. Redoing them is how the design drifts.
 
 When **Spikes** is not `None`, run the spike in this phase (rule S6). It is not a
-separate unit. `research.md` records the spike, the outcome, and the design's
-named fallback. If the spike fails and the spec names a fallback that does not
+separate unit. One command. Do not `npm ci` or `npm install` when that package's
+`node_modules` is already present. Do not spawn subagents. `research.md` records
+the spike, the outcome, and the design's named fallback. If the spike fails and the spec names a fallback that does not
 require further approval, the plan uses that fallback and says so. If the spike
 fails and the spec says to stop — OQ-4: P5.1 escalates rather than adding an
 Edge Function signer without approval — or the spec names no fallback, that is

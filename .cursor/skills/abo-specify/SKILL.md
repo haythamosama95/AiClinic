@@ -39,7 +39,7 @@ words. Examples: P1.1 → `membership-active-org`; P4.2 → `checkout-paymob-int
 - Branch: `ai/<NNN>-abo-p<phase>-<n>-<short-name>`, created from `ai/abo-master`
 
 Scan for stop conditions before creating the branch. A blank directory would occupy the number.
-Do not commit, amend, or push. If the working tree is dirty outside `.cursor/skills/`, stop and ask. Leave `.cursor/skills/` untouched.
+Do not commit, amend, or push. Leave `.cursor/skills/` untouched. A dirty tree stops the run, except uncommitted edits under `docs/architecture/ai-billing-orchestration/` and this unit's `specs/<NNN>-abo-…/`. If the prompt says to continue after a resolver amendment, read that amendment and continue. Do not re-read Read spans already accepted, and do not create a second branch when this unit's branch exists.
 
 If `specs/<NNN>-*` already exists: untouched template for this unit → reuse it; filled spec for
 this unit → stop; any other feature → stop condition 7.

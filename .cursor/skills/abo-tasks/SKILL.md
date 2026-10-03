@@ -70,17 +70,8 @@ Phases, replacing the template's:
    the code exists. Group by the story column (`[US1]`, `[US2]`, …). The test title prefix is the
    E2E id (rule V3).
 3. **Implementation** — one task per implementation unit in **Files**, labelled with the story it serves.
-4. **Verification** — one task. This unit's harness suite passes, then every earlier unit's suite is
-   still green (rule S2). Name the harness the spec uses, plus the regression command the plan names.
-   A single full-product `npm test` is not this task's only command.
-5. **Documentation** — always, after verification is green. One task for `specs/<NNN>-…/quickstart.md`:
-   what was implemented, files this unit added or modified, the harness command for this unit's tests
-   only, how to inspect the change, and the entry point → module chain per E2E id (rule S8). The
-   review list is this unit's files: no earlier-unit files, no combined counts, no full-suite
-   regression (that is the Verification task). Manual steps only when the plan says the harness
-   cannot see the behaviour. Add a `[P]` task per other doc artifact the plan says implement must
-   write. `research.md`, `data-model.md`, and `contracts/` are plan-phase artifacts; re-task one only
-   when the plan explicitly leaves it for implement.
+4. **Verification** — one task. The unit harness named in Test Layout passes. Do not name `npm test`, `npm run test:e2e`, `run_all_backend_tests.sh`, or `catalog/run.sh` unless that command is the unit harness. Earlier suites are the review's run.
+5. **Documentation** — always, after that harness is green. One task for `specs/<NNN>-…/quickstart.md`: what was implemented, files this unit added or modified, the harness command for this unit's tests only, how to inspect the change, and the entry point → module chain per E2E id (rule S8). No earlier-unit files, no combined counts, no full-suite command. Manual steps only when the plan says the harness cannot see the behaviour. Add a `[P]` task per other doc artifact the plan says implement must write. `research.md`, `data-model.md`, and `contracts/` are plan-phase artifacts; re-task one only when the plan explicitly leaves it for implement.
 
 **Five tasks per subsection.** Any heading whose body is a task list holds at most 5 tasks. A phase is a section. A story heading inside Tests or Implementation is also a section. When a section has more than 5 tasks, split it into consecutive subsections of at most 5, in Sequencing order (6 tasks → 5 + 1). Keep the story label on each part. A section of 5 or fewer is one subsection. Subsections are not new phases, not new stories, and not extra tasks. Do not merge or drop tasks to fit 5.
 

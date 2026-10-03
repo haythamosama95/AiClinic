@@ -43,6 +43,8 @@ Parse `FEATURE_DIR` and `FEATURE_SPEC` from the JSON. If that branch is not exac
 
 ## Sources — read exactly these
 
+If the prompt says to continue after a resolver amendment, read that amendment and continue. Do not re-read Read spans already accepted.
+
 1. `FEATURE_SPEC` — whole file, including `## Unit Contract`.
 2. `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md` — sections 2 and 3 (rules
    S1–S12, harnesses V1–V8), this unit's section in section 4, and section 6 only for an open
@@ -86,7 +88,9 @@ questions relied on** is not a question; changing it is a gap.
 
 ## Questioning loop
 
-At most **5** questions, **one per message**. Never reveal the queue. Ask only what would change the
+If the prompt says not to ask the user, skip this loop. Write each implementation choice immediately as its recommendation. A design gap is still an escalation.
+
+Otherwise at most **5** questions, **one per message**. Never reveal the queue. Ask only what would change the
 plan, the file layout, or a test's construction. Do not manufacture questions. If none are open, say
 `No open implementation choices — the spec is sufficient to plan.` and stop.
 
