@@ -5,9 +5,9 @@ This file orients AI coding agents working in this repository. Keep the
 **current active feature's** plan reference when running Spec Kit phases.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/plan.md`
-Feature spec: `specs/066-abo-p3-2-issuer-tokens-registry-tenant-bindings/spec.md`
-Branch: `ai/066-abo-p3-2-issuer-tokens-registry-tenant-bindings`
+Active feature plan: `specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/plan.md`
+Feature spec: `specs/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger/spec.md`
+Branch: `ai/067-abo-p3-3-plan-versions-paid-grant-coverage-ledger`
 <!-- SPECKIT END -->
 
 ## Repo layout quick reference

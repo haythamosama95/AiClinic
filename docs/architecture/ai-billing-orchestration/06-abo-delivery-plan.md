@@ -504,6 +504,8 @@ adversaries (AD-#), credentials (K-#) and seed requirement IDs.
   - E2E-P3.3-08 AL-11 email per grant with the decoded operation + org; the 4th paid grant for one clinic within 24 h → AL-17.
   - E2E-P3.3-09 Grant at 31 Jan 10:00 → ends 28 Feb 10:00 (29 Feb in a leap year); with the staging `DURATION_SCALE`, a monthly term lasts 30 min.
   - E2E-P3.3-10 `retirePlanVersion` → the next grant on it is refused; the existing term keeps its snapshot.
+  - E2E-P3.3-11 Platform Worker → per-clinic DO RPC with the current contract version → accepted; the answer echoes that `contract_version` [NFR-09].
+  - E2E-P3.3-12 Platform Worker → per-clinic DO RPC with `contract_version` missing or unsupported (2 at launch) → `rejected` `contract_version_unsupported` with `accepted_versions`, before authentication and before any write; nothing changes [NFR-09].
 
 ### P3.4 — Admission and settlement against terms (live AI path)
 - **Spec** 068 · **Codebase** ai-platform · **Size** L · **Depends** P3.3 · **Parallel** P4.1, P4.2
