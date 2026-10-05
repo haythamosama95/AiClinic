@@ -42,7 +42,7 @@ export interface VerifyContext {
 
 export type VerifyResult =
   | { ok: true; principal: Principal }
-  | { ok: false; code: "unauthenticated" | "installation_suspended" };
+  | { ok: false; code: "unauthenticated" | "suspended" };
 
 export interface TokenVerifier {
   verify(token: string, ctx: VerifyContext): Promise<VerifyResult>;
@@ -80,10 +80,10 @@ function rejectUnauthenticated(installationId?: string): VerifyResult {
 
 function rejectSuspended(installationId: string): VerifyResult {
   recordGuardRejection({
-    error_code: "installation_suspended",
+    error_code: "suspended",
     installation_id: installationId,
   });
-  return { ok: false, code: "installation_suspended" };
+  return { ok: false, code: "suspended" };
 }
 
 function base64urlDecode(segment: string): Uint8Array | null {

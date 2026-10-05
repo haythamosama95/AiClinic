@@ -132,8 +132,8 @@ export async function handleUsageSummaryRequest(
     logger.debug("usage_summary_auth_rejected", {
       code: verifyResult.code,
       reason:
-        verifyResult.code === "installation_suspended"
-          ? "installation_suspended"
+        verifyResult.code === "suspended"
+          ? "suspended"
           : "token_verification_failed",
     });
     const status = liveHttpStatusForCode(verifyResult.code) ?? 401;

@@ -18,7 +18,7 @@ export type { Principal };
 export type EntitlementContext = {
   capabilityId: string;
   capabilityVersion: string;
-  minimumPlanTier: string;
+  minimumPlanTier?: string;
   providerId: string;
 };
 
@@ -184,7 +184,13 @@ export async function evaluateEntitlement(
   }
 
   const plan = entitlement.plan;
-  if (typeof plan !== "string" || !planTierMeetsMinimum(plan, ctx.minimumPlanTier)) {
+  if (typeof plan !== "string") {
+    return rejectForbidden("plan_tier", installationId, logger);
+  }
+  if (
+    ctx.minimumPlanTier !== undefined &&
+    !planTierMeetsMinimum(plan, ctx.minimumPlanTier)
+  ) {
     return rejectForbidden("plan_tier", installationId, logger);
   }
 
@@ -248,6 +254,81 @@ export async function evaluateEntitlement(
   );
   if (isKillSwitchActive(providerSwitch)) {
     return rejectKillSwitch("kill_switch_provider", installationId, logger);
+  }
+
+  return { ok: true };
+}
+
+export type CoveragePrecheckContext = {
+  providerId: string;
+};
+
+export type CoveragePrecheckResult =
+  | { ok: true }
+  | {
+    ok: false;
+    code: "suspended" | "coverage_lapsed" | "capability_disabled" | "internal_error";
+    coverageReason?: "none";
+  };
+
+/**
+ * Stage 3 — read `coverage_mirror` for suspension and evaluate kill switches only.
+ */
+export async function evaluateCoveragePrecheck(
+  principal: Principal,
+  ctx: CoveragePrecheckContext,
+  db: D1Database,
+  cache: ConfigCache,
+  reader: D1Reader,
+  logger: Logger = noopLogger,
+): Promise<CoveragePrecheckResult> {
+  const installationId = principal.installationId;
+
+  const mirror = await db
+    .prepare(
+      `SELECT suspended FROM coverage_mirror WHERE installation_id = ?`,
+    )
+    .bind(installationId)
+    .first<{ suspended: number }>();
+  if (mirror === null) {
+    recordGuardRejection({
+      error_code: "coverage_lapsed",
+      installation_id: installationId,
+    });
+    return { ok: false, code: "coverage_lapsed", coverageReason: "none" };
+  }
+  if (mirror.suspended !== 0) {
+    recordGuardRejection({
+      error_code: "suspended",
+      installation_id: installationId,
+    });
+    return { ok: false, code: "suspended" };
+  }
+
+  const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");
+  if (isKillSwitchActive(globalSwitch)) {
+    rejectKillSwitch("kill_switch_global", installationId, logger);
+    return { ok: false, code: "capability_disabled" };
+  }
+
+  const installationSwitch = await loadKillSwitchOrInactive(
+    cache,
+    reader,
+    `installation:${installationId}`,
+  );
+  if (isKillSwitchActive(installationSwitch)) {
+    rejectKillSwitch("kill_switch_installation", installationId, logger);
+    return { ok: false, code: "capability_disabled" };
+  }
+
+  const providerSwitch = await loadKillSwitchOrInactive(
+    cache,
+    reader,
+    `provider:${ctx.providerId}`,
+  );
+  if (isKillSwitchActive(providerSwitch)) {
+    rejectKillSwitch("kill_switch_provider", installationId, logger);
+    return { ok: false, code: "capability_disabled" };
   }
 
   return { ok: true };

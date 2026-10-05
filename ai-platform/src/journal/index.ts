@@ -63,7 +63,7 @@ export type AttemptInput = {
 export type PostResponseInput = {
   requestId: string;
   installationId: string;
-  period: string;
+  termId: string;
   quotaWeight: number;
   totalTokens: number;
   totalCost: number;
@@ -408,15 +408,15 @@ async function persistPostResponseDetail(
   statements.push(
     db
       .prepare(
-        `INSERT INTO usage_event (
-          usage_event_id, installation_id, period, request_id,
+        `INSERT OR IGNORE INTO usage_event (
+          usage_event_id, installation_id, term_id, request_id,
           quota_weight, tokens, cost, recorded_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         generateUlid(),
         input.installationId,
-        input.period,
+        input.termId,
         input.requestId,
         input.quotaWeight,
         input.totalTokens,
@@ -537,7 +537,7 @@ export async function getRequest(
 
 export type AuthenticateGetRequestResult =
   | { ok: true; principal: Principal }
-  | { ok: false; code: "unauthenticated" | "installation_suspended" };
+  | { ok: false; code: "unauthenticated" | "suspended" };
 
 /**
  * Authenticate GET /v1/requests/{reference} with the §5.6 enrolled-key verifier.
@@ -592,7 +592,7 @@ export async function authenticateGetRequest(
 
 /** Build a taxonomy error body for failed get-request authentication. */
 export function getRequestAuthErrorBody(
-  code: "unauthenticated" | "installation_suspended" = "unauthenticated",
+  code: "unauthenticated" | "suspended" = "unauthenticated",
 ): ReturnType<typeof buildErrorBody> {
   return buildErrorBody({
     code,

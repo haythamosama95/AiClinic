@@ -310,6 +310,10 @@ function extractSuppliedContext(
   return {};
 }
 
+function termIdFromGuard(guard: GuardFreshSuccess): string | undefined {
+  return guard.termAdmission?.termId;
+}
+
 function periodFromIso(iso: string): string {
   return iso.slice(0, 7);
 }
@@ -528,7 +532,7 @@ type PostAcceptInternalErrorInput = {
   manifest: Manifest;
   filteredContext: Record<string, unknown>;
   composed: CanonicalRequest;
-  periodStart: string;
+  termId: string;
   entitlement?: EntitlementSnapshot;
   routing?: RoutingDecision;
 };
@@ -550,7 +554,7 @@ async function settlePostAcceptInternalError(
       filteredContext: input.filteredContext,
       composed: input.composed,
       attempts: attemptsForFailedSettlement([], routing, code),
-      periodStart: input.periodStart,
+      termId: input.termId,
       entitlement: input.entitlement,
       code,
       idempotencyState: "failed",
@@ -614,13 +618,17 @@ async function settleMissingHandoffInternalError(
     return;
   }
 
-  const entitlementRow = await runtimeEnv.DB.prepare(
-    `SELECT period_start FROM entitlement WHERE installation_id = ?`,
+  const mirrorRow = await runtimeEnv.DB.prepare(
+    `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
   )
     .bind(row.installation_id)
-    .first<{ period_start: string }>();
-  if (!entitlementRow?.period_start) {
-    log.error("missing_handoff_settle_entitlement_missing");
+    .first<{ term_snapshot: string }>();
+  const termSnapshot = mirrorRow?.term_snapshot
+    ? (JSON.parse(mirrorRow.term_snapshot) as { term_id?: string })
+    : undefined;
+  const termId = termSnapshot?.term_id;
+  if (!termId) {
+    log.error("missing_handoff_settle_term_missing");
     await recordTerminalState(
       row.request_id,
       "Failed",
@@ -645,7 +653,7 @@ async function settleMissingHandoffInternalError(
         streamContext.requestReference,
         traceId,
       ),
-      periodStart: entitlementRow.period_start,
+      termId,
     },
     log,
   );
@@ -675,12 +683,12 @@ function buildPostResponseInput(
   validatedResult: CanonicalResult,
   recordedAt: string,
   usage: { tokens: number; cost: number },
-  periodStart: string,
+  termId: string,
 ): PostResponseInput {
   return {
     requestId,
     installationId,
-    period: periodFromIso(periodStart),
+    termId,
     quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
     totalTokens: usage.tokens,
     totalCost: usage.cost,
@@ -702,7 +710,7 @@ type SettlementJournalInput = {
   result: CanonicalResult;
   recordedAt: string;
   usage: { tokens: number; cost: number };
-  periodStart: string;
+  termId: string;
 };
 
 async function writeSettlementJournal(
@@ -720,7 +728,7 @@ async function writeSettlementJournal(
     input.result,
     input.recordedAt,
     input.usage,
-    input.periodStart,
+    input.termId,
   );
   const ctx = createWorkerExecutionContext();
   writePostResponseDetail(detail, {
@@ -744,7 +752,7 @@ async function settleTerminal(
     filteredContext: Record<string, unknown>;
     composed: CanonicalRequest;
     attempts: AttemptInput[];
-    periodStart: string;
+    termId: string;
     entitlement?: EntitlementSnapshot;
     skipCredit?: boolean;
   },
@@ -781,7 +789,7 @@ async function settleTerminal(
       result: placeholderTerminalResult(usage, input.code),
       recordedAt: new Date().toISOString(),
       usage,
-      periodStart: input.periodStart,
+      termId: input.termId,
     },
     logger,
   );
@@ -799,7 +807,8 @@ async function settleCompletedRequest(
     attempts: AttemptInput[];
     result: CanonicalResult;
     recordedAt: string;
-    periodStart: string;
+    termId: string;
+    reservationId?: string;
     entitlement?: EntitlementSnapshot;
   },
   logger: Logger,
@@ -808,7 +817,7 @@ async function settleCompletedRequest(
   await creditUsage(
     {
       installationId: input.installationId,
-      requestId: input.requestId,
+      requestId: input.reservationId ?? input.requestId,
       requestReference: input.requestReference,
       usage,
       partial: false,
@@ -829,7 +838,8 @@ async function settleCompletedRequest(
       result: input.result,
       recordedAt: input.recordedAt,
       usage,
-      periodStart: input.periodStart,
+      termId: input.termId,
+      reservationId: input.reservationId,
     },
     logger,
   );
@@ -970,8 +980,7 @@ function createProductionEventSource(
             manifest: freshGuard.manifest,
             filteredContext: freshGuard.filteredContext,
             composed: freshGuard.composed,
-            periodStart:
-              freshGuard.entitlementSnapshot.period_bounds.period_start,
+            termId: freshGuard.termAdmission?.termId ?? "",
             entitlement: freshGuard.entitlementSnapshot,
           },
           makeLog("journal/index.ts", {
@@ -1044,8 +1053,10 @@ async function runFreshEventSource(
         languages: [requiredFeatures.language],
         latency_class: String(manifest.Routing.latencyClass),
       },
-      manifestCostClass: "standard",
-      entitlementMaxCostClass: "premium",
+      manifestCostClass:
+        guard.termAdmission?.snapshot.max_cost_class ?? "standard",
+      entitlementMaxCostClass:
+        guard.termAdmission?.snapshot.max_cost_class ?? "standard",
       killedProviderIds: guard.killedProviderIds ?? [],
     },
     logger: makeLog("router/index.ts", {
@@ -1121,7 +1132,7 @@ async function runFreshEventSource(
       brokerCredit = creditUsage(
         {
           installationId: guard.principal.installationId,
-          requestId: input.requestId,
+          requestId: guard.termAdmission?.reservationId ?? input.requestId,
           requestReference: streamContext.requestReference,
           usage: input.usage,
           partial: input.partial,
@@ -1201,7 +1212,11 @@ async function runFreshEventSource(
     trace_id: streamContext.traceId,
     request_id: guard.requestId,
   });
-  const periodStart = guard.entitlementSnapshot.period_bounds.period_start;
+  const termId = guard.termAdmission?.termId;
+  if (!termId) {
+    log.error("missing_term_admission_for_settlement");
+    return;
+  }
   const terminalBase = {
     installationId: guard.principal.installationId,
     requestId: guard.requestId,
@@ -1210,7 +1225,8 @@ async function runFreshEventSource(
     filteredContext: guard.filteredContext,
     composed: guard.composed,
     attempts: attemptRecords.map(buildAttemptInput),
-    periodStart,
+    termId,
+    reservationId: guard.termAdmission?.reservationId,
     entitlement: guard.entitlementSnapshot,
   };
 
@@ -1368,7 +1384,6 @@ function createProductionPreAccept(
         entitlement: {
           capabilityId,
           capabilityVersion: input.headers.capabilityVersion,
-          minimumPlanTier: "standard",
           providerId: "fake",
         },
         suppliedContext: extractSuppliedContext(input.body),
@@ -1402,8 +1417,8 @@ function createProductionPreAccept(
         ...(typeof guard.retryAfter === "number"
           ? { retryAfter: guard.retryAfter }
           : {}),
-        ...(guard.periodReset !== undefined
-          ? { periodReset: guard.periodReset }
+        ...(guard.coverageReason !== undefined
+          ? { coverageReason: guard.coverageReason }
           : {}),
         ...(code === "context_required" && guard.contextRequired !== undefined
           ? { contextRequired: guard.contextRequired }
@@ -1482,9 +1497,7 @@ function assertAdmissionArgs(body: unknown): asserts body is AdmissionRequest {
     typeof candidate.jti !== "string" ||
     typeof candidate.installationId !== "string" ||
     typeof candidate.idempotencyKey !== "string" ||
-    typeof candidate.requestReference !== "string" ||
-    candidate.entitlement === null ||
-    typeof candidate.entitlement !== "object"
+    typeof candidate.requestReference !== "string"
   ) {
     throw new ArgValidationError("invalid_admission_args");
   }

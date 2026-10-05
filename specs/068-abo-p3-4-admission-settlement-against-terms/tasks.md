@@ -147,7 +147,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-01 in harness H-AP.
 
-- [ ] T021 [US1] In `ai-platform/src/quota-do/index.ts`, remove the `state` blob, `maybeResetPeriod`, and `isQuotaExhausted` — produces term admission without the blob, FR-001, E2E-P3.4-01. Depends on T020 (same file). Denial and replay do not call the blob writer.
+- [X] T021 [US1] In `ai-platform/src/quota-do/index.ts`, remove the `state` blob, `maybeResetPeriod`, and `isQuotaExhausted` — produces term admission without the blob, FR-001, E2E-P3.4-01. Depends on T020 (same file). Denial and replay do not call the blob writer.
 
 **Checkpoint**: E2E-P3.4-01 still needs the worker path.
 
@@ -155,9 +155,9 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 in harness H-AP.
 
-- [ ] T022 [US2] In `ai-platform/src/admission/index.ts`, map DO outcomes through `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md`, including `result: "rejected"` to `coverage_unknown` — produces the client denial mapping, FR-005, FR-006, FR-010, FR-013, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-12. Depends on T021. Remove `mapEntitlementSnapshot`. Send `contract_version` and `now` from `clockNowMs`. Store the admission answer for the replay key on this path so E2E-P3.4-11 can return it. E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 pass once the worker uses this mapper.
+- [X] T022 [US2] In `ai-platform/src/admission/index.ts`, map DO outcomes through `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md`, including `result: "rejected"` to `coverage_unknown` — produces the client denial mapping, FR-005, FR-006, FR-010, FR-013, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-12. Depends on T021. Remove `mapEntitlementSnapshot`. Send `contract_version` and `now` from `clockNowMs`. Store the admission answer for the replay key on this path so E2E-P3.4-11 can return it. E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 pass once the worker uses this mapper.
 
-- [ ] T023 [US2] In `ai-platform/src/errors.ts` and `ai-platform/src/adapter.ts`, carry `retry_after` and `coverage_reason` and drop `quota_exhausted` and `period_reset` — produces the denial body fields, FR-005, FR-012, E2E-P3.4-02, E2E-P3.4-04, E2E-P3.4-05. Depends on T022. Rename `installation_suspended` to `suspended` in `ai-platform/src/identity/index.ts`, `ai-platform/src/usage-summary/index.ts`, and the journal union in `ai-platform/src/journal/index.ts`. Token verification stays.
+- [X] T023 [US2] In `ai-platform/src/errors.ts` and `ai-platform/src/adapter.ts`, carry `retry_after` and `coverage_reason` and drop `quota_exhausted` and `period_reset` — produces the denial body fields, FR-005, FR-012, E2E-P3.4-02, E2E-P3.4-04, E2E-P3.4-05. Depends on T022. Rename `installation_suspended` to `suspended` in `ai-platform/src/identity/index.ts`, `ai-platform/src/usage-summary/index.ts`, and the journal union in `ai-platform/src/journal/index.ts`. Token verification stays.
 
 **Checkpoint**: E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 pass once the worker uses the T022 mapper. E2E-P3.4-11 passes at T022.
 
@@ -165,11 +165,11 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-01 in harness H-AP.
 
-- [ ] T024 [US1] In `ai-platform/src/pipeline/index.ts`, stage 3 reads `coverage_mirror` by `installation_id` and does not read `entitlement` — produces the pre-check and the carried admission fields, FR-010, E2E-P3.4-01. Depends on T023. Stage 8 keeps `term_id`, `reservation_id`, and the snapshot from the DO. Stage 15 passes them to `creditUsage`.
+- [X] T024 [US1] In `ai-platform/src/pipeline/index.ts`, stage 3 reads `coverage_mirror` by `installation_id` and does not read `entitlement` — produces the pre-check and the carried admission fields, FR-010, E2E-P3.4-01. Depends on T023. Stage 8 keeps `term_id`, `reservation_id`, and the snapshot from the DO. Stage 15 passes them to `creditUsage`.
 
-- [ ] T025 [US1] In `ai-platform/src/worker.ts`, replace `periodFromIso` and `SELECT period_start FROM entitlement` on the handoff settlement with the admission `term_id` — produces settlement by term, FR-010, E2E-P3.4-01. Depends on T024. Take the cost class from the snapshot `max_cost_class`. Drop the `minimumPlanTier: "standard"` argument. `ai-platform/src/manifest/index.ts` no longer requires `minimumPlanTier` and ignores it when present.
+- [X] T025 [US1] In `ai-platform/src/worker.ts`, replace `periodFromIso` and `SELECT period_start FROM entitlement` on the handoff settlement with the admission `term_id` — produces settlement by term, FR-010, E2E-P3.4-01. Depends on T024. Take the cost class from the snapshot `max_cost_class`. Drop the `minimumPlanTier: "standard"` argument. `ai-platform/src/manifest/index.ts` no longer requires `minimumPlanTier` and ignores it when present.
 
-- [ ] T026 [US1] In `ai-platform/src/journal/index.ts`, insert `term_id` with `INSERT OR IGNORE` on `request_id` — produces the journal row, FR-011, E2E-P3.4-01, E2E-P3.4-10. Depends on T025. `authenticateGetRequest` keeps `IssuerTokenVerifier`.
+- [X] T026 [US1] In `ai-platform/src/journal/index.ts`, insert `term_id` with `INSERT OR IGNORE` on `request_id` — produces the journal row, FR-011, E2E-P3.4-01, E2E-P3.4-10. Depends on T025. `authenticateGetRequest` keeps `IssuerTokenVerifier`.
 
 **Checkpoint**: E2E-P3.4-01 still needs `GET /v1/capabilities` from the mirror. E2E-P3.4-10 passes at T026.
 

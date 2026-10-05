@@ -1,9 +1,12 @@
 export type TaxonomyCode =
   | "unauthenticated"
-  | "installation_suspended"
+  | "suspended"
   | "forbidden_capability"
   | "rate_limited"
-  | "quota_exhausted"
+  | "allowance_exhausted"
+  | "coverage_lapsed"
+  | "concurrency_limited"
+  | "coverage_unknown"
   | "request_too_large"
   | "context_required"
   | "context_invalid"
@@ -32,8 +35,8 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
     retryable: "After re-mint",
     consumesQuota: "No",
   },
-  installation_suspended: {
-    code: "installation_suspended",
+  suspended: {
+    code: "suspended",
     httpStatus: 403,
     retryable: "No",
     consumesQuota: "No",
@@ -50,10 +53,28 @@ const TAXONOMY: Record<TaxonomyCode, TaxonomyEntry> = {
     retryable: "Yes, after `retry_after`",
     consumesQuota: "No",
   },
-  quota_exhausted: {
-    code: "quota_exhausted",
+  allowance_exhausted: {
+    code: "allowance_exhausted",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  coverage_lapsed: {
+    code: "coverage_lapsed",
+    httpStatus: 403,
+    retryable: "No",
+    consumesQuota: "No",
+  },
+  concurrency_limited: {
+    code: "concurrency_limited",
     httpStatus: 429,
-    retryable: "Not until period reset",
+    retryable: "Yes, after `retry_after`",
+    consumesQuota: "No",
+  },
+  coverage_unknown: {
+    code: "coverage_unknown",
+    httpStatus: 503,
+    retryable: "Yes, after `retry_after`",
     consumesQuota: "No",
   },
   request_too_large: {
@@ -167,9 +188,17 @@ export function liveHttpStatusForCode(code: TaxonomyCode): number | null {
   return getTaxonomyEntry(code).httpStatus;
 }
 
+export type CoverageLapseReason =
+  | "none"
+  | "expired"
+  | "grace_exhausted"
+  | "reversed"
+  | "transferred"
+  | "transfer_pending";
+
 export interface SupplementaryFieldInput {
   retryAfter?: number;
-  periodReset?: string;
+  coverageReason?: CoverageLapseReason;
 }
 
 /** §4.3.3 simple limiter window when the rate-limit binding supplies no retry hint. */
@@ -187,16 +216,15 @@ export function supplementaryFieldsForCode(
   code: TaxonomyCode,
   input: SupplementaryFieldInput,
 ): Record<string, number | string> {
-  if (code === "rate_limited") {
+  if (
+    code === "rate_limited" ||
+    code === "concurrency_limited" ||
+    code === "coverage_unknown"
+  ) {
     return { retry_after: retryAfterSecondsForRateLimited(input.retryAfter) };
   }
-  if (code === "quota_exhausted") {
-    // Omit empty admin-path values — concurrency-mapped refusals must populate
-    // periodReset from the entitlement snapshot (F4), never emit "".
-    if (input.periodReset === undefined || input.periodReset === "") {
-      return {};
-    }
-    return { period_reset: input.periodReset };
+  if (code === "coverage_lapsed" && input.coverageReason !== undefined) {
+    return { coverage_reason: input.coverageReason };
   }
   return {};
 }

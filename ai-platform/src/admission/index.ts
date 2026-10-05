@@ -11,7 +11,12 @@ import {
 import type { Principal } from "../identity";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
-import { DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS } from "../errors";
+import {
+  DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+  type CoverageLapseReason,
+  type TaxonomyCode,
+} from "../errors";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import {
   coerceSoftThreshold,
   type AdmissionResponse,
@@ -22,8 +27,6 @@ import {
   flushRejectionCounters,
   recordGuardRejection,
 } from "../rate-limit";
-import { CHANNEL_VERSIONS } from "vendor-contracts";
-
 const GRACE_ADMISSION_CAP = 5;
 /** Matches B3 identity default skew (seconds) for the defensive stage-8 recheck. */
 const ADMISSION_CLOCK_SKEW_SECONDS = 60;
@@ -34,6 +37,9 @@ export type AdmissionInput = {
   principal: Principal;
   idempotencyKey: string;
   requestReference: string;
+  capabilityId: string;
+  quotaWeight: number;
+  orgId?: string;
   cache: ConfigCache;
   reader: D1Reader;
   logger?: Logger;
@@ -45,7 +51,10 @@ export type AdmissionBindings = {
 };
 
 export type AdmissionContext = {
+  /** JWT exp skew check (seconds). */
   now?: number;
+  /** Injectable DO clock (milliseconds). */
+  nowMs?: number;
 };
 
 type AdmissionSuccess =
@@ -53,8 +62,11 @@ type AdmissionSuccess =
     ok: true;
     outcome: "admitted";
     requestId: string;
+    termId: string;
+    reservationId: string;
+    snapshot: { capabilities: string[]; max_cost_class: string };
+    band?: "ok" | "75" | "90" | "exhausted";
     degraded?: boolean;
-    entitlement: EntitlementSnapshot;
   }
   | {
     ok: true;
@@ -67,13 +79,20 @@ type AdmissionSuccess =
 
 type AdmissionFailure = {
   ok: false;
-  /**
-   * Stage 8: `unauthenticated` | `quota_exhausted` | `rate_limited` | `internal_error`.
-   * `rate_limited` is grace-cap refusal (budget remains; retry when the queue drains).
-   */
-  code: "unauthenticated" | "quota_exhausted" | "rate_limited" | "internal_error";
-  periodReset?: string;
+  code: Extract<
+    TaxonomyCode,
+    | "unauthenticated"
+    | "allowance_exhausted"
+    | "coverage_lapsed"
+    | "forbidden_capability"
+    | "suspended"
+    | "concurrency_limited"
+    | "coverage_unknown"
+    | "rate_limited"
+    | "internal_error"
+  >;
   retryAfter?: number;
+  coverageReason?: CoverageLapseReason;
 };
 
 export type AdmissionResult = AdmissionSuccess | AdmissionFailure;
@@ -123,7 +142,8 @@ type JournaledRequestRow = {
 type AdmissionDoTransportResult =
   | { ok: true; body: AdmissionResponse }
   | { ok: false; reason: "unavailable" }
-  | { ok: false; reason: "client_error" };
+  | { ok: false; reason: "client_error" }
+  | { ok: false; reason: "contract_rejected" };
 
 const GRACE_QUEUE_SELECT = `SELECT grace_request_id, installation_id, idempotency_key, jti,
   request_reference, entitlement_json, usage_tokens, usage_cost, partial, queued_at,
@@ -258,6 +278,23 @@ async function selectAiRequestByKey(
        LIMIT 1`,
     )
     .bind(installationId, idempotencyKey)
+    .first<JournaledRequestRow>();
+  return row ?? null;
+}
+
+async function selectAiRequestById(
+  db: D1Database,
+  installationId: string,
+  requestId: string,
+): Promise<JournaledRequestRow | null> {
+  const row = await db
+    .prepare(
+      `SELECT request_id, request_reference, state
+       FROM ai_request
+       WHERE installation_id = ? AND request_id = ?
+       LIMIT 1`,
+    )
+    .bind(installationId, requestId)
     .first<JournaledRequestRow>();
   return row ?? null;
 }
@@ -434,23 +471,44 @@ async function callAdmissionDo(
     return { ok: false, reason: "client_error" };
   }
 
-  return { ok: true, body: (await response.json()) as AdmissionResponse };
+  const payload = (await response.json()) as Record<string, unknown>;
+  if (payload.result === "rejected") {
+    return { ok: false, reason: "contract_rejected" };
+  }
+
+  return { ok: true, body: payload as AdmissionResponse };
+}
+
+function bandDegraded(
+  band?: "ok" | "75" | "90" | "exhausted",
+): boolean {
+  return band === "75" || band === "90" || band === "exhausted";
 }
 
 function mapDoOutcome(
   body: AdmissionResponse,
   installationId: string,
-  entitlement: EntitlementSnapshot,
 ): AdmissionResult {
   switch (body.outcome) {
-    case "admitted":
+    case "admitted": {
+      const termId = body.term_id;
+      const snapshot = body.snapshot;
+      if (termId === undefined || snapshot === undefined) {
+        return { ok: false, code: "internal_error" };
+      }
+      const reservationId = body.reservation_id ?? body.requestId;
+      const degraded = body.degraded === true || bandDegraded(body.band);
       return {
         ok: true,
         outcome: "admitted",
         requestId: body.requestId,
-        entitlement,
-        ...(body.degraded ? { degraded: true } : {}),
+        termId,
+        reservationId,
+        snapshot,
+        ...(body.band !== undefined ? { band: body.band } : {}),
+        ...(degraded ? { degraded: true } : {}),
       };
+    }
     case "replay":
       recordGuardRejection({
         error_code: "unauthenticated",
@@ -459,28 +517,43 @@ function mapDoOutcome(
       return { ok: false, code: "unauthenticated" };
     case "idempotent":
       return { ok: true, outcome: "idempotent", priorState: body.priorState };
-    case "quota_exhausted":
+    case "suspended":
       recordGuardRejection({
-        error_code: "quota_exhausted",
+        error_code: "suspended",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "suspended" };
+    case "allowance_exhausted":
+      recordGuardRejection({
+        error_code: "allowance_exhausted",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "allowance_exhausted" };
+    case "coverage_lapsed":
+      recordGuardRejection({
+        error_code: "coverage_lapsed",
         installation_id: installationId,
       });
       return {
         ok: false,
-        code: "quota_exhausted",
-        periodReset: body.period_end,
+        code: "coverage_lapsed",
+        coverageReason: body.coverage_reason ?? "none",
       };
-    case "concurrency_exhausted":
-      // §6.1 stage 8 / Edge Cases: map onto `quota_exhausted` (closed §5.4 taxonomy).
-      // Populate period_reset from the entitlement snapshot already loaded for this
-      // admission (DO concurrency reply has no period_end carrier).
+    case "forbidden_capability":
       recordGuardRejection({
-        error_code: "quota_exhausted",
+        error_code: "forbidden_capability",
+        installation_id: installationId,
+      });
+      return { ok: false, code: "forbidden_capability" };
+    case "concurrency_limited":
+      recordGuardRejection({
+        error_code: "concurrency_limited",
         installation_id: installationId,
       });
       return {
         ok: false,
-        code: "quota_exhausted",
-        periodReset: entitlement.period_bounds.period_end,
+        code: "concurrency_limited",
+        retryAfter: body.retry_after ?? DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
       };
     default:
       return { ok: false, code: "internal_error" };
@@ -508,13 +581,12 @@ async function admitUnderGrace(
 
   if (await isLedgerQuotaExhausted(db, installationId, entitlement)) {
     recordGuardRejection({
-      error_code: "quota_exhausted",
+      error_code: "allowance_exhausted",
       installation_id: installationId,
     });
     return {
       ok: false,
-      code: "quota_exhausted",
-      periodReset: entitlement.period_bounds.period_end,
+      code: "allowance_exhausted",
     };
   }
 
@@ -583,7 +655,17 @@ export async function runAdmission(
   const logger = input.logger ?? noopLogger;
   // Principal.exp is a JWT NumericDate (seconds). Default must match.
   const now = ctx?.now ?? Math.floor(Date.now() / 1000);
-  const { principal, idempotencyKey, requestReference, cache, reader } = input;
+  const nowMs = ctx?.nowMs ?? Date.now();
+  const {
+    principal,
+    idempotencyKey,
+    requestReference,
+    capabilityId,
+    quotaWeight,
+    orgId,
+    cache,
+    reader,
+  } = input;
 
   logger.info("Admission started", {
     installation_id: principal.installationId,
@@ -602,34 +684,26 @@ export async function runAdmission(
     return { ok: false, code: "unauthenticated" };
   }
 
-  let entitlementRow: D1Row;
-  try {
-    entitlementRow = await loadConfig(
-      cache,
-      reader,
-      "entitlements",
-      principal.installationId,
-    );
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      recordGuardRejection({
-        error_code: "quota_exhausted",
-        installation_id: principal.installationId,
-      });
-      return { ok: false, code: "quota_exhausted" };
-    }
-    throw error;
+  const journaled = await selectAiRequestByKey(
+    bindings.DB,
+    principal.installationId,
+    idempotencyKey,
+  );
+  if (journaled) {
+    return idempotentFromJournal(journaled);
   }
-  const entitlement = mapEntitlementSnapshot(entitlementRow);
 
   const rpcBody = {
     contract_version: CHANNEL_VERSIONS.platformDo,
+    now: nowMs,
     kind: "admission",
     jti: principal.jti,
     installationId: principal.installationId,
     idempotencyKey,
-    entitlement,
     requestReference,
+    capabilityId,
+    quotaWeight,
+    ...(orgId !== undefined ? { orgId } : {}),
   };
 
   const transport = await callAdmissionDo(
@@ -639,10 +713,44 @@ export async function runAdmission(
   );
 
   if (!transport.ok) {
+    if (transport.reason === "contract_rejected") {
+      recordGuardRejection({
+        error_code: "coverage_unknown",
+        installation_id: principal.installationId,
+      });
+      return {
+        ok: false,
+        code: "coverage_unknown",
+        retryAfter: DEFAULT_RATE_LIMITED_RETRY_AFTER_SECONDS,
+      };
+    }
     if (transport.reason === "unavailable") {
       logger.info("Quota DO unavailable — admitting under grace", {
         installation_id: principal.installationId,
       });
+      let entitlementRow: D1Row;
+      try {
+        entitlementRow = await loadConfig(
+          cache,
+          reader,
+          "entitlements",
+          principal.installationId,
+        );
+      } catch (error) {
+        if (error instanceof ConfigCacheMissError) {
+          recordGuardRejection({
+            error_code: "coverage_lapsed",
+            installation_id: principal.installationId,
+          });
+          return {
+            ok: false,
+            code: "coverage_lapsed",
+            coverageReason: "none",
+          };
+        }
+        throw error;
+      }
+      const entitlement = mapEntitlementSnapshot(entitlementRow);
       const graceResult = await admitUnderGrace(
         bindings.DB,
         principal,
@@ -677,11 +785,17 @@ export async function runAdmission(
     return { ok: false, code: "internal_error" };
   }
 
-  const result = mapDoOutcome(
-    transport.body,
-    principal.installationId,
-    entitlement,
-  );
+  const result = mapDoOutcome(transport.body, principal.installationId);
+  if (result.ok && result.outcome === "admitted") {
+    const existing = await selectAiRequestById(
+      bindings.DB,
+      principal.installationId,
+      result.requestId,
+    );
+    if (existing) {
+      return idempotentFromJournal(existing);
+    }
+  }
   if (result.ok) {
     logger.info("Admission DO outcome", {
       installation_id: principal.installationId,

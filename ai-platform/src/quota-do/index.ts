@@ -88,7 +88,7 @@ export interface AdmissionRequest {
   jti: string;
   installationId: string;
   idempotencyKey: string;
-  entitlement: EntitlementSnapshot;
+  entitlement?: EntitlementSnapshot;
   requestReference: string;
   capabilityId?: string;
   quotaWeight?: number;
@@ -303,37 +303,6 @@ function sweepEphemeral(state: QuotaDoState, now: number): void {
       delete state.creditedRequests[requestId];
     }
   }
-}
-
-function maybeResetPeriod(state: QuotaDoState, entitlement: EntitlementSnapshot): void {
-  const bounds = entitlement.period_bounds;
-
-  if (
-    state.periodBounds?.period_start === bounds.period_start &&
-    state.periodBounds?.period_end === bounds.period_end
-  ) {
-    return;
-  }
-
-  const inFlight = state.periodCounters.inFlight;
-  state.periodBounds = {
-    period_start: bounds.period_start,
-    period_end: bounds.period_end,
-  };
-  state.periodCounters = {
-    ...initialPeriodCounters(),
-    inFlight,
-  };
-}
-
-function isQuotaExhausted(
-  counters: PeriodCounters,
-  entitlement: EntitlementSnapshot,
-): boolean {
-  return (
-    counters.requestsUsed >= entitlement.request_quota ||
-    counters.creditsUsed >= entitlement.credit_budget
-  );
 }
 
 /**
@@ -943,106 +912,14 @@ export async function admissionRPC(
 
   return blockConcurrencyWhile(async () => {
     const sqlStorage = storage as SqlStorage;
-    if (sqlStorage.sql) {
-      return admitOnHotRow(storage, request, timestamp, logger);
-    }
-
-    const state = await loadState(storage);
-
-    assertInstallationBound(state, request.installationId);
-    sweepEphemeral(state, timestamp);
-    maybeResetPeriod(state, request.entitlement);
-
-    if (state.jtiReplay[request.jti]) {
-      logger.info("Admission replay detected", {
-        installation_id: request.installationId,
-        jti: request.jti,
-      });
-      await storage.put(STATE_KEY, state);
-      return { kind: "admission", outcome: "replay" };
-    }
-
-    const existingIdempotency = state.idempotency[request.idempotencyKey];
-    if (existingIdempotency) {
-      logger.info("Admission idempotent replay", {
-        installation_id: request.installationId,
-        request_id: existingIdempotency.requestId,
-        prior_state: existingIdempotency.state,
-      });
-      await storage.put(STATE_KEY, state);
+    if (!sqlStorage.sql) {
       return {
         kind: "admission",
-        outcome: "idempotent",
-        priorState: {
-          requestReference: existingIdempotency.requestReference,
-          state: existingIdempotency.state,
-          requestId: existingIdempotency.requestId,
-          ...(existingIdempotency.terminalErrorCode !== undefined
-            ? { terminalErrorCode: existingIdempotency.terminalErrorCode }
-            : {}),
-        },
+        outcome: "coverage_lapsed",
+        coverage_reason: "none",
       };
     }
-
-    if (isQuotaExhausted(state.periodCounters, request.entitlement)) {
-      logger.info("Admission quota exhausted", {
-        installation_id: request.installationId,
-      });
-      await storage.put(STATE_KEY, state);
-      return {
-        kind: "admission",
-        outcome: "quota_exhausted",
-        period_end: request.entitlement.period_bounds.period_end,
-      };
-    }
-
-    if (state.periodCounters.inFlight >= CONCURRENCY_LIMIT) {
-      logger.info("Admission concurrency exhausted", {
-        installation_id: request.installationId,
-        in_flight: state.periodCounters.inFlight,
-      });
-      await storage.put(STATE_KEY, state);
-      return { kind: "admission", outcome: "concurrency_exhausted" };
-    }
-
-    const requestId = crypto.randomUUID();
-    const expiresAt = timestamp + EPHEMERAL_HORIZON_MS;
-
-    if (state.boundInstallationId === undefined) {
-      state.boundInstallationId = request.installationId;
-    }
-
-    state.jtiReplay[request.jti] = { expiresAt };
-    state.idempotency[request.idempotencyKey] = {
-      expiresAt,
-      requestReference: request.requestReference,
-      state: "admitted",
-      requestId,
-    };
-    state.admittedRequests[requestId] = {
-      requestReference: request.requestReference,
-      admittedAt: timestamp,
-      entitlement: request.entitlement,
-    };
-    state.periodCounters.inFlight += 1;
-
-    const degraded = isSoftThresholdCrossed(
-      state.periodCounters,
-      request.entitlement,
-    );
-
-    await storage.put(STATE_KEY, state);
-    logger.info("Admission granted", {
-      installation_id: request.installationId,
-      request_id: requestId,
-      degraded,
-    });
-    return {
-      kind: "admission",
-      outcome: "admitted",
-      requestId,
-      ...(degraded ? { degraded: true } : {}),
-    };
+    return admitOnHotRow(storage, request, timestamp, logger);
   });
 }
 
@@ -1095,12 +972,6 @@ export async function creditRPC(
         request_id: request.requestId,
       });
       return { kind: "credit", ok: false, code: "unknown_request" };
-    }
-
-    const admitted = state.admittedRequests[request.requestId];
-    const entitlement = request.entitlement ?? admitted.entitlement;
-    if (entitlement) {
-      maybeResetPeriod(state, entitlement);
     }
 
     state.periodCounters.tokensUsed += request.usage.tokens;

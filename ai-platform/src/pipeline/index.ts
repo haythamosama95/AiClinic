@@ -18,7 +18,10 @@ import {
   type Transcript,
 } from "../context/validator";
 import { creditUsage, type CreditBindings } from "../credit";
-import { evaluateEntitlement, type EntitlementContext } from "../entitlement";
+import {
+  evaluateCoveragePrecheck,
+  type EntitlementContext,
+} from "../entitlement";
 import type { EntitlementSnapshot } from "../quota-do/index";
 import type { Principal, TokenVerifier, VerifyContext } from "../identity";
 import {
@@ -140,8 +143,10 @@ export type GuardFreshSuccess = {
   degraded?: boolean;
   /** Journaled and routed tier, derived from admission (never client-supplied). */
   routingTier?: "standard" | "degraded";
-  /** Admission-time entitlement snapshot — settlement period and DO credit reset. */
-  entitlementSnapshot: EntitlementSnapshot;
+  /** Term admission fields from the DO answer — settlement and routing. */
+  termAdmission?: TermAdmissionFields;
+  /** Grace-only entitlement snapshot when the DO was unavailable. */
+  entitlementSnapshot?: EntitlementSnapshot;
 };
 
 /** Idempotent replay — stages 9–10 skipped; adapter replays from priorState. */
@@ -163,8 +168,15 @@ export type GuardFailure = {
   stage: GuardStage;
   guardLatencyMs: number;
   retryAfter?: number;
-  periodReset?: string;
+  coverageReason?: import("../errors").CoverageLapseReason;
   contextRequired?: ContextRequiredFailure;
+};
+
+export type TermAdmissionFields = {
+  termId: string;
+  reservationId: string;
+  snapshot: { capabilities: string[]; max_cost_class: string };
+  band?: "ok" | "75" | "90" | "exhausted";
 };
 
 export type GuardResult = GuardSuccess | GuardFailure;
@@ -175,7 +187,7 @@ export type SettleHappyPathInput = {
   installationId: string;
   composed: CanonicalRequest;
   filteredContext: Record<string, unknown>;
-  period: string;
+  termId: string;
   quotaWeight: number;
   recordedAt: string;
   usage?: { tokens: number; cost: number };
@@ -201,7 +213,7 @@ function fail(
   code: string,
   started: number,
   logger: Logger,
-  extras?: Pick<GuardFailure, "retryAfter" | "periodReset" | "contextRequired">,
+  extras?: Pick<GuardFailure, "retryAfter" | "coverageReason" | "contextRequired">,
 ): GuardFailure {
   const guardLatencyMs = performance.now() - started;
   const logData = { stage, code, guard_latency_ms: Math.round(guardLatencyMs) };
@@ -216,7 +228,9 @@ function fail(
     stage,
     guardLatencyMs,
     ...(extras?.retryAfter !== undefined ? { retryAfter: extras.retryAfter } : {}),
-    ...(extras?.periodReset !== undefined ? { periodReset: extras.periodReset } : {}),
+    ...(extras?.coverageReason !== undefined
+      ? { coverageReason: extras.coverageReason }
+      : {}),
     ...(extras?.contextRequired !== undefined
       ? { contextRequired: extras.contextRequired }
       : {}),
@@ -362,16 +376,21 @@ export async function runGuard(
     principal = verified.principal;
   }
 
-  // Stage 3 — entitlement
-  const entitlementResult = await evaluateEntitlement(
+  // Stage 3 — coverage mirror pre-check and kill switches
+  const coverageResult = await evaluateCoveragePrecheck(
     principal,
-    input.entitlement,
+    { providerId: input.entitlement.providerId },
+    bindings.DB,
     input.cache,
     input.reader,
     logger,
   );
-  if (!entitlementResult.ok) {
-    return fail(3, entitlementResult.code, started, logger);
+  if (!coverageResult.ok) {
+    return fail(3, coverageResult.code, started, logger, {
+      ...(coverageResult.coverageReason !== undefined
+        ? { coverageReason: coverageResult.coverageReason }
+        : {}),
+    });
   }
 
   // Stage 4 — rate limit
@@ -454,20 +473,26 @@ export async function runGuard(
       principal,
       idempotencyKey: input.idempotencyKey,
       requestReference: input.requestReference,
+      capabilityId: input.capabilityId,
+      quotaWeight: Number(manifest.Economics.quotaWeight) || 1,
+      orgId: principal.organizationId,
       cache: input.cache,
       reader: input.reader,
       logger,
     },
     { DB: bindings.DB, DO: bindings.DO } satisfies AdmissionBindings,
-    { now: nowSeconds },
+    {
+      now: nowSeconds,
+      nowMs: input.now !== undefined ? input.now * 1000 : Date.now(),
+    },
   );
   if (!admission.ok) {
     return fail(8, admission.code, started, logger, {
       ...(admission.retryAfter !== undefined
         ? { retryAfter: admission.retryAfter }
         : {}),
-      ...(admission.periodReset !== undefined
-        ? { periodReset: admission.periodReset }
+      ...(admission.coverageReason !== undefined
+        ? { coverageReason: admission.coverageReason }
         : {}),
     });
   }
@@ -493,7 +518,18 @@ export async function runGuard(
   if (admission.outcome !== "admitted" && admission.outcome !== "grace_admitted") {
     return fail(8, "internal_error", started, logger);
   }
-  const { requestId, entitlement: entitlementSnapshot } = admission;
+  const requestId = admission.requestId;
+  const termAdmission =
+    admission.outcome === "admitted"
+      ? {
+          termId: admission.termId,
+          reservationId: admission.reservationId,
+          snapshot: admission.snapshot,
+          ...(admission.band !== undefined ? { band: admission.band } : {}),
+        }
+      : undefined;
+  const entitlementSnapshot =
+    admission.outcome === "grace_admitted" ? admission.entitlement : undefined;
 
   const degraded =
     admission.outcome === "grace_admitted" ||
@@ -581,7 +617,8 @@ export async function runGuard(
     idempotencyKey: input.idempotencyKey,
     killedProviderIds,
     routingTier,
-    entitlementSnapshot,
+    ...(termAdmission !== undefined ? { termAdmission } : {}),
+    ...(entitlementSnapshot !== undefined ? { entitlementSnapshot } : {}),
     ...(degraded ? { degraded: true } : {}),
     ...(validatedTranscript !== undefined
       ? { transcript: validatedTranscript }
@@ -664,7 +701,7 @@ export async function settleHappyPath(
   const detail: PostResponseInput = {
     requestId: input.requestId,
     installationId: input.installationId,
-    period: input.period,
+    termId: input.termId,
     quotaWeight: input.quotaWeight,
     totalTokens: usage.tokens,
     totalCost: usage.cost,

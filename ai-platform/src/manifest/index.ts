@@ -273,6 +273,30 @@ function validateObjectGroup(
   return value;
 }
 
+function validateAccessGroup(
+  value: unknown,
+  groupName: ManifestFieldGroup,
+): Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    throw new Error(`Malformed manifest group: ${groupName}`);
+  }
+  const allowed = new Set<string>(MANIFEST_FIELD_MANIFEST.Access);
+  const required = MANIFEST_FIELD_MANIFEST.Access.filter(
+    (key) => key !== "minimumPlanTier",
+  );
+  for (const key of required) {
+    if (!(key in value)) {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+  }
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw new Error(`Malformed manifest group: ${groupName}`);
+    }
+  }
+  return value;
+}
+
 function validateSingleShotContextRequirements(
   value: unknown,
   groupName: ManifestFieldGroup,
@@ -521,11 +545,7 @@ function validate(json: Record<string, unknown>): Manifest {
     "Identity",
     MANIFEST_FIELD_MANIFEST.Identity,
   );
-  const access = validateObjectGroup(
-    json.Access,
-    "Access",
-    MANIFEST_FIELD_MANIFEST.Access,
-  );
+  const access = validateAccessGroup(json.Access, "Access");
   if (!isPlainObject(json.Interaction)) {
     throw new Error("Malformed manifest group: Interaction");
   }
