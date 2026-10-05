@@ -5,6 +5,7 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -335,6 +336,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applyPlatformSchema(env.DB, usageTermMigrationSql);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
      VALUES ('2', '2026-10-03T00:00:00.000Z', NULL, 'seed')`,

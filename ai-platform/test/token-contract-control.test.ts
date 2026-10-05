@@ -4,6 +4,7 @@ import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import { ConfigCache, createD1ConfigReader } from "../src/config-cache";
 import { IssuerTokenVerifier, type VerifyContext } from "../src/identity";
@@ -260,6 +261,7 @@ beforeAll(async () => {
   await applySql(env.DB, tokenContractMigrationSql);
   await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
   await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applySql(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {

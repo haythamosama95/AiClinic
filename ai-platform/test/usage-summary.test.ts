@@ -12,6 +12,7 @@ import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalog
 import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { isolateConfigCache } from "../src/config-cache";
@@ -446,7 +447,7 @@ async function seedTerminalRequestWithUsage(
 
   await env.DB.prepare(
     `INSERT INTO usage_event (
-      usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at
+      usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
@@ -538,6 +539,7 @@ beforeAll(async () => {
   await applyQuotaWeightMigration(env.DB);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applyPlatformSchema(env.DB, usageTermMigrationSql);
   fixtureKeypair = await generateTestKeypair("kid-usage-001");
 });
 

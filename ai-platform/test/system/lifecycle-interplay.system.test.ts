@@ -11,6 +11,7 @@ import {
   enrollPayload,
   newClinic,
   entitleScenario,
+  coverClinic,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
   getAiRequest,
@@ -368,8 +369,8 @@ describe("lifecycle interplay", () => {
 
   it("SYS-2.6 — Operator auth matrix", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
     const staffToken = await mintAat(scenario);
     const rotateKid = crypto.randomUUID();
     const rotateKeypair = await generateKeypair(rotateKid);

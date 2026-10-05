@@ -72,6 +72,7 @@ import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -652,6 +653,7 @@ beforeAll(async () => {
     await applySql(env.DB, planCatalogueMigrationSql);
     await applySql(env.DB, issuerKeyTenantBindingMigrationSql);
     await applySql(env.DB, planVersionPaidGrantCoverageMigrationSql);
+    await applySql(env.DB, usageTermMigrationSql);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO token_contract (ver, added_at, retired_at, changed_by)
        VALUES ('1', '2026-08-03T00:00:00.000Z', NULL, 'seed')`,

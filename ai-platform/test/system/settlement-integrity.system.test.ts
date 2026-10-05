@@ -12,6 +12,7 @@ import {
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleScenario,
+  coverClinic,
   fakePolicyDocument,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
@@ -454,7 +455,7 @@ describe("settlement integrity", () => {
 
     const other = await newScenario();
     await newClinic(other);
-    await entitleScenario(other);
+    await coverClinic(other);
     const otherToken = await mintAat(other);
 
     const clientGet = await getRequest(token, ref);

@@ -60,9 +60,9 @@ vi.mock("../../src/prompt/registry", () => ({
   resolvePromptVersion: resolvePromptVersionMock,
 }));
 
-import { env, SELF } from "cloudflare:test";
-import { CHANNEL_VERSIONS } from "vendor-contracts";
-import { createSoftwareAuthenticator } from "vendor-contracts/testkit";
+import { env, SELF, runDurableObjectAlarm } from "cloudflare:test";
+import { CHANNEL_VERSIONS, grantIdPaid, sha256Hex } from "vendor-contracts";
+import { createAboGrantSigner, createSoftwareAuthenticator } from "vendor-contracts/testkit";
 import migrationSql from "../../migrations/20260731120000_platform_schema.sql?raw";
 import capabilityGrantLifecycleSql from "../../migrations/20260802100000_capability_grant_lifecycle.sql?raw";
 import canaryMigrationSql from "../../migrations/20260803100000_routing_policy_canary.sql?raw";
@@ -79,6 +79,7 @@ import invoiceMigrationSql from "../../migrations/20260911200000_invoice.sql?raw
 import operatorCredentialMigrationSql from "../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -257,6 +258,7 @@ const MIGRATION_SQL = [
   operatorCredentialMigrationSql,
   issuerKeyTenantBindingMigrationSql,
   planVersionPaidGrantCoverageMigrationSql,
+  usageTermMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -383,6 +385,7 @@ export async function resetPlatformState(): Promise<void> {
   await seedCataloguePlan(env.DB);
   vendorTestClockIso = null;
   clearHarnessIssuerRegistry();
+  clearCoverClinicBootstrap();
 }
 
 export function visitSummaryManifest(): Manifest {
@@ -1263,15 +1266,242 @@ export async function entitleScenario(
   return result;
 }
 
+const COVER_PLAN_ID = "live-monthly";
+const COVER_PLAN_VERSION = 1;
+const COVER_PLAN_DISPLAY = "Live Monthly";
+const COVER_DEFAULT_CAPABILITIES = [CAPABILITY_ID];
+const COVER_DEFAULT_MAX_COST_CLASS = 2;
+const COVER_DEFAULT_CONCURRENCY = 4;
+const COVER_DEFAULT_ALLOWANCE = 10_000;
+
+export type CoverClinicOptions = {
+  capabilities?: string[];
+  concurrency_limit?: number;
+  max_allowance_per_month?: number;
+};
+
+type CoverClinicBootstrap = {
+  signerCredentialId: string;
+  signerAuthenticator: Awaited<ReturnType<typeof createSoftwareAuthenticator>>;
+  aboSigner: Awaited<ReturnType<typeof createAboGrantSigner>>;
+  aboKid: string;
+};
+
+let coverClinicBootstrap: CoverClinicBootstrap | null = null;
+
+function clearCoverClinicBootstrap(): void {
+  coverClinicBootstrap = null;
+}
+
+async function operationForCoverPublishPlan(input: {
+  accessJwt: string;
+  capabilities: string[];
+  concurrencyLimit: number;
+  maxAllowance: number;
+}): Promise<Record<string, unknown>> {
+  return {
+    op: "publishPlanVersion",
+    params: {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      plan_id: COVER_PLAN_ID,
+      version: COVER_PLAN_VERSION,
+      display_name: COVER_PLAN_DISPLAY,
+      capabilities: input.capabilities,
+      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
+      concurrency_limit: input.concurrencyLimit,
+      max_allowance_per_month: input.maxAllowance,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: randomUuid(),
+    contract_version: VENDOR_CONTRACT_VERSION,
+  };
+}
+
+async function ensureCoverClinicBootstrap(): Promise<CoverClinicBootstrap> {
+  if (coverClinicBootstrap !== null) {
+    return coverClinicBootstrap;
+  }
+  await setupVendorHarness();
+  const issuer = await ensureHarnessIssuerRegistered();
+  const aboSigner = await createAboGrantSigner();
+  const rawPublicKey = await crypto.subtle.exportKey("raw", aboSigner.publicKey);
+  const publicKeyB64 = base64urlEncode(new Uint8Array(rawPublicKey));
+  const notBefore = getVendorTestClockIso() ?? new Date().toISOString();
+  const notAfter = new Date(
+    Date.parse(notBefore) + 365 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const accessJwt = await mintVendorAccessJwt();
+  const registerOperation = {
+    op: "registerServiceKey",
+    params: {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      access_jwt: accessJwt,
+      kid: aboSigner.kid,
+      public_key: publicKeyB64,
+      not_before: notBefore,
+      not_after: notAfter,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: notBefore,
+    nonce: randomUuid(),
+    contract_version: VENDOR_CONTRACT_VERSION,
+  };
+  const registerAssertion = encodeVendorAssertion(
+    await issuer.signerAuthenticator.assert({
+      operation: registerOperation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const registerResult = await vendorCall(
+    "registerServiceKey",
+    {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      kid: aboSigner.kid,
+      public_key: publicKeyB64,
+      not_before: notBefore,
+      not_after: notAfter,
+      signer_credential_id: issuer.signerCredentialId,
+      operation: registerOperation,
+      assertion: registerAssertion,
+    },
+    { accessJwt },
+  );
+  if (registerResult.result !== "ok") {
+    throw new Error(`registerServiceKey failed: ${registerResult.code}`);
+  }
+  coverClinicBootstrap = {
+    signerCredentialId: issuer.signerCredentialId,
+    signerAuthenticator: issuer.signerAuthenticator,
+    aboSigner,
+    aboKid: aboSigner.kid,
+  };
+  return coverClinicBootstrap;
+}
+
+async function buildCoverPaidGrantEnvelope(input: {
+  orgId: string;
+  grantId: string;
+  allowanceCredits: number;
+}): Promise<Record<string, unknown>> {
+  const paidAt = getVendorTestClockIso() ?? new Date().toISOString();
+  const paymentRef = randomUuid().replace(/-/g, "");
+  const contentSha256 = await sha256Hex(new TextEncoder().encode(paymentRef));
+  return {
+    contract_version: VENDOR_CONTRACT_VERSION,
+    grant_id: input.grantId,
+    org_id: input.orgId,
+    kind: "term",
+    placement: "queue",
+    source: { kind: "paid", ref: paymentRef },
+    plan: { plan_id: COVER_PLAN_ID, plan_version: COVER_PLAN_VERSION },
+    duration: { unit: "month", count: 1 },
+    allowance_credits: input.allowanceCredits,
+    grace: { days: 7, cap_rule: "proportional" },
+    paid_at: paidAt,
+    evidence: {
+      content_sha256: contentSha256,
+      approvals: [{ credential_id: "cred-001", assertion: "stub" }],
+    },
+  };
+}
+
+function quotaDoStubForInstallation(installationId: string) {
+  return env.DO.get(env.DO.idFromName(installationId));
+}
+
+export async function coverClinic(
+  scenario: Scenario,
+  opts: CoverClinicOptions = {},
+): Promise<void> {
+  const boot = await ensureCoverClinicBootstrap();
+  const capabilities = opts.capabilities ?? COVER_DEFAULT_CAPABILITIES;
+  const concurrencyLimit =
+    opts.concurrency_limit ?? COVER_DEFAULT_CONCURRENCY;
+  const maxAllowance =
+    opts.max_allowance_per_month ?? COVER_DEFAULT_ALLOWANCE;
+
+  const accessJwt = await mintVendorAccessJwt();
+  const publishOperation = await operationForCoverPublishPlan({
+    accessJwt,
+    capabilities,
+    concurrencyLimit,
+    maxAllowance,
+  });
+  const publishAssertion = encodeVendorAssertion(
+    await boot.signerAuthenticator.assert({
+      operation: publishOperation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  const published = await vendorCall(
+    "publishPlanVersion",
+    {
+      contract_version: VENDOR_CONTRACT_VERSION,
+      plan_id: COVER_PLAN_ID,
+      version: COVER_PLAN_VERSION,
+      display_name: COVER_PLAN_DISPLAY,
+      capabilities,
+      max_cost_class: COVER_DEFAULT_MAX_COST_CLASS,
+      concurrency_limit: concurrencyLimit,
+      max_allowance_per_month: maxAllowance,
+      signer_credential_id: boot.signerCredentialId,
+      operation: publishOperation,
+      assertion: publishAssertion,
+    },
+    { accessJwt },
+  );
+  if (published.result !== "ok") {
+    throw new Error(`publishPlanVersion failed: ${published.code}`);
+  }
+
+  const grantId = await grantIdPaid(randomUuid().replace(/-/g, ""));
+  const envelope = await buildCoverPaidGrantEnvelope({
+    orgId: scenario.orgId,
+    grantId,
+    allowanceCredits: maxAllowance,
+  });
+  const aboSignature = await boot.aboSigner.sign(envelope);
+  const granted = await vendorCall("grant", {
+    contract_version: VENDOR_CONTRACT_VERSION,
+    envelope,
+    abo_kid: boot.aboKid,
+    abo_signature: aboSignature,
+  });
+  if (
+    granted.result !== "applied" &&
+    granted.result !== "already_applied"
+  ) {
+    throw new Error(`grant failed: ${granted.code}`);
+  }
+
+  const binding = await queryOne<{ installation_id: string }>(
+    "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
+    [scenario.orgId],
+  );
+  if (!binding?.installation_id) {
+    throw new Error("coverClinic: tenant_binding missing after grant");
+  }
+  scenario.installationId = binding.installation_id;
+  await runDurableObjectAlarm(
+    quotaDoStubForInstallation(scenario.installationId),
+  );
+  clearConfigCache();
+}
+
 export async function setupPromotedFakePolicy(
   scenario: Scenario,
-  payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
+  _payload: EntitlePayload = DEFAULT_ENTITLE_PAYLOAD,
 ): Promise<void> {
+  await coverClinic(scenario);
   await newClinic(scenario);
-  const entitled = await entitleScenario(scenario, payload);
-  if (entitled.status !== 200) {
-    throw new Error(`entitle failed: ${entitled.status}`);
-  }
   const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
   const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
   if (published.status !== 200) {

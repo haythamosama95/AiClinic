@@ -12,6 +12,7 @@ import {
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleScenario,
+  coverClinic,
   fakePolicyDocument,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
@@ -217,8 +218,8 @@ describe("golden journey", () => {
 
   it("SYS-1.5 — Discovery after entitle", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
     const token = await mintAat(scenario);
 
     const caps = await getCapabilities(token);
@@ -251,6 +252,7 @@ describe("golden journey", () => {
 
   it("SYS-1.6 — Publish → not served", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -278,6 +280,7 @@ describe("golden journey", () => {
 
   it("SYS-1.7 — Promote → invoke completes", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -300,6 +303,7 @@ describe("golden journey", () => {
 
   it("SYS-1.8 — Journal + settlement consistency", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -343,6 +347,7 @@ describe("golden journey", () => {
 
   it("SYS-1.9 — Envelope completeness", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
@@ -387,6 +392,7 @@ describe("golden journey", () => {
 
   it("SYS-1.10 — Client GET + support lookup", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
     await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);

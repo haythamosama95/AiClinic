@@ -279,7 +279,7 @@ CREATE TABLE token_contract (
 CREATE TABLE "usage_event" (
   usage_event_id TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL,
-  period TEXT NOT NULL,
+  term_id TEXT NOT NULL,
   request_id TEXT,
   quota_weight INTEGER NOT NULL,
   tokens INTEGER NOT NULL,

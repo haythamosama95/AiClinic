@@ -14,6 +14,7 @@ import invoiceMigrationSql from "../../../migrations/20260911200000_invoice.sql?
 import operatorCredentialMigrationSql from "../../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../../../migrations/20261006120000_usage_term.sql?raw";
 import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
@@ -37,6 +38,7 @@ export const MIGRATION_SQL: readonly string[] = [
   operatorCredentialMigrationSql,
   issuerKeyTenantBindingMigrationSql,
   planVersionPaidGrantCoverageMigrationSql,
+  usageTermMigrationSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {

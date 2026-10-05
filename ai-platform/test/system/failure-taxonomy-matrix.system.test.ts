@@ -16,6 +16,7 @@ import {
   DEFAULT_ENTITLE_PAYLOAD,
   newClinic,
   entitleScenario,
+  coverClinic,
   fakePolicyDocument,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
@@ -406,8 +407,8 @@ describe("failure taxonomy matrix", () => {
 
   it("SYS-6.3 — Pending entitlement / plan / grants / role / scope → forbidden_capability", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
     await promote(POLICY_ID, POLICY_VERSION);
@@ -937,8 +938,8 @@ describe("failure taxonomy matrix", () => {
 
   it("SYS-6.14 — No active routing policy → SSE failed internal_error", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
     const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
     await publishPolicy(POLICY_ID, POLICY_VERSION, document);
 

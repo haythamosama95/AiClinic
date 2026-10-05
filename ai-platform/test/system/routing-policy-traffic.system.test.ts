@@ -11,6 +11,7 @@ import {
   count,
   newClinic,
   entitleScenario,
+  coverClinic,
   fakePolicyDocument,
   fakePolicyTarget,
   flushBackgroundWork,
@@ -173,10 +174,10 @@ describe("routing policy traffic", () => {
   it("SYS-4.2 — Canary split two installations", async () => {
     const i0 = await newScenario();
     const i1 = await newScenario();
+    await coverClinic(i0);
     await newClinic(i0);
+    await coverClinic(i1);
     await newClinic(i1);
-    expect((await entitleScenario(i0)).status).toBe(200);
-    expect((await entitleScenario(i1)).status).toBe(200);
 
     const v1Document = fakePolicyDocument(POLICY_ID, "1", { ruleId: "active-v1" });
     const v2Document = fakePolicyDocument(POLICY_ID, "2", { ruleId: "canary-v2" });
@@ -214,8 +215,8 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.3 — Promote & rollback semantics", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
 
     const v1Document = fakePolicyDocument(POLICY_ID, "1");
     const v2Document = fakePolicyDocument(POLICY_ID, "2", { ruleId: "promoted-v2" });
@@ -256,8 +257,8 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.4 — Version tie-break", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
 
     const baseDocument = fakePolicyDocument(POLICY_ID, "1");
     for (const version of ["9", "10", "11"]) {
@@ -342,8 +343,8 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.6 — Fail-closed target filters", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
 
     async function promoteAndInvoke(
       document: Record<string, unknown>,
@@ -427,8 +428,8 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.7 — Overrides & exclusions", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
 
     const excludeDocument = fakePolicyDocument(POLICY_ID, "30", {
       overrides: [
@@ -484,8 +485,8 @@ describe("routing policy traffic", () => {
 
   it("SYS-4.8 — Provider kill-switch failover", async () => {
     const scenario = await newScenario();
+    await coverClinic(scenario);
     await newClinic(scenario);
-    await entitleScenario(scenario);
 
     const failoverDocument = fakePolicyDocument(POLICY_ID, "40", {
       targets: [

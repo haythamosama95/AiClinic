@@ -6,6 +6,7 @@ import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
 import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import usageTermMigrationSql from "../migrations/20261006120000_usage_term.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   EPHEMERAL_HORIZON_MS,
@@ -114,6 +115,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, retentionIndexesSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
   await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
+  await applyPlatformSchema(env.DB, usageTermMigrationSql);
 });
 
 beforeEach(async () => {
@@ -283,7 +285,7 @@ describe("retention_expiry_journal", () => {
 
     await env.DB.prepare(
       `INSERT INTO usage_event (
-        usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at
+        usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
@@ -519,13 +521,13 @@ describe("retention_expiry_ledger", () => {
     }
 
     await env.DB.prepare(
-      `INSERT INTO usage_event (usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at)
+      `INSERT INTO usage_event (usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind("ue-old", FIXTURE_INSTALLATION_A, "2019-01", "req-old", 1, 100, 0.01, oldDate)
       .run();
     await env.DB.prepare(
-      `INSERT INTO usage_event (usage_event_id, installation_id, period, request_id, quota_weight, tokens, cost, recorded_at)
+      `INSERT INTO usage_event (usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind("ue-new", FIXTURE_INSTALLATION_A, "2026-08", "req-new", 1, 200, 0.02, recentDate)

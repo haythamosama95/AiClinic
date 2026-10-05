@@ -11,6 +11,7 @@ import {
   clearConfigCache,
   newClinic,
   entitleScenario,
+  coverClinic,
   GATEWAY_ORIGIN,
   getAudits,
   getCapabilities,
@@ -121,9 +122,8 @@ async function globalOverlay(): Promise<Record<string, unknown> | null> {
 }
 
 async function prepareEntitled(scenario: Scenario): Promise<void> {
+  await coverClinic(scenario);
   await newClinic(scenario);
-  const entitled = await entitleScenario(scenario);
-  expect(entitled.status).toBe(200);
 }
 
 describe("capability lifecycle", () => {

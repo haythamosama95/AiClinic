@@ -28,6 +28,7 @@ import {
   setTestClock,
   setupVendorHarness,
   terminalEventTypes,
+  coverClinic,
   type Scenario,
 } from "./harness";
 import { addDuration } from "../../src/coverage/calendar";
@@ -163,25 +164,42 @@ async function shipCoverageOutbox(installationId: string): Promise<void> {
   await runDurableObjectAlarm(quotaDoStub(installationId));
 }
 
-type CoverClinicOptions = {
-  capabilities?: string[];
-  concurrency_limit?: number;
-  max_allowance_per_month?: number;
-};
+async function readHotReservations(
+  installationId: string,
+): Promise<Array<Record<string, unknown>>> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ reservations: string }>(
+        state,
+        "SELECT reservations FROM hot LIMIT 1",
+      ),
+  );
+  const raw = rows[0]?.reservations;
+  if (!raw) {
+    return [];
+  }
+  return JSON.parse(raw) as Array<Record<string, unknown>>;
+}
 
-/** Paid-grant helper; real export lands in harness.ts at T013 (FR-014). */
-async function coverClinic(
-  scenario: Scenario,
-  opts?: CoverClinicOptions,
-): Promise<void> {
-  const harnessModule = await import("./harness");
-  const fn = (
-    harnessModule as {
-      coverClinic?: (s: Scenario, o?: CoverClinicOptions) => Promise<void>;
-    }
-  ).coverClinic;
-  expect(fn).toBeTypeOf("function");
-  await fn!(scenario, opts);
+function wrapQuotaDoFetch(
+  installationId: string,
+  handler: (
+    body: Record<string, unknown>,
+    forward: (input: RequestInfo, init?: RequestInit) => Promise<Response>,
+  ) => Promise<Response>,
+): () => void {
+  const stub = quotaDoStub(installationId);
+  const original = stub.fetch.bind(stub);
+  const spy = vi.spyOn(stub, "fetch").mockImplementation(async (input, init) => {
+    const request =
+      input instanceof Request ? input : new Request(input, init);
+    const body = (await request.clone().json()) as Record<string, unknown>;
+    return handler(body, (fwdInput, fwdInit) => original(fwdInput, fwdInit));
+  });
+  return () => {
+    spy.mockRestore();
+  };
 }
 
 async function setupPromotedPolicy(scenario: Scenario): Promise<string> {
@@ -534,5 +552,211 @@ describe("admission settlement against terms", () => {
     expect(bandEvents.filter((event) => event.band === "90")).toHaveLength(
       band90Count,
     );
+  });
+
+  it("E2E-P3.4-09 A provider call that consumes nothing releases the reservation", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const token = await mintAat(scenario);
+
+    const usedBefore = await readHotUsed(scenario.installationId);
+    const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION, {
+      targets: [],
+    });
+    const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+    expect(published.status).toBe(200);
+    const promoted = await promote(POLICY_ID, POLICY_VERSION);
+    expect(promoted.status).toBe(200);
+
+    const invoked = await invoke(scenario, {
+      token,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(invoked.status).toBe(200);
+    await flushBackgroundWork();
+
+    const usedAfter = await readHotUsed(scenario.installationId);
+    expect(usedAfter).toBe(usedBefore);
+    expect(await readHotReservations(scenario.installationId)).toHaveLength(0);
+  });
+
+  it("E2E-P3.4-10 A reservation older than 15 minutes is charged once", async () => {
+    const scenario = await newScenario();
+    await setTestClock("2026-08-01T12:00:00.000Z");
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const token = await mintAat(scenario);
+
+    let creditCalls = 0;
+    let swallowedCreditBody: Record<string, unknown> | null = null;
+    const restoreFetch = wrapQuotaDoFetch(
+      scenario.installationId,
+      async (body, forward) => {
+        if (body.kind === "credit" && creditCalls === 0) {
+          creditCalls += 1;
+          swallowedCreditBody = body;
+          return new Response(JSON.stringify({ kind: "credit", ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return forward("https://quota-do.internal/rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      },
+    );
+
+    try {
+      const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+      const published = await publishPolicy(
+        POLICY_ID,
+        POLICY_VERSION,
+        document,
+      );
+      expect(published.status).toBe(200);
+      const promoted = await promote(POLICY_ID, POLICY_VERSION);
+      expect(promoted.status).toBe(200);
+
+      const invoked = await invoke(scenario, {
+        token,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      expect(invoked.status).toBe(200);
+      await flushBackgroundWork();
+
+      expect(swallowedCreditBody).toBeTruthy();
+      expect(await readHotReservations(scenario.installationId).then((r) => r.length)).toBeGreaterThan(0);
+
+      await setTestClock("2026-08-01T12:16:00.000Z");
+
+      const document2 = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+      await publishPolicy(POLICY_ID, POLICY_VERSION, document2);
+      await promote(POLICY_ID, POLICY_VERSION);
+
+      const second = await invoke(scenario, {
+        token,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      expect(second.status).toBe(200);
+      await flushBackgroundWork();
+
+      await runDurableObjectAlarm(quotaDoStub(scenario.installationId));
+
+      const ref = String(invoked.events[0]?.data.request_reference);
+      const request = await getAiRequest(ref);
+      const requestId = String(request?.request_id);
+      const usage = await getUsageEvents(requestId);
+      expect(usage).toHaveLength(1);
+
+      const hotBeforeReplay = await readHotUsage(scenario.installationId);
+      if (swallowedCreditBody) {
+        await quotaDoStub(scenario.installationId).fetch(
+          "https://quota-do.internal/rpc",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(swallowedCreditBody),
+          },
+        );
+      }
+      const hotAfterReplay = await readHotUsage(scenario.installationId);
+      expect(hotAfterReplay.used).toBe(hotBeforeReplay.used);
+      expect(hotAfterReplay.reserved).toBe(hotBeforeReplay.reserved);
+      const usageAfterReplay = await getUsageEvents(requestId);
+      expect(usageAfterReplay).toHaveLength(1);
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  it("E2E-P3.4-11 A replayed jti or idempotency key returns the stored answer", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const token = await mintAat(scenario);
+
+    const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+    await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+    await promote(POLICY_ID, POLICY_VERSION);
+
+    const idempotencyKey = crypto.randomUUID();
+    const first = await invoke(scenario, { token, idempotencyKey });
+    expect(first.status).toBe(200);
+    await flushBackgroundWork();
+
+    const hotAfterFirst = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) =>
+        sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
+    );
+
+    const replayIdempotency = await invoke(scenario, { token, idempotencyKey });
+    expect(replayIdempotency.status).toBe(first.status);
+    expect(replayIdempotency.body).toEqual(first.body);
+    expect(replayIdempotency.events).toEqual(first.events);
+
+    const sharedJti = crypto.randomUUID();
+    const tokenA = await mintAat(scenario, { jti: sharedJti });
+    const tokenB = await mintAat(scenario, { jti: sharedJti });
+    const keyA = crypto.randomUUID();
+    const keyB = crypto.randomUUID();
+    const jtiFirst = await invoke(scenario, {
+      token: tokenA,
+      idempotencyKey: keyA,
+    });
+    expect(jtiFirst.status).toBe(200);
+    await flushBackgroundWork();
+    const jtiReplay = await invoke(scenario, {
+      token: tokenB,
+      idempotencyKey: keyB,
+    });
+    expect(jtiReplay.status).toBe(jtiFirst.status);
+    expect(jtiReplay.body).toEqual(jtiFirst.body);
+
+    const hotAfterReplay = await runInDurableObject(
+      quotaDoStub(scenario.installationId),
+      async (_instance, state) =>
+        sqlSelect<Record<string, unknown>>(state, "SELECT * FROM hot LIMIT 1"),
+    );
+    expect(JSON.stringify(hotAfterReplay)).toBe(JSON.stringify(hotAfterFirst));
+  });
+
+  it("E2E-P3.4-12 A DO version rejection is coverage_unknown", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await newClinic(scenario);
+    const token = await mintAat(scenario);
+
+    const restoreFetch = wrapQuotaDoFetch(
+      scenario.installationId,
+      async (body, forward) => {
+        if (body.kind === "admission") {
+          return new Response(
+            JSON.stringify({
+              result: "rejected",
+              code: "contract_version_unsupported",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return forward("https://quota-do.internal/rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      },
+    );
+
+    try {
+      const denied = await invoke(scenario, { token });
+      expect(denied.status).toBe(503);
+      expect(denied.body?.code).toBe("coverage_unknown");
+      expect(denied.body?.retry_after).toBeTruthy();
+    } finally {
+      restoreFetch();
+    }
   });
 });
