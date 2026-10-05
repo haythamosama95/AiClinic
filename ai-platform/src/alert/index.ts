@@ -8,6 +8,13 @@ export type AlertEnv = SendEmailEnv & {
   HEARTBEAT_URL: string;
 };
 
+export type CoverageAlertEnv = SendEmailEnv & {
+  DB: D1Database;
+  ALERT_EMAIL_TO: string;
+};
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 const FIVE_MINUTE_CRON = "*/5 * * * *";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const AL20_ALERT_KEY = "AL-20";
@@ -179,6 +186,164 @@ async function sendAl13IssuerKeyBody(
     const nowIso = await clockNowIso(env);
     await markAlertUnsent(env.DB, alertKey, nowIso);
   }
+}
+
+export type Al13ServiceKeyKind = "register" | "revoke";
+
+export type Al13ServiceKeyBody = {
+  code: "AL-13";
+  kid: string;
+  operation: Record<string, unknown> | null;
+};
+
+function al13ServiceKeyAlertKey(kid: string, kind: Al13ServiceKeyKind): string {
+  return `AL-13:service_key:${kid}:${kind}`;
+}
+
+function al13ServiceKeyEmailText(body: Al13ServiceKeyBody): string {
+  return JSON.stringify(body);
+}
+
+function parseAl13ServiceKeyAlertKey(
+  alertKey: string,
+): { kid: string; kind: Al13ServiceKeyKind } | null {
+  const prefix = "AL-13:service_key:";
+  if (!alertKey.startsWith(prefix)) {
+    return null;
+  }
+  const rest = alertKey.slice(prefix.length);
+  const separator = rest.lastIndexOf(":");
+  if (separator <= 0) {
+    return null;
+  }
+  const kid = rest.slice(0, separator);
+  const kind = rest.slice(separator + 1);
+  if (kind !== "register" && kind !== "revoke") {
+    return null;
+  }
+  return { kid, kind };
+}
+
+function serviceKeyHpMethod(kind: Al13ServiceKeyKind): string {
+  return kind === "register" ? "registerServiceKey" : "revokeServiceKey";
+}
+
+async function readServiceKeyForAlert(
+  db: D1Database,
+  kid: string,
+): Promise<{
+  public_key: string;
+  not_before: string;
+  not_after: string;
+} | null> {
+  return db
+    .prepare(
+      `SELECT public_key, not_before, not_after FROM service_key WHERE kid = ?`,
+    )
+    .bind(kid)
+    .first<{ public_key: string; not_before: string; not_after: string }>();
+}
+
+async function rebuildAl13ServiceKeyOperation(
+  db: D1Database,
+  kid: string,
+  kind: Al13ServiceKeyKind,
+): Promise<Record<string, unknown> | null> {
+  const method = serviceKeyHpMethod(kind);
+  const audit = await db
+    .prepare(
+      `SELECT actor, assertion_sha256, recorded_at
+       FROM control_audit
+       WHERE action = ? AND target = ? AND assertion_sha256 IS NOT NULL
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+    )
+    .bind(method, kid)
+    .first<{
+      actor: string;
+      assertion_sha256: string;
+      recorded_at: string;
+    }>();
+  if (audit === null) {
+    return null;
+  }
+  const used = await db
+    .prepare(
+      `SELECT credential_id FROM assertion_used WHERE challenge_sha256 = ?`,
+    )
+    .bind(audit.assertion_sha256)
+    .first<{ credential_id: string }>();
+  const contractVersion = CHANNEL_VERSIONS.vendorEntrypoint;
+  const params: Record<string, unknown> = {
+    contract_version: contractVersion,
+    access_jwt: "",
+    kid,
+    signer_credential_id: used?.credential_id ?? "",
+  };
+  if (kind === "register") {
+    const row = await readServiceKeyForAlert(db, kid);
+    if (row === null) {
+      return null;
+    }
+    params.public_key = row.public_key;
+    params.not_before = row.not_before;
+    params.not_after = row.not_after;
+  }
+  return {
+    op: method,
+    params,
+    actor_email: audit.actor,
+    issued_at: audit.recorded_at,
+    nonce: audit.assertion_sha256,
+    contract_version: contractVersion,
+  };
+}
+
+async function sendAl13ServiceKeyBody(
+  env: AlertEnv,
+  body: Al13ServiceKeyBody,
+  alertKey: string,
+): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject: "AL-13",
+    text: al13ServiceKeyEmailText(body),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    await markAlertSent(env.DB, alertKey);
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, alertKey, nowIso);
+  }
+}
+
+export async function raiseAl13ServiceKey(
+  env: AlertEnv,
+  input: {
+    kid: string;
+    kind: Al13ServiceKeyKind;
+    operation: Record<string, unknown> | null;
+  },
+): Promise<void> {
+  const alertKey = al13ServiceKeyAlertKey(input.kid, input.kind);
+  const priorSendState = await readPlatformAlertSendState(env.DB, alertKey);
+  if (priorSendState === "sent") {
+    const nowIso = await clockNowIso(env);
+    await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
+    return;
+  }
+
+  const nowIso = await clockNowIso(env);
+  await upsertPlatformAlert(env.DB, alertKey, "AL-13", nowIso);
+
+  const body: Al13ServiceKeyBody = {
+    code: "AL-13",
+    kid: input.kid,
+    operation: input.operation,
+  };
+  await sendAl13ServiceKeyBody(env, body, alertKey);
 }
 
 export async function raiseAl13IssuerKey(
@@ -566,6 +731,22 @@ export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
       await sendAl20Body(env);
       continue;
     }
+    if (row.code === "AL-11") {
+      continue;
+    }
+    if (row.code === "AL-17") {
+      const nowMs = await clockNowMs(env);
+      const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
+      const body =
+        row.alert_key === "AL-17:global"
+          ? { code: "AL-17" }
+          : {
+              code: "AL-17",
+              org_id: row.alert_key.slice("AL-17:clinic:".length),
+            };
+      await sendAl17Body(env, body, row.alert_key, nextSendAt);
+      continue;
+    }
     if (row.code !== "AL-13") {
       continue;
     }
@@ -582,6 +763,21 @@ export async function retryUnsentPlatformAlerts(env: AlertEnv): Promise<void> {
         operation,
       };
       await sendAl13IssuerKeyBody(env, body, row.alert_key);
+      continue;
+    }
+    const serviceKeyParsed = parseAl13ServiceKeyAlertKey(row.alert_key);
+    if (serviceKeyParsed !== null) {
+      const operation = await rebuildAl13ServiceKeyOperation(
+        env.DB,
+        serviceKeyParsed.kid,
+        serviceKeyParsed.kind,
+      );
+      const body: Al13ServiceKeyBody = {
+        code: "AL-13",
+        kid: serviceKeyParsed.kid,
+        operation,
+      };
+      await sendAl13ServiceKeyBody(env, body, row.alert_key);
       continue;
     }
     const parsed = parseAl13AlertKey(row.alert_key);
@@ -656,10 +852,174 @@ async function runFiveMinuteJob(
   }
 }
 
+async function sendAl11GrantBody(
+  env: CoverageAlertEnv,
+  body: Record<string, unknown>,
+  alertKey: string,
+): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject: "AL-11",
+    text: JSON.stringify(body),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    await markAlertSent(env.DB, alertKey);
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, alertKey, nowIso);
+  }
+}
+
+async function sendAl17Body(
+  env: CoverageAlertEnv,
+  body: Record<string, unknown>,
+  alertKey: string,
+  nextSendAt: string,
+): Promise<void> {
+  const message = {
+    from: env.ALERT_EMAIL_TO,
+    to: env.ALERT_EMAIL_TO,
+    subject: "AL-17",
+    text: JSON.stringify(body),
+  };
+  try {
+    await sendPlatformEmail(env, message);
+    await env.DB.prepare(
+      `UPDATE platform_alert SET send_state = 'sent', next_send_at = ? WHERE alert_key = ?`,
+    )
+      .bind(nextSendAt, alertKey)
+      .run();
+  } catch {
+    const nowIso = await clockNowIso(env);
+    await markAlertUnsent(env.DB, alertKey, nowIso);
+  }
+}
+
+export async function raiseAl11GrantFromOutbox(
+  env: CoverageAlertEnv,
+  alertKey: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const existing = await readPlatformAlertSendState(env.DB, alertKey);
+  if (existing === "sent") {
+    return;
+  }
+  await upsertPlatformAlert(env.DB, alertKey, "AL-11", nowIso);
+  await sendAl11GrantBody(env, body, alertKey);
+}
+
+export async function raiseAl17FromOutbox(
+  env: CoverageAlertEnv,
+  alertKey: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const nowMs = await clockNowMs(env);
+  const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
+  await upsertPlatformAlert(env.DB, alertKey, "AL-17", nowIso);
+  await env.DB.prepare(
+    `UPDATE platform_alert SET next_send_at = ? WHERE alert_key = ?`,
+  )
+    .bind(nextSendAt, alertKey)
+    .run();
+  await sendAl17Body(env, body, alertKey, nextSendAt);
+}
+
+async function countPaidGrantsForOrgLast24Hours(
+  db: D1Database,
+  orgId: string,
+  nowIso: string,
+): Promise<number> {
+  const windowStart = new Date(Date.parse(nowIso) - ONE_DAY_MS).toISOString();
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM grant_ledger
+       WHERE source_kind = 'paid' AND org_id = ? AND applied_at >= ?`,
+    )
+    .bind(orgId, windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function countGlobalPaidGrantsLastHour(
+  db: D1Database,
+  nowIso: string,
+): Promise<number> {
+  const windowStart = new Date(Date.parse(nowIso) - ONE_HOUR_MS).toISOString();
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM grant_ledger
+       WHERE source_kind = 'paid' AND applied_at >= ?`,
+    )
+    .bind(windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function al17ConditionStillHolds(
+  env: AlertEnv,
+  alertKey: string,
+  nowIso: string,
+): Promise<boolean> {
+  if (alertKey === "AL-17:global") {
+    const count = await countGlobalPaidGrantsLastHour(env.DB, nowIso);
+    return count > 20;
+  }
+  const prefix = "AL-17:clinic:";
+  if (!alertKey.startsWith(prefix)) {
+    return false;
+  }
+  const orgId = alertKey.slice(prefix.length);
+  const count = await countPaidGrantsForOrgLast24Hours(env.DB, orgId, nowIso);
+  return count > 3;
+}
+
+async function retryDueAl17Alerts(env: AlertEnv): Promise<void> {
+  const nowIso = await clockNowIso(env);
+  const nowMs = await clockNowMs(env);
+  const rows = await env.DB.prepare(
+    `SELECT alert_key, next_send_at, resolved_at
+     FROM platform_alert
+     WHERE code = 'AL-17' AND resolved_at IS NULL`,
+  ).all<{
+    alert_key: string;
+    next_send_at: string | null;
+    resolved_at: string | null;
+  }>();
+
+  for (const row of rows.results ?? []) {
+    if (row.next_send_at === null || row.next_send_at > nowIso) {
+      continue;
+    }
+    const stillHolds = await al17ConditionStillHolds(env, row.alert_key, nowIso);
+    if (!stillHolds) {
+      await env.DB.prepare(
+        `UPDATE platform_alert SET resolved_at = ? WHERE alert_key = ?`,
+      )
+        .bind(nowIso, row.alert_key)
+        .run();
+      continue;
+    }
+    const body =
+      row.alert_key === "AL-17:global"
+        ? { code: "AL-17" }
+        : {
+            code: "AL-17",
+            org_id: row.alert_key.slice("AL-17:clinic:".length),
+          };
+    const nextSendAt = new Date(nowMs + ONE_HOUR_MS).toISOString();
+    await sendAl17Body(env, body, row.alert_key, nextSendAt);
+  }
+}
+
 export async function runFiveMinuteCron(env: AlertEnv): Promise<void> {
   await runFiveMinuteJob(env, "alert_retry", async () => {
     await retryUnsentPlatformAlerts(env);
     await retryDueAl20Alerts(env);
+    await retryDueAl17Alerts(env);
   });
   await runFiveMinuteJob(env, "heartbeat", () => pingPlatformHeartbeat(env));
 }

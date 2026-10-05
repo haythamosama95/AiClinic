@@ -66,6 +66,29 @@ CREATE TABLE control_audit (
   recorded_at TEXT NOT NULL
 , actor TEXT, assertion_sha256 TEXT);
 
+CREATE TABLE coverage_event (
+  feed_seq INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  event_id TEXT NOT NULL UNIQUE,
+  org_id TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  binding_epoch INTEGER NOT NULL,
+  clinic_seq INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  snapshot TEXT NOT NULL,
+  at TEXT NOT NULL
+);
+
+CREATE TABLE coverage_mirror (
+  installation_id TEXT PRIMARY KEY NOT NULL,
+  org_id TEXT NOT NULL,
+  binding_epoch INTEGER NOT NULL,
+  clinic_seq INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  suspended INTEGER NOT NULL,
+  hard_stop_at TEXT,
+  term_snapshot TEXT NOT NULL
+);
+
 CREATE TABLE credit_price (
   version TEXT PRIMARY KEY NOT NULL,
   price_per_credit REAL NOT NULL,
@@ -105,6 +128,19 @@ CREATE TABLE grace_admission_queue (
   status TEXT NOT NULL,
   UNIQUE (installation_id, idempotency_key),
   FOREIGN KEY (installation_id) REFERENCES installation (installation_id)
+);
+
+CREATE TABLE grant_ledger (
+  grant_id TEXT PRIMARY KEY NOT NULL,
+  origin_grant_id TEXT NOT NULL,
+  org_id TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  operator_credential_id TEXT NOT NULL,
+  envelope_sha256 TEXT NOT NULL,
+  receipt TEXT NOT NULL,
+  applied_at TEXT NOT NULL
 );
 
 CREATE TABLE installation (
@@ -187,6 +223,20 @@ CREATE TABLE platform_counter (
   count INTEGER NOT NULL
 );
 
+CREATE TABLE plan_version (
+  plan_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  display_name TEXT NOT NULL,
+  capabilities TEXT NOT NULL,
+  max_cost_class TEXT NOT NULL,
+  concurrency_limit INTEGER NOT NULL,
+  max_allowance_per_month INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  published_by TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL,
+  PRIMARY KEY (plan_id, version)
+);
+
 CREATE TABLE routing_policy (
   policy_id TEXT NOT NULL,
   version TEXT NOT NULL,
@@ -194,6 +244,17 @@ CREATE TABLE routing_policy (
   active_from TEXT NOT NULL,
   activated_by TEXT NOT NULL, canary_installation_ids TEXT, status TEXT NOT NULL DEFAULT 'published',
   PRIMARY KEY (policy_id, version)
+);
+
+CREATE TABLE service_key (
+  kid TEXT PRIMARY KEY NOT NULL,
+  service TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  not_before TEXT NOT NULL,
+  not_after TEXT NOT NULL,
+  registered_by TEXT NOT NULL,
+  assertion_sha256 TEXT NOT NULL
 );
 
 CREATE TABLE tenant_binding (

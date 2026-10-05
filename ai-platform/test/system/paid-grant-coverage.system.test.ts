@@ -2,6 +2,7 @@
  * P3.3 — Plan versions, paid-grant intake, coverage ledger (E2E-P3.3-01–12).
  */
 
+import { env as workerBindings } from "cloudflare:workers";
 import {
   env,
   runDurableObjectAlarm,
@@ -10,6 +11,7 @@ import {
 import {
   CHANNEL_VERSIONS,
   grantIdPaid,
+  sha256Hex,
   verifyReceiptSignature,
 } from "vendor-contracts";
 import { createAboGrantSigner, createSoftwareAuthenticator } from "vendor-contracts/testkit";
@@ -128,6 +130,20 @@ async function importPlatformReceiptPublicKey(): Promise<CryptoKey> {
     false,
     ["verify"],
   );
+}
+
+async function alignServiceKeyNotBefore(
+  kid: string,
+  notBefore: string,
+): Promise<void> {
+  const notAfter = new Date(
+    Date.parse(notBefore) + 365 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  await env.DB.prepare(
+    `UPDATE service_key SET not_before = ?, not_after = ? WHERE kid = ?`,
+  )
+    .bind(notBefore, notAfter, kid)
+    .run();
 }
 
 async function serviceValidityWindow(): Promise<{
@@ -439,6 +455,7 @@ async function buildPaidGrantEnvelope(input: {
 }): Promise<Record<string, unknown>> {
   const paidAt = getVendorTestClockIso() ?? new Date().toISOString();
   const paymentRef = crypto.randomUUID().replace(/-/g, "");
+  const contentSha256 = await sha256Hex(new TextEncoder().encode(paymentRef));
   return {
     contract_version: CONTRACT_VERSION,
     grant_id: input.grantId,
@@ -464,7 +481,7 @@ async function buildPaidGrantEnvelope(input: {
     },
     paid_at: paidAt,
     evidence: {
-      content_sha256: paymentRef,
+      content_sha256: contentSha256,
       approvals: [
         {
           credential_id: "cred-001",
@@ -572,18 +589,26 @@ function withDurationScale<T>(
   scale: string | undefined,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const envWithScale = env as { DURATION_SCALE?: string };
-  const previous = envWithScale.DURATION_SCALE;
-  if (scale === undefined) {
-    delete envWithScale.DURATION_SCALE;
-  } else {
-    envWithScale.DURATION_SCALE = scale;
+  const targets = [
+    env as { DURATION_SCALE?: string },
+    workerBindings as { DURATION_SCALE?: string },
+  ];
+  const previous = targets.map((target) => target.DURATION_SCALE);
+  for (const target of targets) {
+    if (scale === undefined) {
+      delete target.DURATION_SCALE;
+    } else {
+      target.DURATION_SCALE = scale;
+    }
   }
   return fn().finally(() => {
-    if (previous === undefined) {
-      delete envWithScale.DURATION_SCALE;
-    } else {
-      envWithScale.DURATION_SCALE = previous;
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index]!;
+      if (previous[index] === undefined) {
+        delete target.DURATION_SCALE;
+      } else {
+        target.DURATION_SCALE = previous[index];
+      }
     }
   });
 }
@@ -719,11 +744,22 @@ async function grantPaidForOrg(
 
 async function bootstrapPaidGrantFixture(
   clockIso = "2026-01-15T10:00:00.000Z",
+  operator?: {
+    signerCredentialId: string;
+    signerAuthenticator: SoftwareAuthenticator;
+  },
 ): Promise<PaidGrantFixture> {
   await setTestClock(clockIso);
-  const signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
-  const { credentialId: signerCredentialId } =
-    await bootstrapOperatorCredential(signerAuthenticator);
+  let signerCredentialId: string;
+  let signerAuthenticator: SoftwareAuthenticator;
+  if (operator !== undefined) {
+    signerCredentialId = operator.signerCredentialId;
+    signerAuthenticator = operator.signerAuthenticator;
+  } else {
+    signerAuthenticator = await createSoftwareAuthenticator("EdDSA");
+    ({ credentialId: signerCredentialId } =
+      await bootstrapOperatorCredential(signerAuthenticator));
+  }
 
   const publish = await publishPlanVersionHp({
     signerCredentialId,
@@ -790,7 +826,7 @@ describe("paid grant coverage", () => {
 
     const installationId = await installationIdForOrg(fixture.orgId);
     const snapshot = await readDoCoverageSnapshot(installationId);
-    expect(snapshot.activeStartsAt).toBe(clockIso);
+    expect(snapshot.activeStartsAt).toBe(getVendorTestClockIso());
     const activeTerms = await runInDurableObject(
       quotaDoStub(installationId),
       async (_instance, state) =>
@@ -956,7 +992,10 @@ describe("paid grant coverage", () => {
     expect(planNotPublished.receipt).toBeUndefined();
     await expectNoTenantBinding(unpublished.orgId);
 
-    const fixture = await bootstrapPaidGrantFixture();
+    const fixture = await bootstrapPaidGrantFixture("2026-01-15T10:00:00.000Z", {
+      signerCredentialId: unpublished.signerCredentialId,
+      signerAuthenticator: unpublished.signerAuthenticator,
+    });
 
     const overAllowanceEnvelope = structuredClone(fixture.envelope) as Record<
       string,
@@ -1139,49 +1178,48 @@ describe("paid grant coverage", () => {
   });
 
   it("E2E-P3.3-09 A grant at 31 January 10:00 ends 28 February 10:00, or 29 February in a leap year, and the staging scale makes a month 30 minutes", async () => {
-    const jan31NonLeap = "2026-01-31T10:00:00.000Z";
-    const fixtureNonLeap = await bootstrapPaidGrantFixture(jan31NonLeap);
-    const appliedNonLeap = await grantPaid({
-      envelope: fixtureNonLeap.envelope,
-      aboKid: fixtureNonLeap.aboKid,
-      aboSignature: fixtureNonLeap.aboSignature,
-    });
-    expect(appliedNonLeap.result).toBe("applied");
+    const shared = await bootstrapPaidGrantFixture("2024-06-01T10:00:00.000Z");
 
-    const installationNonLeap = await installationIdForOrg(fixtureNonLeap.orgId);
-    const timingNonLeap = await readActiveTermTiming(installationNonLeap);
-    expect(timingNonLeap?.starts_at).toBe(jan31NonLeap);
-    expect(timingNonLeap?.ends_at).toBe("2026-02-28T10:00:00.000Z");
+    async function grantAtClock(
+      clockIso: string,
+      durationScale?: string,
+    ): Promise<{ orgId: string; timing: { starts_at: string | null; ends_at: string | null } | null }> {
+      await setTestClock(clockIso);
+      await alignServiceKeyNotBefore(shared.aboKid, clockIso);
+      const orgId = crypto.randomUUID();
+      const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+      const envelope = await buildPaidGrantEnvelope({ orgId, grantId });
+      const aboSignature = await shared.aboSigner.sign(envelope);
+      const apply = async () =>
+        grantPaid({
+          envelope,
+          aboKid: shared.aboKid,
+          aboSignature,
+        });
+      const applied =
+        durationScale === "staging"
+          ? await withDurationScale("staging", apply)
+          : await apply();
+      expect(applied.result).toBe("applied");
+      const installationId = await installationIdForOrg(orgId);
+      const timing = await readActiveTermTiming(installationId);
+      return { orgId, timing };
+    }
+
+    const jan31NonLeap = "2026-01-31T10:00:00.000Z";
+    const nonLeap = await grantAtClock(jan31NonLeap);
+    expect(nonLeap.timing?.starts_at).toBe(jan31NonLeap);
+    expect(nonLeap.timing?.ends_at).toBe("2026-02-28T10:00:00.000Z");
 
     const jan31Leap = "2024-01-31T10:00:00.000Z";
-    const fixtureLeap = await bootstrapPaidGrantFixture(jan31Leap);
-    const appliedLeap = await grantPaid({
-      envelope: fixtureLeap.envelope,
-      aboKid: fixtureLeap.aboKid,
-      aboSignature: fixtureLeap.aboSignature,
-    });
-    expect(appliedLeap.result).toBe("applied");
-
-    const installationLeap = await installationIdForOrg(fixtureLeap.orgId);
-    const timingLeap = await readActiveTermTiming(installationLeap);
-    expect(timingLeap?.starts_at).toBe(jan31Leap);
-    expect(timingLeap?.ends_at).toBe("2024-02-29T10:00:00.000Z");
+    const leap = await grantAtClock(jan31Leap);
+    expect(leap.timing?.starts_at).toBe(jan31Leap);
+    expect(leap.timing?.ends_at).toBe("2024-02-29T10:00:00.000Z");
 
     const stagingStart = "2026-03-01T12:00:00.000Z";
-    const fixtureStaging = await bootstrapPaidGrantFixture(stagingStart);
-    const appliedStaging = await withDurationScale("staging", () =>
-      grantPaid({
-        envelope: fixtureStaging.envelope,
-        aboKid: fixtureStaging.aboKid,
-        aboSignature: fixtureStaging.aboSignature,
-      }),
-    );
-    expect(appliedStaging.result).toBe("applied");
-
-    const installationStaging = await installationIdForOrg(fixtureStaging.orgId);
-    const timingStaging = await readActiveTermTiming(installationStaging);
-    expect(timingStaging?.starts_at).toBe(stagingStart);
-    expect(timingStaging?.ends_at).toBe("2026-03-01T12:30:00.000Z");
+    const staging = await grantAtClock(stagingStart, "staging");
+    expect(staging.timing?.starts_at).toBe(stagingStart);
+    expect(staging.timing?.ends_at).toBe("2026-03-01T12:30:00.000Z");
   });
 
   it("E2E-P3.3-10 retirePlanVersion refuses the next grant on that version and the existing term keeps its snapshot", async () => {

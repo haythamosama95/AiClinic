@@ -46,6 +46,8 @@ export default defineWorkersConfig({
             // preloaded policy row through so routing never re-consults.
             CONFIG_CACHE_TTL_MS: "0",
             ISSUER_ID: "issuer-test",
+            PLATFORM_SIGNING_KEY:
+              '{"kid":"platform-test","pkcs8":"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk","public_key":"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0"}',
             ACCESS_TEAM_DOMAIN: "access.test",
             ACCESS_AUD: "vendor-access-aud",
             WEBAUTHN_RP_ID: "ops.vendor.test",

@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_installation_unique.sql?raw";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { handleInstallationQuotaGet } from "../src/control/quota-inspect";
 import type { ControlBindings, OperatorAuth } from "../src/control/types";
 import type { QuotaDoState } from "../src/quota-do";
@@ -576,6 +577,7 @@ describe("quota_inspect_do_rpc_contract", () => {
     expect(fetchCalls[0]?.url).toBe("https://quota-do.internal/rpc");
     expect(fetchCalls[0]?.init?.method).toBe("POST");
     expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({
+      contract_version: CHANNEL_VERSIONS.platformDo,
       kind: "inspect",
     });
   });

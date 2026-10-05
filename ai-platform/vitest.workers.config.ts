@@ -76,6 +76,8 @@ export default defineWorkersConfig({
             HEARTBEAT_URL: "https://heartbeat.test/ping",
             ALERT_EMAIL_TO: "alerts@clinic.invalid",
             ISSUER_ID: "issuer-test",
+            PLATFORM_SIGNING_KEY:
+              '{"kid":"platform-test","pkcs8":"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk","public_key":"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0"}',
           },
           serviceBindings: {
             VENDOR: { name: kCurrentWorker, entrypoint: "VendorEntrypoint" },

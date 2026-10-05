@@ -1,3 +1,4 @@
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { env, QUOTA_DO_RPC_URL } from "./env";
 
 export type GatewayObjectRpcOptions = {
@@ -22,8 +23,12 @@ export async function gatewayObjectRpc(
   const namespace = options.namespace ?? env.DO;
   const id = namespace.idFromName(installationId);
   const stub = namespace.get(id);
-  const payload =
-    options.now !== undefined ? { ...body, now: options.now } : body;
+  const payload = {
+    ...body,
+    contract_version:
+      body.contract_version ?? CHANNEL_VERSIONS.platformDo,
+    ...(options.now !== undefined ? { now: options.now } : {}),
+  };
   return stub.fetch(QUOTA_DO_RPC_URL, {
     method: options.method ?? "POST",
     headers: {

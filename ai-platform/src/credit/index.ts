@@ -12,6 +12,7 @@ import type {
   EntitlementSnapshot,
   PeriodCounters,
 } from "../quota-do/index";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import type { TaxonomyCode } from "../errors";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
@@ -130,6 +131,7 @@ async function invokeAdmissionRpc(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
         kind: "admission",
         jti: entry.jti,
         installationId: entry.installationId,
@@ -173,6 +175,7 @@ async function invokeCreditRpc(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
         kind: "credit",
         installationId,
         requestId,

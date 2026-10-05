@@ -2,6 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import tokenContractMigrationSql from "../migrations/20260803120000_token_contract.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "../split-sql-statements";
 import { ConfigCache, type D1Reader } from "../src/config-cache";
 import {
   IssuerTokenVerifier,
@@ -334,15 +336,7 @@ function expectRejected(
 // ---------------------------------------------------------------------------
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
-  const statements = sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-
-  for (const statement of statements) {
-    await db.prepare(statement).run();
-  }
+  await applySqlStatements(db, sql);
 }
 
 async function clearIdentityTables(db: D1Database): Promise<void> {
@@ -1057,6 +1051,7 @@ describe("identity_rejects_suspended_installation", () => {
     await applyPlatformSchema(db, migrationSql);
     await applyPlatformSchema(db, tokenContractMigrationSql);
     await applyPlatformSchema(db, issuerKeyTenantBindingMigrationSql);
+    await applyPlatformSchema(db, planVersionPaidGrantCoverageMigrationSql);
   });
 
   beforeEach(async () => {

@@ -2,6 +2,8 @@ import { env, SELF } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import migrationSql from "../migrations/20260731120000_platform_schema.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "../split-sql-statements";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -140,6 +142,11 @@ async function clearLifecycleTables(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_event"),
+    env.DB.prepare("DELETE FROM grant_ledger"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
+    env.DB.prepare("DELETE FROM plan_version"),
+    env.DB.prepare("DELETE FROM service_key"),
     env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM installation"),
@@ -240,20 +247,13 @@ async function enrollFixture(
 }
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
-  const statements = sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-
-  for (const statement of statements) {
-    await db.prepare(statement).run();
-  }
+  await applySqlStatements(db, sql);
 }
 
 beforeAll(async () => {
   await applyPlatformSchema(env.DB, migrationSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {

@@ -11,6 +11,9 @@ import uniqueEntitlementSql from "../migrations/20260821130000_entitlement_insta
 import planCatalogueMigrationSql from "../migrations/20260911120000_plan_catalogue.sql?raw";
 import quotaWeightMigrationSql from "../migrations/20260911180000_usage_rollup_quota_weight.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "../split-sql-statements";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { isolateConfigCache } from "../src/config-cache";
 import { liveHttpStatusForCode } from "../src/errors";
 import { runRollup } from "../src/rollup";
@@ -84,6 +87,7 @@ type AdmissionAdmitted = {
 
 type InspectResponse = {
   kind: "inspect";
+  contract_version: number;
   state: {
     periodCounters: {
       creditsUsed: number;
@@ -192,15 +196,7 @@ async function mintToken(
 }
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
-  const statements = sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-
-  for (const statement of statements) {
-    await db.prepare(statement).run();
-  }
+  await applySqlStatements(db, sql);
 }
 
 async function applyQuotaWeightMigration(db: D1Database): Promise<void> {
@@ -271,6 +267,7 @@ async function seedQuotaDoCreditsUsed(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      contract_version: 1,
       kind: "admission",
       jti: uniqueJti(),
       installationId,
@@ -288,6 +285,7 @@ async function seedQuotaDoCreditsUsed(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      contract_version: 1,
       kind: "credit",
       installationId,
       requestId: admission.requestId,
@@ -539,6 +537,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, planCatalogueMigrationSql);
   await applyQuotaWeightMigration(env.DB);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
   fixtureKeypair = await generateTestKeypair("kid-usage-001");
 });
 
@@ -697,6 +696,10 @@ describe("usage_summary_live_and_historical_from_different_sources", () => {
     ]);
 
     expect(doInspectBodies.length).toBeGreaterThan(0);
+    expect(doInspectBodies[0]).toMatchObject({
+      kind: "inspect",
+      contract_version: 1,
+    });
 
     const sqlStatements = prepareSpy.mock.calls.map(([sql]) => String(sql));
     expect(sqlStatements.some((sql) => /\busage_rollup\b/i.test(sql))).toBe(true);
@@ -707,7 +710,10 @@ describe("usage_summary_live_and_historical_from_different_sources", () => {
     const inspect = await quotaStub(installationId).fetch(RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "inspect" }),
+      body: JSON.stringify({
+        contract_version: 1,
+        kind: "inspect",
+      }),
     });
     const inspectBody = JSON.parse(
       await inspect.text(),

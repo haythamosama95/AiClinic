@@ -1,4 +1,5 @@
 import { DurableObject, env } from "cloudflare:workers";
+import { CHANNEL_VERSIONS, negotiate } from "vendor-contracts";
 import {
   handleAdapterRequest,
   pushTerminalEvent,
@@ -93,15 +94,23 @@ import {
 } from "./soft-threshold";
 import {
   admissionRPC,
+  applyGrantRPC,
   creditRPC,
+  ensureCoverageDoTables,
   inspectRPC,
+  readCoverageRPC,
   releaseRPC,
+  shipCoverageOutboxAlarm,
   type AdmissionRequest,
+  type ApplyGrantRequest,
   type CreditIdempotencyState,
   type CreditRequest,
+  type CoverageShipEnv,
   type EntitlementSnapshot,
+  type ReadCoverageRequest,
   type ReleaseRequest,
 } from "./quota-do/index";
+import { clockNowIso } from "./clock";
 import {
   createChunkSourceFromInvocationEvents,
   createStreamBroker,
@@ -117,7 +126,12 @@ import {
   type Logger,
   type LoggerFactory,
 } from "./logger";
-import { runFiveMinuteCron, type AlertEnv } from "./alert/index";
+import {
+  raiseAl11GrantFromOutbox,
+  raiseAl17FromOutbox,
+  runFiveMinuteCron,
+  type AlertEnv,
+} from "./alert/index";
 
 interface Env extends AlertEnv {
   R2: R2Bucket;
@@ -130,6 +144,8 @@ interface Env extends AlertEnv {
   TEST_CLOCK?: string;
   OPERATOR_BEARER_TOKEN: string;
   OPERATOR_ID: string;
+  PLATFORM_SIGNING_KEY: string;
+  DURATION_SCALE?: string;
   RATE_LIMITER_INSTALLATION: RateLimit;
   RATE_LIMITER_INSTALLATION_ACTOR: RateLimit;
   RATE_LIMITER_INSTALLATION_CAPABILITY: RateLimit;
@@ -1543,6 +1559,31 @@ function logGatewayRpcFailure(
   });
 }
 
+function requestedPlatformDoContractVersion(body: unknown): number | null {
+  const raw = (body as { contract_version?: unknown }).contract_version;
+  if (raw === undefined) {
+    return null;
+  }
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    return raw;
+  }
+  return 2;
+}
+
+function platformDoContractRefusal(
+  negotiated: {
+    code: "contract_version_unsupported";
+    accepted_versions: number[];
+  },
+): Record<string, unknown> {
+  return {
+    contract_version: CHANNEL_VERSIONS.platformDo,
+    result: "rejected",
+    code: negotiated.code,
+    accepted_versions: negotiated.accepted_versions,
+  };
+}
+
 export class GatewayObject extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     const makeLog = createWorkerLogFactory(this.env as Env);
@@ -1557,6 +1598,15 @@ export class GatewayObject extends DurableObject {
       log.error("gateway_object_invalid_json");
       return Response.json({ error: "invalid_json" }, { status: 400 });
     }
+    const negotiated = negotiate(
+      CHANNEL_VERSIONS.platformDo,
+      requestedPlatformDoContractVersion(body),
+    );
+    if (!negotiated.ok) {
+      return Response.json(platformDoContractRefusal(negotiated));
+    }
+    const contractVersion = negotiated.version;
+
     const kind = (body as { kind?: string }).kind;
     log.debug("gateway_object_rpc_received", { kind: kind ?? "unknown" });
     const injectableNow = (body as { now?: unknown }).now;
@@ -1565,6 +1615,9 @@ export class GatewayObject extends DurableObject {
         ? injectableNow
         : undefined;
     try {
+      await ensureCoverageDoTables(this.ctx.storage, (fn) =>
+        this.ctx.blockConcurrencyWhile(fn),
+      );
       const quotaLog = makeLog("quota-do/index.ts", {
         installation_id:
           typeof (body as { installationId?: string }).installationId === "string"
@@ -1580,7 +1633,7 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
-        return Response.json(result);
+        return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "credit") {
         assertCreditArgs(body);
@@ -1591,7 +1644,7 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
-        return Response.json(result);
+        return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "release") {
         assertReleaseArgs(body);
@@ -1602,11 +1655,36 @@ export class GatewayObject extends DurableObject {
           now,
           quotaLog,
         );
-        return Response.json(result);
+        return Response.json({ ...result, contract_version: contractVersion });
       }
       if (kind === "inspect") {
         const result = await inspectRPC(this.ctx.storage, now);
-        return Response.json(result);
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "apply_grant") {
+        const applyBody = body as Omit<ApplyGrantRequest, "db">;
+        const runtimeEnv = this.env as Env;
+        const result = await applyGrantRPC(
+          this.ctx,
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          {
+            ...applyBody,
+            platformSigningKeyJson:
+              applyBody.platformSigningKeyJson ?? runtimeEnv.PLATFORM_SIGNING_KEY,
+            db: runtimeEnv.DB,
+          },
+          quotaLog,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
+      }
+      if (kind === "read_coverage") {
+        const result = await readCoverageRPC(
+          this.ctx.storage,
+          (fn) => this.ctx.blockConcurrencyWhile(fn),
+          body as ReadCoverageRequest,
+        );
+        return Response.json({ ...result, contract_version: contractVersion });
       }
     } catch (error) {
       if (isArgValidationError(error)) {
@@ -1617,6 +1695,34 @@ export class GatewayObject extends DurableObject {
     }
     log.error("gateway_object_unknown_kind", { kind: kind ?? "unknown" });
     return Response.json({ error: "unknown_kind" }, { status: 400 });
+  }
+
+  async alarm(): Promise<void> {
+    const runtimeEnv = this.env as Env;
+    const makeLog = createWorkerLogFactory(runtimeEnv);
+    const log = makeLog("quota-do/index.ts");
+    const installationId =
+      typeof (this.ctx.id as { toString?: () => string }).toString === "function"
+        ? this.ctx.id.toString()
+        : "";
+    const nowIso = await clockNowIso(runtimeEnv);
+    const shippedAlerts = await shipCoverageOutboxAlarm(
+      this.ctx,
+      this.ctx.storage,
+      (fn) => this.ctx.blockConcurrencyWhile(fn),
+      runtimeEnv as CoverageShipEnv,
+      installationId,
+      nowIso,
+      log,
+    );
+    const alertEnv = env as Env;
+    for (const alert of shippedAlerts) {
+      if (alert.code === "AL-11") {
+        await raiseAl11GrantFromOutbox(alertEnv, alert.alert_key, alert.body);
+      } else if (alert.code === "AL-17") {
+        await raiseAl17FromOutbox(alertEnv, alert.alert_key, alert.body);
+      }
+    }
   }
 }
 

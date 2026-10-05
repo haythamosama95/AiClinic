@@ -622,3 +622,91 @@ export async function inspectRPC(
   sweepEphemeral(state, timestamp);
   return { kind: "inspect", state };
 }
+
+type SqlExecStorage = DurableObjectStorage & {
+  sql?: { exec: (query: string) => unknown };
+};
+
+const COVERAGE_DO_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS hot (
+    suspended INTEGER NOT NULL DEFAULT 0,
+    transferred_out_to TEXT,
+    awaiting_transfer INTEGER NOT NULL DEFAULT 0,
+    transfer_pending INTEGER NOT NULL DEFAULT 0,
+    active_term_id TEXT,
+    used INTEGER NOT NULL DEFAULT 0,
+    reserved INTEGER NOT NULL DEFAULT 0,
+    grace_base_used INTEGER NOT NULL DEFAULT 0,
+    reservations TEXT NOT NULL DEFAULT '[]',
+    replay TEXT NOT NULL DEFAULT '{}',
+    idempotency TEXT NOT NULL DEFAULT '{}',
+    band_emitted TEXT NOT NULL DEFAULT '{}',
+    binding_epoch INTEGER NOT NULL DEFAULT 0,
+    clinic_seq INTEGER NOT NULL DEFAULT 0,
+    next_alarm_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS term (
+    term_id TEXT PRIMARY KEY NOT NULL,
+    grant_id TEXT NOT NULL,
+    origin_grant_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    end_reason TEXT,
+    plan_snapshot TEXT,
+    allowance INTEGER,
+    used_final INTEGER,
+    duration_unit TEXT,
+    duration_count INTEGER,
+    grace_days INTEGER,
+    grace_cap TEXT,
+    calendar_start TEXT,
+    starts_at TEXT,
+    ends_at TEXT,
+    grace_ends_at TEXT,
+    ended_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS grant (
+    grant_id TEXT PRIMARY KEY NOT NULL,
+    kind TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    envelope_sha256 TEXT NOT NULL,
+    envelope TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    receipt TEXT,
+    applied_at TEXT NOT NULL,
+    voided_at TEXT,
+    void_reason TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    kind TEXT NOT NULL,
+    payload TEXT NOT NULL
+  )`,
+] as const;
+
+/** Per-clinic coverage tables (P3.3); idempotent on every versioned fetch. */
+export async function ensureCoverageDoTables(
+  storage: DurableObjectStorage,
+  runExclusive: <T>(fn: () => Promise<T>) => Promise<T>,
+): Promise<void> {
+  await runExclusive(async () => {
+    const sqlStorage = storage as SqlExecStorage;
+    if (!sqlStorage.sql) {
+      return;
+    }
+    for (const statement of COVERAGE_DO_SCHEMA_STATEMENTS) {
+      sqlStorage.sql.exec(statement);
+    }
+  });
+}
+
+export {
+  applyGrantRPC,
+  readCoverageRPC,
+  shipCoverageOutboxAlarm,
+  type ApplyGrantRequest,
+  type ApplyGrantResponse,
+  type ReadCoverageRequest,
+  type ReadCoverageResponse,
+  type CoverageShipEnv,
+} from "./coverage";

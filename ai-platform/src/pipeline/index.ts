@@ -42,6 +42,7 @@ import type {
   IdempotencyPriorState,
   ReleaseRequest,
 } from "../quota-do/index";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 
 export type GuardStage = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
@@ -288,10 +289,11 @@ async function releaseAdmissionReservation(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
         kind: "release",
         installationId,
         ...request,
-      } satisfies ReleaseRequest),
+      } satisfies ReleaseRequest & { contract_version: number }),
     });
     // Drain the body so Miniflare isolated DO storage can pop cleanly.
     await response.text();

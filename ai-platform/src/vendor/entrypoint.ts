@@ -1,20 +1,24 @@
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint, env as workerBindings } from "cloudflare:workers";
 import {
   CHANNEL_VERSIONS,
   canonicalize,
   negotiate,
   parseRegistrationAttestation,
   sha256Hex,
+  validateGrantEnvelope,
   validateOperation,
   verifyAccessJwt,
   verifyAssertion,
+  verifyGrantSignature,
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
+import type { DurationScale } from "../coverage/calendar";
 import {
   raiseAl13,
   raiseAl13Bootstrap,
   raiseAl13IssuerKey,
+  raiseAl13ServiceKey,
 } from "../alert/index";
 import {
   clockNowIso,
@@ -34,8 +38,17 @@ const METHOD_CLASS = {
   registerIssuerKey: "HP",
   retireIssuerKey: "HP",
   revokeIssuerKey: "HP",
+  registerServiceKey: "HP",
+  revokeServiceKey: "HP",
+  publishPlanVersion: "HP",
+  retirePlanVersion: "HP",
   listOperatorCredentials: "M",
   listIssuerKeys: "M",
+  listServiceKeys: "M",
+  grant: "M",
+  getCoverage: "M",
+  listGrants: "M",
+  readCoverageEvents: "M",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -51,14 +64,31 @@ type VendorResultEnvelope = {
   detail: string;
 };
 
+type GrantResultEnvelope = {
+  contract_version: number;
+  result:
+    | "ok"
+    | "rejected"
+    | "conflict"
+    | "applied"
+    | "already_applied"
+    | "transient";
+  code: string;
+  detail: string;
+  receipt?: Record<string, unknown>;
+};
+
 type VendorEnv = ClockEnv & {
   DB: D1Database;
+  DO: DurableObjectNamespace;
   ISSUER_ID: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
   WEBAUTHN_RP_ID: string;
   WEBAUTHN_ORIGIN: string;
   ALERT_EMAIL_TO: string;
+  PLATFORM_SIGNING_KEY: string;
+  DURATION_SCALE?: string;
   SEND_EMAIL: {
     send(message: {
       from: string;
@@ -83,6 +113,17 @@ type OperatorCredentialRow = {
 type IssuerKeyRow = {
   kid: string;
   issuer: string;
+  public_key: string;
+  status: string;
+  not_before: string;
+  not_after: string;
+  registered_by: string;
+  assertion_sha256: string;
+};
+
+type ServiceKeyRow = {
+  kid: string;
+  service: string;
   public_key: string;
   status: string;
   not_before: string;
@@ -184,6 +225,273 @@ async function readIssuerKey(
     )
     .bind(kid)
     .first<IssuerKeyRow>();
+}
+
+function serviceKeyRowToDetail(row: ServiceKeyRow): string {
+  const ordered = {
+    kid: row.kid,
+    service: row.service,
+    public_key: row.public_key,
+    status: row.status,
+    not_before: row.not_before,
+    not_after: row.not_after,
+    registered_by: row.registered_by,
+    assertion_sha256: row.assertion_sha256,
+  };
+  return JSON.stringify(ordered);
+}
+
+async function readServiceKey(
+  db: D1Database,
+  kid: string,
+): Promise<ServiceKeyRow | null> {
+  return db
+    .prepare(
+      `SELECT kid, service, public_key, status, not_before, not_after,
+              registered_by, assertion_sha256
+       FROM service_key WHERE kid = ?`,
+    )
+    .bind(kid)
+    .first<ServiceKeyRow>();
+}
+
+type PlanVersionRow = {
+  plan_id: string;
+  version: number;
+  display_name: string;
+  capabilities: string;
+  max_cost_class: string;
+  concurrency_limit: number;
+  max_allowance_per_month: number;
+  status: string;
+  published_by: string;
+  assertion_sha256: string;
+};
+
+function planVersionRowToDetail(row: PlanVersionRow): string {
+  const capabilities = JSON.parse(row.capabilities) as unknown;
+  const ordered = {
+    plan_id: row.plan_id,
+    version: row.version,
+    display_name: row.display_name,
+    capabilities,
+    max_cost_class: row.max_cost_class,
+    concurrency_limit: row.concurrency_limit,
+    max_allowance_per_month: row.max_allowance_per_month,
+    status: row.status,
+    published_by: row.published_by,
+    assertion_sha256: row.assertion_sha256,
+  };
+  return JSON.stringify(ordered);
+}
+
+function planVersionContentMatches(
+  row: PlanVersionRow,
+  content: {
+    display_name: string;
+    capabilities: unknown;
+    max_cost_class: string;
+    concurrency_limit: number;
+    max_allowance_per_month: number;
+  },
+): boolean {
+  if (row.display_name !== content.display_name) {
+    return false;
+  }
+  if (row.max_cost_class !== content.max_cost_class) {
+    return false;
+  }
+  if (row.concurrency_limit !== content.concurrency_limit) {
+    return false;
+  }
+  if (row.max_allowance_per_month !== content.max_allowance_per_month) {
+    return false;
+  }
+  const storedCapabilities = JSON.parse(row.capabilities) as unknown;
+  return stableJson(storedCapabilities) === stableJson(content.capabilities);
+}
+
+function grantRejected(
+  contractVersion: number,
+  code: string,
+  detail = "",
+): GrantResultEnvelope {
+  return {
+    contract_version: contractVersion,
+    result: "rejected",
+    code,
+    detail,
+  };
+}
+
+function grantTransient(
+  contractVersion: number,
+  detail: string,
+): GrantResultEnvelope {
+  return {
+    contract_version: contractVersion,
+    result: "transient",
+    code: "",
+    detail,
+  };
+}
+
+function jwsPayloadBytes(jws: string): Uint8Array | null {
+  const parts = jws.split(".");
+  if (parts.length !== 3 || !parts[1]) {
+    return null;
+  }
+  return base64UrlDecode(parts[1]);
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) {
+    return false;
+  }
+  for (let index = 0; index < a.byteLength; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function importEd25519VerifyKey(
+  publicKeyB64: string,
+): Promise<CryptoKey | null> {
+  const raw = base64UrlDecode(publicKeyB64);
+  if (raw === null || raw.length !== 32) {
+    return null;
+  }
+  return crypto.subtle.importKey(
+    "raw",
+    raw,
+    { name: "Ed25519" },
+    false,
+    ["verify"],
+  );
+}
+
+async function readPlanVersion(
+  db: D1Database,
+  planId: string,
+  version: number,
+): Promise<PlanVersionRow | null> {
+  return db
+    .prepare(
+      `SELECT plan_id, version, display_name, capabilities, max_cost_class,
+              concurrency_limit, max_allowance_per_month, status, published_by,
+              assertion_sha256
+       FROM plan_version WHERE plan_id = ? AND version = ?`,
+    )
+    .bind(planId, version)
+    .first<PlanVersionRow>();
+}
+
+async function readActiveTenantBinding(
+  db: D1Database,
+  orgId: string,
+): Promise<{ installation_id: string; epoch: number } | null> {
+  return db
+    .prepare(
+      `SELECT installation_id, epoch FROM tenant_binding
+       WHERE org_id = ? AND status = 'active'
+       ORDER BY epoch DESC
+       LIMIT 1`,
+    )
+    .bind(orgId)
+    .first<{ installation_id: string; epoch: number }>();
+}
+
+async function callCoverageDo(
+  env: VendorEnv,
+  installationId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const id = env.DO.idFromName(installationId);
+  const stub = env.DO.get(id);
+  try {
+    const response = await stub.fetch("https://quota-do.internal/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        installationId,
+        ...body,
+      }),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function durationScaleFromEnv(env: VendorEnv): DurationScale | undefined {
+  const bindings = workerBindings as { DURATION_SCALE?: string };
+  const raw = bindings.DURATION_SCALE ?? env.DURATION_SCALE;
+  return raw === "staging" ? "staging" : undefined;
+}
+
+async function resolveOrInsertGrantBinding(
+  env: VendorEnv,
+  orgId: string,
+): Promise<string> {
+  const existing = await readActiveTenantBinding(env.DB, orgId);
+  if (existing !== null) {
+    return existing.installation_id;
+  }
+
+  const installationId = crypto.randomUUID();
+  const createdAt = await clockNowIso(env);
+
+  try {
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          `INSERT INTO installation (
+            installation_id, org_id, status, display_name, region, enrolled_at
+          ) VALUES (?, ?, 'active', '', '', ?)`,
+        )
+        .bind(installationId, orgId, createdAt),
+      env.DB
+        .prepare(
+          `INSERT INTO tenant_binding (
+            org_id, installation_id, epoch, status, retired_at, reason, created_at
+          ) VALUES (?, ?, 1, 'active', NULL, NULL, ?)`,
+        )
+        .bind(orgId, installationId, createdAt),
+    ]);
+  } catch {
+    const rebound = await readActiveTenantBinding(env.DB, orgId);
+    if (rebound === null) {
+      throw new Error("tenant_binding insert conflict without active row");
+    }
+    return rebound.installation_id;
+  }
+
+  return installationId;
+}
+
+function serviceKeyActiveAt(row: ServiceKeyRow, nowIso: string): boolean {
+  if (row.status !== "active") {
+    return false;
+  }
+  const nowMs = Date.parse(nowIso);
+  const notBeforeMs = Date.parse(row.not_before);
+  const notAfterMs = Date.parse(row.not_after);
+  if (Number.isNaN(nowMs) || Number.isNaN(notBeforeMs) || Number.isNaN(notAfterMs)) {
+    return false;
+  }
+  return nowMs >= notBeforeMs && nowMs <= notAfterMs;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function base64UrlDecode(segment: string): Uint8Array | null {
@@ -434,8 +742,28 @@ function operationParamsMatch(
     expected.public_key = rpcArgs.public_key;
     expected.not_before = rpcArgs.not_before;
     expected.not_after = rpcArgs.not_after;
-  } else if (method === "retireIssuerKey" || method === "revokeIssuerKey") {
+  } else if (method === "registerServiceKey") {
     expected.kid = rpcArgs.kid;
+    expected.public_key = rpcArgs.public_key;
+    expected.not_before = rpcArgs.not_before;
+    expected.not_after = rpcArgs.not_after;
+  } else if (
+    method === "retireIssuerKey" ||
+    method === "revokeIssuerKey" ||
+    method === "revokeServiceKey"
+  ) {
+    expected.kid = rpcArgs.kid;
+  } else if (method === "publishPlanVersion") {
+    expected.plan_id = rpcArgs.plan_id;
+    expected.version = rpcArgs.version;
+    expected.display_name = rpcArgs.display_name;
+    expected.capabilities = rpcArgs.capabilities;
+    expected.max_cost_class = rpcArgs.max_cost_class;
+    expected.concurrency_limit = rpcArgs.concurrency_limit;
+    expected.max_allowance_per_month = rpcArgs.max_allowance_per_month;
+  } else if (method === "retirePlanVersion") {
+    expected.plan_id = rpcArgs.plan_id;
+    expected.version = rpcArgs.version;
   } else {
     return false;
   }
@@ -449,9 +777,17 @@ function hpAuditTarget(
   if (
     method === "registerIssuerKey" ||
     method === "retireIssuerKey" ||
-    method === "revokeIssuerKey"
+    method === "revokeIssuerKey" ||
+    method === "registerServiceKey" ||
+    method === "revokeServiceKey"
   ) {
     return typeof rpcArgs.kid === "string" ? rpcArgs.kid : "";
+  }
+  if (method === "publishPlanVersion" || method === "retirePlanVersion") {
+    const planId = typeof rpcArgs.plan_id === "string" ? rpcArgs.plan_id : "";
+    const version =
+      typeof rpcArgs.version === "number" ? String(rpcArgs.version) : "";
+    return `${planId}:${version}`;
   }
   return typeof rpcArgs.credential_id === "string" ? rpcArgs.credential_id : "";
 }
@@ -1336,5 +1672,869 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
     });
 
     return ok(version, issuerKeyRowToDetail(row));
+  }
+
+  async registerServiceKey(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "registerServiceKey",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "registerServiceKey",
+        check,
+      );
+    }
+
+    const kid = args.kid;
+    const publicKey = args.public_key;
+    const notBefore = args.not_before;
+    const notAfter = args.not_after;
+    if (
+      typeof kid !== "string" ||
+      kid.length === 0 ||
+      typeof publicKey !== "string" ||
+      typeof notBefore !== "string" ||
+      notBefore.length === 0 ||
+      typeof notAfter !== "string" ||
+      notAfter.length === 0
+    ) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerServiceKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "assertion_invalid");
+    }
+
+    if (!isValidEd25519PublicKeyEncoding(publicKey)) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "registerServiceKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "public_key_invalid");
+    }
+
+    const existing = await readServiceKey(this.env.DB, kid);
+    if (existing !== null) {
+      if (existing.public_key !== publicKey) {
+        await writeEntrypointAudit(
+          this.env.DB,
+          access.email,
+          "registerServiceKey",
+          check.auditTarget,
+          check.assertionSha256,
+        );
+        return conflict(version, "public_key_mismatch");
+      }
+      await finishHpAssertion(
+        this.env,
+        access.email,
+        "registerServiceKey",
+        check,
+      );
+      return ok(version, serviceKeyRowToDetail(existing));
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "registerServiceKey",
+      check,
+    );
+
+    await this.env.DB.prepare(
+      `INSERT INTO service_key
+         (kid, service, public_key, status, not_before, not_after, registered_by, assertion_sha256)
+       VALUES (?, 'abo', ?, 'active', ?, ?, ?, ?)`,
+    )
+      .bind(
+        kid,
+        publicKey,
+        notBefore,
+        notAfter,
+        access.email,
+        check.assertionSha256,
+      )
+      .run();
+
+    const row = await readServiceKey(this.env.DB, kid);
+    if (row === null) {
+      return rejected(version, "assertion_invalid");
+    }
+
+    await raiseAl13ServiceKey(this.env, {
+      kid,
+      kind: "register",
+      operation: check.operation,
+    });
+
+    return ok(version, serviceKeyRowToDetail(row));
+  }
+
+  async revokeServiceKey(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "revokeServiceKey",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "revokeServiceKey",
+        check,
+      );
+    }
+
+    const kid = args.kid;
+    if (typeof kid !== "string" || kid.length === 0) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "revokeServiceKey",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    const existing = await readServiceKey(this.env.DB, kid);
+    if (existing === null) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "revokeServiceKey",
+        kid,
+        check.assertionSha256,
+      );
+      return rejected(version, "kid_not_found");
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "revokeServiceKey",
+      check,
+    );
+
+    if (existing.status !== "revoked") {
+      await this.env.DB.prepare(
+        `UPDATE service_key SET status = 'revoked' WHERE kid = ?`,
+      )
+        .bind(kid)
+        .run();
+    }
+
+    const row = await readServiceKey(this.env.DB, kid);
+    if (row === null) {
+      return rejected(version, "kid_not_found");
+    }
+
+    await raiseAl13ServiceKey(this.env, {
+      kid,
+      kind: "revoke",
+      operation: check.operation,
+    });
+
+    return ok(version, serviceKeyRowToDetail(row));
+  }
+
+  async listServiceKeys(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const { results } = await this.env.DB.prepare(
+      `SELECT kid, status, not_before, not_after
+       FROM service_key
+       ORDER BY kid ASC`,
+    ).all<{
+      kid: string;
+      status: string;
+      not_before: string;
+      not_after: string;
+    }>();
+
+    const keys = (results ?? []).map((row) => ({
+      kid: row.kid,
+      status: row.status,
+      not_before: row.not_before,
+      not_after: row.not_after,
+    }));
+
+    return ok(version, JSON.stringify(keys));
+  }
+
+  async publishPlanVersion(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "publishPlanVersion",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "publishPlanVersion",
+        check,
+      );
+    }
+
+    const planId = args.plan_id;
+    const planVersion = args.version;
+    const displayName = args.display_name;
+    const capabilities = args.capabilities;
+    const maxCostClassRaw = args.max_cost_class;
+    const concurrencyLimit = args.concurrency_limit;
+    const maxAllowancePerMonth = args.max_allowance_per_month;
+    let maxCostClass: string;
+    if (typeof maxCostClassRaw === "string") {
+      maxCostClass = maxCostClassRaw;
+    } else if (
+      typeof maxCostClassRaw === "number" &&
+      Number.isInteger(maxCostClassRaw)
+    ) {
+      maxCostClass = String(maxCostClassRaw);
+    } else {
+      maxCostClass = "";
+    }
+    if (
+      typeof planId !== "string" ||
+      planId.length === 0 ||
+      !Number.isInteger(planVersion) ||
+      typeof displayName !== "string" ||
+      !isStringArray(capabilities) ||
+      maxCostClass.length === 0 ||
+      !Number.isInteger(concurrencyLimit) ||
+      !Number.isInteger(maxAllowancePerMonth)
+    ) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "publishPlanVersion",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "assertion_invalid");
+    }
+
+    const content = {
+      display_name: displayName,
+      capabilities,
+      max_cost_class: maxCostClass,
+      concurrency_limit: concurrencyLimit,
+      max_allowance_per_month: maxAllowancePerMonth,
+    };
+
+    const existing = await readPlanVersion(
+      this.env.DB,
+      planId,
+      planVersion as number,
+    );
+    if (existing !== null) {
+      if (!planVersionContentMatches(existing, content)) {
+        await writeEntrypointAudit(
+          this.env.DB,
+          access.email,
+          "publishPlanVersion",
+          check.auditTarget,
+          check.assertionSha256,
+        );
+        return conflict(version, "plan_version_mismatch");
+      }
+      await finishHpAssertion(
+        this.env,
+        access.email,
+        "publishPlanVersion",
+        check,
+      );
+      return ok(version, planVersionRowToDetail(existing));
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "publishPlanVersion",
+      check,
+    );
+
+    await this.env.DB.prepare(
+      `INSERT INTO plan_version (
+         plan_id, version, display_name, capabilities, max_cost_class,
+         concurrency_limit, max_allowance_per_month, status, published_by,
+         assertion_sha256
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)`,
+    )
+      .bind(
+        planId,
+        planVersion,
+        displayName,
+        JSON.stringify(capabilities),
+        maxCostClass,
+        concurrencyLimit,
+        maxAllowancePerMonth,
+        access.email,
+        check.assertionSha256,
+      )
+      .run();
+
+    const row = await readPlanVersion(
+      this.env.DB,
+      planId,
+      planVersion as number,
+    );
+    if (row === null) {
+      return rejected(version, "assertion_invalid");
+    }
+
+    return ok(version, planVersionRowToDetail(row));
+  }
+
+  async retirePlanVersion(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const access = await verifyHpAccess(this.env, args.access_jwt);
+    if (!access.ok) {
+      return rejected(version, "unauthenticated");
+    }
+
+    const check = await runHpAssertionChecks(
+      this.env,
+      "retirePlanVersion",
+      args,
+      access.email,
+      version,
+    );
+    if (!check.ok) {
+      return rejectHpAssertion(
+        this.env,
+        access.email,
+        "retirePlanVersion",
+        check,
+      );
+    }
+
+    const planId = args.plan_id;
+    const planVersion = args.version;
+    if (
+      typeof planId !== "string" ||
+      planId.length === 0 ||
+      !Number.isInteger(planVersion)
+    ) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "retirePlanVersion",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "plan_version_not_found");
+    }
+
+    const existing = await readPlanVersion(
+      this.env.DB,
+      planId,
+      planVersion as number,
+    );
+    if (existing === null) {
+      await writeEntrypointAudit(
+        this.env.DB,
+        access.email,
+        "retirePlanVersion",
+        check.auditTarget,
+        check.assertionSha256,
+      );
+      return rejected(version, "plan_version_not_found");
+    }
+
+    await finishHpAssertion(
+      this.env,
+      access.email,
+      "retirePlanVersion",
+      check,
+    );
+
+    if (existing.status !== "retired") {
+      await this.env.DB.prepare(
+        `UPDATE plan_version SET status = 'retired'
+         WHERE plan_id = ? AND version = ?`,
+      )
+        .bind(planId, planVersion)
+        .run();
+    }
+
+    const row = await readPlanVersion(
+      this.env.DB,
+      planId,
+      planVersion as number,
+    );
+    if (row === null) {
+      return rejected(version, "plan_version_not_found");
+    }
+
+    return ok(version, planVersionRowToDetail(row));
+  }
+
+  async grant(args: Record<string, unknown>): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const envelope = args.envelope;
+    const aboKid = args.abo_kid;
+    const aboSignature = args.abo_signature;
+    if (
+      !isRecord(envelope) ||
+      typeof aboKid !== "string" ||
+      aboKid.length === 0 ||
+      typeof aboSignature !== "string" ||
+      aboSignature.length === 0
+    ) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const source = envelope.source;
+    const sourceKind =
+      isRecord(source) && typeof source.kind === "string" ? source.kind : null;
+    if (sourceKind !== "paid") {
+      return grantRejected(version, "unit_not_allowed");
+    }
+
+    const payloadBytes = jwsPayloadBytes(aboSignature);
+    const envelopeBytes = canonicalize(envelope);
+    if (payloadBytes === null || !bytesEqual(payloadBytes, envelopeBytes)) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const evidence = envelope.evidence;
+    const approvals =
+      isRecord(evidence) && Array.isArray(evidence.approvals)
+        ? evidence.approvals
+        : null;
+    if (approvals === null || approvals.length < 1) {
+      return grantRejected(version, "approvals_required");
+    }
+
+    const serviceKey = await readServiceKey(this.env.DB, aboKid);
+    if (serviceKey === null) {
+      return grantTransient(version, "unknown_kid");
+    }
+
+    const nowIso = await clockNowIso(this.env);
+    if (
+      serviceKey.status === "revoked" ||
+      !serviceKeyActiveAt(serviceKey, nowIso)
+    ) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const verifyKey = await importEd25519VerifyKey(serviceKey.public_key);
+    if (verifyKey === null) {
+      return grantRejected(version, "bad_signature");
+    }
+    const signatureValid = await verifyGrantSignature({
+      envelope,
+      jws: aboSignature,
+      publicKey: verifyKey,
+      kid: aboKid,
+    });
+    if (!signatureValid) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const plan = envelope.plan;
+    if (!isRecord(plan)) {
+      return grantRejected(version, "plan_not_published");
+    }
+    const planId = plan.plan_id;
+    const planVersionRaw = plan.plan_version;
+    if (typeof planId !== "string" || !Number.isInteger(planVersionRaw)) {
+      return grantRejected(version, "plan_not_published");
+    }
+    const planVersion = planVersionRaw as number;
+
+    const planRow = await readPlanVersion(this.env.DB, planId, planVersion);
+    if (planRow === null || planRow.status !== "published") {
+      return grantRejected(version, "plan_not_published");
+    }
+
+    if (envelope.kind !== "term") {
+      return grantRejected(version, "unit_not_allowed");
+    }
+
+    const duration = envelope.duration;
+    if (!isRecord(duration)) {
+      return grantRejected(version, "unit_not_allowed");
+    }
+    const durationUnit = duration.unit;
+    const durationCount = duration.count;
+    if (
+      durationUnit !== "month" ||
+      !Number.isInteger(durationCount) ||
+      (durationCount !== 1 && durationCount !== 3 && durationCount !== 12)
+    ) {
+      return grantRejected(version, "unit_not_allowed");
+    }
+
+    const allowanceCredits = envelope.allowance_credits;
+    if (
+      !Number.isInteger(allowanceCredits) ||
+      allowanceCredits < 1 ||
+      allowanceCredits >
+        planRow.max_allowance_per_month * (durationCount as number)
+    ) {
+      return grantRejected(version, "exceeds_plan_bound");
+    }
+
+    const grace = envelope.grace;
+    if (
+      !isRecord(grace) ||
+      !Number.isInteger(grace.days) ||
+      (grace.days as number) > 7 ||
+      grace.cap_rule !== "proportional"
+    ) {
+      return grantRejected(version, "exceeds_plan_bound");
+    }
+
+    if (envelope.placement === "immediate" || envelope.placement === "replace") {
+      return grantRejected(version, "placement_not_supported");
+    }
+
+    const envelopeValidation = validateGrantEnvelope(envelope);
+    if (!envelopeValidation.ok) {
+      if (
+        "code" in envelopeValidation &&
+        envelopeValidation.code === "placement_not_supported"
+      ) {
+        return grantRejected(version, "placement_not_supported");
+      }
+      return grantRejected(version, "unit_not_allowed");
+    }
+
+    const orgId = envelope.org_id;
+    if (typeof orgId !== "string") {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const installationId = await resolveOrInsertGrantBinding(this.env, orgId);
+    const binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const approvalsCredentialId =
+      isRecord(approvals[0]) && typeof approvals[0].credential_id === "string"
+        ? approvals[0].credential_id
+        : "";
+    const planSnapshot = {
+      plan_id: planId,
+      version: planVersion,
+      display_name: planRow.display_name,
+      capabilities: JSON.parse(planRow.capabilities) as unknown,
+      max_cost_class: planRow.max_cost_class,
+      concurrency_limit: planRow.concurrency_limit,
+    };
+
+    const doResponse = await callCoverageDo(this.env, installationId, {
+      kind: "apply_grant",
+      bindingEpoch: binding.epoch,
+      vendorContractVersion: version,
+      orgId,
+      envelope,
+      aboKid,
+      planSnapshot,
+      durationUnit: "month",
+      durationCount: durationCount as number,
+      allowanceCredits: allowanceCredits as number,
+      graceDays: grace.days as number,
+      operatorCredentialId: approvalsCredentialId,
+      platformSigningKeyJson: this.env.PLATFORM_SIGNING_KEY,
+      durationScale: durationScaleFromEnv(this.env),
+      nowIso,
+    });
+
+    if (doResponse === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const doResult = doResponse.result;
+    if (doResult === "conflict") {
+      return {
+        contract_version: version,
+        result: "conflict",
+        code: "",
+        detail: "",
+      };
+    }
+    if (doResult === "already_applied" || doResult === "applied") {
+      const receipt = doResponse.receipt;
+      if (!isRecord(receipt)) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      return {
+        contract_version: version,
+        result: doResult,
+        code: "",
+        detail: "",
+        receipt,
+      };
+    }
+
+    return grantRejected(version, "coverage_unknown");
+  }
+
+  async getCoverage(args: Record<string, unknown>): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+    const orgId = args.org_id;
+    if (typeof orgId !== "string" || orgId.length === 0) {
+      return rejected(version, "bad_request");
+    }
+
+    const binding = await readActiveTenantBinding(this.env.DB, orgId);
+    if (binding === null) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    const doResponse = await callCoverageDo(this.env, binding.installation_id, {
+      kind: "read_coverage",
+      orgId,
+      vendorContractVersion: version,
+    });
+    if (doResponse === null) {
+      return rejected(version, "coverage_unknown");
+    }
+
+    const detail = JSON.stringify({
+      snapshot: doResponse.snapshot,
+      queued_terms: doResponse.queued_terms,
+      recent_terms: doResponse.recent_terms,
+    });
+    return ok(version, detail);
+  }
+
+  async listGrants(args: Record<string, unknown>): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const conditions: string[] = [];
+    const binds: unknown[] = [];
+    if (typeof args.org_id === "string") {
+      conditions.push("org_id = ?");
+      binds.push(args.org_id);
+    }
+    if (typeof args.source_kind === "string") {
+      conditions.push("source_kind = ?");
+      binds.push(args.source_kind);
+    }
+    if (typeof args.credential_id === "string") {
+      conditions.push("operator_credential_id = ?");
+      binds.push(args.credential_id);
+    }
+    if (typeof args.applied_from === "string") {
+      conditions.push("applied_at >= ?");
+      binds.push(args.applied_from);
+    }
+    if (typeof args.applied_to === "string") {
+      conditions.push("applied_at <= ?");
+      binds.push(args.applied_to);
+    }
+
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = await this.env.DB.prepare(
+      `SELECT grant_id, origin_grant_id, org_id, installation_id, kind, source_kind,
+              operator_credential_id, envelope_sha256, receipt, applied_at
+       FROM grant_ledger
+       ${whereClause}
+       ORDER BY applied_at ASC, grant_id ASC`,
+    )
+      .bind(...binds)
+      .all<{
+        grant_id: string;
+        origin_grant_id: string;
+        org_id: string;
+        installation_id: string;
+        kind: string;
+        source_kind: string;
+        operator_credential_id: string;
+        envelope_sha256: string;
+        receipt: string;
+        applied_at: string;
+      }>();
+
+    const mapped = (rows.results ?? []).map((row) => ({
+      grant_id: row.grant_id,
+      origin_grant_id: row.origin_grant_id,
+      org_id: row.org_id,
+      installation_id: row.installation_id,
+      kind: row.kind,
+      source_kind: row.source_kind,
+      operator_credential_id: row.operator_credential_id,
+      envelope_sha256: row.envelope_sha256,
+      receipt: JSON.parse(row.receipt) as Record<string, unknown>,
+      applied_at: row.applied_at,
+    }));
+
+    return ok(version, JSON.stringify(mapped));
+  }
+
+  async readCoverageEvents(
+    args: Record<string, unknown>,
+  ): Promise<VendorResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return rejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    const limitRaw = args.limit;
+    if (
+      limitRaw === undefined ||
+      !Number.isInteger(limitRaw) ||
+      (limitRaw as number) < 1 ||
+      (limitRaw as number) > 200
+    ) {
+      return rejected(version, "limit_invalid");
+    }
+    const limit = limitRaw as number;
+    const afterRaw = args.after;
+    const after =
+      afterRaw === undefined
+        ? 0
+        : Number.isInteger(afterRaw)
+          ? (afterRaw as number)
+          : 0;
+
+    const pageRows = await this.env.DB.prepare(
+      `SELECT event_id, feed_seq, org_id, installation_id, binding_epoch, clinic_seq,
+              kind, at, snapshot
+       FROM coverage_event
+       WHERE feed_seq > ?
+       ORDER BY feed_seq ASC
+       LIMIT ?`,
+    )
+      .bind(after, limit)
+      .all<{
+        event_id: string;
+        feed_seq: number;
+        org_id: string;
+        installation_id: string;
+        binding_epoch: number;
+        clinic_seq: number;
+        kind: string;
+        at: string;
+        snapshot: string;
+      }>();
+
+    const events = (pageRows.results ?? []).map((row) => ({
+      event_id: row.event_id,
+      feed_seq: row.feed_seq,
+      org_id: row.org_id,
+      installation_id: row.installation_id,
+      binding_epoch: row.binding_epoch,
+      clinic_seq: row.clinic_seq,
+      kind: row.kind,
+      at: row.at,
+      snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+    }));
+
+    const nextAfter =
+      events.length > 0 ? events[events.length - 1]!.feed_seq : after;
+
+    const moreRow = await this.env.DB.prepare(
+      `SELECT feed_seq FROM coverage_event WHERE feed_seq > ? LIMIT 1`,
+    )
+      .bind(nextAfter)
+      .first<{ feed_seq: number }>();
+
+    const detail = JSON.stringify({
+      after,
+      events,
+      next_after: nextAfter,
+      has_more: moreRow !== null,
+    });
+    return ok(version, detail);
   }
 }

@@ -1,3 +1,4 @@
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 import { toCanonicalUuid } from "../platform-vocabulary";
 import type { InspectResponse } from "../quota-do";
 import { ok, reject, requireOperator } from "./http";
@@ -77,7 +78,10 @@ export async function handleInstallationQuotaGet(
     response = await stub.fetch("https://quota-do.internal/rpc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "inspect" }),
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "inspect",
+      }),
     });
   } catch {
     return reject(503, "quota_do_unavailable");

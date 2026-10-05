@@ -13,6 +13,8 @@ import quotaWeightMigrationSql from "../../../migrations/20260911180000_usage_ro
 import invoiceMigrationSql from "../../../migrations/20260911200000_invoice.sql?raw";
 import operatorCredentialMigrationSql from "../../../migrations/20261003120000_operator_credential_and_platform_alert.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../../../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { splitSqlStatements } from "../../split-sql-statements";
 import { isolateConfigCache } from "../../../src/config-cache";
 import { clearE2eIssuerRegistry } from "./aat";
 import { env, PLATFORM_TABLES } from "./env";
@@ -34,6 +36,7 @@ export const MIGRATION_SQL: readonly string[] = [
   invoiceMigrationSql,
   operatorCredentialMigrationSql,
   issuerKeyTenantBindingMigrationSql,
+  planVersionPaidGrantCoverageMigrationSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {
@@ -48,14 +51,6 @@ const TOKEN_CONTRACT_V1_SEED = {
   retired_at: "2026-10-03T13:00:00.000Z",
   changed_by: "seed",
 } as const;
-
-function splitSqlStatements(sql: string): string[] {
-  return sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-}
 
 function isIgnorableBootstrapError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -177,6 +172,11 @@ export async function resetPlatformState(): Promise<void> {
     db.prepare("DELETE FROM routing_policy"),
     db.prepare("DELETE FROM kill_switch"),
     db.prepare("DELETE FROM entitlement"),
+    db.prepare("DELETE FROM coverage_event"),
+    db.prepare("DELETE FROM grant_ledger"),
+    db.prepare("DELETE FROM coverage_mirror"),
+    db.prepare("DELETE FROM plan_version"),
+    db.prepare("DELETE FROM service_key"),
     db.prepare("DELETE FROM tenant_binding"),
     db.prepare("DELETE FROM issuer_key"),
     db.prepare("DELETE FROM installation"),

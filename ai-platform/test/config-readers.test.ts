@@ -7,6 +7,8 @@ import canaryMigrationSql from "../migrations/20260803100000_routing_policy_cana
 import statusMigrationSql from "../migrations/20260805190000_routing_policy_status.sql?raw";
 import killSwitchMigrationSql from "../migrations/20260807120000_kill_switch.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "../split-sql-statements";
 import {
   ConfigCache,
   ConfigCacheMissError,
@@ -32,15 +34,7 @@ const FIXTURE_ROUTING_POLICY_REF = "routing/standard";
 const FIXTURE_TOKEN_VER = "1";
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
-  const statements = sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-
-  for (const statement of statements) {
-    await db.prepare(statement).run();
-  }
+  await applySqlStatements(db, sql);
 }
 
 async function clearReaderTables(): Promise<void> {
@@ -49,6 +43,11 @@ async function clearReaderTables(): Promise<void> {
     env.DB.prepare("DELETE FROM routing_policy"),
     env.DB.prepare("DELETE FROM capability_grant"),
     env.DB.prepare("DELETE FROM entitlement"),
+    env.DB.prepare("DELETE FROM coverage_event"),
+    env.DB.prepare("DELETE FROM grant_ledger"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
+    env.DB.prepare("DELETE FROM plan_version"),
+    env.DB.prepare("DELETE FROM service_key"),
     env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM installation"),
@@ -182,6 +181,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, statusMigrationSql);
   await applyPlatformSchema(env.DB, killSwitchMigrationSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {

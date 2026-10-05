@@ -39,6 +39,7 @@ WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
 ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
 
 [[env.development.send_email]]
 name = "SEND_EMAIL"
@@ -88,6 +89,8 @@ WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
 ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
+DURATION_SCALE = "staging"
 
 [[env.staging.send_email]]
 name = "SEND_EMAIL"
@@ -137,6 +140,7 @@ WEBAUTHN_ORIGIN = "https://ops.vendor.test"
 HEARTBEAT_URL = "https://heartbeat.test/ping"
 ALERT_EMAIL_TO = "alerts@clinic.invalid"
 ISSUER_ID = "issuer-test"
+PLATFORM_SIGNING_KEY = "{\"kid\":\"platform-test\",\"pkcs8\":\"MC4CAQAwBQYDK2VwBCIEIN2ndQQArm1dlsCuHaGGaUB8nnqfj7W2HaVbj_JJA9Lk\",\"public_key\":\"GNzxZ6Gymues_aeJArGyb3wDESTOUJeqhuZBfTByni0\"}"
 
 [[env.production.send_email]]
 name = "SEND_EMAIL"

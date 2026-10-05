@@ -16,6 +16,7 @@ import { noopLogger, type Logger } from "../logger";
 import type { InspectResponse } from "../quota-do";
 import { generateRequestReference } from "../reference";
 import { generateUlid } from "../trace";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 
 const QUOTA_DO_RPC_URL = "https://quota-do.internal/rpc";
 
@@ -64,7 +65,10 @@ async function inspectQuotaDo(
     const response = await stub.fetch(QUOTA_DO_RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "inspect" }),
+      body: JSON.stringify({
+        contract_version: CHANNEL_VERSIONS.platformDo,
+        kind: "inspect",
+      }),
     });
     if (!response.ok) {
       return undefined;

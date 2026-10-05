@@ -22,6 +22,7 @@ import {
   flushRejectionCounters,
   recordGuardRejection,
 } from "../rate-limit";
+import { CHANNEL_VERSIONS } from "vendor-contracts";
 
 const GRACE_ADMISSION_CAP = 5;
 /** Matches B3 identity default skew (seconds) for the defensive stage-8 recheck. */
@@ -622,6 +623,7 @@ export async function runAdmission(
   const entitlement = mapEntitlementSnapshot(entitlementRow);
 
   const rpcBody = {
+    contract_version: CHANNEL_VERSIONS.platformDo,
     kind: "admission",
     jti: principal.jti,
     installationId: principal.installationId,

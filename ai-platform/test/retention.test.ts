@@ -5,6 +5,8 @@ import tokenContractMigrationSql from "../migrations/20260803120000_token_contra
 import graceQueueMigrationSql from "../migrations/20260821120000_grace_admission_queue.sql?raw";
 import retentionIndexesSql from "../migrations/20260805120000_f3_retention_indexes.sql?raw";
 import issuerKeyTenantBindingMigrationSql from "../migrations/20261003130000_issuer_key_tenant_binding.sql?raw";
+import planVersionPaidGrantCoverageMigrationSql from "../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
+import { applySqlStatements } from "../split-sql-statements";
 import {
   EPHEMERAL_HORIZON_MS,
   admissionRPC,
@@ -36,14 +38,7 @@ const FIXTURE_INSTALLATION_B = "inst-retention-b";
 const FIXTURE_ORG = "org-retention-001";
 
 async function applyPlatformSchema(db: D1Database, sql: string): Promise<void> {
-  const statements = sql
-    .replace(/--.*$/gm, "")
-    .split(";")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  for (const statement of statements) {
-    await db.prepare(statement).run();
-  }
+  await applySqlStatements(db, sql);
 }
 
 async function seedInstallation(id: string): Promise<void> {
@@ -98,6 +93,11 @@ async function clearTables(): Promise<void> {
     env.DB.prepare("DELETE FROM platform_counter"),
     env.DB.prepare("DELETE FROM control_audit"),
     env.DB.prepare("DELETE FROM capability_grant"),
+    env.DB.prepare("DELETE FROM coverage_event"),
+    env.DB.prepare("DELETE FROM grant_ledger"),
+    env.DB.prepare("DELETE FROM coverage_mirror"),
+    env.DB.prepare("DELETE FROM plan_version"),
+    env.DB.prepare("DELETE FROM service_key"),
     env.DB.prepare("DELETE FROM tenant_binding"),
     env.DB.prepare("DELETE FROM issuer_key"),
     env.DB.prepare("DELETE FROM entitlement"),
@@ -113,6 +113,7 @@ beforeAll(async () => {
   await applyPlatformSchema(env.DB, graceQueueMigrationSql);
   await applyPlatformSchema(env.DB, retentionIndexesSql);
   await applyPlatformSchema(env.DB, issuerKeyTenantBindingMigrationSql);
+  await applyPlatformSchema(env.DB, planVersionPaidGrantCoverageMigrationSql);
 });
 
 beforeEach(async () => {
