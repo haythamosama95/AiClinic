@@ -1,119 +1,123 @@
 ---
 name: abo-workflow
 description: >-
-  Run one ABO unit from specify through merge by spawning one Grok 4.7
-  orchestrator. Use when the user asks to run the ABO workflow for a unit id.
+  Run one ABO unit from branch creation through merge. Spawns one orchestrator
+  agent only. Use when the user asks to run the ABO workflow for a unit id.
 disable-model-invocation: true
 ---
 
 # ABO — Workflow
 
-You spawn one orchestrator and wait. You do not specify, clarify, plan, task, implement, review, or commit.
+Spawn one orchestrator and wait. You do not specify, clarify, plan, task, implement, review, commit, or merge.
 
-**Input:** the unit id (`P1.1`, `P4.2`) in `$ARGUMENTS`. If it is empty, ask and stop.
+**Input:** unit id (`P1.1`, `P4.2`) in `$ARGUMENTS`. If empty, ask and stop.
 
-Spawn one `generalPurpose` subagent, model `grok-4.7-high`, `run_in_background: false`. Its prompt is the orchestrator prompt below, with `<UNIT-ID>` replaced. When it returns, report its summary. Do not redo its stages.
+Spawn one `generalPurpose` subagent, model `grok-4.7-medium`, `run_in_background: false`. Its prompt is the orchestrator block below with `<UNIT-ID>` replaced. Report its summary when it returns. Do not redo its work.
 
 ## Orchestrator prompt
 
 ```text
-You are the orchestrator for ABO unit <UNIT-ID>. You do not write the spec, the plan, the tasks, the code, or the review. You spawn the agents below and merge into ai/abo-master. Do not return until that merge is done.
+You are the ABO workflow orchestrator for unit <UNIT-ID>. You only spawn agents, read tasks.md **Implementation Waves**, run git, and merge. You do not write specs, plans, tasks, code, or reviews.
 
 Repository: /home/haytham/Desktop/AiClinic
-Unit: <UNIT-ID>
 
-Models. Every agent is subagent_type generalPurpose. Steps 1–4, the review agent, the test-fix agent, and the resolver use grok-4.7-high. Implement agents use composer-2.5, never composer-2.5-fast. Do not substitute any other model.
+## Models
 
-Steps 1–4, review, the test-fix agent, and the resolver run one at a time with run_in_background false, and never overlap step 5. In a step 5 wave, set run_in_background true on every implement agent, spawn them in one turn, and wait until all have returned. Spawn the next wave before you end that turn.
+subagent_type: generalPurpose for every spawned agent.
 
-Each stage prompt starts with:
-- Read and follow <skill path>. The unit id is <UNIT-ID>.
-- Do not commit, amend, or push. Do not spawn subagents. Do not ask the user.
-- If you hit a stop condition, your entire reply is the ## ESCALATION block and nothing else.
+| Role | Model |
+|------|--------|
+| Specify, Clarify, Plan, Tasks, Escalation resolver, Static review | grok-4.7-medium |
+| Implement (per subphase), Fix review findings | composer-2.5 (never composer-2.5-fast) |
 
-## Steps
+Run one agent at a time except implement agents in the same wave (parallel, `run_in_background: true`, spawn in one turn, wait until all return).
 
-Run these in order. A step is finished only when its agent returns without an ## ESCALATION block.
+## Agent preamble (every spawned agent)
 
-1. Specify. Skill: .cursor/skills/abo-specify/SKILL.md
-2. Clarify. Skill: .cursor/skills/abo-clarify/SKILL.md
-3. Plan. Skill: .cursor/skills/abo-plan/SKILL.md
-4. Tasks. Skill: .cursor/skills/abo-tasks/SKILL.md
+Append to each agent prompt:
 
-Then the Spec Kit commit. Then step 5.
+- Read and follow only the skill path given. Unit id: <UNIT-ID>.
+- Do not commit, amend, or push. Do not spawn subagents unless this orchestrator prompt says otherwise.
+- Do not ask the user.
+- On a stop condition, reply with nothing except a `## ESCALATION` block (per that skill).
 
-5. Implementation. Follow Scheduling. Do not start step 6 until every work unit has finished with no open escalation.
-6. One review of the whole unit (see Review). If it reports test failures, one test-fix agent for those failures only. Then the implementation commit.
-7. Merge this unit's branch into ai/abo-master (see Merge).
+## Git (orchestrator only)
 
-## Scheduling
+1. **Branch first.** Resolve branch name per **Branch and feature directory** in `.cursor/skills/abo-specify/SKILL.md`. `git checkout ai/abo-master` (fetch `origin` if needed). `git checkout -b ai/<NNN>-abo-…`. All later work stays on this branch. Stage agents must not create another branch; they use the current branch.
+2. **After steps 1–4 finish** (and any escalations for those steps are closed): commit message exactly `Submitting speckit docs`. Stage only this unit's `specs/<NNN>-abo-…/` (spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/, escalations.md), `AGENTS.md` if specify changed it, and any delivery-plan amendment the resolver wrote. Do not stage quickstart.md or `.cursor/`.
+3. **After each implementation wave** (step 5): commit message `Implementing subphases <N>` where `<N>` is the wave number from tasks.md (`Wave 1` → `1`). Stage every file that wave's implement agents touched, including `[X]` updates in tasks.md. If a resolver amends Spec Kit docs after the Spec Kit commit, commit those docs with `Submitting speckit docs` before resuming implementation.
+4. **After F completes:** merge this unit branch into `ai/abo-master` (see Merge).
 
-You plan this yourself from tasks.md and plan.md Test Layout. Do not spawn a planner.
+Before each commit: `git status`, `git diff`, `git log -5 --oneline`. Message via HEREDOC. No `--no-verify`, `--amend`, or git config changes. No secrets or `node_modules/`.
 
-A phase is a numbered top-level section (Tests, Implementation, Verification, Documentation). A subsection is a task list under that phase. A work unit is one implement agent and one contiguous task range, <UNIT-ID> T00x–T00y. Skill: .cursor/skills/abo-implement/SKILL.md. Pass a task range, never a phase name.
+## A — Spec Kit (sequential)
 
-Build the schedule once, in this order:
+Finish each step only when its agent returns without `## ESCALATION`. Same agent id must be **resumed** after escalation (see Escalation); do not restart the step on a new agent unless resume is impossible.
 
-1. Walk phases in document order, then subsections. Each subsection is one work unit.
-2. A task marked [P] that edits a different file is its own work unit. Take it out of that subsection. The tasks left behind stay in their contiguous ranges.
-3. Two work units conflict when they edit the same path, or when both execute the same harness command. "Proved by E2E-…" is not a shared run. Subsections that edit the same file run one after another.
-4. A work unit starts only once every task it depends on is [X] on disk. Pack every ready, conflict-free work unit into the current wave. When none of the rest fit, close the wave and start the next.
+| Step | Skill |
+|------|--------|
+| 1 Specify | `.cursor/skills/abo-specify/SKILL.md` |
+| 2 Clarify | `.cursor/skills/abo-clarify/SKILL.md` |
+| 3 Plan | `.cursor/skills/abo-plan/SKILL.md` |
+| 4 Tasks | `.cursor/skills/abo-tasks/SKILL.md` |
 
-Each implement prompt is the task range plus abo-implement. That skill runs the unit harness once at the end of the range and does not run earlier suites.
+Then git commit **Submitting speckit docs**.
 
-## Review
+## B — Escalation
 
-One quick pass. Read the unit's spec, plan, tasks, and any research, data-model, and contracts, plus the code this unit wrote. Do not browse the rest of the repo.
+When any agent returns `## ESCALATION`:
 
-Fix only critical and major findings. Critical: a test that is green without the code, a dropped E2E id, a rewritten Consumes contract, a removed transitional path, a skipped test. Major: behaviour that contradicts the spec, a file the plan names that is missing, a module no test reaches. Do not report or fix anything else. Do not add scope, implement new subsections, or commit. If a fix would change the spec's behaviour, the reply is only an ## ESCALATION block.
+1. Spawn one resolver (`grok-4.7-medium`). Give it the block, paths it cites, and this unit's `specs/<NNN>-abo-…/`. It always resolves; it never returns `## ESCALATION`. It amends the document named in the block, appends one entry to `escalations.md` (question, assumption, why, amended path). Tasks split over 40 tasks: assume the split and amend the delivery plan; do not implement the split.
+2. **Resume** the agent that escalated (same Task id). Pass the new `escalations.md` entry; tell it to continue from where it stopped. Repeat escalation on the same question: resume with the existing entry; assumption is binding.
 
-After those fixes, run the unit harness once, then each earlier-suite command the plan names once. A failure that is only a flake the plan already names gets one retry of that suite. Do not escalate that single failure. Report every remaining failure: command, test name, and the assertion. Do not fix test failures.
+## C — Schedule (orchestrator only; no agent)
 
-If that report lists any failure, spawn one grok-4.7-high agent. Give it the report and nothing else to investigate. It fixes this unit's code or its harness, then re-runs only the failed commands once. It does not edit an earlier unit's tests to make them pass, add scope, or commit. If a fix would change the spec's behaviour, or the re-run still fails, the reply is only an ## ESCALATION block.
+Read **Implementation Waves** in this unit's `tasks.md`. Do not infer from task order, `[P]`, or headings.
 
-## Escalation
+- Waves run in document order (`Wave 1`, then `Wave 2`, …).
+- One bullet under a wave = one subphase = one task range (e.g. `T004–T006`).
+- Multiple bullets in the same wave = those subphases run in parallel in step 5.
+- One bullet in a wave = that subphase alone (still one wave).
 
-An ## ESCALATION block stops that step. The step agent does not guess.
+## D — Implement
 
-Spawn one resolver. Give it the escalation block, the files it names, and this unit's `specs/<NNN>-abo-…/` directory. It always resolves. It never returns an ## ESCALATION block.
+For each wave from C, spawn one implement agent per bullet, all with `run_in_background: true`, wait until all return (handle escalations per B, then resume implement agents as needed).
 
-It picks the best assumption that fits the cited design, amends the document named in Blocked until / Should be answered by, and appends one entry to `specs/<NNN>-abo-…/escalations.md`: the question, the assumption, why, and the path it amended. It does not run the failed step, implement the unit, or commit. A tasks split (rule S3, past 40) is the same: it assumes the split and amends the delivery plan.
+Each implement prompt:
 
-When it returns, resume the same agent that escalated. Give it that `escalations.md` entry and tell it to continue from where it stopped. Do not spawn a fresh agent for that step unless resume is impossible.
+- Skill: `.cursor/skills/abo-implement/SKILL.md`
+- Task range from the wave bullet only (not a phase name).
 
-If that agent escalates the same question again, resume it with the existing entry and tell it the assumption is binding. Do not stop the unit.
+Implement agents run only tests named in tasks.md for that range (unit harness per abo-implement). No full E2E suite, no repo-wide test commands unless tasks.md names them for that subphase.
 
-## Commits
+After the wave completes with no open escalation: git commit **Implementing subphases <N>** (wave number).
 
-You are the only one who commits. Do not use --no-verify, --amend, or a git config change. Do not stage .cursor/, secrets, node_modules/, or files the step did not touch.
+Do not start E until every subphase in **Implementation Waves** is done.
 
-Before each commit, run git status, git diff, and git log -5 --oneline. Pass the message with a HEREDOC. After the commit, run git status.
+## E — Static review
 
-Spec Kit commit, once, after step 4 and before any implement agent:
+One agent (`grok-4.7-medium`). **No tests, no build, no lint CLI.**
 
-Submitting speckit docs for subphase: <UNIT-ID>
+Read: this unit's spec.md, plan.md, tasks.md, and code/files this unit changed on the branch. Report **critical and major** findings only. No fixes in this step.
 
-Stage the unit's specs/<NNN>-abo-…/ files (spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/, escalations.md) and AGENTS.md if specify changed it, plus any design-doc amendment the resolver wrote. Do not stage quickstart.md.
+## F — Fix findings
 
-Implementation commit, once, after review and any test-fix agent return clean:
+If E reported no critical or major findings, skip to Merge prep.
 
-Implementing subphase: <UNIT-ID>
-
-Stage every file the implement agents, the review, and the test-fix agent added or modified, including [X] updates in tasks.md.
-
-If a resolver changes Spec Kit docs after the Spec Kit commit, commit those docs again with the same Spec Kit message before resuming implementation.
+Otherwise spawn one agent (`composer-2.5`) non fast mode. Give it E's report only. It fixes this unit's code (not earlier units' tests). It runs **only** the test commands E lists as affected by those fixes—no full E2E, no unrelated suites.
 
 ## Merge
 
-You do this yourself in step 7.
+Working tree clean. `git fetch origin` if `origin` exists. Checkout `ai/abo-master` (from `origin/ai/abo-master` if needed). If `ai/abo-master` does not exist locally or on remote, stop and report.
 
-Record the unit branch (ai/<NNN>-abo-…). The working tree must be clean. git fetch origin if origin exists. Check out ai/abo-master. If it exists only on the remote, git checkout -B ai/abo-master origin/ai/abo-master. If it exists neither locally nor on the remote, stop and report. Do not invent the branch.
+`git merge <unit-branch>`. On conflict: stop, report paths, do not push. Push `ai/abo-master` only if merge succeeded and the user has not forbidden push; otherwise say push was skipped.
 
-git merge <unit-branch>. Do not use --no-verify. Do not force-push. If the merge conflicts, stop, report the paths, and do not push.
+## Rules
 
-Push ai/abo-master only when the merge succeeded and this session has not forbidden push. If unsure, skip the push and say so.
+- Agents read only what their skill lists; orchestrator reads only tasks.md waves for scheduling and git state for commits.
+- No full E2E in any phase unless tasks.md names that command for the subphase or step F's affected tests.
 
 ## Done
 
-Return the unit branch, the ai/abo-master merge result, the spec directory, each stage's result, the wave schedule and who ran together, every escalation and how it was resolved, and every commit subject.
+Return: unit branch name, merge result, spec directory, wave schedule (what ran in parallel), escalations and resolutions, every commit subject.
 ```

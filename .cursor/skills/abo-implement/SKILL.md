@@ -1,146 +1,90 @@
 ---
 name: abo-implement
 description: >-
-  Execute a task range from an ABO unit's tasks.md. Tests fail before
-  implementation. The unit harness runs once after the test tasks in the range. Use when
-  the user asks to implement an ABO unit or run abo-implement with a phase
-  selector. Never commit.
+  Execute a task range from tasks.md; red tests then code; unit harness per
+  range. Workflow passes T00x–T00y. Never commit.
 disable-model-invocation: true
 ---
 
-# ABO — Implement a Unit
+# ABO — Implement
 
-The spec, the plan, and `tasks.md` are authoritative. **Implementation adds nothing.** You execute the task list. You do not decide what to build.
+Spec, plan, `tasks.md` are authoritative. **Implementation adds nothing.** No design docs (gap → stop 1).
 
-Design docs are not read at this phase. If you believe you need a design section, the spec or the plan is incomplete — stop condition 1.
+**Input:** `$ARGUMENTS` = unit id (`P1.1`) + optional selector: phase number/range/name (`tests`, `implementation`, `verification`, `documentation`) or task range (`T003-T006`). Empty unit id → resolve via paths. No `tasks.md` → run tasks.
 
-**Input:** `$ARGUMENTS` is a unit id (`P1.1`) plus an optional phase selector (`P4.2 phase 2`, `P4.2 2-3`, `P4.2 tests`, `P3.1 T003-T006`). If the unit id is empty, resolve the directory under Prerequisites. If `tasks.md` is missing, stop and say to run `/abo-tasks`.
+Workflow invokes with **task range only** (one subphase bullet).
 
-## User Input
+## Paths
 
-```text
-$ARGUMENTS
-```
-
-## Relationship to Spec Kit
-
-Same slot as `/speckit-implement`: execute this unit's `tasks.md` and mark finished tasks `[X]` in place. It is the last phase, after `/abo-tasks`. It runs only the range it was asked for. Tests fail before the code exists.
-
-## Prerequisites
-
-`.specify/feature.json` outranks branch lookup, so do not take the directory from that file. Resolve `specs/<NNN>-*` from the unit id in `$ARGUMENTS`, otherwise from the current `ai/<NNN>-abo-…` branch, and pass that path below. If neither identifies one directory, ask and stop. Do not create a feature directory here.
-
-From the repository root:
+Resolve `specs/<NNN>-*` from unit id or branch (not from `.specify/feature.json` alone):
 
 ```bash
 SPECIFY_FEATURE_DIRECTORY="specs/<NNN>-abo-…" \
   .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
 ```
 
-Parse `FEATURE_DIR` and `AVAILABLE_DOCS`. Read only the documents `AVAILABLE_DOCS` reports. If the script fails, report the error verbatim and stop. Never call the script without `SPECIFY_FEATURE_DIRECTORY`.
+Parse `FEATURE_DIR`, `AVAILABLE_DOCS`. Read only docs `AVAILABLE_DOCS` lists. Mismatched unit vs `FEATURE_DIR` → stop and report both.
 
-`FEATURE_DIR` is the directory you implement. If `$ARGUMENTS` names a unit and `FEATURE_DIR` is a different one, stop and report both. One run is one unit.
+**After resolver:** read amendment; continue.
 
-## Sources — read exactly these
+## Sources (only these)
 
-If the prompt says to continue after a resolver amendment, read that amendment and continue. Do not re-read sources already accepted.
-
-1. `tasks.md` — execution order.
+1. `tasks.md` — order and scope.
 2. `plan.md` — Files, Test Layout, Sequencing, Consumes Binding.
-3. `spec.md` — Requirements, Test plan, Out of Scope. The task claims an FR and an E2E id.
-4. `docs/architecture/ai-billing-orchestration/06-abo-delivery-plan.md`, sections 2 and 3 only: S7 (no rewrite of a freeze), S8 (a live entry point), S9 (transitional paths).
-5. `contracts/`, `data-model.md`, and `research.md` only when `AVAILABLE_DOCS` says they exist, plus the modules in Consumes Binding.
-
-A task that needs a section outside this list is stop condition 1. Do not open it.
+3. `spec.md` — Requirements, Test plan, Out of Scope.
+4. `06-abo-delivery-plan.md` §2–3: S7, S8, S9.
+5. `contracts/`, `data-model.md`, `research.md` if `AVAILABLE_DOCS`; plus Consumes modules.
 
 ## Scope
 
-Run only the phases asked for.
+Run only the requested range. Subsections ≤5 tasks belong to their parent phase.
 
-- A selector is a phase number, a range, a phase name (`tests`, `implementation`, `verification`, `documentation`), or a task range (`T003-T006`). A phase is a top-level section. Subsections of at most 5 tasks belong to that phase; selecting the phase runs all of them.
-- If the phase selector is empty, do not assume "all". List one line per phase heading already in `tasks.md`: the heading, the task ids, and `[ ]` or `[X]` on each. Name the next unstarted phase, then ask. If the prompt says not to ask the user, return an ## ESCALATION instead. Do not pick it yourself.
-- Stop at the end of the last in-scope phase. Do not continue because the next phase looks small.
-- Out-of-scope tasks: do not create their files, and do not mark them `[X]`. A task range does not include the other tasks in that phase.
+- Empty selector (non-workflow): list phases with ids and `[ ]`/`[X]`, name next unstarted, ask — or `## ESCALATION` if prompt forbids asking.
+- Stop at end of in-scope phase; don't spill into the next.
+- Out-of-scope: no files, no `[X]`. Range ≠ whole phase.
 
-`P4.2 phase 2` is phase 2 only. `P4.2 2-3` is phases 2 and 3. `P4.2 tests` is the phase headed tests. `P3.1 T003-T006` is those tasks and no others.
-
-An empty selector gets a listing in this shape and nothing else — no files, no `[X]`. Use that unit's headings and ids:
-
-```text
-Phase 1 — Tests: T001–T006 [ ]
-Phase 2 — Implementation: T007–T014 [ ]
-Phase 3 — Verification: T015–T016 [ ]
-Phase 4 — Documentation: T017 [ ]
-Next unstarted: Phase 1 — Tests.
-Which phase should I run?
-```
+Examples: `P4.2 phase 2` = phase 2 only; `P4.2 2-3` = phases 2–3; `P3.1 T003-T006` = those tasks only.
 
 ### Preconditions
 
-Before executing:
-
-- Every earlier phase the selection depends on (Dependencies & Execution Order) is fully `[X]`, and its files exist. A `[X]` whose file is missing is stop condition 5.
-- If Implementation is in scope, the Tests phase is already `[X]` and on disk. Do not run the harness before editing. Do not back-fill tests inside an implementation run.
-
-## Overrides
-
-- **No Polish phase.** Do not invent one.
-- **No scaffolding** the plan's Files section does not name (ignore files, configs, linters, CI). A file is legitimate only if a task names it.
-- **Tests land red first.** Run the unit harness from Test Layout once, after the last in-scope test task. That run covers every test task in the range. The new tests fail for the stated reason, not a missing file or a broken import. The test file loads. Report that one run.
-- A range that spans stories is one pass in `tasks.md` order. Do not `npm ci` or `npm install` when that package's `node_modules` is already present.
+- Dependencies in **Dependencies & Execution Order**: earlier phases `[X]` with files on disk (`[X]` but missing file → stop 5).
+- Implementation in scope → Tests phase already `[X]` on disk; no harness before edits; no back-filling tests in an implementation-only run.
 
 ## Execution
 
-1. State the in-scope task ids before touching anything.
+1. State in-scope task ids.
+2. Consumes Binding code present (missing → stop 2).
+3. Execute `tasks.md` order; one phase at a time; `[P]` tasks together only if different files.
+4. **Tests in range:** after last in-scope test task, run unit harness from Test Layout **once** — new tests fail on assertion (file loads), not missing imports. Report that run.
+5. Implement only **Files** paths for in-scope tasks.
+6. `[X]` after file on disk; test tasks `[X]` after red run.
+7. **Verification** (if in scope): same harness; no earlier suites; don't edit prior units' tests.
+8. **Documentation** (if in scope): `quickstart.md` last, after harness green — content per plan **Quickstart** in `abo-plan/SKILL.md`.
+9. Report: completed ids, red/fail state, left in scope, next runnable phase.
 
-```text
-In scope: P4.2 tests — T003, T004, T005, T006.
-```
+No `npm ci`/`install` if `node_modules` present. Multi-story range = one pass in task order.
 
-2. Verify preconditions. Every Consumes Binding row points at code that is present. A missing binding is stop condition 2.
-3. Execute in `tasks.md` order. Finish one phase before the next. Run `[P]` tasks together only when they touch different files. An FR or an E2E id a task claims must already be in `spec.md`. Do not mint one.
-4. Tests in range: the one red run under Overrides.
-5. Implement only files the plan's Files section names, only for in-scope tasks.
-6. Mark each finished task `[X]` after its file is on disk. Mark the test tasks `[X]` after that red run.
-7. Verification, when in scope, is that same harness, before Documentation. Do not run earlier suites. Do not edit an earlier unit to make one green.
-8. Documentation, when in scope, writes `quickstart.md` last, only after the unit harness is green. The quickstart documents the passing state. Include only:
-   - what was implemented
-   - files this unit added or modified
-   - the harness command for this unit's tests only
-   - how to inspect the change
-   - entry point → module chain per E2E id (rule S8)
-   - manual steps only when the plan says the harness cannot see the behaviour
-   No earlier-unit files, no combined counts, no full-suite command. Renumber sections if you omit one; no gaps.
-9. Report and stop. Tasks completed, tasks left in the selected phases and why, the next phase that is now runnable.
+## Prohibitions (spec Out of Scope + S7–S9)
 
-```text
-Completed: T003–T006 (tests). Red: E2E-P4.2-01 fails on its assertion; the file loads.
-Left in scope: none.
-Suite where stopped: this unit's new tests are red. Earlier suites are not this run.
-Next runnable: implementation, once you ask for it. Tests are on disk and red.
-```
+- No Consumes rewrite (S7); later units extend, not rewrite.
+- No module unreachable from live entry (S8): route, VendorEntrypoint, `scheduled()`, DO alarm, RPC, pg_cron, Flutter in real shell — except P2.2 / package P2.1 Node+workerd vectors.
+- No removing S9 transitional paths owned by later units.
+- No libraries/patterns/flags/abstractions plan doesn't name.
+- No weaken/skip tests. No later unit's work. No commit.
 
-## Prohibitions
-
-Take them from the spec's Out of Scope and from rules S7–S9. If a task seems to require one, that is stop condition 1.
-
-- Do not rewrite a Consumes contract (rule S7). A later unit may extend a frozen contract. It may not rewrite one.
-- Do not add a module no in-scope test reaches from a live entry point (rule S8): an HTTP route, a `VendorEntrypoint` method over a real service binding, `scheduled()`, a DO alarm, a PostgREST RPC, a pg_cron job, or a Flutter widget in the real shell. P2.2, and the package half of P2.1, are the exception: Node and workerd conformance vectors.
-- Do not remove a transitional path whose owner is a later unit (rule S9). The spec's Out of Scope names the path and that owner.
-- Do not choose a library, pattern, abstraction, config flag, or extension point the plan does not name.
-- Do not weaken, skip, or `.skip` a test to make the suite green.
-- Do not pull a later unit's work forward because the file is open.
-- Do not commit, amend, or push.
+Violation needed to complete task → stop 1.
 
 ## Stop conditions
 
-Output nothing but one `## ESCALATION` block. If several conditions fire, name each in that block. Do not guess, do not proceed partially, do not leave a half-finished file behind. Remove a file this run created, and revert an edit, that no `[X]` task names, so the tree matches the marks you leave.
+Only `## ESCALATION`. On stop: remove/revert files this run added that no `[X]` task names.
 
-1. A task cannot be completed with what the spec and the plan name, or would break a prohibition above.
-2. A Consumes Binding entry has no existing implementation, or a task would change one.
-3. A named test cannot pass without changing the spec's stated behaviour.
-4. The work exceeds the task list: new files, a second codebase the plan does not name.
-5. `tasks.md` and the tree disagree: `[X]` but the file is absent, or an implementation file exists while its test file does not.
+| # | Trigger |
+| --- | --- |
+| 1 | Task needs more than spec/plan; prohibition conflict |
+| 2 | Consumes missing or would change |
+| 3 | Test can't pass without changing spec behaviour |
+| 4 | Work beyond task list (extra files/codebase) |
+| 5 | `tasks.md` vs tree mismatch |
 
 ```markdown
 ## ESCALATION
@@ -149,6 +93,6 @@ Output nothing but one `## ESCALATION` block. If several conditions fire, name e
 **Unit:** P1.1
 **Task:** T007
 **Question:** …
-**Should be answered by:** plan.md Files section, or spec.md FR-001
+**Should be answered by:** plan.md Files, or spec.md FR-001
 **Blocked until:** the plan is amended
 ```
