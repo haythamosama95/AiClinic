@@ -273,8 +273,12 @@ export function buildCoverageSnapshot(input: {
         : (active.used_final ?? 0);
     const snapshot = JSON.parse(active.plan_snapshot) as {
       display_name?: string;
+      capabilities?: unknown;
     };
     const allowance = active.allowance ?? 0;
+    const capabilities = Array.isArray(snapshot.capabilities)
+      ? snapshot.capabilities.filter((entry): entry is string => typeof entry === "string")
+      : [];
     termObject = {
       ref: active.term_id,
       plan_display_name: snapshot.display_name ?? "",
@@ -284,6 +288,7 @@ export function buildCoverageSnapshot(input: {
       allowance,
       used,
       band: allowanceBand(used, allowance, active.state),
+      capabilities,
     };
   }
 

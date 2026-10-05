@@ -41,8 +41,6 @@ export type DiscoveryResult = {
   etag: string;
 };
 
-import { planTierMeetsMinimum } from "../platform-vocabulary";
-
 /** OD-9 overlap window: two client release cycles, minimum 90 days (not a configuration surface). */
 export const OVERLAP_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -181,6 +179,37 @@ async function loadKillSwitch(
   }
 }
 
+export type MirrorPlanSnapshot = {
+  capabilities: readonly string[];
+};
+
+export async function loadPlanSnapshotFromMirror(
+  db: D1Database,
+  installationId: string,
+): Promise<MirrorPlanSnapshot | null> {
+  const row = await db
+    .prepare(
+      `SELECT term_snapshot FROM coverage_mirror WHERE installation_id = ?`,
+    )
+    .bind(installationId)
+    .first<{ term_snapshot: string }>();
+  if (row === null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(row.term_snapshot) as { capabilities?: unknown };
+    if (!Array.isArray(parsed.capabilities)) {
+      return null;
+    }
+    if (!parsed.capabilities.every((entry) => typeof entry === "string")) {
+      return null;
+    }
+    return { capabilities: parsed.capabilities as string[] };
+  } catch {
+    return null;
+  }
+}
+
 async function loadMatchingGrant(
   cache: ConfigCache,
   reader: D1Reader,
@@ -210,10 +239,11 @@ async function loadMatchingGrant(
 async function assertPlanAllowance(
   principal: Principal,
   capabilityId: string,
-  version: string,
+  _version: string,
   manifest: Manifest,
-  cache: ConfigCache,
-  reader: D1Reader,
+  _cache: ConfigCache,
+  _reader: D1Reader,
+  db: D1Database,
 ): Promise<{ ok: true } | { ok: false; code: "forbidden_capability" }> {
   const installationId = principal.installationId;
   const forbidden = {
@@ -221,34 +251,10 @@ async function assertPlanAllowance(
     code: "forbidden_capability" as const,
   };
 
-  let entitlement: Record<string, unknown>;
-  try {
-    entitlement = await loadConfig(cache, reader, "entitlements", installationId);
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      return forbidden;
-    }
-    throw error;
-  }
-
-  if (entitlement.status !== "active") {
-    return forbidden;
-  }
-
-  const plan = entitlement.plan;
-  if (typeof plan !== "string") {
-    return forbidden;
-  }
-
-  const allowedCapabilities = parseAllowedCapabilities(entitlement);
-  if (allowedCapabilities.length === 0 || !allowedCapabilities.includes(capabilityId)) {
-    return forbidden;
-  }
-
-  const minimumPlanTier = manifest.Access.minimumPlanTier;
+  const planSnapshot = await loadPlanSnapshotFromMirror(db, installationId);
   if (
-    typeof minimumPlanTier !== "string" ||
-    !planTierMeetsMinimum(plan, minimumPlanTier)
+    planSnapshot === null ||
+    !planSnapshot.capabilities.includes(capabilityId)
   ) {
     return forbidden;
   }
@@ -269,27 +275,6 @@ async function assertPlanAllowance(
     !allowedStaffRoles.includes(principal.role)
   ) {
     return forbidden;
-  }
-
-  const installationGrant = await loadMatchingGrant(
-    cache,
-    reader,
-    `${installationId}/${capabilityId}`,
-    version,
-  );
-  if (installationGrant === "revoked" || installationGrant === "version_mismatch") {
-    return forbidden;
-  }
-  if (installationGrant === "missing") {
-    const planGrant = await loadMatchingGrant(
-      cache,
-      reader,
-      `plan:${plan}/${capabilityId}`,
-      version,
-    );
-    if (planGrant !== "granted") {
-      return forbidden;
-    }
   }
 
   return { ok: true };
@@ -573,6 +558,7 @@ export async function resolve(
   cache: ConfigCache,
   reader: D1Reader,
   logger: Logger = noopLogger,
+  db: D1Database,
 ): Promise<ResolveResult> {
   const manifest = capabilityRegistry.get(registryKey(capabilityId, version));
   if (manifest === undefined) {
@@ -611,6 +597,7 @@ export async function resolve(
     manifest,
     cache,
     reader,
+    db,
   );
   if (!allowance.ok) {
     logger.debug("capability_resolve_rejected", {
@@ -668,53 +655,22 @@ export async function discover(
   cache: ConfigCache,
   reader: D1Reader,
   logger: Logger = noopLogger,
+  db: D1Database,
 ): Promise<DiscoveryResult> {
   const installationId = principal.installationId;
 
-  let entitlement: Record<string, unknown>;
-  try {
-    entitlement = await loadConfig(
-      cache,
-      reader,
-      "entitlements",
-      installationId,
-      logger,
-    );
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
-      logger.info("discover_complete", {
-        installation_id: installationId,
-        manifest_count: 0,
-        reason: "entitlement_miss",
-      });
-      return result;
-    }
-    throw error;
-  }
-
-  if (entitlement.status !== "active") {
+  const planSnapshot = await loadPlanSnapshotFromMirror(db, installationId);
+  if (planSnapshot === null) {
     const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
     logger.info("discover_complete", {
       installation_id: installationId,
       manifest_count: 0,
-      reason: "entitlement_inactive",
+      reason: "coverage_mirror_miss",
     });
     return result;
   }
 
-  const plan = entitlement.plan;
-  if (typeof plan !== "string") {
-    const result = { manifests: [], etag: await computeDiscoveryEtag([]) };
-    logger.info("discover_complete", {
-      installation_id: installationId,
-      manifest_count: 0,
-      reason: "invalid_plan",
-    });
-    return result;
-  }
-
-  const allowedCapabilities = parseAllowedCapabilities(entitlement);
+  const allowedCapabilities = planSnapshot.capabilities;
 
   // Kill switches are intentionally not applied in discovery — advertising killed caps is intentional.
   const candidates: Manifest[] = [];
@@ -729,14 +685,6 @@ export async function discover(
       continue;
     }
 
-    const minimumPlanTier = manifest.Access.minimumPlanTier;
-    if (
-      typeof minimumPlanTier !== "string" ||
-      !planTierMeetsMinimum(plan, minimumPlanTier)
-    ) {
-      continue;
-    }
-
     candidates.push(manifest);
   }
 
@@ -744,41 +692,8 @@ export async function discover(
     candidates.map(async (manifest) => {
       const capabilityId = manifest.Identity.capabilityId as string;
       const version = manifest.Identity.version as string;
-      const grantKey = `${installationId}/${capabilityId}`;
 
-      const [grantOutcome, overlay] = await Promise.all([
-        (async (): Promise<"skip" | "ok"> => {
-          try {
-            const grant = await loadConfig(cache, reader, "grants", grantKey);
-            if (grant.revoked_at != null) {
-              return "skip";
-            }
-            if (
-              typeof grant.capability_version === "string" &&
-              manifest.Identity.version !== grant.capability_version
-            ) {
-              return "skip";
-            }
-            return "ok";
-          } catch (error) {
-            if (error instanceof ConfigCacheMissError) {
-              const planGrant = await loadMatchingGrant(
-                cache,
-                reader,
-                `plan:${plan}/${capabilityId}`,
-                version,
-              );
-              return planGrant === "granted" ? "ok" : "skip";
-            }
-            throw error;
-          }
-        })(),
-        loadLifecycleOverlay(cache, reader, capabilityId, version),
-      ]);
-
-      if (grantOutcome === "skip") {
-        return null;
-      }
+      const overlay = await loadLifecycleOverlay(cache, reader, capabilityId, version);
 
       const effective = effectiveLifecycle(manifest, overlay);
       if (effective.lifecycleState === "retired") {

@@ -177,7 +177,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-01 in harness H-AP.
 
-- [ ] T027 [US1] In `ai-platform/src/rollup/index.ts`, aggregate by `{installation_id, term_id}` — produces the rollup dimensions, FR-011, E2E-P3.4-01. Depends on T026. Does not edit `ai-platform/src/journal/index.ts`.
+- [X] T027 [US1] In `ai-platform/src/rollup/index.ts`, aggregate by `{installation_id, term_id}` — produces the rollup dimensions, FR-011, E2E-P3.4-01. Depends on T026. Does not edit `ai-platform/src/journal/index.ts`.
 
 **Checkpoint**: E2E-P3.4-01 still needs capability discovery from the mirror.
 
@@ -185,7 +185,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-01 in harness H-AP.
 
-- [ ] T028 [US1] `discover` reads `coverage_mirror` by primary key — produces the immediate capability list, FR-013, E2E-P3.4-01. Depends on T026. `ai-platform/src/discovery/index.ts` passes `env.DB`. Remove tier checks and the `plan:` grant fallback in `ai-platform/src/capability/index.ts`. `ai-platform/src/entitlement/index.ts` drops tier and status checks and keeps kill switches. The capability check reads the plan snapshot. The `installation_suspended` branch in `ai-platform/src/discovery/index.ts` becomes `suspended`. E2E-P3.4-01 passes at T028.
+- [X] T028 [US1] `discover` reads `coverage_mirror` by primary key — produces the immediate capability list, FR-013, E2E-P3.4-01. Depends on T026. `ai-platform/src/discovery/index.ts` passes `env.DB`. Remove tier checks and the `plan:` grant fallback in `ai-platform/src/capability/index.ts`. `ai-platform/src/entitlement/index.ts` drops tier and status checks and keeps kill switches. The capability check reads the plan snapshot. The `installation_suspended` branch in `ai-platform/src/discovery/index.ts` becomes `suspended`. E2E-P3.4-01 passes at T028.
 
 **Checkpoint**: E2E-P3.4-01 passes at T028.
 

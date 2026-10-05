@@ -1,8 +1,8 @@
 /**
- * Entitlement stage — AI-enablement, plan tier, capability grant, kill switches (B3 §4.3.3–4).
+ * Entitlement stage — plan snapshot capability membership and kill switches (B3 §4.3.3–4).
  */
 
-import { planTierMeetsMinimum } from "../platform-vocabulary";
+import { loadPlanSnapshotFromMirror } from "../capability";
 import {
   type ConfigCache,
   ConfigCacheMissError,
@@ -151,77 +151,17 @@ export async function evaluateEntitlement(
   ctx: EntitlementContext,
   cache: ConfigCache,
   reader: D1Reader,
+  db: D1Database,
   logger: Logger = noopLogger,
 ): Promise<EntitlementResult> {
   const installationId = principal.installationId;
 
-  let entitlement: Record<string, unknown>;
-  try {
-    entitlement = await loadConfig(
-      cache,
-      reader,
-      "entitlements",
-      installationId,
-      logger,
-    );
-  } catch (error) {
-    if (error instanceof ConfigCacheMissError) {
-      logger.error("entitlement_config_miss", {
-        installation_id: installationId,
-      });
-      recordGuardRejection({
-        error_code: "internal_error",
-        installation_id: installationId,
-      });
-      return { ok: false, code: "internal_error" };
-    }
-    throw error;
-  }
-
-  const entitlementStatus = entitlement.status;
-  if (entitlementStatus !== "active") {
-    return rejectForbidden("ai_disabled", installationId, logger);
-  }
-
-  const plan = entitlement.plan;
-  if (typeof plan !== "string") {
-    return rejectForbidden("plan_tier", installationId, logger);
-  }
+  const planSnapshot = await loadPlanSnapshotFromMirror(db, installationId);
   if (
-    ctx.minimumPlanTier !== undefined &&
-    !planTierMeetsMinimum(plan, ctx.minimumPlanTier)
+    planSnapshot === null ||
+    !planSnapshot.capabilities.includes(ctx.capabilityId)
   ) {
-    return rejectForbidden("plan_tier", installationId, logger);
-  }
-
-  const allowedCapabilities = parseAllowedCapabilities(entitlement);
-  if (allowedCapabilities === null) {
     return rejectForbidden("capability_not_granted", installationId, logger);
-  }
-  if (!allowedCapabilities.includes(ctx.capabilityId)) {
-    return rejectForbidden("capability_not_granted", installationId, logger);
-  }
-
-  // Grants at installation or plan scope (§7.3); capabilityVersion must match when present.
-  const installationGrant = await loadMatchingGrant(
-    cache,
-    reader,
-    `${installationId}/${ctx.capabilityId}`,
-    ctx.capabilityVersion,
-  );
-  if (installationGrant === "revoked" || installationGrant === "version_mismatch") {
-    return rejectForbidden("capability_not_granted", installationId, logger);
-  }
-  if (installationGrant === "missing") {
-    const planGrant = await loadMatchingGrant(
-      cache,
-      reader,
-      `plan:${plan}/${ctx.capabilityId}`,
-      ctx.capabilityVersion,
-    );
-    if (planGrant !== "granted") {
-      return rejectForbidden("capability_not_granted", installationId, logger);
-    }
   }
 
   const globalSwitch = await loadKillSwitchOrInactive(cache, reader, "global");

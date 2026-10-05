@@ -13,7 +13,7 @@ export type RollupBindings = {
 
 type UsageAggregate = {
   installation_id: string;
-  period: string;
+  term_id: string;
   request_count: number;
   tokens: number;
   cost: number;
@@ -32,15 +32,15 @@ function defaultReconciliationWindow(): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-function dimensionsKey(installationId: string, period: string): string {
-  return JSON.stringify({ installation_id: installationId, period });
+function dimensionsKey(installationId: string, termId: string): string {
+  return JSON.stringify({ installation_id: installationId, term_id: termId });
 }
 
 /**
- * Period-aligned aggregation (§7.6 monthly close):
- * - No window: full ledger sums GROUP BY installation_id, period.
- * - With window: find periods touched in the window, then re-read ALL events
- *   for those periods so each rollup row equals the full period ledger sum.
+ * Term-aligned aggregation:
+ * - No window: full ledger sums GROUP BY installation_id, term_id.
+ * - With window: find terms touched in the window, then re-read ALL events
+ *   for those terms so each rollup row equals the full term ledger sum.
  */
 async function aggregateUsageEvents(
   db: D1Database,
@@ -49,7 +49,7 @@ async function aggregateUsageEvents(
   if (window) {
     const result = await db
       .prepare(
-        `SELECT ue.installation_id, ue.period,
+        `SELECT ue.installation_id, ue.term_id,
                 COUNT(*) AS request_count,
                 SUM(ue.tokens) AS tokens,
                 SUM(ue.cost) AS cost,
@@ -58,11 +58,11 @@ async function aggregateUsageEvents(
          WHERE EXISTS (
            SELECT 1 FROM usage_event touched
            WHERE touched.installation_id = ue.installation_id
-             AND touched.period = ue.period
+             AND touched.term_id = ue.term_id
              AND touched.recorded_at >= ?
              AND touched.recorded_at <= ?
          )
-         GROUP BY ue.installation_id, ue.period`,
+         GROUP BY ue.installation_id, ue.term_id`,
       )
       .bind(window.start, window.end)
       .all<UsageAggregate>();
@@ -72,13 +72,13 @@ async function aggregateUsageEvents(
 
   const result = await db
     .prepare(
-      `SELECT installation_id, period,
+      `SELECT installation_id, term_id,
               COUNT(*) AS request_count,
               SUM(tokens) AS tokens,
               SUM(cost) AS cost,
               SUM(quota_weight) AS quota_weight
        FROM usage_event
-       GROUP BY installation_id, period`,
+       GROUP BY installation_id, term_id`,
     )
     .all<UsageAggregate>();
 
@@ -98,7 +98,7 @@ export async function runRollup(
 
   let rollupsWritten = 0;
   for (const agg of aggregates) {
-    const dims = dimensionsKey(agg.installation_id, agg.period);
+    const dims = dimensionsKey(agg.installation_id, agg.term_id);
     const rollupId = await crypto.subtle
       .digest("SHA-256", new TextEncoder().encode(dims))
       .then((buf) =>

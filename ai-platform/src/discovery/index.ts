@@ -109,6 +109,7 @@ export async function handleDiscoveryRequest(
     cache,
     reader,
     logger,
+    env.DB,
   );
   // discover() defensive guards (revoked-grant skip, non-string plan, non-string
   // registry identity) are unreachable via production paths; kept against malformed

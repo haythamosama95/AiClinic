@@ -417,6 +417,7 @@ export async function runGuard(
     input.cache,
     input.reader,
     logger,
+    bindings.DB,
   );
   if (!resolved.ok) {
     return fail(5, resolved.code, started, logger);
