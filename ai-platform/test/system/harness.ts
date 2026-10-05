@@ -1298,7 +1298,16 @@ export type VendorMethod =
   | "registerOperatorCredential"
   | "revokeOperatorCredential"
   | "listOperatorCredentials"
-  | "registerIssuerKey";
+  | "registerIssuerKey"
+  | "publishPlanVersion"
+  | "registerServiceKey"
+  | "revokeServiceKey"
+  | "listServiceKeys"
+  | "retirePlanVersion"
+  | "grant"
+  | "getCoverage"
+  | "listGrants"
+  | "readCoverageEvents";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 
