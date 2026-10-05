@@ -22,9 +22,13 @@ import {
   getVendorTestClockIso,
   mintVendorAccessJwt,
   queryOne,
+  queryAll,
   resetPlatformState,
+  r2Exists,
   setTestClock,
   setupVendorHarness,
+  getCapturedVendorEmails,
+  clearCapturedVendorEmails,
   vendorCall,
   VENDOR_OPERATOR_EMAIL,
   type VendorResultEnvelope,
@@ -179,6 +183,54 @@ async function operationForPublishPlanVersion(input: {
     nonce: crypto.randomUUID(),
     contract_version: CONTRACT_VERSION,
   };
+}
+
+async function operationForRetirePlanVersion(input: {
+  accessJwt: string;
+}): Promise<Record<string, unknown>> {
+  return {
+    op: "retirePlanVersion",
+    params: {
+      contract_version: CONTRACT_VERSION,
+      access_jwt: input.accessJwt,
+      plan_id: PLAN_ID,
+      version: PLAN_VERSION,
+    },
+    actor_email: VENDOR_OPERATOR_EMAIL,
+    issued_at: getVendorTestClockIso() ?? new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+    contract_version: CONTRACT_VERSION,
+  };
+}
+
+async function retirePlanVersionHp(input: {
+  signerCredentialId: string;
+  signerAuthenticator: SoftwareAuthenticator;
+  accessJwt?: string;
+}): Promise<VendorResultEnvelope> {
+  const accessJwt = input.accessJwt ?? (await mintVendorAccessJwt());
+  const operation = await operationForRetirePlanVersion({ accessJwt });
+  const assertion = encodeVendorAssertion(
+    await input.signerAuthenticator.assert({
+      operation,
+      rpId: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+      up: true,
+      uv: true,
+    }),
+  );
+  return coverageVendorCall(
+    "retirePlanVersion",
+    {
+      contract_version: CONTRACT_VERSION,
+      plan_id: PLAN_ID,
+      version: PLAN_VERSION,
+      signer_credential_id: input.signerCredentialId,
+      operation,
+      assertion,
+    },
+    { accessJwt },
+  );
 }
 
 async function publishPlanVersionHp(input: {
@@ -458,6 +510,84 @@ async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
   );
 }
 
+async function readActiveTermTiming(
+  installationId: string,
+): Promise<{ starts_at: string | null; ends_at: string | null } | null> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ starts_at: string | null; ends_at: string | null }>(
+        state,
+        "SELECT starts_at, ends_at FROM term WHERE state = 'active' LIMIT 1",
+      ),
+  );
+  return rows[0] ?? null;
+}
+
+async function readActiveTermPlanSnapshot(
+  installationId: string,
+): Promise<Record<string, unknown> | null> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ plan_snapshot: string }>(
+        state,
+        "SELECT plan_snapshot FROM term WHERE state = 'active' LIMIT 1",
+      ),
+  );
+  const raw = rows[0]?.plan_snapshot;
+  if (!raw) {
+    return null;
+  }
+  return JSON.parse(raw) as Record<string, unknown>;
+}
+
+const DO_RPC_URL = "https://quota-do.internal/rpc";
+const PLATFORM_DO_CONTRACT_VERSION = CHANNEL_VERSIONS.platformDo;
+
+async function fetchGatewayObjectRpc(
+  installationId: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return quotaDoStub(installationId).fetch(DO_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function inspectGatewayObjectState(
+  installationId: string,
+): Promise<unknown> {
+  const response = await fetchGatewayObjectRpc(installationId, {
+    contract_version: PLATFORM_DO_CONTRACT_VERSION,
+    kind: "inspect",
+  });
+  expect(response.ok).toBe(true);
+  const body = (await response.json()) as { state: unknown };
+  return body.state;
+}
+
+function withDurationScale<T>(
+  scale: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const envWithScale = env as { DURATION_SCALE?: string };
+  const previous = envWithScale.DURATION_SCALE;
+  if (scale === undefined) {
+    delete envWithScale.DURATION_SCALE;
+  } else {
+    envWithScale.DURATION_SCALE = scale;
+  }
+  return fn().finally(() => {
+    if (previous === undefined) {
+      delete envWithScale.DURATION_SCALE;
+    } else {
+      envWithScale.DURATION_SCALE = previous;
+    }
+  });
+}
+
 async function installationIdForOrg(orgId: string): Promise<string> {
   const binding = await queryOne<{ installation_id: string }>(
     "SELECT installation_id FROM tenant_binding WHERE org_id = ? AND status = 'active'",
@@ -521,6 +651,70 @@ async function grantLedgerCount(grantId: string): Promise<number> {
     return 0;
   }
   return count("grant_ledger", "grant_id = ?", [grantId]);
+}
+
+type CoverageEventRow = {
+  feed_seq: number;
+  clinic_seq: number;
+  kind: string;
+  org_id: string;
+  event_id: string;
+};
+
+async function listCoverageEventsForOrg(orgId: string): Promise<CoverageEventRow[]> {
+  const exists = await queryOne<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'coverage_event'",
+  );
+  if (!exists) {
+    return [];
+  }
+  return queryAll<CoverageEventRow>(
+    "SELECT feed_seq, clinic_seq, kind, org_id, event_id FROM coverage_event WHERE org_id = ? ORDER BY feed_seq ASC",
+    [orgId],
+  );
+}
+
+async function coverageMirrorForInstallation(
+  installationId: string,
+): Promise<Record<string, unknown> | null> {
+  const exists = await queryOne<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'coverage_mirror'",
+  );
+  if (!exists) {
+    return null;
+  }
+  return queryOne<Record<string, unknown>>(
+    "SELECT * FROM coverage_mirror WHERE installation_id = ?",
+    [installationId],
+  );
+}
+
+async function readCoverageEventsPage(
+  after: number,
+  limit: number,
+): Promise<VendorResultEnvelope> {
+  return coverageVendorCall("readCoverageEvents", {
+    contract_version: CONTRACT_VERSION,
+    after,
+    limit,
+  });
+}
+
+async function grantPaidForOrg(
+  fixture: Pick<PaidGrantFixture, "orgId" | "aboKid" | "aboSigner">,
+): Promise<GrantResultEnvelope> {
+  const paymentRef = crypto.randomUUID().replace(/-/g, "");
+  const grantId = await grantIdPaid(paymentRef);
+  const envelope = await buildPaidGrantEnvelope({
+    orgId: fixture.orgId,
+    grantId,
+  });
+  const aboSignature = await fixture.aboSigner.sign(envelope);
+  return grantPaid({
+    envelope,
+    aboKid: fixture.aboKid,
+    aboSignature,
+  });
 }
 
 async function bootstrapPaidGrantFixture(
@@ -712,7 +906,7 @@ describe("paid grant coverage", () => {
     expect(detail.snapshot.queued_count).toBe(1);
     expect(
       Date.parse(detail.snapshot.coverage_through) >
-        Date.parse(String(active!.ends_at)),
+      Date.parse(String(active!.ends_at)),
     ).toBe(true);
   });
 
@@ -850,5 +1044,230 @@ describe("paid grant coverage", () => {
     expect(placementImmediate.code).toBe("placement_not_supported");
     expect(placementImmediate.receipt).toBeUndefined();
     await expectNoTenantBinding(immediateOrg);
+  });
+
+  it("E2E-P3.3-07 After the alarm, coverage events, the ledger, the mirror, and R2 exist, and readCoverageEvents pages by feed_seq", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+
+    const applied = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(applied.result).toBe("applied");
+
+    const installationId = await installationIdForOrg(fixture.orgId);
+    await runDurableObjectAlarm(quotaDoStub(installationId));
+
+    const events = await listCoverageEventsForOrg(fixture.orgId);
+    expect(events.length).toBeGreaterThan(0);
+    for (let index = 1; index < events.length; index += 1) {
+      expect(events[index]!.clinic_seq).toBeGreaterThan(
+        events[index - 1]!.clinic_seq,
+      );
+    }
+
+    expect(await grantLedgerCount(fixture.grantId)).toBe(1);
+
+    const mirror = await coverageMirrorForInstallation(installationId);
+    expect(mirror).not.toBeNull();
+    expect(mirror?.org_id).toBe(fixture.orgId);
+
+    expect(await r2Exists(`grant-ledger/${fixture.grantId}.ndjson`)).toBe(true);
+
+    const page = await readCoverageEventsPage(0, 200);
+    expect(page.result).toBe("ok");
+    expect(page.code).toBe("");
+    expect(page.receipt).toBeUndefined();
+
+    const detail = JSON.parse(page.detail) as {
+      events: Array<{ feed_seq: number; kind: string }>;
+    };
+    const feedSeqs = detail.events.map((event) => event.feed_seq);
+    expect(feedSeqs).toEqual(events.map((event) => event.feed_seq));
+    for (let index = 1; index < feedSeqs.length; index += 1) {
+      expect(feedSeqs[index]!).toBeGreaterThan(feedSeqs[index - 1]!);
+    }
+  });
+
+  it("E2E-P3.3-08 AL-11 email per grant carries the decoded operation and org, and the fourth paid grant within 24 hours raises AL-17", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+
+    const first = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(first.result).toBe("applied");
+
+    const installationId = await installationIdForOrg(fixture.orgId);
+    clearCapturedVendorEmails();
+    await runDurableObjectAlarm(quotaDoStub(installationId));
+
+    const afterFirstAlarm = getCapturedVendorEmails();
+    expect(afterFirstAlarm.length).toBeGreaterThanOrEqual(1);
+    const al11Body = JSON.parse(afterFirstAlarm[0]!.text) as Record<
+      string,
+      unknown
+    >;
+    expect(al11Body).toEqual({
+      code: "AL-11",
+      org_id: fixture.orgId,
+      operation: {
+        op: "grant",
+        params: fixture.envelope,
+      },
+    });
+
+    const second = await grantPaidForOrg(fixture);
+    expect(second.result).toBe("applied");
+    const third = await grantPaidForOrg(fixture);
+    expect(third.result).toBe("applied");
+
+    clearCapturedVendorEmails();
+    const fourth = await grantPaidForOrg(fixture);
+    expect(fourth.result).toBe("applied");
+
+    await runDurableObjectAlarm(quotaDoStub(installationId));
+
+    const afterFourthAlarm = getCapturedVendorEmails();
+    const al17Bodies = afterFourthAlarm
+      .map((email) => JSON.parse(email.text) as Record<string, unknown>)
+      .filter((body) => body.code === "AL-17");
+    expect(al17Bodies.length).toBeGreaterThanOrEqual(1);
+    expect(al17Bodies.some((body) => body.org_id === fixture.orgId)).toBe(true);
+  });
+
+  it("E2E-P3.3-09 A grant at 31 January 10:00 ends 28 February 10:00, or 29 February in a leap year, and the staging scale makes a month 30 minutes", async () => {
+    const jan31NonLeap = "2026-01-31T10:00:00.000Z";
+    const fixtureNonLeap = await bootstrapPaidGrantFixture(jan31NonLeap);
+    const appliedNonLeap = await grantPaid({
+      envelope: fixtureNonLeap.envelope,
+      aboKid: fixtureNonLeap.aboKid,
+      aboSignature: fixtureNonLeap.aboSignature,
+    });
+    expect(appliedNonLeap.result).toBe("applied");
+
+    const installationNonLeap = await installationIdForOrg(fixtureNonLeap.orgId);
+    const timingNonLeap = await readActiveTermTiming(installationNonLeap);
+    expect(timingNonLeap?.starts_at).toBe(jan31NonLeap);
+    expect(timingNonLeap?.ends_at).toBe("2026-02-28T10:00:00.000Z");
+
+    const jan31Leap = "2024-01-31T10:00:00.000Z";
+    const fixtureLeap = await bootstrapPaidGrantFixture(jan31Leap);
+    const appliedLeap = await grantPaid({
+      envelope: fixtureLeap.envelope,
+      aboKid: fixtureLeap.aboKid,
+      aboSignature: fixtureLeap.aboSignature,
+    });
+    expect(appliedLeap.result).toBe("applied");
+
+    const installationLeap = await installationIdForOrg(fixtureLeap.orgId);
+    const timingLeap = await readActiveTermTiming(installationLeap);
+    expect(timingLeap?.starts_at).toBe(jan31Leap);
+    expect(timingLeap?.ends_at).toBe("2024-02-29T10:00:00.000Z");
+
+    const stagingStart = "2026-03-01T12:00:00.000Z";
+    const fixtureStaging = await bootstrapPaidGrantFixture(stagingStart);
+    const appliedStaging = await withDurationScale("staging", () =>
+      grantPaid({
+        envelope: fixtureStaging.envelope,
+        aboKid: fixtureStaging.aboKid,
+        aboSignature: fixtureStaging.aboSignature,
+      }),
+    );
+    expect(appliedStaging.result).toBe("applied");
+
+    const installationStaging = await installationIdForOrg(fixtureStaging.orgId);
+    const timingStaging = await readActiveTermTiming(installationStaging);
+    expect(timingStaging?.starts_at).toBe(stagingStart);
+    expect(timingStaging?.ends_at).toBe("2026-03-01T12:30:00.000Z");
+  });
+
+  it("E2E-P3.3-10 retirePlanVersion refuses the next grant on that version and the existing term keeps its snapshot", async () => {
+    const fixture = await bootstrapPaidGrantFixture();
+
+    const applied = await grantPaid({
+      envelope: fixture.envelope,
+      aboKid: fixture.aboKid,
+      aboSignature: fixture.aboSignature,
+    });
+    expect(applied.result).toBe("applied");
+
+    const installationId = await installationIdForOrg(fixture.orgId);
+    const snapshotBefore = await readActiveTermPlanSnapshot(installationId);
+    expect(snapshotBefore).not.toBeNull();
+
+    const retired = await retirePlanVersionHp({
+      signerCredentialId: fixture.signerCredentialId,
+      signerAuthenticator: fixture.signerAuthenticator,
+    });
+    expect(retired.result).toBe("ok");
+    expect(retired.code).toBe("");
+    expect(retired.receipt).toBeUndefined();
+
+    const paymentRef = crypto.randomUUID().replace(/-/g, "");
+    const nextGrantId = await grantIdPaid(paymentRef);
+    const nextEnvelope = await buildPaidGrantEnvelope({
+      orgId: fixture.orgId,
+      grantId: nextGrantId,
+    });
+    const nextSignature = await fixture.aboSigner.sign(nextEnvelope);
+    const refused = await grantPaid({
+      envelope: nextEnvelope,
+      aboKid: fixture.aboKid,
+      aboSignature: nextSignature,
+    });
+    expect(refused.result).toBe("rejected");
+    expect(refused.code).toBe("plan_not_published");
+    expect(refused.receipt).toBeUndefined();
+
+    const snapshotAfter = await readActiveTermPlanSnapshot(installationId);
+    expect(snapshotAfter).toEqual(snapshotBefore);
+  });
+
+  it("E2E-P3.3-11 A Worker to DO RPC with the current contract version is accepted and the answer echoes it", async () => {
+    const installationId = crypto.randomUUID();
+    const response = await fetchGatewayObjectRpc(installationId, {
+      contract_version: PLATFORM_DO_CONTRACT_VERSION,
+      kind: "inspect",
+    });
+    expect(response.ok).toBe(true);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.contract_version).toBe(PLATFORM_DO_CONTRACT_VERSION);
+    expect(body.kind).toBe("inspect");
+  });
+
+  it("E2E-P3.3-12 A Worker to DO RPC with contract_version missing or 2 is rejected contract_version_unsupported before any write", async () => {
+    const installationId = crypto.randomUUID();
+
+    const stateBefore = await inspectGatewayObjectState(installationId);
+
+    const missingVersion = await fetchGatewayObjectRpc(installationId, {
+      kind: "inspect",
+    });
+    expect(missingVersion.ok).toBe(true);
+    const missingBody = (await missingVersion.json()) as Record<string, unknown>;
+    expect(missingBody.result).toBe("rejected");
+    expect(missingBody.code).toBe("contract_version_unsupported");
+    expect(missingBody.accepted_versions).toEqual([0, 1]);
+    expect(missingBody.contract_version).toBe(PLATFORM_DO_CONTRACT_VERSION);
+
+    const unsupportedVersion = await fetchGatewayObjectRpc(installationId, {
+      contract_version: 2,
+      kind: "inspect",
+    });
+    expect(unsupportedVersion.ok).toBe(true);
+    const unsupportedBody = (await unsupportedVersion.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(unsupportedBody.result).toBe("rejected");
+    expect(unsupportedBody.code).toBe("contract_version_unsupported");
+    expect(unsupportedBody.accepted_versions).toEqual([0, 1]);
+    expect(unsupportedBody.contract_version).toBe(PLATFORM_DO_CONTRACT_VERSION);
+
+    const stateAfter = await inspectGatewayObjectState(installationId);
+    expect(stateAfter).toEqual(stateBefore);
   });
 });
