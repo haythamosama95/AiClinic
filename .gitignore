@@ -73,6 +73,9 @@ dist/
 
 web-reference/node_modules
 
+# Shared packages (monorepo)
+packages/**/node_modules/
+
 # AI platform (Cloudflare Workers)
 ai-platform/node_modules/
 ai-platform/.wrangler/
