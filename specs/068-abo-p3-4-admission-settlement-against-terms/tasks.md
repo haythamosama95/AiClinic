@@ -34,7 +34,7 @@
 
 **Independent Test**: E2E-P3.4-01 in harness H-AP.
 
-- [ ] T001 [US1] Add the failing test `E2E-P3.4-01 CP-B paid grant then issuer token lists the plan and completes a request charged to the term` in `ai-platform/test/system/admission-settlement.system.test.ts` — red test, FR-004, FR-010, FR-011, FR-013, FR-014, E2E-P3.4-01. `coverClinic()` then `newClinic()` for that org. `GET /v1/capabilities` lists `clinic.visit_summary` from `coverage_mirror`. `POST /v1/requests` completes. `usage_event.term_id` is the active term. `hot.used` increases by the capability `quotaWeight` (`w`). Run:
+- [X] T001 [US1] Add the failing test `E2E-P3.4-01 CP-B paid grant then issuer token lists the plan and completes a request charged to the term` in `ai-platform/test/system/admission-settlement.system.test.ts` — red test, FR-004, FR-010, FR-011, FR-013, FR-014, E2E-P3.4-01. `coverClinic()` then `newClinic()` for that org. `GET /v1/capabilities` lists `clinic.visit_summary` from `coverage_mirror`. `POST /v1/requests` completes. `usage_event.term_id` is the active term. `hot.used` increases by the capability `quotaWeight` (`w`). Run:
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
