@@ -179,6 +179,7 @@ async function invokeCreditRpc(
         kind: "credit",
         installationId,
         requestId,
+        reservation_id: requestId,
         requestReference,
         usage,
         partial,

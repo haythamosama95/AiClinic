@@ -14,7 +14,7 @@ type SqlStorage = DurableObjectStorage & {
   };
 };
 
-function sqlExec(storage: DurableObjectStorage, query: string): void {
+export function sqlExec(storage: DurableObjectStorage, query: string): void {
   const sqlStorage = storage as SqlStorage;
   if (!sqlStorage.sql) {
     return;
@@ -22,7 +22,7 @@ function sqlExec(storage: DurableObjectStorage, query: string): void {
   sqlStorage.sql.exec(query);
 }
 
-function sqlSelect<T extends Record<string, unknown>>(
+export function sqlSelect<T extends Record<string, unknown>>(
   storage: DurableObjectStorage,
   query: string,
 ): T[] {
@@ -33,20 +33,26 @@ function sqlSelect<T extends Record<string, unknown>>(
   return [...sqlStorage.sql.exec(query)] as T[];
 }
 
-function sqlString(value: string): string {
+export function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-type HotRow = {
+export type HotRow = {
   suspended: number;
   active_term_id: string | null;
   used: number;
+  reserved: number;
+  grace_base_used: number;
+  reservations: string;
+  replay: string;
+  idempotency: string;
+  band_emitted: string;
   binding_epoch: number;
   clinic_seq: number;
   next_alarm_at: string | null;
 };
 
-type TermRow = {
+export type TermRow = {
   term_id: string;
   grant_id: string;
   origin_grant_id: string;
@@ -185,7 +191,7 @@ function ensureHotRow(storage: DurableObjectStorage, bindingEpoch: number): void
   );
 }
 
-function loadHot(storage: DurableObjectStorage): HotRow {
+export function loadHot(storage: DurableObjectStorage): HotRow {
   const rows = sqlSelect<HotRow>(storage, "SELECT * FROM hot LIMIT 1");
   if (rows.length === 0) {
     throw new Error("hot row missing");
@@ -193,7 +199,7 @@ function loadHot(storage: DurableObjectStorage): HotRow {
   return rows[0]!;
 }
 
-function loadTerms(storage: DurableObjectStorage): TermRow[] {
+export function loadTerms(storage: DurableObjectStorage): TermRow[] {
   return sqlSelect<TermRow>(
     storage,
     "SELECT * FROM term ORDER BY position ASC",
@@ -229,7 +235,28 @@ function computeCoverageThrough(
   return cursor;
 }
 
-function buildCoverageSnapshot(input: {
+export function allowanceBand(
+  used: number,
+  allowance: number,
+  termState: string,
+): "ok" | "75" | "90" | "exhausted" {
+  if (termState === "exhausted") {
+    return "exhausted";
+  }
+  if (!(allowance > 0)) {
+    return "ok";
+  }
+  const ratio = used / allowance;
+  if (ratio >= 0.9) {
+    return "90";
+  }
+  if (ratio >= 0.75) {
+    return "75";
+  }
+  return "ok";
+}
+
+export function buildCoverageSnapshot(input: {
   vendorContractVersion: number;
   orgId: string;
   hot: HotRow;
@@ -247,23 +274,33 @@ function buildCoverageSnapshot(input: {
     const snapshot = JSON.parse(active.plan_snapshot) as {
       display_name?: string;
     };
+    const allowance = active.allowance ?? 0;
     termObject = {
       ref: active.term_id,
       plan_display_name: snapshot.display_name ?? "",
       starts_at: active.starts_at ?? "",
       ends_at: active.ends_at ?? "",
       grace_ends_at: termGraceEndsAtDisplay(active),
-      allowance: active.allowance ?? 0,
+      allowance,
       used,
-      band: "ok",
+      band: allowanceBand(used, allowance, active.state),
     };
   }
 
+  const coverageState =
+    active !== undefined
+      ? "active"
+      : input.terms.some((term) => term.state === "exhausted")
+        ? "exhausted"
+        : input.terms.length === 0
+          ? "lapsed"
+          : "lapsed";
+
   return {
     contract_version: input.vendorContractVersion,
-    state: active !== undefined ? "active" : "active",
+    state: coverageState,
     reason: "none",
-    suspended: false,
+    suspended: input.hot.suspended !== 0,
     term: termObject,
     queued_count: queued.length,
     held_count: 0,
@@ -358,7 +395,11 @@ async function signReceipt(input: {
   return { ...unsigned, signature };
 }
 
-function insertOutbox(storage: DurableObjectStorage, kind: string, payload: unknown): void {
+export function insertOutbox(
+  storage: DurableObjectStorage,
+  kind: string,
+  payload: unknown,
+): void {
   sqlExec(
     storage,
     `INSERT INTO outbox (kind, payload) VALUES (${sqlString(kind)}, ${sqlString(JSON.stringify(payload))})`,
@@ -395,9 +436,9 @@ async function countD1PaidGrantsLastHour(
   return row?.count ?? 0;
 }
 
-function updateHot(
+export function updateHot(
   storage: DurableObjectStorage,
-  patch: Partial<HotRow> & { clinic_seq?: number },
+  patch: Partial<HotRow>,
 ): void {
   const sets: string[] = [];
   if (patch.active_term_id !== undefined) {
@@ -405,6 +446,27 @@ function updateHot(
   }
   if (patch.used !== undefined) {
     sets.push(`used = ${patch.used}`);
+  }
+  if (patch.reserved !== undefined) {
+    sets.push(`reserved = ${patch.reserved}`);
+  }
+  if (patch.grace_base_used !== undefined) {
+    sets.push(`grace_base_used = ${patch.grace_base_used}`);
+  }
+  if (patch.reservations !== undefined) {
+    sets.push(`reservations = ${sqlString(patch.reservations)}`);
+  }
+  if (patch.replay !== undefined) {
+    sets.push(`replay = ${sqlString(patch.replay)}`);
+  }
+  if (patch.idempotency !== undefined) {
+    sets.push(`idempotency = ${sqlString(patch.idempotency)}`);
+  }
+  if (patch.band_emitted !== undefined) {
+    sets.push(`band_emitted = ${sqlString(patch.band_emitted)}`);
+  }
+  if (patch.suspended !== undefined) {
+    sets.push(`suspended = ${patch.suspended}`);
   }
   if (patch.clinic_seq !== undefined) {
     sets.push(`clinic_seq = ${patch.clinic_seq}`);
@@ -751,6 +813,12 @@ export async function readCoverageRPC(
         suspended: 0,
         active_term_id: null,
         used: 0,
+        reserved: 0,
+        grace_base_used: 0,
+        reservations: "[]",
+        replay: "{}",
+        idempotency: "{}",
+        band_emitted: "{}",
         binding_epoch: 0,
         clinic_seq: 0,
         next_alarm_at: null,
@@ -913,6 +981,24 @@ export async function shipCoverageOutboxAlarm(
           });
           await env.R2.put(key, `${line}\n`);
         }
+      } else if (row.kind === "usage_adjustment") {
+        const usageEventId = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO usage_event (
+            usage_event_id, installation_id, term_id, request_id, quota_weight, tokens, cost, recorded_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            usageEventId,
+            payload.installation_id,
+            payload.term_id,
+            payload.request_id,
+            payload.quota_weight,
+            payload.tokens,
+            payload.cost,
+            payload.recorded_at,
+          )
+          .run();
       } else if (row.kind === "alert") {
         shippedAlerts.push({
           alert_key: String(payload.alert_key),

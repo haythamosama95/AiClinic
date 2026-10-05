@@ -111,11 +111,11 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-09, E2E-P3.4-10, and E2E-P3.4-11 in harness H-AP. Every H-AP suite that entitles runs through `coverClinic()` and stays green (rule V2, rule S2).
 
-- [ ] T015 [US4] In `admissionRPC` in `ai-platform/src/quota-do/index.ts`, step 1 reads `hot.replay` and `hot.idempotency` and returns the stored answer without writing — produces the replay read, FR-002, E2E-P3.4-11. Depends on T014. Sweep those maps on each write that does happen, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`. E2E-P3.4-11 still fails until the HTTP path stores the answer.
+- [X] T015 [US4] In `admissionRPC` in `ai-platform/src/quota-do/index.ts`, step 1 reads `hot.replay` and `hot.idempotency` and returns the stored answer without writing — produces the replay read, FR-002, E2E-P3.4-11. Depends on T014. Sweep those maps on each write that does happen, keeping entries for at least `EPHEMERAL_HORIZON_MS`. Pass `now` from `clockNowMs`. E2E-P3.4-11 still fails until the HTTP path stores the answer.
 
-- [ ] T016 [US4] In `ai-platform/src/quota-do/index.ts`, step 2 charges reservations whose `admitted_at` is more than 15 minutes before `now` — produces the late charge and the outbox row, FR-003, E2E-P3.4-10. Depends on T015 (same file). Append outbox kind `usage_adjustment` with the payload in `specs/068-abo-p3-4-admission-settlement-against-terms/data-model.md`. Do not insert `usage_event` inside the DO.
+- [X] T016 [US4] In `ai-platform/src/quota-do/index.ts`, step 2 charges reservations whose `admitted_at` is more than 15 minutes before `now` — produces the late charge and the outbox row, FR-003, E2E-P3.4-10. Depends on T015 (same file). Append outbox kind `usage_adjustment` with the payload in `specs/068-abo-p3-4-admission-settlement-against-terms/data-model.md`. Do not insert `usage_event` inside the DO.
 
-- [ ] T017 [US4] In `shipCoverageOutboxAlarm` in `ai-platform/src/quota-do/coverage.ts`, ship `usage_adjustment` with `INSERT OR IGNORE` on `usage_event.request_id`, then delete the outbox row — produces the journal ship, FR-003, E2E-P3.4-10. Depends on T016. Leave `coverage_event`, `grant_ledger`, and `alert` as they are. E2E-P3.4-10 still fails until the next admission charges.
+- [X] T017 [US4] In `shipCoverageOutboxAlarm` in `ai-platform/src/quota-do/coverage.ts`, ship `usage_adjustment` with `INSERT OR IGNORE` on `usage_event.request_id`, then delete the outbox row — produces the journal ship, FR-003, E2E-P3.4-10. Depends on T016. Leave `coverage_event`, `grant_ledger`, and `alert` as they are. E2E-P3.4-10 still fails until the next admission charges.
 
 **Checkpoint**: E2E-P3.4-11 still fails until T022. E2E-P3.4-10 still fails until the next admission charges.
 
@@ -123,7 +123,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 in harness H-AP.
 
-- [ ] T018 [US2] In `ai-platform/src/quota-do/index.ts`, step 4 refuses in the order in `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md` — produces the DO refusals, FR-005, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-05. Depends on T017. A refusal writes nothing unless step 2 changed state. Step 3 runs and applies no expiry or grace transition. `hot.suspended` maps to `suspended`; this unit does not set the flag. Capabilities and `concurrency_limit` come from `term.plan_snapshot`.
+- [X] T018 [US2] In `ai-platform/src/quota-do/index.ts`, step 4 refuses in the order in `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/clinic-denial-codes.md` — produces the DO refusals, FR-005, E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, E2E-P3.4-05. Depends on T017. A refusal writes nothing unless step 2 changed state. Step 3 runs and applies no expiry or grace transition. `hot.suspended` maps to `suspended`; this unit does not set the flag. Capabilities and `concurrency_limit` come from `term.plan_snapshot`.
 
 **Checkpoint**: E2E-P3.4-02, E2E-P3.4-03, E2E-P3.4-04, and E2E-P3.4-12 still need the worker mapper.
 
@@ -131,7 +131,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-05, E2E-P3.4-06, E2E-P3.4-07, and E2E-P3.4-08 in harness H-AP.
 
-- [ ] T019 [US3] In `ai-platform/src/quota-do/index.ts`, steps 5–7 reserve `w`, end an active term `exhausted` in that same transaction when `used + reserved >= allowance`, activate the next unheld queued term with `addDuration`, emit one `band_crossed` per band, and return `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/admission-answer.md` — produces the reservation, the exhaustion, and the band, FR-004, FR-007, FR-008, FR-009, E2E-P3.4-01, E2E-P3.4-05, E2E-P3.4-06, E2E-P3.4-07, E2E-P3.4-08. Depends on T018 (same file). E2E-P3.4-01 and E2E-P3.4-05 through E2E-P3.4-08 still need the worker path.
+- [X] T019 [US3] In `ai-platform/src/quota-do/index.ts`, steps 5–7 reserve `w`, end an active term `exhausted` in that same transaction when `used + reserved >= allowance`, activate the next unheld queued term with `addDuration`, emit one `band_crossed` per band, and return `specs/068-abo-p3-4-admission-settlement-against-terms/contracts/admission-answer.md` — produces the reservation, the exhaustion, and the band, FR-004, FR-007, FR-008, FR-009, E2E-P3.4-01, E2E-P3.4-05, E2E-P3.4-06, E2E-P3.4-07, E2E-P3.4-08. Depends on T018 (same file). E2E-P3.4-01 and E2E-P3.4-05 through E2E-P3.4-08 still need the worker path.
 
 **Checkpoint**: E2E-P3.4-05, E2E-P3.4-06, E2E-P3.4-07, and E2E-P3.4-08 still need the worker path.
 
@@ -139,7 +139,7 @@ The run fails because `coverClinic` is missing and `POST /v1/requests` is not ch
 
 **Independent Test**: E2E-P3.4-09, E2E-P3.4-10, and E2E-P3.4-11 in harness H-AP. Every H-AP suite that entitles runs through `coverClinic()` and stays green (rule V2, rule S2).
 
-- [ ] T020 [US4] Settle `credit` by `reservation_id` in `ai-platform/src/credit/index.ts` and in the credit handler in `ai-platform/src/quota-do/index.ts` — produces settlement, FR-004, E2E-P3.4-09. Depends on T019. Provider capacity adds `w` to `used`. Nothing consumed releases the reservation. The reservation keeps its `term_id` after the term has ended. A credit after the step-2 charge changes nothing.
+- [X] T020 [US4] Settle `credit` by `reservation_id` in `ai-platform/src/credit/index.ts` and in the credit handler in `ai-platform/src/quota-do/index.ts` — produces settlement, FR-004, E2E-P3.4-09. Depends on T019. Provider capacity adds `w` to `used`. Nothing consumed releases the reservation. The reservation keeps its `term_id` after the term has ended. A credit after the step-2 charge changes nothing.
 
 **Checkpoint**: E2E-P3.4-09 still needs the worker path. E2E-P3.4-10 still needs the next admission to run that charge.
 
