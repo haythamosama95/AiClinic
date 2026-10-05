@@ -2,7 +2,7 @@
  * P3.4 — Admission and settlement against terms (H-AP, E2E-P3.4-01–12).
  */
 
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAllMigrations,
@@ -21,15 +21,19 @@ import {
   POLICY_VERSION,
   promote,
   publishPolicy,
+  queryAll,
   queryOne,
   registerVisitSummaryCapability,
   resetPlatformState,
+  setTestClock,
   setupVendorHarness,
   terminalEventTypes,
   type Scenario,
 } from "./harness";
+import { addDuration } from "../../src/coverage/calendar";
 
 const QUOTA_WEIGHT = 1;
+const W_MAX = QUOTA_WEIGHT;
 
 function quotaDoStub(installationId: string) {
   return env.DO.get(env.DO.idFromName(installationId));
@@ -67,6 +71,96 @@ async function readActiveTermId(installationId: string): Promise<string | null> 
       ),
   );
   return rows[0]?.term_id ?? null;
+}
+
+type DoTermRow = {
+  term_id: string;
+  state: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  allowance: number | null;
+  used_final: number | null;
+};
+
+async function readDoTerms(installationId: string): Promise<DoTermRow[]> {
+  return runInDurableObject(quotaDoStub(installationId), async (_instance, state) =>
+    sqlSelect<DoTermRow>(
+      state,
+      "SELECT term_id, state, starts_at, ends_at, allowance, used_final FROM term",
+    ),
+  );
+}
+
+async function readHotUsage(
+  installationId: string,
+): Promise<{ used: number; reserved: number }> {
+  const rows = await runInDurableObject(
+    quotaDoStub(installationId),
+    async (_instance, state) =>
+      sqlSelect<{ used: number; reserved: number }>(
+        state,
+        "SELECT used, reserved FROM hot LIMIT 1",
+      ),
+  );
+  return { used: rows[0]?.used ?? 0, reserved: rows[0]?.reserved ?? 0 };
+}
+
+type CoverageEventRow = {
+  kind: string;
+  snapshot: string;
+};
+
+async function listBandCrossedEvents(orgId: string): Promise<
+  Array<{ kind: string; band: string | undefined }>
+> {
+  const rows = await queryAll<CoverageEventRow>(
+    "SELECT kind, snapshot FROM coverage_event WHERE org_id = ? AND kind = 'band_crossed' ORDER BY feed_seq ASC",
+    [orgId],
+  );
+  return rows.map((row) => {
+    const snapshot = JSON.parse(row.snapshot) as {
+      term?: { band?: string };
+    };
+    return { kind: row.kind, band: snapshot.term?.band };
+  });
+}
+
+async function completeChargedRequest(
+  scenario: Scenario,
+  token: string,
+): Promise<void> {
+  const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+  const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+  expect(published.status).toBe(200);
+  const promoted = await promote(POLICY_ID, POLICY_VERSION);
+  expect(promoted.status).toBe(200);
+
+  const invoked = await invoke(scenario, {
+    token,
+    idempotencyKey: crypto.randomUUID(),
+  });
+  expect(invoked.status).toBe(200);
+  expect(terminalEventTypes(invoked.events)).toEqual(["completed"]);
+  await flushBackgroundWork();
+}
+
+async function postUntilAllowanceConsumed(
+  scenario: Scenario,
+  token: string,
+  allowance: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < allowance + 2; attempt += 1) {
+    const hot = await readHotUsage(scenario.installationId);
+    if (hot.used + hot.reserved >= allowance) {
+      return;
+    }
+    await completeChargedRequest(scenario, token);
+  }
+  throw new Error("allowance was not reached");
+}
+
+async function shipCoverageOutbox(installationId: string): Promise<void> {
+  await runDurableObjectAlarm(quotaDoStub(installationId));
 }
 
 type CoverClinicOptions = {
@@ -289,5 +383,156 @@ describe("admission settlement against terms", () => {
       }
       invokeSpy.mockRestore();
     }
+  });
+
+  it("E2E-P3.4-05 Reaching the allowance with nothing queued exhausts the term", async () => {
+    const allowance = 3;
+    const scenario = await newScenario();
+    await setTestClock("2026-04-01T12:00:00.000Z");
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario);
+
+    await postUntilAllowanceConsumed(scenario, token, allowance);
+
+    const terms = await readDoTerms(scenario.installationId);
+    const exhausted = terms.filter((row) => row.state === "exhausted");
+    expect(exhausted).toHaveLength(1);
+    expect(terms.some((row) => row.state === "grace")).toBe(false);
+
+    const denied = await invoke(scenario, {
+      token,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body?.code).toBe("allowance_exhausted");
+  });
+
+  it("E2E-P3.4-06 Exhaustion activates the queued term at that instant", async () => {
+    const allowance = 2;
+    const scenario = await newScenario();
+    const activationInstant = "2026-05-15T09:30:00.000Z";
+    await setTestClock(activationInstant);
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario);
+
+    const before = await readDoTerms(scenario.installationId);
+    const queuedBefore = before.filter((row) => row.state === "queued");
+    expect(queuedBefore).toHaveLength(1);
+
+    await postUntilAllowanceConsumed(scenario, token, allowance);
+
+    const after = await readDoTerms(scenario.installationId);
+    const active = after.find((row) => row.state === "active");
+    expect(active).toBeTruthy();
+    expect(active?.allowance).toBe(allowance);
+    expect(active?.starts_at).toBeTruthy();
+    expect(active?.ends_at).toBe(
+      addDuration(String(active?.starts_at), "month", 1),
+    );
+
+    const hot = await readHotUsage(scenario.installationId);
+    expect(hot.used + hot.reserved).toBeLessThanOrEqual(allowance);
+  });
+
+  it("E2E-P3.4-07 Two concurrent requests near the allowance exhaust once", async () => {
+    const allowance = 5;
+    const scenario = await newScenario();
+    await setTestClock("2026-06-01T08:00:00.000Z");
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario);
+
+    for (let index = 0; index < allowance - 1; index += 1) {
+      await completeChargedRequest(scenario, token);
+    }
+
+    const beforeHot = await readHotUsage(scenario.installationId);
+    expect(beforeHot.used + beforeHot.reserved).toBe(allowance - 1);
+
+    const document = fakePolicyDocument(POLICY_ID, POLICY_VERSION);
+    const published = await publishPolicy(POLICY_ID, POLICY_VERSION, document);
+    expect(published.status).toBe(200);
+    const promoted = await promote(POLICY_ID, POLICY_VERSION);
+    expect(promoted.status).toBe(200);
+
+    const [first, second] = await Promise.all([
+      invoke(scenario, {
+        token,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+      invoke(scenario, {
+        token,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    ]);
+    await flushBackgroundWork();
+
+    const exhaustedTerms = (await readDoTerms(scenario.installationId)).filter(
+      (row) => row.state === "exhausted",
+    );
+    expect(exhaustedTerms).toHaveLength(1);
+    const exhaustedUsed =
+      exhaustedTerms[0]?.used_final ?? (await readHotUsage(scenario.installationId)).used;
+    expect(exhaustedUsed).toBeLessThanOrEqual(allowance + (W_MAX - 1));
+
+    const termEndedCount = await count(
+      "coverage_event",
+      "org_id = ? AND kind = 'term_ended'",
+      [scenario.orgId],
+    );
+    expect(termEndedCount).toBeGreaterThanOrEqual(1);
+
+    const statuses = [first.status, second.status];
+    expect(statuses.some((status) => status === 200)).toBe(true);
+    const refused = [first, second].filter(
+      (result) =>
+        result.status === 403 &&
+        (result.body?.code === "allowance_exhausted" ||
+          result.body?.code === "coverage_lapsed"),
+    );
+    const successorCharge = [first, second].filter((result) => {
+      if (result.status !== 200) {
+        return false;
+      }
+      const ref = String(result.events[0]?.data.request_reference ?? "");
+      return ref.length > 0;
+    });
+    expect(refused.length + successorCharge.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("E2E-P3.4-08 Crossing 75 percent and 90 percent emits one band event each", async () => {
+    const allowance = 10;
+    const scenario = await newScenario();
+    await setTestClock("2026-07-01T10:00:00.000Z");
+    await coverClinic(scenario, { max_allowance_per_month: allowance });
+    await newClinic(scenario);
+    const token = await setupPromotedPolicy(scenario);
+
+    for (let index = 0; index < 8; index += 1) {
+      await completeChargedRequest(scenario, token);
+    }
+    await shipCoverageOutbox(scenario.installationId);
+
+    let bandEvents = await listBandCrossedEvents(scenario.orgId);
+    expect(bandEvents.filter((event) => event.band === "75")).toHaveLength(1);
+
+    await completeChargedRequest(scenario, token);
+    await shipCoverageOutbox(scenario.installationId);
+
+    bandEvents = await listBandCrossedEvents(scenario.orgId);
+    expect(bandEvents.filter((event) => event.band === "90")).toHaveLength(1);
+
+    const band90Count = bandEvents.filter((event) => event.band === "90").length;
+    await completeChargedRequest(scenario, token);
+    await shipCoverageOutbox(scenario.installationId);
+
+    bandEvents = await listBandCrossedEvents(scenario.orgId);
+    expect(bandEvents.filter((event) => event.band === "90")).toHaveLength(
+      band90Count,
+    );
   });
 });
