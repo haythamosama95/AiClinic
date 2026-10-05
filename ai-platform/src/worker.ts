@@ -1715,12 +1715,15 @@ export class GatewayObject extends DurableObject {
       nowIso,
       log,
     );
-    const alertEnv = env as Env;
     for (const alert of shippedAlerts) {
       if (alert.code === "AL-11") {
-        await raiseAl11GrantFromOutbox(alertEnv, alert.alert_key, alert.body);
+        await raiseAl11GrantFromOutbox(
+          runtimeEnv,
+          alert.alert_key,
+          alert.body,
+        );
       } else if (alert.code === "AL-17") {
-        await raiseAl17FromOutbox(alertEnv, alert.alert_key, alert.body);
+        await raiseAl17FromOutbox(runtimeEnv, alert.alert_key, alert.body);
       }
     }
   }
