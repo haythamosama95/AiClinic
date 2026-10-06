@@ -1412,6 +1412,19 @@ async function ensureCoverClinicBootstrap(): Promise<CoverClinicBootstrap> {
   return coverClinicBootstrap;
 }
 
+export function coverClinicSigner(): {
+  signerCredentialId: string;
+  signerAuthenticator: CoverClinicBootstrap["signerAuthenticator"];
+} {
+  if (coverClinicBootstrap === null) {
+    throw new Error("coverClinicSigner: call coverClinic() first");
+  }
+  return {
+    signerCredentialId: coverClinicBootstrap.signerCredentialId,
+    signerAuthenticator: coverClinicBootstrap.signerAuthenticator,
+  };
+}
+
 async function buildCoverPaidGrantEnvelope(input: {
   orgId: string;
   grantId: string;
