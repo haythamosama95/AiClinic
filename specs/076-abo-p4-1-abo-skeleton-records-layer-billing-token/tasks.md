@@ -73,7 +73,7 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system
 
 **Independent Test**: E2E-P4.1-01, E2E-P4.1-02, and E2E-P4.1-09 in harness H-ABO.
 
-- [ ] T007 [US1] Add the failing test `E2E-P4.1-09 the 61st request with one billing token is 429` in `abo/test/system/catalogue.system.test.ts` — red test, FR-005, E2E-P4.1-09. Depends on T006 (same file). The same pinned administrator token on `GET /v1/offers` is accepted 60 times. The 61st is HTTP 429 `rate_limited`. `token_use.hits` stays 60. The harness command fails because the 61st request is not 429.
+- [X] T007 [US1] Add the failing test `E2E-P4.1-09 the 61st request with one billing token is 429` in `abo/test/system/catalogue.system.test.ts` — red test, FR-005, E2E-P4.1-09. Depends on T006 (same file). The same pinned administrator token on `GET /v1/offers` is accepted 60 times. The 61st is HTTP 429 `rate_limited`. `token_use.hits` stays 60. The harness command fails because the 61st request is not 429.
 
 **Checkpoint**: E2E-P4.1-01, E2E-P4.1-02, and E2E-P4.1-09 exist and fail.
 
@@ -81,11 +81,11 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system
 
 **Independent Test**: E2E-P4.1-03, E2E-P4.1-04, and E2E-P4.1-05 in harness H-ABO.
 
-- [ ] T008 [US3] Add the failing test `E2E-P4.1-03 GET offers lists the sellable latest version and echoes version 1` in `abo/test/system/catalogue.system.test.ts` — red test, FR-003, FR-006, E2E-P4.1-03. Depends on T007 (same file). After the fixture, `GET /v1/offers` returns the published offer's latest version, `plan_display_name`, terms `version` and text, and omits the retired offer and the older price. Response header `Abo-Contract-Version` is `1` and body `contract_version` is `1`. The harness command fails because `GET /v1/offers` does not list the sellable version.
+- [X] T008 [US3] Add the failing test `E2E-P4.1-03 GET offers lists the sellable latest version and echoes version 1` in `abo/test/system/catalogue.system.test.ts` — red test, FR-003, FR-006, E2E-P4.1-03. Depends on T007 (same file). After the fixture, `GET /v1/offers` returns the published offer's latest version, `plan_display_name`, terms `version` and text, and omits the retired offer and the older price. Response header `Abo-Contract-Version` is `1` and body `contract_version` is `1`. The harness command fails because `GET /v1/offers` does not list the sellable version.
 
-- [ ] T009 [US3] Add the failing test `E2E-P4.1-04 PUT billing contact is idempotent and rejects a non-E.164 phone` in `abo/test/system/catalogue.system.test.ts` — red test, FR-007, E2E-P4.1-04. Depends on T008 (same file). Two `PUT`s with the same `client_request_id` leave one row at version 1. A new `client_request_id` creates version 2. Phone `12345` → 422 `invalid_request` and does not insert a version. The harness command fails because the contact versions and the 422 are absent.
+- [X] T009 [US3] Add the failing test `E2E-P4.1-04 PUT billing contact is idempotent and rejects a non-E.164 phone` in `abo/test/system/catalogue.system.test.ts` — red test, FR-007, E2E-P4.1-04. Depends on T008 (same file). Two `PUT`s with the same `client_request_id` leave one row at version 1. A new `client_request_id` creates version 2. Phone `12345` → 422 `invalid_request` and does not insert a version. The harness command fails because the contact versions and the 422 are absent.
 
-- [ ] T010 [US3] Add the failing test `E2E-P4.1-05 tenant B does not receive tenant A contact` in `abo/test/system/catalogue.system.test.ts` — red test, FR-007, E2E-P4.1-05. Depends on T009 (same file). After A has a contact, B's `GET` is `not_found`. B's `PUT` whose body includes A's `org` stores B's `org` from the token. A's `GET` still returns A's contact. The harness command fails because tenant isolation is absent.
+- [X] T010 [US3] Add the failing test `E2E-P4.1-05 tenant B does not receive tenant A contact` in `abo/test/system/catalogue.system.test.ts` — red test, FR-007, E2E-P4.1-05. Depends on T009 (same file). After A has a contact, B's `GET` is `not_found`. B's `PUT` whose body includes A's `org` stores B's `org` from the token. A's `GET` still returns A's contact. The harness command fails because tenant isolation is absent.
 
 **Checkpoint**: E2E-P4.1-03, E2E-P4.1-04, and E2E-P4.1-05 exist and fail.
 

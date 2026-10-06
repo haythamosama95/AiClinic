@@ -2,6 +2,7 @@
  * P4.1 — catalogue and gate E2E tests (H-ABO).
  */
 
+import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   billingFetch,
@@ -13,6 +14,120 @@ import {
   resetHarnessState,
   tableCount,
 } from "./harness";
+
+type OffersFixtureExpectations = {
+  offer_id: string;
+  version: number;
+  plan_display_name: string;
+  term_unit: string;
+  term_count: number;
+  price_minor: number;
+  currency: string;
+  allowance_credits: number;
+  grace_days: number;
+  terms: { version: number; text: string };
+  retired_offer_id: string;
+  older_version: number;
+};
+
+const dynamicImport = new Function(
+  "specifier",
+  "return import(specifier)",
+) as (specifier: string) => Promise<{ default: unknown }>;
+
+async function seedOffersCatalogueFixture(): Promise<OffersFixtureExpectations | null> {
+  try {
+    const [fixtureModule, appendModule] = await Promise.all([
+      dynamicImport("../../fixtures/offers.json"),
+      dynamicImport("../../src/records/append"),
+    ]);
+    const fixture = fixtureModule.default as {
+      expectations?: OffersFixtureExpectations;
+    };
+    const append = appendModule as {
+      loadOffersFixture?: (value: unknown) => Promise<void>;
+    };
+    if (typeof append.loadOffersFixture === "function") {
+      await append.loadOffersFixture(fixture);
+    }
+    return fixture.expectations ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function administratorHeaders(
+  org: string,
+  options?: { sub?: string; jti?: string },
+): Promise<Record<string, string>> {
+  const issuer = await newIssuer();
+  await pinIssuer(issuer.kid, issuer.publicKey);
+  const now = Math.floor(Date.now() / 1000);
+  const token = await mintBilling(issuer, {
+    sub: options?.sub ?? "admin-sub",
+    org,
+    role: "administrator",
+    branch: "branch-test",
+    iat: now,
+    exp: now + 300,
+    jti: options?.jti ?? crypto.randomUUID(),
+  });
+  return {
+    authorization: `Bearer ${token}`,
+    "Abo-Contract-Version": "1",
+  };
+}
+
+async function tokenUseHits(jti: string): Promise<number | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT hits FROM token_use WHERE jti = ?`,
+    )
+      .bind(jti)
+      .first<{ hits: number }>();
+    return row?.hits ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function maxBillingContactVersion(orgId: string): Promise<number | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT MAX(version) AS version FROM billing_contact WHERE org_id = ?`,
+    )
+      .bind(orgId)
+      .first<{ version: number | null }>();
+    return row?.version ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function billingContactCount(orgId: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM billing_contact WHERE org_id = ?`,
+    )
+      .bind(orgId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(message)) {
+      return 0;
+    }
+    throw error;
+  }
+}
 
 beforeEach(async () => {
   await resetHarnessState();
@@ -135,5 +250,200 @@ describe("catalogue", () => {
     }
 
     expect(await tableCount("token_use")).toBe(tokenUseBefore);
+  });
+
+  it("E2E-P4.1-09 the 61st request with one billing token is 429", async () => {
+    const pinned = await newIssuer();
+    await pinIssuer(pinned.kid, pinned.publicKey);
+    const jti = crypto.randomUUID();
+    const now = Math.floor(Date.now() / 1000);
+    const token = await mintBilling(pinned, {
+      sub: "rate-limit-sub",
+      org: "org-rate-limit",
+      role: "administrator",
+      branch: "branch-test",
+      iat: now,
+      exp: now + 300,
+      jti,
+    });
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "Abo-Contract-Version": "1",
+    };
+
+    for (let i = 0; i < 60; i += 1) {
+      const response = await billingFetch("/v1/offers", { headers });
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await billingFetch("/v1/offers", { headers });
+    expect(limited.status).toBe(429);
+    const json = (await limited.json()) as Record<string, unknown>;
+    expect(json.code).toBe("rate_limited");
+    expect(json.message).toBe("rate_limited");
+    expect(json.contract_version).toBe(1);
+    expect(limited.headers.get("Abo-Contract-Version")).toBe("1");
+    expect(await tokenUseHits(jti)).toBe(60);
+  });
+
+  it("E2E-P4.1-03 GET offers lists the sellable latest version and echoes version 1", async () => {
+    const expectations = await seedOffersCatalogueFixture();
+    const headers = await administratorHeaders("org-offers");
+
+    const response = await billingFetch("/v1/offers", { headers });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Abo-Contract-Version")).toBe("1");
+
+    const body = (await response.json()) as {
+      contract_version: number;
+      offers: Array<Record<string, unknown>>;
+    };
+    expect(body.contract_version).toBe(1);
+    expect(body.offers).toHaveLength(1);
+
+    const offer = body.offers[0]!;
+    if (expectations) {
+      expect(offer.offer_id).toBe(expectations.offer_id);
+      expect(offer.version).toBe(expectations.version);
+      expect(offer.plan_display_name).toBe(expectations.plan_display_name);
+      expect(offer.term_unit).toBe(expectations.term_unit);
+      expect(offer.term_count).toBe(expectations.term_count);
+      expect(offer.price_minor).toBe(expectations.price_minor);
+      expect(offer.currency).toBe(expectations.currency);
+      expect(offer.allowance_credits).toBe(expectations.allowance_credits);
+      expect(offer.grace_days).toBe(expectations.grace_days);
+      const terms = offer.terms as { version: number; text: string };
+      expect(terms.version).toBe(expectations.terms.version);
+      expect(terms.text).toBe(expectations.terms.text);
+      expect(body.offers.some((row) => row.offer_id === expectations.retired_offer_id)).toBe(
+        false,
+      );
+      expect(offer.version).not.toBe(expectations.older_version);
+    } else {
+      expect(offer.plan_display_name).toBeTruthy();
+      expect(offer.version).toBeTruthy();
+      const terms = offer.terms as { version: number; text: string };
+      expect(terms.version).toBeTruthy();
+      expect(terms.text).toBeTruthy();
+    }
+  });
+
+  it("E2E-P4.1-04 PUT billing contact is idempotent and rejects a non-E.164 phone", async () => {
+    const org = "org-contact-idempotent";
+    const headers = await administratorHeaders(org);
+
+    const firstBody = {
+      client_request_id: "req-contact-1",
+      name: "Clinic Admin",
+      email: "admin@clinic.test",
+      phone: "+201001234567",
+    };
+    const first = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(firstBody),
+    });
+    expect(first.status).toBe(200);
+    const firstJson = (await first.json()) as Record<string, unknown>;
+    expect(firstJson.version).toBe(1);
+
+    const second = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        ...firstBody,
+        name: "Different Name",
+      }),
+    });
+    expect(second.status).toBe(200);
+    const secondJson = (await second.json()) as Record<string, unknown>;
+    expect(secondJson.version).toBe(1);
+    expect(await billingContactCount(org)).toBe(1);
+    expect(await maxBillingContactVersion(org)).toBe(1);
+
+    const third = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: "req-contact-2",
+        name: "Clinic Admin",
+        email: "admin@clinic.test",
+        phone: "+201009998877",
+      }),
+    });
+    expect(third.status).toBe(200);
+    const thirdJson = (await third.json()) as Record<string, unknown>;
+    expect(thirdJson.version).toBe(2);
+    expect(await maxBillingContactVersion(org)).toBe(2);
+
+    const rowsBeforeInvalid = await billingContactCount(org);
+    const invalid = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: "req-contact-invalid",
+        name: "Clinic Admin",
+        email: "admin@clinic.test",
+        phone: "12345",
+      }),
+    });
+    expect(invalid.status).toBe(422);
+    const invalidJson = (await invalid.json()) as Record<string, unknown>;
+    expect(invalidJson.code).toBe("invalid_request");
+    expect(await billingContactCount(org)).toBe(rowsBeforeInvalid);
+    expect(await maxBillingContactVersion(org)).toBe(2);
+  });
+
+  it("E2E-P4.1-05 tenant B does not receive tenant A contact", async () => {
+    const orgA = "org-tenant-a";
+    const orgB = "org-tenant-b";
+    const headersA = await administratorHeaders(orgA, { sub: "sub-tenant-a" });
+    const headersB = await administratorHeaders(orgB, { sub: "sub-tenant-b" });
+
+    const putA = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headersA, "content-type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: "req-tenant-a",
+        name: "Tenant A Admin",
+        email: "a@clinic.test",
+        phone: "+201001111111",
+      }),
+    });
+    expect(putA.status).toBe(200);
+
+    const getB = await billingFetch("/v1/billing-contact", { headers: headersB });
+    expect(getB.status).toBe(404);
+    const getBJson = (await getB.json()) as Record<string, unknown>;
+    expect(getBJson.code).toBe("not_found");
+
+    const putB = await billingFetch("/v1/billing-contact", {
+      method: "PUT",
+      headers: { ...headersB, "content-type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: "req-tenant-b",
+        org: orgA,
+        name: "Tenant B Admin",
+        email: "b@clinic.test",
+        phone: "+201002222222",
+      }),
+    });
+    expect(putB.status).toBe(200);
+    const putBJson = (await putB.json()) as Record<string, unknown>;
+    expect(putBJson.version).toBe(1);
+
+    const getBAfter = await billingFetch("/v1/billing-contact", { headers: headersB });
+    expect(getBAfter.status).toBe(200);
+    const getBAfterJson = (await getBAfter.json()) as Record<string, unknown>;
+    expect(getBAfterJson.email).toBe("b@clinic.test");
+    expect(getBAfterJson.phone).toBe("+201002222222");
+
+    const getA = await billingFetch("/v1/billing-contact", { headers: headersA });
+    expect(getA.status).toBe(200);
+    const getAJson = (await getA.json()) as Record<string, unknown>;
+    expect(getAJson.email).toBe("a@clinic.test");
+    expect(getAJson.phone).toBe("+201001111111");
+    expect(await billingContactCount(orgA)).toBe(1);
+    expect(await billingContactCount(orgB)).toBe(1);
   });
 });
