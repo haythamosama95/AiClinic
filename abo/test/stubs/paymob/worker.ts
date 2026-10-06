@@ -161,6 +161,25 @@ export default {
         );
       }
 
+      if (txnId === "99002") {
+        return jsonResponse(
+          transactionPayload(DEFAULT_ORDER_ID, {
+            id: txnId,
+            success: false,
+          }),
+        );
+      }
+
+      if (txnId === "99004") {
+        return jsonResponse(
+          transactionPayload(DEFAULT_ORDER_ID, {
+            id: txnId,
+            has_parent_transaction: true,
+            parent_transaction: { id: 99003 },
+          }),
+        );
+      }
+
       return jsonResponse(transactionPayload(DEFAULT_ORDER_ID, { id: txnId }));
     }
 

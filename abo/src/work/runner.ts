@@ -73,7 +73,7 @@ async function takeWork(
   const nowIso = new Date(nowMs).toISOString();
   const leaseUntil = new Date(nowMs + LEASE_MS).toISOString();
 
-  await env.DB.prepare(
+  const leased = await env.DB.prepare(
     `UPDATE work
      SET lease_until = ?
      WHERE work_id = ?
@@ -83,6 +83,9 @@ async function takeWork(
   )
     .bind(leaseUntil, workId, nowIso, nowIso)
     .run();
+  if ((leased.meta.changes ?? 0) === 0) {
+    return null;
+  }
 
   return env.DB.prepare(
     `SELECT work_id, kind, subject_id, dedupe_key, state, attempts,
@@ -96,6 +99,7 @@ async function takeWork(
 async function releaseLeaseRetry(
   env: WorkRunnerEnv,
   workId: string,
+  leaseUntil: string,
   attempts: number,
   lastError: string,
 ): Promise<void> {
@@ -104,10 +108,31 @@ async function releaseLeaseRetry(
   await env.DB.prepare(
     `UPDATE work
      SET attempts = ?, next_attempt_at = ?, lease_until = NULL, last_error = ?
-     WHERE work_id = ?`,
+     WHERE work_id = ? AND lease_until = ?`,
   )
-    .bind(attempts, nextAttempt, lastError, workId)
+    .bind(attempts, nextAttempt, lastError, workId, leaseUntil)
     .run();
+}
+
+async function leaseStillHeld(
+  env: WorkRunnerEnv,
+  workId: string,
+  leaseUntil: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM work WHERE work_id = ? AND lease_until = ?`,
+  )
+    .bind(workId, leaseUntil)
+    .first();
+  return row !== null;
+}
+
+function paymobStateSeenKey(
+  txnId: string,
+  normalizedState: string,
+  cumulativeReversedMinor: number,
+): string {
+  return `paymob|${txnId}|${normalizedState}|${cumulativeReversedMinor}`;
 }
 
 async function markWorkDone(
@@ -163,58 +188,6 @@ async function latestNotificationForCheckout(
   )
     .bind(checkoutId)
     .first<NotificationRow>();
-}
-
-type CallbackObj = {
-  success: boolean;
-  pending: boolean;
-  is_refunded: boolean;
-  is_voided: boolean;
-  has_parent_transaction: boolean;
-};
-
-function callbackKind(obj: CallbackObj): ProviderTxn["kind"] {
-  if (obj.is_refunded || obj.is_voided || obj.has_parent_transaction) {
-    return "reversal";
-  }
-  if (obj.pending) {
-    return "payment_pending";
-  }
-  if (obj.success) {
-    return "payment_succeeded";
-  }
-  return "payment_failed";
-}
-
-async function callbackKindFromNotification(
-  env: WorkRunnerEnv,
-  notification: NotificationRow,
-): Promise<ProviderTxn["kind"] | null> {
-  const object = await env.R2.get(notification.body_r2_key);
-  if (object === null) {
-    return null;
-  }
-  const body = await object.text();
-  try {
-    if (notification.channel === "processed") {
-      const parsed = JSON.parse(body) as { obj?: CallbackObj };
-      if (parsed.obj === undefined) {
-        return null;
-      }
-      return callbackKind(parsed.obj);
-    }
-    const params = new URLSearchParams(body);
-    const obj: CallbackObj = {
-      success: params.get("success") === "true",
-      pending: params.get("pending") === "true",
-      is_refunded: params.get("is_refunded") === "true",
-      is_voided: params.get("is_voided") === "true",
-      has_parent_transaction: params.get("has_parent_transaction") === "true",
-    };
-    return callbackKind(obj);
-  } catch {
-    return null;
-  }
 }
 
 async function paymobTxnIdFromNotification(
@@ -336,12 +309,25 @@ async function classificationForPayment(
   return prior === null ? "normal" : "likely_duplicate";
 }
 
+function paymobStateSeenInsert(
+  env: WorkRunnerEnv,
+  dedupeKey: string,
+  createdAt: string,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
+     VALUES (?, 'confirm', ?)
+     ON CONFLICT(dedupe_key) DO NOTHING`,
+  ).bind(dedupeKey, createdAt);
+}
+
 async function confirmAttemptDeclined(
   env: WorkRunnerEnv,
   work: WorkRow,
   checkout: CheckoutRow,
   notificationId: string,
   leaseUntil: string,
+  stateSeenKey: string,
 ): Promise<void> {
   const nowIso = await clockNowIso(env);
   const statements = await appendCheckoutEvent(
@@ -360,13 +346,18 @@ async function confirmAttemptDeclined(
       `UPDATE checkout_status SET last_event_at = ? WHERE checkout_id = ?`,
     ).bind(nowIso, checkout.checkout_id),
   );
+  statements.push(paymobStateSeenInsert(env, stateSeenKey, nowIso));
   statements.push(
     env.DB.prepare(
       `UPDATE work SET state = 'done', lease_until = NULL, last_error = NULL
        WHERE work_id = ? AND lease_until = ?`,
     ).bind(work.work_id, leaseUntil),
   );
-  await env.DB.batch(statements);
+  const results = await env.DB.batch(statements);
+  const workIdx = statements.length - 1;
+  if ((results[workIdx]?.meta.changes ?? 0) === 0) {
+    throw new Error("lease_lost");
+  }
 }
 
 async function confirmSuccessBatch(
@@ -376,12 +367,20 @@ async function confirmSuccessBatch(
   notification: NotificationRow,
   leaseUntil: string,
 ): Promise<void> {
+  if (!(await leaseStillHeld(env, work.work_id, leaseUntil))) {
+    return;
+  }
+
   const provider = providerForId(env, PAYMOB_PROVIDER_ID);
   if (provider === null) {
     throw new Error("provider_missing");
   }
 
-  const inquiry = await provider.inquire({ checkout_id: checkout.checkout_id });
+  const paymobTxnId = await paymobTxnIdFromNotification(env, notification);
+  const inquiry = await provider.inquire({
+    checkout_id: checkout.checkout_id,
+    paymob_txn_id: paymobTxnId ?? undefined,
+  });
   if (!inquiry.bound) {
     await raiseAlert(
       env,
@@ -394,16 +393,18 @@ async function confirmSuccessBatch(
   }
 
   if (inquiry.transactions.length === 0) {
-    await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "inquiry_retry");
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseUntil,
+      work.attempts + 1,
+      "inquiry_retry",
+    );
     return;
   }
 
   const confirmedTxn = inquiry.transactions[0]!;
-  const callbackKind = await callbackKindFromNotification(env, notification);
-  const effectiveKind =
-    callbackKind === "reversal" || confirmedTxn.kind === "reversal"
-      ? "reversal"
-      : confirmedTxn.kind;
+  const effectiveKind = confirmedTxn.kind;
 
   const checkoutState = await checkoutStatusState(env, checkout.checkout_id);
   if (checkoutState === "paid" && effectiveKind === "payment_succeeded") {
@@ -412,7 +413,32 @@ async function confirmSuccessBatch(
   }
 
   if (effectiveKind === "payment_pending") {
-    await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "pending");
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseUntil,
+      work.attempts + 1,
+      "pending",
+    );
+    return;
+  }
+
+  const cumulativeReversed =
+    confirmedTxn.reversal?.cumulative_reversed_minor ?? 0;
+  const providerTxnId =
+    confirmedTxn.provider_txn_id ?? paymobTxnId ?? "unknown";
+  const stateSeenKey = paymobStateSeenKey(
+    providerTxnId,
+    effectiveKind,
+    cumulativeReversed,
+  );
+  const existingState = await env.DB.prepare(
+    `SELECT 1 FROM paymob_state_seen WHERE dedupe_key = ?`,
+  )
+    .bind(stateSeenKey)
+    .first();
+  if (existingState !== null) {
+    await markWorkDone(env, work.work_id, leaseUntil);
     return;
   }
 
@@ -423,12 +449,11 @@ async function confirmSuccessBatch(
       checkout,
       notification.notification_id,
       leaseUntil,
+      stateSeenKey,
     );
     return;
   }
 
-  const cumulativeReversed =
-    confirmedTxn.reversal?.cumulative_reversed_minor ?? 0;
   const normalizedState = effectiveKind;
   const subject = `checkout:${checkout.checkout_id}`;
   const nowIso = await clockNowIso(env);
@@ -438,7 +463,9 @@ async function confirmSuccessBatch(
   await env.R2.put(inquiryKey, inquiryJson);
   const inquirySha = await sha256Hex(new TextEncoder().encode(inquiryJson));
 
-  const statements: D1PreparedStatement[] = [];
+  const statements: D1PreparedStatement[] = [
+    paymobStateSeenInsert(env, stateSeenKey, nowIso),
+  ];
 
   if (
     await shouldWriteInquiryResult(
@@ -468,6 +495,16 @@ async function confirmSuccessBatch(
   }
 
   if (effectiveKind === "reversal") {
+    if (confirmedTxn.reversal?.is_full !== true) {
+      await releaseLeaseRetry(
+        env,
+        work.work_id,
+        leaseUntil,
+        work.attempts + 1,
+        "partial_reversal",
+      );
+      return;
+    }
     const paymentId = confirmedTxn.payment_id;
     const reference = humanRef("PAY", paymentId);
     const classification = await classificationForPayment(env, checkout);
@@ -528,7 +565,11 @@ async function confirmSuccessBatch(
          WHERE work_id = ? AND lease_until = ?`,
       ).bind(work.work_id, leaseUntil),
     );
-    await env.DB.batch(statements);
+    const reversalResults = await env.DB.batch(statements);
+    const reversalWorkIdx = statements.length - 1;
+    if ((reversalResults[reversalWorkIdx]?.meta.changes ?? 0) === 0) {
+      throw new Error("lease_lost");
+    }
     return;
   }
 
@@ -608,7 +649,11 @@ async function confirmSuccessBatch(
          WHERE work_id = ? AND lease_until = ?`,
       ).bind(work.work_id, leaseUntil),
     );
-    await env.DB.batch(statements);
+    const mismatchResults = await env.DB.batch(statements);
+    const mismatchWorkIdx = statements.length - 1;
+    if ((mismatchResults[mismatchWorkIdx]?.meta.changes ?? 0) === 0) {
+      throw new Error("lease_lost");
+    }
     return;
   }
 
@@ -709,8 +754,8 @@ async function confirmSuccessBatch(
       nowIso,
     ),
   );
-  const txnId = await paymobTxnIdFromNotification(env, notification);
-  if (txnId !== null) {
+  const txnId = confirmedTxn.provider_txn_id ?? paymobTxnId;
+  if (txnId !== null && txnId !== undefined) {
     const intention = await env.DB.prepare(
       `SELECT order_id FROM paymob_intention WHERE checkout_id = ?`,
     )
@@ -720,15 +765,17 @@ async function confirmSuccessBatch(
       env.DB.prepare(
         `INSERT INTO paymob_txn (
            txn_id, order_id, checkout_id, payment_id, parent_txn_id, last_state_key
-         ) VALUES (?, ?, ?, ?, NULL, ?)
+         ) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(txn_id) DO UPDATE SET
            payment_id = excluded.payment_id,
+           parent_txn_id = excluded.parent_txn_id,
            last_state_key = excluded.last_state_key`,
       ).bind(
         txnId,
         intention?.order_id ?? "",
         checkout.checkout_id,
         paymentId,
+        confirmedTxn.provider_parent_txn_id ?? null,
         confirmedTxn.dedupe_key,
       ),
     );
@@ -740,7 +787,11 @@ async function confirmSuccessBatch(
     ).bind(work.work_id, leaseUntil),
   );
 
-  await env.DB.batch(statements);
+  const grantResults = await env.DB.batch(statements);
+  const grantWorkIdx = statements.length - 1;
+  if ((grantResults[grantWorkIdx]?.meta.changes ?? 0) === 0) {
+    throw new Error("lease_lost");
+  }
 }
 
 async function processConfirmWork(
@@ -776,11 +827,23 @@ async function processConfirmWork(
     }
     const inquiry = await provider.inquire({ checkout_id: checkout.checkout_id });
     if (!inquiry.bound && inquiry.transactions.length === 0) {
-      await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "no_notification");
+      await releaseLeaseRetry(
+        env,
+        work.work_id,
+        leaseUntil,
+        work.attempts + 1,
+        "no_notification",
+      );
       return;
     }
     if (inquiry.transactions.length === 0) {
-      await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "inquiry_retry");
+      await releaseLeaseRetry(
+        env,
+        work.work_id,
+        leaseUntil,
+        work.attempts + 1,
+        "inquiry_retry",
+      );
       return;
     }
     const syntheticNotification: NotificationRow = {
@@ -799,20 +862,26 @@ async function processConfirmWork(
     return;
   }
 
-  const callbackEventKind = await callbackKindFromNotification(env, notification);
-  if (callbackEventKind === "payment_failed") {
-    await confirmAttemptDeclined(
+  if (notification.body_r2_key.length === 0) {
+    await confirmSuccessBatch(
       env,
       work,
       checkout,
-      notification.notification_id,
+      notification,
       leaseUntil,
     );
     return;
   }
 
-  if (callbackEventKind === null) {
-    await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "parse_failed");
+  const paymobTxnId = await paymobTxnIdFromNotification(env, notification);
+  if (paymobTxnId === null) {
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseUntil,
+      work.attempts + 1,
+      "parse_failed",
+    );
     return;
   }
 
@@ -825,7 +894,13 @@ async function processConfirmWork(
       leaseUntil,
     );
   } catch {
-    await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "batch_failed");
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseUntil,
+      work.attempts + 1,
+      "batch_failed",
+    );
   }
 }
 
@@ -837,10 +912,20 @@ export async function runConfirmForWorkId(
   if (work === null || work.kind !== "confirm") {
     return;
   }
+  const leaseUntil = work.lease_until;
+  if (leaseUntil === null) {
+    return;
+  }
   try {
     await processConfirmWork(env, work);
   } catch {
-    await releaseLeaseRetry(env, work.work_id, work.attempts + 1, "batch_failed");
+    await releaseLeaseRetry(
+      env,
+      work.work_id,
+      leaseUntil,
+      work.attempts + 1,
+      "batch_failed",
+    );
   }
 }
 

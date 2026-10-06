@@ -473,6 +473,8 @@ async function providerTxnFromAcceptanceAsync(
     occurred_at: new Date().toISOString(),
     dedupe_key: `paymob:txn:${txnId}:${kind}`,
     reversal: reversalFromTxn(txn),
+    provider_txn_id: txnId,
+    provider_parent_txn_id: paymobParentTxnId(txn),
   };
 }
 
@@ -534,13 +536,17 @@ async function authToken(env: PaymobAdapterEnv): Promise<string | null> {
   return cachedPaymobAuthToken;
 }
 
+const INQUIRY_RETRY: InquireResult = { bound: true, transactions: [] };
+
 async function inquireImpl(
   env: PaymobAdapterEnv,
   input: InquireInput,
 ): Promise<InquireResult> {
   let checkoutId: string;
+  let paymobTxnIdOverride: string | undefined;
   if ("checkout_id" in input) {
     checkoutId = input.checkout_id;
+    paymobTxnIdOverride = input.paymob_txn_id;
   } else {
     const row = await env.DB.prepare(
       `SELECT checkout_id FROM payment WHERE payment_id = ?`,
@@ -564,7 +570,7 @@ async function inquireImpl(
 
   const token = await authToken(env);
   if (token === null) {
-    return { bound: false, transactions: [] };
+    return INQUIRY_RETRY;
   }
 
   const orderInquiry = await postPaymobOrderTransactionInquiry(
@@ -574,45 +580,63 @@ async function inquireImpl(
   );
   if (orderInquiry.outcome === "unauthorized") {
     cachedPaymobAuthToken = null;
-    return { bound: false, transactions: [] };
+    return INQUIRY_RETRY;
   }
   if (
     orderInquiry.outcome === "timeout" ||
     orderInquiry.outcome === "rate_limit"
   ) {
-    return { bound: true, transactions: [] };
+    return INQUIRY_RETRY;
   }
   if (orderInquiry.outcome !== "ok") {
+    return INQUIRY_RETRY;
+  }
+
+  const orderBound =
+    String(orderInquiry.data.id) === String(intention.order_id);
+  if (!orderBound) {
     return { bound: false, transactions: [] };
   }
 
-  const bound =
-    String(orderInquiry.data.id) === String(intention.order_id);
-  const txnId = await latestTxnIdForCheckout(env, checkoutId);
+  const txnId =
+    paymobTxnIdOverride ?? (await latestTxnIdForCheckout(env, checkoutId));
   if (txnId === null) {
-    return { bound, transactions: [] };
+    return { bound: true, transactions: [] };
   }
 
   const txnResult = await getPaymobAcceptanceTransaction(env, token, txnId);
   if (txnResult.outcome === "unauthorized") {
     cachedPaymobAuthToken = null;
-    return { bound, transactions: [] };
+    return INQUIRY_RETRY;
   }
   if (
     txnResult.outcome === "timeout" ||
     txnResult.outcome === "rate_limit"
   ) {
-    return { bound, transactions: [] };
+    return INQUIRY_RETRY;
   }
   if (txnResult.outcome !== "ok") {
-    return { bound, transactions: [] };
+    return INQUIRY_RETRY;
+  }
+
+  const txnBound =
+    String(txnResult.data.order.id) === String(intention.order_id);
+  if (!txnBound) {
+    return { bound: false, transactions: [] };
   }
 
   const txn = await providerTxnFromAcceptanceAsync(
     txnResult.data,
     checkoutId,
   );
-  return { bound, transactions: [txn] };
+  return { bound: true, transactions: [txn] };
+}
+
+export function paymobParentTxnId(
+  txn: PaymobAcceptanceTransaction,
+): string | null {
+  const parentId = txn.parent_transaction?.id;
+  return parentId === undefined ? null : String(parentId);
 }
 
 async function parseNotificationImpl(

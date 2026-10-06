@@ -61,6 +61,7 @@ export type PaymobAcceptanceTransaction = {
   currency: string;
   order: { id: string | number };
   refunded_amount_cents?: string | number;
+  parent_transaction?: { id: string | number };
 };
 
 function providerHttpAbortMs(env: PaymobClientEnv): number {
@@ -244,6 +245,19 @@ function parseAcceptanceTransactionResponse(
         ? refundedAmount
         : undefined;
 
+  let parentTransaction: { id: string | number } | undefined;
+  const parent = record.parent_transaction;
+  if (parent !== null && typeof parent === "object") {
+    const parentRecord = parent as Record<string, unknown>;
+    const parentId = parentRecord.id;
+    if (
+      (typeof parentId === "string" || typeof parentId === "number") &&
+      (typeof parentId !== "number" || Number.isFinite(parentId))
+    ) {
+      parentTransaction = { id: parentId };
+    }
+  }
+
   return {
     id,
     success: record.success,
@@ -255,6 +269,7 @@ function parseAcceptanceTransactionResponse(
     currency: record.currency,
     order: { id: orderId },
     refunded_amount_cents: refundedAmountCents,
+    parent_transaction: parentTransaction,
   };
 }
 

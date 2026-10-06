@@ -71,6 +71,10 @@ export type ProviderTxn = {
   occurred_at: string;
   dedupe_key: string;
   reversal?: ProviderReversal;
+  /** Paymob acceptance transaction id (adapter only). */
+  provider_txn_id?: string;
+  /** Paymob parent transaction id for child refunds (adapter only). */
+  provider_parent_txn_id?: string | null;
 };
 
 /** Raw notify request surface passed to the adapter (04 §5.1). */
@@ -88,6 +92,8 @@ export type ParseNotificationResult = {
 
 export type InquireByCheckout = {
   checkout_id: string;
+  /** Paymob acceptance transaction id from the notification being confirmed. */
+  paymob_txn_id?: string;
 };
 
 export type InquireByPayment = {

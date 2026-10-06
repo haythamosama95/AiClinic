@@ -166,25 +166,43 @@ async function scheduleConfirmForCheckout(
     .run();
 }
 
-async function insertNotificationAndConfirm(
+async function claimNotifyBodyDedupe(
+  env: NotifyIntakeEnv,
+  bodySha256: string,
+): Promise<boolean> {
+  const nowIso = await clockNowIso(env);
+  const result = await env.DB.prepare(
+    `INSERT INTO paymob_state_seen (dedupe_key, source, first_seen_at)
+     VALUES (?, 'notify_body', ?)
+     ON CONFLICT(dedupe_key) DO NOTHING`,
+  )
+    .bind(`notify-body:${bodySha256}`, nowIso)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+async function insertEnqueuedNotificationAndConfirm(
   env: NotifyIntakeEnv,
   params: {
     notificationId: string;
-    body: string;
     bodySha256: string;
     bodyR2Key: string;
-    checkoutId: string | null;
-    disposition: "enqueued" | "duplicate" | "unmatched";
+    checkoutId: string;
     channel: "processed" | "response";
   },
 ): Promise<string | null> {
+  if (!(await claimNotifyBodyDedupe(env, params.bodySha256))) {
+    return null;
+  }
+
   const nowIso = await clockNowIso(env);
-  const statements: D1PreparedStatement[] = [
+  const confirmId = await newId(env);
+  await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO notification (
          notification_id, provider_id, channel, hmac_valid, body_r2_key,
          body_sha256, dedupe_key, checkout_id, disposition, adapter_version
-       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'enqueued', ?)`,
     ).bind(
       params.notificationId,
       PAYMOB_PROVIDER_ID,
@@ -193,32 +211,78 @@ async function insertNotificationAndConfirm(
       params.bodySha256,
       params.bodySha256,
       params.checkoutId,
-      params.disposition,
       NOTIFY_ADAPTER_VERSION,
     ),
-  ];
+    env.DB.prepare(
+      `INSERT INTO work (
+         work_id, kind, subject_id, dedupe_key, state, attempts,
+         next_attempt_at, lease_until, last_error, opened_at
+       ) VALUES (?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
+    ).bind(
+      confirmId,
+      params.checkoutId,
+      `confirm:${params.notificationId}`,
+      nowIso,
+      nowIso,
+    ),
+  ]);
+  return confirmId;
+}
 
-  let confirmWorkId: string | null = null;
-  if (params.disposition === "enqueued" && params.checkoutId !== null) {
-    confirmWorkId = await newId(env);
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO work (
-           work_id, kind, subject_id, dedupe_key, state, attempts,
-           next_attempt_at, lease_until, last_error, opened_at
-         ) VALUES (?, 'confirm', ?, ?, 'open', 0, ?, NULL, NULL, ?)`,
-      ).bind(
-        confirmWorkId,
-        params.checkoutId,
-        `confirm:${params.notificationId}`,
-        nowIso,
-        nowIso,
-      ),
-    );
-  }
+async function insertDuplicateNotification(
+  env: NotifyIntakeEnv,
+  params: {
+    notificationId: string;
+    bodySha256: string;
+    bodyR2Key: string;
+    checkoutId: string | null;
+    channel: "processed" | "response";
+  },
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO notification (
+       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+     ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'duplicate', ?)`,
+  )
+    .bind(
+      params.notificationId,
+      PAYMOB_PROVIDER_ID,
+      params.channel,
+      params.bodyR2Key,
+      params.bodySha256,
+      params.bodySha256,
+      params.checkoutId,
+      NOTIFY_ADAPTER_VERSION,
+    )
+    .run();
+}
 
-  await env.DB.batch(statements);
-  return confirmWorkId;
+async function insertUnmatchedNotification(
+  env: NotifyIntakeEnv,
+  params: {
+    notificationId: string;
+    bodySha256: string;
+    bodyR2Key: string;
+    channel: "processed" | "response";
+  },
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO notification (
+       notification_id, provider_id, channel, hmac_valid, body_r2_key,
+       body_sha256, dedupe_key, checkout_id, disposition, adapter_version
+     ) VALUES (?, ?, ?, 1, ?, ?, ?, NULL, 'unmatched', ?)`,
+  )
+    .bind(
+      params.notificationId,
+      PAYMOB_PROVIDER_ID,
+      params.channel,
+      params.bodyR2Key,
+      params.bodySha256,
+      params.bodySha256,
+      NOTIFY_ADAPTER_VERSION,
+    )
+    .run();
 }
 
 export async function handlePostNotifyPaymob(
@@ -255,35 +319,7 @@ export async function handlePostNotifyPaymob(
   }
 
   const bodySha256 = await sha256Hex(new TextEncoder().encode(body));
-  const existing = await env.DB.prepare(
-    `SELECT notification_id FROM notification WHERE dedupe_key = ?`,
-  )
-    .bind(bodySha256)
-    .first<{ notification_id: string }>();
-
-  if (existing !== null) {
-    const notificationId = await newId(env, 1);
-    const bodyR2Key = `evidence/notification/${notificationId}`;
-    try {
-      await env.R2.put(bodyR2Key, body);
-      await insertNotificationAndConfirm(env, {
-        notificationId,
-        body,
-        bodySha256,
-        bodyR2Key,
-        checkoutId: parsed.events[0]?.checkout_id ?? null,
-        disposition: "duplicate",
-        channel: "processed",
-      });
-    } catch {
-      return emptyResponse(500);
-    }
-    return emptyResponse(200);
-  }
-
   const checkoutId = parsed.events[0]?.checkout_id ?? null;
-  const disposition =
-    checkoutId === null ? "unmatched" : ("enqueued" as const);
   const notificationId = await newId(env);
   const bodyR2Key = `evidence/notification/${notificationId}`;
 
@@ -295,15 +331,34 @@ export async function handlePostNotifyPaymob(
 
   let confirmWorkId: string | null = null;
   try {
-    confirmWorkId = await insertNotificationAndConfirm(env, {
-      notificationId,
-      body,
-      bodySha256,
-      bodyR2Key,
-      checkoutId,
-      disposition,
-      channel: "processed",
-    });
+    if (checkoutId === null) {
+      await insertUnmatchedNotification(env, {
+        notificationId,
+        bodySha256,
+        bodyR2Key,
+        channel: "processed",
+      });
+    } else {
+      confirmWorkId = await insertEnqueuedNotificationAndConfirm(env, {
+        notificationId,
+        bodySha256,
+        bodyR2Key,
+        checkoutId,
+        channel: "processed",
+      });
+      if (confirmWorkId === null) {
+        const duplicateId = await newId(env, 1);
+        const duplicateR2Key = `evidence/notification/${duplicateId}`;
+        await env.R2.put(duplicateR2Key, body);
+        await insertDuplicateNotification(env, {
+          notificationId: duplicateId,
+          bodySha256,
+          bodyR2Key: duplicateR2Key,
+          checkoutId,
+          channel: "processed",
+        });
+      }
+    }
   } catch {
     return emptyResponse(500);
   }
