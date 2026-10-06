@@ -3,20 +3,28 @@
  */
 
 import { env, runInDurableObject, SELF } from "cloudflare:test";
-import { CHANNEL_VERSIONS } from "vendor-contracts";
+import {
+  CHANNEL_VERSIONS,
+  grantIdPaid,
+  sha256Hex,
+  subscriptionRef,
+} from "vendor-contracts";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { supplementaryFieldsForCode } from "../../src/errors";
 import {
   applyAllMigrations,
   coverClinic,
+  coverClinicAboKid,
   count,
   fakePolicyDocument,
   flushBackgroundWork,
   GATEWAY_ORIGIN,
   getUsageEvents,
+  getVendorTestClockIso,
   invoke,
   mintAat,
   mintVendorAccessJwt,
+  signCoverAbo,
   newClinic,
   newScenario,
   POLICY_ID,
@@ -36,7 +44,11 @@ import {
 } from "./harness";
 
 const CONTRACT_VERSION = CHANNEL_VERSIONS.vendorEntrypoint;
+const PLATFORM_CLINIC_VERSION = CHANNEL_VERSIONS.platformClinic;
 const PLATFORM_FEED_VERSION = CHANNEL_VERSIONS.platformFeed;
+const COVER_PLAN_ID = "live-monthly";
+const COVER_PLAN_VERSION = 1;
+const COVER_PLAN_MAX_ALLOWANCE = 10_000;
 const QUOTA_WEIGHT = 1;
 const W_MAX = QUOTA_WEIGHT;
 const FALLBACK_WEIGHT_CAP = 5 * W_MAX;
@@ -277,6 +289,65 @@ async function waitForReservation(orgId: string): Promise<string | null> {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   return null;
+}
+
+async function buildSecondPaidGrantEnvelope(input: {
+  orgId: string;
+  grantId: string;
+}): Promise<Record<string, unknown>> {
+  const paidAt = getVendorTestClockIso() ?? new Date().toISOString();
+  const paymentRef = crypto.randomUUID().replace(/-/g, "");
+  const contentSha256 = await sha256Hex(new TextEncoder().encode(paymentRef));
+  return {
+    contract_version: CONTRACT_VERSION,
+    grant_id: input.grantId,
+    org_id: input.orgId,
+    kind: "term",
+    placement: "queue",
+    source: { kind: "paid", ref: paymentRef },
+    plan: { plan_id: COVER_PLAN_ID, plan_version: COVER_PLAN_VERSION },
+    duration: { unit: "month", count: 1 },
+    allowance_credits: COVER_PLAN_MAX_ALLOWANCE,
+    grace: { days: 7, cap_rule: "proportional" },
+    paid_at: paidAt,
+    evidence: {
+      content_sha256: contentSha256,
+      approvals: [{ credential_id: "cred-001", assertion: "stub" }],
+    },
+  };
+}
+
+async function grantSecondPaidTerm(scenario: Scenario): Promise<void> {
+  const grantId = await grantIdPaid(crypto.randomUUID().replace(/-/g, ""));
+  const envelope = await buildSecondPaidGrantEnvelope({
+    orgId: scenario.orgId,
+    grantId,
+  });
+  const aboSignature = await signCoverAbo(envelope);
+  const granted = await p39VendorCall("grant", {
+    contract_version: CONTRACT_VERSION,
+    envelope,
+    abo_kid: coverClinicAboKid(),
+    abo_signature: aboSignature,
+  });
+  expect(granted.result === "applied" || granted.result === "already_applied").toBe(
+    true,
+  );
+}
+
+async function getCoverageDetail(scenario: Scenario): Promise<string> {
+  const accessJwt = await mintVendorAccessJwt();
+  const coverage = await p39VendorCall(
+    "getCoverage",
+    {
+      contract_version: CONTRACT_VERSION,
+      org_id: scenario.orgId,
+      installation_id: scenario.installationId,
+    },
+    { accessJwt },
+  );
+  expect(coverage.result).toBe("ok");
+  return coverage.detail;
 }
 
 async function insertCoverageEventRow(input: {
@@ -566,6 +637,79 @@ describe("P3.9 fallback admission, feed, and coverage read", () => {
       );
       expect(consumer?.last_pull_at ?? null).toBeNull();
     }
+  });
+
+  it("E2E-P3.9-07 administrator coverage read does not write the DO", async () => {
+    const scenario = await newScenario();
+    await coverClinic(scenario);
+    await grantSecondPaidTerm(scenario);
+
+    const detailBefore = await getCoverageDetail(scenario);
+    const vendorCoverage = JSON.parse(detailBefore) as {
+      snapshot: Record<string, unknown>;
+      queued_terms: unknown[];
+      recent_terms: unknown[];
+    };
+    expect(vendorCoverage.queued_terms).toHaveLength(1);
+
+    const accessJwt = await mintVendorAccessJwt();
+    const inspected = await p39VendorCall(
+      "inspectCoverage",
+      { contract_version: CONTRACT_VERSION, org_id: scenario.orgId },
+      { accessJwt },
+    );
+    expect(inspected.result).toBe("ok");
+    const inspectDetail = JSON.parse(inspected.detail) as {
+      terms: Array<{ state: string }>;
+    };
+    expect(inspectDetail.terms.filter((row) => row.state === "queued")).toHaveLength(
+      1,
+    );
+
+    const adminToken = await mintAat(scenario, { role: "administrator" });
+    const coverageResponse = await SELF.fetch(
+      new Request(`${GATEWAY_ORIGIN}/v1/coverage`, {
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+          "Aip-Contract-Version": String(PLATFORM_CLINIC_VERSION),
+        },
+      }),
+    );
+    expect(coverageResponse.status).toBe(200);
+    expect(coverageResponse.headers.get("Aip-Contract-Version")).toBe(
+      String(PLATFORM_CLINIC_VERSION),
+    );
+    const coverageBody = (await coverageResponse.json()) as Record<string, unknown>;
+    expect(coverageBody.subscription_ref).toBe(
+      await subscriptionRef(scenario.orgId),
+    );
+    expect(coverageBody.snapshot).toEqual(vendorCoverage.snapshot);
+    expect(coverageBody.queued_terms).toEqual(vendorCoverage.queued_terms);
+    expect(coverageBody.recent_terms).toEqual(vendorCoverage.recent_terms);
+
+    const detailAfterAdminRead = await getCoverageDetail(scenario);
+    expect(detailAfterAdminRead).toBe(detailBefore);
+
+    const staffToken = await mintAat(scenario, { role: "staff" });
+    const staffResponse = await SELF.fetch(
+      new Request(`${GATEWAY_ORIGIN}/v1/coverage`, {
+        headers: {
+          authorization: `Bearer ${staffToken}`,
+          "Aip-Contract-Version": String(PLATFORM_CLINIC_VERSION),
+        },
+      }),
+    );
+    expect(staffResponse.status).toBe(403);
+
+    const detailAfterStaffDenied = await getCoverageDetail(scenario);
+    expect(detailAfterStaffDenied).toBe(detailBefore);
+  });
+
+  it("E2E-P3.9-08 GET /v1/usage is 404", async () => {
+    const usageResponse = await SELF.fetch(
+      new Request(`${GATEWAY_ORIGIN}/v1/usage`, { method: "GET" }),
+    );
+    expect(usageResponse.status).toBe(404);
   });
 });
 
