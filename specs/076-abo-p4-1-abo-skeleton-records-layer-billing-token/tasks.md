@@ -175,7 +175,7 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system
 
 **Independent Test**: E2E-P4.1-07, E2E-P4.1-08, and E2E-P4.1-10 in harness H-ABO. E2E-P4.1-01 through E2E-P4.1-06 and E2E-P4.1-09 still pass.
 
-- [ ] T029 [US4] Run harness H-ABO and confirm E2E-P4.1-01 through E2E-P4.1-10 and the wrangler clock test pass — produces the green `abo/test/system` suite, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, E2E-P4.1-01, E2E-P4.1-02, E2E-P4.1-03, E2E-P4.1-04, E2E-P4.1-05, E2E-P4.1-06, E2E-P4.1-07, E2E-P4.1-08, E2E-P4.1-09, E2E-P4.1-10. Depends on T015 through T028 (and therefore on T001–T014). This task may edit only files under `abo/test/system/`. `packages/vendor-contracts/**` stays unchanged.
+- [X] T029 [US4] Run harness H-ABO and confirm E2E-P4.1-01 through E2E-P4.1-10 and the wrangler clock test pass — produces the green `abo/test/system` suite, FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, E2E-P4.1-01, E2E-P4.1-02, E2E-P4.1-03, E2E-P4.1-04, E2E-P4.1-05, E2E-P4.1-06, E2E-P4.1-07, E2E-P4.1-08, E2E-P4.1-09, E2E-P4.1-10. Depends on T015 through T028 (and therefore on T001–T014). This task may edit only files under `abo/test/system/`. `packages/vendor-contracts/**` stays unchanged.
 
 ```bash
 cd abo && npx vitest run --config vitest.workers.config.ts test/system
@@ -191,7 +191,7 @@ cd abo && npx vitest run --config vitest.workers.config.ts test/system
 
 ### 7.1 Quickstart
 
-- [ ] T030 Create `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-010, E2E-P4.1-01 through E2E-P4.1-10. Depends on T029. Sections: (1) what was implemented — the `abo/` Worker: host gate, contract version, billing-token auth, `GET /v1/offers`, `GET`/`PUT /v1/billing-contact`, records export, AL-16, and the heartbeat; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) the harness command below; (4) the entry point → module chain per E2E id below. `npm test` in other packages, and any command that runs more than `abo/test/system`, stay out of this file (rule S8).
+- [X] T030 Create `specs/076-abo-p4-1-abo-skeleton-records-layer-billing-token/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-010, E2E-P4.1-01 through E2E-P4.1-10. Depends on T029. Sections: (1) what was implemented — the `abo/` Worker: host gate, contract version, billing-token auth, `GET /v1/offers`, `GET`/`PUT /v1/billing-contact`, records export, AL-16, and the heartbeat; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) the harness command below; (4) the entry point → module chain per E2E id below. `npm test` in other packages, and any command that runs more than `abo/test/system`, stay out of this file (rule S8).
 
 ```bash
 cd abo && npx vitest run --config vitest.workers.config.ts test/system
