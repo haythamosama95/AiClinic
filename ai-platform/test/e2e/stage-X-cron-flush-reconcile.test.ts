@@ -85,20 +85,28 @@ type QuotaInspectState = {
   >;
 };
 
+type FallbackAdmissionRow = {
+  installation_id: string;
+  idempotency_key: string;
+  term_id: string;
+  request_id: string;
+  weight: number;
+  admitted_at: string;
+  state: string;
+};
+
+/** Legacy catalog shape — referenced only by skipped SX-011…SX-016 cases. */
 type GraceQueueRow = {
   grace_request_id: string;
   installation_id: string;
   idempotency_key: string;
-  jti: string;
-  request_reference: string;
-  entitlement_json: string;
-  usage_tokens: number | null;
-  usage_cost: number | null;
-  partial: number | null;
-  queued_at: string;
-  reconcile_attempts: number;
-  reconcile_first_seen_at_ms: number | null;
   status: string;
+  entitlement_json?: string;
+  usage_tokens?: number | null;
+  usage_cost?: number | null;
+  partial?: number | null;
+  reconcile_attempts?: number;
+  reconcile_first_seen_at_ms?: number | null;
 };
 
 type PlatformCounterRow = {
@@ -295,7 +303,7 @@ async function admitGracePending(
     jti?: string;
     requestReference?: string;
   } = {},
-): Promise<GraceQueueRow> {
+): Promise<FallbackAdmissionRow> {
   const idempotencyKey = opts.idempotencyKey ?? crypto.randomUUID();
   const jti = opts.jti ?? crypto.randomUUID();
   const requestReference = opts.requestReference ?? "7K2M-9XQD";
@@ -304,6 +312,9 @@ async function admitGracePending(
       principal: principalFor(scenario, jti),
       idempotencyKey,
       requestReference,
+      capabilityId: "clinic.visit_summary",
+      quotaWeight: 1,
+      orgId: scenario.orgId,
       cache: isolateConfigCache,
       reader: createD1ConfigReader(env.DB, env.R2),
     },
@@ -313,13 +324,14 @@ async function admitGracePending(
   if (result.ok) {
     expect(result.outcome).toBe("grace_admitted");
   }
-  const row = await queryOne<GraceQueueRow>(
-    `SELECT * FROM fallback_admission
+  const row = await queryOne<FallbackAdmissionRow>(
+    `SELECT installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+     FROM fallback_admission
      WHERE installation_id = ? AND idempotency_key = ?`,
     [scenario.installationId, idempotencyKey],
   );
   expect(row).not.toBeNull();
-  expect(row!.status).toBe("pending");
+  expect(row!.state).toBe("pending");
   return row!;
 }
 
@@ -442,7 +454,7 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     });
     await attachGraceUsage(
       env.DB,
-      grace.grace_request_id,
+      grace.request_id,
       { tokens: 10, cost: 0.01 },
       false,
     );
@@ -460,8 +472,6 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     expectLogOrder(lines, [
       "scheduled_cron_start",
       "Flushing guard rejection counters",
-      "grace_reconcile_batch_start",
-      "grace_reconcile_batch_end",
       "scheduled_retention_purge_start",
       "retention_purge_complete",
       "scheduled_retention_purge_complete",
@@ -475,11 +485,12 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     );
 
     expect(await count("platform_counter")).toBeGreaterThanOrEqual(1);
-    const graceAfter = await queryOne<GraceQueueRow>(
-      `SELECT * FROM fallback_admission WHERE grace_request_id = ?`,
-      [grace.grace_request_id],
+    const graceAfter = await queryOne<FallbackAdmissionRow>(
+      `SELECT installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+       FROM fallback_admission WHERE request_id = ?`,
+      [grace.request_id],
     );
-    expect(graceAfter?.status).toBe("reconciled");
+    expect(graceAfter?.state).toBe("pending");
     expect(await getAiRequest(completed.ref)).toBeNull();
     expect(await getAttempts(completed.requestId)).toHaveLength(0);
     const orphaned = await queryAll<{ request_id: string | null }>(
@@ -505,13 +516,8 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     expect(usage[0]?.tokens).toBe(30);
     // Catalog cost 0.003; FakeAdapter fake-v1 prices 10+20 tokens at 0.005.
     expect(Number(usage[0]?.cost)).toBeCloseTo(0.005, 3);
-    // [SEED] catalog: backdate usage_event.period if wall-clock/entitlement period is not 2026-08.
-    await seedSql([
-      {
-        sql: `UPDATE usage_event SET period = ? WHERE request_id = ?`,
-        params: ["2026-08", completed.requestId],
-      },
-    ]);
+    const termId = `term-${scenario.installationId.slice(0, 8)}`;
+    expect(usage[0]?.term_id).toBe(termId);
 
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
@@ -519,7 +525,6 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
 
     expectLogOrder(lines, [
       "scheduled_cron_start",
-      "grace_reconcile_batch_start",
       "scheduled_rollup_start",
       "rollup_start",
       "rollup_complete",
@@ -528,9 +533,6 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
       "usage_rollup_reconciliation",
       "scheduled_cron_complete",
     ]);
-    expect(parseLogPayload(lines, "grace_reconcile_batch_start").pending_count).toBe(
-      0,
-    );
     const recon = parseLogPayload(lines, "usage_rollup_reconciliation");
     expect(recon.rollups_written).toBe(1);
     expect(recon.missing_attempt_rows).toBe(0);
@@ -544,7 +546,7 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     expect(rollups).toHaveLength(1);
     expect(JSON.parse(rollups[0]!.dimensions)).toEqual({
       installation_id: scenario.installationId,
-      period: "2026-08",
+      term_id: termId,
     });
     expect(rollups[0]!.request_count).toBe(1);
     expect(rollups[0]!.tokens).toBe(30);
@@ -576,11 +578,16 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
       const lines = logs.lines();
       expect(parseLogPayload(lines, "scheduled_cron_start").cron).toBe(cron);
       expect(parseLogPayload(lines, "scheduled_cron_complete").cron).toBe(cron);
-      expectLogContains(lines, "grace_reconcile_batch_");
+      const names = logEventNames(lines);
+      expect(
+        names.some((name) => name.includes("fallback_reconcile_batch_")),
+      ).toBe(false);
+      expect(
+        names.some((name) => name.includes("grace_reconcile_batch_")),
+      ).toBe(false);
       if (index === 0) {
         expectLogContains(lines, "Flushing guard rejection counters");
       }
-      const names = logEventNames(lines);
       expect(
         names.some((name) => name.includes("scheduled_retention_purge_start")),
       ).toBe(false);
@@ -621,12 +628,13 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     expectLogContains(logs.lines(), "scheduled_flush_failed");
     expect(await count("platform_counter")).toBe(0);
     expect(await getAiRequest(completed.ref)).toBeNull();
-    const graceAfter = await queryOne<GraceQueueRow>(
-      `SELECT * FROM fallback_admission WHERE grace_request_id = ?`,
-      [grace.grace_request_id],
+    const graceAfter = await queryOne<FallbackAdmissionRow>(
+      `SELECT installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+       FROM fallback_admission WHERE request_id = ?`,
+      [grace.request_id],
     );
     expect(graceAfter).not.toBeNull();
-    expect(["reconciled", "pending"]).toContain(graceAfter!.status);
+    expect(graceAfter!.state).toBe("pending");
   });
 
   it("SX-005 — Flush upserts bucketed platform_counter rows", async () => {
@@ -737,7 +745,12 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
         idempotencyKey: `sx009-${i}-${crypto.randomUUID()}`,
       });
     }
-    recordQuotaExhausted(scenario.installationId, 3);
+    for (let i = 0; i < 3; i += 1) {
+      recordGuardRejection({
+        error_code: "allowance_exhausted",
+        installation_id: scenario.installationId,
+      });
+    }
     await invokeCron(CRON_ROLLUP);
     expect(await count("platform_counter")).toBe(1);
     expect(await count("ai_request")).toBe(4);
@@ -771,19 +784,20 @@ describe("Stage X — cron flush, grace reconcile, retention (SX-001…SX-016)",
     expect(await count("ai_request")).toBe(4);
   });
 
-  it("SX-010 — Reconcile with an empty grace queue", async () => {
+  it("SX-010 — Rollup cron does not run fallback reconcile", async () => {
     await drainRejectionTally();
     const scenario = await provisionHappyPath();
     const before = await inspectState(scenario.installationId);
     const logs = captureLogs();
     await invokeCron(CRON_ROLLUP);
     const lines = logs.lines();
-    expect(parseLogPayload(lines, "grace_reconcile_batch_start").pending_count).toBe(
-      0,
-    );
-    const batchEnd = parseLogPayload(lines, "grace_reconcile_batch_end");
-    expect(batchEnd.pending_count).toBe(0);
-    expect(batchEnd.reconciled).toBe(0);
+    const names = logEventNames(lines);
+    expect(
+      names.some((name) => name.includes("fallback_reconcile_batch_")),
+    ).toBe(false);
+    expect(
+      names.some((name) => name.includes("grace_reconcile_batch_")),
+    ).toBe(false);
     const after = await inspectState(scenario.installationId);
     expect(after).toEqual(before);
     expect(await count("fallback_admission")).toBe(0);

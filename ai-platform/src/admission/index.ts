@@ -181,10 +181,6 @@ function mapJournalState(state: string): IdempotencyPriorState["state"] {
   }
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
-}
-
 function idempotentFromJournal(row: JournaledRequestRow): AdmissionResult {
   return {
     ok: true,
@@ -251,12 +247,10 @@ async function currentClockMs(ctx?: AdmissionContext): Promise<number> {
   return ctx?.nowMs ?? Date.now();
 }
 
-async function yieldForTestClock(ctx?: AdmissionContext): Promise<void> {
-  if (ctx?.clock?.TEST_CLOCK === "1") {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
+async function yieldForTestClock(_ctx?: AdmissionContext): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 async function waitUntilAdmissionDeadline(
@@ -481,8 +475,8 @@ async function tryMirrorFallbackAdmission(input: {
     return null;
   }
   if (
-    mirror.hard_stop_at !== null &&
-    mirror.hard_stop_at.length > 0 &&
+    mirror.hard_stop_at === null ||
+    mirror.hard_stop_at.length === 0 ||
     nowIso >= mirror.hard_stop_at
   ) {
     return null;
@@ -519,60 +513,53 @@ async function tryMirrorFallbackAdmission(input: {
   }
 
   const admittedAt = nowIso;
-  try {
-    const inserted = await input.db
+  const inserted = await input.db
+    .prepare(
+      `INSERT OR IGNORE INTO fallback_admission (
+         installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
+       ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+    )
+    .bind(
+      input.principal.installationId,
+      input.idempotencyKey,
+      termRef,
+      input.requestId,
+      w,
+      admittedAt,
+    )
+    .run();
+  if ((inserted.meta.changes ?? 0) === 0) {
+    const raced = await input.db
       .prepare(
-        `INSERT INTO fallback_admission (
-           installation_id, idempotency_key, term_id, request_id, weight, admitted_at, state
-         ) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        `SELECT request_id FROM fallback_admission
+         WHERE installation_id = ? AND idempotency_key = ?`,
       )
-      .bind(
-        input.principal.installationId,
-        input.idempotencyKey,
-        termRef,
-        input.requestId,
-        w,
-        admittedAt,
-      )
-      .run();
-    if ((inserted.meta.changes ?? 0) === 0) {
-      const raced = await input.db
-        .prepare(
-          `SELECT request_id FROM fallback_admission
-           WHERE installation_id = ? AND idempotency_key = ?`,
-        )
-        .bind(input.principal.installationId, input.idempotencyKey)
-        .first<{ request_id: string }>();
-      if (raced) {
-        const entitlement =
-          (await loadInstallationEntitlement(
-            input.db,
-            input.principal.installationId,
-          )) ?? {
-            plan: "standard",
-            period_bounds: { period_start: admittedAt, period_end: admittedAt },
-            request_quota: 0,
-            token_cost_budget: { token_budget: 0, cost_budget: 0 },
-            credit_budget: 0,
-            allowed_capabilities: capabilities,
-            soft_threshold: 0,
-            status: "active",
-          };
-        return {
-          ok: true,
-          outcome: "grace_admitted",
-          requestId: raced.request_id,
-          requestReference: input.requestReference,
-          entitlement,
+      .bind(input.principal.installationId, input.idempotencyKey)
+      .first<{ request_id: string }>();
+    if (raced) {
+      const entitlement =
+        (await loadInstallationEntitlement(
+          input.db,
+          input.principal.installationId,
+        )) ?? {
+          plan: "standard",
+          period_bounds: { period_start: admittedAt, period_end: admittedAt },
+          request_quota: 0,
+          token_cost_budget: { token_budget: 0, cost_budget: 0 },
+          credit_budget: 0,
+          allowed_capabilities: capabilities,
+          soft_threshold: 0,
+          status: "active",
         };
-      }
-      return null;
+      return {
+        ok: true,
+        outcome: "grace_admitted",
+        requestId: raced.request_id,
+        requestReference: input.requestReference,
+        entitlement,
+      };
     }
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      return await tryMirrorFallbackAdmission(input);
-    }
-    throw error;
+    return null;
   }
 
   const entitlement =
@@ -607,28 +594,30 @@ async function raceAdmissionDo(
   ctx?: AdmissionContext,
 ): Promise<AdmissionDoTransportResult> {
   const doPromise = callAdmissionDo(bindings, installationId, rpcBody);
-  let transport: AdmissionDoTransportResult | undefined;
 
-  while (transport === undefined) {
-    const remaining = deadlineMs - (await currentClockMs(ctx));
-    if (remaining > 0) {
-      const raced = await Promise.race([
+  for (;;) {
+    const nowMs = await currentClockMs(ctx);
+    if (nowMs >= deadlineMs) {
+      const atDeadline = await Promise.race([
         doPromise.then((result) => ({ kind: "do" as const, result })),
-        waitUntilAdmissionDeadline(deadlineMs, ctx).then(() => ({
-          kind: "deadline" as const,
-        })),
+        Promise.resolve({ kind: "past_deadline" as const }),
       ]);
-      if (raced.kind === "do") {
-        transport = raced.result;
-        break;
+      if (atDeadline.kind === "do") {
+        return atDeadline.result;
       }
-      continue;
+      return { ok: false, reason: "unavailable" };
     }
-    transport = await doPromise;
-    break;
-  }
 
-  return transport;
+    const raced = await Promise.race([
+      doPromise.then((result) => ({ kind: "do" as const, result })),
+      waitUntilAdmissionDeadline(deadlineMs, ctx).then(() => ({
+        kind: "tick" as const,
+      })),
+    ]);
+    if (raced.kind === "do") {
+      return raced.result;
+    }
+  }
 }
 
 export async function runAdmission(

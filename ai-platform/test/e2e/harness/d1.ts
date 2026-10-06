@@ -31,7 +31,6 @@ export const MIGRATION_SQL: readonly string[] = [
   conversationIndexSql,
   statusMigrationSql,
   killSwitchMigrationSql,
-  fallbackAdmissionFeedMigrationSql,
   entitlementUniqueSql,
   planCatalogueSql,
   quotaWeightMigrationSql,
@@ -41,6 +40,7 @@ export const MIGRATION_SQL: readonly string[] = [
   planVersionPaidGrantCoverageMigrationSql,
   usageTermMigrationSql,
   ceilingPolicyMigrationSql,
+  fallbackAdmissionFeedMigrationSql,
 ];
 
 const TOKEN_CONTRACT_V2_SEED = {

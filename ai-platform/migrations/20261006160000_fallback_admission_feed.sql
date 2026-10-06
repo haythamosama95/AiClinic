@@ -21,4 +21,4 @@ CREATE TABLE feed_consumer (
   last_cursor INTEGER
 );
 
-DROP TABLE grace_admission_queue;
+DROP TABLE IF EXISTS grace_admission_queue;
