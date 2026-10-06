@@ -12,6 +12,8 @@ import {
   verifyAccessJwt,
   verifyAssertion,
   verifyGrantSignature,
+  signCompactJws,
+  receiptSigningBytes,
   type AccessCertsDocument,
   type Assertion,
 } from "vendor-contracts";
@@ -52,6 +54,7 @@ const METHOD_CLASS = {
   getCoverage: "M",
   listGrants: "M",
   readCoverageEvents: "M",
+  voidForReversal: "M",
 } as const;
 
 type VendorMethod = keyof typeof METHOD_CLASS;
@@ -96,8 +99,12 @@ type GrantResultEnvelope = {
   receipt?: Record<string, unknown>;
 };
 
+const VOID_NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const HEX64_RE = /^[0-9a-f]{64}$/u;
+
 type VendorEnv = ClockEnv & {
   DB: D1Database;
+  R2: R2Bucket;
   DO: DurableObjectNamespace;
   ISSUER_ID: string;
   ACCESS_TEAM_DOMAIN: string;
@@ -1335,6 +1342,115 @@ function mapApplyGrantDoResponse(
     };
   }
   return grantRejected(version, "coverage_unknown");
+}
+
+function isHex64(value: unknown): value is string {
+  return typeof value === "string" && HEX64_RE.test(value);
+}
+
+type PlatformSigningMaterial = {
+  kid: string;
+  privateKey: CryptoKey;
+};
+
+async function loadPlatformSigningKey(
+  json: string,
+): Promise<PlatformSigningMaterial | null> {
+  try {
+    const parsed = JSON.parse(json) as {
+      kid?: string;
+      pkcs8?: string;
+    };
+    if (typeof parsed.kid !== "string" || typeof parsed.pkcs8 !== "string") {
+      return null;
+    }
+    const pkcs8 = base64UrlDecode(parsed.pkcs8);
+    if (pkcs8 === null) {
+      return null;
+    }
+    const privateKey = await crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "Ed25519" },
+      false,
+      ["sign"],
+    );
+    return { kid: parsed.kid, privateKey };
+  } catch {
+    return null;
+  }
+}
+
+async function readVoidReceiptFromR2(
+  env: VendorEnv,
+  grantId: string,
+): Promise<Record<string, unknown> | null> {
+  const key = `grant-ledger/${grantId}.void.ndjson`;
+  const object = await env.R2.get(key);
+  if (object === null) {
+    return null;
+  }
+  const text = await object.text();
+  const line = text.trimEnd().split("\n")[0];
+  if (!line) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    if (!isRecord(parsed.receipt)) {
+      return null;
+    }
+    return parsed.receipt;
+  } catch {
+    return null;
+  }
+}
+
+async function signReversalVoidReceipt(input: {
+  signingKey: PlatformSigningMaterial;
+  vendorContractVersion: number;
+  reversalId: string;
+  installationId: string;
+  orgId: string;
+  termIds: string[];
+  appliedAt: string;
+  ledgerSeq: number;
+  envelopeSha256: string;
+}): Promise<Record<string, unknown>> {
+  const unsigned = {
+    contract_version: input.vendorContractVersion,
+    reversal_id: input.reversalId,
+    installation_id: input.installationId,
+    org_id: input.orgId,
+    result: "applied",
+    term_ids: input.termIds,
+    applied_at: input.appliedAt,
+    ledger_seq: input.ledgerSeq,
+    envelope_sha256: input.envelopeSha256,
+    kid: input.signingKey.kid,
+  };
+  const signature = await signCompactJws({
+    payload: receiptSigningBytes(unsigned),
+    privateKey: input.signingKey.privateKey,
+    kid: input.signingKey.kid,
+  });
+  return { ...unsigned, signature };
+}
+
+async function rejectIfGrantVoided(
+  env: VendorEnv,
+  version: number,
+  grantId: string,
+): Promise<GrantResultEnvelope | null> {
+  const row = await env.DB.prepare(
+    "SELECT grant_id FROM grant_void WHERE grant_id = ?",
+  )
+    .bind(grantId)
+    .first<{ grant_id: string }>();
+  if (row !== null) {
+    return grantRejected(version, "voided", "");
+  }
+  return null;
 }
 
 async function rejectHpAssertion(
@@ -2769,6 +2885,18 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
         return grantRejected(version, "coverage_unknown");
       }
 
+      const complimentaryGrantId = envelope.grant_id;
+      if (typeof complimentaryGrantId === "string" && complimentaryGrantId.length > 0) {
+        const voided = await rejectIfGrantVoided(
+          this.env,
+          version,
+          complimentaryGrantId,
+        );
+        if (voided !== null) {
+          return voided;
+        }
+      }
+
       const nowIso = await clockNowIso(this.env);
       const approvals =
         isRecord(envelope.evidence) && Array.isArray(envelope.evidence.approvals)
@@ -2985,6 +3113,14 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       return grantRejected(version, "coverage_unknown");
     }
 
+    const paidGrantId = envelope.grant_id;
+    if (typeof paidGrantId === "string" && paidGrantId.length > 0) {
+      const voided = await rejectIfGrantVoided(this.env, version, paidGrantId);
+      if (voided !== null) {
+        return voided;
+      }
+    }
+
     const approvalsCredentialId =
       isRecord(approvals[0]) && typeof approvals[0].credential_id === "string"
         ? approvals[0].credential_id
@@ -3030,6 +3166,180 @@ export class VendorEntrypoint extends WorkerEntrypoint<VendorEnv> {
       };
     }
     return mapApplyGrantDoResponse(version, doResponse);
+  }
+
+  async voidForReversal(
+    args: Record<string, unknown>,
+  ): Promise<GrantResultEnvelope> {
+    const requested = parseRequestedVersion(args);
+    const negotiated = negotiate(VENDOR_CHANNEL, requested);
+    if (!negotiated.ok) {
+      return grantRejected(VENDOR_CHANNEL, negotiated.code);
+    }
+    const version = negotiated.version;
+
+    if (!("partial" in args) || typeof args.partial !== "boolean") {
+      return grantRejected(version, "partial_invalid", "");
+    }
+    const partial = args.partial;
+
+    const grantId = args.grant_id;
+    const reversalId = args.reversal_id;
+    const reason = args.reason;
+    const evidenceSha256 = args.evidence_sha256;
+    const aboKid = args.abo_kid;
+    const aboSignature = args.abo_signature;
+    if (
+      typeof grantId !== "string" ||
+      !isHex64(grantId) ||
+      typeof reversalId !== "string" ||
+      !isHex64(reversalId) ||
+      typeof reason !== "string" ||
+      reason.length === 0 ||
+      typeof evidenceSha256 !== "string" ||
+      !isHex64(evidenceSha256) ||
+      typeof aboKid !== "string" ||
+      aboKid.length === 0 ||
+      typeof aboSignature !== "string" ||
+      aboSignature.length === 0
+    ) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const signedBody = {
+      contract_version: version,
+      grant_id: grantId,
+      reversal_id: reversalId,
+      reason,
+      evidence_sha256: evidenceSha256,
+      partial,
+    };
+
+    const serviceKey = await readServiceKey(this.env.DB, aboKid);
+    if (serviceKey === null) {
+      return grantTransient(version, "unknown_kid");
+    }
+
+    const nowIso = await clockNowIso(this.env);
+    if (
+      serviceKey.status === "revoked" ||
+      !serviceKeyActiveAt(serviceKey, nowIso)
+    ) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const verifyKey = await importEd25519VerifyKey(serviceKey.public_key);
+    if (verifyKey === null) {
+      return grantRejected(version, "bad_signature");
+    }
+    const signatureValid = await verifyGrantSignature({
+      envelope: signedBody,
+      jws: aboSignature,
+      publicKey: verifyKey,
+      kid: aboKid,
+    });
+    if (!signatureValid) {
+      return grantRejected(version, "bad_signature");
+    }
+
+    const existingVoid = await this.env.DB.prepare(
+      "SELECT grant_id, reason, evidence_sha256 FROM grant_void WHERE grant_id = ?",
+    )
+      .bind(grantId)
+      .first<{ grant_id: string; reason: string; evidence_sha256: string }>();
+
+    if (existingVoid !== null) {
+      const storedReceipt = await readVoidReceiptFromR2(this.env, grantId);
+      if (storedReceipt === null) {
+        return grantRejected(version, "coverage_unknown");
+      }
+      const storedReversalId = storedReceipt.reversal_id;
+      if (typeof storedReversalId !== "string" || storedReversalId !== reversalId) {
+        return {
+          contract_version: version,
+          result: "conflict",
+          code: "",
+          detail: "",
+        };
+      }
+      if (
+        existingVoid.reason === reason &&
+        existingVoid.evidence_sha256 === evidenceSha256 &&
+        partial === false
+      ) {
+        return {
+          contract_version: version,
+          result: "already_applied",
+          code: "",
+          detail: "",
+          receipt: storedReceipt,
+        };
+      }
+      return {
+        contract_version: version,
+        result: "conflict",
+        code: "",
+        detail: "",
+      };
+    }
+
+    if (partial) {
+      return grantRejected(version, "partial_void", "");
+    }
+
+    const ledgerRow = await this.env.DB.prepare(
+      "SELECT grant_id FROM grant_ledger WHERE grant_id = ?",
+    )
+      .bind(grantId)
+      .first<{ grant_id: string }>();
+
+    if (ledgerRow !== null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const envelopeSha256 = await sha256Hex(canonicalize(signedBody));
+    const signingKey = await loadPlatformSigningKey(this.env.PLATFORM_SIGNING_KEY);
+    if (signingKey === null) {
+      return grantRejected(version, "coverage_unknown");
+    }
+
+    const receipt = await signReversalVoidReceipt({
+      signingKey,
+      vendorContractVersion: version,
+      reversalId,
+      installationId: VOID_NIL_UUID,
+      orgId: VOID_NIL_UUID,
+      termIds: [],
+      appliedAt: nowIso,
+      ledgerSeq: 0,
+      envelopeSha256,
+    });
+
+    await this.env.DB.prepare(
+      `INSERT INTO grant_void (grant_id, reason, source, evidence_sha256, at)
+       VALUES (?, ?, 'reversal', ?, ?)`,
+    )
+      .bind(grantId, reason, evidenceSha256, nowIso)
+      .run();
+
+    const voidKey = `grant-ledger/${grantId}.void.ndjson`;
+    const voidLine = JSON.stringify({
+      grant_id: grantId,
+      reason,
+      source: "reversal",
+      evidence_sha256: evidenceSha256,
+      at: nowIso,
+      receipt,
+    });
+    await this.env.R2.put(voidKey, `${voidLine}\n`);
+
+    return {
+      contract_version: version,
+      result: "applied",
+      code: "",
+      detail: "",
+      receipt,
+    };
   }
 
   async suspend(args: Record<string, unknown>): Promise<VendorResultEnvelope> {

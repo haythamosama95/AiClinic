@@ -81,6 +81,7 @@ import issuerKeyTenantBindingMigrationSql from "../../migrations/20261003130000_
 import planVersionPaidGrantCoverageMigrationSql from "../../migrations/20261003140000_plan_version_paid_grant_coverage.sql?raw";
 import usageTermMigrationSql from "../../migrations/20261006120000_usage_term.sql?raw";
 import ceilingPolicyMigrationSql from "../../migrations/20261006130000_ceiling_policy.sql?raw";
+import grantVoidMigrationSql from "../../migrations/20261006140000_grant_void.sql?raw";
 import { applySqlStatements } from "../split-sql-statements";
 import {
   createCapabilityRegistry,
@@ -261,6 +262,7 @@ const MIGRATION_SQL = [
   planVersionPaidGrantCoverageMigrationSql,
   usageTermMigrationSql,
   ceilingPolicyMigrationSql,
+  grantVoidMigrationSql,
 ];
 
 const CATALOGUE_PLAN_NAME = "standard";
@@ -361,6 +363,7 @@ export async function resetPlatformState(): Promise<void> {
     env.DB.prepare("DELETE FROM kill_switch"),
     env.DB.prepare("DELETE FROM entitlement"),
     env.DB.prepare("DELETE FROM coverage_event"),
+    env.DB.prepare("DELETE FROM grant_void"),
     env.DB.prepare("DELETE FROM grant_ledger"),
     env.DB.prepare("DELETE FROM coverage_mirror"),
     env.DB.prepare("DELETE FROM plan_version"),
@@ -1599,7 +1602,8 @@ export type VendorMethod =
   | "setCeilingPolicy"
   | "suspend"
   | "resume"
-  | "inspectCoverage";
+  | "inspectCoverage"
+  | "voidForReversal";
 
 export const VENDOR_OPERATOR_EMAIL = "operator@clinic.test";
 
