@@ -143,7 +143,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 5.1 Unit harness
 
-- [ ] T022 Run harness H-AP for this unit and confirm E2E-P3.9-01 through E2E-P3.9-08 pass together — produces the green run, FR-001 through FR-009, E2E-P3.9-01 through E2E-P3.9-08. Depends on T009 through T021 (and therefore on T001–T008). This task may edit only `ai-platform/test/system/fallback-feed-coverage.system.test.ts`. `packages/vendor-contracts/**` stays unchanged. `buildCoverageSnapshot`, `lapsedSnapshotReason`, `readCoverageEvents`, and `IssuerTokenVerifier` stay unchanged. SC-002 is the review's run of earlier suites, not this command.
+- [X] T022 Run harness H-AP for this unit and confirm E2E-P3.9-01 through E2E-P3.9-08 pass together — produces the green run, FR-001 through FR-009, E2E-P3.9-01 through E2E-P3.9-08. Depends on T009 through T021 (and therefore on T001–T008). This task may edit only `ai-platform/test/system/fallback-feed-coverage.system.test.ts`. `packages/vendor-contracts/**` stays unchanged. `buildCoverageSnapshot`, `lapsedSnapshotReason`, `readCoverageEvents`, and `IssuerTokenVerifier` stay unchanged. SC-002 is the review's run of earlier suites, not this command.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
@@ -158,7 +158,7 @@ cd ai-platform && npx vitest run --config vitest.workers.config.ts \
 
 ### 6.1 Quickstart
 
-- [ ] T023 Create `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-009, E2E-P3.9-01 through E2E-P3.9-08. Depends on T022. Sections: (1) what was implemented — fallback admission from `coverage_mirror`, the `*/5` drain, `GET /v1/feed/coverage`, `feedConsumerHealth`, administrator `GET /v1/coverage`, and removal of `GET /v1/usage`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
+- [X] T023 Create `specs/073-abo-p3-9-fallback-admission-coverage-feed-administrator/quickstart.md` from the plan's quickstart outline — produces this unit's quickstart, FR-001 through FR-009, E2E-P3.9-01 through E2E-P3.9-08. Depends on T022. Sections: (1) what was implemented — fallback admission from `coverage_mirror`, the `*/5` drain, `GET /v1/feed/coverage`, `feedConsumerHealth`, administrator `GET /v1/coverage`, and removal of `GET /v1/usage`; (2) files this unit adds or modifies — the Files section of `plan.md`; (3) harness command for this unit's tests only — the command below; (4) the entry point → module chain per E2E id below. Every scenario is asserted by H-AP, so this file records harness commands only.
 
 ```bash
 cd ai-platform && npx vitest run --config vitest.workers.config.ts \
