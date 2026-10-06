@@ -28,7 +28,6 @@ export default defineWorkersConfig({
       "test/discovery-http.test.ts",
       "test/config-readers.test.ts",
       "test/load/load-and-cost.test.ts",
-      "test/load/write-budget.load.test.ts",
       "test/worker-request-orchestrator.test.ts",
       "test/plan-catalogue.test.ts",
       "test/quota-inspect.test.ts",
